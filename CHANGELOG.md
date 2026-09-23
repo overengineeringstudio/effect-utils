@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Genie CI**: Capture every devenv task graph as OpenTelemetry spans with
+  workflow, job, run, revision, runner, and task attributes; render the slowest
+  tasks in each job summary; and retain the OTLP payload as a CI artifact.
 - **@overeng/gh-ci-utils**: `run` accepts workflow-dispatch inputs via
   repeated `--field key=value` (matching `gh workflow run -f` ergonomics)
   and a `--inputs` JSON object for scripts. `--field` wins on key collision;
@@ -32,6 +35,22 @@ All notable changes to this project will be documented in this file.
 - **Buck2 rules distribution**: Export deterministic rules and executor-capability
   projections plus a standalone consumer-root helper, so downstream repositories
   can build source products without mounting effect-utils as a Buck cell.
+- **Buck2 checks**: Add standalone project roots, Nix-owned capability
+  projections shared with composed roots, registry-derived `//:quick` and
+  `//:all` aggregates, check-verb wiring, and a guard against untracked
+  Buck-versus-legacy producer overlap.
+- **CI**: Run every effect-utils lane from the checked-out standalone Buck root,
+  removing the synthesized composition lifecycle and its member-root plumbing.
+- **Buck2 editor views**: Add explicit coalesced publishers for Restate,
+  OpenTelemetry contract, and the shared Playwright package union so those CI
+  lanes publish only their required views while retaining whole-workspace
+  dependency authority.
+- **Buck2 editor bootstrap**: Bound the pre-freshness bootstrap to the declared
+  Genie generator import closure (the repository root and OpenTelemetry
+  contract views), retain whole-workspace ownership authority, fail authoring
+  checks when that declaration misses a first-party runtime import, emit
+  per-phase timings, and avoid duplicate admitted-tree and post-publication
+  snapshot traversals.
 
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full

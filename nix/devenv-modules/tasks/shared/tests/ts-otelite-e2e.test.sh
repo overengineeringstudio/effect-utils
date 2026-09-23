@@ -110,7 +110,9 @@ ln -s "$otel_span_bin" "$tmpdir/bin/otel-span"
 ln -s "$otel_scrape_bin" "$tmpdir/bin/otel-scrape"
 
 cap="$tmpdir/capture"
+# The outer CI job owns a durable spool; this nested capture must route to otelite's HTTP receiver.
 env -u TRACEPARENT -u OTEL_TASK_TRACEPARENT -u OTEL_SHELL_ENTRY_NS \
+  -u OTEL_SPAN_SPOOL_DIR -u OTEL_SPOOL_MULTI_WRITER \
   PATH="$tmpdir/bin:$PATH" DEVENV_ROOT="$tmpdir/workspace" DEVENV_TUI=false \
   "$otelite_bin" run --out "$cap" --protocol http/json -- devenv tasks run ts:check \
   > "$tmpdir/summary.json" 2> "$tmpdir/run.stderr"

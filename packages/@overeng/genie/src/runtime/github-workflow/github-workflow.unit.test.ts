@@ -660,7 +660,9 @@ describe('GitHub expression validation', () => {
   })
 })
 
-describe.runIf(hasActionlint)('actionlint integration', () => {
+const describeActionlint = hasActionlint === true ? describe : describe.skip
+
+describeActionlint('actionlint integration', () => {
   it('passes a clean workflow', async () => {
     const issues = await getFullValidationIssues({
       name: 'CI',

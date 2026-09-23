@@ -33,7 +33,6 @@ import {
   createWorkspaceWithLock,
   getWorktreeCommit,
 } from '../test-utils/store-setup.ts'
-import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 
 const StoreGcJsonOutput = Schema.Struct({
@@ -89,12 +88,11 @@ const runMrCommand = ({
         }),
     )
 
-    const argv = [...command]
-    const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
-      Effect.provideService(Cwd, cwd),
-      Effect.provide(consoleLayer),
-      Effect.exit,
-    )
+    const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })([
+      '--cwd',
+      cwd,
+      ...command,
+    ]).pipe(Effect.provide(consoleLayer), Effect.exit)
     void previousEnv
 
     return {

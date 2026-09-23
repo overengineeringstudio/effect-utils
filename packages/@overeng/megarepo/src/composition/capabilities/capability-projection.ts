@@ -6,9 +6,11 @@ import process from 'node:process'
 import type { BuckMemberCapability } from '../../buck2-manifest.ts'
 import type { ResolvedCompositionCapability } from './composition-capability-resolver-schema.ts'
 
-type CapabilityProjectionPlatform = 'aarch64-linux' | 'aarch64-macos' | 'x86_64-linux'
+/** Supported host tuples for materialized capability projections. */
+export type CapabilityProjectionPlatform = 'aarch64-linux' | 'aarch64-macos' | 'x86_64-linux'
 
-type CapabilityProjectionManifest = {
+/** Immutable manifest describing one exact projected capability realization. */
+export type CapabilityProjectionManifest = {
   readonly closureIdentity: string
   readonly closureStorePaths: readonly string[]
   readonly contentDigest: string
@@ -20,7 +22,8 @@ type CapabilityProjectionManifest = {
   readonly toolId: string
 }
 
-const makeCapabilityProjectionManifest = ({
+/** Converts a resolved capability into its portable projection manifest. */
+export const makeCapabilityProjectionManifest = ({
   platform,
   resolved,
 }: {
@@ -38,15 +41,18 @@ const makeCapabilityProjectionManifest = ({
   toolId: resolved.capability.toolId,
 })
 
-const capabilityToolBuckBytes =
+/** Generated Buck package exposing one projected capability executable and manifest. */
+export const capabilityToolBuckBytes =
   'export_file(name = "executable", src = "executable", visibility = ["PUBLIC"])\n' +
   'export_file(name = "manifest", src = "manifest.json", visibility = ["PUBLIC"])\n'
-const capabilityRootBuckBytes = '# Generated from exact Nix realizations.\n'
+/** Generated Buck package marker for the capability projection root. */
+export const capabilityRootBuckBytes = '# Generated from exact Nix realizations.\n'
 
 const manifestBytes = (manifest: CapabilityProjectionManifest): string =>
   `${JSON.stringify(manifest)}\n`
 
-const computeCapabilityProjectionGeneration = (
+/** Computes the stable generation identity for an ordered capability file set. */
+export const computeCapabilityProjectionGeneration = (
   files: ReadonlyArray<{ readonly path: string; readonly bytes: string }>,
 ): string => {
   const framed = files
@@ -57,7 +63,8 @@ const computeCapabilityProjectionGeneration = (
   return createHash('sha256').update(`${payloadDigest}  -\n`).digest('hex')
 }
 
-const renderCapabilityProjectionDefs = ({
+/** Renders the generated Buck definitions for one capability generation. */
+export const renderCapabilityProjectionDefs = ({
   generation,
   platform,
   manifests,
@@ -79,7 +86,8 @@ const renderCapabilityProjectionDefs = ({
     '',
   ].join('\n')
 
-const projectResolvedCapabilities = async ({
+/** Materializes one immutable generation of resolved capabilities. */
+export const projectResolvedCapabilities = async ({
   projectionPath,
   platform,
   resolved,

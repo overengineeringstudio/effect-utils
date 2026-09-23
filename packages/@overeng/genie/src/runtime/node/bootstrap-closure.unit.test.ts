@@ -13,7 +13,10 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { discoverGenieFiles } from './bootstrap-closure-check-cli.ts'
+import {
+  discoverGenieFiles,
+  findEditorViewClosureViolations,
+} from './bootstrap-closure-check-cli.ts'
 import {
   canonicalResolvedPath,
   canonicalSegment,
@@ -208,6 +211,22 @@ describe('checkBootstrapClosure', () => {
     expect(violations[0]!.chain).toEqual([source])
   })
 
+  it('can report every bare runtime boundary for editor-view closure validation', async () => {
+    const dir = makeDir()
+    const source = write(
+      dir,
+      'all-boundaries.genie.ts',
+      `import 'effect'\nimport '@scope/runtime'\nexport const ok = true`,
+    )
+
+    const { violations } = await checkBootstrapClosure({
+      genieFiles: [source],
+      reportAllViolations: true,
+    })
+
+    expect(violations.map(({ specifier }) => specifier)).toEqual(['effect', '@scope/runtime'])
+  })
+
   it('does NOT flag node builtins (bare `crypto` and `node:`-prefixed)', async () => {
     const dir = makeDir()
     const source = write(
@@ -345,6 +364,68 @@ describe('canonicalResolvedPath', () => {
     expect(canonicalResolvedPath({ file: canonical, importer, listings: new Map() })).toBe(
       canonical,
     )
+  })
+})
+
+describe('findEditorViewClosureViolations', () => {
+  it('names the importing workspace package whose editor view is undeclared', () => {
+    const violation = {
+      source: '/repo/source.genie.ts',
+      specifier: '@overeng/content-address/schema',
+      chain: ['/repo/source.genie.ts', '/repo/packages/@overeng/otel-contract/src/profile-link.ts'],
+    }
+    const rootCoveredViolation = {
+      source: '/repo/source.genie.ts',
+      specifier: '@overeng/otel-contract/registry',
+      chain: ['/repo/source.genie.ts', '/repo/packages/@overeng/ci-tools/src/contract.ts'],
+    }
+    const workspacePackages = [
+      {
+        dependencyNames: ['@overeng/otel-contract'],
+        name: '@overeng/genie',
+        path: 'packages/@overeng/genie',
+      },
+      {
+        dependencyNames: ['@overeng/content-address'],
+        name: '@overeng/otel-contract',
+        path: 'packages/@overeng/otel-contract',
+      },
+      {
+        dependencyNames: [],
+        name: '@overeng/content-address',
+        path: 'packages/@overeng/content-address',
+      },
+      {
+        dependencyNames: ['@overeng/otel-contract'],
+        name: '@overeng/ci-tools',
+        path: 'packages/@overeng/ci-tools',
+      },
+    ]
+
+    expect(
+      findEditorViewClosureViolations({
+        violations: [violation, rootCoveredViolation],
+        workspacePackages,
+        publishedPackagePaths: ['.'],
+        repoRoot: '/repo',
+        rootPackagePath: 'packages/@overeng/genie',
+      }),
+    ).toEqual([
+      {
+        packageName: '@overeng/otel-contract',
+        packagePath: 'packages/@overeng/otel-contract',
+        violation,
+      },
+    ])
+    expect(
+      findEditorViewClosureViolations({
+        violations: [violation, rootCoveredViolation],
+        workspacePackages,
+        publishedPackagePaths: ['.', 'packages/@overeng/otel-contract'],
+        repoRoot: '/repo',
+        rootPackagePath: 'packages/@overeng/genie',
+      }),
+    ).toEqual([])
   })
 })
 

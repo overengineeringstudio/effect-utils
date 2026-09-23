@@ -199,6 +199,49 @@ describe('routine composition apply is shape-preserving', () => {
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
+  it.effect('recognizes only a tracked standalone root without a repos mount', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const fixture = yield* makeLegacyWorkspace
+      for (const marker of ['.buckroot', '.buckconfig']) {
+        yield* fs.writeFileString(
+          EffectPath.unsafe.absoluteFile(NodePath.join(fixture.workspaceRoot, marker)),
+          '',
+        )
+      }
+
+      const untrackedFailure = yield* preflightCompositionCommand({
+        workspaceRoot: EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`),
+        compositionEnabled: true,
+      }).pipe(Effect.flip)
+      expect(untrackedFailure.reason).toBe('RecreateRequired')
+
+      yield* fixture.git(fixture.workspaceRoot, 'add', '.buckroot', '.buckconfig')
+      yield* fixture.git(
+        fixture.workspaceRoot,
+        'commit',
+        '--no-gpg-sign',
+        '--no-verify',
+        '-m',
+        'track standalone markers',
+      )
+      const identity = yield* preflightCompositionCommand({
+        workspaceRoot: EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`),
+        compositionEnabled: true,
+      })
+      expect(identity).toBeUndefined()
+
+      yield* fs.makeDirectory(
+        EffectPath.unsafe.absoluteDir(`${NodePath.join(fixture.workspaceRoot, 'repos')}/`),
+      )
+      const mountedFailure = yield* preflightCompositionCommand({
+        workspaceRoot: EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`),
+        compositionEnabled: true,
+      }).pipe(Effect.flip)
+      expect(mountedFailure.reason).toBe('RecreateRequired')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('does not infer composition from an ordinary symlinked member checkout', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem

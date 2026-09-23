@@ -440,6 +440,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -460,10 +468,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -481,7 +485,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -495,7 +499,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -508,7 +512,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -528,8 +532,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
+          cd "${GITHUB_WORKSPACE:-$PWD}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
           command -v script >/dev/null 2>&1
           tmp_log="$(mktemp)"
           before="$(git status --porcelain=v1)"
@@ -545,7 +549,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:check'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -596,9 +600,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-typecheck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -615,6 +657,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -635,10 +685,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -656,7 +702,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -670,7 +716,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -683,7 +729,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -703,7 +749,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -754,9 +800,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-lint"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -776,6 +860,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -796,10 +888,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -817,7 +905,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -831,7 +919,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -844,7 +932,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -864,7 +952,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -915,9 +1003,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-${{ strategy.job-index }}"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -934,6 +1060,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -954,10 +1088,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -975,7 +1105,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -989,7 +1119,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -1002,7 +1132,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1022,7 +1152,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:utils' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:utils'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:utils' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:utils'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1073,9 +1203,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-utils"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1092,6 +1260,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1112,10 +1288,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1133,7 +1305,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -1147,7 +1319,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -1160,7 +1332,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1180,7 +1352,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:tui-react' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:tui-react'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:tui-react' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:tui-react'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1231,9 +1403,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-tui-react"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1250,6 +1460,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1270,10 +1488,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1291,7 +1505,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -1305,7 +1519,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -1318,7 +1532,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1338,7 +1552,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1389,9 +1603,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-megarepo-cold-gc"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1408,6 +1660,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1428,10 +1688,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1449,7 +1705,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -1463,7 +1719,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -1476,7 +1732,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1496,7 +1752,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           audit=genie/ci-scripts/native-dep-policy-audit.ts
           if command -v bun >/dev/null 2>&1; then
             bun "$audit"
@@ -1506,7 +1762,7 @@ jobs:
       - name: Guard pnpm builder contract
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           builder='nix/workspace-tools/lib/mk-pnpm-deps.nix'
           policy='nix/workspace-tools/lib/pnpm-install-policy.nix'
           if [ ! -f "$builder" ]; then
@@ -1598,9 +1854,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-builder-contract"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1617,6 +1911,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1637,10 +1939,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1658,7 +1956,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -1672,7 +1970,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -1685,7 +1983,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1704,7 +2002,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash genie/ci-scripts/nix-gc-race-retry.test.sh
+          cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/nix-gc-race-retry.test.sh
           bash genie/ci-scripts/ci-measurement-comparison.test.sh
           bash genie/ci-scripts/native-dep-policy-audit.test.sh
           bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo
@@ -1758,9 +2056,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-regression"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1777,6 +2113,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1797,10 +2141,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1818,7 +2158,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -1832,7 +2172,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -1845,7 +2185,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1865,7 +2205,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
+          bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1916,9 +2256,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bundle-smoke"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1935,6 +2313,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1955,10 +2341,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1976,7 +2358,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -1990,7 +2372,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -2003,7 +2385,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -2023,7 +2405,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run cargo:check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run cargo:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run cargo:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run cargo:check'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2074,9 +2456,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-cargo"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2093,6 +2513,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -2113,10 +2541,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2134,7 +2558,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -2148,7 +2572,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -2161,7 +2585,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -2178,7 +2602,7 @@ jobs:
           exit 1
       - name: 'Fetch baseline history for weaver:diff (SC-R11)'
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -uo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -uo pipefail
           # weaver:diff needs the merge-base with origin/main; the default checkout is shallow.
           git fetch --no-tags --prune --unshallow origin 2>/dev/null \
             || git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null \
@@ -2188,7 +2612,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run weaver:check weaver:diff weaver:live-check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run weaver:check weaver:diff weaver:live-check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run weaver:check weaver:diff weaver:live-check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run weaver:check weaver:diff weaver:live-check'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2239,9 +2663,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-weaver"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2290,14 +2752,10 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -2311,7 +2769,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -2324,19 +2782,19 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Check generated sources
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check'
       - name: Run focused normalized, projection, and runner tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \
             genie/buck2/typescript-package-projection.unit.test.ts \
             genie/buck2/javascript-candidates.unit.test.ts \
@@ -2346,12 +2804,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"
       - name: Reject tracked product and editor payload bytes
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')
           tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\.nix|cache-targets\.json|cache-targets\.json\.genie\.ts|consumer-root\.nix|default\.nix|from-source\.nix|manifest\.json|publish\.sh|source-recipes\.nix|targets\.json|targets\.json\.genie\.ts)$' || true)
           if [ -n "$tracked_editor$tracked_product" ]; then
@@ -2362,19 +2820,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
-            cd "${EFFECT_UTILS_WORKSPACE_ROOT:?EFFECT_UTILS_WORKSPACE_ROOT not set}"
-            buck="$PWD/.megarepo/bin/buck2"
+            cd "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"
+            buck="${BUCK2_BIN:?BUCK2_BIN not set}"
             "$buck" query effect_utils//packages/@overeng/ci-tools:ci-tools-candidate
             "$buck" query effect_utils//:editor_view_inputs
             "$buck" build \
               effect_utils//packages/@overeng/ci-tools:ci-tools-candidate \
               effect_utils//:editor_view_inputs
           '
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pr-a-inert-buck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2428,11 +2883,6 @@ jobs:
             access-tokens = github.com=${{ github.token }}
           summarize: true
         if: steps.publication-scope.outputs.publish == 'true'
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
-        if: steps.publication-scope.outputs.publish == 'true'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2454,7 +2904,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
           mapfile -t product_names < <(jq -r '.products[].name' nix/buck2-products/cache-targets.json)
           product_refs=()
@@ -2484,9 +2934,6 @@ jobs:
               --title 'chore(buck2): update product cache manifest' \
               --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'
           fi
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-publish-products"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2520,14 +2967,10 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -2541,7 +2984,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -2554,7 +2997,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Prove fresh-root remote action and test-cache hits
         env:
@@ -2570,13 +3013,14 @@ jobs:
             echo "::error::BUCK2_REMOTE_CACHE_BASIC_AUTH is required for the trusted remote-cache proof"
             exit 1
           fi
-          cd "${EFFECT_UTILS_WORKSPACE_ROOT:?EFFECT_UTILS_WORKSPACE_ROOT not set}"
-          buck="$PWD/.megarepo/bin/buck2"
+          source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"
+          cd "$source_root"
+          buck="${BUCK2_BIN:?BUCK2_BIN not set}"
           context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"
           target="effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
           test_target="effect_utils//packages/@overeng/content-address:test"
-          proof_source="${EFFECT_UTILS_MEMBER_ROOT:?EFFECT_UTILS_MEMBER_ROOT not set}/packages/@overeng/ci-tools/bin/ci-tools.ts"
-          test_proof_source="${EFFECT_UTILS_MEMBER_ROOT:?EFFECT_UTILS_MEMBER_ROOT not set}/packages/@overeng/content-address/src/mod.unit.test.ts"
+          proof_source="$source_root/packages/@overeng/ci-tools/bin/ci-tools.ts"
+          test_proof_source="$source_root/packages/@overeng/content-address/src/mod.unit.test.ts"
           printf '%s\n' '' "// trusted remote-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$proof_source"
           printf '%s\n' '' "// trusted test-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$test_proof_source"
           evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-a.jsonl"
@@ -2587,7 +3031,6 @@ jobs:
           trap 'rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c"; rm -rf "$context_b"' EXIT
 
           # Context A has run-unique source inputs, executes locally, and uploads to the remote cache.
-          # The composition wrapper fixes --isolation-dir, so freshness comes from daemon and state removal.
           "$buck" kill
           rm -rf buck-out
           "$buck" build --local-only "$target"
@@ -2603,14 +3046,11 @@ jobs:
             exit 1
           fi
 
-          # Context B is a second composed root with a fresh daemon and materializer over identical inputs.
+          # Context B is a second standalone root with a fresh daemon and materializer over identical inputs.
           "$buck" kill
           rm -rf buck-out "$context_b"
-          mkdir -p "$context_b/.buck2" "$context_b/.megarepo" "$context_b/repos/effect-utils"
-          cp -a .buckconfig .buckroot BUCK megarepo.kdl "$context_b/"
-          cp -a .buck2/capabilities "$context_b/.buck2/"
-          cp -a .megarepo/bin "$context_b/.megarepo/"
-          tar -C repos/effect-utils \
+          mkdir -p "$context_b"
+          tar -C "$source_root" \
             --exclude='./.devenv' \
             --exclude='./.git' \
             --exclude='./buck-out' \
@@ -2622,9 +3062,8 @@ jobs:
             --exclude='*/dist' \
             --exclude='*/node_modules' \
             --exclude='*/target' \
-            -cf - . | tar -C "$context_b/repos/effect-utils" -xf -
+            -cf - . | tar -C "$context_b" -xf -
           cd "$context_b"
-          buck="$PWD/.megarepo/bin/buck2"
 
           # Buck event data must classify the independent build as a remote action-cache hit.
           "$buck" build --local-only "$target"
@@ -2651,7 +3090,7 @@ jobs:
           fi
 
           # A source file outside the representative target graph must not change its test action key.
-          printf '%s\n' '' "// trusted irrelevant-mutation proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> repos/effect-utils/README.md
+          printf '%s\n' '' "// trusted irrelevant-mutation proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> README.md
           "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
           "$buck" log show --recent 1 > "$test_evidence_c"
           if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_c" >/dev/null; then
@@ -2665,9 +3104,6 @@ jobs:
           echo "Fresh-root remote action and test-cache proof passed"
           BUCK2_REMOTE_CACHE_PROOF
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash "$proof_script"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-trusted-buck2-remote-cache-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2700,10 +3136,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2721,7 +3153,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -2735,7 +3167,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -2748,7 +3180,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -2768,7 +3200,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
+          bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2819,9 +3251,6 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bootstrap-cold-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2874,10 +3303,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2895,7 +3320,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -2909,7 +3334,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -2922,7 +3347,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -2942,7 +3367,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
 
           ensure_ci_measurement_tool() {
             tool_name="$1"
@@ -3632,9 +4057,6 @@ jobs:
             !${{ github.workspace }}/tmp/devenv-perf-ci/baseline/**
           if-no-files-found: error
           retention-days: 7
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     timeout-minutes: 90
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-devenv-perf"
@@ -3740,10 +4162,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3761,7 +4179,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -3775,7 +4193,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -3788,7 +4206,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -3807,10 +4225,10 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          ARTIFACT_DIR: '${{ env.EFFECT_UTILS_MEMBER_ROOT }}/tmp/nix-closure-ci/current/genie_package'
+          ARTIFACT_DIR: '${{ github.workspace }}/tmp/nix-closure-ci/current/genie_package'
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
 
           mkdir -p "$ARTIFACT_DIR"
           installable='.#genie'
@@ -3964,10 +4382,10 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          ARTIFACT_DIR: '${{ env.EFFECT_UTILS_MEMBER_ROOT }}/tmp/nix-closure-ci/current/megarepo_package'
+          ARTIFACT_DIR: '${{ github.workspace }}/tmp/nix-closure-ci/current/megarepo_package'
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
 
           mkdir -p "$ARTIFACT_DIR"
           installable='.#megarepo'
@@ -4121,10 +4539,10 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          ARTIFACT_DIR: '${{ env.EFFECT_UTILS_MEMBER_ROOT }}/tmp/nix-closure-ci/current/oxlint_npm_package'
+          ARTIFACT_DIR: '${{ github.workspace }}/tmp/nix-closure-ci/current/oxlint_npm_package'
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
 
           mkdir -p "$ARTIFACT_DIR"
           installable='.#oxlint-npm'
@@ -4280,8 +4698,8 @@ jobs:
         with:
           name: nix-closure-measurements
           path: |
-            ${{ env.EFFECT_UTILS_MEMBER_ROOT }}/tmp/nix-closure-ci
-            !${{ env.EFFECT_UTILS_MEMBER_ROOT }}/tmp/nix-closure-ci/baseline/**
+            ${{ github.workspace }}/tmp/nix-closure-ci
+            !${{ github.workspace }}/tmp/nix-closure-ci/baseline/**
           if-no-files-found: error
           retention-days: 14
       - name: Nix diagnostics summary
@@ -4334,9 +4752,6 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-closure-sizes"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -7173,10 +7588,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7194,7 +7605,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -7208,7 +7619,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -7221,7 +7632,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -7246,7 +7657,7 @@ jobs:
           NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_datasource_sync_demo == true || inputs.run_datasource_sync_demo == 'true') && secrets.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:notion-integration' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:notion-integration' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -7297,9 +7708,6 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-integration-notion"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -7339,10 +7747,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7360,7 +7764,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -7374,7 +7778,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -7387,7 +7791,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -7407,7 +7811,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:restate-integration' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:restate-integration'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:restate-integration' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:restate-integration'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -7458,9 +7862,6 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -7497,10 +7898,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7518,7 +7915,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -7532,7 +7929,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -7545,7 +7942,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -7596,7 +7993,7 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"
+          cd "${GITHUB_WORKSPACE:-$PWD}" && netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"
           export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"
           DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish
           DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts
@@ -7613,7 +8010,7 @@ jobs:
           VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"
+          cd "${GITHUB_WORKSPACE:-$PWD}" && vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"
           export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"
           DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish
           DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts
@@ -7668,9 +8065,6 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -7706,10 +8100,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Prepare effect-utils composition
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7727,7 +8117,7 @@ jobs:
       - name: Prepare CI helper scripts
         shell: bash
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           scripts_src='genie/ci-scripts'
           scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
           if [ ! -d "$scripts_src" ]; then
@@ -7741,7 +8131,7 @@ jobs:
           chmod +x "$scripts_dst"/*.sh
       - name: Use pinned devenv from lock
         run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
             printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
@@ -7754,7 +8144,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -7781,11 +8171,11 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             deploy_ran=1
             __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
+          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             deploy_ran=1
             __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
+          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
           fi
           if [ "$deploy_ran" = "1" ] && [ ! -s "$workflow_report_path" ]; then
             echo "Error: ci-tools did not emit a Netlify workflow report record." >&2
@@ -7809,7 +8199,7 @@ jobs:
           WORKFLOW_REPORT_ALLOW_MISSING_INPUT: '1'
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:collect-bundle --show-output' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:collect-bundle --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:collect-bundle --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:collect-bundle --show-output'
       - name: Render workflow report comment
         shell: bash
         env:
@@ -7831,7 +8221,7 @@ jobs:
           WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:render-comment-body --show-output' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:render-comment-body --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:render-comment-body --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:render-comment-body --show-output'
       - name: Publish workflow report
         if: always() && !cancelled()
         shell: bash
@@ -7848,7 +8238,7 @@ jobs:
           WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:publish --show-output' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:publish --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:publish --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:publish --show-output'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -7899,9 +8289,6 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Cleanup effect-utils composition
-        if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-deploy-storybooks"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}

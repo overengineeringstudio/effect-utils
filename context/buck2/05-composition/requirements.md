@@ -17,28 +17,25 @@ BUCK-R05 and BUCK-R14. Architecture:
 
 ## Acceptable Tradeoffs
 
-- **COMP-T01 External namespaces:** An external consumer building a public
-  member standalone uses the same synthesized root shape but inhabits its own
-  cache namespace; no attempt is made to share keys outside the fleet.
+- **COMP-T01 Trust-tier namespaces:** External consumers and single-repository
+  CI build public members from their tracked standalone repository roots. A
+  trust tier may select a separate cache namespace; sharing action keys across
+  trust tiers is not required.
 
 ## Requirements
 
-- **COMP-R01 Synthesized root for the composed shape:** While a repository
-  uses the paused composed shape
-  ([decision 0034](../.decisions/0034-artifact-default-composition-no-registry.md)),
-  every build — composed, single-repo
-  CI, and standalone — runs from a synthesized composition root. A bare
-  checkout as its own project root is a cache island and is not a supported
-  build shape. The workspace root is located at the store worktree path and is
-  not itself a git repository; the owned member is
-  ([decision 0027](../.decisions/0027-composed-default-worktrees.md)).
+- **COMP-R01 Standalone root by default:** The tracked repository checkout is
+  the normative Buck project root for ordinary development and
+  single-repository CI. Only an explicitly requested cross-repository composed
+  build synthesizes a workspace root while the paused composed shape exists
+  ([decision 0034](../.decisions/0034-artifact-default-composition-no-registry.md)).
   Git external cells are not a composition mechanism
   ([decision 0030](../.decisions/0030-external-cells-are-not-a-composition-mechanism.md)).
-- **COMP-R02 Canonical mounts within the composed shape:** Within the paused
-  composed shape, every repository — including
-  the one under development — has one canonical mount path (`repos/<name>`),
-  identical in every composition and at every nesting level. No repo builds
-  from its own root as a cell: one cell identity per repo, one cache namespace
+- **COMP-R02 Canonical mounts within the composed shape:** Within an explicitly
+  requested paused composed build, every repository — including the one under
+  development — has one canonical mount path (`repos/<name>`), identical in
+  every composition and at every nesting level. A standalone repository maps
+  the same canonical cell name to `.`
   ([decision 0020](../.decisions/0020-one-writable-mount-workspaces.md)).
 - **COMP-R03 Canonical cell names:** Each member has one canonical cell name,
   identical everywhere; a member's checked-in `[cell_aliases]` must agree with
@@ -52,12 +49,15 @@ BUCK-R05 and BUCK-R14. Architecture:
 - **COMP-R05 Shared platform labels:** Platform targets live in one canonical
   hub cell present in every composition; the same labels resolve everywhere
   (the label, not its content, enters the configuration hash).
-- **COMP-R06 No member `.buckroot`:** Members ship no `.buckroot`; the
-  composition root owns it. A cwd inside a member must not silently become its
-  own project root with a second `buck-out`.
-- **COMP-R07 Fixed isolation dir:** One isolation dir across all shapes; it is
-  part of output paths and therefore of action identity. Per-invocation
-  isolation dirs are forbidden.
+- **COMP-R06 Project-root markers:** A standalone repository ships `.buckroot`
+  at its normative project root. A composed generator treats a nested member
+  root marker as member content without discovering a second Buck project; the
+  outer composition root remains the project authority.
+- **COMP-R07 Fixed isolation per supported shape:** Each supported root shape
+  has one fixed isolation dir, which is part of output paths and action
+  identity. Standalone and paused composed shapes may use different isolation
+  dirs; cross-shape action-key parity is not promised. Per-invocation isolation
+  dirs are forbidden.
 - **COMP-R08 Content-reachable mounts and admissible links:** Member bytes
   must be reachable at the mount path without traversing an absolute symlink,
   and any relative symlink must normalize to a path inside the project root.

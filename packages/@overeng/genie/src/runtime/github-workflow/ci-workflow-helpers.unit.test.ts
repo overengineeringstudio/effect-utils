@@ -6,13 +6,12 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
-  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -95,20 +94,6 @@ const nixGcRaceRetryScriptUrl = new URL(
 )
 const nixGcRaceRetryScriptPath = fileURLToPath(nixGcRaceRetryScriptUrl)
 const nixGcRaceRetryScriptSource = readFileSync(nixGcRaceRetryScriptUrl, 'utf8')
-const prepareEffectUtilsCompositionScriptSource = readFileSync(
-  new URL(
-    ['../../../../../../genie/ci-scripts', 'prepare-effect-utils-composition.sh'].join('/'),
-    import.meta.url,
-  ),
-  'utf8',
-)
-const cleanupEffectUtilsCompositionScriptSource = readFileSync(
-  new URL(
-    ['../../../../../../genie/ci-scripts', 'cleanup-effect-utils-composition.sh'].join('/'),
-    import.meta.url,
-  ),
-  'utf8',
-)
 const netlifyTaskModuleSource = readFileSync(
   new URL(
     ['../../../../../../nix/devenv-modules/tasks/shared', 'netlify.nix'].join('/'),
@@ -304,6 +289,23 @@ describe('ci workflow retry helpers', () => {
     expect(ciWorkflowSource).toContain('createRunDevenvTasksBefore')
     expect(ciWorkflowSource).toContain('opts.scriptsDir === undefined')
     expect(ciWorkflowSource).not.toContain('if [ ! -x "$__genie_ci_retry_script" ]')
+  })
+
+  it('captures ordinary CI task graphs as OpenTelemetry artifacts', () => {
+    expect(ciWorkflowSource).toContain('prepareCiOtelSpoolStep')
+    expect(ciWorkflowSource).toContain('ciOtelSpansArtifactStep')
+    expect(generatedCiWorkflowYamlSource).toContain('name: Prepare CI OpenTelemetry capture')
+    expect(generatedCiWorkflowYamlSource).toContain('OTEL_SPAN_SPOOL_DIR')
+    expect(generatedCiWorkflowYamlSource).toContain('name: Summarize CI OpenTelemetry spans')
+    expect(generatedCiWorkflowYamlSource).toContain('name: Upload CI OpenTelemetry spans')
+    const captureCount = generatedCiWorkflowYamlSource.match(
+      /name: Prepare CI OpenTelemetry capture/g,
+    )?.length
+    const uploadCount = generatedCiWorkflowYamlSource.match(
+      /name: Upload CI OpenTelemetry spans/g,
+    )?.length
+    expect(captureCount).toBeGreaterThan(0)
+    expect(uploadCount).toBe(captureCount)
   })
 
   it('routes the devenv resolution step through the shared retry wrapper', () => {
@@ -1020,7 +1022,6 @@ describe('ci workflow standard job helpers', () => {
               downloadPreviousGitHubArtifactStep,
               githubTokenEnv,
               netlifyDeployStep,
-              prepareEffectUtilsCompositionStep,
               prSnapshotPackJob,
               standardCIEnv,
               vercelDeployJobs,
@@ -1103,7 +1104,6 @@ describe('ci workflow standard job helpers', () => {
               .filter(({ step }) => step.env?.GITHUB_TOKEN !== expectedGitHubToken)
               .map(({ jobId, step }) => jobId + ': ' + step.name)
             const scriptBackedNixStepNames = [
-              'Prepare effect-utils composition',
               'Resolve devenv',
               'Bootstrap cold-proof (R32)',
               'pnpm regression suite',
@@ -1140,7 +1140,6 @@ describe('ci workflow standard job helpers', () => {
               standardEnv: standardCIEnv({ trustTier }),
               githubTokenEnv: githubTokenEnv(),
               nixStepEnv: cachixCliBuildStep.env,
-              compositionStepEnv: prepareEffectUtilsCompositionStep.env,
               devenvStepEnv: devenvTaskStep('Check', 'check:quick').env,
               ghStepEnv: downloadPreviousGitHubArtifactStep({
                 artifactName: 'baseline',
@@ -1202,7 +1201,6 @@ describe('ci workflow standard job helpers', () => {
         standardEnv: expectedEnv,
         githubTokenEnv: expectedTokenEnv,
         nixStepEnv: expectedTokenEnv,
-        compositionStepEnv: expectedTokenEnv,
         devenvStepEnv: expectedTokenEnv,
         ghStepEnv: '${{ github.token }}',
         pnpmRegressionStepEnv: expectedTokenEnv,
@@ -1477,356 +1475,36 @@ describe('ci workflow devenv perf helpers', () => {
   })
 })
 
-describe('effect-utils CI composition workspace', () => {
-  const git = (cwd: string, ...args: string[]) => {
-    const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
-    if (result.status !== 0) {
-      throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`)
-    }
-    return result.stdout.trim()
-  }
-
-  const makeFixture = (platform: 'Linux' | 'macOS') => {
-    const root = mkdtempSync(join(tmpdir(), 'effect-utils-ci-composition-'))
-    const checkout = join(root, 'checkout with spaces')
-    const runnerTemp = join(root, `runner ${platform}`)
-    const fakeBin = join(root, 'fake-bin')
-    const mrOut = join(root, 'mr-out')
-    const envFile = join(root, 'github-env')
-    const nixLog = join(root, 'nix.log')
-    const mrLog = join(root, 'mr.log')
-    mkdirSync(checkout)
-    mkdirSync(runnerTemp)
-    mkdirSync(fakeBin)
-    mkdirSync(join(mrOut, 'bin'), { recursive: true })
-    writeFileSync(envFile, '')
-    git(checkout, 'init', '--initial-branch=main')
-    const configuredIdentity = (field: 'user.email' | 'user.name', fallback: string) =>
-      spawnSync('git', ['config', field], {
-        cwd: checkout,
-        encoding: 'utf8',
-      }).stdout.trim() || fallback
-    git(
-      checkout,
-      'config',
-      'user.email',
-      configuredIdentity('user.email', 'ci-fixture@example.invalid'),
-    )
-    git(checkout, 'config', 'user.name', configuredIdentity('user.name', 'CI Fixture'))
-    writeFileSync(join(checkout, 'README'), 'fixture\n')
-    mkdirSync(join(checkout, 'genie/ci-scripts'), { recursive: true })
-    writeFileSync(
-      join(checkout, 'genie/ci-scripts/prepare-effect-utils-composition.sh'),
-      prepareEffectUtilsCompositionScriptSource,
-    )
-    writeFileSync(
-      join(checkout, 'genie/ci-scripts/cleanup-effect-utils-composition.sh'),
-      cleanupEffectUtilsCompositionScriptSource,
-    )
-    chmodSync(join(checkout, 'genie/ci-scripts/prepare-effect-utils-composition.sh'), 0o755)
-    chmodSync(join(checkout, 'genie/ci-scripts/cleanup-effect-utils-composition.sh'), 0o755)
-    git(
-      checkout,
-      'add',
-      'README',
-      'genie/ci-scripts/prepare-effect-utils-composition.sh',
-      'genie/ci-scripts/cleanup-effect-utils-composition.sh',
-    )
-    git(checkout, 'commit', '-m', 'fixture')
-    const sha = git(checkout, 'rev-parse', 'HEAD')
-
-    writeFileSync(
-      join(fakeBin, 'nix'),
-      [
-        '#!/usr/bin/env bash',
-        'set -euo pipefail',
-        'printf \'%s|%s\\n\' "$PWD" "$*" >> "$FAKE_NIX_LOG"',
-        'if [ "$*" != "build --no-link --print-out-paths .#megarepo" ]; then exit 64; fi',
-        'printf \'%s\\n\' "$FAKE_MR_OUT"',
-      ].join('\n'),
-    )
-    writeFileSync(
-      join(mrOut, 'bin', 'mr'),
-      [
-        '#!/usr/bin/env bash',
-        'set -euo pipefail',
-        'export AGENT_POLICY_BYPASS=1',
-        'fake_root="$(cd "$(dirname "$0")/.." && pwd)"',
-        'printf \'%s|%s|%s|%s\\n\' "$PWD" "$MEGAREPO_STORE" "${RUNNER_OS:-unset}" "$*" >> "$fake_root/../mr.log"',
-        'if [ "$1" = "--cwd" ]; then',
-        '  workspace="$2"; shift 2',
-        '  test "$*" = "apply --worktree-mode tracking --lock-sync off --output ci"',
-        '  if [ -f "$workspace/.megarepo/composition-generation.json" ]; then exit 0; fi',
-        '  bare="$(git -C "$workspace" rev-parse --path-format=absolute --git-common-dir)"',
-        '  stage="${workspace}.member-stage"',
-        '  git --git-dir="$bare" worktree move "$workspace" "$stage"',
-        '  mkdir -p "$workspace/repos" "$workspace/.megarepo/bin"',
-        '  git --git-dir="$bare" worktree move "$stage" "$workspace/repos/effect-utils"',
-        '  printf \'{}\\n\' > "$workspace/.megarepo/composition-generation.json"',
-        '  printf \'[cells]\\n\' > "$workspace/.buckconfig"',
-        '  printf \'#!/usr/bin/env bash\\nexit 0\\n\' > "$workspace/.megarepo/bin/buck2"',
-        '  chmod +x "$workspace/.megarepo/bin/buck2"',
-        '  mkdir -p "$MEGAREPO_STORE/reference-effect"',
-        '  ln -s "$MEGAREPO_STORE/reference-effect" "$workspace/repos/effect"',
-        '  exit 0',
-        'fi',
-        'test "$1 $2 $3" = "store worktree new"',
-        'repo="$4"; shift 4',
-        'ref=; base=; porcelain=0',
-        'while [ "$#" -gt 0 ]; do',
-        '  case "$1" in',
-        '    --ref) ref="$2"; shift 2 ;;',
-        '    --base) base="$2"; shift 2 ;;',
-        '    --porcelain) porcelain=1; shift ;;',
-        '    *) exit 64 ;;',
-        '  esac',
-        'done',
-        'test -n "$repo" && test -n "$ref" && test -n "$base" && test "$porcelain" -eq 1',
-        'bare="$MEGAREPO_STORE/github.com/$repo/.bare"',
-        'workspace="$MEGAREPO_STORE/github.com/$repo/refs/heads/$ref"',
-        'git --git-dir="$bare" update-ref "refs/heads/$ref" "$base"',
-        'mkdir -p "$(dirname "$workspace")"',
-        'git --git-dir="$bare" worktree add "$workspace" "$ref" >/dev/null',
-        'if [ -f "$fake_root/fail" ]; then exit 37; fi',
-        'if [ "${FAKE_MR_OUTPUT_MEMBER_ROOT:-0}" = 1 ]; then',
-        '  printf \'%s\\n\' "$workspace/repos/effect-utils"',
-        'else',
-        '  printf \'%s\\n\' "$workspace"',
-        'fi',
-      ].join('\n'),
-    )
-    chmodSync(join(fakeBin, 'nix'), 0o755)
-    chmodSync(join(mrOut, 'bin', 'mr'), 0o755)
-
-    const env = {
-      ...process.env,
-      AGENT_POLICY_BYPASS: '1',
-      FAKE_MR_LOG: mrLog,
-      FAKE_MR_OUT: mrOut,
-      FAKE_NIX_LOG: nixLog,
-      GITHUB_ENV: envFile,
-      GITHUB_JOB: 'unit/job',
-      GITHUB_RUN_ATTEMPT: '2',
-      GITHUB_RUN_ID: '100',
-      GITHUB_WORKSPACE: checkout,
-      MEGAREPO_STORE: join(runnerTemp, 'megarepo-store/100/2/unit_job'),
-      EFFECT_UTILS_CI_ORIGIN_URL: checkout,
-      PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
-      RUNNER_OS: platform,
-      RUNNER_TEMP: runnerTemp,
-    }
-    return { checkout, env, envFile, mrLog, mrOut, nixLog, root, runnerTemp, sha }
-  }
-
-  const runComposition = async (
-    fixture: ReturnType<typeof makeFixture>,
-    overrides: NodeJS.ProcessEnv = {},
-  ) => {
-    if (overrides.FAKE_MR_FAIL === '1') writeFileSync(join(fixture.mrOut, 'fail'), '')
-    const { prepareEffectUtilsCompositionStep } = await import(
-      // oxlint-disable-next-line import/no-dynamic-require
-      new URL('../../../../../../genie/ci-workflow/setup.ts', import.meta.url).href
-    )
-    return spawnSync('bash', ['-c', prepareEffectUtilsCompositionStep.run], {
-      cwd: fixture.root,
-      encoding: 'utf8',
-      env: { ...fixture.env, ...overrides },
-    })
-  }
-
-  const cleanupComposition = async (
-    fixture: ReturnType<typeof makeFixture>,
-    overrides: NodeJS.ProcessEnv = {},
-  ) => {
-    const { cleanupEffectUtilsCompositionStep } = await import(
-      // oxlint-disable-next-line import/no-dynamic-require
-      new URL('../../../../../../genie/ci-workflow/setup.ts', import.meta.url).href
-    )
-    return spawnSync('bash', ['-c', cleanupEffectUtilsCompositionStep.run], {
-      cwd: fixture.root,
-      encoding: 'utf8',
-      env: { ...fixture.env, ...overrides },
-    })
-  }
-
-  it.each(['Linux', 'macOS'] as const)(
-    'keeps checkout immutable and synthesizes the exact owned member on %s',
-    async (platform) => {
-      const fixture = makeFixture(platform)
-      try {
-        const first = await runComposition(fixture)
-        expect(first.status, first.stderr).toBe(0)
-        const branch = 'ci-100-2-unit_job'
-        const workspace = join(
-          fixture.runnerTemp,
-          'megarepo-store/100/2/unit_job/github.com/overengineeringstudio/effect-utils/refs/heads',
-          branch,
-        )
-        const member = join(workspace, 'repos/effect-utils')
-        expect(git(fixture.checkout, 'rev-parse', 'HEAD')).toBe(fixture.sha)
-        expect(git(fixture.checkout, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('')
-        expect(git(member, 'rev-parse', 'HEAD')).toBe(fixture.sha)
-        expect(git(member, 'symbolic-ref', 'HEAD')).toBe(`refs/heads/${branch}`)
-        expect(git(member, 'merge-base', 'refs/remotes/origin/main', 'HEAD')).toBe(fixture.sha)
-        expect(
-          spawnSync('git', ['-C', workspace, 'rev-parse', '--is-inside-work-tree']).status,
-        ).not.toBe(0)
-        expect(readFileSync(fixture.nixLog, 'utf8')).toBe(
-          `${fixture.checkout}|build --no-link --print-out-paths .#megarepo\n`,
-        )
-        // The composition step runs `mr` under `env -i`, which drops PWD, so the
-        // child shell reports the resolved working directory while every other
-        // field is the path the runner handed in. Compare the first field in the
-        // same resolved form; on a filesystem with no symlink above the fixture
-        // this is the identity.
-        expect(readFileSync(fixture.mrLog, 'utf8')).toContain(
-          `${realpathSync(dirname(workspace))}|${join(fixture.runnerTemp, 'megarepo-store/100/2/unit_job')}|unset|store worktree new overengineeringstudio/effect-utils --ref ${branch} --base ${fixture.sha} --porcelain`,
-        )
-        expect(readFileSync(fixture.mrLog, 'utf8')).toContain(
-          `${realpathSync(dirname(workspace))}|${join(fixture.runnerTemp, 'megarepo-store/100/2/unit_job')}|unset|--cwd ${workspace} apply --worktree-mode tracking --lock-sync off --output ci`,
-        )
-        expect(readFileSync(fixture.envFile, 'utf8')).toContain(
-          `EFFECT_UTILS_MEMBER_ROOT=${member}\n`,
-        )
-
-        const repeated = await runComposition(fixture)
-        expect(repeated.status, repeated.stderr).toBe(0)
-        expect(git(member, 'rev-parse', 'HEAD')).toBe(fixture.sha)
-
-        const secondEnv = join(fixture.root, 'github-env-second')
-        writeFileSync(secondEnv, '')
-        const secondStore = join(fixture.runnerTemp, 'megarepo-store/100/2/other-job')
-        const second = await runComposition(fixture, {
-          GITHUB_ENV: secondEnv,
-          GITHUB_JOB: 'other-job',
-          MEGAREPO_STORE: secondStore,
-        })
-        expect(second.status, second.stderr).toBe(0)
-        const secondMember = join(
-          fixture.runnerTemp,
-          'megarepo-store/100/2/other-job/github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-other-job/repos/effect-utils',
-        )
-        expect(git(secondMember, 'rev-parse', 'HEAD')).toBe(fixture.sha)
-        const secondCleanup = await cleanupComposition(fixture, {
-          GITHUB_JOB: 'other-job',
-          MEGAREPO_STORE: secondStore,
-        })
-        expect(secondCleanup.status, secondCleanup.stderr).toBe(0)
-        const cleanup = await cleanupComposition(fixture)
-        expect(cleanup.status, cleanup.stderr).toBe(0)
-        await expect(cleanupComposition(fixture)).resolves.toMatchObject({ status: 0 })
-      } finally {
-        rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
-      }
-    },
-    20_000,
-  )
-
-  it('accepts a member-root porcelain result from the release CLI', async () => {
-    const fixture = makeFixture('Linux')
-    try {
-      const result = await runComposition(fixture, { FAKE_MR_OUTPUT_MEMBER_ROOT: '1' })
-      expect(result.status, result.stderr).toBe(0)
-      const member = join(
-        fixture.runnerTemp,
-        'megarepo-store/100/2/unit_job/github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job/repos/effect-utils',
-      )
-      expect(git(member, 'rev-parse', 'HEAD')).toBe(fixture.sha)
-      await expect(cleanupComposition(fixture)).resolves.toMatchObject({ status: 0 })
-    } finally {
-      rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
-    }
-  }, 20_000)
-
-  it('cleans a direct-final-path worktree after generation fails', async () => {
-    const fixture = makeFixture('Linux')
-    try {
-      const result = await runComposition(fixture, { FAKE_MR_FAIL: '1' })
-      expect(result.status).toBe(37)
-      expect(readFileSync(fixture.envFile, 'utf8')).not.toContain('EFFECT_UTILS_MEMBER_ROOT')
-      expect(git(fixture.checkout, 'rev-parse', 'HEAD')).toBe(fixture.sha)
-      expect(git(fixture.checkout, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('')
-
-      const store = fixture.env.MEGAREPO_STORE!
-      const workspace = join(
-        store,
-        'github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job',
-      )
-      expect(git(workspace, 'symbolic-ref', 'HEAD')).toBe('refs/heads/ci-100-2-unit_job')
-
-      const cleanup = await cleanupComposition(fixture)
-      expect(cleanup.status, cleanup.stderr).toBe(0)
-      expect(existsSync(store)).toBe(false)
-    } finally {
-      rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
-    }
-  }, 20_000)
-
-  it('refuses cleanup when the direct owned checkout changed branches', async () => {
-    const fixture = makeFixture('Linux')
-    try {
-      const result = await runComposition(fixture, { FAKE_MR_FAIL: '1' })
-      expect(result.status).toBe(37)
-      const store = fixture.env.MEGAREPO_STORE!
-      const member = join(
-        store,
-        'github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job',
-      )
-      git(member, 'switch', '-c', 'unrelated')
-
-      const cleanup = await cleanupComposition(fixture)
-      expect(cleanup.status).not.toBe(0)
-      expect(existsSync(member)).toBe(true)
-      expect(git(member, 'symbolic-ref', 'HEAD')).toBe('refs/heads/unrelated')
-    } finally {
-      rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
-    }
-  }, 20_000)
-
-  it('orders every migrated job after composition and keeps the checkout exemptions explicit', () => {
-    const jobsYaml = generatedCiWorkflowYamlSource.split('\njobs:\n')[1] ?? ''
-    const blocks = new Map(
-      Array.from(
-        jobsYaml.matchAll(/^  ([a-zA-Z0-9_-]+):\n([\s\S]*?)(?=^  [a-zA-Z0-9_-]+:\n|$(?![\s\S]))/gm),
-        ([, name, body]) => [name!, body!] as const,
-      ),
-    )
-    const exemptions: Record<string, true> = {
-      'default-ref-policy': true,
-      'pr-reviews-resolved': true,
-      'source-shape': true,
-      'ci-measurements-report': true,
-      'notify-alignment': true,
-    }
-    expect(
-      [...blocks.keys()].filter(
-        (name) => blocks.get(name)?.includes('Prepare effect-utils composition') !== true,
-      ),
-    ).toEqual(Object.keys(exemptions))
-    for (const [name, block] of blocks) {
-      const taskIndex = block.indexOf('tasks run ')
-      if (taskIndex < 0) continue
-      expect(exemptions[name] === true, name).toBe(false)
-      const compositionIndex = block.indexOf('Prepare effect-utils composition')
-      expect(compositionIndex, name).toBeGreaterThanOrEqual(0)
-      expect(compositionIndex, name).toBeLessThan(taskIndex)
-      expect(block.indexOf('Cleanup effect-utils composition'), name).toBeGreaterThan(taskIndex)
-    }
+describe('effect-utils standalone CI root', () => {
+  it('runs every workflow lane from the actions checkout without composition plumbing', () => {
+    expect(generatedCiWorkflowYamlSource).not.toContain('Prepare effect-utils composition')
+    expect(generatedCiWorkflowYamlSource).not.toContain('Cleanup effect-utils composition')
+    expect(generatedCiWorkflowYamlSource).not.toContain('prepare-effect-utils-composition.sh')
+    expect(generatedCiWorkflowYamlSource).not.toContain('cleanup-effect-utils-composition.sh')
+    expect(generatedCiWorkflowYamlSource).not.toContain('EFFECT_UTILS_MEMBER_ROOT')
+    expect(generatedCiWorkflowYamlSource).not.toContain('EFFECT_UTILS_WORKSPACE_ROOT')
+    expect(generatedCiWorkflowYamlSource).not.toContain('.megarepo/bin/buck2')
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^\s+(?:buck2|\.\/[^ ]*buck2)\s/m)
-    expect(blocks.has('nix-fod-check')).toBe(false)
-    expect(blocks.has('nix-check')).toBe(false)
-    expect(generatedCiWorkflowYamlSource).not.toContain('Evict cached pnpm deps for oxlint-npm')
-    expect(generatedCiWorkflowYamlSource).not.toContain('.#oxc-config-plugin-pnpm-deps')
   })
 
-  it('keeps pull-request source execution credentialless and read-only', () => {
+  it('keeps the standalone remote-cache proof and cold-GC lane explicit', () => {
+    const cacheProof =
+      generatedCiWorkflowYamlSource
+        .split('  trusted-buck2-remote-cache-proof:\n')[1]
+        ?.split(/^  [a-z]/m)[0] ?? ''
+    expect(cacheProof).toContain('Context B is a second standalone root')
+    expect(cacheProof).toContain('buck="${BUCK2_BIN:?BUCK2_BIN not set}"')
+    expect(cacheProof).toContain('source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"')
+
+    const coldGc =
+      generatedCiWorkflowYamlSource.split('  test-megarepo-cold-gc:\n')[1]?.split(/^  [a-z]/m)[0] ??
+      ''
+    expect(coldGc).toContain('tasks run test:megarepo-cold-gc')
+  })
+
+  it('keeps pull-request execution credentialless and trusted writes main-only', () => {
     expect(ciWorkflowSource).toContain("'persist-credentials': false")
     expect(generatedCiWorkflowYamlSource).toContain('permissions:\n  contents: read')
-    const typecheck = generatedCiWorkflowYamlSource.split('  typecheck:\n')[1] ?? ''
-    expect(typecheck.indexOf('Prepare effect-utils composition')).toBeLessThan(
-      typecheck.indexOf('Enable Cachix cache'),
-    )
-    expect(typecheck).toContain("github.ref == 'refs/heads/main'")
     for (const job of [
       'ci-measurements-report',
       'test-integration-notion',
@@ -1837,28 +1515,27 @@ describe('effect-utils CI composition workspace', () => {
         generatedCiWorkflowYamlSource.split(`  ${job}:\n`)[1]?.split(/^  [a-z]/m)[0] ?? ''
       expect(block, job).toContain("github.ref == 'refs/heads/main'")
     }
-    expect(prepareEffectUtilsCompositionScriptSource).toContain('env -i \\')
-    expect(prepareEffectUtilsCompositionScriptSource).not.toContain('GITHUB_TOKEN')
-    expect(prepareEffectUtilsCompositionScriptSource).toContain(
-      "'+refs/heads/main:refs/remotes/origin/main'",
-    )
-    const trustedRef = (event: string, ref: string) =>
-      ref === 'refs/heads/main' && (event === 'push' || event === 'workflow_dispatch')
-    expect(trustedRef('workflow_dispatch', 'refs/heads/feature')).toBe(false)
-    expect(trustedRef('workflow_dispatch', 'refs/heads/main')).toBe(true)
-    expect(trustedRef('pull_request', 'refs/heads/main')).toBe(false)
+    for (const { event, ref, expected } of [
+      { event: 'workflow_dispatch', ref: 'refs/heads/feature', expected: false },
+      { event: 'workflow_dispatch', ref: 'refs/heads/main', expected: true },
+      { event: 'push', ref: 'refs/heads/main', expected: true },
+      { event: 'pull_request', ref: 'refs/heads/main', expected: false },
+    ] as const) {
+      const actual =
+        ref === 'refs/heads/main' && (event === 'push' || event === 'workflow_dispatch')
+      expect(actual).toBe(expected)
+    }
   })
 
   it('keeps the Nix cache stable without projecting an ambient pnpm store', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/pnpm-store-pure-v1',
     )
-    expect(prepareEffectUtilsCompositionScriptSource).toContain(
-      'export XDG_CACHE_HOME="${RUNNER_TEMP:?RUNNER_TEMP not set}/composition-state/nix-cache"',
-    )
     expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/${{ github.run_id }}',
     )
     expect(buckToolchainsSource).not.toContain('store_dir =')
+    expect(generatedCiWorkflowYamlSource).not.toContain('Evict cached pnpm deps for oxlint-npm')
+    expect(generatedCiWorkflowYamlSource).not.toContain('.#oxc-config-plugin-pnpm-deps')
   })
 })

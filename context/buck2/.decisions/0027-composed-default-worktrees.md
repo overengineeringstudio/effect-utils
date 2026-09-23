@@ -56,6 +56,11 @@ evidence rather than silently rolled back.
 - Per-root disk cost multiplies by live worktrees until decision 0025's CoW
   economics are deliverable on the host filesystem.
 
-## Amendment 1 (2026-09-15)
+## Amendment 1 (2026-09-15; clarified 2026-09-22)
 
-Composed-by-default is reverted: standalone worktrees are the default (MR-R11 as amended); composed workspaces are a declared exception. See [decision 0034](./0034-artifact-default-composition-no-registry.md).
+Composed-by-default is reverted: tracked standalone worktrees are the default
+for ordinary development, agents, and single-repository CI (MR-R11 as
+amended). CI runs directly from its checkout and does not synthesize a
+composition root. Composed workspaces are an explicitly requested,
+cross-repository exception during the paused retirement window. See
+[decision 0034](./0034-artifact-default-composition-no-registry.md).

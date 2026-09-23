@@ -1,5 +1,20 @@
 # Composition Open Questions
 
+## Resolved 2026-09-22: effect-utils CI uses the standalone checkout root
+
+Decision q58 made the tracked standalone repository root normative for
+ordinary development and single-repository CI. Effect-utils CI runs every lane
+from the actions checkout; the trusted remote-cache proof compares a second
+plain checkout at the same revision. CI no longer prepares or cleans a
+composition root.
+
+COMP-T01 and COMP-R01/R02/R06/R07 now scope canonical `repos/<name>` mounts,
+the one-writable-mount contract, and the `megarepo` isolation directory to an
+explicitly requested cross-repository composition during the paused retirement
+window. Decisions 0020 Amendment 4 and 0027 Amendment 1 record the same
+boundary. The public trust-tier deployment gates the live cache proof, not the
+root-shape contract.
+
 ## Resolved 2026-09-15: accept artifact-default composition? — decision 0034; composition machinery is on the deletion path (q47, 2026-09-19)
 
 Composed cells exist for vision criterion 6 as originally ratified (a consumer
@@ -18,27 +33,19 @@ hybrid, and Nix outputs on the same edge, and the no-registry publication proof
 (PR #1289: `@overeng/utils` published as a release asset, dotfiles notion-scan
 consuming by URL, typecheck + 28 tests green) met the proposal's gate.
 
-**Resolved 2026-09-15 by
-[decision 0034](../.decisions/0034-artifact-default-composition-no-registry.md)**
-(q22/q23/q29): artifact-default cross-repository composition with no registry;
-composed-by-default reverted; the composed shape stays on `main`, paused, as
-the fallback until the last consumer edge leaves it. Remaining follow-ups,
-carried as requirements in 0034: a strict second-install no-op per consumer
-(pnpm injected-workspace pruning), peer-contract alignment per consumer, and
-the L3 retirement ledger rows.
+## Resolved 2026-09-17: root-owned capability cell (superseded for consumers by 0037 - a standalone root takes capabilities as a Nix output; remains only for the composed development root until L3 cut 2)
 
-## Open 2026-09-12: root-owned capability cell (superseded for consumers by 0037 - a standalone root takes capabilities as a Nix output; remains only for the composed development root until L3 cut 2)
-
-The hub loads the per-host capability projection from inside its own cell
-(`buck2/toolchains/BUCK:1`, `configured.bzl:5,59`:
-`//.buck2/capabilities/…`), so mr must write the projection into every mount
-and no fetched or read-only hub can carry it
-([2026-09-12-hub-as-external-cell](./.experiments/2026-09-12-hub-as-external-cell.md)).
-Moving it to a root-provided `capabilities//` cell (declared by the root
-generator, referenced by cross-cell labels) is the right ownership boundary in
-every option on the table and is a precondition for rules-only external-cell
-distribution of the hub. Blocked on: deciding the cell's contract (visibility,
-generation identity checks) and the mr change that declares it.
+The composition root declares `capabilities = .buck2/capabilities`, and hub
+toolchains load `capabilities//:defs.bzl` plus generation-keyed labels from that
+cell. Nix is the sole producer: `packages.<system>.buck2-capabilities` derives
+the projection from the tracked member manifest and the same flake package
+outputs that the resolver consumes. The devenv shell links that store output
+for a standalone root. `mr apply` verifies the same output and atomically links
+it into the composition root. The shared TypeScript renderer defines the
+projection bytes and generation identity for both paths. This removes the
+per-mount write requirement while retaining strict manifest, platform,
+executable, closure, and generation checks. Decision 0028 Amendment 1 records
+the ownership change.
 
 ## Resolved 2026-08-30: consumers share the hub's toolchain pins
 

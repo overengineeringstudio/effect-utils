@@ -114,18 +114,21 @@ An existing lock fails immediately and prints the explicit token-gated recovery
 operation. There is no age heuristic, timeout, or automatic lock theft. Under
 the lock, the publisher:
 
-1. fingerprints the selected dependency view and finite declared roots;
+1. fingerprints each distinct selected dependency view and finite declared root
+   once for the admitted state;
 2. recursively copies the selected view and disjoint backing roots into a
    same-filesystem candidate with dereferenced, byte-owned regular files;
 3. relocates internal links into `.backing/`, rejects links outside the declared
    roots, and proves no snapshot file shares an inode with a disposable source;
 4. verifies the complete payload digest and writes `editor-view.json`;
-5. hardens the candidate read-only and renames it to the deterministic snapshot;
+5. hardens a new candidate read-only and renames it to the deterministic
+   snapshot, or verifies an existing immutable snapshot before reuse;
 6. atomically renames the current pointer, installs or validates the package
    first hop, and emits the package-manifest settle signal required by live
    language servers;
-7. checks the published view, updates its retention record, and garbage-collects
-   snapshots outside the configured finite retention set.
+7. updates the retention record and garbage-collects snapshots outside the
+   configured finite retention set. Pointer helpers validate their exact writes;
+   a separate `buck2:editor:check` performs the full admitted-state traversal.
 
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
@@ -135,10 +138,16 @@ leaves the prior current view intact. Snapshot payloads never retain links into
 
 ## Staleness Gate
 
-`buck2:editor:bootstrap` first derives a dependency-only consumer set from the
-committed generated root manifest. It may publish those committed-graph views
-only to make `genie:check` runnable; it reports no governed evidence. After
-freshness and workspace reconciliation, `buck2:editor:publish` and
+`buck2:editor:bootstrap` regenerates whole-workspace ownership authority but
+builds and publishes only the declared source-generator import closure: the
+repository-root dependency view backed by Genie's package tree and the
+OpenTelemetry contract view needed by Genie's Weaver runtime. The shared Genie
+runtime-closure walker checks every generator before `genie:check` and names any
+first-party package imported outside that declaration, so a new edge cannot
+silently rely on a stale whole-workspace publication. Bootstrap therefore stays
+bounded by source-generator dependencies instead of every workspace package. It
+exists only to make `genie:check` runnable and reports no governed evidence.
+After freshness and workspace reconciliation, `buck2:editor:publish` and
 `buck2:editor:check` derive the complete root-plus-package set from the canonical
 source registry, regenerate whole-workspace ownership authority, build every
 `:editor_view_inputs` manifest in one Buck invocation, then publish or validate

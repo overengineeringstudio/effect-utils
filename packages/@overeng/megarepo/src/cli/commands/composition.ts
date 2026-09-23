@@ -5,6 +5,7 @@ import { promisify } from 'node:util'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -186,6 +187,42 @@ export const loadOwnedIdentity = ({
     }
   }).pipe(Effect.mapError(preserveCompositionError))
 
+const isTrackedStandaloneRoot = ({
+  fs,
+  root,
+}: {
+  readonly fs: FileSystem.FileSystem
+  readonly root: string
+}): Effect.Effect<boolean, PlatformError, ChildProcessSpawner> =>
+  Effect.gen(function* () {
+    const [hasBuckroot, hasBuckconfig, hasRepos] = yield* Effect.all(
+      [
+        fs.exists(EffectPath.unsafe.absoluteFile(NodePath.join(root, '.buckroot'))),
+        fs.exists(EffectPath.unsafe.absoluteFile(NodePath.join(root, '.buckconfig'))),
+        fs.exists(EffectPath.unsafe.absoluteDir(`${NodePath.join(root, 'repos')}/`)),
+      ],
+      { concurrency: 'unbounded' },
+    )
+    if (hasBuckroot === false || hasBuckconfig === false || hasRepos === true) return false
+
+    const topLevel = yield* Git.runCommand({
+      cwd: root,
+      args: ['rev-parse', '--show-toplevel'],
+    }).pipe(Effect.result)
+    if (
+      topLevel._tag === 'Failure' ||
+      NodePath.resolve(topLevel.success) !== NodePath.resolve(root)
+    ) {
+      return false
+    }
+
+    const trackedMarkers = yield* Git.runCommand({
+      cwd: root,
+      args: ['ls-files', '--error-unmatch', '--', '.buckroot', '.buckconfig'],
+    }).pipe(Effect.result)
+    return trackedMarkers._tag === 'Success'
+  })
+
 /**
  * Detect a direct registered W independently of P's root config, then validate that the config
  * still names that exact composed identity. Ordinary Git roots are never inferred as composed.
@@ -206,6 +243,7 @@ export const preflightCompositionCommand = ({
     const root = workspaceRoot.replace(/\/+$/u, '')
     const rootGit = EffectPath.unsafe.absoluteFile(NodePath.join(root, '.git'))
     if ((yield* fs.exists(rootGit)) === true) {
+      if ((yield* isTrackedStandaloneRoot({ fs, root })) === true) return undefined
       return compositionEnabled === true ? yield* loadOwnedIdentity({ workspaceRoot }) : undefined
     }
 

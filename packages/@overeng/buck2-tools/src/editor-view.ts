@@ -860,16 +860,23 @@ const declaredSnapshotRoots = ({
   ]
 }
 
-const fingerprintDeclaredRoots = async (
-  roots: readonly DeclaredSnapshotRoot[],
-): Promise<string> => {
+const fingerprintDeclaredRoots = async ({
+  roots,
+  knownRoot,
+}: {
+  readonly roots: readonly DeclaredSnapshotRoot[]
+  readonly knownRoot?: { readonly source: string; readonly digest: string }
+}): Promise<string> => {
   // Declared roots are proven disjoint read-only trees, so their fingerprints are
   // computed concurrently. Settling first and rethrowing in declared order keeps both
   // the reported failure and the hashed sequence deterministic.
   const settled = await Promise.allSettled(
     roots.map(async (root) => ({
       identity: root.identity,
-      digest: await canonicalTreeFingerprint({ tree: root.source }),
+      digest:
+        root.source === knownRoot?.source
+          ? knownRoot.digest
+          : await canonicalTreeFingerprint({ tree: root.source }),
     })),
   )
   const entries = settled.map((result) => {
@@ -891,11 +898,15 @@ const fingerprintSnapshotPayload = async (snapshotDir: string): Promise<string> 
   const backing = join(snapshotDir, '.backing')
   const nodeModules = join(snapshotDir, 'node_modules')
   if (pathExists(backing) === false) return canonicalTreeFingerprint({ tree: nodeModules })
-  // Both payload roots are fixed and ordered, so the two digests are awaited in place:
-  // `.backing` is still fingerprinted strictly before `node_modules`.
+  // These disjoint immutable roots can be fingerprinted concurrently. Preserve their fixed order
+  // when framing the resulting payload digest so scheduling cannot affect the record identity.
+  const [backingDigest, nodeModulesDigest] = await Promise.all([
+    canonicalTreeFingerprint({ tree: backing }),
+    canonicalTreeFingerprint({ tree: nodeModules }),
+  ])
   const entries = [
-    ['.backing', await canonicalTreeFingerprint({ tree: backing })],
-    ['node_modules', await canonicalTreeFingerprint({ tree: nodeModules })],
+    ['.backing', backingDigest],
+    ['node_modules', nodeModulesDigest],
   ] as const
   const hash = createHash('sha256')
   hash.update('effect-utils/editor-view-snapshot-payload/v1')
@@ -1385,17 +1396,13 @@ export const recoverEditorViewLock = ({
   rmSync(recoveredPath, { recursive: true })
 }
 
-const validateSnapshot = async ({
-  snapshotDir,
-  expected,
-}: {
-  snapshotDir: string
-  expected: EditorViewRecord
-}): Promise<void> => {
+type SnapshotValidation =
+  | { readonly record: EditorViewRecord; readonly error?: never }
+  | { readonly record?: never; readonly error: unknown }
+
+const validateSnapshotContents = async (snapshotDir: string): Promise<EditorViewRecord> => {
   requireDirectory({ path: snapshotDir, field: 'snapshot' })
   const record = readRecord(join(snapshotDir, 'editor-view.json'))
-  if (recordsEqual({ left: record, right: expected }) === false)
-    fail(`existing snapshot record mismatch: ${snapshotDir}`)
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
   requireDirectory({ path: snapshotNodeModules, field: 'snapshot node_modules' })
   requireReadOnlySnapshot(snapshotDir)
@@ -1404,6 +1411,7 @@ const validateSnapshot = async ({
     fail(
       `existing snapshot byte digest mismatch: recorded=${record.byteSnapshotDigest} actual=${digest}`,
     )
+  return record
 }
 
 const publishCurrentPointer = ({
@@ -1536,8 +1544,48 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
   const token = tokenSafe(lock.token)
   let candidate: string | undefined
   try {
-    const fingerprint = await canonicalTreeFingerprint({ tree: options.editorInputs })
-    const selectedViewDigest = await canonicalTreeFingerprint({ tree: options.nodeModules })
+    const editorInputsPath = realpathSync(resolve(options.editorInputs))
+    const selectedPath = realpathSync(resolve(options.nodeModules))
+    const fingerprint = await canonicalTreeFingerprint({ tree: editorInputsPath })
+    const selectedViewDigest =
+      selectedPath === editorInputsPath
+        ? fingerprint
+        : await canonicalTreeFingerprint({ tree: selectedPath })
+    // A warm publication must prove both the admitted roots and the immutable snapshot.
+    // Begin validating the current snapshot before traversing the roots so those independent
+    // integrity checks overlap without weakening either one.
+    const currentSnapshotValidation = (() => {
+      if (
+        pathExists(paths.current) === false ||
+        lstatSync(paths.current).isSymbolicLink() === false
+      )
+        return undefined
+      const pointer = readlinkSync(paths.current)
+      const snapshotDir = resolve(paths.editorRoot, pointer)
+      if (isWithin({ root: paths.storeDir, candidate: snapshotDir }) === false) return undefined
+      let record: EditorViewRecord
+      try {
+        record = readRecord(join(snapshotDir, 'editor-view.json'))
+      } catch {
+        return undefined
+      }
+      if (
+        record.package !== options.package ||
+        record.cell !== options.cell ||
+        record.target !== options.target ||
+        record.snapshot !== pointer ||
+        record.editorInputsFingerprint !== fingerprint ||
+        record.selectedViewDigest !== selectedViewDigest
+      )
+        return undefined
+      return {
+        snapshotDir,
+        validation: validateSnapshotContents(snapshotDir).then(
+          (validated): SnapshotValidation => ({ record: validated }),
+          (error): SnapshotValidation => ({ error }),
+        ),
+      }
+    })()
     const finite = (options.backingRoots?.length ?? 0) > 0
     const roots =
       finite === true
@@ -1548,8 +1596,14 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         : []
     const normalizedStoreDigest =
       finite === true
-        ? await fingerprintDeclaredRoots(roots)
-        : await canonicalTreeFingerprint({ tree: options.nodeModules, dereference: true })
+        ? await fingerprintDeclaredRoots({
+            roots,
+            knownRoot: {
+              source: selectedPath,
+              digest: selectedViewDigest,
+            },
+          })
+        : await canonicalTreeFingerprint({ tree: selectedPath, dereference: true })
     const identity = snapshotIdentity({
       editorInputsFingerprint: fingerprint,
       normalizedStoreDigest,
@@ -1557,8 +1611,16 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     const snapshotName = `${paths.viewName}-${identity}`
     const snapshotDir = join(paths.storeDir, snapshotName)
     let record: EditorViewRecord
+    let created = false
     if (existsSync(snapshotDir) === true) {
-      const existing = readRecord(join(snapshotDir, 'editor-view.json'))
+      let existing: EditorViewRecord
+      if (currentSnapshotValidation?.snapshotDir === snapshotDir) {
+        const validation = await currentSnapshotValidation.validation
+        if ('error' in validation) throw validation.error
+        existing = validation.record
+      } else {
+        existing = await validateSnapshotContents(snapshotDir)
+      }
       record = expectedRecord({
         options,
         fingerprint,
@@ -1566,8 +1628,11 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         selectedViewDigest,
         byteSnapshotDigest: existing.byteSnapshotDigest,
       })
-      await validateSnapshot({ snapshotDir, expected: record })
+      if (recordsEqual({ left: existing, right: record }) === false)
+        fail(`existing snapshot record mismatch: ${snapshotDir}`)
     } else {
+      // Do not let an obsolete current-snapshot scan race snapshot retention below.
+      if (currentSnapshotValidation !== undefined) await currentSnapshotValidation.validation
       candidate = join(paths.storeDir, `.candidate-${token}`)
       mkdirSync(candidate)
       if (finite === true) {
@@ -1576,7 +1641,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
           sources: roots.map((root) => root.source),
           snapshot: candidate,
         })
-        const after = await fingerprintDeclaredRoots(roots)
+        const after = await fingerprintDeclaredRoots({ roots })
         if (after !== normalizedStoreDigest)
           fail(
             `declared backing roots changed while materializing: before=${normalizedStoreDigest} after=${after}`,
@@ -1612,9 +1677,12 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       writeRecord({ path: join(candidate, 'editor-view.json'), record })
       renameSync(candidate, snapshotDir)
       candidate = undefined
+      created = true
     }
-    hardenSnapshot(snapshotDir)
-    requireReadOnlySnapshot(snapshotDir)
+    if (created === true) {
+      hardenSnapshot(snapshotDir)
+      requireReadOnlySnapshot(snapshotDir)
+    }
     // `snapshotName` is derived above from the same identity the record carries.
     const retention = prepareSnapshotRetention({
       paths,
@@ -1625,7 +1693,9 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     publishCurrentPointer({ paths, identity, token })
     adoptFirstHop({ paths, mv: options.mv, token })
     signalEditorResolution({ paths, token })
-    await checkEditorView(options)
+    // Publication computed every admitted digest and validated (or created) the snapshot while
+    // holding the view lock. The pointer helpers verify their own exact writes, so rerunning the
+    // full external-input and snapshot traversal here would add no freshness evidence.
     garbageCollectSnapshots({
       paths,
       options,
@@ -1832,12 +1902,12 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
     })
   const normalizedStoreDigest =
     (options.backingRoots?.length ?? 0) > 0
-      ? await fingerprintDeclaredRoots(
-          declaredSnapshotRoots({
+      ? await fingerprintDeclaredRoots({
+          roots: declaredSnapshotRoots({
             nodeModules: options.nodeModules,
             backingRoots: options.backingRoots ?? [],
           }),
-        )
+        })
       : await canonicalTreeFingerprint({ tree: options.nodeModules, dereference: true })
   if (normalizedStoreDigest !== record.normalizedStoreDigest)
     return failCheck({

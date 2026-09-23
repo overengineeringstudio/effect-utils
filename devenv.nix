@@ -29,6 +29,7 @@ let
     '';
     builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
+  buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   trackedBuck2Products = import ./nix/buck2-products { pkgs = flakePkgs; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
@@ -373,6 +374,66 @@ let
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  typescriptPublicationRootPredicate = ''
+    typescript_publication_workspace_root() {
+      local member_root workspace_root branch_ref repo_root bare_repo common_dir admin_dir
+      local backlink backlink_dir repository_root
+
+      member_root="$(${pkgs.coreutils}/bin/realpath "$1")" || return 1
+
+      # The tracked Buck root is the ordinary publication shape. Its root marker and
+      # Git top-level identity prevent a directory that merely resembles repos/effect-utils
+      # from inheriting write authority.
+      if [ -f "$member_root/.buckroot" ]; then
+        repository_root="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
+          --path-format=absolute --show-toplevel)" || return 1
+        repository_root="$(${pkgs.coreutils}/bin/realpath "$repository_root")" || return 1
+        [ "$repository_root" = "$member_root" ] || return 1
+        printf "%s\n" "$member_root"
+        return 0
+      fi
+
+      # The composed shape remains an explicit downstream compatibility boundary.
+      workspace_root="$(${pkgs.coreutils}/bin/realpath "$member_root/../..")" || return 1
+      [ "$member_root" = "$workspace_root/repos/effect-utils" ] || return 1
+      [ -f "$member_root/.git" ] || return 1
+
+      branch_ref="$(${pkgs.git}/bin/git -C "$member_root" symbolic-ref --quiet HEAD)" || return 2
+      case "$branch_ref" in
+        refs/heads/*) ;;
+        *) return 1 ;;
+      esac
+
+      common_dir="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
+        --path-format=absolute --git-common-dir)" || return 2
+      common_dir="$(${pkgs.coreutils}/bin/realpath "$common_dir")" || return 2
+      bare_repo="$common_dir"
+      [ "$(${pkgs.coreutils}/bin/basename "$bare_repo")" = ".bare" ] || return 2
+      repo_root="$(${pkgs.coreutils}/bin/dirname "$bare_repo")"
+      [ "$workspace_root" = "$repo_root/$branch_ref" ] || return 1
+
+      admin_dir="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
+        --path-format=absolute --git-dir)" || return 2
+      admin_dir="$(${pkgs.coreutils}/bin/realpath "$admin_dir")" || return 2
+      [ "$(${pkgs.coreutils}/bin/dirname "$admin_dir")" = "$bare_repo/worktrees" ] ||
+        return 2
+      [ -f "$admin_dir/gitdir" ] || return 2
+      backlink="$(<"$admin_dir/gitdir")"
+      case "$backlink" in
+        /*) ;;
+        *) backlink="$admin_dir/$backlink" ;;
+      esac
+      backlink_dir="$(${pkgs.coreutils}/bin/realpath \
+        "$(${pkgs.coreutils}/bin/dirname "$backlink")")" || return 2
+      backlink="$backlink_dir/$(${pkgs.coreutils}/bin/basename "$backlink")"
+      [ "$backlink" = "$member_root/.git" ] || return 2
+
+      printf "%s\n" "$workspace_root"
+    }
+  '';
+  standaloneBuckCachePosture = ''
+    ${pkgs.bun}/bin/bun "$root/scripts/buck2-cache-posture.ts" "$root"
+  '';
 
   buck2BuildExec =
     { name, targets }:
@@ -385,15 +446,15 @@ let
           pkgs.watchman
         ]
       }
-      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
-      buck="$workspace_root/.megarepo/bin/buck2"
-      exec "$buck" build \
+      ${standaloneBuckCachePosture}
+      cd "$root"
+      exec "$BUCK2_BIN" build \
         --target-platforms effect_utils//buck2/platforms:host_platform \
         ${lib.concatStringsSep " \\\n        " targets}
     '';
 
-  # Buck-invoking tasks discover the same pinned composed binary as `buck2:check`, so a lane
-  # cannot run against a different Buck than the one the check gate proved.
+  # Every Buck-invoking task uses the checkout's pinned binary and standalone
+  # project root, so CI lanes cannot silently fall back to a composed workspace.
   buck2UnitTestExec =
     { name, targets }:
     trace.exec name ''
@@ -405,9 +466,9 @@ let
           pkgs.watchman
         ]
       }
-      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
-      buck="$workspace_root/.megarepo/bin/buck2"
-      exec "$buck" test \
+      ${standaloneBuckCachePosture}
+      cd "$root"
+      exec "$BUCK2_BIN" test \
         --target-platforms effect_utils//buck2/platforms:host_platform \
         --local-only \
         ${lib.concatStringsSep " \\\n        " targets}
@@ -419,7 +480,7 @@ let
       lane:
       lib.nameValuePair lane.taskName {
         description = "Execute the bounded ${lane.packageName} unit-test lane under Buck";
-        after = [ "mr:apply" ] ++ lib.optional (lane ? unboundedTaskName) lane.unboundedTaskName;
+        after = [ "genie:check" ] ++ lib.optional (lane ? unboundedTaskName) lane.unboundedTaskName;
         # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
         exec = buck2UnitTestExec {
           name = lane.taskName;
@@ -529,103 +590,67 @@ let
     "pnpm-lock.yaml"
     "pnpm-workspace.yaml"
   ];
-  composedWorkspaceRootPredicate = ''
-    composed_workspace_root() {
-      local member_root workspace_root branch_ref repo_root bare_repo common_dir admin_dir
-      local backlink backlink_dir current_worktree current_branch registered_worktree registered_branch
-      local matching_path_registrations matching_branch_registrations
-
-      member_root="$(${pkgs.coreutils}/bin/realpath "$1")" || return 1
-      workspace_root="$(${pkgs.coreutils}/bin/realpath "$member_root/../..")" || return 1
-      [ "$member_root" = "$workspace_root/repos/effect-utils" ] || return 1
-      [ -f "$member_root/.git" ] || return 1
-
-      branch_ref="$(${pkgs.git}/bin/git -C "$member_root" symbolic-ref --quiet HEAD)" || return 2
-      case "$branch_ref" in
-        refs/heads/*) ;;
-        *) return 1 ;;
-      esac
-      case "$workspace_root" in
-        */"$branch_ref") repo_root="''${workspace_root%/"$branch_ref"}" ;;
-        *) return 1 ;;
-      esac
-      bare_repo="$repo_root/.bare"
-      [ -d "$bare_repo" ] || return 2
-      common_dir="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
-        --path-format=absolute --git-common-dir)" || return 2
-      [ "$common_dir" = "$bare_repo" ] || return 2
-
-      admin_dir="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
-        --path-format=absolute --git-dir)" || return 2
-      admin_dir="$(${pkgs.coreutils}/bin/realpath "$admin_dir")" || return 2
-      [ "$(${pkgs.coreutils}/bin/dirname "$admin_dir")" = "$bare_repo/worktrees" ] ||
-        return 2
-      [ -f "$admin_dir/gitdir" ] || return 2
-      backlink="$(<"$admin_dir/gitdir")"
-      case "$backlink" in
-        /*) ;;
-        *) backlink="$admin_dir/$backlink" ;;
-      esac
-      backlink_dir="$(${pkgs.coreutils}/bin/realpath \
-        "$(${pkgs.coreutils}/bin/dirname "$backlink")")" || return 2
-      backlink="$backlink_dir/$(${pkgs.coreutils}/bin/basename "$backlink")"
-      [ "$backlink" = "$member_root/.git" ] || return 2
-
-      current_worktree=
-      current_branch=
-      registered_worktree=
-      registered_branch=
-      matching_path_registrations=0
-      matching_branch_registrations=0
-      while IFS= read -r -d "" field; do
-        case "$field" in
-          worktree\ *) current_worktree="''${field#worktree }" ;;
-          branch\ *) current_branch="''${field#branch }" ;;
-          "")
-            if [ "$current_worktree" = "$member_root" ]; then
-              registered_branch="$current_branch"
-              matching_path_registrations=$((matching_path_registrations + 1))
-            fi
-            if [ "$current_branch" = "$branch_ref" ]; then
-              registered_worktree="$current_worktree"
-              matching_branch_registrations=$((matching_branch_registrations + 1))
-            fi
-            current_worktree=
-            current_branch=
-            ;;
-        esac
-      done < <(${pkgs.git}/bin/git --git-dir="$bare_repo" worktree list --porcelain -z)
-      [ "$matching_path_registrations" -eq 1 ] || return 2
-      [ "$matching_branch_registrations" -eq 1 ] || return 2
-      [ "$registered_branch" = "$branch_ref" ] || return 2
-      [ "$registered_worktree" = "$member_root" ] || return 2
-
-      printf "%s\n" "$workspace_root"
-    }
-  '';
-  editorViewExec =
-    mode:
-    trace.exec "buck2:editor:${mode}" ''
+  # Single declaration for the source-generator import closure published before Genie can load.
+  # genie:editor-view-closure:check walks every generator with the shared bootstrap closure checker
+  # and fails when this list omits a first-party runtime package boundary.
+  editorBootstrapRootPackagePath = "packages/@overeng/genie";
+  editorBootstrapPackagePaths = [
+    "."
+    "packages/@overeng/otel-contract"
+  ];
+  buck2AggregateExec =
+    taskName: target:
+    trace.exec taskName ''
       set -euo pipefail
-      ${composedWorkspaceRootPredicate}
       root="''${DEVENV_ROOT:-$PWD}"
-      workspace_root="$(composed_workspace_root "$root")" || {
-        identity_status=$?
-        echo "buck2:editor:${mode} requires a composed megarepo workspace" >&2
-        exit "$identity_status"
-      }
+      export PATH=${lib.makeBinPath [ pkgs.watchman ]}
+      cd "$root"
+      ${standaloneBuckCachePosture}
+      exec "$BUCK2_BIN" build ${lib.escapeShellArg target}
+    '';
+  editorViewExec =
+    {
+      mode,
+      packagePaths ? null,
+      traceScope ? null,
+    }:
+    let
+      traceName =
+        "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
+      packageArgument = lib.optionalString (packagePaths != null)
+        " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
+    in
+    trace.exec traceName ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      ${standaloneBuckCachePosture}
       exec ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
-        --workspace-root "$workspace_root" \
+        --workspace-root "$root" \
         --cell effect_utils \
-        --buck2 "$workspace_root/.megarepo/bin/buck2" \
+        --buck2 "$BUCK2_BIN" \
         --git ${pkgs.git}/bin/git \
         --output "$root/.devenv/editor-workspace-authority.json" \
         --publisher "$root/packages/@overeng/buck2-tools/src/editor-view.ts" \
         --cp ${pkgs.coreutils}/bin/cp \
         --mv ${pkgs.coreutils}/bin/mv \
-        --snapshot-retention 3
+        --snapshot-retention 3${packageArgument}
     '';
+  scopedEditorViewPublisher =
+    {
+      description,
+      packagePaths,
+      traceScope,
+    }:
+    {
+      inherit description;
+      after = [ "genie:check" ];
+      # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
+      exec = editorViewExec {
+        mode = "publish";
+        inherit packagePaths traceScope;
+      };
+    };
 in
 {
   imports = [
@@ -717,7 +742,7 @@ in
     # unlike the deterministic check/diff runs, this is a subprocess e2e (spawns otelite, binds an
     # ephemeral port, depends on export-flush timing), so it lives in CI rather than gating every
     # local `check:all` on capture reliability.
-    (taskModules.weaver-live-check { installTask = "buck2:editor:publish"; })
+    (taskModules.weaver-live-check { installTask = "buck2:editor:publish:otel-contract"; })
     # Version-pin consistency smoke (SC-DQ4): catches weaver/semconv pin drift the content
     # gate (weaver:check) silently degrades past (a bumped version with a stale FOD hash).
     (taskModules.weaver-version-smoke { })
@@ -735,7 +760,7 @@ in
     # exists exactly where the baseline gate still needs a source report.
     (taskModules.test-playwright {
       playwrightPkg = inputs.playwright.packages.${currentSystem}.playwright;
-      installTask = "buck2:editor:publish";
+      installTask = "buck2:editor:publish:playwright";
       # Launch the CLI through @playwright/test so the runner and test imports
       # share one module instance inside the Buck editor dependency view.
       playwrightBin = "node_modules/@playwright/test/cli.js";
@@ -821,7 +846,7 @@ in
       # fingerprint so a warm shell cannot bypass projection invalidation.
       extraFingerprintGlobs = genieExtraInputGlobs;
       # Run the one ordered mutating entrypoint. Its internal task sequence
-      # preserves generator/freshness/composition/publication happens-before.
+      # preserves generator/freshness/publication happens-before.
       optionalTasks = [ "buck2:editor:materialize" ];
       completionsCliNames = [
         "genie"
@@ -842,13 +867,14 @@ in
 
   # The packaged Genie CLI is self-contained; generator sources resolve their
   # external imports through the committed-graph bootstrap editor views. This
-  # stage-zero publication cannot report governed Buck evidence: genie:check
-  # must first prove the graph fresh, then mr:apply and the authoritative
-  # publisher replay it.
-  tasks."genie:run".after = [ "buck2:editor:bootstrap" ];
-  tasks."genie:check".after = [ "buck2:editor:bootstrap" ];
-  tasks."lint:check:genie".after = [ "buck2:editor:bootstrap" ];
-  tasks."genie:watch".after = [ "buck2:editor:bootstrap" ];
+  # stage-zero publication cannot report governed Buck evidence: the closure
+  # checker first proves that the declared publication set covers every
+  # first-party runtime boundary, then genie:check proves the tracked standalone
+  # graph fresh and the authoritative publisher replays it.
+  tasks."genie:run".after = [ "genie:editor-view-closure:check" ];
+  tasks."genie:check".after = lib.mkForce [ "genie:prepare" "genie:editor-view-closure:check" ];
+  tasks."lint:check:genie".after = [ "genie:editor-view-closure:check" ];
+  tasks."genie:watch".after = [ "genie:editor-view-closure:check" ];
   tasks."lint:check:lockfile".description =
     lib.mkForce "Verify lockfile and package specifiers through source-side Genie freshness";
   tasks."lint:check:lockfile".after = lib.mkForce [ "genie:check" ];
@@ -857,7 +883,7 @@ in
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
   tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
   tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish" ];
   tasks."test:notion-integration:notion-cli".after = lib.mkForce [ "buck2:editor:publish" ];
   tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [
@@ -865,7 +891,7 @@ in
   ];
   tasks."test:notion-integration:notion-md".after = lib.mkForce [ "buck2:editor:publish" ];
   tasks."test:notion-integration:notion-react".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
   tasks."test:pty-effect:unbounded".env = {
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
     NODE_OPTIONS = "--import=${./. + "/packages/@overeng/pty-effect/test/node-pty-native-hook.ts"}";
@@ -873,18 +899,18 @@ in
 
   # Read-only formatting and linting are Buck actions over the exact generated
   # source manifest. Mutation remains source-side under lint:fix.
-  tasks."lint:check:format".after = lib.mkForce [ "mr:apply" ];
+  tasks."lint:check:format".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:format".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check:format";
     targets = [ "effect_utils//buck2/static:check_format" ];
   });
-  tasks."lint:check:oxlint".after = lib.mkForce [ "mr:apply" ];
+  tasks."lint:check:oxlint".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:oxlint".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check:oxlint";
     targets = [ "effect_utils//buck2/static:check_lint" ];
   });
   tasks."lint:check:asset-import-needs-type-reference" = {
-    after = [ "mr:apply" ];
+    after = [ "genie:check" ];
     description = "Require travelling type references for compiled asset imports through Buck";
     # trace-audit-allow: buck2BuildExec returns a trace.exec-wrapped command.
     exec = buck2BuildExec {
@@ -893,13 +919,13 @@ in
     };
   };
   tasks."lint:check".after = lib.mkAfter [ "lint:check:asset-import-needs-type-reference" ];
-  tasks."lint:check:genie:coverage".after = lib.mkForce [ "mr:apply" ];
+  tasks."lint:check:genie:coverage".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:genie:coverage".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check:genie:coverage";
     targets = [ "effect_utils//buck2/static:check_policy" ];
   });
   tasks."workspace:check" = {
-    after = [ "mr:apply" ];
+    after = [ "genie:check" ];
     description = "Validate generated workspace package inventory through Buck";
     # trace-audit-allow: buck2BuildExec returns a trace.exec-wrapped command.
     exec = buck2BuildExec {
@@ -959,16 +985,15 @@ in
   env.MR_COMPOSITION_GIT_BIN = "${pkgs.git}/bin/git";
   env.MR_COMPOSITION_WATCHMAN_BIN = "${pkgs.watchman}/bin/watchman";
   env.MR_CAPABILITY_NIX_BIN = "${pkgs.nix}/bin/nix";
+  env.MR_CAPABILITY_PROJECTION = "${buck2Capabilities}";
   env.MR_CAPABILITY_MV_BIN = "${pkgs.coreutils}/bin/mv";
 
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
   env.RESTATE_SERVER_BIN = "${restate}/bin/restate-server";
 
-  # Genie and mr run from packaged products, but the generated projection still defines
-  # the graph mr composes. Generation freshness is therefore a source-side stage-zero
-  # prerequisite: a stale graph must fail before reconciliation can publish it to Buck.
-  # The composed-root mutators also remain serialized behind mr:setup.
+  # Composed development workspaces remain available until L3 cut 2, but no CI
+  # or repository Buck task depends on their mutators.
   tasks."mr:setup".after = [ "mr:bootstrap" ];
   tasks."mr:apply".after = [
     "genie:check"
@@ -1026,7 +1051,7 @@ in
 
   tasks."test:megarepo-cold-gc" = {
     after = [ "buck2:editor:publish" ];
-    description = "Run isolated megarepo cold-GC integration tests";
+    description = "Run fixture-isolated megarepo cold-GC integration tests from the standalone checkout";
     cwd = "packages/@overeng/megarepo";
     exec = trace.exec "test:megarepo-cold-gc" ''
       set -euo pipefail
@@ -1041,7 +1066,7 @@ in
   };
 
   tasks."bundle:smoke" = {
-    after = [ "mr:apply" ];
+    after = [ "genie:check" ];
     description = "Bundle representative public entries through Buck with Vite/Rollup";
     # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
@@ -1172,7 +1197,7 @@ in
 
   tasks."buck2:nix-bridge:check" = {
     description = "Check build-product, cache-publication, and fail-closed artifact-import contracts";
-    after = [ "mr:apply" ];
+    after = lib.mkForce [ "genie:check" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
@@ -1182,49 +1207,82 @@ in
   };
 
   tasks."buck2:editor:bootstrap" = {
-    description = "Bootstrap source-generator dependencies from the committed Buck graph";
-    after = [ "mr:setup" ];
+    description = "Bootstrap source-generator dependencies from the committed standalone Buck graph";
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec "bootstrap";
+    exec = editorViewExec {
+      mode = "bootstrap";
+      packagePaths = editorBootstrapPackagePaths;
+    };
+  };
+
+  tasks."genie:editor-view-closure:check" = {
+    description = "Prove the bootstrap editor views cover every generator runtime package boundary";
+    after = [ "buck2:editor:bootstrap" ];
+    exec = trace.exec "genie:editor-view-closure:check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun "$root/genie/ci-scripts/bootstrap-closure-check.ts" \
+        --root "$root" \
+        --editor-view-root-package-path ${lib.escapeShellArg editorBootstrapRootPackagePath} \
+        --editor-view-package-paths ${lib.escapeShellArg (builtins.toJSON editorBootstrapPackagePaths)}
+    '';
   };
 
   # Authoring and declaration publication need generated projections to be
   # updated before freshness is checked, but standalone genie:check must remain
-  # mutation-free. Keep that mutating sequence in one explicit entrypoint
-  # rather than adding global edges between genie:run and genie:check.
+  # mutation-free. Keep that mutating sequence in one explicit entrypoint.
   tasks."buck2:editor:materialize" = {
-    description = "Regenerate, freshness-check, recompose, and publish every editor dependency view in order";
+    description = "Regenerate, freshness-check, and publish every editor dependency view in order";
     exec = trace.exec "buck2:editor:materialize" ''
       set -euo pipefail
       export DEVENV_TUI=false
-      devenv tasks run mr:setup
       devenv tasks run buck2:editor:bootstrap --mode single
       devenv tasks run genie:run --mode single
       devenv tasks run genie:check --mode single
-      devenv tasks run mr:apply --mode single
       devenv tasks run buck2:editor:publish --mode single
     '';
   };
 
   tasks."buck2:editor:authority" = {
     description = "Prove complete Buck ownership of every workspace editor dependency view";
-    after = [ "mr:apply" ];
+    after = [ "genie:check" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec "authority";
+    exec = editorViewExec { mode = "authority"; };
   };
 
   tasks."buck2:editor:publish" = {
     description = "Atomically publish every Buck-owned workspace editor dependency view";
-    after = [ "mr:apply" ];
+    after = [ "genie:check" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec "publish";
+    exec = editorViewExec { mode = "publish"; };
+  };
+
+  tasks."buck2:editor:publish:restate-effect" = scopedEditorViewPublisher {
+    description = "Atomically publish the Restate integration editor dependency view";
+    packagePaths = [ "packages/@overeng/restate-effect" ];
+    traceScope = "restate-effect";
+  };
+
+  tasks."buck2:editor:publish:otel-contract" = scopedEditorViewPublisher {
+    description = "Atomically publish the Weaver live-check editor dependency view";
+    packagePaths = [ "packages/@overeng/otel-contract" ];
+    traceScope = "otel-contract";
+  };
+
+  tasks."buck2:editor:publish:playwright" = scopedEditorViewPublisher {
+    description = "Atomically publish the shared Playwright editor dependency views";
+    packagePaths = [
+      "packages/@overeng/tui-react"
+      "packages/@overeng/utils"
+    ];
+    traceScope = "playwright";
   };
 
   tasks."buck2:editor:check" = {
     description = "Fail when any published workspace editor dependency view is stale";
-    after = [ "mr:apply" ];
+    after = [ "genie:check" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec "check";
+    exec = editorViewExec { mode = "check"; };
   };
 
   tasks."buck2:editor:recover-lock" = {
@@ -1246,7 +1304,7 @@ in
     after = [ "buck2:editor:materialize" ];
     exec = trace.exec "buck2:typescript:materialize-dist" ''
       set -euo pipefail
-      ${composedWorkspaceRootPredicate}
+      ${typescriptPublicationRootPredicate}
       root="''${DEVENV_ROOT:-$PWD}"
       export PATH=${
         lib.makeBinPath [
@@ -1254,13 +1312,17 @@ in
           pkgs.watchman
         ]
       }
-      workspace_root="$(composed_workspace_root "$root")" || {
+      export WORKSPACE_ROOT="$root"
+      workspace_root="$(typescript_publication_workspace_root "$root")" || {
         identity_status=$?
-        echo "buck2:typescript:materialize-dist requires a composed megarepo workspace" >&2
+        echo "buck2:typescript:materialize-dist requires a composed" \
+          "megarepo workspace or a standalone Buck root" >&2
         exit "$identity_status"
       }
-      export WORKSPACE_ROOT="$workspace_root"
-      export BUCK2_BIN="$WORKSPACE_ROOT/.megarepo/bin/buck2"
+      if [ "$workspace_root" != "$root" ]; then
+        export WORKSPACE_ROOT="$workspace_root"
+        export BUCK2_BIN="$workspace_root/.megarepo/bin/"buck2
+      fi
       exec ${pkgs.bun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
         materialize-dist "$root" ${pkgs.bash}/bin/bash
     '';
@@ -1278,10 +1340,22 @@ in
     '';
   };
 
+  tasks."check:buck2-producer-overlap" = {
+    description = "Reject duplicate Buck and legacy TypeScript producers";
+    after = [ "genie:check" ];
+    exec = trace.exec "check:buck2-producer-overlap" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun "$root/genie/buck2/producer-overlap.ts" check \
+        "$root/.devenv/gc/task-config-devenv-config-task-config"
+    '';
+  };
+
+  # The provider audit remains separate because it validates the
+  # capability/toolchain boundary rather than producing an admitted artifact.
   tasks."buck2:check" = {
     description = "Build every admitted TypeScript check, declared test lane, and the archive/product Buck2 surface";
     after = [
-      "mr:apply"
       "buck2:nix-bridge:check"
       "buck2:task-guards:check"
       "buck2:rust-deps:check"
@@ -1289,37 +1363,49 @@ in
     exec = trace.exec "buck2:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      export PATH=${
-        lib.makeBinPath [
-          pkgs.coreutils
-          pkgs.watchman
-        ]
-      }
-      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
-      buck="$workspace_root/.megarepo/bin/buck2"
-      "$buck" audit providers \
-        --target-platforms effect_utils//buck2/platforms:host_platform \
-        effect_utils//buck2/toolchains:cross_cell_provider_identity \
-        effect_utils//buck2/toolchains:cross_cell_product_identity
-      exec ${pkgs.bun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
-        build "$buck"
+      export PATH=${lib.makeBinPath [ pkgs.watchman ]}
+      cd "$root"
+      exec "$BUCK2_BIN" audit providers \
+        --target-platforms //buck2/platforms:host_platform \
+        //buck2/toolchains:cross_cell_provider_identity \
+        //buck2/toolchains:cross_cell_product_identity
     '';
   };
+
+  tasks."buck2:quick" = {
+    description = "Build the admitted quick Buck aggregate";
+    after = [ "buck2:check" ];
+    # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
+    exec = buck2AggregateExec "buck2:quick" "//:quick";
+  };
+
+  tasks."buck2:all" = {
+    description = "Build the complete admitted Buck aggregate";
+    after = [ "buck2:check" ];
+    # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
+    exec = buck2AggregateExec "buck2:all" "//:all";
+  };
+
+  tasks."check:quick".after = [
+    "buck2:quick"
+    "check:buck2-producer-overlap"
+  ];
 
   # One Buck invocation executes every admitted bounded lane. This is what `test:run` waits on;
   # the per-lane `test:<package>` tasks (imported above) exist for standalone use and are not
   # part of that graph, so no suite is scheduled twice.
   tasks."test:buck2:unit" = {
     description = "Execute every admitted bounded unit-test lane under Buck";
-    after = [ "mr:apply" ];
+    after = [ "genie:check" ];
     # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "test:buck2:unit";
       targets = map (lane: lane.target) buck2TestLanes;
     };
   };
-
   tasks."check:all".after = [
+    "buck2:all"
+    "check:buck2-producer-overlap"
     "cargo:check"
     "dependency-materialization:evidence:check"
   ];
@@ -1338,11 +1424,10 @@ in
           pkgs.watchman
         ]
       }
-      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
       exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
         --root "$root" \
-        --buck2 "$workspace_root/.megarepo/bin/buck2" \
-        --buck2-cwd "$workspace_root"
+        --buck2 "$BUCK2_BIN" \
+        --buck2-cwd "$root"
     ''
   );
 
@@ -1358,6 +1443,16 @@ in
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
+    # Buck2 expands the cache header in the daemon; keep the optional credential
+    # defined so unauthenticated cache reads work when SecretSpec is not active.
+    export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
+    capability_parent="$WORKSPACE_ROOT/.buck2"
+    capability_link="$capability_parent/capabilities"
+    ${pkgs.coreutils}/bin/mkdir -p "$capability_parent"
+    if [ -e "$capability_link" ] && [ ! -L "$capability_link" ]; then
+      ${pkgs.coreutils}/bin/rm -rf -- "$capability_link"
+    fi
+    ${pkgs.coreutils}/bin/ln -sfnT ${buck2Capabilities} "$capability_link"
     ${cliBuildStamp.shellHook}
   '';
 

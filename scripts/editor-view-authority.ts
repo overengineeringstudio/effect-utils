@@ -1,11 +1,12 @@
 #!/usr/bin/env -S bun
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import process from 'node:process'
 
 import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
 import { reconcileBuckViews } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
-import type { BuckWatchPlan } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
+import type {
+  BuckReconcileTiming,
+  BuckWatchPlan,
+} from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import { writeEditorViewAuthority } from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
 import { defaultEditorViewName } from '../packages/@overeng/buck2-tools/src/editor-view.ts'
 /** Complete source-authoritative editor consumer registry, including the repository root. */
@@ -50,6 +51,59 @@ export const editorViewPlan = ({
       left.packagePath === right.packagePath ? 0 : left.packagePath < right.packagePath ? -1 : 1,
     ),
 })
+/** Decode and validate the explicit package scope supplied to an editor-view publication. */
+export const decodePublicationPackagePaths = (serialized: string): readonly string[] => {
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(serialized)
+  } catch (error) {
+    return fail(
+      `--packages must be a JSON array: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  if (Array.isArray(decoded) === false || decoded.length === 0)
+    fail('--packages must be a non-empty JSON array of package paths')
+  const packagePaths = decoded
+    .map((entry) =>
+      typeof entry === 'string'
+        ? entry
+        : fail('--packages must be a non-empty JSON array of package paths'),
+    )
+    .toSorted((left, right) => (left === right ? 0 : left < right ? -1 : 1))
+  if (new Set(packagePaths).size !== packagePaths.length) fail('--packages repeats a package path')
+  for (const packagePath of packagePaths)
+    if (editorViewPackagePaths.includes(packagePath) === false)
+      fail(`--packages contains an unregistered editor consumer: ${packagePath}`)
+  return packagePaths
+}
+
+/** Resolve the editor-view authority and publication scopes for one CLI command. */
+export const resolveEditorViewPackageScope = ({
+  command,
+  authorityPackagePaths,
+  serializedPublicationPackages,
+}: {
+  readonly command: Command
+  readonly authorityPackagePaths: readonly string[]
+  readonly serializedPublicationPackages: string | undefined
+}): {
+  readonly authorityPackagePaths: readonly string[]
+  readonly publicationPackagePaths: readonly string[]
+} => {
+  if (serializedPublicationPackages === undefined) {
+    if (command === 'bootstrap') fail('--packages is required with bootstrap')
+    return {
+      authorityPackagePaths,
+      publicationPackagePaths: authorityPackagePaths,
+    }
+  }
+  if (command !== 'publish' && command !== 'bootstrap')
+    fail('--packages is only valid with publish or bootstrap')
+  return {
+    authorityPackagePaths,
+    publicationPackagePaths: decodePublicationPackagePaths(serializedPublicationPackages),
+  }
+}
 
 type Command = 'authority' | 'bootstrap' | 'check' | 'publish'
 
@@ -57,22 +111,18 @@ const fail = (message: string): never => {
   throw new Error(`editor view authority: ${message}`)
 }
 
-const commands = new Set<Command>(['authority', 'bootstrap', 'check', 'publish'])
+type EditorViewTiming =
+  | BuckReconcileTiming
+  | {
+      readonly phase: 'authority'
+      readonly durationMs: number
+    }
 
-const bootstrapPackagePaths = (repoRoot: string): readonly string[] => {
-  const value: unknown = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8'))
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !('workspaces' in value) ||
-    Array.isArray(value.workspaces) === false ||
-    value.workspaces.every((entry) => typeof entry === 'string') === false
-  )
-    fail('generated root package.json must declare string workspace paths')
-  return ['.', ...value.workspaces].toSorted((left, right) =>
-    left === right ? 0 : left < right ? -1 : 1,
-  )
+const reportTiming = (timing: EditorViewTiming): void => {
+  process.stderr.write(`[editor-view-timing] ${JSON.stringify(timing)}\n`)
 }
+
+const commands = new Set<Command>(['authority', 'bootstrap', 'check', 'publish'])
 
 const parseCli = (args: readonly string[]) => {
   const command = args[0]
@@ -97,6 +147,7 @@ const parseCli = (args: readonly string[]) => {
     '--cp',
     '--mv',
     '--snapshot-retention',
+    '--packages',
   ])
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option: ${flag}`)
@@ -114,6 +165,7 @@ const parseCli = (args: readonly string[]) => {
     cp: admitting === true ? get('--cp') : '',
     mv: admitting === true ? get('--mv') : '',
     snapshotRetention: admitting === true ? Number(get('--snapshot-retention')) : 3,
+    publicationPackages: values.get('--packages'),
   }
 }
 
@@ -125,13 +177,22 @@ const main = async (): Promise<void> => {
     options.snapshotRetention > 32
   )
     fail('--snapshot-retention must be an integer from 2 through 32')
-  const packagePaths =
-    options.command === 'bootstrap'
-      ? bootstrapPackagePaths(options.repoRoot)
-      : editorViewPackagePaths
+  const authorityPackagePaths = editorViewPackagePaths
+  const packageScope = resolveEditorViewPackageScope({
+    command: options.command,
+    authorityPackagePaths,
+    serializedPublicationPackages: options.publicationPackages,
+  })
+  // Scope only target construction and publication. Every publisher still refreshes and passes
+  // freshly proven whole-workspace authority to each selected package view.
+  const authorityStartedAt = performance.now()
   const authority = await writeEditorViewAuthority({
     ...options,
-    requiredPackages: packagePaths,
+    requiredPackages: packageScope.authorityPackagePaths,
+  })
+  reportTiming({
+    phase: 'authority',
+    durationMs: performance.now() - authorityStartedAt,
   })
   if (options.command === 'authority') {
     process.stdout.write(
@@ -139,7 +200,10 @@ const main = async (): Promise<void> => {
     )
     return
   }
-  const plan = editorViewPlan({ cell: options.cell, packagePaths })
+  const plan = editorViewPlan({
+    cell: options.cell,
+    packagePaths: packageScope.publicationPackagePaths,
+  })
   await reconcileBuckViews({
     request: {
       packagePaths: plan.packages.map(({ packagePath }) => packagePath),
@@ -159,6 +223,8 @@ const main = async (): Promise<void> => {
       cp: options.cp,
       mv: options.mv,
       snapshotRetention: options.snapshotRetention,
+      onTiming: reportTiming,
+      parallelEditorRoots: options.command === 'bootstrap',
     },
   })
   const action =

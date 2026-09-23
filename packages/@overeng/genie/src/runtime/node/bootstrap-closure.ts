@@ -300,14 +300,20 @@ const resolveFollowableSpecifier = async ({
 }
 
 /**
- * Walk the transitive runtime import closure of each `.genie.ts` source and report those that reach a
- * runtime-only package, with the shortest importer chain to the offending edge.
+ * Walk the transitive runtime import closure of each `.genie.ts` source and report runtime-only
+ * package boundaries with their shortest importer chains.
+ *
+ * Bootstrap policy needs only the first boundary per source. Editor-bootstrap closure validation
+ * requests every boundary so it can compare first-party package imports with the published view set.
  */
 export const checkBootstrapClosure = async ({
   genieFiles,
+  reportAllViolations = false,
 }: {
   /** Absolute paths of the `.genie.ts` sources to check. */
   genieFiles: readonly string[]
+  /** Report every bare runtime package boundary instead of only the first one per source. */
+  reportAllViolations?: boolean
 }): Promise<BootstrapClosureResult> => {
   /** Per-file analysis, memoized globally — the runtime import graph is identical across all roots. */
   type FileEdges = {
@@ -360,15 +366,17 @@ export const checkBootstrapClosure = async ({
     return edges
   }
 
-  /** BFS from a root; returns the shortest chain to the first runtime-only specifier, or undefined. */
-  const findViolation = async ({
+  /** BFS from a root; returns shortest chains to the applicable runtime-only specifier boundaries. */
+  const findViolations = async ({
     root,
     session,
   }: {
     root: string
     session: TsFileAnalysisSession
-  }): Promise<BootstrapClosureViolation | undefined> => {
+  }): Promise<readonly BootstrapClosureViolation[]> => {
+    const found: BootstrapClosureViolation[] = []
     const seen = new Set<string>()
+    const seenSpecifiers = new Set<string>()
     const queue: (readonly string[])[] = [[root]]
     let nextIndex = 0
     while (nextIndex < queue.length) {
@@ -381,14 +389,17 @@ export const checkBootstrapClosure = async ({
       // Graph discovery is intentionally serial because the analysis session advances one mutable snapshot.
       // eslint-disable-next-line no-await-in-loop
       const { violationSpecifiers, followTargets } = await edgesOf({ file: current, session })
-      if (violationSpecifiers.length > 0) {
-        return { source: root, specifier: violationSpecifiers[0]!, chain }
+      for (const specifier of violationSpecifiers) {
+        if (seenSpecifiers.has(specifier) === true) continue
+        found.push({ source: root, specifier, chain })
+        seenSpecifiers.add(specifier)
+        if (reportAllViolations === false) return found
       }
       for (const target of followTargets) {
         if (seen.has(target) === false) queue.push([...chain, target])
       }
     }
-    return undefined
+    return found
   }
 
   // Every path this walk reports — roots included — is the file's on-disk identity, so a chain link is
@@ -401,8 +412,7 @@ export const checkBootstrapClosure = async ({
       for (const root of sortedGenieFiles) {
         // Roots share the same mutable analysis snapshot and graph cache, so preserve source order.
         // eslint-disable-next-line no-await-in-loop
-        const violation = await findViolation({ root, session })
-        if (violation !== undefined) found.push(violation)
+        found.push(...(await findViolations({ root, session })))
       }
       return found
     },

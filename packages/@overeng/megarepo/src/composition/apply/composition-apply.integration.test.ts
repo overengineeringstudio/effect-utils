@@ -691,7 +691,6 @@ describe('composition apply integration', () => {
       await value.cleanup()
     }
   })
-
   it('forwards an explicit cache override unchanged to root planning and publication', async () => {
     const cacheSections: NonNullable<CompositionApplyRequest['cacheSections']> = [
       {

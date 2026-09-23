@@ -483,6 +483,13 @@ const readEditorInputs = async ({
   }
 }
 
+/** Wall-clock phase emitted by one reconciliation for CI/bootstrap diagnosis. */
+export type BuckReconcileTiming = {
+  readonly phase: 'buck-build' | 'editor-view'
+  readonly durationMs: number
+  readonly packagePath?: string
+}
+
 /** Static configuration shared by every reconciliation pass of one watch plan. */
 export type BuckReconcilerOptions = {
   readonly plan: BuckWatchPlan
@@ -497,6 +504,9 @@ export type BuckReconcilerOptions = {
   readonly snapshotRetention: number
   readonly run?: RunCommand
   readonly signal?: AbortSignal
+  readonly onTiming?: (timing: BuckReconcileTiming) => void
+  /** Publish disjoint editor-root groups concurrently while preserving ordering within each lock. */
+  readonly parallelEditorRoots?: boolean
 }
 
 /** Build the affected product set, then publish each affected editor view from provider roots. */
@@ -508,23 +518,26 @@ export const reconcileBuckViews = async ({
   readonly options: BuckReconcilerOptions
 }): Promise<void> => {
   const execute = options.run ?? runCommand
+  const buildStartedAt = performance.now()
   const built = await execute({
     command: options.buck2,
     args: ['build', ...request.buildTargets, '--show-full-output'],
     cwd: options.workspaceRoot,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   })
+  options.onTiming?.({
+    phase: 'buck-build',
+    durationMs: performance.now() - buildStartedAt,
+  })
   const outputs = parseBuildOutputs(built.stdout)
   const selected = new Set(request.packagePaths)
   const absoluteArtifact = (path: string): string =>
     isAbsolute(path) === true ? path : resolve(options.workspaceRoot, path)
-  // Publication stays strictly ordered and never overlaps: the editor-view program takes a
-  // publication lock, and each manifest is read immediately before its own publication, so a
-  // failure leaves every earlier view published and every later view untouched. The promise
-  // chain expresses that sequence without a lexical await loop.
-  await options.plan.packages.reduce(async (previous, entry) => {
-    await previous
-    if (selected.has(entry.packagePath) === false || entry.editor === undefined) return
+  type EditorEntry = BuckWatchPackage & {
+    readonly editor: NonNullable<BuckWatchPackage['editor']>
+  }
+  const publish = async (entry: EditorEntry): Promise<void> => {
+    const publicationStartedAt = performance.now()
     const manifestOutput = outputForTarget({
       outputs,
       target: entry.editor.inputsManifestTarget,
@@ -567,7 +580,40 @@ export const reconcileBuckViews = async ({
       detached: true,
       cwd: options.repoRoot,
     })
-  }, Promise.resolve())
+    options.onTiming?.({
+      phase: 'editor-view',
+      packagePath: entry.packagePath,
+      durationMs: performance.now() - publicationStartedAt,
+    })
+  }
+  const entries = options.plan.packages.filter(
+    (entry): entry is EditorEntry =>
+      selected.has(entry.packagePath) === true && entry.editor !== undefined,
+  )
+  const publishOrdered = async (group: readonly (typeof entries)[number][]): Promise<void> => {
+    for (const entry of group) {
+      // Each group shares one publication lock, so preserve deterministic package order.
+      // eslint-disable-next-line no-await-in-loop
+      await publish(entry)
+    }
+  }
+  if (options.parallelEditorRoots !== true) {
+    await publishOrdered(entries)
+    return
+  }
+
+  const groups = new Map<string, (typeof entries)[number][]>()
+  for (const entry of entries) {
+    const editorRoot =
+      entry.packagePath === '.'
+        ? resolve(options.repoRoot, '.editor-view')
+        : resolve(options.repoRoot, entry.packagePath, '..', '..', '.editor-view')
+    const group = groups.get(editorRoot) ?? []
+    group.push(entry)
+    groups.set(editorRoot, group)
+  }
+  const settled = await Promise.allSettled([...groups.values()].map(publishOrdered))
+  for (const result of settled) if (result.status === 'rejected') throw result.reason
 }
 
 /** Atomically replace a machine-readable status file. */

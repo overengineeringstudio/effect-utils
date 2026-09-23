@@ -120,12 +120,18 @@ for (const name of [
   'genie:check',
   'mr:apply',
   'buck2:check',
+  'buck2:quick',
+  'buck2:all',
+  'check:buck2-producer-overlap',
   'buck2:typescript:materialize-dist',
   'buck2:editor:bootstrap',
   'buck2:editor:materialize',
   'buck2:editor:authority',
   'buck2:editor:publish',
   'buck2:editor:check',
+  'buck2:editor:publish:restate-effect',
+  'buck2:editor:publish:otel-contract',
+  'buck2:editor:publish:playwright',
   'test:run',
   'test:buck2:unit',
 ])
@@ -169,10 +175,17 @@ try {
 }
 
 const materializer = 'buck2:typescript:materialize-dist'
-for (const name of ['check:quick', 'check:all']) {
+for (const [checkTask, aggregateTask] of [
+  ['check:quick', 'buck2:quick'],
+  ['check:all', 'buck2:all'],
+]) {
   ok({
-    condition: reaches({ start: name, target: 'buck2:check' }),
-    name: `${name} reaches the Buck-owned TypeScript gate`,
+    condition: reaches({ start: checkTask, target: aggregateTask }),
+    name: `${checkTask} reaches ${aggregateTask}`,
+  })
+  ok({
+    condition: reaches({ start: checkTask, target: 'check:buck2-producer-overlap' }),
+    name: `${checkTask} reaches the Buck producer overlap guard`,
   })
 }
 ok({
@@ -227,10 +240,12 @@ for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames])
   })
 }
 for (const name of [
-  'buck2:check',
   'buck2:editor:authority',
   'buck2:editor:publish',
   'buck2:editor:check',
+  'buck2:editor:publish:restate-effect',
+  'buck2:editor:publish:otel-contract',
+  'buck2:editor:publish:playwright',
   'buck2:nix-bridge:check',
   'lint:check:asset-import-needs-type-reference',
   'lint:check:format',
@@ -241,19 +256,98 @@ for (const name of [
   ...buck2TestLaneTaskNames,
 ]) {
   ok({
-    condition: reaches({ start: name, target: 'mr:apply' }),
-    name: `${name} waits for workspace reconciliation and the capability projection`,
+    condition: reaches({ start: name, target: 'mr:apply' }) === false,
+    name: `${name} remains standalone`,
   })
   ok({
     condition: reaches({ start: name, target: 'genie:check' }),
     name: `${name} waits for source-side generation freshness`,
   })
 }
+for (const name of ['buck2:check', 'buck2:quick', 'buck2:all', 'buck2:nix-bridge:check']) {
+  ok({
+    condition: reaches({ start: name, target: 'mr:apply' }) === false,
+    name: `${name} remains standalone`,
+  })
+}
 ok({
   condition:
-    reaches({ start: 'buck2:editor:bootstrap', target: 'mr:setup' }) === true &&
+    reaches({ start: 'buck2:editor:bootstrap', target: 'mr:setup' }) === false &&
     reaches({ start: 'buck2:editor:bootstrap', target: 'genie:check' }) === false,
-  name: 'editor bootstrap materializes committed dependencies before freshness without claiming it',
+  name: 'editor bootstrap reads committed standalone dependencies without mutating projections',
+})
+
+const scopedPublisherContracts = {
+  'buck2:editor:publish:restate-effect': {
+    consumers: ['test:restate-integration'],
+    packagePaths: ['packages/@overeng/restate-effect'],
+  },
+  'buck2:editor:publish:otel-contract': {
+    consumers: ['weaver:live-check'],
+    packagePaths: ['packages/@overeng/otel-contract'],
+  },
+  'buck2:editor:publish:playwright': {
+    consumers: ['test:pw:tui-react', 'test:pw:utils'],
+    packagePaths: ['packages/@overeng/tui-react', 'packages/@overeng/utils'],
+  },
+}
+for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
+  const publisherDependencies = [...(dependencies.get(publisher) ?? [])]
+  ok({
+    condition: publisherDependencies.length === 1 && publisherDependencies[0] === 'genie:check',
+    name: `${publisher} waits directly and only for standalone generator freshness`,
+  })
+  const publisherTask = requireTask(publisher)
+  const command = publisherTask.command
+  ok({
+    condition: publisherTask.hasExec === true || typeof command === 'string',
+    name: `${publisher} declares an executable publisher`,
+  })
+  if (typeof command === 'string') {
+    const commandBody = existsSync(command) === true ? readFileSync(command, 'utf8') : ''
+    ok({
+      condition:
+        command.includes(publisher.replaceAll(':', '-')) &&
+        commandBody.includes('--packages') &&
+        packagePaths.every((packagePath) => commandBody.includes(`"${packagePath}"`)),
+      name: `${publisher} has its distinct trace identity and explicit canonical package scope`,
+      detail: command,
+    })
+  }
+  const actualConsumers = [...dependencies]
+    .filter(([, taskDependencies]) => taskDependencies.has(publisher))
+    .map(([name]) => name)
+    .toSorted((a, b) => a.localeCompare(b))
+  ok({
+    condition:
+      JSON.stringify(actualConsumers) ===
+      JSON.stringify(consumers.toSorted((a, b) => a.localeCompare(b))),
+    name: `${publisher} is coalesced across exactly its intended consumers`,
+    detail: `expected ${consumers.join(', ')}, received ${actualConsumers.join(', ')}`,
+  })
+}
+const fullPublisherTask = requireTask('buck2:editor:publish')
+const fullPublisherCommand = fullPublisherTask.command
+ok({
+  condition: fullPublisherTask.hasExec === true || typeof fullPublisherCommand === 'string',
+  name: 'whole-workspace editor publication declares an executable fallback',
+})
+if (typeof fullPublisherCommand === 'string') {
+  const fullPublisherCommandBody =
+    existsSync(fullPublisherCommand) === true ? readFileSync(fullPublisherCommand, 'utf8') : ''
+  ok({
+    condition:
+      fullPublisherCommand.includes('buck2-editor-publish') &&
+      fullPublisherCommandBody.includes('--packages') === false,
+    name: 'whole-workspace editor publication retains its unscoped fallback',
+    detail: fullPublisherCommand,
+  })
+}
+ok({
+  condition:
+    [...(dependencies.get('test:pw:tui-react') ?? [])].join('\n') ===
+    [...(dependencies.get('test:pw:utils') ?? [])].join('\n'),
+  name: 'both Playwright lanes depend on one canonical union publisher',
 })
 
 ok({
@@ -279,11 +373,9 @@ const taskSource = (name) => {
 
 const editorMaterializeSource = taskSource('buck2:editor:materialize')
 const orderedMaterializationSteps = [
-  'devenv tasks run mr:setup',
   'devenv tasks run buck2:editor:bootstrap --mode single',
   'devenv tasks run genie:run --mode single',
   'devenv tasks run genie:check --mode single',
-  'devenv tasks run mr:apply --mode single',
   'devenv tasks run buck2:editor:publish --mode single',
 ]
 const orderedMaterializationOffsets = orderedMaterializationSteps.map((step) =>
@@ -294,7 +386,7 @@ ok({
     (offset, index) =>
       offset !== -1 && (index === 0 || offset > orderedMaterializationOffsets[index - 1]),
   ),
-  name: 'editor materialization runs bootstrap, generation, freshness, composition, and publication in order',
+  name: 'editor materialization runs bootstrap, generation, freshness, and publication in order',
 })
 
 const materializerSource = taskSource(materializer)
@@ -307,7 +399,7 @@ ok({
   condition:
     materializerSource.includes(typescriptAuthorityRuntimePath) === true &&
     materializerSource.includes('materialize-dist "$root"') === true &&
-    materializerSource.includes('BUCK2_BIN=') === true,
+    materializerSource.includes('WORKSPACE_ROOT="$root"') === true,
   name: 'materializer dispatches the registry-backed TypeScript authority runtime',
 })
 ok({
@@ -323,14 +415,15 @@ ok({
 })
 ok({
   condition:
-    source.includes('composed_workspace_root()') === true &&
-    source.includes('worktree list --porcelain -z') === true &&
-    source.includes('backlink=') === true &&
-    materializerSource.includes('requires a composed megarepo workspace') === true &&
-    materializerSource.includes('WORKSPACE_ROOT=') === true &&
+    source.includes('typescriptPublicationRootPredicate =') === true &&
+    source.includes('--workspace-root "$root"') === true &&
+    source.includes('--buck2 "$BUCK2_BIN"') === true &&
+    materializerSource.includes('requires a composed megarepo workspace') === false &&
+    materializerSource.includes('WORKSPACE_ROOT="$root"') === true &&
+    materializerSource.includes('BUCK2_BIN="$workspace_root/.megarepo/bin/"buck2') === true &&
     materializerSource.includes('TYPESCRIPT_DIST_MODE=') === false &&
     materializerSource.includes('TSGO_BIN=') === false,
-  name: 'materializer publishes only from a reciprocal composition root',
+  name: 'materializer defaults to the standalone root and preserves explicit composed publication',
 })
 
 const editorViewHelper = source.slice(
@@ -349,13 +442,25 @@ ok({
 })
 
 const buckCheckSource = taskSource('buck2:check')
+const buckQuickSource = taskSource('buck2:quick')
+const buckAllSource = taskSource('buck2:all')
+const producerOverlapSource = taskSource('check:buck2-producer-overlap')
 ok({
   condition:
-    buckCheckSource.includes('realpath "$root/../.."') === true &&
-    buckCheckSource.includes('$workspace_root/.megarepo/bin/buck2') === true &&
-    buckCheckSource.includes(typescriptAuthorityRuntimePath) === true &&
-    buckCheckSource.includes('build "$buck"') === true,
-  name: 'buck2:check resolves the composition wrapper and dispatches the authority runtime',
+    source.includes('buck2AggregateExec =') === true &&
+    buckCheckSource.includes('audit providers') === true &&
+    buckCheckSource.includes('typescript-authority-runtime.ts') === false &&
+    buckQuickSource.includes('buck2AggregateExec "buck2:quick" "//:quick"') === true &&
+    buckAllSource.includes('buck2AggregateExec "buck2:all" "//:all"') === true &&
+    buckQuickSource.includes('--local-only') === false &&
+    buckAllSource.includes('--local-only') === false,
+  name: 'Buck check tasks separate provider audit from standalone cache-enabled aggregates',
+})
+ok({
+  condition:
+    producerOverlapSource.includes('genie/buck2/producer-overlap.ts') === true &&
+    producerOverlapSource.includes('task-config-devenv-config-task-config') === true,
+  name: 'producer overlap guard reads the evaluated task registry',
 })
 const buckToolchainSource = readFileSync(`${root}/buck2/toolchains/BUCK`, 'utf8')
 ok({
@@ -363,6 +468,26 @@ ok({
     buckToolchainSource.includes('bun_toolchain(') === true &&
     buckToolchainSource.includes('name = "archive_tool"') === true,
   name: 'Buck toolchains live in the buck2/toolchains package',
+})
+const configuredToolchainSource = readFileSync(`${root}/buck2/toolchains/configured.bzl`, 'utf8')
+ok({
+  condition:
+    buckToolchainSource.includes('load("@capabilities//:defs.bzl"') === true &&
+    configuredToolchainSource.includes('load("@capabilities//:defs.bzl"') === true,
+  name: 'capability Starlark loads use external-cell import syntax',
+})
+const standaloneBuckConfig = readFileSync(`${root}/.buckconfig`, 'utf8')
+const compositionRootSource = readFileSync(
+  `${root}/packages/@overeng/megarepo/src/composition/root/composition-root.ts`,
+  'utf8',
+)
+ok({
+  condition:
+    standaloneBuckConfig.includes('file_watcher = notify') === true &&
+    standaloneBuckConfig.includes('file_watcher = watchman') === false &&
+    compositionRootSource.includes("lines.push('', '[buck2]', '  file_watcher = watchman')") ===
+      true,
+  name: 'standalone roots use notify while composed roots retain Watchman',
 })
 ok({
   condition: existsSync(`${root}/toolchains`) === false,

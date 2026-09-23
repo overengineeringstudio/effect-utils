@@ -5,12 +5,13 @@ import {
   cachixCliBuildStep,
   cachixStep,
   checkoutStep,
-  cleanupEffectUtilsCompositionStep,
+  ciOtelSpansArtifactStep,
+  ciOtelSpansSummaryStep,
   prepareCiScriptsStep,
-  prepareEffectUtilsCompositionStep,
   notifyAlignmentJob,
   pnpmBuilderContractStep,
   preparePinnedDevenvStep,
+  prepareCiOtelSpoolStep,
   installNixStep,
   runDevenvTasksBefore,
   ciWorkflow,
@@ -58,7 +59,6 @@ const baseSteps = [
   checkoutStep(),
   installNixStep(),
   ciMeasurementBaselineCheckoutStep,
-  prepareEffectUtilsCompositionStep,
   cachixCliBuildStep,
   trustedCachixStep,
   prepareCiScriptsStep,
@@ -531,14 +531,12 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   }),
 }
 
-// Source-shape/report aggregation intentionally use actions-checkout paths. Producers that
-// execute source commands write artifacts below the synthesized owned member instead.
+// Source-shape/report aggregation and every producer use actions-checkout paths.
 const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'
-const effectUtilsMemberTmpDir = '${{ env.EFFECT_UTILS_MEMBER_ROOT }}/tmp'
-// Intentional actions-checkout artifact path: devenvPerfJob owns ARTIFACT_DIR at job scope,
-// where neither `env` nor `runner` contexts are available; source commands still run in the member.
+const checkoutTmpDir = '${{ github.workspace }}/tmp'
+// Intentional actions-checkout artifact path: devenvPerfJob owns ARTIFACT_DIR at job scope.
 const devenvPerfMeasurementsDir = '${{ github.workspace }}/tmp/devenv-perf-ci'
-const nixClosureMeasurementsDir = `${effectUtilsMemberTmpDir}/nix-closure-ci`
+const nixClosureMeasurementsDir = `${checkoutTmpDir}/nix-closure-ci`
 const ciMeasurementReportDir = 'tmp/ci-measurement-report'
 
 /**
@@ -634,7 +632,6 @@ const extraJobs: Record<string, any> = {
       installNixStep(),
       cachixCliBuildStep,
       cachixStep({ name: 'overeng-effect-utils' }),
-      prepareEffectUtilsCompositionStep,
       prepareCiScriptsStep,
       preparePinnedDevenvStep,
       validateNixStoreStep,
@@ -692,8 +689,8 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
-            '  cd "${EFFECT_UTILS_WORKSPACE_ROOT:?EFFECT_UTILS_WORKSPACE_ROOT not set}"',
-            '  buck="$PWD/.megarepo/bin/buck2"',
+            '  cd "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"',
+            '  buck="${BUCK2_BIN:?BUCK2_BIN not set}"',
             '  "$buck" query effect_utils//packages/@overeng/ci-tools:ci-tools-candidate',
             '  "$buck" query effect_utils//:editor_view_inputs',
             '  "$buck" build \\',
@@ -741,10 +738,6 @@ const extraJobs: Record<string, any> = {
       },
       {
         ...installNixStep(),
-        if: "steps.publication-scope.outputs.publish == 'true'",
-      },
-      {
-        ...prepareEffectUtilsCompositionStep,
         if: "steps.publication-scope.outputs.publish == 'true'",
       },
       {
@@ -800,8 +793,8 @@ const extraJobs: Record<string, any> = {
     ],
   },
   /**
-   * Trusted-only proof that a freshly materialized Buck context can consume an
-   * action uploaded by an independent local context through the tailnet cache.
+   * Trusted-only proof that a second plain checkout can consume an action
+   * uploaded by an independent standalone root through the tailnet cache.
    */
   'trusted-buck2-remote-cache-proof': {
     if: trustedSecretCiIf,
@@ -813,13 +806,11 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     permissions: { contents: 'read' },
     env: {
-      // Composition only suppresses remote-cache projection for the exact value `1`.
       BUCK2_NO_REMOTE_CACHE: '0',
     },
     steps: [
       checkoutStep(),
       installNixStep(),
-      prepareEffectUtilsCompositionStep,
       prepareCiScriptsStep,
       preparePinnedDevenvStep,
       validateNixStoreStep,
@@ -839,13 +830,14 @@ const extraJobs: Record<string, any> = {
           '  echo "::error::BUCK2_REMOTE_CACHE_BASIC_AUTH is required for the trusted remote-cache proof"',
           '  exit 1',
           'fi',
-          'cd "${EFFECT_UTILS_WORKSPACE_ROOT:?EFFECT_UTILS_WORKSPACE_ROOT not set}"',
-          'buck="$PWD/.megarepo/bin/buck2"',
+          'source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"',
+          'cd "$source_root"',
+          'buck="${BUCK2_BIN:?BUCK2_BIN not set}"',
           'context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"',
           'target="effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"',
           'test_target="effect_utils//packages/@overeng/content-address:test"',
-          'proof_source="${EFFECT_UTILS_MEMBER_ROOT:?EFFECT_UTILS_MEMBER_ROOT not set}/packages/@overeng/ci-tools/bin/ci-tools.ts"',
-          'test_proof_source="${EFFECT_UTILS_MEMBER_ROOT:?EFFECT_UTILS_MEMBER_ROOT not set}/packages/@overeng/content-address/src/mod.unit.test.ts"',
+          'proof_source="$source_root/packages/@overeng/ci-tools/bin/ci-tools.ts"',
+          'test_proof_source="$source_root/packages/@overeng/content-address/src/mod.unit.test.ts"',
           `printf '%s\\n' '' "// trusted remote-cache proof \${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-\${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$proof_source"`,
           `printf '%s\\n' '' "// trusted test-cache proof \${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-\${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$test_proof_source"`,
           'evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-a.jsonl"',
@@ -856,7 +848,6 @@ const extraJobs: Record<string, any> = {
           `trap 'rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c"; rm -rf "$context_b"' EXIT`,
           '',
           '# Context A has run-unique source inputs, executes locally, and uploads to the remote cache.',
-          '# The composition wrapper fixes --isolation-dir, so freshness comes from daemon and state removal.',
           '"$buck" kill',
           'rm -rf buck-out',
           '"$buck" build --local-only "$target"',
@@ -872,14 +863,11 @@ const extraJobs: Record<string, any> = {
           '  exit 1',
           'fi',
           '',
-          '# Context B is a second composed root with a fresh daemon and materializer over identical inputs.',
+          '# Context B is a second standalone root with a fresh daemon and materializer over identical inputs.',
           '"$buck" kill',
           'rm -rf buck-out "$context_b"',
-          'mkdir -p "$context_b/.buck2" "$context_b/.megarepo" "$context_b/repos/effect-utils"',
-          'cp -a .buckconfig .buckroot BUCK megarepo.kdl "$context_b/"',
-          'cp -a .buck2/capabilities "$context_b/.buck2/"',
-          'cp -a .megarepo/bin "$context_b/.megarepo/"',
-          'tar -C repos/effect-utils \\',
+          'mkdir -p "$context_b"',
+          'tar -C "$source_root" \\',
           `  --exclude='./.devenv' \\`,
           `  --exclude='./.git' \\`,
           `  --exclude='./buck-out' \\`,
@@ -891,9 +879,8 @@ const extraJobs: Record<string, any> = {
           `  --exclude='*/dist' \\`,
           `  --exclude='*/node_modules' \\`,
           `  --exclude='*/target' \\`,
-          '  -cf - . | tar -C "$context_b/repos/effect-utils" -xf -',
+          '  -cf - . | tar -C "$context_b" -xf -',
           'cd "$context_b"',
-          'buck="$PWD/.megarepo/bin/buck2"',
           '',
           '# Buck event data must classify the independent build as a remote action-cache hit.',
           '"$buck" build --local-only "$target"',
@@ -920,7 +907,7 @@ const extraJobs: Record<string, any> = {
           'fi',
           '',
           '# A source file outside the representative target graph must not change its test action key.',
-          `printf '%s\\n' '' "// trusted irrelevant-mutation proof \${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-\${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> repos/effect-utils/README.md`,
+          `printf '%s\\n' '' "// trusted irrelevant-mutation proof \${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-\${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> README.md`,
           '"$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"',
           '"$buck" log show --recent 1 > "$test_evidence_c"',
           `if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_c" >/dev/null; then`,
@@ -1379,21 +1366,27 @@ const deployJobs: Record<string, any> = {
   },
 } as const
 
-const withEffectUtilsCompositionCleanup = (jobMap: Record<string, any>) =>
+const withCiOtelCapture = (jobMap: Record<string, any>) =>
   Object.fromEntries(
     Object.entries(jobMap).map(([name, ciJob]) => {
       const steps = ciJob.steps as readonly any[] | undefined
       return [
         name,
-        steps?.some((step) => step.name === prepareEffectUtilsCompositionStep.name) === true
-          ? {
+        steps === undefined
+          ? ciJob
+          : {
               ...ciJob,
-              steps: [...steps, cleanupEffectUtilsCompositionStep],
-            }
-          : ciJob,
+              steps: [
+                prepareCiOtelSpoolStep,
+                ...steps,
+                ciOtelSpansSummaryStep,
+                ciOtelSpansArtifactStep,
+              ],
+            },
       ]
     }),
   )
+
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
@@ -1427,7 +1420,7 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read' },
-  jobs: withEffectUtilsCompositionCleanup({
+  jobs: {
     // Keep default-ref/source-policy separate from product checks: downstream
     // validation branches should fail one authority job, not obscure
     // lint/typecheck/test signal.
@@ -1446,7 +1439,7 @@ export default ciWorkflow({
         defaultRefs: { 'livestorejs/livestore': 'dev' },
       }),
     },
-    ...jobs,
+    ...withCiOtelCapture(jobs),
     ...extraJobs,
     ...deployJobs,
     'notify-alignment': {
@@ -1459,5 +1452,5 @@ export default ciWorkflow({
         ],
       }),
     },
-  }),
+  },
 } satisfies CiWorkflowArgs)
