@@ -130,7 +130,7 @@ _package_tree = rule(
 )
 
 
-def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_siblings = {}, **kwargs):
+def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_siblings = {}, workspace_dependency_views = {}, workspace_dist = {}, **kwargs):
     """Assembles one package tree; sibling specs carry files plus node_modules-relative links."""
     workspace_files = {}
     workspace_links = {}
@@ -147,6 +147,8 @@ def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_si
             if link_path in workspace_links:
                 fail("duplicate workspace sibling link: {}".format(link_path))
             workspace_links[link_path] = sibling_root
+    for destination in sorted(workspace_dist.keys()):
+        workspace_files[destination] = workspace_dist[destination]
     _package_tree(
         name = name,
         node_modules = node_modules,
@@ -154,7 +156,7 @@ def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_si
         runtime = runtime,
         runtime_entry = runtime_entry,
         workspace_files = workspace_files,
-        workspace_dependency_views = {},
+        workspace_dependency_views = workspace_dependency_views,
         workspace_links = workspace_links,
         **kwargs
     )
