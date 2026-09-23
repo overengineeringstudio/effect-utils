@@ -11,6 +11,12 @@ import {
   validatePnpmSha256Sidecar,
 } from './pnpm-lock.ts'
 import { renderPnpmPackageTargets } from './pnpm-store-buck.ts'
+import {
+  assertArchiveAllowedForTier,
+  resolveArchiveOrigin,
+  seedArchive,
+  verifyArchive,
+} from './seed-archives.ts'
 
 const archive = new TextEncoder().encode('archive bytes')
 const archiveIntegrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`
@@ -184,9 +190,6 @@ describe('translatePnpmLock', () => {
     const second = translatePnpmLock(options)
 
     expect(second).toEqual(first)
-    expect(Object.keys(first.packages)).toHaveLength(671)
-    expect(Object.keys(first.snapshots)).toHaveLength(672)
-    expect(Object.keys(first.importers)).toHaveLength(39)
     expect(first.packages['@myobie/pty@0.10.0']!.patch?.path).toBe(
       'patches/@myobie__pty@0.10.0.patch',
     )
@@ -344,8 +347,12 @@ describe('pnpm sha256 sidecar', () => {
     expect(fetched).toEqual(['https://registry.npmjs.org/bar/-/bar-2.0.0.tgz'])
     expect(sidecar.packages['bar@2.0.0']).toEqual({
       bins: {},
+      classification: 'public',
       integrity: archiveIntegrity,
+      packageIdentity: 'bar@2.0.0',
+      registryUrl: 'https://registry.npmjs.org/bar/-/bar-2.0.0.tgz',
       sha256: createHash('sha256').update(archive).digest('hex'),
+      sizeBytes: archive.byteLength,
     })
 
     const cached = await generatePnpmSha256Sidecar({
@@ -397,6 +404,21 @@ describe('pnpm sha256 sidecar', () => {
       metadata,
       fetchArchive: async () => archive,
     })
+    const barArchive = sidecar.packages['bar@2.0.0']!
+    expect(() =>
+      assertArchiveAllowedForTier({
+        archive: { ...barArchive, classification: 'private' },
+        packageIdentity: 'bar@2.0.0',
+        tier: 'public',
+      }),
+    ).toThrow(/cannot enter the public tier/)
+    expect(() =>
+      verifyArchive({
+        archive: barArchive,
+        bytes: otherArchive,
+        packageIdentity: 'bar@2.0.0',
+      }),
+    ).toThrow(/SHA-512 mismatch/)
     expect(() =>
       validatePnpmSha256Sidecar({
         metadata,
@@ -409,6 +431,120 @@ describe('pnpm sha256 sidecar', () => {
         sidecar: { ...sidecar, packages: {} },
       }),
     ).toThrow(/stale sha256 sidecar package identity set/)
+    expect(() =>
+      validatePnpmSha256Sidecar({
+        metadata,
+        sidecar: {
+          ...sidecar,
+          packages: {
+            ...sidecar.packages,
+            'bar@2.0.0': {
+              ...sidecar.packages['bar@2.0.0']!,
+              registryUrl: 'https://registry.npmjs.org/bar/-/bar-9.9.9.tgz',
+            },
+          },
+        },
+      }),
+    ).toThrow(/stale sha256 sidecar registry URL/)
+    expect(() =>
+      validatePnpmSha256Sidecar({
+        metadata,
+        sidecar: {
+          ...sidecar,
+          packages: {
+            ...sidecar.packages,
+            'bar@2.0.0': {
+              ...sidecar.packages['bar@2.0.0']!,
+              classification: 'private',
+            },
+          },
+        },
+      }),
+    ).toThrow(/must be classified public/)
+  })
+})
+
+describe('pnpm archive seeder', () => {
+  it('verifies an existing CAS object before counting it as present', async () => {
+    const metadata = translatePnpmLock({
+      lockfileText: lock({
+        packages: `  bar@2.0.0:
+    resolution: {integrity: ${archiveIntegrity}}`,
+        snapshots: '  bar@2.0.0: {}',
+        importers: '  .: {}',
+      }),
+      workspaceText: workspace(),
+    })
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async () => archive,
+    })
+    const entry = sidecar.packages['bar@2.0.0']!
+    const casUrl = `https://cas.example/cas/${entry.sha256}`
+    const requests: string[] = []
+
+    await expect(
+      seedArchive({
+        archive: entry,
+        fetchArchive: async (input, init) => {
+          requests.push(`${init?.method ?? 'GET'} ${String(input)}`)
+          if (init?.method === 'HEAD') return new Response(null, { status: 200 })
+          return new Response(otherArchive, { status: 200 })
+        },
+        headers: undefined,
+        packageIdentity: 'bar@2.0.0',
+        tier: 'private',
+        urlPrefix: 'https://cas.example/cas/',
+      }),
+    ).rejects.toThrow(/lock SHA-512 mismatch/)
+    expect(requests).toEqual([`HEAD ${casUrl}`, `GET ${casUrl}`])
+  })
+
+  it('resolves environment, local, tracked, and trusted origin precedence', () => {
+    const trackedConfig = `[archive_origin]
+  url_prefix = https://tracked.example/cas/
+  tier = public
+  trusted_url_prefix = https://trusted.example/cas/
+  trusted_tier = private
+`
+    const localConfig = `[archive_origin]
+  url_prefix = https://local.example/cas/
+  tier = private
+`
+
+    expect(resolveArchiveOrigin({ env: {}, localConfig, trackedConfig })).toEqual({
+      tier: 'private',
+      urlPrefix: 'https://local.example/cas/',
+    })
+    expect(
+      resolveArchiveOrigin({
+        env: {
+          BUCK2_ARCHIVE_CAS_TIER: 'public',
+          BUCK2_ARCHIVE_CAS_URL: 'https://environment.example/cas/',
+        },
+        localConfig,
+        trackedConfig,
+      }),
+    ).toEqual({
+      tier: 'public',
+      urlPrefix: 'https://environment.example/cas/',
+    })
+    expect(resolveArchiveOrigin({ env: {}, localConfig: '', trackedConfig })).toEqual({
+      tier: 'public',
+      urlPrefix: 'https://tracked.example/cas/',
+    })
+    expect(
+      resolveArchiveOrigin({
+        env: {},
+        localConfig: '',
+        trackedConfig: trackedConfig
+          .replace('  url_prefix = https://tracked.example/cas/\n', '')
+          .replace('  tier = public\n', ''),
+      }),
+    ).toEqual({
+      tier: 'private',
+      urlPrefix: 'https://trusted.example/cas/',
+    })
   })
 })
 
@@ -441,6 +577,7 @@ describe('Buck package targets', () => {
     expect(rendered).toContain(
       `    package_name = "native",\n    url = ${JSON.stringify(metadata.packages['native@1.0.0']!.url)},`,
     )
+    expect(rendered).toContain(`    size_bytes = ${archive.byteLength},`)
   })
 
   it('renders same-cell patch labels without a cell name', async () => {

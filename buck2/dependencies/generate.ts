@@ -49,8 +49,8 @@ export const loadRealPnpmLockData = (): RealPnpmLockData => {
         { cause: error },
       )
     }
-    sidecar = decodePnpmSha256Sidecar(value)
     try {
+      sidecar = decodePnpmSha256Sidecar(value)
       validatePnpmSha256Sidecar({ metadata, sidecar })
     } catch {
       sidecar = undefined

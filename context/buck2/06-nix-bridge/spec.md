@@ -80,8 +80,10 @@ Every failed step terminates import. No step invokes Buck or a package manager.
 
 The generated product inventory is the source of truth for product name,
 version, Buck target, and output name. Each inventory entry produces one
-sandboxed Nix derivation. The derivation invokes the pinned Buck graph against a
-prepared dependency tree and emits the artifact plus
+sandboxed Nix derivation. The derivation runs the pinned, checked-in Buck graph
+against fixed-output archives derived from the reviewed digest/size sidecar and
+projects those archives through `nix_store.root`; Buck verifies each projected
+archive before extraction. The derivation emits the artifact plus
 `effect-utils/buck-product-provenance/v1`.
 
 The cache publisher builds the derivation before it performs any cache mutation.
@@ -104,9 +106,11 @@ the cache-native row replaces the legacy row for the same product. The publisher
 validates every cache row's provenance and preserves unrelated rows. Once no
 legacy rows remain, it emits `effect-utils/buck-cache-products/v2`
 automatically. The generated source derivation remains available as the
-reproducible publication recipe, but changing later repository metadata does not
-change the identity of an already-published product. The anonymous artifact URL
-is an interoperability path, not a second source of product authority.
+reproducible publication recipe. It rebuilds the ordinary graph rather than a
+synthetic root, prepared dependency tree, or rewritten package rule. Changing
+later repository metadata does not change the identity of an already-published
+product. The anonymous artifact URL is an interoperability path, not a second
+source of product authority.
 
 ## Private pnpm Consumption
 

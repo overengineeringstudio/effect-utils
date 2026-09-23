@@ -2811,7 +2811,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')
-          tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\.nix|cache-targets\.json|cache-targets\.json\.genie\.ts|consumer-root\.nix|default\.nix|from-source-contract\.test\.sh|from-source\.nix|manifest\.json|publish\.sh|rewrite-package-tree\.contract\.mjs|rewrite-package-tree\.mjs|source-recipes\.nix|standalone-root\.nix|targets\.json|targets\.json\.genie\.ts)$' || true)
+          tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\.nix|cache-targets\.json|cache-targets\.json\.genie\.ts|consumer-root\.nix|default\.nix|from-source-contract\.test\.sh|from-source\.nix|manifest\.json|pnpm-archives\.nix|publish\.sh|source-recipes\.nix|targets\.json|targets\.json\.genie\.ts)$' || true)
           if [ -n "$tracked_editor$tracked_product" ]; then
             printf 'Tracked inert payload bytes are forbidden:\n%s\n%s\n' "$tracked_editor" "$tracked_product" >&2
             exit 1
@@ -2833,6 +2833,80 @@ jobs:
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pr-a-inert-buck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+  seed-pnpm-archives:
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - id: archive-origin
+        name: Resolve trusted archive origin
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && url=$(sed -n "s/^[[:space:]]*trusted_url_prefix[[:space:]]*=[[:space:]]*//p" .buckconfig)
+          tier=$(sed -n "s/^[[:space:]]*trusted_tier[[:space:]]*=[[:space:]]*//p" .buckconfig)
+          case "$url" in http://*/cas/|https://*/cas/) ;; *) echo "invalid trusted archive origin" >&2; exit 1 ;; esac
+          test "$tier" = private
+          printf "url=%s\ntier=%s\n" "$url" "$tier" >> "$GITHUB_OUTPUT"
+      - name: Verify and seed pnpm archives
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_ARCHIVE_CAS_AUTHORIZATION: ${{ secrets.BUCK2_ARCHIVE_CAS_AUTHORIZATION }}
+          BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}
+          BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:archives:seed' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:archives:seed'
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-seed-pnpm-archives"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
   publish-products:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on:

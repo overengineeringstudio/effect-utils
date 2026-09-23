@@ -138,6 +138,7 @@ const mainOnlyCheckContexts: Record<string, true> = {
   'test-integration-notion': true,
   'test-live-deploy-ci-tools': true,
   'deploy-storybooks': true,
+  'seed-pnpm-archives': true,
   'publish-products': true,
 }
 const matrixCheckJobs: Record<string, true> = { test: true }
@@ -176,6 +177,12 @@ const generatedDevenvPerfJob = extractSourceBlock(
   generatedCiWorkflowYamlSource,
   '  devenv-perf:',
   '  nix-closure-sizes:',
+)
+
+const generatedSeedPnpmArchivesJob = extractSourceBlock(
+  generatedCiWorkflowYamlSource,
+  '  seed-pnpm-archives:',
+  '  publish-products:',
 )
 
 const restorePnpmStateStepSource = extractSourceBlock(
@@ -250,6 +257,21 @@ describe('pull request control-event workflows', () => {
     expect(generatedLabelsSource).not.toContain('ci:perf')
     expect(generatedLabelsJsonSource).not.toContain('ci:perf')
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_CANDIDATE_EVENTS: workflow_dispatch')
+  })
+})
+
+describe('protected-main archive seeding', () => {
+  it('passes the tracked trusted origin into the protected-main seed step', () => {
+    expect(generatedSeedPnpmArchivesJob).toContain('name: Resolve trusted archive origin')
+    expect(generatedSeedPnpmArchivesJob).toContain('trusted_url_prefix')
+    expect(generatedSeedPnpmArchivesJob).toContain(
+      'BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}',
+    )
+    expect(generatedSeedPnpmArchivesJob).toContain(
+      'BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}',
+    )
+    expect(generatedSeedPnpmArchivesJob).toContain("github.ref == 'refs/heads/main'")
+    expect(generatedCiWorkflowYamlSource).not.toContain('trusted-cache.example')
   })
 })
 

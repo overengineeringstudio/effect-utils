@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 import {
@@ -20,13 +20,22 @@ const main = async (): Promise<void> => {
   let previous: PnpmSha256Sidecar | undefined
   const sidecarPath = repo.resolve('buck2/dependencies/pnpm-lock.sha256.json')
   if (existsSync(sidecarPath) === true) {
-    previous = decodePnpmSha256Sidecar(JSON.parse(readFileSync(sidecarPath, 'utf8')))
+    try {
+      previous = decodePnpmSha256Sidecar(JSON.parse(readFileSync(sidecarPath, 'utf8')))
+    } catch {
+      previous = undefined
+    }
   }
   const sidecar = await generatePnpmSha256Sidecar({
     metadata,
     ...(previous === undefined ? {} : { previous }),
   })
-  process.stdout.write(`${JSON.stringify(sidecar)}\n`)
+  const contents = `${JSON.stringify(sidecar)}\n`
+  if (process.argv.includes('--write')) {
+    writeFileSync(sidecarPath, contents)
+  } else {
+    process.stdout.write(contents)
+  }
 }
 
 void main().catch((error: unknown) => {

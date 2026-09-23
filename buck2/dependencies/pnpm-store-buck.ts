@@ -228,16 +228,20 @@ export const renderPnpmPackageTargets = ({
   const lines: string[] = []
   for (const [packageKey, packageMetadata] of sortedEntries(metadata.packages)) {
     if (packageMetadata.resolution !== 'registry') continue
-    const hash = sidecar.packages[packageKey]
-    if (hash === undefined || packageMetadata.url === undefined)
+    const archive = sidecar.packages[packageKey]
+    if (archive === undefined || packageMetadata.url === undefined)
       return fail(`missing sidecar entry ${packageKey}`)
+    if (archive.packageIdentity !== packageKey || archive.registryUrl !== packageMetadata.url) {
+      return fail(`sidecar archive binding mismatch ${packageKey}`)
+    }
     lines.push(
       'pnpm_package(',
       `    name = ${starlarkString(packageMetadata.target)},`,
       `    package_name = ${starlarkString(packageMetadata.name)},`,
-      `    url = ${starlarkString(packageMetadata.url)},`,
-      `    sha256 = ${starlarkString(hash.sha256)},`,
-      `    bins = ${renderDict({ indent: 4, record: hash.bins })},`,
+      `    url = ${starlarkString(archive.registryUrl)},`,
+      `    sha256 = ${starlarkString(archive.sha256)},`,
+      `    size_bytes = ${archive.sizeBytes},`,
+      `    bins = ${renderDict({ indent: 4, record: archive.bins })},`,
       ...(packageMetadata.patch === undefined
         ? []
         : [`    patches = [${starlarkString(buckPatchTarget(packageMetadata.patch.path))}],`]),

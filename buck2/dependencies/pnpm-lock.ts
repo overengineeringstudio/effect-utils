@@ -2,15 +2,15 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 import { buck2SemanticFingerprint } from '../../genie/buck2/mod.ts'
+import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 
 const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
 
 /** Schema identifier for the normalized pnpm lock metadata projection. */
 export const pnpmLockMetadataSchema = 'effect-utils/buck2-pnpm-lock/v1' as const
 /** Schema identifier for the derived archive sha256 sidecar. */
-export const pnpmSha256SidecarSchema = 'effect-utils/buck2-pnpm-sha256/v1' as const
+export const pnpmSha256SidecarSchema = 'effect-utils/buck2-pnpm-sha256/v2' as const
 
 const lockGenerator = 'effect-utils/buck2/dependencies/pnpm-lock' as const
 const sidecarGenerator = 'effect-utils/buck2/dependencies/pnpm-lock-sha256' as const
@@ -310,14 +310,21 @@ export type PnpmLockMetadata = {
   readonly snapshots: Readonly<Record<string, PnpmSnapshotMetadata>>
 }
 
-/** Derived archive digest and executable metadata for one registry package. */
+/** Trust classification for a registry archive. Public tiers reject private rows. */
+export type PnpmArchiveClassification = 'public' | 'private'
+
+/** Reviewed archive metadata bound to one canonical package identity. */
 export type PnpmSha256Entry = {
   readonly bins: Readonly<Record<string, string>>
+  readonly classification: PnpmArchiveClassification
   readonly integrity: string
+  readonly packageIdentity: string
+  readonly registryUrl: string
   readonly sha256: string
+  readonly sizeBytes: number
 }
 
-/** Freshness-gated, generated sha256 metadata consumed by Buck package declarations. */
+/** Freshness-gated, generated archive metadata consumed by Buck and the seeder. */
 export type PnpmSha256Sidecar = {
   readonly source: 'pnpm-lock.yaml'
   readonly generator: 'buck2/dependencies/pnpm-lock.sha256.json.genie.ts'
@@ -767,15 +774,45 @@ const decodeSidecarEntry = ({
   value: unknown
   location: string
 }): PnpmSha256Entry => {
-  const entry = recordAt({ value: value, location: location })
-  rejectUnknownFields({ record: entry, allowed: ['bins', 'integrity', 'sha256'], location })
+  const entry = recordAt({ value, location })
+  rejectUnknownFields({
+    record: entry,
+    allowed: [
+      'bins',
+      'classification',
+      'integrity',
+      'packageIdentity',
+      'registryUrl',
+      'sha256',
+      'sizeBytes',
+    ],
+    location,
+  })
   const bins = parseStringRecord({ value: entry.bins, location: `${location}.bins` })
-  const integrity = stringField({ record: entry, field: 'integrity', location: location })
-  integrityBytes({ integrity: integrity, location: `${location}.integrity` })
-  const digest = stringField({ record: entry, field: 'sha256', location: location })
+  const classification = stringField({ record: entry, field: 'classification', location })
+  if (classification !== 'public' && classification !== 'private')
+    return fail(`${location}.classification must be public or private`)
+  const integrity = stringField({ record: entry, field: 'integrity', location })
+  integrityBytes({ integrity, location: `${location}.integrity` })
+  const packageIdentity = stringField({ record: entry, field: 'packageIdentity', location })
+  const registryUrl = stringField({ record: entry, field: 'registryUrl', location })
+  if (registryUrl.startsWith('https://registry.npmjs.org/') === false)
+    return fail(`${location}.registryUrl must be a canonical npm registry URL`)
+  const digest = stringField({ record: entry, field: 'sha256', location })
   if (sha256Pattern.test(digest) === false)
     return fail(`${location}.sha256 must be lowercase sha256`)
-  return { bins, integrity, sha256: digest }
+  const sizeBytes = entry.sizeBytes
+  if (typeof sizeBytes !== 'number' || Number.isSafeInteger(sizeBytes) === false || sizeBytes <= 0)
+    return fail(`${location}.sizeBytes must be a positive safe integer`)
+  return {
+    bins,
+    classification,
+    integrity,
+    packageIdentity,
+    registryUrl,
+    sha256: digest,
+    sizeBytes,
+  }
 }
 
 /** Decodes and validates the committed sha256 sidecar schema. */
@@ -849,7 +886,7 @@ const sidecarFingerprint = ({
 }: Pick<PnpmSha256Sidecar, 'lockfileFingerprint' | 'packages'>): `sha256:${string}` =>
   buck2SemanticFingerprint({
     generator: sidecarGenerator,
-    schemaVersion: 1,
+    schemaVersion: 2,
     semanticData: { lockfileFingerprint, packages },
   })
 
@@ -883,6 +920,15 @@ export const validatePnpmSha256Sidecar = ({
     }
     if (packageMetadata.integrity !== entry.integrity) {
       return fail(`stale sha256 sidecar integrity for ${key}`)
+    }
+    if (entry.packageIdentity !== key) {
+      return fail(`stale sha256 sidecar package identity for ${key}`)
+    }
+    if (packageMetadata.url !== entry.registryUrl) {
+      return fail(`stale sha256 sidecar registry URL for ${key}`)
+    }
+    if (entry.classification !== 'public') {
+      return fail(`registry.npmjs.org archive ${key} must be classified public`)
     }
     if (packageMetadata.hasBin !== Object.keys(entry.bins).length > 0) {
       return fail(`stale sha256 sidecar bin metadata for ${key}`)
@@ -1025,6 +1071,11 @@ export const generatePnpmSha256Sidecar = async ({
     if (
       cached !== undefined &&
       cached.integrity === packageMetadata.integrity &&
+      cached.packageIdentity === key &&
+      cached.registryUrl === packageMetadata.url &&
+      cached.classification === 'public' &&
+      Number.isSafeInteger(cached.sizeBytes) &&
+      cached.sizeBytes > 0 &&
       sha256Pattern.test(cached.sha256) === true &&
       (packageMetadata.hasBin === false || Object.keys(cached.bins).length > 0)
     ) {
@@ -1044,7 +1095,18 @@ export const generatePnpmSha256Sidecar = async ({
     if (packageMetadata.hasBin === true && Object.keys(bins).length === 0) {
       return fail(`pnpm-lock marks ${key} hasBin but its archive declares no bins`)
     }
-    entries[index] = [key, { bins, integrity: packageMetadata.integrity, sha256: sha256(bytes) }]
+    entries[index] = [
+      key,
+      {
+        bins,
+        classification: 'public',
+        integrity: packageMetadata.integrity,
+        packageIdentity: key,
+        registryUrl: packageMetadata.url,
+        sha256: sha256(bytes),
+        sizeBytes: bytes.byteLength,
+      },
+    ]
     return worker()
   }
   await Promise.all(

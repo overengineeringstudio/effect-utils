@@ -78,10 +78,13 @@
         mkBuckProductFromSource = import ./nix/buck2-products/from-source.nix {
           inherit pkgs buck2;
         };
+        pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { inherit pkgs; };
         buckProductsFromSource = import ./nix/buck2-products/source-recipes.nix {
-          inherit mkBuckProductFromSource;
-          preparedDeps = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
-          preparedDepsByProduct.megarepo = megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
+          inherit
+            mkBuckProductFromSource
+            pnpmArchives
+            ;
+          capabilities = buck2Capabilities;
           # Dirty flake inputs have no commit identity. The publisher rejects dirty trees and
           # verifies this field against HEAD before mutation, so the sentinel cannot escape.
           producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
@@ -214,6 +217,7 @@
           // {
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
+            buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
             gh-ci-utils = ghCiUtils;
             gh-ci-utils-dirty = ghCiUtilsDirty;
