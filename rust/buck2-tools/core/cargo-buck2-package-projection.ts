@@ -366,7 +366,11 @@ export const cargoBuck2PackageProjection = ({
     'static_source_set(',
     '    name = "static_sources",',
     `    prefix = ${starlarkString(packagePath)},`,
-    ...renderStringList({ name: 'srcs', values: workspaceContractSources }),
+    ...renderStringList({
+      name: 'srcs',
+      values: workspaceContractSources,
+      suffix: ' + glob(["rust-toolchain.toml"])',
+    }),
     '    visibility = ["PUBLIC"],',
     ')',
     '',
@@ -528,6 +532,7 @@ const workspaceMembers = [
   },
 ] as const satisfies readonly WorkspaceMember[]
 
+/** Repository-relative paths of Cargo workspace members governed by the projection. */
 export const cargoBuck2WorkspaceMemberPaths = workspaceMembers.map((member) => member.packagePath)
 
 const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
@@ -803,13 +808,15 @@ const resolveConditionalDependencies = ({
 const renderStringList = ({
   name,
   values,
+  suffix = '',
 }: {
   readonly name: string
   readonly values: readonly string[]
+  readonly suffix?: string
 }): readonly string[] => [
   `    ${name} = [`,
   ...values.map((value) => `        ${starlarkString(value)},`),
-  '    ],',
+  `    ]${suffix},`,
 ]
 
 const renderDependencies = ({

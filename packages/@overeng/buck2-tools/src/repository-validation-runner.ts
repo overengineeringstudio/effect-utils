@@ -2,6 +2,23 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
+/** Rejects package-local Rust toolchains that would shadow the repository authority. */
+export const checkRustToolchainShadows = ({
+  sourceRoot,
+  memberPaths,
+}: {
+  readonly sourceRoot: string
+  readonly memberPaths: readonly string[]
+}): void => {
+  if (existsSync(path.join(sourceRoot, 'rust-toolchain.toml')) === false) {
+    throw new Error('repository rust-toolchain.toml is missing')
+  }
+  for (const memberPath of memberPaths) {
+    if (existsSync(path.join(sourceRoot, memberPath, 'rust-toolchain.toml')) === true) {
+      throw new Error(`${memberPath} shadows the repository Rust toolchain`)
+    }
+  }
+}
 
 type ValidationMode =
   | 'devenv-trace-audit'
@@ -615,14 +632,7 @@ in builtins.deepSeq checked "validated"`,
     throw new Error('native product manifest does not exactly cover the declared product matrix')
   }
 
-  if (existsSync(path.join(sourceRoot, 'rust-toolchain.toml')) === false) {
-    throw new Error('repository rust-toolchain.toml is missing')
-  }
-  for (const memberPath of ['packages/@overeng/otel-scrape', 'packages/@overeng/otelite']) {
-    if (existsSync(path.join(sourceRoot, memberPath, 'rust-toolchain.toml')) === true) {
-      throw new Error(`${memberPath} shadows the repository Rust toolchain`)
-    }
-  }
+  checkRustToolchainShadows({ sourceRoot, memberPaths: cargoMemberPaths })
 
   return {
     cargoMembers: cargoMemberPaths.length,

@@ -30,7 +30,7 @@ static_source_set(
         "src/main.rs",
         "src/telemetry_registry.gen.rs",
         "tests/cli.rs",
-    ],
+    ] + glob(["rust-toolchain.toml"]),
     visibility = ["PUBLIC"],
 )
 

@@ -18,7 +18,7 @@ static_source_set(
         "BUCK.genie.ts",
         "Cargo.toml",
         "src/main.rs",
-    ],
+    ] + glob(["rust-toolchain.toml"]),
     visibility = ["PUBLIC"],
 )
 

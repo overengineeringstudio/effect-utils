@@ -129,17 +129,20 @@ static_source_set(
 static_source_set(
     name = "repository_validation_sources",
     prefix = "",
-    srcs = glob([
-        "*.genie.ts",
-        ".github/**/*.ts",
-        "genie/**/*.ts",
+    srcs = glob(
+        [
+        "**/*.ts",
         "nix/**/*.json",
         "nix/**/*.nix",
-        "nix/**/*.ts",
         "rust/*.lock",
         "rust/*.sh",
-        "rust/*.toml",
-    ]) + [
+        "rust/*.toml"
+],
+        exclude = [
+        "**/node_modules/**",
+        "buck-out/**"
+],
+    ) + [
         "BUCK",
         "package.json",
         "pnpm-workspace.yaml",

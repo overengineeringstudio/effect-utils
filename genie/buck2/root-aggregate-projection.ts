@@ -51,6 +51,16 @@ const renderAggregate = ({ name, targets }: { name: string; targets: readonly st
 const rootBuckBase =
   'load("//buck2:editor_view.bzl", "editor_view_inputs")\nload("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")\nload("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")\n\n# Conventional prelude toolchain targets, owned by the platform hub.\n#\n# The composition root sets `[cell_aliases] toolchains = <platformHubCell>`\n# (`composition/root/composition-root.ts`), so prelude\'s conventional\n# `toolchains//:<lang>` spelling resolves into *this* package for every member cell in the\n# composed workspace. Prelude rules used by any member therefore find exactly one instance\n# of each conventional toolchain, and it is the hub\'s capability-backed one. Keeping them\n# here preserves `05-composition/spec.md:51-56` ("the root carries no synthetic toolchains\n# or `none` cell").\ntoolchain_alias(\n    name = "rust",\n    actual = "//buck2/toolchains:rust",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "cxx",\n    actual = "//buck2/toolchains:cxx",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "go_bootstrap",\n    actual = "//buck2/toolchains:go_bootstrap",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "python_bootstrap",\n    actual = "//buck2/toolchains:python_bootstrap",\n    visibility = ["PUBLIC"],\n)\n\n# Prelude\'s genrule toolchain carries no executable at all (`zip_scrubber = None`,\n# `@prelude//:genrule_toolchain.bzl`), so there is nothing to pin and nothing to project:\n# the upstream instance is already hermetic.\nsystem_genrule_toolchain(\n    name = "genrule",\n    visibility = ["PUBLIC"],\n)\n\nexport_file(\n    name = "package.json",\n    src = "package.json",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "node_modules",\n    actual = "//packages/@overeng/genie:node_modules",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "editor_inputs",\n    actual = ":node_modules",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "root_editor_package_tree",\n    actual = "//packages/@overeng/genie:package_tree",\n    visibility = ["PUBLIC"],\n)\n\neditor_view_inputs(\n    name = "editor_view_inputs",\n    editor_inputs = ":editor_inputs",\n    package_tree = ":root_editor_package_tree",\n    visibility = ["PUBLIC"],\n)\nstatic_source_set(\n    name = "static_sources",\n    prefix = "",\n    srcs = glob(\n        [\n            root + "/" + pattern\n            for root in ["context", "packages", "scripts"]\n            for pattern in STATIC_SOURCE_GLOBS\n        ],\n        exclude = [\n            root + "/" + pattern\n            for root in ["context", "packages", "scripts"]\n            for pattern in STATIC_SOURCE_EXCLUDES\n        ],\n    ) + [\n        ".oxfmtrc.json",\n        ".oxlintrc.json",\n        "devenv.lock",\n        "devenv.yaml",\n        "flake.lock",\n        "flake.nix",\n        "megarepo.kdl",\n        "megarepo.lock",\n        "tsconfig.lint.json",\n    ],\n    visibility = ["PUBLIC"],\n)\n\n\n# Workspace patches are declared inputs to the generated pnpm extraction actions.\nexport_file(\n    name = "patches/@myobie__pty@0.10.0.patch",\n    src = "patches/@myobie__pty@0.10.0.patch",\n    visibility = ["PUBLIC"],\n)'
 
+export const rootRepositoryValidationSourceGlobs = [
+  '**/*.ts',
+  'nix/**/*.json',
+  'nix/**/*.nix',
+  'rust/*.lock',
+  'rust/*.sh',
+  'rust/*.toml',
+] as const
+
+export const rootRepositoryValidationSourceExcludes = ['**/node_modules/**', 'buck-out/**'] as const
 
 const rootValidationSources = `static_source_set(
     name = "nix_sources",
@@ -62,17 +72,10 @@ const rootValidationSources = `static_source_set(
 static_source_set(
     name = "repository_validation_sources",
     prefix = "",
-    srcs = glob([
-        "*.genie.ts",
-        ".github/**/*.ts",
-        "genie/**/*.ts",
-        "nix/**/*.json",
-        "nix/**/*.nix",
-        "nix/**/*.ts",
-        "rust/*.lock",
-        "rust/*.sh",
-        "rust/*.toml",
-    ]) + [
+    srcs = glob(
+        ${JSON.stringify(rootRepositoryValidationSourceGlobs, null, 8)},
+        exclude = ${JSON.stringify(rootRepositoryValidationSourceExcludes, null, 8)},
+    ) + [
         "BUCK",
         "package.json",
         "pnpm-workspace.yaml",
