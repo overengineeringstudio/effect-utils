@@ -9,7 +9,9 @@ These tasks are meant to be imported by other repos via the flake input:
 ```nix
 # In another repo's devenv.nix
 imports = [
-  (inputs.effect-utils.devenvModules.tasks.check {})
+  (inputs.effect-utils.devenvModules.tasks.check {
+    checkQuickTypecheckTask = "repo:typecheck";
+  })
   (inputs.effect-utils.devenvModules.tasks.lint-oxc {
     lintPaths = [ "src" "test" ];
     geniePatterns = [ "*.genie.ts" ];
@@ -19,7 +21,15 @@ imports = [
     lockfiles = [ "flake.lock" ];
   })
 ];
+
+tasks."repo:typecheck".exec = "pnpm exec tsc --noEmit";
 ```
+
+`checkQuickTypecheckTask` must name a task defined by the consuming repository;
+`checkAllTypecheckTask` defaults to the same task. The module retains
+`ts:check` as its compatibility default, while Buck-owned repositories should
+select their own aggregate explicitly (for example, `buck2:quick` and
+`buck2:all`).
 
 ## Observability
 

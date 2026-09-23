@@ -219,12 +219,13 @@ export const materializeTypeScriptDist = async ({
     return { _tag: 'Status', status: 0 }
   } finally {
     if (await isPresent(stagingRoot)) {
-      await executeCommandPlan({
+      const cleanupOutcome = await executeCommandPlan({
         commands: [[chmodBin, '-R', 'u+w', stagingRoot]],
         runtime,
       })
       await chmod(stagingRoot, 0o700).catch(() => undefined)
       await rm(stagingRoot, { force: true, recursive: true })
+      if (successful(cleanupOutcome) === false) return cleanupOutcome
     }
   }
 }

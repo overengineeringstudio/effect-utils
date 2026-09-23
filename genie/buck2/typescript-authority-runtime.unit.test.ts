@@ -84,9 +84,13 @@ const makeCommandRuntime = () => {
   }
 }
 
+const successfulCommandOutcome: CommandOutcome = { _tag: 'Status', status: 0 }
+
 const makeMaterializationRuntime = ({
+  cleanupOutcome = successfulCommandOutcome,
   invalidatePublishedDist = false,
 }: {
+  readonly cleanupOutcome?: CommandOutcome
   readonly invalidatePublishedDist?: boolean
 } = {}): CommandRuntime => {
   let publishCount = 0
@@ -114,7 +118,9 @@ const makeMaterializationRuntime = ({
             rmSync(join(destination, 'types/index.d.ts'))
         }
         return {
-          completion: Promise.resolve({ _tag: 'Status', status: 0 }),
+          completion: Promise.resolve(
+            executable === '/tools/chmod' ? cleanupOutcome : successfulCommandOutcome,
+          ),
           forwardSignal: () => undefined,
         }
       } catch {
@@ -217,6 +223,37 @@ describe('Buck2 TypeScript authority runtime planning', () => {
       expect(readFileSync(join(dist, 'types/index.d.ts'), 'utf8')).toBe(
         'export type Fresh = true\n',
       )
+      expect(readdirSync(packageDirectory).filter((name) => name.startsWith('.dist-buck2.'))).toEqual(
+        [],
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  it('propagates a cleanup signal after removing staging state', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'typescript-dist-cleanup-signal-'))
+    const packageDirectory = join(root, 'packages/@example/widget')
+    const workspaceRoot = join(root, 'workspace')
+    try {
+      mkdirSync(packageDirectory, { recursive: true })
+      mkdirSync(workspaceRoot)
+
+      await expect(
+        materializeTypeScriptDist({
+          buck2Bin: '/tools/buck2',
+          chmodBin: '/tools/chmod',
+          declarationEntrypoint: 'types/index.d.ts',
+          mvBin: '/tools/mv',
+          packagePath: 'packages/@example/widget',
+          root,
+          runtime: makeMaterializationRuntime({
+            cleanupOutcome: { _tag: 'Signal', signal: 'SIGTERM' },
+          }),
+          target: 'effect_utils//packages/@example/widget:dist',
+          workspaceRoot,
+        }),
+      ).resolves.toEqual({ _tag: 'Signal', signal: 'SIGTERM' })
       expect(readdirSync(packageDirectory).filter((name) => name.startsWith('.dist-buck2.'))).toEqual(
         [],
       )
