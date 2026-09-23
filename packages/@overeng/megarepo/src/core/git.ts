@@ -555,7 +555,7 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
   })
 
-const isErrno = (cause: unknown, code: string): boolean =>
+const isErrno = ({ cause, code }: { readonly cause: unknown; readonly code: string }): boolean =>
   typeof cause === 'object' &&
   cause !== null &&
   'code' in cause &&
@@ -591,7 +591,7 @@ export const unlockWorktreeIfMatches = (args: {
           await handle.close()
         }
       } catch (cause) {
-        if (isErrno(cause, 'ENOENT') === true) return false
+        if (isErrno({ cause, code: 'ENOENT' }) === true) return false
         throw cause
       }
       if (reason !== args.expectedReason) return false
@@ -600,7 +600,7 @@ export const unlockWorktreeIfMatches = (args: {
       try {
         await rename(lockPath, movedPath)
       } catch (cause) {
-        if (isErrno(cause, 'ENOENT') === true) return false
+        if (isErrno({ cause, code: 'ENOENT' }) === true) return false
         throw cause
       }
 
@@ -615,7 +615,7 @@ export const unlockWorktreeIfMatches = (args: {
           await link(movedPath, lockPath)
           await unlink(movedPath)
         } catch (cause) {
-          if (isErrno(cause, 'EEXIST') === false) throw cause
+          if (isErrno({ cause, code: 'EEXIST' }) === false) throw cause
         }
         return false
       }
