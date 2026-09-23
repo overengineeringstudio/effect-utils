@@ -574,15 +574,31 @@ export const createComposedOwnedWorkspace = <R, E>({
       if (atExpectedPath.length === 0) {
         if (atBranch.length !== 0) return
         const emptyWorktreeRemovedOrAbsent = yield* Effect.tryPromise({
-          try: () => rmdir(paths.ownedWorktree),
-          catch: (cause) => cause,
+          try: async () => {
+            try {
+              await rmdir(paths.ownedWorktree)
+            } catch (cause) {
+              if (
+                typeof cause === 'object' &&
+                cause !== null &&
+                'code' in cause &&
+                cause.code === 'ENOENT'
+              ) {
+                return
+              }
+              throw cause
+            }
+          },
+          catch: (cause) =>
+            failure({
+              reason: 'IoFailure',
+              path: paths.ownedWorktree,
+              message: `Cannot remove empty owned worktree '${paths.ownedWorktree}'`,
+              cause,
+            }),
         }).pipe(
           Effect.match({
-            onFailure: (cause) =>
-              typeof cause === 'object' &&
-              cause !== null &&
-              'code' in cause &&
-              cause.code === 'ENOENT',
+            onFailure: () => false,
             onSuccess: () => true,
           }),
         )
