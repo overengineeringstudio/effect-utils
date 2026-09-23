@@ -1,7 +1,7 @@
 # Nix-store-backed Buck dependency views
 
 Date: 2026-09-22
-Host class: x86_64-linux development host (dev3), Nix sandbox enabled, Buck2 2026-08-31-be6971d
+Host class: x86_64-linux development host, Nix sandbox enabled, Buck2 2026-08-31-be6971d
 
 ## Question
 

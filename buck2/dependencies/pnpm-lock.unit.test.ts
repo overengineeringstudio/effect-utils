@@ -11,7 +11,12 @@ import {
   validatePnpmSha256Sidecar,
 } from './pnpm-lock.ts'
 import { renderPnpmPackageTargets } from './pnpm-store-buck.ts'
-import { assertArchiveAllowedForTier, verifyArchive } from './seed-archives.ts'
+import {
+  assertArchiveAllowedForTier,
+  resolveArchiveOrigin,
+  seedArchive,
+  verifyArchive,
+} from './seed-archives.ts'
 
 const archive = new TextEncoder().encode('archive bytes')
 const archiveIntegrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`
@@ -456,6 +461,90 @@ describe('pnpm sha256 sidecar', () => {
         },
       }),
     ).toThrow(/must be classified public/)
+  })
+})
+
+describe('pnpm archive seeder', () => {
+  it('verifies an existing CAS object before counting it as present', async () => {
+    const metadata = translatePnpmLock({
+      lockfileText: lock({
+        packages: `  bar@2.0.0:
+    resolution: {integrity: ${archiveIntegrity}}`,
+        snapshots: '  bar@2.0.0: {}',
+        importers: '  .: {}',
+      }),
+      workspaceText: workspace(),
+    })
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async () => archive,
+    })
+    const entry = sidecar.packages['bar@2.0.0']!
+    const casUrl = `https://cas.example/cas/${entry.sha256}`
+    const requests: string[] = []
+
+    await expect(
+      seedArchive({
+        archive: entry,
+        fetchArchive: async (input, init) => {
+          requests.push(`${init?.method ?? 'GET'} ${String(input)}`)
+          if (init?.method === 'HEAD') return new Response(null, { status: 200 })
+          return new Response(otherArchive, { status: 200 })
+        },
+        headers: undefined,
+        packageIdentity: 'bar@2.0.0',
+        tier: 'private',
+        urlPrefix: 'https://cas.example/cas/',
+      }),
+    ).rejects.toThrow(/lock SHA-512 mismatch/)
+    expect(requests).toEqual([`HEAD ${casUrl}`, `GET ${casUrl}`])
+  })
+
+  it('resolves environment, local, tracked, and trusted origin precedence', () => {
+    const trackedConfig = `[archive_origin]
+  url_prefix = https://tracked.example/cas/
+  tier = public
+  trusted_url_prefix = https://trusted.example/cas/
+  trusted_tier = private
+`
+    const localConfig = `[archive_origin]
+  url_prefix = https://local.example/cas/
+  tier = private
+`
+
+    expect(resolveArchiveOrigin({ env: {}, localConfig, trackedConfig })).toEqual({
+      tier: 'private',
+      urlPrefix: 'https://local.example/cas/',
+    })
+    expect(
+      resolveArchiveOrigin({
+        env: {
+          BUCK2_ARCHIVE_CAS_TIER: 'public',
+          BUCK2_ARCHIVE_CAS_URL: 'https://environment.example/cas/',
+        },
+        localConfig,
+        trackedConfig,
+      }),
+    ).toEqual({
+      tier: 'public',
+      urlPrefix: 'https://environment.example/cas/',
+    })
+    expect(resolveArchiveOrigin({ env: {}, localConfig: '', trackedConfig })).toEqual({
+      tier: 'public',
+      urlPrefix: 'https://tracked.example/cas/',
+    })
+    expect(
+      resolveArchiveOrigin({
+        env: {},
+        localConfig: '',
+        trackedConfig: trackedConfig
+          .replace('  url_prefix = https://tracked.example/cas/\n', '')
+          .replace('  tier = public\n', ''),
+      }),
+    ).toEqual({
+      tier: 'private',
+      urlPrefix: 'https://trusted.example/cas/',
+    })
   })
 })
 
