@@ -21,7 +21,7 @@ not a replacement for, the design docs:
 
 Every code block in this handbook is drawn from a real, compiled-and-run example.
 The example files live in [`examples/`](../../examples), are type-checked by
-`devenv tasks run ts:check`, and the runnable ones are driven against a native `restate-server`
+`devenv tasks run buck2:quick`, and the runnable ones are driven against a native `restate-server`
 by [`src/endpoint/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts)
 and [`src/scheduling/scheduled.integration.test.ts`](../../src/scheduling/scheduled.integration.test.ts)
 under `devenv tasks run check:all`. A snippet that stopped compiling or running would fail CI.

@@ -667,7 +667,7 @@ in
         # The verifier launches a nested, cache-refreshed task run. Keep it last
         # so its task-cache refresh cannot race sibling check:all work.
         prerequisiteTasks = [
-          "buck2:check"
+          "buck2:providers:check"
           "cargo:check"
           "dependency-materialization:evidence:check"
           "check:devenv-eval-inputs"
@@ -701,8 +701,8 @@ in
     (taskModules.nix-cli { cliPackages = [ ]; })
     (taskModules.check {
       hasMegarepoCheck = false;
-      checkQuickTypecheckTask = "buck2:check";
-      checkAllTypecheckTask = "buck2:check";
+      checkQuickTypecheckTask = "buck2:quick";
+      checkAllTypecheckTask = "buck2:all";
     })
     (taskModules.devenv-eval-input-budget { })
 
@@ -794,15 +794,10 @@ in
       ]
       ++ genieExtraInputGlobs;
       genieCoverageDirs = [ "packages" ];
-      # Type-aware linting for typescript/no-deprecated rule
-      tsconfig = "tsconfig.lint.json";
-      # Type-aware lint consumes the declaration products Buck publishes.
-      tsconfigAfterTasks = [ "buck2:typescript:materialize-dist" ];
-      # Warning cleanup is complete: every oxlint rule is at zero repo-wide
-      # (swept + key rules promoted to error; non-API surfaces exempted by
-      # override). Lint is now fatal on ANY warning so the gate can never
-      # silently regress — enforced identically in CI and the local pre-commit
-      # gate (both run `lint:check`).
+      # Type correctness is owned by the Buck aggregate; lint stays a syntax and
+      # source-policy pass instead of reconstructing a second root TS solution.
+      # Warning cleanup is complete, so any lint warning fails both CI and the
+      # local pre-commit gate.
       denyWarnings = true;
     })
     # Setup task (auto-runs in enterShell)
@@ -1234,16 +1229,16 @@ in
         export BUCK2_BIN="$workspace_root/.megarepo/bin/"buck2
       fi
       exec ${pkgs.bun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
-        materialize-dist "$root" ${pkgs.bash}/bin/bash
+        materialize-dist "$root" "$workspace_root" "$BUCK2_BIN" \
+        ${pkgs.coreutils}/bin/mv ${pkgs.coreutils}/bin/chmod
     '';
   };
 
   tasks."buck2:task-guards:check" = {
-    description = "Check TypeScript publication failure paths and evaluated task ordering";
+    description = "Check evaluated Buck task ordering and standalone boundaries";
     exec = trace.exec "buck2:task-guards:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      ${pkgs.bash}/bin/bash "$root/nix/devenv-modules/tasks/shared/tests/typescript-materialize-dist.test.sh"
       DEVENV_TASKS_JSON="$root/.devenv/gc/task-config-devenv-config-task-config" \
         NODE_BIN=${pkgs.nodejs}/bin/node exec ${pkgs.bash}/bin/bash \
         "$root/nix/devenv-modules/tasks/shared/tests/devenv-task-graph.test.sh"
@@ -1263,14 +1258,14 @@ in
 
   # The provider audit remains separate because it validates the
   # capability/toolchain boundary rather than producing an admitted artifact.
-  tasks."buck2:check" = {
-    description = "Build every admitted TypeScript check, declared test lane, and the archive/product Buck2 surface";
+  tasks."buck2:providers:check" = {
+    description = "Audit cross-cell provider identity for configured Buck toolchains";
     after = [
       "buck2:nix-bridge:check"
       "buck2:task-guards:check"
       "buck2:rust-deps:check"
     ];
-    exec = trace.exec "buck2:check" ''
+    exec = trace.exec "buck2:providers:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}
@@ -1284,14 +1279,14 @@ in
 
   tasks."buck2:quick" = {
     description = "Build the admitted quick Buck aggregate";
-    after = [ "buck2:check" ];
+    after = [ "buck2:providers:check" ];
     # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
     exec = buck2AggregateExec "buck2:quick" "//:quick";
   };
 
   tasks."buck2:all" = {
     description = "Build the complete admitted Buck aggregate";
-    after = [ "buck2:check" ];
+    after = [ "buck2:providers:check" ];
     # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
     exec = buck2AggregateExec "buck2:all" "//:all";
   };
@@ -1301,7 +1296,6 @@ in
     "check:buck2-producer-overlap"
     "nix:check:quick"
   ];
-
   # One Buck invocation executes every admitted bounded lane. This is what `test:run` waits on;
   # the per-lane `test:<package>` tasks (imported above) exist for standalone use and are not
   # part of that graph, so no suite is scheduled twice.
@@ -1315,7 +1309,6 @@ in
     };
   };
   tasks."check:all".after = [
-    "buck2:all"
     "check:buck2-producer-overlap"
     "cargo:check"
     "dependency-materialization:evidence:check"

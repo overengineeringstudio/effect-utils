@@ -19,8 +19,8 @@
 #   let trace = import ../lib/trace.nix { inherit lib; };
 #   in {
 #     # Simple exec tracing (no cache tracking):
-#     tasks."ts:check" = {
-#       exec = trace.exec "ts:check" "tsc --build tsconfig.check.json";
+#     tasks."buck2:quick" = {
+#       exec = trace.exec "buck2:quick" "buck2 build //:quick";
 #     };
 #
 #     # With cache tracking and method attribute:
@@ -63,8 +63,8 @@ let
   # is available (otelCanEmitShell) AND a well-formed W3C traceparent is present
   # (OTEL_TASK_TRACEPARENT preferred, falling back to TRACEPARENT). This is the
   # single gate that decides whether COMMAND-level instrumentation should engage.
-  # tsc (ts.nix) and trace.instr (oxlint/vitest) both gate on THIS exact string so
-  # they engage/disengage together: without configured delivery and a parent
+  # trace.instr users gate on THIS exact string so they engage/disengage together:
+  # without configured delivery and a parent
   # context, every instrumented command runs bare. Under `otel-span run --
   # devenv tasks run …` the task span exports OTEL_TASK_TRACEPARENT into the
   # task body, so this is true and commands wrap.

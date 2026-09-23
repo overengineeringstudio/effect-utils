@@ -108,7 +108,7 @@ Subcommands:
 ```bash
 otel-span run <service-name> <span-name> -- <command> [args...]
 otel-span run effect-utils-devenv devenv.task.exec --attr task.name=buck2:editor:publish -- buck2 build effect_utils//:editor_view_inputs
-otel-span emit-span effect-utils-devenv devenv.task.status --attr-string span.label=buck2:check
+otel-span emit-span effect-utils-devenv devenv.task.status --attr-string span.label=buck2:quick
 printf '%s' "$otlp_json" | otel-span emit
 ```
 
@@ -126,7 +126,7 @@ stable span names and low-cardinality attributes instead of synthetic services.
 ```nix
 # In task modules:
 trace = import ../lib/trace.nix { inherit lib; };
-exec = trace.exec "buck2:check" "buck2 build <authoritative-targets>";
+exec = trace.exec "buck2:quick" "buck2 build effect_utils//:quick";
 ```
 
 `TRACEPARENT`/`OTEL_TASK_TRACEPARENT` chains nested task wrappers under the
@@ -147,9 +147,9 @@ retired root compiler wrapper no longer emits a parallel TypeScript span tree.
 | Attribute       | Type      | Description                     | Example                                  |
 | --------------- | --------- | ------------------------------- | ---------------------------------------- |
 | `name`          | span name | Stable operation name           | `devenv.task.exec`, `devenv.task.status` |
-| `span.label`    | string    | Human-readable short label      | `buck2:check`                            |
+| `span.label`    | string    | Human-readable short label      | `buck2:quick`                            |
 | `tool.name`     | string    | Tool namespace                  | `devenv`                                 |
-| `task.name`     | string    | Devenv task name                | `buck2:editor:publish`, `buck2:check`    |
+| `task.name`     | string    | Devenv task name                | `buck2:editor:publish`, `buck2:quick`    |
 | `task.phase`    | string    | Task wrapper phase              | `exec`, `status`                         |
 | `task.cached`   | bool      | Whether task was cached/skipped | `true`, `false`                          |
 | `status.method` | string    | Cache/status check strategy     | `binary`, `hash`, `path`                 |

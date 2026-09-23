@@ -99,12 +99,16 @@
   ],
   "developerOperations": [
     {
-      "disposition": "buck-owned",
-      "operation": "buck2:check"
-    },
-    {
       "disposition": "outside-by-policy:workspace-publication",
       "operation": "buck2:editor:publish"
+    },
+    {
+      "disposition": "buck-owned",
+      "operation": "buck2:providers:check"
+    },
+    {
+      "disposition": "buck-owned",
+      "operation": "buck2:quick"
     },
     {
       "disposition": "outside-by-policy:workspace-publication",

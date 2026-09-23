@@ -6,7 +6,7 @@
 
 Use `devenv tasks run <task>` (devenv tasks) to execute tasks with dependencies:
 
-- **TypeScript**: `devenv tasks run buck2:check`
+- **TypeScript**: `devenv tasks run buck2:quick`
 - **Declaration publication**: `devenv tasks run buck2:typescript:materialize-dist`
 - **Linting**: `devenv tasks run lint:check` or `devenv tasks run lint:fix`
 - **Testing**: `devenv tasks run test:run` (all) or `devenv tasks run test:<pkg>` (single package) or `devenv tasks run test:watch`
@@ -18,7 +18,7 @@ Use the `--no-tui` flag to see all output. If tools aren't directly in `$PATH`, 
 
 We're using megarepo for repo management. We're using `pnpm` temporarily for installs (bun is still used to run scripts) and `devenv` to manage the development environment.
 
-Buck owns checking for all 39 TypeScript projects and declaration production for every emitting project. The checkout itself is the standalone Buck root; CI and devenv Buck tasks invoke the pinned `BUCK2_BIN` from that root. `buck2:typescript:materialize-dist` publishes those declarations atomically for source-side consumers such as type-aware lint.
+Buck owns checking for every TypeScript project and declaration production for every emitting project. The checkout itself is the standalone Buck root; CI and devenv invoke the `//:quick` aggregate through the pinned `BUCK2_BIN`. `buck2:typescript:materialize-dist` publishes declarations atomically when source-side tools or editors need package `dist` trees.
 
 # Genie (Config File Generation)
 

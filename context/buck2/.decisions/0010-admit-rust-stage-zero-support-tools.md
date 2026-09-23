@@ -60,7 +60,7 @@ justify and admit new implementation from its live consumer boundary.
 
 `buck2-product` remains the loaded product and Buck-to-Nix bridge tool;
 `buck2-archive-tool` remains the cross-cell configured-Rust-toolchain fixture
-exercised by `buck2:check`.
+exercised by `buck2:providers:check`.
 
 ## Consequences
 

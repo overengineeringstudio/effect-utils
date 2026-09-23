@@ -1,7 +1,7 @@
 # Aggregate check tasks
 #
-# Usage in devenv.nix:
-#   # With unit tests (default):
+# Usage in devenv.nix (the consumer must define the selected typecheck task):
+#   # With unit tests and the backwards-compatible ts:check default:
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.check {}) ];
 #
 #   # With unit tests and playwright e2e tests:
@@ -19,16 +19,11 @@
 #   # Without megarepo checks (for repos that skip members in CI):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasMegarepoCheck = false; }) ];
 #
-#   # With strict type checking in aggregate gates:
-#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { checkAllTypecheckTask = "ts:check:strict"; }) ];
-#
-#   # With a Buck-owned typecheck gate instead of the root tsc solution:
+#   # With Buck-owned aggregate gates:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.check {
-#       checkQuickTypecheckTask = "buck2:check";
-#       # Residual root-tsc projects still need a gate, but only in check:quick;
-#       # extraChecks would drag them into check:all as well.
-#       extraQuickChecks = [ "ts:check" ];
+#       checkQuickTypecheckTask = "buck2:quick";
+#       checkAllTypecheckTask = "buck2:all";
 #     })
 #   ];
 #
@@ -37,9 +32,9 @@
 #
 # Provides: check:quick, check:all
 #
-# check:quick - Fast local development (typecheck gate, mr:check*, lint, nix-fingerprint)
-# check:all   - Comprehensive validation (defaults to the check:quick typecheck
-#               task, can opt into ts:check:strict)
+# check:quick - Fast local development (configured typecheck, mr:check*, lint, nix-fingerprint)
+# check:all   - Comprehensive validation (defaults to the quick typecheck task;
+#               callers may select a broader aggregate)
 #               * mr:check included unless hasMegarepoCheck = false
 #
 # Note: Requires the configured typecheck task to exist (default ts:check).
@@ -58,7 +53,7 @@
   checkQuickTypecheckTask ? "ts:check",
   checkAllTypecheckTask ? checkQuickTypecheckTask,
   extraChecks ? [ ], # Additional check tasks for BOTH gates (e.g., [ "workspace:check" ])
-  extraQuickChecks ? [ ], # Additional check tasks for check:quick ONLY (e.g., [ "ts:check" ])
+  extraQuickChecks ? [ ], # Additional check tasks for check:quick ONLY
 }:
 { lib, ... }:
 let

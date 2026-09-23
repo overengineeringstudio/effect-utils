@@ -27,6 +27,10 @@ All notable changes to this project will be documented in this file.
   minimal root package for package runtimes and the TypeScript action runner,
   so consumer roots can resolve the configured TypeScript toolchain without
   importing the provider workspace root.
+- **Buck2 TypeScript authority**: Route local and CI typecheck entry points
+  through the root Buck aggregates, remove the root lint solution and exported
+  legacy `ts.nix` producer, and move declaration publication validation,
+  rollback, and cleanup into the TypeScript authority runtime.
 
 ### Added
 

@@ -308,9 +308,9 @@ export const deriveBuck2TestLane = ({
 /**
  * Every declared test lane, byte-sorted by execution label.
  *
- * The single semantic source for who runs what: `buck2:check` builds these and their
- * inventory siblings, and the generated `buck2-test-authority.json` bridge hands the same
- * rows to the source-side tasks. A lane cannot be added to one consumer and not the other.
+ * The single semantic source for who runs what: the root `//:all` aggregate builds every
+ * execution target, and the generated `buck2-test-authority.json` bridge hands the same rows
+ * to source-side tasks. A lane cannot be added to one consumer and not the other.
  */
 export const buck2TestLanes: readonly Buck2TestLane[] = Object.values(buck2TypeScriptAdmissions)
   .flatMap((admission: Buck2TypeScriptAdmission): readonly Buck2TestLane[] => {
@@ -338,9 +338,9 @@ for (const parent of buck2TestLanes) {
 /**
  * Every Buck test target the admitted packages declare, byte-sorted and fully qualified.
  *
- * `buck2:check` builds these beside the typecheck targets so a declared lane cannot rot: its
- * rule, its staged package tree, and its attested tools are proven to analyse and stage on
- * every check.
+ * The root `//:all` aggregate builds these beside the typecheck targets so a declared lane
+ * cannot rot: its rule, staged package tree, and attested tools are proven to analyse and stage
+ * on every complete check.
  */
 export const buck2TypeScriptTestTargets: readonly string[] = buck2TestLanes.map(
   ({ target }) => target,
@@ -349,8 +349,8 @@ export const buck2TypeScriptTestTargets: readonly string[] = buck2TestLanes.map(
 /**
  * Inventory targets of every Vitest lane, byte-sorted and fully qualified.
  *
- * `buck2:check` builds these too: the bounded selection a source-side task reports comes from
- * these artifacts, so an inventory that stops analysing is a broken gate, not a silent one.
+ * Source-side tasks build these to derive their bounded selection, so an inventory that stops
+ * analysing is a broken gate, not a silent one.
  */
 export const buck2TypeScriptTestCollectionTargets: readonly string[] = buck2TestLanes.flatMap(
   ({ collectionTarget }) => (collectionTarget === undefined ? [] : [collectionTarget]),

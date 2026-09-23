@@ -50,12 +50,12 @@
     },
 
     // ============================================================
-    // buck2 — complete TypeScript check and declaration authority
+    // buck2 — quick TypeScript and repository-static authority
     // ============================================================
     {
-      "label": "buck2:check",
+      "label": "buck2:quick",
       "type": "shell",
-      "command": "devenv tasks run buck2:check",
+      "command": "devenv tasks run buck2:quick",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": false,

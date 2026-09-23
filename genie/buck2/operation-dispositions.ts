@@ -8,8 +8,9 @@ export type OperationDisposition =
   | `outside-by-policy:${string}`
 
 export const developerOperationDispositions = {
-  'buck2:check': 'buck-owned',
   'buck2:editor:publish': 'outside-by-policy:workspace-publication',
+  'buck2:providers:check': 'buck-owned',
+  'buck2:quick': 'buck-owned',
   'buck2:typescript:materialize-dist': 'outside-by-policy:workspace-publication',
   'check:all': 'outside-by-policy:cross-boundary-aggregate',
   'check:quick': 'outside-by-policy:cross-boundary-aggregate',

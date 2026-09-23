@@ -107,7 +107,6 @@ static_source_set(
         "flake.nix",
         "megarepo.kdl",
         "megarepo.lock",
-        "tsconfig.lint.json",
     ],
     visibility = ["PUBLIC"],
 )
