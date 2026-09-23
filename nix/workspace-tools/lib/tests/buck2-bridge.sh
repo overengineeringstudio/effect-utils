@@ -145,6 +145,30 @@ jq -e '
   (.runtime.symbolVersionFloors | index("F")) == null and
   (.runtime.symbolVersionFloors | index("LOCAL_DEFINITION")) == null
 ' "$dynamic_export/descriptor.json" >/dev/null
+foreign_dynamic_platform_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
+  original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+  foreignArchitecture = if original.platform.architecture == \"aarch64\" then \"x86_64\" else \"aarch64\";
+  foreignInterpreter = if foreignArchitecture == \"aarch64\" then \"/lib/ld-linux-aarch64.so.1\" else \"/lib64/ld-linux-x86-64.so.2\";
+  descriptor = original // {
+    platform = original.platform // { architecture = foreignArchitecture; };
+    runtime = original.runtime // {
+      machine = foreignArchitecture;
+      interpreter = foreignInterpreter;
+    };
+  };
+in test.mkImport {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = exported + \"/artifact.tar\";
+}"
+expect_build_failure \
+  "foreign dynamic ELF platform" \
+  "elf-dynamic platform must match pkgs.stdenv.hostPlatform" \
+  "$foreign_dynamic_platform_expr"
+
 dynamic_import_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");

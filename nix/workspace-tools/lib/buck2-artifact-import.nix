@@ -60,6 +60,13 @@ assert lib.assertMsg (
   checkedPlatform == expectedPlatform
 ) "buck2-artifact-import: platform mismatch";
 assert lib.assertMsg (
+  runtimeKind != "elf-dynamic"
+  || (
+    pkgs.stdenv.hostPlatform.system == "${checkedPlatform.architecture}-${checkedPlatform.os}"
+    && pkgs.stdenv.hostPlatform.libc == checkedPlatform.abi
+  )
+) "buck2-artifact-import: elf-dynamic platform must match pkgs.stdenv.hostPlatform";
+assert lib.assertMsg (
   !(url != null && artifact != null)
 ) "buck2-artifact-import: choose either a published URL or a declared artifact path";
 assert lib.assertMsg (
