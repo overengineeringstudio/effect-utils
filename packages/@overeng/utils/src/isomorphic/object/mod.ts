@@ -86,8 +86,8 @@ export const optionalProp = <K extends string, V>({
 }: {
   key: K
   value: V | undefined
-}): V extends undefined ? {} : { [P in K]: V } =>
-  (value !== undefined ? { [key]: value } : {}) as V extends undefined ? {} : { [P in K]: V }
+}): { [P in K]?: Exclude<V, undefined> } =>
+  (value !== undefined ? { [key]: value } : {}) as { [P in K]?: Exclude<V, undefined> }
 
 /** Type that removes keys with undefined values from an object type */
 type DefinedProps<T extends Record<string, unknown>> = {
