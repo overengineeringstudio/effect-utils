@@ -42,7 +42,11 @@ grep -F 'P1 cache publisher (decision 0037)' "$publisher" >/dev/null
 grep -F 'publish-products:' "$workflow" >/dev/null
 grep -F 'CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}' "$workflow" >/dev/null
 grep -F 'pull-requests: write' "$workflow" >/dev/null
-grep -F 'nix/buck2-products/publish.sh --proposal "$proposal"' "$workflow" >/dev/null
+grep -F 'nix/buck2-products/publish.sh --proposal "$proposal" --product megarepo' "$workflow" >/dev/null
+if grep -F 'product_refs' "$workflow" >/dev/null; then
+  echo "buck2-cache-products-test: publication workflow still prebuilds the complete inventory" >&2
+  exit 1
+fi
 if grep -E '(^|[[:space:]])set[[:space:]]+-[^[:space:]]*x' "$publisher" >/dev/null; then
   echo "buck2-cache-products-test: publisher enables shell tracing around secrets" >&2
   exit 1
@@ -157,6 +161,83 @@ jq -e --arg prefix "$local_cache_url/serve/" '
   (.products[0].artifactUrl | startswith($prefix))
 ' "$tmp/first-manifest.json" >/dev/null
 
+
+mkdir -p "$tmp/scope-output" "$tmp/scope-repo/nix/buck2-products" "$tmp/scope-bin" "$tmp/scope-cache"
+printf 'megarepo\n' >"$tmp/scope-output/mr.js"
+scope_sha="$(sha256sum "$tmp/scope-output/mr.js" | cut -d' ' -f1)"
+scope_integrity="$(nix hash convert --hash-algo sha256 --to sri "$scope_sha")"
+scope_size="$(stat -c '%s' "$tmp/scope-output/mr.js")"
+scope_target='effect_utils//packages/@overeng/megarepo:megarepo-candidate'
+cat >"$tmp/scope-output/descriptor.json" <<EOF
+{"integrity":"$scope_integrity","productName":"megarepo","sizeBytes":$scope_size,"target":"$scope_target"}
+EOF
+cat >"$tmp/scope-output/provenance.json" <<EOF
+{"producerCommit":"1111111111111111111111111111111111111111","productDigest":"$scope_sha","schema":"effect-utils/buck-product-provenance/v1","target":"$scope_target"}
+EOF
+scope_store="$(nix store add-path "$tmp/scope-output")"
+cat >"$tmp/scope-repo/nix/buck2-products/cache-targets.json" <<'EOF'
+{
+  "products": [
+    {
+      "kind": "javascript",
+      "name": "megarepo",
+      "outputName": "mr.js",
+      "packagePath": "packages/@overeng/megarepo",
+      "packageTreePath": "packages/@overeng/megarepo",
+      "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate",
+      "version": "0.0.0"
+    },
+    {
+      "kind": "javascript",
+      "name": "unrelated-broken",
+      "outputName": "broken.js",
+      "packagePath": "packages/@overeng/unrelated-broken",
+      "packageTreePath": "packages/@overeng/unrelated-broken",
+      "target": "effect_utils//packages/@overeng/unrelated-broken:unrelated-broken-candidate",
+      "version": "0.0.0"
+    }
+  ],
+  "schema": "effect-utils/buck-cache-targets/v1",
+  "schemaVersion": 1
+}
+EOF
+cp "$tmp/fake-bin/git" "$tmp/scope-bin/git"
+cat >"$tmp/scope-bin/nix" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  build)
+    printf '%s\n' "$*" >>"$SCOPE_BUILD_LOG"
+    case "$*" in
+      *'#buck-product-megarepo-from-source') printf '%s\n' "$SCOPE_STORE_PATH" ;;
+      *) exit 97 ;;
+    esac
+    ;;
+  copy) ;;
+  hash) printf '%s\n' "$SCOPE_INTEGRITY" ;;
+  *) exit 2 ;;
+esac
+EOF
+chmod +x "$tmp/scope-bin/"*
+scope_cache_url="file://$tmp/scope-cache"
+SCOPE_BUILD_LOG="$tmp/scope-build.log" \
+  SCOPE_STORE_PATH="$scope_store" \
+  SCOPE_INTEGRITY="$scope_integrity" \
+  GITHUB_EVENT_NAME=push \
+  GITHUB_REF=refs/heads/main \
+  CACHIX_CACHE_URL="$scope_cache_url" \
+  BUCK2_CACHE_PRODUCTS_REPO="$tmp/scope-repo" \
+  PATH="$tmp/scope-bin:$PATH" \
+  bash "$publisher" --product megarepo --proposal "$tmp/scope-manifest.json"
+[[ "$(wc -l <"$tmp/scope-build.log")" == 1 ]] &&
+  grep -F '#buck-product-megarepo-from-source' "$tmp/scope-build.log" >/dev/null &&
+  ! grep -F 'unrelated-broken' "$tmp/scope-build.log" >/dev/null || {
+  echo "buck2-cache-products-test: scoped Megarepo publication evaluated an unrelated product" >&2
+  exit 1
+}
+jq -e '
+  .schema == "effect-utils/buck-cache-products/v2" and
+  [.products[].name] == ["megarepo"]
+' "$tmp/scope-manifest.json" >/dev/null
 
 mkdir -p "$tmp/products"
 cp "$repo_root/nix/buck2-products/default.nix" "$tmp/products/default.nix"
