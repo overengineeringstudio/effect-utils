@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 import { buck2SemanticFingerprint } from '../../genie/buck2/mod.ts'
+import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 
 const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
 
@@ -802,11 +802,7 @@ const decodeSidecarEntry = ({
   if (sha256Pattern.test(digest) === false)
     return fail(`${location}.sha256 must be lowercase sha256`)
   const sizeBytes = entry.sizeBytes
-  if (
-    typeof sizeBytes !== 'number' ||
-    Number.isSafeInteger(sizeBytes) === false ||
-    sizeBytes <= 0
-  )
+  if (typeof sizeBytes !== 'number' || Number.isSafeInteger(sizeBytes) === false || sizeBytes <= 0)
     return fail(`${location}.sizeBytes must be a positive safe integer`)
   return {
     bins,

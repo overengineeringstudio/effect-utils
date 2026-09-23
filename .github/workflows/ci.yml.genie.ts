@@ -1401,7 +1401,6 @@ const withCiOtelCapture = (jobMap: Record<string, any>) =>
     }),
   )
 
-
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   trustTier: 'public',

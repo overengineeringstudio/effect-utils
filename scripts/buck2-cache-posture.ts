@@ -59,8 +59,7 @@ export const standaloneCachePostureConfig = ({
   readonly env: Readonly<Record<string, string | undefined>>
 }): string | undefined => {
   const withoutManaged = withoutManagedBlock(current)
-  const managed =
-    env['BUCK2_NO_REMOTE_CACHE'] === '1' ? PUBLIC_CACHE_BLOCK : TRUSTED_CACHE_BLOCK
+  const managed = env['BUCK2_NO_REMOTE_CACHE'] === '1' ? PUBLIC_CACHE_BLOCK : TRUSTED_CACHE_BLOCK
   const unmanaged = withoutManaged.content
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }

@@ -13,7 +13,9 @@ const fail = (message: string): never => {
 }
 
 const sha = (algorithm: 'sha256' | 'sha512', bytes: Uint8Array): string =>
-  createHash(algorithm).update(bytes).digest(algorithm === 'sha512' ? 'base64' : 'hex')
+  createHash(algorithm)
+    .update(bytes)
+    .digest(algorithm === 'sha512' ? 'base64' : 'hex')
 
 export const assertArchiveAllowedForTier = ({
   archive,
@@ -39,8 +41,7 @@ export const verifyArchive = ({
 }): void => {
   const integrity = `sha512-${sha('sha512', bytes)}`
   const digest = sha('sha256', bytes)
-  if (integrity !== archive.integrity)
-    return fail(`lock SHA-512 mismatch for ${packageIdentity}`)
+  if (integrity !== archive.integrity) return fail(`lock SHA-512 mismatch for ${packageIdentity}`)
   if (digest !== archive.sha256) return fail(`SHA-256 mismatch for ${packageIdentity}`)
   if (bytes.byteLength !== archive.sizeBytes)
     return fail(
@@ -112,7 +113,9 @@ const main = async (): Promise<void> => {
     if (put.ok === false) return fail(`CAS PUT returned ${put.status} for ${packageIdentity}`)
     uploaded += 1
   }
-  process.stdout.write(`pnpm archive seed complete: ${present} present, ${uploaded} uploaded, tier ${tier}\n`)
+  process.stdout.write(
+    `pnpm archive seed complete: ${present} present, ${uploaded} uploaded, tier ${tier}\n`,
+  )
 }
 
 if (import.meta.main) await main()

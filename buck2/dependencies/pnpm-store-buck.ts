@@ -231,10 +231,7 @@ export const renderPnpmPackageTargets = ({
     const archive = sidecar.packages[packageKey]
     if (archive === undefined || packageMetadata.url === undefined)
       return fail(`missing sidecar entry ${packageKey}`)
-    if (
-      archive.packageIdentity !== packageKey ||
-      archive.registryUrl !== packageMetadata.url
-    ) {
+    if (archive.packageIdentity !== packageKey || archive.registryUrl !== packageMetadata.url) {
       return fail(`sidecar archive binding mismatch ${packageKey}`)
     }
     lines.push(
