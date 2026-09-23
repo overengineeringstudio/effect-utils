@@ -115,6 +115,29 @@ let
           }' > "$out/descriptor.json"
       '';
 
+  incompatibleDynamicExport =
+    pkgs.runCommand "buck2-bridge-incompatible-dynamic-export"
+      {
+        nativeBuildInputs = [
+          pkgs.gnutar
+          pkgs.jq
+          pkgs.openssl
+        ];
+      }
+      ''
+        mkdir -p payload "$out"
+        tar --extract --file ${dynamicExport}/artifact.tar --directory payload
+        chmod u+w 'payload/lib/libfixture[bracket].so'
+        sed -i 's/F  Flags: O/F  Flags: X/g' 'payload/lib/libfixture[bracket].so'
+        tar --create --format=gnu --sort=name --mtime='@1' --owner=0 --group=0 \
+          --numeric-owner --file "$out/artifact.tar" --directory payload .
+        digest="sha256-$(openssl dgst -sha256 -binary "$out/artifact.tar" | openssl base64 -A)"
+        size="$(stat --format=%s "$out/artifact.tar")"
+        jq --arg digest "$digest" --argjson size "$size" \
+          '.payload.digest.sri = $digest | .payload.sizeBytes = $size' \
+          ${dynamicExport}/descriptor.json > "$out/descriptor.json"
+      '';
+
   failingVersionReadelf = pkgs.writeShellScript "failing-version-readelf" ''
     if [ "''${1-}" = --version-info ]; then
       exit 9
@@ -280,6 +303,7 @@ in
 {
   inherit
     dynamicExport
+    incompatibleDynamicExport
     staticElfProduct
     failingVersionReadelf
     emptyVersionReadelf

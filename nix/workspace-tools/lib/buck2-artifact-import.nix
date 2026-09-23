@@ -129,6 +129,14 @@ else
       ${lib.optionalString (runtimeKind == "elf-dynamic") ''
         ${pkgs.findutils}/bin/find "$out" -type f -exec chmod u+w {} +
         autoPatchelf "$out"
+        while IFS= read -r entrypoint; do
+          if ! load_error="$(${pkgs.stdenv.cc.bintools.dynamicLinker} --list "$out/$entrypoint" 2>&1 >/dev/null)" \
+            || [ -n "$load_error" ]; then
+            printf '%s\n' "$load_error" >&2
+            echo "buck2-artifact-import: dynamic ELF runtime is incompatible: $entrypoint" >&2
+            exit 1
+          fi
+        done < <(${pkgs.jq}/bin/jq -r '.entrypoints[]' ${descriptorFile})
       ''}
 
       ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +

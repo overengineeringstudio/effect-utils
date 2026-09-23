@@ -168,6 +168,23 @@ expect_build_failure \
   "foreign dynamic ELF platform" \
   "elf-dynamic platform must match pkgs.stdenv.hostPlatform" \
   "$foreign_dynamic_platform_expr"
+incompatible_dynamic_export="$(build_expr "($base_expr).incompatibleDynamicExport")"
+export BUCK2_BRIDGE_INCOMPATIBLE_DYNAMIC_EXPORT="$incompatible_dynamic_export"
+incompatible_dynamic_import_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_INCOMPATIBLE_DYNAMIC_EXPORT\");
+  descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+in test.mkImport {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = exported + \"/artifact.tar\";
+}"
+expect_build_failure \
+  "incompatible dynamic ELF symbol floor" \
+  "dynamic ELF runtime is incompatible: bin/fixture-tool" \
+  "$incompatible_dynamic_import_expr"
+
 
 dynamic_import_expr="let
   $common_let
