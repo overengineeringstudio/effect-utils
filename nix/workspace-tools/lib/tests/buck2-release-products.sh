@@ -77,6 +77,27 @@ cat >"$tmp/collision-repo/nix/buck2-products/cache-targets.json" <<'EOF'
   "schemaVersion": 1
 }
 EOF
+cat >"$tmp/collision-repo/nix/buck2-products/manifest.json" <<EOF
+{
+  "products": [{
+    "artifactUrl": "https://cache.invalid/fixture.js",
+    "descriptor": {"integrity":"$collision_integrity","productName":"fixture","sizeBytes":8,"target":"effect_utils//packages/@overeng/fixture:fixture-candidate"},
+    "descriptorSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "name": "fixture",
+    "provenance": {
+      "producerCommit": "1111111111111111111111111111111111111111",
+      "productDigest": "$collision_sha",
+      "schema": "effect-utils/buck-product-provenance/v1",
+      "target": "effect_utils//packages/@overeng/fixture:fixture-candidate"
+    },
+    "sha256": "$collision_sha",
+    "size": 8,
+    "storePath": "$collision_store",
+    "version": "1.0.0"
+  }],
+  "schema": "effect-utils/buck-cache-products/v2"
+}
+EOF
 cat >"$tmp/fake-bin/git" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
@@ -201,6 +222,43 @@ cat >"$tmp/scope-repo/nix/buck2-products/cache-targets.json" <<'EOF'
   "schemaVersion": 1
 }
 EOF
+cat >"$tmp/scope-repo/nix/buck2-products/manifest.json" <<'EOF'
+{
+  "products": [
+    {
+      "descriptor": {
+        "productName": "megarepo",
+        "sentinel": "stale-megarepo"
+      },
+      "descriptorSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "release": {
+        "hash": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "name": "stale-mr.js",
+        "tag": "stale-megarepo",
+        "url": "https://example.invalid/stale-mr.js"
+      }
+    },
+    {
+      "descriptor": {
+        "productName": "unrelated-broken",
+        "sentinel": "must-remain-byte-identical"
+      },
+      "descriptorSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "release": {
+        "hash": "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+        "name": "unrelated.js",
+        "tag": "unrelated",
+        "url": "https://example.invalid/unrelated.js"
+      }
+    }
+  ],
+  "schema": "effect-utils/buck2-release-products/v1"
+}
+EOF
+unrelated_before="$(
+  jq -cS '.products[] | select(.descriptor.productName == "unrelated-broken")' \
+    "$tmp/scope-repo/nix/buck2-products/manifest.json"
+)"
 cp "$tmp/fake-bin/git" "$tmp/scope-bin/git"
 cat >"$tmp/scope-bin/nix" <<'EOF'
 #!/usr/bin/env bash
@@ -234,9 +292,23 @@ SCOPE_BUILD_LOG="$tmp/scope-build.log" \
   echo "buck2-cache-products-test: scoped Megarepo publication evaluated an unrelated product" >&2
   exit 1
 }
-jq -e '
-  .schema == "effect-utils/buck-cache-products/v2" and
-  [.products[].name] == ["megarepo"]
+unrelated_after="$(
+  jq -cS '.products[] | select(.descriptor.productName == "unrelated-broken")' \
+    "$tmp/scope-manifest.json"
+)"
+[[ "$unrelated_after" == "$unrelated_before" ]] || {
+  echo "buck2-cache-products-test: scoped publication changed an unrelated legacy product" >&2
+  exit 1
+}
+jq -e --arg digest "$scope_sha" '
+  .schema == "effect-utils/buck-cache-products/v3" and
+  (.products | length == 2) and
+  ([.products[] | select((has("name") | not) and .descriptor.productName == "megarepo")] | length == 0) and
+  ([.products[] | select(.name? == "megarepo")] | length == 1) and
+  (.products[] | select(.name? == "megarepo") |
+    .sha256 == $digest and
+    .provenance.schema == "effect-utils/buck-product-provenance/v1" and
+    .provenance.productDigest == $digest)
 ' "$tmp/scope-manifest.json" >/dev/null
 
 mkdir -p "$tmp/products"
@@ -314,6 +386,7 @@ loader_expr="let
 in {
   inherit (loaded) declaredProductNames publishedProductNames fullyPublished;
   artifactUrl = loaded.products.fixture.artifactUrl;
+  productNames = builtins.attrNames loaded.products;
   sourcePath = builtins.toString loaded.products.fixture.sourceRecipe;
 }"
 summary="$(nix eval --impure --json --expr "$loader_expr")"
@@ -324,6 +397,42 @@ jq -e --arg storePath "$store_path" --arg artifactUrl "$artifact_url" '
   .sourcePath == $storePath and
   .artifactUrl == $artifactUrl
 ' <<<"$summary" >/dev/null
+cat >"$tmp/products/targets.json" <<'EOF'
+{
+  "products": [
+    {
+      "name": "legacy",
+      "target": "effect_utils//packages/@overeng/legacy:legacy-candidate"
+    }
+  ]
+}
+EOF
+legacy_descriptor='{"externalCapabilities":[],"externalModules":[],"integrity":"sha256-qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=","modulePath":"legacy.js","platform":{"abi":"any","architecture":"any","os":"any"},"productKind":"cli","productName":"legacy","provenance":{"configuredTarget":"legacy","dependencyClosureIdentity":"legacy","module":"legacy"},"runtimeContract":"javascript-esm","runtimeContractVersion":"v1","runtimeKind":"node","schema":"effect-utils/javascript-product/v2","sizeBytes":1,"target":"effect_utils//packages/@overeng/legacy:legacy-candidate"}'
+legacy_descriptor_sha="$(printf '%s' "$legacy_descriptor" | sha256sum | cut -d' ' -f1)"
+cp "$tmp/products/manifest.json" "$tmp/products/manifest.v2.json"
+jq -S \
+  --argjson descriptor "$legacy_descriptor" \
+  --arg descriptorSha256 "$legacy_descriptor_sha" \
+  '.schema = "effect-utils/buck-cache-products/v3" |
+   .products += [{
+     descriptor: $descriptor,
+     descriptorSha256: $descriptorSha256,
+     release: {
+       hash: "sha256-qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=",
+       name: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-legacy.js",
+       tag: "buck2-product-v3-legacy-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       url: "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-legacy-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-legacy.js"
+     }
+   }]' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.v3.json"
+mv "$tmp/products/manifest.v3.json" "$tmp/products/manifest.json"
+v3_summary="$(nix eval --impure --json --expr "$loader_expr")"
+jq -e '
+  .fullyPublished == true and
+  .productNames == ["fixture", "legacy"] and
+  .publishedProductNames == ["fixture", "legacy"]
+' <<<"$v3_summary" >/dev/null
+mv "$tmp/products/manifest.v2.json" "$tmp/products/manifest.json"
 
 jq '.products[0].artifactUrl = "https://overeng-effect-utils.cachix.org/serve/11111111111111111111111111111111/fixture.js"' \
   "$tmp/products/manifest.json" >"$tmp/products/manifest.mutated.json"

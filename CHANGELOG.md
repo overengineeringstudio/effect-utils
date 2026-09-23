@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Scoped Buck2 product publication**: Merge refreshed cache products by product
+  identity while retaining unrelated release-backed products, so publishing
+  Megarepo no longer removes the bootstrap tools required by repository checks.
 - **Buck2 product publication**: Scope trusted main-branch publication to the
   reviewed Megarepo source product so unrelated incomplete source recipes no
   longer block its generated cache manifest.

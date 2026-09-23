@@ -23,7 +23,7 @@ Usage: nix/buck2-products/publish.sh [--dry-run] [--product NAME] [--proposal PA
 
 --dry-run       Validate and print the complete publication plan without building or mutating.
 --product NAME  Publish only NAME. May be repeated. The default is the complete generated inventory.
---proposal PATH Write the v2 manifest outside the Git worktree. The default writes it to stdout.
+--proposal PATH Write the merged manifest outside the Git worktree. The default writes it to stdout.
 EOF
 }
 
@@ -38,6 +38,7 @@ while (($#)); do
 done
 
 [[ -f "$targets" && ! -L "$targets" ]] || fail "generated target inventory is missing: $targets"
+[[ -f "$manifest" && ! -L "$manifest" ]] || fail "current product manifest is missing: $manifest"
 command -v jq >/dev/null || fail "jq is required"
 jq -e '
   (keys | sort) == ["products", "schema", "schemaVersion"] and
@@ -54,6 +55,42 @@ jq -e '
   ([.products[].name] | length == (unique | length)) and
   ([.products[].target] | length == (unique | length))
 ' "$targets" >/dev/null || fail "target inventory violates effect-utils/buck-cache-targets/v1"
+jq -e '
+  def legacy:
+    (keys | sort) == ["descriptor", "descriptorSha256", "release"] and
+    (.descriptor.productName | type == "string" and length > 0);
+  def cached:
+    (
+      (has("descriptor") and
+       (keys | sort) == ["artifactUrl", "descriptor", "descriptorSha256", "name", "provenance", "sha256", "size", "storePath", "version"])
+      or
+      (has("descriptor") | not) and
+      (keys | sort) == ["artifactUrl", "name", "provenance", "sha256", "size", "storePath", "version"]
+    ) and
+    (.name | type == "string" and length > 0) and
+    (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+    (.provenance |
+      (keys | sort) == ["producerCommit", "productDigest", "schema", "target"] and
+      .schema == "effect-utils/buck-product-provenance/v1" and
+      (.producerCommit | test("^[0-9a-f]{40}$")) and
+      (.target | type == "string" and length > 0)) and
+    .provenance.productDigest == .sha256;
+  def identity: .name // .descriptor.productName;
+  (keys | sort) == ["products", "schema"] and
+  (.products | type == "array" and length > 0) and
+  (
+    if .schema == "effect-utils/buck2-release-products/v1" then
+      all(.products[]; legacy)
+    elif .schema == "effect-utils/buck-cache-products/v2" then
+      all(.products[]; cached)
+    elif .schema == "effect-utils/buck-cache-products/v3" then
+      all(.products[]; legacy or cached)
+    else
+      false
+    end
+  ) and
+  ([.products[] | identity] | length == (unique | length))
+' "$manifest" >/dev/null || fail "current product manifest has an unsupported or invalid schema"
 
 selection='.'
 if ((${#selected_products[@]})); then
@@ -231,7 +268,20 @@ while IFS= read -r entry; do
 done <"$entries"
 
 proposal_stage="$stage/manifest.json"
-jq -sS '{schema:"effect-utils/buck-cache-products/v2",products:sort_by(.name)}' "$entries" >"$proposal_stage"
+replacements="$(jq -csS '.' "$entries")"
+jq -S --argjson replacements "$replacements" '
+  def identity: .name // .descriptor.productName;
+  ($replacements | map({key: identity, value: .}) | from_entries) as $replacementByName |
+  ([.products[] | . as $product | select($replacementByName[$product | identity] == null)] + $replacements | sort_by(identity)) as $products |
+  {
+    schema:
+      (if all($products[]; has("name"))
+       then "effect-utils/buck-cache-products/v2"
+       else "effect-utils/buck-cache-products/v3"
+       end),
+    products: $products
+  }
+' "$manifest" >"$proposal_stage"
 if [[ -n "$proposal" ]]; then
   cp "$proposal_stage" "$proposal"
   printf 'buck2-cache-products-publish: proposed manifest: %s\n' "$proposal" >&2
