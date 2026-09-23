@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { Duration, Effect, FileSystem, Option, Result, Schema, Stream } from 'effect'
+import { Duration, Effect, FileSystem, Option, Result, Schema, Semaphore, Stream } from 'effect'
 import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/unstable/process/ChildProcess'
@@ -47,6 +47,13 @@ type StagedCompiledBinaryImportGraph = {
   stagePath: string
   tempRoot: string
 }
+
+// Compiled Bun builds share process-global state; keep staging through import single-flight.
+const compiledBinaryImportGraphSemaphore = Semaphore.makeUnsafe(1)
+
+const withCompiledBinaryImportGraphPermit = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> => compiledBinaryImportGraphSemaphore.withPermits(1)(effect)
 
 const IMPORT_SPECIFIER_REGEX = /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?(['"])([^'"]+)\1/g
 
@@ -793,9 +800,14 @@ const computeLocationFromPath = ({
 export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   genieFilePath,
   cwd,
+  compiledBinaryImportGraphLoader,
 }: {
   genieFilePath: string
   cwd: string
+  /** Injectable boundary for embedding and deterministic concurrency verification. */
+  compiledBinaryImportGraphLoader?:
+    | (() => Effect.Effect<Record<string, unknown>, GenieImportError, FileSystem.FileSystem>)
+    | undefined
 }) {
   yield* Observability.annotateFile({
     label: Observability.relativePath({ cwd, filePath: genieFilePath }),
@@ -819,15 +831,20 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
         }),
     })
 
+  const loadCompiledBinaryImportGraph =
+    compiledBinaryImportGraphLoader ??
+    (() =>
+      Effect.gen(function* () {
+        const staged = yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath })
+        const importPath = `${pathToFileURL(staged.stagePath).href}?import=${Date.now()}`
+        return yield* importModule(importPath).pipe(
+          Effect.ensuring(removeStagedCompiledBinaryImportGraph(staged)),
+        )
+      }))
+
   const module =
     isCompiledBinary() === true
-      ? yield* Effect.gen(function* () {
-          const staged = yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath })
-          const importPath = `${pathToFileURL(staged.stagePath).href}?import=${Date.now()}`
-          return yield* importModule(importPath).pipe(
-            Effect.ensuring(removeStagedCompiledBinaryImportGraph(staged)),
-          )
-        })
+      ? yield* loadCompiledBinaryImportGraph().pipe(withCompiledBinaryImportGraphPermit)
       : yield* importModule(`${genieFilePath}?import=${Date.now()}`)
 
   const exported = module.default
