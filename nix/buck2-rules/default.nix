@@ -42,11 +42,25 @@ pkgs.runCommand "buck2-rules"
     '') files}
     cp ${./inventory.json} "$out/inventory.json"
     cat > "$out/BUCK" <<'BUCK'
+    alias(
+        name = "package_tree_runtime",
+        actual = "//packages/@overeng/buck2-tools:package_tree_runtime",
+        visibility = ["PUBLIC"],
+    )
+
+    alias(
+        name = "package_command_runtime",
+        actual = "//packages/@overeng/buck2-tools:package_command_runtime",
+        visibility = ["PUBLIC"],
+    )
+    BUCK
+    mkdir -p "$out/packages/@overeng/buck2-tools"
+    cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
     filegroup(
         name = "package_tree_runtime",
         srcs = {
-            "package-tree.ts": "packages/@overeng/buck2-tools/src/package-tree.ts",
-            "real-path.ts": "packages/@overeng/buck2-tools/src/real-path.ts",
+            "package-tree.ts": "src/package-tree.ts",
+            "real-path.ts": "src/real-path.ts",
         },
         visibility = ["PUBLIC"],
     )
@@ -54,16 +68,37 @@ pkgs.runCommand "buck2-rules"
     filegroup(
         name = "package_command_runtime",
         srcs = {
-            "package-command-runner.ts": "packages/@overeng/buck2-tools/src/package-command-runner.ts",
-            "real-path.ts": "packages/@overeng/buck2-tools/src/real-path.ts",
-            "typescript-runner.ts": "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+            "package-command-runner.ts": "src/package-command-runner.ts",
+            "real-path.ts": "src/real-path.ts",
+            "typescript-runner.ts": "src/typescript-runner.ts",
+        },
+        visibility = ["PUBLIC"],
+    )
+
+    filegroup(
+        name = "javascript_action_runtime",
+        srcs = {
+            "javascript-runner.ts": "src/javascript-runner.ts",
+            "typescript-runner.ts": "src/typescript-runner.ts",
         },
         visibility = ["PUBLIC"],
     )
 
     export_file(
-        name = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
-        src = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+        name = "typescript-runner.ts",
+        src = "src/typescript-runner.ts",
+        visibility = ["PUBLIC"],
+    )
+
+    export_file(
+        name = "src/static-check-runner.ts",
+        src = "src/static-check-runner.ts",
+        visibility = ["PUBLIC"],
+    )
+
+    export_file(
+        name = "src/repository-policy-runner.ts",
+        src = "src/repository-policy-runner.ts",
         visibility = ["PUBLIC"],
     )
     BUCK
@@ -71,9 +106,4 @@ pkgs.runCommand "buck2-rules"
     mkdir -p "$out/prelude"
     tar -xzf ${buck2.passthru.prelude} --strip-components=1 -C "$out/prelude"
 
-    substituteInPlace "$out/buck2/toolchains/BUCK" \
-      --replace-fail '"//.buck2/capabilities:defs.bzl"' '"@capabilities//:defs.bzl"'
-    substituteInPlace "$out/buck2/toolchains/configured.bzl" \
-      --replace-fail '"//.buck2/capabilities:defs.bzl"' '"@capabilities//:defs.bzl"' \
-      --replace-fail '"//.buck2/capabilities/generations/' '"@capabilities//generations/'
   ''
