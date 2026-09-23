@@ -353,8 +353,8 @@ describe('commit worktree remnant cleanup', () => {
         ).toBe(true)
         const physicalTarget = yield* fixture.fs.realPath(fixture.targetPath)
         const registrations = yield* Git.listWorktrees(fixture.bareRepoPath)
-        const registeredPhysicalPaths = yield* Effect.all(
-          registrations.map((registration) => fixture.fs.realPath(registration.path)),
+        const registeredPhysicalPaths = yield* Effect.forEach(registrations, (registration) =>
+          fixture.fs.realPath(registration.path),
         )
         expect(registeredPhysicalPaths).toContain(physicalTarget)
       },
