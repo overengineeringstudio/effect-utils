@@ -34,10 +34,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **@overeng/restate-effect**: Publish the Buck-built package archive through the
-  shared product cache for source-free downstream consumption.
-- **@overeng/notion-react**: Publish the Buck-built package archive through the
-  shared product cache for source-free downstream consumption.
+- **@overeng/restate-effect** and **@overeng/notion-react**: Register Buck-built
+  package archives for digest-addressed private-tier acquisition without
+  selecting the public product publisher.
 - **Genie**: Include the existing Buck-built CLI product in trusted
   main-branch cache publication.
 

@@ -74,6 +74,17 @@ rows="$({
   fi
 } | jq -csS 'sort_by(.name)')"
 
+while IFS= read -r row; do
+  [[ "$(jq -r '.kind' <<<"$row")" == package ]] || continue
+  name="$(jq -r '.name' <<<"$row")"
+  package_path="$(jq -r '.packagePath' <<<"$row")"
+  package_manifest="$repo_root/$package_path/package.json"
+  [[ -f "$package_manifest" && ! -L "$package_manifest" ]] ||
+    fail "package product manifest is missing: $package_manifest"
+  jq -e --arg name "$name" '.name == $name and (.private != true)' "$package_manifest" >/dev/null ||
+    fail "refusing public cache publication for private or misclassified package: $name"
+done < <(jq -c '.[]' <<<"$rows")
+
 plan="$(jq -cnS --arg cache "$cache" --argjson products "$rows" '{schema:"effect-utils/buck-cache-publication-plan/v1",cache:$cache,products:$products}')"
 if $dry_run; then
   [[ -z "$proposal" ]] || fail "--proposal is unavailable in dry-run mode"
