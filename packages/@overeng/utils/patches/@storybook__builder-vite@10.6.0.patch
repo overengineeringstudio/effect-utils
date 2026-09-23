@@ -1,0 +1,13 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1753,8 +1753,8 @@ async function createViteServer(options, devServer) {
+     server: {
+       allowedHosts,
+       middlewareMode: !0,
++      port: options.port,
+       hmr: {
+-        port: options.port,
+         server: devServer
+       },
+       fs: {

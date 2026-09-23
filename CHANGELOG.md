@@ -494,10 +494,19 @@ character after JSON`, failing every build against such a lockfile.
   `@pnpm/exe.<target>` hashes, and the version is synced through
   `DEFAULT_AGGREGATE_PACKAGE_MANAGER` (hence the generated root `package.json`
   and `pnpm-install-contract.json`), the lock-mutator evaluation allowlist, and
-  the pnpm fixture manifests. Verified on the built package: `pnpm --version`
-  reports 12.4.1, the store layout stays `v11`, and `pnpm install
---frozen-lockfile --ignore-scripts` over all 39 workspace projects succeeds
-  with the lockfile unchanged.
+  the pnpm fixture manifests. The wrapper disables pnpm's package-manager
+  bootstrap because the derivation already provides the exact authoritative
+  version; this keeps sandboxed runtime invocations from trying to download a
+  second pnpm. Verified on the built package: `pnpm --version` reports 12.4.1,
+  the store layout stays `v11`, and `pnpm install --frozen-lockfile
+  --ignore-scripts` over all 39 workspace projects succeeds with the lockfile
+  unchanged.
+
+- **@overeng/utils / Storybook**: distribute the Storybook 10.6 builder-vite
+  patch that maps Storybook's `options.port` to Vite's HTTP `server.port`
+  while preserving `server.hmr.server`. This lets Devnet supply an exact
+  listener port without changing Storybook's WebSocket server authority.
+
 - **Buck2 / TypeScript authority**: transfer all 39 TypeScript projects to
   package-local Buck targets, including the independent React Inspector strict
   consumer and the five bootstrap-critical packages. Delete the root

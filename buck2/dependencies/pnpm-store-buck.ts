@@ -2,7 +2,6 @@ import {
   nativeDependencyPolicy,
   nixGraftedStoreOverridePackages,
 } from '../../genie/native-dependency-policy.ts'
-
 import type { PnpmLockMetadata, PnpmSha256Sidecar } from './pnpm-lock.ts'
 import type {
   PnpmStoreEdgeSet,
@@ -219,6 +218,13 @@ export const renderPnpmPackageTargets = ({
   metadata: PnpmLockMetadata
   sidecar: PnpmSha256Sidecar
 }): string => {
+  const buckPatchTarget = (patchPath: string): string => {
+    const marker = '/patches/'
+    const markerIndex = patchPath.indexOf(marker)
+    return markerIndex < 0
+      ? `//:${patchPath}`
+      : `//${patchPath.slice(0, markerIndex)}:patches/${patchPath.slice(markerIndex + marker.length)}`
+  }
   const lines: string[] = []
   for (const [packageKey, packageMetadata] of sortedEntries(metadata.packages)) {
     if (packageMetadata.resolution !== 'registry') continue
@@ -234,7 +240,7 @@ export const renderPnpmPackageTargets = ({
       `    bins = ${renderDict({ indent: 4, record: hash.bins })},`,
       ...(packageMetadata.patch === undefined
         ? []
-        : [`    patches = [${starlarkString(`//:${packageMetadata.patch.path}`)}],`]),
+        : [`    patches = [${starlarkString(buckPatchTarget(packageMetadata.patch.path))}],`]),
       ')',
       '',
     )
@@ -267,9 +273,7 @@ export const renderPnpmPlatformGatedPackages = ({
     if (members === undefined) byFamily.set(family, [name])
     else members.push(name)
   }
-  const families = [...byFamily.keys()].toSorted((left, right) =>
-    compareStrings({ left, right }),
-  )
+  const families = [...byFamily.keys()].toSorted((left, right) => compareStrings({ left, right }))
   const capabilities: Record<string, string> = {}
   for (const family of families) {
     const policy = nativeDependencyPolicy[family as keyof typeof nativeDependencyPolicy]

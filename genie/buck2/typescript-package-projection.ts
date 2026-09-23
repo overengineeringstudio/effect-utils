@@ -1127,6 +1127,16 @@ export const buck2TypeScriptPackageProjection = ({
       renderBuck2Visibility({ visibility }),
       ')',
       '',
+      ...testDataFiles
+        .filter((file) => file.endsWith('.patch'))
+        .flatMap((file) => [
+          'export_file(',
+          `    name = ${starlarkString(file)},`,
+          `    src = ${starlarkString(file)},`,
+          renderBuck2Visibility({ visibility }),
+          ')',
+          '',
+        ]),
       'export_materialization_inputs([',
       ...packageSources.map((source) => `    ${starlarkString(source)},`),
       '])',

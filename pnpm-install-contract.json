@@ -152,7 +152,8 @@
       "packages/@overeng/utils-dev"
     ],
     "patchedDependencies": {
-      "@myobie/pty@0.10.0": "patches/@myobie__pty@0.10.0.patch"
+      "@myobie/pty@0.10.0": "patches/@myobie__pty@0.10.0.patch",
+      "@storybook/builder-vite@10.6.0": "packages/@overeng/utils/patches/@storybook__builder-vite@10.6.0.patch"
     }
   }
 }
