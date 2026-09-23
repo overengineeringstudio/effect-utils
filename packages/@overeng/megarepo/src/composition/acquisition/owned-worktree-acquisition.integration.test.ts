@@ -344,6 +344,7 @@ describe('direct composed worktree creation', () => {
       expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`))).toBe(
         false,
       )
+      expect(yield* Git.listWorktrees(fixture.bareRepo)).toEqual([])
       expect(yield* Git.refExists({ repoPath: fixture.bareRepo, ref: 'refs/heads/feature' })).toBe(
         false,
       )
