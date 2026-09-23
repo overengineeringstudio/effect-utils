@@ -35,7 +35,6 @@ let
           (repositoryRoot + "/patches")
           (repositoryRoot + "/nix/weaver-flake/flake.nix")
           (repositoryRoot + "/scripts")
-          (repositoryRoot + "/tsconfig.lint.json")
           (repositoryRoot + "/buck2")
           (repositoryRoot + "/packages/@overeng")
         ];

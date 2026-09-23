@@ -1,13 +1,18 @@
 import { spawn } from 'node:child_process'
+import {
+  chmod,
+  lstat,
+  mkdtemp,
+  rm,
+  stat,
+} from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 
 import {
   authoritativeBuck2TypeScriptDeclarations,
-  authoritativeBuck2TypeScriptProjects,
-  buck2TypeScriptTestCollectionTargets,
-  buck2TypeScriptTestTargets,
   type AuthoritativeBuck2TypeScriptDeclaration,
-  type AuthoritativeBuck2TypeScriptProject,
 } from './typescript-admissions.ts'
 
 /** Executable followed by its exact ordered argument vector. */
@@ -40,60 +45,41 @@ export type CommandRuntime = {
   }) => void
 }
 
-/** Plans one declaration publisher invocation for every emitting authoritative project. */
+/** Plans one in-process declaration publisher invocation for every emitting project. */
 export const planTypeScriptDistMaterialization = ({
   admissions = authoritativeBuck2TypeScriptDeclarations,
-  bashBin,
+  buck2Bin,
+  bunBin,
+  chmodBin,
+  mvBin,
   root,
+  runtimeSource,
+  workspaceRoot,
 }: {
   readonly admissions?: readonly AuthoritativeBuck2TypeScriptDeclaration[]
-  readonly bashBin: string
+  readonly buck2Bin: string
+  readonly bunBin: string
+  readonly chmodBin: string
+  readonly mvBin: string
   readonly root: string
+  readonly runtimeSource: string
+  readonly workspaceRoot: string
 }): readonly CommandArgv[] =>
   admissions.map(
     ({ declarationEntrypoint, distTarget, packagePath }): CommandArgv => [
-      bashBin,
-      `${root}/scripts/typescript-materialize-dist.sh`,
+      bunBin,
+      runtimeSource,
+      'materialize-one',
       root,
+      workspaceRoot,
+      buck2Bin,
+      mvBin,
+      chmodBin,
       packagePath,
       qualifyEffectUtilsLabel(distTarget),
       declarationEntrypoint,
     ],
   )
-
-/**
- * Plans the single Buck build used by buck2:check, preserving target order.
- *
- * Every declared test lane contributes both its execution target and its inventory target. The
- * static aggregate is included here as another governed authority surface rather than a parallel
- * source-side producer.
- */
-export const planBuck2AuthorityBuild = ({
-  admissions = authoritativeBuck2TypeScriptProjects,
-  buck2Bin,
-  collectionTargets = buck2TypeScriptTestCollectionTargets,
-  staticTargets = ['effect_utils//buck2/static:check'],
-  testTargets = buck2TypeScriptTestTargets,
-}: {
-  readonly admissions?: readonly AuthoritativeBuck2TypeScriptProject[]
-  readonly buck2Bin: string
-  /** Fully qualified inventory labels. */
-  readonly collectionTargets?: readonly string[]
-  /** Fully qualified static-operation labels. */
-  readonly staticTargets?: readonly string[]
-  /** Fully qualified execution labels. */
-  readonly testTargets?: readonly string[]
-}): CommandArgv => [
-  buck2Bin,
-  'build',
-  ...admissions.map(({ typecheckTarget }) => qualifyEffectUtilsLabel(typecheckTarget)),
-  ...testTargets,
-  ...collectionTargets,
-  ...staticTargets,
-  'effect_utils//buck2/toolchains:archive_tool',
-  'effect_utils//buck2/toolchains:product_tool',
-  '--local-only',
-]
 
 /** Runs commands sequentially and forwards task termination signals to the active child. */
 export const executeCommandPlan = async ({
@@ -119,6 +105,128 @@ export const executeCommandPlan = async ({
     }
   }
   return { _tag: 'Status', status: 0 }
+}
+
+const isPresent = async (path: string): Promise<boolean> => {
+  try {
+    await lstat(path)
+    return true
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+const validateDist = async ({
+  candidate,
+  context,
+  declarationEntrypoint,
+}: {
+  readonly candidate: string
+  readonly context: string
+  readonly declarationEntrypoint: string
+}): Promise<void> => {
+  const metadata = await stat(candidate).catch(() => undefined)
+  if (metadata?.isDirectory() !== true)
+    throw new Error(`${context} did not materialize a directory: ${candidate}`)
+  const declaration = join(candidate, declarationEntrypoint)
+  const declarationMetadata = await stat(declaration).catch(() => undefined)
+  if (declarationMetadata?.isFile() !== true)
+    throw new Error(`${context} is missing ${declarationEntrypoint}: ${candidate}`)
+}
+
+const successful = (outcome: CommandOutcome): boolean =>
+  outcome._tag === 'Status' && outcome.status === 0
+
+/**
+ * Builds and atomically publishes one declaration tree without a shell-script producer.
+ *
+ * GNU `mv --exchange --no-copy` remains the filesystem primitive because Node has no
+ * renameat2 exchange API. The TypeScript runtime owns validation, rollback, and cleanup.
+ */
+export const materializeTypeScriptDist = async ({
+  buck2Bin,
+  chmodBin,
+  declarationEntrypoint,
+  mvBin,
+  packagePath,
+  root,
+  runtime = nodeCommandRuntime,
+  target,
+  workspaceRoot,
+}: {
+  readonly buck2Bin: string
+  readonly chmodBin: string
+  readonly declarationEntrypoint: string
+  readonly mvBin: string
+  readonly packagePath: string
+  readonly root: string
+  readonly runtime?: CommandRuntime
+  readonly target: string
+  readonly workspaceRoot: string
+}): Promise<CommandOutcome> => {
+  const packageDirectory = resolve(root, packagePath)
+  const dist = join(packageDirectory, 'dist')
+  const stagingRoot = await mkdtemp(join(packageDirectory, '.dist-buck2.'))
+  const staging = join(stagingRoot, 'dist')
+  let hadDist = false
+  try {
+    const previousDirectory = process.cwd()
+    process.chdir(workspaceRoot)
+    const buildOutcome = await executeCommandPlan({
+      commands: [[buck2Bin, 'build', target, '--out', staging]],
+      runtime,
+    }).finally(() => process.chdir(previousDirectory))
+    if (successful(buildOutcome) === false) return buildOutcome
+    await validateDist({
+      candidate: staging,
+      context: `Buck target ${target}`,
+      declarationEntrypoint,
+    })
+
+    hadDist = await isPresent(dist)
+    const publishOutcome = await executeCommandPlan({
+      commands: [
+        hadDist
+          ? [mvBin, '--exchange', '--no-copy', '-T', staging, dist]
+          : [mvBin, '--no-copy', '-T', staging, dist],
+      ],
+      runtime,
+    })
+    if (successful(publishOutcome) === false) return publishOutcome
+
+    try {
+      await validateDist({
+        candidate: dist,
+        context: `Published ${packagePath} dist`,
+        declarationEntrypoint,
+      })
+    } catch (error) {
+      console.error(
+        `Published ${packagePath} dist failed validation; restoring the previous dist`,
+      )
+      if (hadDist === true) {
+        const restoreOutcome = await executeCommandPlan({
+          commands: [[mvBin, '--exchange', '--no-copy', '-T', staging, dist]],
+          runtime,
+        })
+        if (successful(restoreOutcome) === false) return restoreOutcome
+      } else {
+        await rm(dist, { force: true, recursive: true })
+      }
+      throw error
+    }
+    return { _tag: 'Status', status: 0 }
+  } finally {
+    if (await isPresent(stagingRoot)) {
+      await executeCommandPlan({
+        commands: [[chmodBin, '-R', 'u+w', stagingRoot]],
+        runtime,
+      })
+      await chmod(stagingRoot, 0o700).catch(() => undefined)
+      await rm(stagingRoot, { force: true, recursive: true })
+    }
+  }
 }
 
 const qualifyEffectUtilsLabel = (label: `//${string}`): string => `effect_utils${label}`
@@ -149,32 +257,51 @@ const nodeCommandRuntime: CommandRuntime = {
 }
 
 const main = async (): Promise<CommandOutcome> => {
-  const [operation, firstArgument, secondArgument, ...unexpectedArguments] = process.argv.slice(2)
-  if (
-    operation === 'materialize-dist' &&
-    firstArgument !== undefined &&
-    secondArgument !== undefined &&
-    unexpectedArguments.length === 0
-  ) {
+  const [operation, ...args] = process.argv.slice(2)
+  if (operation === 'materialize-dist' && args.length === 5) {
+    const [root, workspaceRoot, buck2Bin, mvBin, chmodBin] = args as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
     return executeCommandPlan({
       commands: planTypeScriptDistMaterialization({
-        root: firstArgument,
-        bashBin: secondArgument,
+        buck2Bin,
+        bunBin: process.execPath,
+        chmodBin,
+        mvBin,
+        root,
+        runtimeSource: fileURLToPath(import.meta.url),
+        workspaceRoot,
       }),
     })
   }
-  if (
-    operation === 'build' &&
-    firstArgument !== undefined &&
-    secondArgument === undefined &&
-    unexpectedArguments.length === 0
-  ) {
-    return executeCommandPlan({
-      commands: [planBuck2AuthorityBuild({ buck2Bin: firstArgument })],
+  if (operation === 'materialize-one' && args.length === 8) {
+    const [
+      root,
+      workspaceRoot,
+      buck2Bin,
+      mvBin,
+      chmodBin,
+      packagePath,
+      target,
+      declarationEntrypoint,
+    ] = args as [string, string, string, string, string, string, string, string]
+    return materializeTypeScriptDist({
+      buck2Bin,
+      chmodBin,
+      declarationEntrypoint,
+      mvBin,
+      packagePath,
+      root,
+      target,
+      workspaceRoot,
     })
   }
   console.error(
-    'usage: typescript-authority-runtime.ts materialize-dist <repo-root> <bash-bin> | build <buck2-bin>',
+    'usage: typescript-authority-runtime.ts materialize-dist <repo-root> <workspace-root> <buck2-bin> <mv-bin> <chmod-bin>',
   )
   return { _tag: 'Status', status: 2 }
 }

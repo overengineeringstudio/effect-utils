@@ -4,8 +4,8 @@ Status: accepted
 
 ## Context
 
-All Buck execution — `buck2:check`, dist publication, editor views — requires
-a composed workspace, yet no live development worktree is composed: the
+All Buck execution — root aggregate builds, dist publication, and editor views —
+requires a composed workspace, yet no live development worktree is composed: the
 day-to-day developer and agent loop pays legacy cost, produces no cache
 population, and Phase-3 admissions would deliver value only in CI gates. The
 composition mechanics are proven (production cp-a gate; fresh warm-cache

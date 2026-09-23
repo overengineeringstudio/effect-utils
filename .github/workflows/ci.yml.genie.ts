@@ -404,12 +404,12 @@ const nativeDepPolicyAuditStep = {
 
 // Core product jobs keyed by the shared Genie CI source of truth.
 const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
-  // Buck is the single TypeScript check and declaration authority.
+  // Buck's quick aggregate is the single TypeScript check authority.
   typecheck: job({
     step: {
       name: 'Type check (Buck)',
       env: githubTokenEnv(),
-      run: runDevenvTasksBefore('buck2:check'),
+      run: runDevenvTasksBefore('buck2:quick'),
     },
     extraSteps: [verifyOtelShellEntryStep],
   }),

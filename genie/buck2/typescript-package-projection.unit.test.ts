@@ -196,6 +196,14 @@ describe('declared-closure package projection', () => {
     expect(workflow).not.toContain('composition-state/pnpm-store-pure-v1')
   })
 
+  it('runs the Buck quick aggregate as the CI typecheck authority', () => {
+    const workflow = ciWorkflow.stringify(genieContext)
+    const typecheckJob = workflow.split('\n  typecheck:\n')[1]?.split('\n  lint:\n')[0] ?? ''
+    expect(typecheckJob).toContain('devenv tasks run buck2:quick')
+    expect(typecheckJob).not.toContain('ts:check')
+    expect(typecheckJob).not.toContain('tsconfig.lint.json')
+  })
+
   it('projects package-specific declaration entrypoints for authoritative emits', () => {
     const output = buck2TypeScriptPackageProjection({
       ...buck2TypeScriptAdmissions.stylexTokens,

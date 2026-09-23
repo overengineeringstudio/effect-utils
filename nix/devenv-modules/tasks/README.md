@@ -10,7 +10,6 @@ These tasks are meant to be imported by other repos via the flake input:
 # In another repo's devenv.nix
 imports = [
   (inputs.effect-utils.devenvModules.tasks.check {})
-  (inputs.effect-utils.devenvModules.tasks.ts {})
   (inputs.effect-utils.devenvModules.tasks.lint-oxc {
     lintPaths = [ "src" "test" ];
     geniePatterns = [ "*.genie.ts" ];
@@ -101,9 +100,6 @@ for outer tasks that must complete before the nested devenv process can evaluate
     non-interactive callers; `DEVENV_FORCE_SETUP=1` explicitly overrides it.
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks
-- `ts.nix` - TypeScript tasks (`ts:check`, `ts:check:strict`, build/watch/clean helpers)
-  - `ts:check`, `ts:check:strict`, `ts:build`, `ts:build-watch`, `ts:emit`, and `ts:clean` default to the Nix-managed `tsgo` binary; `ts:emit` uses a dedicated emit graph for no-check emit.
-  - `ts:check:strict` inherits repo-local `ts:check.after` hooks so strict CI stays aligned with consumer generators
 - `vercel.nix` - Vercel deploy tasks
   - Static and build-mode deploys delegate provider behavior to `ci-tools deploy vercel`.
   - Build-mode tasks pass root-directory/build-env config to `ci-tools`; `ci-tools`

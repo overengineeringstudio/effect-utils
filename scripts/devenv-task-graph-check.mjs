@@ -120,7 +120,7 @@ for (const name of [
   'genie:run',
   'genie:check',
   'mr:apply',
-  'buck2:check',
+  'buck2:providers:check',
   'buck2:quick',
   'buck2:all',
   'check:buck2-producer-overlap',
@@ -276,13 +276,16 @@ for (const name of standaloneBuckTaskNames) {
     name: `${name} waits for source-side generation freshness`,
   })
 }
-for (const name of [
-  'buck2:check',
+1: for (const name of [
+  'buck2:providers:check',
   'buck2:quick',
   'buck2:all',
   'buck2:nix-bridge:check',
   'buck2:editor:bootstrap',
 ]) {
+2:       hasMegarepoCheck = false;
+      checkQuickTypecheckTask = "buck2:quick";
+      checkAllTypecheckTask = "buck2:all";
   ok({
     condition: reaches({ start: name, target: 'mr:apply' }) === false,
     name: `${name} remains standalone`,
@@ -424,12 +427,12 @@ ok({
   condition:
     typescriptAuthorityRuntimeSource.includes('authoritativeBuck2TypeScriptDeclarations') ===
       true &&
-    typescriptAuthorityRuntimeSource.includes('authoritativeBuck2TypeScriptProjects') === true &&
     typescriptAuthorityRuntimeSource.includes('admissions.map(') === true &&
-    typescriptAuthorityRuntimeSource.includes('scripts/typescript-materialize-dist.sh') === true &&
+    typescriptAuthorityRuntimeSource.includes("'materialize-one'") === true &&
+    typescriptAuthorityRuntimeSource.includes('scripts/typescript-materialize-dist.sh') === false &&
     typescriptAuthorityRuntimeSource.includes('packages/@overeng/tui-core') === false &&
     typescriptAuthorityRuntimeSource.includes('packages/@overeng/tui-react') === false,
-  name: 'TypeScript authority runtime derives checking and publication from the registry',
+  name: 'TypeScript authority runtime derives publication from the declaration registry',
 })
 ok({
   condition:
@@ -459,15 +462,15 @@ ok({
   name: 'whole-workspace editor publisher never kills the shared Buck daemon',
 })
 
-const buckCheckSource = taskSource('buck2:check')
+const buckProviderCheckSource = taskSource('buck2:providers:check')
 const buckQuickSource = taskSource('buck2:quick')
 const buckAllSource = taskSource('buck2:all')
 const producerOverlapSource = taskSource('check:buck2-producer-overlap')
 ok({
   condition:
     source.includes('buck2AggregateExec =') === true &&
-    buckCheckSource.includes('audit providers') === true &&
-    buckCheckSource.includes('typescript-authority-runtime.ts') === false &&
+    buckProviderCheckSource.includes('audit providers') === true &&
+    buckProviderCheckSource.includes('typescript-authority-runtime.ts') === false &&
     buckQuickSource.includes('buck2AggregateExec "buck2:quick" "//:quick"') === true &&
     buckAllSource.includes('buck2AggregateExec "buck2:all" "//:all"') === true &&
     buckQuickSource.includes('--local-only') === false &&

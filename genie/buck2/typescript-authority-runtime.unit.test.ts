@@ -1,10 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
+import { describe, expect, it } from 'vitest'
 import {
   authoritativeBuck2TypeScriptDeclarations,
-  authoritativeBuck2TypeScriptProjects,
-  buck2TypeScriptTestCollectionTargets,
-  buck2TypeScriptTestTargets,
   type AuthoritativeBuck2TypeScriptDeclaration,
 } from './typescript-admissions.ts'
 import {
@@ -13,7 +21,7 @@ import {
   type CommandRuntime,
   executeCommandPlan,
   type ForwardedSignal,
-  planBuck2AuthorityBuild,
+  materializeTypeScriptDist,
   planTypeScriptDistMaterialization,
 } from './typescript-authority-runtime.ts'
 
@@ -76,76 +84,104 @@ const makeCommandRuntime = () => {
   }
 }
 
+const makeMaterializationRuntime = ({
+  invalidatePublishedDist = false,
+}: {
+  readonly invalidatePublishedDist?: boolean
+} = {}): CommandRuntime => {
+  let publishCount = 0
+  return {
+    spawn: (command) => {
+      try {
+        const [executable, ...args] = command
+        if (executable === '/tools/buck2') {
+          const output = args.at(args.indexOf('--out') + 1)!
+          mkdirSync(join(output, 'types'), { recursive: true })
+          writeFileSync(join(output, 'types/index.d.ts'), 'export type Fresh = true\n')
+        } else if (executable === '/tools/mv') {
+          const source = args.at(-2)!
+          const destination = args.at(-1)!
+          if (args.includes('--exchange')) {
+            const previous = `${source}.exchange`
+            renameSync(source, previous)
+            renameSync(destination, source)
+            renameSync(previous, destination)
+          } else {
+            renameSync(source, destination)
+          }
+          publishCount += 1
+          if (invalidatePublishedDist === true && publishCount === 1)
+            rmSync(join(destination, 'types/index.d.ts'))
+        }
+        return {
+          completion: Promise.resolve({ _tag: 'Status', status: 0 }),
+          forwardSignal: () => undefined,
+        }
+      } catch {
+        return {
+          completion: Promise.resolve({ _tag: 'Status', status: 1 }),
+          forwardSignal: () => undefined,
+        }
+      }
+    },
+    addSignalListener: () => undefined,
+    removeSignalListener: () => undefined,
+  }
+}
+
 describe('Buck2 TypeScript authority runtime planning', () => {
   it('plans exact commands from an injected admission', () => {
     expect(
       planTypeScriptDistMaterialization({
         admissions: fixtureAdmissions,
-        bashBin: '/nix/store/bash/bin/bash',
+        buck2Bin: '/workspace/bin/buck2',
+        bunBin: '/nix/store/bun/bin/bun',
+        chmodBin: '/nix/store/coreutils/bin/chmod',
+        mvBin: '/nix/store/coreutils/bin/mv',
         root: '/repo',
+        runtimeSource: '/repo/genie/buck2/typescript-authority-runtime.ts',
+        workspaceRoot: '/workspace',
       }),
     ).toEqual([
       [
-        '/nix/store/bash/bin/bash',
-        '/repo/scripts/typescript-materialize-dist.sh',
+        '/nix/store/bun/bin/bun',
+        '/repo/genie/buck2/typescript-authority-runtime.ts',
+        'materialize-one',
         '/repo',
+        '/workspace',
+        '/workspace/bin/buck2',
+        '/nix/store/coreutils/bin/mv',
+        '/nix/store/coreutils/bin/chmod',
         'packages/@example/widget',
         'effect_utils//packages/@example/widget:dist',
         'types/index.d.ts',
       ],
     ])
 
-    expect(
-      planBuck2AuthorityBuild({
-        admissions: fixtureAdmissions,
-        buck2Bin: '/workspace/.megarepo/bin/buck2',
-        collectionTargets: ['effect_utils//packages/@example/widget:test_collect'],
-        testTargets: ['effect_utils//packages/@example/widget:test'],
-      }),
-    ).toEqual([
-      '/workspace/.megarepo/bin/buck2',
-      'build',
-      'effect_utils//packages/@example/widget:typecheck',
-      'effect_utils//packages/@example/widget:test',
-      'effect_utils//packages/@example/widget:test_collect',
-      'effect_utils//buck2/static:check',
-      'effect_utils//buck2/toolchains:archive_tool',
-      'effect_utils//buck2/toolchains:product_tool',
-      '--local-only',
-    ])
-
-    // A package with no declared lane adds nothing: the gate must not invent a
-    // target name for it, execution or inventory.
-    expect(
-      planBuck2AuthorityBuild({
-        admissions: fixtureAdmissions,
-        buck2Bin: '/workspace/.megarepo/bin/buck2',
-        collectionTargets: [],
-        testTargets: [],
-      }),
-    ).toEqual([
-      '/workspace/.megarepo/bin/buck2',
-      'build',
-      'effect_utils//packages/@example/widget:typecheck',
-      'effect_utils//buck2/static:check',
-      'effect_utils//buck2/toolchains:archive_tool',
-      'effect_utils//buck2/toolchains:product_tool',
-      '--local-only',
-    ])
   })
 
   it('preserves command coverage and ordering for the live registry', () => {
     expect(
       planTypeScriptDistMaterialization({
-        bashBin: '/nix/store/bash/bin/bash',
+        buck2Bin: '/workspace/bin/buck2',
+        bunBin: '/nix/store/bun/bin/bun',
+        chmodBin: '/nix/store/coreutils/bin/chmod',
+        mvBin: '/nix/store/coreutils/bin/mv',
         root: '/repo',
+        runtimeSource: '/repo/genie/buck2/typescript-authority-runtime.ts',
+        workspaceRoot: '/workspace',
       }),
     ).toEqual(
       authoritativeBuck2TypeScriptDeclarations.map(
         ({ declarationEntrypoint, distTarget, packagePath }) => [
-          '/nix/store/bash/bin/bash',
-          '/repo/scripts/typescript-materialize-dist.sh',
+          '/nix/store/bun/bin/bun',
+          '/repo/genie/buck2/typescript-authority-runtime.ts',
+          'materialize-one',
           '/repo',
+          '/workspace',
+          '/workspace/bin/buck2',
+          '/nix/store/coreutils/bin/mv',
+          '/nix/store/coreutils/bin/chmod',
           packagePath,
           `effect_utils${distTarget}`,
           declarationEntrypoint,
@@ -153,38 +189,70 @@ describe('Buck2 TypeScript authority runtime planning', () => {
       ),
     )
 
-    expect(planBuck2AuthorityBuild({ buck2Bin: '/workspace/.megarepo/bin/buck2' })).toEqual([
-      '/workspace/.megarepo/bin/buck2',
-      'build',
-      ...authoritativeBuck2TypeScriptProjects.map(
-        ({ typecheckTarget }) => `effect_utils${typecheckTarget}`,
-      ),
-      ...buck2TypeScriptTestTargets,
-      ...buck2TypeScriptTestCollectionTargets,
-      'effect_utils//buck2/static:check',
-      'effect_utils//buck2/toolchains:archive_tool',
-      'effect_utils//buck2/toolchains:product_tool',
-      '--local-only',
-    ])
+  })
 
-    // Every admitted package that has test files declares a lane, and every Vitest lane
-    // contributes its inventory target, so the gate covers them all rather than a subset
-    // that silently shrinks.
-    expect(buck2TypeScriptTestTargets.length).toBeGreaterThanOrEqual(32)
-    expect(buck2TypeScriptTestTargets.every((target) => target.startsWith('effect_utils//'))).toBe(
-      true,
-    )
-    expect(
-      buck2TypeScriptTestTargets.every((target) =>
-        /^effect_utils\/\/[^:]+:[a-z][a-z0-9_]*$/.test(target),
-      ),
-    ).toBe(true)
-    expect(buck2TypeScriptTestCollectionTargets.length).toBe(buck2TypeScriptTestTargets.length)
-    expect(
-      buck2TypeScriptTestCollectionTargets.every(
-        (target, index) => target === `${buck2TypeScriptTestTargets[index]}_collect`,
-      ),
-    ).toBe(true)
+  it('atomically replaces a stale declaration tree and removes staging state', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'typescript-dist-runtime-'))
+    const packageDirectory = join(root, 'packages/@example/widget')
+    const dist = join(packageDirectory, 'dist')
+    const workspaceRoot = join(root, 'workspace')
+    try {
+      mkdirSync(join(dist, 'types'), { recursive: true })
+      mkdirSync(workspaceRoot)
+      writeFileSync(join(dist, 'types/index.d.ts'), 'export type Stale = true\n')
+
+      await expect(
+        materializeTypeScriptDist({
+          buck2Bin: '/tools/buck2',
+          chmodBin: '/tools/chmod',
+          declarationEntrypoint: 'types/index.d.ts',
+          mvBin: '/tools/mv',
+          packagePath: 'packages/@example/widget',
+          root,
+          runtime: makeMaterializationRuntime(),
+          target: 'effect_utils//packages/@example/widget:dist',
+          workspaceRoot,
+        }),
+      ).resolves.toEqual({ _tag: 'Status', status: 0 })
+      expect(readFileSync(join(dist, 'types/index.d.ts'), 'utf8')).toBe(
+        'export type Fresh = true\n',
+      )
+      expect(readdirSync(packageDirectory).filter((name) => name.startsWith('.dist-buck2.'))).toEqual(
+        [],
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  it('restores the previous declaration tree when post-publish validation fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'typescript-dist-rollback-'))
+    const dist = join(root, 'packages/@example/widget/dist')
+    const workspaceRoot = join(root, 'workspace')
+    try {
+      mkdirSync(join(dist, 'types'), { recursive: true })
+      mkdirSync(workspaceRoot)
+      writeFileSync(join(dist, 'types/index.d.ts'), 'export type Stale = true\n')
+
+      await expect(
+        materializeTypeScriptDist({
+          buck2Bin: '/tools/buck2',
+          chmodBin: '/tools/chmod',
+          declarationEntrypoint: 'types/index.d.ts',
+          mvBin: '/tools/mv',
+          packagePath: 'packages/@example/widget',
+          root,
+          runtime: makeMaterializationRuntime({ invalidatePublishedDist: true }),
+          target: 'effect_utils//packages/@example/widget:dist',
+          workspaceRoot,
+        }),
+      ).rejects.toThrow('is missing types/index.d.ts')
+      expect(readFileSync(join(dist, 'types/index.d.ts'), 'utf8')).toBe(
+        'export type Stale = true\n',
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
   })
 
   it('forwards task signals to the active child and propagates its signal outcome', async () => {

@@ -73,3 +73,13 @@ budgets by removing the cost at its source (task/shell closure decoupling,
 filtered source coercion, a recursive-input budget gate). While that row is
 open, a change may be verified with the same producer the task wraps, invoked
 directly, and must say so in its PR body; this is not a second verb.
+
+## Amendment 2 (2026-09-23)
+
+The repository-wide TypeScript authority transfer is complete. The root
+`//:quick` and `//:all` targets are now the scoped aggregates described by this
+decision: `check:quick` depends on `buck2:quick`, while `check:all` depends on
+`buck2:all`. The old root TypeScript solution and its `ts:*` task producer are
+deleted. Cross-cell provider identity remains a separate
+`buck2:providers:check` prerequisite because it audits configuration rather than
+producing admitted artifacts.

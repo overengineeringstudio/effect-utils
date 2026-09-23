@@ -42,6 +42,21 @@ The source cost is shared across 39 TypeScript projects, 35 declaration publishe
 
 At implementation head `7c8f81825` (immediately before this evidence-only update), an isolated local-only build of all 11 JavaScript product descriptors, with remote action caching disabled, executed 919 local actions in 13.3 seconds after `buck2 clean` and transferred 57 MiB of package inputs. An immediate repeat executed no actions, transferred no data, and completed in 0.6 seconds. The native TypeScript API server was also built on x86_64 Linux, aarch64 Linux, and aarch64 Darwin; the Darwin build completed 599 local actions in approximately 59 seconds.
 
+## Amendment (2026-09-23)
+
+The final repository-wide cutover removed the non-producing root
+`tsconfig.lint.json` solution and its Genie projection. Repository and package
+TypeScript sources are now owned by the Buck TypeScript or static-check
+projections, and CI plus the retained `check:*` outer verbs invoke the root Buck
+aggregates directly.
+
+The former downstream-only `ts.nix` module and its compiler-diagnostics tests
+were also deleted: retaining an exported root-solution producer after the hub
+itself had no caller preserved the legacy authority as dormant complexity. The
+declaration publication verb remains, but its TypeScript runtime now owns
+validation, atomic exchange, rollback, and cleanup directly instead of invoking
+the deleted `scripts/typescript-materialize-dist.sh` producer.
+
 ## Conclusion
 
 The repository has one TypeScript producer. Buck checks all 39 projects and emits all 35 declaration products; strict-consumer and bootstrap-critical projects are first-class targets rather than exceptions. Root compiler execution, residual project membership, source-mode declaration fallback, and duplicate check/emit task edges are absent.

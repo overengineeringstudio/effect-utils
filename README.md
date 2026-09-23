@@ -132,11 +132,11 @@ devenv tasks run buck2:editor:publish
 ### Check All TypeScript Projects
 
 ```bash
-devenv tasks run buck2:check
+devenv tasks run buck2:quick
 ```
 
-Publish Buck-produced declarations to package `dist` directories for source-side
-consumers such as type-aware lint:
+Publish Buck-produced declarations to package `dist` directories when source-side
+tools or editors need them:
 
 ```bash
 devenv tasks run buck2:typescript:materialize-dist
@@ -164,7 +164,13 @@ devenv tasks run test:watch
 Buck is the only repository-wide TypeScript check authority:
 
 ```bash
-devenv tasks run buck2:check
+devenv tasks run buck2:quick
+```
+
+Audit cross-cell Buck provider identity separately:
+
+```bash
+devenv tasks run buck2:providers:check
 ```
 
 ### Linting
