@@ -263,4 +263,3 @@ check_aggregate(
     ],
     visibility = ["PUBLIC"],
 )
-
