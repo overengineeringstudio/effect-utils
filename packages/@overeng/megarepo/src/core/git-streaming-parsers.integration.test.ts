@@ -61,6 +61,14 @@ describe('streaming git parsers', () => {
       yield* git(mainPath, 'worktree', 'add', '-b', 'feature', wtBranch.replace(/\/$/, ''))
       const head = yield* git(mainPath, 'rev-parse', 'HEAD')
       yield* git(mainPath, 'worktree', 'add', '--detach', wtDetached.replace(/\/$/, ''), head)
+      yield* git(
+        mainPath,
+        'worktree',
+        'lock',
+        '--reason',
+        'initializing',
+        wtDetached.replace(/\/$/, ''),
+      )
 
       const worktrees = yield* Git.listWorktrees(mainPath)
 
@@ -73,6 +81,8 @@ describe('streaming git parsers', () => {
       const detached = worktrees.find((w) => Option.isNone(w.branch))
       expect(detached).toBeDefined()
       expect(detached?.head).toBe(head)
+      expect(Option.getOrUndefined(detached?.lockReason ?? Option.none())).toBe('initializing')
+      expect(Option.isNone(byBranch('feature')?.lockReason ?? Option.none())).toBe(true)
       // Every record has a non-empty path + 40-char head SHA (no half-parsed entries).
       for (const w of worktrees) {
         expect(w.path.length).toBeGreaterThan(0)

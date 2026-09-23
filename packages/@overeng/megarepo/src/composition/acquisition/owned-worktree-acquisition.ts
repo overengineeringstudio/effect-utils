@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import { rmdir, unlink } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import { Effect, Exit, Option } from 'effect'
@@ -58,6 +60,23 @@ const canonicalizePath = (path: string): Effect.Effect<string, never, FileSystem
       return normalizePath(NodePath.join(real, ...segments.slice(depth)))
     }
     return normalized
+  })
+const registrationsAtPhysicalPath = ({
+  registrations,
+  expectedPath,
+}: {
+  readonly registrations: ReadonlyArray<Git.WorktreeRegistration>
+  readonly expectedPath: string
+}) =>
+  Effect.gen(function* () {
+    const expectedPhysicalPath = yield* canonicalizePath(expectedPath)
+    const matches: Array<Git.WorktreeRegistration> = []
+    for (const registration of registrations) {
+      if ((yield* canonicalizePath(registration.path)) === expectedPhysicalPath) {
+        matches.push(registration)
+      }
+    }
+    return matches
   })
 const asDir = (path: string): AbsoluteDirPath =>
   EffectPath.unsafe.absoluteDir(`${path.replace(/\/+$/u, '')}/`)
@@ -192,7 +211,7 @@ const ensureRootConfig = ({
           }),
         ),
       )
-      return rootConfig
+      return { path: rootConfig, target, created: true }
     }
     if (link.success !== target) {
       return yield* failure({
@@ -201,7 +220,7 @@ const ensureRootConfig = ({
         message: `Root config '${rootConfig}' points to '${link.success}', expected '${target}'`,
       })
     }
-    return rootConfig
+    return { path: rootConfig, target, created: false }
   })
 
 const linkedWorktreeAdminDir = ({
@@ -219,10 +238,10 @@ const linkedWorktreeAdminDir = ({
     const match = /^gitdir: (.+)$/u.exec(pointer.trim())
     const adminDir =
       match === null ? undefined : NodePath.resolve(NodePath.dirname(dotGit), match[1]!)
-    return adminDir !== undefined &&
-      NodePath.dirname(adminDir) === NodePath.join(bareRepo, 'worktrees')
-      ? adminDir
-      : undefined
+    if (adminDir === undefined) return undefined
+    const physicalAdminParent = yield* canonicalizePath(NodePath.dirname(adminDir))
+    const expectedAdminParent = yield* canonicalizePath(NodePath.join(bareRepo, 'worktrees'))
+    return physicalAdminParent === expectedAdminParent ? adminDir : undefined
   })
 
 const assertGitIdentity = ({
@@ -247,10 +266,12 @@ const assertGitIdentity = ({
     }
     const pointer = (yield* fs.readFileString(asFile(dotGit))).trim()
     const match = /^gitdir: (.+)$/u.exec(pointer)
-    const expectedAdminParent = NodePath.join(normalizePath(bareRepo), 'worktrees')
+    const expectedAdminParent = yield* canonicalizePath(NodePath.join(bareRepo, 'worktrees'))
     const adminDir =
       match === null ? undefined : NodePath.resolve(NodePath.dirname(dotGit), match[1]!)
-    if (adminDir === undefined || NodePath.dirname(adminDir) !== expectedAdminParent) {
+    const physicalAdminParent =
+      adminDir === undefined ? undefined : yield* canonicalizePath(NodePath.dirname(adminDir))
+    if (adminDir === undefined || physicalAdminParent !== expectedAdminParent) {
       return yield* failure({
         reason: 'GitIdentityConflict',
         path: dotGit,
@@ -261,7 +282,8 @@ const assertGitIdentity = ({
     const backlinkResult = yield* fs.readFileString(asFile(backlink)).pipe(Effect.result)
     if (
       backlinkResult._tag === 'Failure' ||
-      NodePath.resolve(adminDir, backlinkResult.success.trim()) !== normalizePath(dotGit)
+      (yield* canonicalizePath(NodePath.resolve(adminDir, backlinkResult.success.trim()))) !==
+        (yield* canonicalizePath(dotGit))
     ) {
       return yield* failure({
         reason: 'GitIdentityConflict',
@@ -275,32 +297,37 @@ const assertGitIdentity = ({
     const atBranch = registrations.filter(
       (candidate) => Option.getOrUndefined(candidate.branch) === branch,
     )
-    if (atBranch.length !== 1 || normalizePath(atBranch[0]!.path) !== paths.ownedWorktree) {
+    const atExpectedPath = yield* registrationsAtPhysicalPath({
+      registrations: atBranch,
+      expectedPath: paths.ownedWorktree,
+    })
+    const registration = atExpectedPath[0]
+    if (atBranch.length !== 1 || atExpectedPath.length !== 1 || registration === undefined) {
       return yield* failure({
         reason: 'GitIdentityConflict',
-        path: paths.ownedWorktree,
+        path: registration?.path ?? paths.ownedWorktree,
         message: `Expected '${branch}' to have exactly one worktree registration at '${paths.ownedWorktree}'`,
       })
     }
     const currentBranch = yield* command({
-      path: paths.ownedWorktree,
-      effect: Git.getCurrentBranch(asDir(paths.ownedWorktree)),
+      path: registration.path,
+      effect: Git.getCurrentBranch(asDir(registration.path)),
     })
     const commonDir = yield* command({
-      path: paths.ownedWorktree,
+      path: registration.path,
       effect: Git.runCommand({
-        cwd: paths.ownedWorktree,
+        cwd: registration.path,
         args: ['rev-parse', '--path-format=absolute', '--git-common-dir'],
       }),
     })
     if (
       Option.getOrUndefined(currentBranch) !== branch ||
-      normalizePath(commonDir) !== normalizePath(bareRepo)
+      (yield* canonicalizePath(commonDir)) !== (yield* canonicalizePath(bareRepo))
     ) {
       return yield* failure({
         reason: 'GitIdentityConflict',
-        path: paths.ownedWorktree,
-        message: `Owned checkout '${paths.ownedWorktree}' does not match branch '${branch}' and bare repository '${bareRepo}'`,
+        path: registration.path,
+        message: `Owned checkout '${registration.path}' does not match branch '${branch}' and bare repository '${bareRepo}'`,
       })
     }
   })
@@ -399,9 +426,10 @@ export const createComposedOwnedWorkspace = <R, E>({
     const branchRegistrations = registrations.filter(
       (candidate) => Option.getOrUndefined(candidate.branch) === branch,
     )
-    const exactRegistration = branchRegistrations.filter(
-      (candidate) => normalizePath(candidate.path) === paths.ownedWorktree,
-    )
+    const exactRegistration = yield* registrationsAtPhysicalPath({
+      registrations: branchRegistrations,
+      expectedPath: paths.ownedWorktree,
+    })
     if (branchRegistrations.length > 0 && exactRegistration.length !== 1) {
       return yield* failure({
         reason: 'GitIdentityConflict',
@@ -409,9 +437,19 @@ export const createComposedOwnedWorkspace = <R, E>({
         message: `Branch '${branch}' is registered outside the required owned checkout '${paths.ownedWorktree}': ${branchRegistrations.map((entry) => entry.path).join(', ')}`,
       })
     }
+    const lockedRegistration = exactRegistration.find((entry) => Option.isSome(entry.lockReason))
+    if (lockedRegistration !== undefined) {
+      const reason = Option.getOrUndefined(lockedRegistration.lockReason)
+      return yield* failure({
+        reason: 'GitIdentityConflict',
+        path: lockedRegistration.path,
+        message: `Branch '${branch}' has a locked worktree registration at '${lockedRegistration.path}'${reason === undefined || reason.length === 0 ? '' : ` (${reason})`}`,
+      })
+    }
 
     if (exactRegistration.length === 1) {
-      const { configName } = yield* readConfig(paths.ownedWorktree)
+      const registeredWorktree = exactRegistration[0]!.path
+      const { configName } = yield* readConfig(registeredWorktree)
       yield* ensureRootConfig({ fs, paths, configName, createIfMissing: true })
       const composed = yield* assertComposedOwnedWorkspace({
         bareRepo,
@@ -422,7 +460,7 @@ export const createComposedOwnedWorkspace = <R, E>({
       const adminDir = yield* linkedWorktreeAdminDir({
         fs,
         bareRepo,
-        worktree: paths.ownedWorktree,
+        worktree: registeredWorktree,
       })
       const clearIndexLock =
         adminDir === undefined
@@ -479,88 +517,115 @@ export const createComposedOwnedWorkspace = <R, E>({
       startPoint === undefined
         ? true
         : yield* Git.refExists({ repoPath: bareRepo, ref: `refs/heads/${branch}` })
+    const expectedBaseOid =
+      startPoint === undefined
+        ? undefined
+        : yield* command({
+            path: bareRepo,
+            effect: Git.resolveRef({ repoPath: bareRepo, ref: `${startPoint}^{commit}` }),
+          })
+    const expectedWorktreeOid =
+      branchExisted === true
+        ? yield* command({
+            path: bareRepo,
+            effect: Git.resolveRef({
+              repoPath: bareRepo,
+              ref: `refs/heads/${branch}^{commit}`,
+            }),
+          })
+        : expectedBaseOid
+    const initializationLockReason = `initializing:${randomUUID()}`
 
-    let createdWorktree = false
-    let generationStarted = false
-    let createdAdminDir: string | undefined
+    let creationAttempted = false
+    let branchClaimed = false
+    let createdRootConfig: { readonly path: string; readonly target: string } | undefined
+    const removeInvocationRootConfig = Effect.gen(function* () {
+      const rootConfig = createdRootConfig
+      if (rootConfig === undefined) return
+      const link = yield* fs.readLink(rootConfig.path).pipe(Effect.result)
+      if (link._tag === 'Success' && link.success === rootConfig.target) {
+        yield* Effect.tryPromise(() => unlink(rootConfig.path)).pipe(Effect.ignore)
+      }
+    })
+    const removeInvocationEmptyParents = Effect.gen(function* () {
+      if (reposExisted === false) {
+        yield* Effect.tryPromise(() => rmdir(paths.reposPath)).pipe(Effect.ignore)
+      }
+      if (workspaceRootExisted === false) {
+        yield* Effect.tryPromise(() => rmdir(paths.workspaceRoot)).pipe(Effect.ignore)
+      }
+    })
     const rollback = Effect.gen(function* () {
-      if (createdWorktree === false) {
-        if (
-          reposExisted === false &&
-          (yield* fs.exists(asDir(paths.reposPath))) === true &&
-          (yield* fs.readDirectory(asDir(paths.reposPath))).length === 0
-        ) {
-          yield* fs.remove(asDir(paths.reposPath), { recursive: true })
-        }
-        if (
-          workspaceRootExisted === false &&
-          (yield* fs.exists(asDir(paths.workspaceRoot))) === true &&
-          (yield* fs.readDirectory(asDir(paths.workspaceRoot))).length === 0
-        ) {
-          yield* fs.remove(asDir(paths.workspaceRoot), { recursive: true })
-        }
+      if (creationAttempted === false && branchClaimed === false) {
+        yield* removeInvocationEmptyParents
         return
       }
-
-      const rootConfigs = ['megarepo.kdl', 'megarepo.json'] as const
-      for (const configName of rootConfigs) {
-        const rootConfig = NodePath.join(paths.workspaceRoot, configName)
-        const target = NodePath.join('repos', paths.ownedMember, configName)
-        const link = yield* fs.readLink(rootConfig).pipe(Effect.orElseSucceed(() => undefined))
-        if (link === target) yield* fs.remove(rootConfig)
-      }
-
       const currentRegistrations = yield* command({
         path: bareRepo,
         effect: Git.listWorktrees(bareRepo),
       })
-      const registeredHere = currentRegistrations.some(
-        (candidate) => normalizePath(candidate.path) === paths.ownedWorktree,
+      const atBranch = currentRegistrations.filter(
+        (candidate) => Option.getOrUndefined(candidate.branch) === branch,
       )
-      if (registeredHere === true) {
-        const removed = yield* Git.removeWorktree({
-          repoPath: bareRepo,
-          worktreePath: paths.ownedWorktree,
-          force: true,
-        }).pipe(Effect.result)
-        if (removed._tag === 'Failure') {
-          if (createdAdminDir !== undefined) {
-            yield* fs
-              .remove(NodePath.join(createdAdminDir, 'index.lock'), { force: true })
-              .pipe(Effect.ignore)
-          }
-          yield* Git.removeWorktree({
+      const atExpectedPath = yield* registrationsAtPhysicalPath({
+        registrations: currentRegistrations,
+        expectedPath: paths.ownedWorktree,
+      })
+      if (atExpectedPath.length === 0) {
+        if (atBranch.length !== 0) return
+        const emptyWorktreeRemovedOrAbsent = yield* Effect.tryPromise({
+          try: () => rmdir(paths.ownedWorktree),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.match({
+            onFailure: (cause) =>
+              typeof cause === 'object' &&
+              cause !== null &&
+              'code' in cause &&
+              cause.code === 'ENOENT',
+            onSuccess: () => true,
+          }),
+        )
+        if (emptyWorktreeRemovedOrAbsent === false) return
+        if (branchClaimed === true && expectedBaseOid !== undefined) {
+          yield* Git.deleteBranchIfMatches({
             repoPath: bareRepo,
-            worktreePath: paths.ownedWorktree,
-            force: true,
-          })
+            branch,
+            expectedOid: expectedBaseOid,
+          }).pipe(Effect.ignore)
         }
-      } else if ((yield* fs.exists(asDir(paths.ownedWorktree))) === true) {
-        yield* fs.remove(asDir(paths.ownedWorktree), { recursive: true })
-        yield* Git.pruneWorktrees(bareRepo)
+        yield* removeInvocationRootConfig
+        yield* removeInvocationEmptyParents
+        return
       }
 
+      const candidate = atExpectedPath[0]
       if (
-        startPoint !== undefined &&
-        branchExisted === false &&
-        (yield* Git.refExists({ repoPath: bareRepo, ref: `refs/heads/${branch}` })) === true
+        atBranch.length !== 1 ||
+        atExpectedPath.length !== 1 ||
+        candidate === undefined ||
+        Option.getOrUndefined(candidate.branch) !== branch ||
+        candidate.head !== expectedWorktreeOid ||
+        Option.getOrUndefined(candidate.lockReason) !== initializationLockReason
       ) {
-        yield* Git.deleteBranch({ repoPath: bareRepo, branch, force: true })
+        return
       }
-      if (
-        reposExisted === false &&
-        (yield* fs.exists(asDir(paths.reposPath))) === true &&
-        (yield* fs.readDirectory(asDir(paths.reposPath))).length === 0
-      ) {
-        yield* fs.remove(asDir(paths.reposPath), { recursive: true })
+
+      const removed = yield* Git.runCommand({
+        cwd: bareRepo,
+        args: ['worktree', 'remove', '--force', '--force', candidate.path],
+      }).pipe(Effect.result)
+      if (removed._tag === 'Failure') return
+
+      if (branchClaimed === true && expectedBaseOid !== undefined) {
+        yield* Git.deleteBranchIfMatches({
+          repoPath: bareRepo,
+          branch,
+          expectedOid: expectedBaseOid,
+        }).pipe(Effect.ignore)
       }
-      if (
-        workspaceRootExisted === false &&
-        (yield* fs.exists(asDir(paths.workspaceRoot))) === true &&
-        (yield* fs.readDirectory(asDir(paths.workspaceRoot))).length === 0
-      ) {
-        yield* fs.remove(asDir(paths.workspaceRoot), { recursive: true })
-      }
+      yield* removeInvocationRootConfig
+      yield* removeInvocationEmptyParents
     })
 
     return yield* Effect.gen(function* () {
@@ -581,39 +646,54 @@ export const createComposedOwnedWorkspace = <R, E>({
           message: `Refusing non-empty unregistered repos directory '${paths.reposPath}' (found: ${repoEntries.join(', ')})`,
         })
       }
+      if (branchExisted === false && expectedBaseOid !== undefined) {
+        yield* Effect.uninterruptible(
+          command({
+            path: bareRepo,
+            effect: Git.createBranchIfAbsent({
+              repoPath: bareRepo,
+              branch,
+              expectedOid: expectedBaseOid,
+            }),
+          }).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                branchClaimed = true
+              }),
+            ),
+          ),
+        )
+      }
+      creationAttempted = true
+      yield* command({
+        path: paths.ownedWorktree,
+        effect: Git.createWorktree({
+          repoPath: bareRepo,
+          worktreePath: paths.ownedWorktree,
+          branch,
+          createBranch: false,
+          lockReason: initializationLockReason,
+        }),
+      })
+
+      const { configName } = yield* readConfig(paths.ownedWorktree)
       yield* Effect.uninterruptible(
-        command({
-          path: paths.ownedWorktree,
-          effect: Git.createWorktree({
-            repoPath: bareRepo,
-            worktreePath: paths.ownedWorktree,
-            branch,
-            createBranch: startPoint !== undefined,
-            ...(startPoint === undefined ? {} : { startPoint }),
-          }),
-        }).pipe(
-          Effect.tap(() =>
+        ensureRootConfig({ fs, paths, configName, createIfMissing: true }).pipe(
+          Effect.tap((rootConfig) =>
             Effect.sync(() => {
-              createdWorktree = true
+              if (rootConfig.created === true) {
+                createdRootConfig = { path: rootConfig.path, target: rootConfig.target }
+              }
             }),
           ),
         ),
       )
-      createdAdminDir = yield* linkedWorktreeAdminDir({
-        fs,
-        bareRepo,
-        worktree: paths.ownedWorktree,
-      })
-
-      const { configName } = yield* readConfig(paths.ownedWorktree)
-      yield* ensureRootConfig({ fs, paths, configName, createIfMissing: true })
       const composed = yield* assertComposedOwnedWorkspace({
         bareRepo,
         workspaceRoot: paths.workspaceRoot,
         ownedMember,
         branch,
       })
-      generationStarted = true
       yield* generate({
         workspaceRoot: asDir(composed.workspaceRoot),
         ownedWorktree: asDir(composed.ownedWorktree),
@@ -629,20 +709,53 @@ export const createComposedOwnedWorkspace = <R, E>({
           }),
         ),
       )
+      yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          const currentRegistrations = yield* command({
+            path: bareRepo,
+            effect: Git.listWorktrees(bareRepo),
+          })
+          const atBranch = currentRegistrations.filter(
+            (candidate) => Option.getOrUndefined(candidate.branch) === branch,
+          )
+          const atExpectedPath = yield* registrationsAtPhysicalPath({
+            registrations: currentRegistrations,
+            expectedPath: paths.ownedWorktree,
+          })
+          const candidate = atExpectedPath[0]
+          if (
+            atBranch.length !== 1 ||
+            atExpectedPath.length !== 1 ||
+            candidate === undefined ||
+            Option.getOrUndefined(candidate.branch) !== branch ||
+            candidate.head !== expectedWorktreeOid ||
+            Option.getOrUndefined(candidate.lockReason) !== initializationLockReason
+          ) {
+            return yield* failure({
+              reason: 'GitIdentityConflict',
+              path: paths.ownedWorktree,
+              message: `Initialization ownership changed before '${paths.ownedWorktree}' could be unlocked`,
+            })
+          }
+          const unlocked = yield* command({
+            path: paths.ownedWorktree,
+            effect: Git.unlockWorktreeIfMatches({
+              repoPath: bareRepo,
+              worktreePath: candidate.path,
+              expectedReason: initializationLockReason,
+            }),
+          })
+          if (unlocked === false) {
+            return yield* failure({
+              reason: 'GitIdentityConflict',
+              path: paths.ownedWorktree,
+              message: `Initialization lock ownership changed for '${paths.ownedWorktree}'`,
+            })
+          }
+        }),
+      )
       return composed
-    }).pipe(
-      Effect.onExit((exit) =>
-        Exit.isFailure(exit) === false
-          ? Effect.void
-          : generationStarted === true
-            ? createdAdminDir === undefined
-              ? Effect.void
-              : fs
-                  .remove(NodePath.join(createdAdminDir, 'index.lock'), { force: true })
-                  .pipe(Effect.ignore)
-            : rollback,
-      ),
-    )
+    }).pipe(Effect.onExit((exit) => (Exit.isFailure(exit) === true ? rollback : Effect.void)))
   }).pipe(
     Effect.mapError((cause) =>
       cause instanceof OwnedWorktreeAcquisitionError
@@ -688,8 +801,9 @@ export const resolveComposedStoreWorktree = ({
         message: `Branch '${branch}' has ${atBranch.length} Git worktree registrations`,
       })
     }
-    const registeredWorktree = normalizePath(atBranch[0]!.path)
-    if (registeredWorktree === normalizePath(workspaceRoot)) return undefined
+    const registration = atBranch[0]!
+    const registeredWorktree = yield* canonicalizePath(registration.path)
+    if (registeredWorktree === workspaceRoot) return undefined
     const paths = composedWorkspacePathsFromRegistration({
       registeredWorktree,
       expectedWorkspaceRoot: workspaceRoot,
@@ -697,8 +811,8 @@ export const resolveComposedStoreWorktree = ({
     if (paths === undefined) {
       return yield* failure({
         reason: 'GitIdentityConflict',
-        path: registeredWorktree,
-        message: `Branch '${branch}' is registered outside canonical P or P/repos/<owned>`,
+        path: registration.path,
+        message: `Branch '${branch}' is registered outside canonical P or P/repos/<owned>: '${registration.path}'`,
       })
     }
     yield* assertComposedOwnedWorkspace({
@@ -735,9 +849,10 @@ export const resolveStoreBranchWorktree = ({
     const atBranch = registrations.filter(
       (candidate) => Option.getOrUndefined(candidate.branch) === branch,
     )
-    const atWorkspaceRoot = registrations.filter(
-      (candidate) => normalizePath(candidate.path) === workspaceRoot,
-    )
+    const atWorkspaceRoot = yield* registrationsAtPhysicalPath({
+      registrations,
+      expectedPath: workspaceRoot,
+    })
     if (atBranch.length === 0) {
       if (atWorkspaceRoot.length === 1) return asDir(workspaceRoot)
       const workspaceRootExists = yield* fs.exists(asDir(workspaceRoot)).pipe(
@@ -765,7 +880,8 @@ export const resolveStoreBranchWorktree = ({
       })
     }
 
-    const registeredWorktree = normalizePath(atBranch[0]!.path)
+    const registration = atBranch[0]!
+    const registeredWorktree = yield* canonicalizePath(registration.path)
     if (registeredWorktree === workspaceRoot) return asDir(workspaceRoot)
     const paths = composedWorkspacePathsFromRegistration({
       registeredWorktree,
@@ -774,8 +890,8 @@ export const resolveStoreBranchWorktree = ({
     if (paths === undefined) {
       return yield* failure({
         reason: 'GitIdentityConflict',
-        path: registeredWorktree,
-        message: `Branch '${branch}' is registered outside canonical P or P/repos/<owned>`,
+        path: registration.path,
+        message: `Branch '${branch}' is registered outside canonical P or P/repos/<owned>: '${registration.path}'`,
       })
     }
     yield* assertComposedOwnedWorkspace({
