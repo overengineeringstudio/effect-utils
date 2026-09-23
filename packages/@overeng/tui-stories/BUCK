@@ -75,6 +75,13 @@ static_source_set(
 )
 
 static_source_set(
+    name = "repository_validation_sources",
+    prefix = "packages/@overeng/tui-stories",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
     name = "nix_sources",
     prefix = "packages/@overeng/tui-stories",
     srcs = glob(["**/*.nix"]),

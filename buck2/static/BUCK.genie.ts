@@ -18,7 +18,9 @@ const repositorySourceSets = [
   '//:repository_validation_sources',
   '//buck2/static:repository_validation_sources',
   '//buck2/dependencies:static_sources',
-  ...sourceSets.slice(1),
+  ...pnpmWorkspaceMemberPaths.map(
+    (packagePath) => `//${packagePath}:repository_validation_sources`,
+  ),
   ...cargoBuck2WorkspaceMemberPaths.map((packagePath) => `//${packagePath}:static_sources`),
 ].toSorted()
 

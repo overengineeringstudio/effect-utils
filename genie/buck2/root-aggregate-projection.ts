@@ -85,7 +85,6 @@ const aggregateRootBuckLoad = 'load("//buck2:check_aggregate.bzl", "check_aggreg
 const weaverRootBuckLoad = 'load("//buck2:weaver.bzl", "weaver_checks")'
 const weaverRootBuckTargets =
   'weaver_checks(\n    name = "weaver",\n    registry = {\n        "attributes.yaml": "genie/weaver-registry/attributes.yaml",\n        "manifest.yaml": "genie/weaver-registry/manifest.yaml",\n        "signals.yaml": "genie/weaver-registry/signals.yaml",\n    },\n    flake_nix = "nix/weaver-flake/flake.nix",\n    registry_source = "genie/weaver-registry/registry.ts",\n    visibility = ["PUBLIC"],\n)'
-
 export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan> => {
   const data = planRootBuckAggregates()
   const packageInputs = [
