@@ -22,7 +22,7 @@ import { Command } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'
-import { outputOption, outputModeLayer } from '../../src/node/mod.ts'
+import { outputOption, outputModeLayer, resolveOutputOption } from '../../src/node/mod.ts'
 // Import from shared modules
 import { CounterState, CounterAction, counterReducer } from './schema.ts'
 import { CounterView } from './view.tsx'
@@ -82,7 +82,10 @@ const runCounter = run(
 // =============================================================================
 
 const counter = Command.make('counter', { output: outputOption }, ({ output }) =>
-  runCounter.pipe(Effect.provide(outputModeLayer(output))),
+  Effect.gen(function* () {
+    const outputMode = yield* resolveOutputOption(output)
+    return yield* runCounter.pipe(Effect.provide(outputModeLayer(outputMode)))
+  }),
 )
 
 const cli = Command.runWith(counter, {

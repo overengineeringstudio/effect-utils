@@ -8,7 +8,12 @@ import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import type { OutputModeValue } from '@overeng/tui-react/node'
-import { isAgentEnv, outputModeLayer, outputOption } from '@overeng/tui-react/node'
+import {
+  isAgentEnv,
+  outputModeLayer,
+  outputOption,
+  resolveOutputOption,
+} from '@overeng/tui-react/node'
 
 import type { WorkflowRun } from '../../isomorphic/GitHubSchemas.ts'
 import {
@@ -319,193 +324,199 @@ export const statusCommand = Cli.Command.make('status', {
       timeout,
       includeSteps,
     }) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* CiApp.run(React.createElement(CiView, { stateAtom: CiApp.stateAtom }))
-
-          const config = yield* resolveConfig({})
-
-          const preferWorkflow = Option.isSome(workflowOpt) ? workflowOpt.value : undefined
-          const localRepo = config.repos[0]
-
-          let resolved: ResolvedTarget
-          if (Option.isSome(targetInput)) {
-            resolved = yield* resolveTarget(
-              targetInput.value as string,
-              Option.fromNullishOr(localRepo),
-              preferWorkflow,
+      Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const tui = yield* CiApp.run(
+              React.createElement(CiView, { stateAtom: CiApp.stateAtom }),
             )
-          } else {
-            if (!localRepo) {
+
+            const config = yield* resolveConfig({})
+
+            const preferWorkflow = Option.isSome(workflowOpt) ? workflowOpt.value : undefined
+            const localRepo = config.repos[0]
+
+            let resolved: ResolvedTarget
+            if (Option.isSome(targetInput)) {
+              resolved = yield* resolveTarget(
+                targetInput.value as string,
+                Option.fromNullishOr(localRepo),
+                preferWorkflow,
+              )
+            } else {
+              if (!localRepo) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'No repos configured',
+                  message:
+                    'Could not detect repo from git remote. Use owner/repo as target to specify.',
+                })
+                return
+              }
+              resolved = yield* resolveTargetOrCurrentBranch(targetInput, localRepo, preferWorkflow)
+            }
+
+            const { runId, repo: resolvedRepo, selection } = resolved
+
+            const dispatchMeta = () =>
+              Effect.gen(function* () {
+                const meta = yield* collectApiMeta
+                tui.dispatch({ _tag: 'SetMeta', _meta: meta })
+              })
+
+            const dispatchRun = (cache: TickCache) =>
+              Effect.gen(function* () {
+                const data = yield* fetchSingleRunData({
+                  resolvedRepo,
+                  runId,
+                  runnerHosts: config.runnerHosts,
+                  includeSteps,
+                  cache,
+                  prNumber: selection.prNumber,
+                })
+                const summary = computeSummary({
+                  run: data.run,
+                  jobs: data.jobs,
+                  prHealth: data.prHealth,
+                  selection,
+                })
+                tui.dispatch({
+                  _tag: 'SetLoaded',
+                  watch,
+                  run: data.run,
+                  jobs: data.jobs,
+                  errors: data.errors,
+                  annotations: data.annotations,
+                  runnerHostMap: data.runnerHostMap,
+                  prHealth: data.prHealth,
+                  summary,
+                })
+                return data
+              })
+
+            if (!watch) {
+              yield* dispatchRun(emptyTickCache)
+              yield* dispatchMeta()
+              return
+            }
+
+            const github = yield* GitHubClient
+            const failFast = watchMode === 'first-failure'
+            const startTime = Date.now()
+            const baseSeconds = Duration.toSeconds(POLL_INTERVAL)
+            const maxSeconds = Duration.toSeconds(MAX_POLL_INTERVAL)
+
+            /** Report the deadline the caller set — a watch must never stop silently. */
+            const abortOnTimeout = Effect.gen(function* () {
+              const elapsed = Math.round((Date.now() - startTime) / 1000)
               tui.dispatch({
                 _tag: 'SetError',
-                error: 'No repos configured',
-                message:
-                  'Could not detect repo from git remote. Use owner/repo as target to specify.',
+                error: 'Timeout',
+                message: `Watch timed out after ${elapsed}s. Run is still in progress.`,
               })
-              return
-            }
-            resolved = yield* resolveTargetOrCurrentBranch(targetInput, localRepo, preferWorkflow)
-          }
+              yield* dispatchMeta()
+            })
 
-          const { runId, repo: resolvedRepo, selection } = resolved
+            let cache = emptyTickCache
+            let idleTicks = 0
+            let tick = 0
+            let billedSoFar = 0
 
-          const dispatchMeta = () =>
-            Effect.gen(function* () {
+            while (true) {
+              tick++
+
+              /**
+               * A watch is the one caller that may park on a spent budget: it
+               * owns a deadline, so the park is bounded by what is left of it
+               * and the tick can never silently outlive `--timeout`.
+               */
+              const tickBudgetSeconds = timeout - (Date.now() - startTime) / 1000
+              if (tickBudgetSeconds <= 0) return yield* abortOnTimeout
+
+              const tickResult = yield* dispatchRun(cache).pipe(
+                Effect.provideService(RateLimitWaitPolicy, tickBudgetSeconds),
+                Effect.timeoutOption(Duration.seconds(tickBudgetSeconds)),
+              )
+              if (Option.isNone(tickResult)) return yield* abortOnTimeout
+
+              const data = tickResult.value
+              cache = data.nextCache
+
+              if (data.pollState === 'complete') {
+                yield* dispatchMeta()
+                return
+              }
+              if (failFast && data.hasFailed && data.pollState === 'active') {
+                yield* dispatchMeta()
+                tui.dispatch({
+                  _tag: 'WatchTerminated',
+                  reason: 'FirstFailure',
+                  message: `Watch stopped after the first job failure. Workflow run ${runId} is still ${data.run.status}.`,
+                })
+                return
+              }
+
+              const elapsed = (Date.now() - startTime) / 1000
+              if (elapsed >= timeout) return yield* abortOnTimeout
+
+              /**
+               * Idleness needs a previous tick to compare against, so the cold
+               * tick — which by definition moved nothing — is not idle, and the
+               * second poll still happens at the base interval.
+               */
+              idleTicks = data.changed === 0 && tick > 1 ? idleTicks + 1 : 0
+
+              /**
+               * Pace on what the last tick actually billed to the REST bucket:
+               * GraphQL has its own budget and must not stretch this interval.
+               */
               const meta = yield* collectApiMeta
-              tui.dispatch({ _tag: 'SetMeta', _meta: meta })
-            })
+              const restRequests = yield* github.getRestRequestCount
+              const billed = restRequests - meta.apiRequestsCached
+              const costPerTick = Math.max(1, billed - billedSoFar)
+              billedSoFar = billed
 
-          const dispatchRun = (cache: TickCache) =>
-            Effect.gen(function* () {
-              const data = yield* fetchSingleRunData({
-                resolvedRepo,
-                runId,
-                runnerHosts: config.runnerHosts,
-                includeSteps,
-                cache,
-                prNumber: selection.prNumber,
+              const rateLimit = yield* github.getRateLimit
+              /** The budget only has to survive the rest of this watch, or the reset. */
+              const deadlineSeconds = Math.max(1, timeout - elapsed)
+              const paced = nextPollSeconds({
+                baseSeconds,
+                maxSeconds,
+                idleTicks,
+                costPerTick,
+                remaining: Option.isSome(rateLimit) ? rateLimit.value.remaining : undefined,
+                horizonSeconds: Option.isSome(rateLimit)
+                  ? Math.min(
+                      deadlineSeconds,
+                      Math.max(0, (rateLimit.value.reset.getTime() - Date.now()) / 1000),
+                    )
+                  : undefined,
+                reserveFraction: BUDGET_RESERVE_FRACTION,
               })
-              const summary = computeSummary({
-                run: data.run,
-                jobs: data.jobs,
-                prHealth: data.prHealth,
-                selection,
-              })
+              /** Never sleep past the deadline the caller asked for. */
+              const sleepSeconds = Math.min(paced, deadlineSeconds)
+
               tui.dispatch({
-                _tag: 'SetLoaded',
-                watch,
-                run: data.run,
-                jobs: data.jobs,
-                errors: data.errors,
-                annotations: data.annotations,
-                runnerHostMap: data.runnerHostMap,
-                prHealth: data.prHealth,
-                summary,
+                _tag: 'Tick',
+                tick,
+                elapsedSeconds: Math.round(elapsed),
+                pending: data.pending,
+                completed: data.jobs.length - data.pending,
+                changed: data.changed,
+                nextPollSeconds: Math.round(sleepSeconds),
+                _meta: meta,
               })
-              return data
-            })
 
-          if (!watch) {
-            yield* dispatchRun(emptyTickCache)
-            yield* dispatchMeta()
-            return
-          }
-
-          const github = yield* GitHubClient
-          const failFast = watchMode === 'first-failure'
-          const startTime = Date.now()
-          const baseSeconds = Duration.toSeconds(POLL_INTERVAL)
-          const maxSeconds = Duration.toSeconds(MAX_POLL_INTERVAL)
-
-          /** Report the deadline the caller set — a watch must never stop silently. */
-          const abortOnTimeout = Effect.gen(function* () {
-            const elapsed = Math.round((Date.now() - startTime) / 1000)
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'Timeout',
-              message: `Watch timed out after ${elapsed}s. Run is still in progress.`,
-            })
-            yield* dispatchMeta()
-          })
-
-          let cache = emptyTickCache
-          let idleTicks = 0
-          let tick = 0
-          let billedSoFar = 0
-
-          while (true) {
-            tick++
-
-            /**
-             * A watch is the one caller that may park on a spent budget: it
-             * owns a deadline, so the park is bounded by what is left of it
-             * and the tick can never silently outlive `--timeout`.
-             */
-            const tickBudgetSeconds = timeout - (Date.now() - startTime) / 1000
-            if (tickBudgetSeconds <= 0) return yield* abortOnTimeout
-
-            const tickResult = yield* dispatchRun(cache).pipe(
-              Effect.provideService(RateLimitWaitPolicy, tickBudgetSeconds),
-              Effect.timeoutOption(Duration.seconds(tickBudgetSeconds)),
-            )
-            if (Option.isNone(tickResult)) return yield* abortOnTimeout
-
-            const data = tickResult.value
-            cache = data.nextCache
-
-            if (data.pollState === 'complete') {
-              yield* dispatchMeta()
-              return
+              yield* Effect.sleep(Duration.seconds(sleepSeconds))
             }
-            if (failFast && data.hasFailed && data.pollState === 'active') {
-              yield* dispatchMeta()
-              tui.dispatch({
-                _tag: 'WatchTerminated',
-                reason: 'FirstFailure',
-                message: `Watch stopped after the first job failure. Workflow run ${runId} is still ${data.run.status}.`,
-              })
-              return
-            }
-
-            const elapsed = (Date.now() - startTime) / 1000
-            if (elapsed >= timeout) return yield* abortOnTimeout
-
-            /**
-             * Idleness needs a previous tick to compare against, so the cold
-             * tick — which by definition moved nothing — is not idle, and the
-             * second poll still happens at the base interval.
-             */
-            idleTicks = data.changed === 0 && tick > 1 ? idleTicks + 1 : 0
-
-            /**
-             * Pace on what the last tick actually billed to the REST bucket:
-             * GraphQL has its own budget and must not stretch this interval.
-             */
-            const meta = yield* collectApiMeta
-            const restRequests = yield* github.getRestRequestCount
-            const billed = restRequests - meta.apiRequestsCached
-            const costPerTick = Math.max(1, billed - billedSoFar)
-            billedSoFar = billed
-
-            const rateLimit = yield* github.getRateLimit
-            /** The budget only has to survive the rest of this watch, or the reset. */
-            const deadlineSeconds = Math.max(1, timeout - elapsed)
-            const paced = nextPollSeconds({
-              baseSeconds,
-              maxSeconds,
-              idleTicks,
-              costPerTick,
-              remaining: Option.isSome(rateLimit) ? rateLimit.value.remaining : undefined,
-              horizonSeconds: Option.isSome(rateLimit)
-                ? Math.min(
-                    deadlineSeconds,
-                    Math.max(0, (rateLimit.value.reset.getTime() - Date.now()) / 1000),
-                  )
-                : undefined,
-              reserveFraction: BUDGET_RESERVE_FRACTION,
-            })
-            /** Never sleep past the deadline the caller asked for. */
-            const sleepSeconds = Math.min(paced, deadlineSeconds)
-
-            tui.dispatch({
-              _tag: 'Tick',
-              tick,
-              elapsedSeconds: Math.round(elapsed),
-              pending: data.pending,
-              completed: data.jobs.length - data.pending,
-              changed: data.changed,
-              nextPollSeconds: Math.round(sleepSeconds),
-              _meta: meta,
-            })
-
-            yield* Effect.sleep(Duration.seconds(sleepSeconds))
-          }
-        }),
-      ).pipe(
-        Effect.provide(
-          outputModeLayer(
-            watch && output === 'auto' && isAgentEnv() ? ('ndjson' as OutputModeValue) : output,
+          }),
+        ).pipe(
+          Effect.provide(
+            outputModeLayer(
+              watch && outputMode === 'auto' && isAgentEnv()
+                ? ('ndjson' as OutputModeValue)
+                : outputMode,
+            ),
           ),
         ),
       ),

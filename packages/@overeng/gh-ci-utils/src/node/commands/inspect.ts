@@ -12,7 +12,7 @@ import { Effect, Option } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
+import { outputModeLayer, outputOption, resolveOutputOption } from '@overeng/tui-react/node'
 
 import { classifyInspection } from '../../isomorphic/lib/inspectAssessment.ts'
 import { toInspectGitHubFacts } from '../../isomorphic/lib/inspectFacts.ts'
@@ -46,56 +46,58 @@ export const inspectCommand = Cli.Command.make('inspect', {
   withUsage: withUsageOption,
 }).pipe(
   Cli.Command.withHandler(({ output, job: jobId, repo: repoOpt, withUsage }) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const tui = yield* InspectApp.run(
-          React.createElement(InspectView, { stateAtom: InspectApp.stateAtom }),
-        )
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* InspectApp.run(
+            React.createElement(InspectView, { stateAtom: InspectApp.stateAtom }),
+          )
 
-        const config = yield* resolveConfig({})
-        const repo = Option.isSome(repoOpt) ? repoOpt.value : config.repos[0]
-        if (repo === undefined) {
-          tui.dispatch({
-            _tag: 'SetError',
-            error: 'No repo',
-            message: 'Could not detect a repo from the git remote. Pass --repo owner/name.',
-          })
-          return
-        }
+          const config = yield* resolveConfig({})
+          const repo = Option.isSome(repoOpt) ? repoOpt.value : config.repos[0]
+          if (repo === undefined) {
+            tui.dispatch({
+              _tag: 'SetError',
+              error: 'No repo',
+              message: 'Could not detect a repo from the git remote. Pass --repo owner/name.',
+            })
+            return
+          }
 
-        const github = yield* GitHubClient
-        const jobResult = yield* github.getWorkflowJob({ repo, jobId }).pipe(
-          Effect.tapError((error) =>
-            Effect.sync(() =>
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'GitHub job unavailable',
-                message: error.message,
-              }),
+          const github = yield* GitHubClient
+          const jobResult = yield* github.getWorkflowJob({ repo, jobId }).pipe(
+            Effect.tapError((error) =>
+              Effect.sync(() =>
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'GitHub job unavailable',
+                  message: error.message,
+                }),
+              ),
             ),
-          ),
-          Effect.option,
-        )
-        const meta = yield* collectApiMeta
-        tui.dispatch({ _tag: 'SetMeta', _meta: meta })
+            Effect.option,
+          )
+          const meta = yield* collectApiMeta
+          tui.dispatch({ _tag: 'SetMeta', _meta: meta })
 
-        if (Option.isNone(jobResult)) return
-        const githubFacts = toInspectGitHubFacts({ job: jobResult.value, repo })
+          if (Option.isNone(jobResult)) return
+          const githubFacts = toInspectGitHubFacts({ job: jobResult.value, repo })
 
-        /**
-         * The Namespace observation is deliberately sequenced after the GitHub
-         * fetch: the runner kind decides whether `nsc` is consulted at all.
-         */
-        const namespace = yield* observeNamespaceJob({ github: githubFacts, withUsage })
+          /**
+           * The Namespace observation is deliberately sequenced after the GitHub
+           * fetch: the runner kind decides whether `nsc` is consulted at all.
+           */
+          const namespace = yield* observeNamespaceJob({ github: githubFacts, withUsage })
 
-        tui.dispatch({
-          _tag: 'SetInspection',
-          github: githubFacts,
-          namespace,
-          assessment: classifyInspection({ github: githubFacts, namespace }),
-        })
-      }),
-    ).pipe(Effect.provide(outputModeLayer(output))),
+          tui.dispatch({
+            _tag: 'SetInspection',
+            github: githubFacts,
+            namespace,
+            assessment: classifyInspection({ github: githubFacts, namespace }),
+          })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(outputMode))),
+    ),
   ),
   Cli.Command.withDescription(
     `Explain the runner behind a single job (GitHub facts + Namespace facts + verdict)

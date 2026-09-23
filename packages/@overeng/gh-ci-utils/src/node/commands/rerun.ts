@@ -7,7 +7,7 @@ import { Effect, Option, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
+import { outputModeLayer, outputOption, resolveOutputOption } from '@overeng/tui-react/node'
 
 import { ConfigError } from '../../isomorphic/Errors.ts'
 import {
@@ -62,78 +62,80 @@ export const rerunCommand = Cli.Command.make('rerun', {
 }).pipe(
   Cli.Command.withHandler(
     ({ output, target: targetInput, workflow: workflowOpt, failed, watch, watchMode, timeout }) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const tui = (yield* MutationApp.run(
-            React.createElement(MutationView, { stateAtom: MutationApp.stateAtom }),
-          )) as TuiHandle
+      Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const tui = (yield* MutationApp.run(
+              React.createElement(MutationView, { stateAtom: MutationApp.stateAtom }),
+            )) as TuiHandle
 
-          const config = yield* resolveConfig({})
+            const config = yield* resolveConfig({})
 
-          const preferWorkflow = Option.isSome(workflowOpt) ? workflowOpt.value : undefined
-          const localRepo = config.repos[0]
+            const preferWorkflow = Option.isSome(workflowOpt) ? workflowOpt.value : undefined
+            const localRepo = config.repos[0]
 
-          let resolved: ResolvedTarget
-          if (Option.isSome(targetInput)) {
-            resolved = yield* resolveTarget(
-              targetInput.value as string,
-              Option.fromNullishOr(localRepo),
-              preferWorkflow,
-            )
-          } else {
-            if (!localRepo) {
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'No repo configured',
-                message: 'Could not detect repo. Use owner/repo as target.',
-              })
-              return
+            let resolved: ResolvedTarget
+            if (Option.isSome(targetInput)) {
+              resolved = yield* resolveTarget(
+                targetInput.value as string,
+                Option.fromNullishOr(localRepo),
+                preferWorkflow,
+              )
+            } else {
+              if (!localRepo) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'No repo configured',
+                  message: 'Could not detect repo. Use owner/repo as target.',
+                })
+                return
+              }
+              resolved = yield* resolveTargetOrCurrentBranch(targetInput, localRepo, preferWorkflow)
             }
-            resolved = yield* resolveTargetOrCurrentBranch(targetInput, localRepo, preferWorkflow)
-          }
-          yield* validateMutationRunSelection({ action: 'rerun', resolved })
+            yield* validateMutationRunSelection({ action: 'rerun', resolved })
 
-          const { runId, repo: resolvedRepo } = resolved
-          const github = yield* GitHubClient
-          const previousRunAttempt = watch
-            ? (yield* github.getWorkflowRun({ repo: resolvedRepo, runId })).run_attempt
-            : undefined
+            const { runId, repo: resolvedRepo } = resolved
+            const github = yield* GitHubClient
+            const previousRunAttempt = watch
+              ? (yield* github.getWorkflowRun({ repo: resolvedRepo, runId })).run_attempt
+              : undefined
 
-          if (failed) {
-            yield* github.rerunFailedJobs({ repo: resolvedRepo, runId })
-            tui.dispatch({
-              _tag: 'SetDispatched',
-              runId,
-              repo: resolvedRepo,
-              message: `Re-running failed jobs for run ${runId}`,
-              url: null,
-            })
-          } else {
-            yield* github.rerunWorkflow({ repo: resolvedRepo, runId })
-            tui.dispatch({
-              _tag: 'SetDispatched',
-              runId,
-              repo: resolvedRepo,
-              message: `Re-running all jobs for run ${runId}`,
-              url: null,
-            })
-          }
+            if (failed) {
+              yield* github.rerunFailedJobs({ repo: resolvedRepo, runId })
+              tui.dispatch({
+                _tag: 'SetDispatched',
+                runId,
+                repo: resolvedRepo,
+                message: `Re-running failed jobs for run ${runId}`,
+                url: null,
+              })
+            } else {
+              yield* github.rerunWorkflow({ repo: resolvedRepo, runId })
+              tui.dispatch({
+                _tag: 'SetDispatched',
+                runId,
+                repo: resolvedRepo,
+                message: `Re-running all jobs for run ${runId}`,
+                url: null,
+              })
+            }
 
-          if (watch) {
-            yield* watchRun({
-              tui,
-              repo: resolvedRepo,
-              runId,
-              intervalSeconds: 5,
-              timeoutSeconds: timeout,
-              failFast: watchMode === 'first-failure',
-              ...(previousRunAttempt !== undefined ? { previousRunAttempt } : {}),
-            })
-          }
+            if (watch) {
+              yield* watchRun({
+                tui,
+                repo: resolvedRepo,
+                runId,
+                intervalSeconds: 5,
+                timeoutSeconds: timeout,
+                failFast: watchMode === 'first-failure',
+                ...(previousRunAttempt !== undefined ? { previousRunAttempt } : {}),
+              })
+            }
 
-          yield* dispatchMeta(tui)
-        }),
-      ).pipe(Effect.provide(outputModeLayer(output))),
+            yield* dispatchMeta(tui)
+          }),
+        ).pipe(Effect.provide(outputModeLayer(outputMode))),
+      ),
   ),
   Cli.Command.withDescription(
     `Re-run a workflow run
@@ -175,76 +177,78 @@ export const runCommand = Cli.Command.make('run', {
 }).pipe(
   Cli.Command.withHandler(
     ({ output, workflow, field, inputs, target: targetInput, watch, watchMode, timeout }) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const tui = (yield* MutationApp.run(
-            React.createElement(MutationView, { stateAtom: MutationApp.stateAtom }),
-          )) as TuiHandle
+      Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const tui = (yield* MutationApp.run(
+              React.createElement(MutationView, { stateAtom: MutationApp.stateAtom }),
+            )) as TuiHandle
 
-          const config = yield* resolveConfig({})
-          const localRepo = Option.fromNullishOr(config.repos[0])
-          const github = yield* GitHubClient
+            const config = yield* resolveConfig({})
+            const localRepo = Option.fromNullishOr(config.repos[0])
+            const github = yield* GitHubClient
 
-          let target: { repo: string; branch: string }
-          if (Option.isSome(targetInput)) {
-            target = yield* resolveWorkflowDispatchTarget({
-              input: targetInput.value,
-              localRepo,
-              getDefaultBranch: github.getDefaultBranch,
-            })
-          } else {
-            if (Option.isNone(localRepo)) {
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'No repo configured',
-                message: 'Could not detect repo. Use owner/repo as target.',
+            let target: { repo: string; branch: string }
+            if (Option.isSome(targetInput)) {
+              target = yield* resolveWorkflowDispatchTarget({
+                input: targetInput.value,
+                localRepo,
+                getDefaultBranch: github.getDefaultBranch,
               })
-              return
+            } else {
+              if (Option.isNone(localRepo)) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'No repo configured',
+                  message: 'Could not detect repo. Use owner/repo as target.',
+                })
+                return
+              }
+              target = {
+                repo: localRepo.value,
+                branch: yield* detectCurrentBranch,
+              }
             }
-            target = {
-              repo: localRepo.value,
-              branch: yield* detectCurrentBranch,
-            }
-          }
 
-          const { repo: targetRepo, branch } = target
+            const { repo: targetRepo, branch } = target
 
-          const dispatchInputs = yield* parseDispatchInputs({ field, inputs }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new ConfigError({ message: `Invalid workflow dispatch inputs: ${cause}`, cause }),
-            ),
-          )
+            const dispatchInputs = yield* parseDispatchInputs({ field, inputs }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ConfigError({ message: `Invalid workflow dispatch inputs: ${cause}`, cause }),
+              ),
+            )
 
-          const dispatched = yield* github.dispatchWorkflow({
-            repo: targetRepo,
-            workflow,
-            ref: branch,
-            inputs: dispatchInputs,
-          })
-          const runId = dispatched.workflow_run_id
-          tui.dispatch({
-            _tag: 'SetDispatched',
-            runId,
-            repo: targetRepo,
-            message: `Triggered run ${runId} for ${targetRepo} on ${branch}`,
-            url: dispatched.html_url,
-          })
-
-          if (watch) {
-            yield* watchRun({
-              tui,
+            const dispatched = yield* github.dispatchWorkflow({
               repo: targetRepo,
-              runId,
-              intervalSeconds: 5,
-              timeoutSeconds: timeout,
-              failFast: watchMode === 'first-failure',
+              workflow,
+              ref: branch,
+              inputs: dispatchInputs,
             })
-          }
+            const runId = dispatched.workflow_run_id
+            tui.dispatch({
+              _tag: 'SetDispatched',
+              runId,
+              repo: targetRepo,
+              message: `Triggered run ${runId} for ${targetRepo} on ${branch}`,
+              url: dispatched.html_url,
+            })
 
-          yield* dispatchMeta(tui)
-        }),
-      ).pipe(Effect.provide(outputModeLayer(output))),
+            if (watch) {
+              yield* watchRun({
+                tui,
+                repo: targetRepo,
+                runId,
+                intervalSeconds: 5,
+                timeoutSeconds: timeout,
+                failFast: watchMode === 'first-failure',
+              })
+            }
+
+            yield* dispatchMeta(tui)
+          }),
+        ).pipe(Effect.provide(outputModeLayer(outputMode))),
+      ),
   ),
   Cli.Command.withDescription(
     `Dispatch a workflow and watch it
@@ -295,48 +299,50 @@ export const cancelCommand = Cli.Command.make('cancel', {
   workflow: workflowOption,
 }).pipe(
   Cli.Command.withHandler(({ output, target: targetInput, workflow: workflowOpt }) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const tui = (yield* MutationApp.run(
-          React.createElement(MutationView, { stateAtom: MutationApp.stateAtom }),
-        )) as TuiHandle
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const tui = (yield* MutationApp.run(
+            React.createElement(MutationView, { stateAtom: MutationApp.stateAtom }),
+          )) as TuiHandle
 
-        const config = yield* resolveConfig({})
-        const localRepo = Option.fromNullishOr(config.repos[0])
-        const preferWorkflow = Option.isSome(workflowOpt) ? workflowOpt.value : undefined
+          const config = yield* resolveConfig({})
+          const localRepo = Option.fromNullishOr(config.repos[0])
+          const preferWorkflow = Option.isSome(workflowOpt) ? workflowOpt.value : undefined
 
-        let resolved: ResolvedTarget
-        if (Option.isSome(targetInput)) {
-          resolved = yield* resolveActiveTarget(targetInput.value, localRepo, preferWorkflow)
-        } else {
-          if (Option.isNone(localRepo)) {
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'No repo configured',
-              message: 'Could not detect repo. Use owner/repo as target.',
-            })
-            return
+          let resolved: ResolvedTarget
+          if (Option.isSome(targetInput)) {
+            resolved = yield* resolveActiveTarget(targetInput.value, localRepo, preferWorkflow)
+          } else {
+            if (Option.isNone(localRepo)) {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'No repo configured',
+                message: 'Could not detect repo. Use owner/repo as target.',
+              })
+              return
+            }
+            resolved = yield* resolveActiveTargetOrCurrentBranch(
+              targetInput,
+              localRepo.value,
+              preferWorkflow,
+            )
           }
-          resolved = yield* resolveActiveTargetOrCurrentBranch(
-            targetInput,
-            localRepo.value,
-            preferWorkflow,
-          )
-        }
-        yield* validateMutationRunSelection({ action: 'cancel', resolved })
+          yield* validateMutationRunSelection({ action: 'cancel', resolved })
 
-        const github = yield* GitHubClient
-        const { runId, repo: resolvedRepo } = resolved
+          const github = yield* GitHubClient
+          const { runId, repo: resolvedRepo } = resolved
 
-        yield* github.cancelRun({ repo: resolvedRepo, runId })
-        tui.dispatch({
-          _tag: 'SetDone',
-          message: `Cancelled run ${runId} in ${resolvedRepo}`,
-        })
+          yield* github.cancelRun({ repo: resolvedRepo, runId })
+          tui.dispatch({
+            _tag: 'SetDone',
+            message: `Cancelled run ${runId} in ${resolvedRepo}`,
+          })
 
-        yield* dispatchMeta(tui)
-      }),
-    ).pipe(Effect.provide(outputModeLayer(output))),
+          yield* dispatchMeta(tui)
+        }),
+      ).pipe(Effect.provide(outputModeLayer(outputMode))),
+    ),
   ),
   Cli.Command.withDescription(
     `Cancel a running workflow

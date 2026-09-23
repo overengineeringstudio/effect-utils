@@ -64,18 +64,22 @@ describe('tui-stories CLI contract baselines (status/signal invariant, prose own
     ],
     [
       'invalid width with json output (stdout guard)',
-      [
-        'render',
-        'Story',
-        '--path',
-        'packages/@overeng/tui-stories',
-        '--width',
-        'nope',
-        '--output',
-        'json',
-      ],
+      ['render', 'Story', '--path', 'packages/@overeng/tui-stories', '--width', 'nope', '--json'],
     ],
   ] as const)('%s', (_name, args) => {
     expect(runCli(...args)).toMatchSnapshot()
   })
+})
+
+it('rejects conflicting output flags', () => {
+  const result = runCli(
+    'list',
+    '--path',
+    'packages/@overeng/tui-stories',
+    '--output',
+    'json',
+    '--json',
+  )
+  expect(result.status).toBe(1)
+  expect(result.stderr).toContain('use only one of --output / -o or --json')
 })

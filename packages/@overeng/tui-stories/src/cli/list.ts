@@ -3,7 +3,7 @@ import { Command, Flag as Options } from 'effect/unstable/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
-import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
+import { outputOption, outputModeLayer, resolveOutputOption } from '@overeng/tui-react/node'
 
 import { discoverStories } from '../StoryDiscovery.ts'
 import { ListApp, ListView } from './renderers/ListOutput/mod.ts'
@@ -18,6 +18,7 @@ export const listCommand = Command.make(
   { path: pathOption, output: outputOption },
   ({ path, output }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const { modules, skippedCount } = yield* discoverStories({ packageDirs: [path] })
 
       const groups = modules.map((mod) => ({
@@ -39,6 +40,6 @@ export const listCommand = Command.make(
             })
           }),
         { view: React.createElement(ListView, { stateAtom: ListApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('List all discovered stories'))

@@ -4,9 +4,10 @@
  * Create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.
  */
 
+import { Effect } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 
-import { outputOption, verboseOption } from '../context.ts'
+import { outputOption, resolveOutputOption, verboseOption } from '../context.ts'
 import { runCommand, type LockSyncMode } from './engine.ts'
 
 const lockSyncOption = Cli.Flag.choice('lock-sync', ['auto', 'off', 'direct', 'recursive']).pipe(
@@ -58,20 +59,24 @@ export const applyCommand = Cli.Command.make(
     verbose: verboseOption,
   },
   ({ output, dryRun, force, all, only, skip, gitProtocol, worktreeMode, lockSync, verbose }) =>
-    runCommand({
-      mode: 'apply',
-      output,
-      dryRun,
-      force,
-      all,
-      only,
-      skip,
-      gitProtocol,
-      createBranches: false,
-      verbose,
-      worktreeMode,
-      lockSyncMode: lockSync,
-    }),
+    resolveOutputOption(output).pipe(
+      Effect.flatMap((outputMode) =>
+        runCommand({
+          mode: 'apply',
+          output: outputMode,
+          dryRun,
+          force,
+          all,
+          only,
+          skip,
+          gitProtocol,
+          createBranches: false,
+          verbose,
+          worktreeMode,
+          lockSyncMode: lockSync,
+        }),
+      ),
+    ),
 ).pipe(
   Cli.Command.withDescription(
     'Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.',

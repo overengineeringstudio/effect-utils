@@ -23,7 +23,13 @@ import {
   readMegarepoConfig,
   writeMegarepoConfig,
 } from '../../../core/config.ts'
-import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
+import {
+  Cwd,
+  findMegarepoRoot,
+  outputOption,
+  outputModeLayer,
+  resolveOutputOption,
+} from '../../context.ts'
 import { NotInMegarepoError } from '../../errors.ts'
 import * as Observability from '../../observability.ts'
 import { PushRefsApp, PushRefsView } from '../../renderers/PushRefsOutput/mod.ts'
@@ -168,103 +174,105 @@ export const pushRefsCommand = Cli.Command.make(
     ),
   },
   ({ output, dryRun, all, only }) =>
-    run(
-      PushRefsApp,
-      (tui) =>
-        Effect.gen(function* () {
-          const cwd = yield* Cwd
-          const root = yield* findMegarepoRoot(cwd)
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      run(
+        PushRefsApp,
+        (tui) =>
+          Effect.gen(function* () {
+            const cwd = yield* Cwd
+            const root = yield* findMegarepoRoot(cwd)
 
-          if (Option.isNone(root) === true) {
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'not_in_megarepo',
-              message: 'Not in a megarepo',
-            })
-            return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
-          }
+            if (Option.isNone(root) === true) {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'not_in_megarepo',
+                message: 'Not in a megarepo',
+              })
+              return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
+            }
 
-          tui.dispatch({ _tag: 'SetScanning' })
+            tui.dispatch({ _tag: 'SetScanning' })
 
-          const megarepoRoot = root.value
+            const megarepoRoot = root.value
 
-          // Load parent config
-          const { config } = yield* readMegarepoConfig(megarepoRoot)
+            // Load parent config
+            const { config } = yield* readMegarepoConfig(megarepoRoot)
 
-          // Find nested megarepos and push refs
-          const processLevel = (options: {
-            levelRoot: AbsoluteDirPath
-            levelMembers: Record<string, string>
-          }): Effect.Effect<ReadonlyArray<NestedResult>, Error, FileSystem.FileSystem> =>
-            Effect.gen(function* () {
-              const results: NestedResult[] = []
+            // Find nested megarepos and push refs
+            const processLevel = (options: {
+              levelRoot: AbsoluteDirPath
+              levelMembers: Record<string, string>
+            }): Effect.Effect<ReadonlyArray<NestedResult>, Error, FileSystem.FileSystem> =>
+              Effect.gen(function* () {
+                const results: NestedResult[] = []
 
-              for (const memberName of Object.keys(options.levelMembers)) {
-                const memberPath = getMemberPath({
-                  megarepoRoot: options.levelRoot,
-                  name: memberName,
-                })
-                const nestedConfigPath = yield* findConfigPath(memberPath)
-                if (nestedConfigPath === undefined) continue
-
-                const result = yield* pushRefsToNested({
-                  nestedName: memberName,
-                  nestedRoot: memberPath,
-                  parentMembers: options.levelMembers,
-                  dryRun,
-                  only,
-                })
-
-                if (result !== undefined) {
-                  results.push(result)
-                }
-
-                // Recurse into nested megarepos if --all
-                if (all === true) {
-                  const { config: nestedConfig } = yield* readMegarepoConfig(memberPath)
-                  const nestedResults = yield* processLevel({
-                    levelRoot: memberPath,
-                    levelMembers: nestedConfig.members,
+                for (const memberName of Object.keys(options.levelMembers)) {
+                  const memberPath = getMemberPath({
+                    megarepoRoot: options.levelRoot,
+                    name: memberName,
                   })
-                  results.push(...nestedResults)
+                  const nestedConfigPath = yield* findConfigPath(memberPath)
+                  if (nestedConfigPath === undefined) continue
+
+                  const result = yield* pushRefsToNested({
+                    nestedName: memberName,
+                    nestedRoot: memberPath,
+                    parentMembers: options.levelMembers,
+                    dryRun,
+                    only,
+                  })
+
+                  if (result !== undefined) {
+                    results.push(result)
+                  }
+
+                  // Recurse into nested megarepos if --all
+                  if (all === true) {
+                    const { config: nestedConfig } = yield* readMegarepoConfig(memberPath)
+                    const nestedResults = yield* processLevel({
+                      levelRoot: memberPath,
+                      levelMembers: nestedConfig.members,
+                    })
+                    results.push(...nestedResults)
+                  }
                 }
-              }
 
-              return results
+                return results
+              })
+
+            const results = yield* processLevel({
+              levelRoot: megarepoRoot,
+              levelMembers: config.members,
             })
 
-          const results = yield* processLevel({
-            levelRoot: megarepoRoot,
-            levelMembers: config.members,
-          })
-
-          if (results.length === 0) {
-            tui.dispatch({ _tag: 'SetAligned' })
-          } else {
-            const totalUpdates = results.reduce((sum, r) => sum + r.updates.length, 0)
-            tui.dispatch({
-              _tag: 'SetResult',
-              results: results.map((r) => ({
-                name: r.name,
-                updates: [...r.updates],
-                hasGenie: r.hasGenie,
-              })),
-              totalUpdates,
-              dryRun,
-            })
-          }
+            if (results.length === 0) {
+              tui.dispatch({ _tag: 'SetAligned' })
+            } else {
+              const totalUpdates = results.reduce((sum, r) => sum + r.updates.length, 0)
+              tui.dispatch({
+                _tag: 'SetResult',
+                results: results.map((r) => ({
+                  name: r.name,
+                  updates: [...r.updates],
+                  hasGenie: r.hasGenie,
+                })),
+                totalUpdates,
+                dryRun,
+              })
+            }
+          }),
+        { view: React.createElement(PushRefsView, { stateAtom: PushRefsApp.stateAtom }) },
+      ).pipe(
+        Effect.provide(outputModeLayer(outputMode)),
+        Observability.withCommandSpan({
+          name: 'megarepo/config/push-refs',
+          command: 'config push-refs',
+          label: all === true ? 'push-refs-all' : 'push-refs',
+          output: outputMode,
+          all,
+          dryRun,
         }),
-      { view: React.createElement(PushRefsView, { stateAtom: PushRefsApp.stateAtom }) },
-    ).pipe(
-      Effect.provide(outputModeLayer(output)),
-      Observability.withCommandSpan({
-        name: 'megarepo/config/push-refs',
-        command: 'config push-refs',
-        label: all === true ? 'push-refs-all' : 'push-refs',
-        output,
-        all,
-        dryRun,
-      }),
+      ),
     ),
 ).pipe(
   Cli.Command.withDescription(

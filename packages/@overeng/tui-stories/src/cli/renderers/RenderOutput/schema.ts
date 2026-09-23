@@ -5,7 +5,7 @@ import { Schema } from 'effect'
 /**
  * Render output state — shows the rendered story content with context.
  *
- * Note: the command's own output mode (--output) is handled by outputModeLayer,
+ * Note: the command's own output mode (--output/--json) is handled by outputModeLayer,
  * not tracked in this state. This state models the *content* being rendered.
  */
 export const RenderState = Schema.Union([

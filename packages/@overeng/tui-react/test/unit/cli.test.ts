@@ -2,10 +2,36 @@
  * Tests for CLI entrypoint helpers.
  */
 
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Option } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { outputModeLayer, runTuiMain, type TuiRuntime } from '../../src/effect/cli.tsx'
+import {
+  outputModeLayer,
+  resolveOutputOption,
+  runTuiMain,
+  type TuiRuntime,
+} from '../../src/effect/cli.tsx'
+
+describe('resolveOutputOption', () => {
+  test.each([
+    [{ mode: Option.none(), json: Option.none() }, 'auto'],
+    [{ mode: Option.some('ci' as const), json: Option.none() }, 'ci'],
+    [{ mode: Option.none(), json: Option.some(true) }, 'json'],
+    [{ mode: Option.none(), json: Option.some(false) }, 'auto'],
+  ])('resolves %j to %s', async (parsed, expected) => {
+    expect(await Effect.runPromise(resolveOutputOption(parsed))).toBe(expected)
+  })
+
+  test.each(['json', 'auto', 'ndjson'] as const)(
+    'rejects --json combined with --output %s',
+    async (mode) => {
+      const exit = await Effect.runPromiseExit(
+        resolveOutputOption({ mode: Option.some(mode), json: Option.some(true) }),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+    },
+  )
+})
 
 describe('runTuiMain', () => {
   test('sets exit code 130 for interrupt-only failures', async () => {

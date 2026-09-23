@@ -67,6 +67,7 @@ FLAGS
   --name, -n string      Override the member name (defaults to repo name)
   --sync, -s             Sync the added repo immediately
   --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+  --json                 Emit a single JSON document (alias for --output json)
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information

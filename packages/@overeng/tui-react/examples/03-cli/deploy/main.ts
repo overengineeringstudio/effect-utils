@@ -3,7 +3,7 @@
  *
  * Demonstrates:
  * - Effect CLI for argument parsing and signal handling
- * - Single `--output` flag for controlling output mode
+ * - `--output` modes plus the `--json` shorthand
  * - createTuiApp for state management
  * - Multiple output modes (tty, ci, pipe, json, ndjson, etc.)
  * - Graceful Ctrl+C handling with Interrupted state
@@ -20,7 +20,7 @@ import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { Command, Flag as Options } from 'effect/unstable/cli'
 
-import { outputOption, outputModeLayer } from '../../../src/node/mod.ts'
+import { outputOption, outputModeLayer, resolveOutputOption } from '../../../src/node/mod.ts'
 import { DeployError, runDeploy } from './deploy.tsx'
 
 // =============================================================================
@@ -77,24 +77,27 @@ const deploy = Command.make(
     force: forceArg,
     output,
   }) =>
-    runDeploy({
-      services: servicesArg
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-      environment: envArg,
-      dryRun: dryRunArg,
-      timeout: timeoutArg,
-      force: forceArg,
-    }).pipe(
-      Effect.provide(outputModeLayer(output)),
-      Effect.scoped,
-      // Exit with appropriate code based on result
-      Effect.filterOrFail(
-        (result) => result.success !== false,
-        (result) => new DeployError({ message: result.error ?? 'Deployment failed' }),
-      ),
-    ),
+    Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
+      return yield* runDeploy({
+        services: servicesArg
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        environment: envArg,
+        dryRun: dryRunArg,
+        timeout: timeoutArg,
+        force: forceArg,
+      }).pipe(
+        Effect.provide(outputModeLayer(outputMode)),
+        Effect.scoped,
+        // Exit with appropriate code based on result
+        Effect.filterOrFail(
+          (result) => result.success !== false,
+          (result) => new DeployError({ message: result.error ?? 'Deployment failed' }),
+        ),
+      )
+    }),
 )
 
 // =============================================================================

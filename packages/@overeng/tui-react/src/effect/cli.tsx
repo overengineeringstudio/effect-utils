@@ -24,7 +24,7 @@
  */
 
 import { Cause, Effect, Exit, Layer, Logger, Option } from 'effect'
-import { Flag } from 'effect/unstable/cli'
+import { CliError, Flag, type Command } from 'effect/unstable/cli'
 
 import { createLogCapture } from './LogCapture.ts'
 import { detectOutputMode, viewOutputStreamStdoutLayer } from './OutputMode.node.ts'
@@ -88,15 +88,47 @@ export type OutputModeValue = (typeof OUTPUT_MODE_VALUES)[number]
  * const myCommand = Command.make("cmd", {
  *   output: outputOption,
  * }, ({ output }) =>
- *   myProgram().pipe(Effect.provide(outputModeLayer(output)))
+ *   Effect.flatMap(resolveOutputOption(output), mode =>
+ *     myProgram().pipe(Effect.provide(outputModeLayer(mode))))
  * )
  * ```
  */
-export const outputOption = Flag.choice('output', OUTPUT_MODE_VALUES).pipe(
-  Flag.withAlias('o'),
-  Flag.withDescription('Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson'),
-  Flag.withDefault('auto' as OutputModeValue),
-)
+export const outputOption = {
+  mode: Flag.choice('output', OUTPUT_MODE_VALUES).pipe(
+    Flag.withAlias('o'),
+    Flag.withDescription('Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson'),
+    Flag.optional,
+  ),
+  json: Flag.boolean('json').pipe(
+    Flag.withDescription('Emit a single JSON document (alias for --output json)'),
+    Flag.optional,
+  ),
+} as const satisfies Command.Command.FlagConfig
+
+/** Keep explicit flag presence until conflicting selections are checked. */
+export type ParsedOutputOption = Command.Command.Config.Infer<{
+  readonly output: typeof outputOption
+}>['output']
+
+/** Reject explicit selections of both output flags before applying the default. */
+export const resolveOutputOption = (
+  parsed: ParsedOutputOption,
+): Effect.Effect<OutputModeValue, CliError.CliError> => {
+  if (Option.isSome(parsed.mode) === true && Option.isSome(parsed.json) === true) {
+    return Effect.fail(
+      new CliError.InvalidValue({
+        option: 'output',
+        value: '--output / -o and --json',
+        expected: 'use only one of --output / -o or --json',
+        kind: 'flag',
+      }),
+    )
+  }
+  if (Option.isSome(parsed.mode) === true) return Effect.succeed(parsed.mode.value)
+  return Effect.succeed(
+    Option.isSome(parsed.json) === true && parsed.json.value === true ? 'json' : 'auto',
+  )
+}
 
 // =============================================================================
 // Layer Helper

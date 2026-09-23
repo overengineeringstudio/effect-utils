@@ -491,11 +491,17 @@ describe('megarepo.json parsing', () => {
  * With the flat JSON output contract, stdout is directly the app state
  * (no `{_tag: 'Success', value: ...}` envelope wrapper).
  */
-const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
+const runRootWithCwd = ({
+  cwdPath,
+  outputArgs = ['--output', 'json'],
+}: {
+  cwdPath: string
+  outputArgs?: readonly string[]
+}) =>
   Effect.gen(function* () {
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
 
-    const argv = ['--cwd', cwdPath, 'root', '--output', 'json']
+    const argv = ['--cwd', cwdPath, 'root', ...outputArgs]
     const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provide(consoleLayer),
     )
@@ -579,6 +585,56 @@ describe('--cwd option', () => {
           Effect.provide(consoleLayer),
         )
         const exit = yield* Effect.exit(effect)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+})
+
+describe('output options', () => {
+  it.effect(
+    'supports --json as an alias for --output json',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        yield* initGitRepo(tmpDir)
+        yield* fs.writeFileString(
+          EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
+          '{"members":{}}',
+        )
+
+        const { exitCode, state } = yield* runRootWithCwd({
+          cwdPath: tmpDir,
+          outputArgs: ['--json'],
+        })
+
+        expect(exitCode).toBe(0)
+        expect(state?._tag).toBe('Success')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'rejects --json together with --output',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const { consoleLayer } = yield* makeConsoleCapture
+        const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })([
+          '--cwd',
+          tmpDir,
+          'root',
+          '--json',
+          '--output',
+          'json',
+        ]).pipe(Effect.provide(consoleLayer), Effect.exit)
 
         expect(Exit.isFailure(exit)).toBe(true)
       },

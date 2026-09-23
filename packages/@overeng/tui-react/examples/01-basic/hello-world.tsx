@@ -20,7 +20,7 @@ import { Command, Flag as Options } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'
-import { outputOption, outputModeLayer } from '../../src/node/mod.ts'
+import { outputOption, outputModeLayer, resolveOutputOption } from '../../src/node/mod.ts'
 // Import from shared modules
 import { AppState, AppAction, appReducer } from './schema.ts'
 import { HelloWorldView } from './view.tsx'
@@ -80,7 +80,11 @@ const helloWorldCommand = Command.make(
     duration: durationOption,
     output: outputOption,
   },
-  ({ duration, output }) => runHelloWorld(duration).pipe(Effect.provide(outputModeLayer(output))),
+  ({ duration, output }) =>
+    Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
+      return yield* runHelloWorld(duration).pipe(Effect.provide(outputModeLayer(outputMode)))
+    }),
 )
 
 const cli = Command.runWith(helloWorldCommand, {

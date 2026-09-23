@@ -80,6 +80,9 @@ All notable changes to this project will be documented in this file.
 - **Genie**: Include the existing Buck-built CLI product in trusted
   main-branch cache publication.
 
+- **CLI output**: Accept `--json` as an alias for final `--output json` in
+  compatible Effect CLI commands. Reject simultaneous explicit `--json` and
+  `--output` flags instead of silently choosing one.
 - **Genie CI**: Capture every devenv task graph as OpenTelemetry spans with
   workflow, job, run, revision, runner, and task attributes; render the slowest
   tasks in each job summary; and retain the OTLP payload as a CI artifact.
