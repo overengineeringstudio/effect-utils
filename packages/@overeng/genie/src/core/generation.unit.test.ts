@@ -3,9 +3,162 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { NodeServices } from '@effect/platform-node'
+import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { addHeaderComment, getHeaderComment, pinStagedModuleIdentity } from './generation.ts'
+import {
+  addHeaderComment,
+  getHeaderComment,
+  loadGenieFile,
+  pinStagedModuleIdentity,
+} from './generation.ts'
+
+type ConcurrencyBoundary = {
+  enter: () => Promise<void>
+  releaseAll: () => void
+  releaseNext: () => void
+  waitForEntries: (count: number) => Promise<void>
+  readonly maxOverlap: number
+}
+
+const makeConcurrencyBoundary = (): ConcurrencyBoundary => {
+  let active = 0
+  let entries = 0
+  let maxOverlap = 0
+  const releases: Array<() => void> = []
+  const entryWaiters = new Map<number, Array<() => void>>()
+
+  return {
+    enter: async () => {
+      active += 1
+      entries += 1
+      maxOverlap = Math.max(maxOverlap, active)
+      for (const resolve of entryWaiters.get(entries) ?? []) resolve()
+      await new Promise<void>((resolve) => releases.push(resolve))
+      active -= 1
+    },
+    releaseNext: () => releases.shift()?.(),
+    releaseAll: () => {
+      for (const release of releases.splice(0)) release()
+    },
+    waitForEntries: (count) => {
+      if (entries >= count) return Promise.resolve()
+      return new Promise<void>((resolve) => {
+        const waiters = entryWaiters.get(count) ?? []
+        waiters.push(resolve)
+        entryWaiters.set(count, waiters)
+      })
+    },
+    get maxOverlap() {
+      return maxOverlap
+    },
+  }
+}
+
+const generatorModule = {
+  default: { data: {}, stringify: () => '{}' },
+}
+
+const load = ({
+  cwd,
+  genieFilePath,
+  compiledBinaryImportGraphLoader,
+}: {
+  cwd: string
+  genieFilePath: string
+  compiledBinaryImportGraphLoader?: () => Effect.Effect<typeof generatorModule>
+}) =>
+  Effect.runPromise(
+    loadGenieFile({ cwd, genieFilePath, compiledBinaryImportGraphLoader }).pipe(
+      Effect.provide(NodeServices.layer),
+    ),
+  )
+
+describe('compiled binary import graph scheduling', () => {
+  it('serializes concurrent loadGenieFile staging and builds in compiled binaries', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-compiled-concurrency-'))
+    const originalArgv1 = process.argv[1]
+    const boundary = makeConcurrencyBoundary()
+    let scheduled = 0
+    let signalBothScheduled: (() => void) | undefined
+    const bothScheduled = new Promise<void>((resolve) => {
+      signalBothScheduled = resolve
+    })
+    const compiledBinaryImportGraphLoader = () => {
+      scheduled += 1
+      if (scheduled === 2) signalBothScheduled?.()
+      return Effect.promise(() => boundary.enter()).pipe(Effect.as(generatorModule))
+    }
+    const firstPath = path.join(tempRoot, 'first.json.genie.ts')
+    const secondPath = path.join(tempRoot, 'second.json.genie.ts')
+    await Promise.all([writeFile(firstPath, ''), writeFile(secondPath, '')])
+
+    process.argv[1] = '/$bunfs/genie'
+    try {
+      const first = load({
+        cwd: tempRoot,
+        genieFilePath: firstPath,
+        compiledBinaryImportGraphLoader,
+      })
+      const second = load({
+        cwd: tempRoot,
+        genieFilePath: secondPath,
+        compiledBinaryImportGraphLoader,
+      })
+      await bothScheduled
+      await boundary.waitForEntries(1)
+
+      expect(boundary.maxOverlap).toBe(1)
+
+      boundary.releaseNext()
+      await boundary.waitForEntries(2)
+      boundary.releaseNext()
+      await Promise.all([first, second])
+      expect(boundary.maxOverlap).toBe(1)
+    } finally {
+      boundary.releaseAll()
+      if (originalArgv1 === undefined) process.argv.splice(1, 1)
+      else process.argv[1] = originalArgv1
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps concurrent loadGenieFile imports unbounded outside compiled binaries', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-source-concurrency-'))
+    const originalArgv1 = process.argv[1]
+    const boundary = makeConcurrencyBoundary()
+    const boundaryKey = `__genieConcurrencyBoundary${Date.now()}`
+    const globals = globalThis as typeof globalThis & Record<string, unknown>
+    const source = [
+      `await (globalThis as typeof globalThis & Record<string, { enter: () => Promise<void> }>)[${JSON.stringify(boundaryKey)}]!.enter()`,
+      `export default { data: {}, stringify: () => '{}' }`,
+    ].join('\n')
+    const firstPath = path.join(tempRoot, 'first.json.genie.ts')
+    const secondPath = path.join(tempRoot, 'second.json.genie.ts')
+    globals[boundaryKey] = boundary
+    await Promise.all([writeFile(firstPath, source), writeFile(secondPath, source)])
+
+    process.argv[1] = '/usr/bin/genie.ts'
+    try {
+      const first = load({ cwd: tempRoot, genieFilePath: firstPath })
+      const second = load({ cwd: tempRoot, genieFilePath: secondPath })
+
+      await boundary.waitForEntries(2)
+      expect(boundary.maxOverlap).toBe(2)
+
+      boundary.releaseNext()
+      boundary.releaseNext()
+      await Promise.all([first, second])
+    } finally {
+      boundary.releaseAll()
+      if (originalArgv1 === undefined) process.argv.splice(1, 1)
+      else process.argv[1] = originalArgv1
+      delete globals[boundaryKey]
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('getHeaderComment', () => {
   it.each(['BUCK', 'defs.bzl', 'tooling.bxl'])(

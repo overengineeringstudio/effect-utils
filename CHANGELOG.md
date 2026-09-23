@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 - **Scoped Buck2 product publication**: Merge refreshed cache products by product
   identity while retaining unrelated release-backed products, so publishing
   Megarepo no longer removes the bootstrap tools required by repository checks.
+- **Genie**: Serialize compiled-binary import graph staging and bundling so
+  concurrent full-workspace generation cannot retain stale generated files.
 - **Buck2 product publication**: Scope trusted main-branch publication to the
   reviewed Megarepo source product so unrelated incomplete source recipes no
   longer block its generated cache manifest.
@@ -531,7 +533,7 @@ character after JSON`, failing every build against such a lockfile.
   version; this keeps sandboxed runtime invocations from trying to download a
   second pnpm. Verified on the built package: `pnpm --version` reports 12.4.1,
   the store layout stays `v11`, and `pnpm install --frozen-lockfile
-  --ignore-scripts` over all 39 workspace projects succeeds with the lockfile
+--ignore-scripts` over all 39 workspace projects succeeds with the lockfile
   unchanged.
 
 - **@overeng/utils / Storybook**: distribute the Storybook 10.6 builder-vite
