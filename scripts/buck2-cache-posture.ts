@@ -7,6 +7,7 @@ import process from 'node:process'
 const MANAGED_BEGIN = '# effect-utils standalone cache posture: begin'
 const MANAGED_END = '# effect-utils standalone cache posture: end'
 
+/** Trusted digest-CAS endpoint and publication tier declared by tracked Buck config. */
 export type TrustedArchiveOrigin = {
   readonly tier: 'private'
   readonly urlPrefix: string
