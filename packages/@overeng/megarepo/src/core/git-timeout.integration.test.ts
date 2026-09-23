@@ -1,17 +1,13 @@
 /**
- * Integration coverage for the operation-aware git deadline (issue livestore#1473).
+ * Integration coverage for the network-only git deadline (issue livestore#1473).
  *
  * These exercise REAL git subprocesses against a LOCAL remote (no network), proving
- * the timeout CLASS is enforced end-to-end through {@link Git.cloneBare} /
+ * the deadline is applied end-to-end through {@link Git.cloneBare} /
  * {@link Git.getCurrentCommit}, not just in the pure `gitCommandTimeoutMillis` helper:
  *
  * - a network op (`clone`) with a 1ms network budget fails with GitCommandTimeoutError;
- * - the same 1ms network budget does NOT affect a local op (`rev-parse`), which still
- *   succeeds — the two classes have independent deadlines;
- * - a 1ms local budget DOES time out a local op, confirming the local wiring too.
- *
- * The default (no env) clone succeeding is the baseline that the tight 30s deadline
- * used to break for large members.
+ * - the same 1ms network budget does NOT affect a local op (`rev-parse`), which runs
+ *   without a deadline and still succeeds.
  */
 
 import { NodeServices } from '@effect/platform-node'
@@ -117,7 +113,7 @@ describe('git operation-aware timeout', () => {
       const { tmp, remote } = yield* makeCloneSource()
       const target = cloneTargetIn(tmp, 'clone-for-local')
       yield* Git.cloneBare({ url: remote, targetPath: target })
-      // A 1ms NETWORK budget must not affect a LOCAL op — it keeps the 30s default.
+      // A 1ms NETWORK budget must not affect a LOCAL op, which runs without a deadline.
       const commit = yield* withEnv(
         'MEGAREPO_GIT_NETWORK_TIMEOUT_MS',
         '1',

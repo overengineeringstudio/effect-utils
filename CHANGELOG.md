@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
   `configDependencies`, so the previous duplicate-importer guard rejected
   legitimate locks at the root importer; an earlier document claiming an
   importer that declares project dependencies is still rejected.
+- **@overeng/megarepo**: Apply git command deadlines only to network commands.
+  Local commands such as `worktree add`, `worktree list`, and `status` now run
+  unbounded, so large stores under host load no longer fail `mr store worktree
+  new` or leave partially written worktrees behind.
 - **Scoped Buck2 product publication**: Merge refreshed cache products by product
   identity while retaining unrelated release-backed products, so publishing
   Megarepo no longer removes the bootstrap tools required by repository checks.
