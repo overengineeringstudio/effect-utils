@@ -309,11 +309,14 @@ _package_bin_artifact = rule(
 )
 
 
-def package_bin_artifact(name, **kwargs):
+def package_bin_artifact(
+        name,
+        _platform_gated_packages = "//buck2/dependencies:platform_gated_packages",
+        **kwargs):
     _package_bin_artifact(
         name = name,
         default_target_platform = "@rules//buck2/platforms:javascript_portable",
-        _platform_gated_packages = "//buck2/dependencies:platform_gated_packages",
+        _platform_gated_packages = _platform_gated_packages,
         **kwargs
     )
 
