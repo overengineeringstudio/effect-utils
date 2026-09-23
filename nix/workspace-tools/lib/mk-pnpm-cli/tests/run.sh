@@ -373,7 +373,7 @@ run_align_aggregate_manifest_specifiers_regression() {
   local start
   start="$(date +%s)"
 
-  echo "Check: aggregate manifest alignment reads every lockfile document"
+  echo "Check: aggregate manifest alignment reads the project graph of a pnpm 12 multi-document lockfile"
   local script
   script="$(
     cd "$ROOT" &&
@@ -401,24 +401,36 @@ YAML
 }
 JSON
   done
+  # pnpm 12 writes a multi-document lockfile when the package manager is
+  # self-managed: an env document first, whose `.` importer carries only
+  # packageManagerDependencies/configDependencies, and the project graph
+  # document last, whose own `.` importer is empty next to the workspace
+  # importers. The root importer therefore legitimately appears in both
+  # documents.
   cat >"$fixture/pnpm-lock.yaml" <<'YAML'
 ---
 lockfileVersion: '9.0'
 importers:
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.4.1
+        version: 12.4.1
+---
+lockfileVersion: '9.0'
+settings:
+  autoInstallPeers: true
+importers:
+  .: {}
   packages/first:
     dependencies:
       source:
         specifier: file:../../.devenv/pnpm-source-inputs/current/repos/source
----
-lockfileVersion: '9.0'
-importers:
   packages/second:
     dependencies:
       source:
         specifier: file:../../.devenv/pnpm-source-inputs/current/repos/source
----
-lockfileVersion: '9.0'
-importers:
   packages/third:
     dependencies:
       source:
@@ -440,15 +452,23 @@ YAML
       "$fixture/packages/$package/package.json" >/dev/null
   done
 
+  # A project importer claimed by a document other than the project graph is
+  # a genuine ownership conflict and must still be rejected.
   cat >"$fixture/duplicate-importer-lock.yaml" <<'YAML'
 ---
 lockfileVersion: '9.0'
 importers:
-  packages/first: {}
+  packages/first:
+    dependencies:
+      source:
+        specifier: file:../../.devenv/pnpm-source-inputs/current/repos/source
 ---
 lockfileVersion: '9.0'
 importers:
-  packages/first: {}
+  packages/first:
+    dependencies:
+      source:
+        specifier: file:../../.devenv/pnpm-source-inputs/current/repos/source
 YAML
   if (
     cd "$fixture"
