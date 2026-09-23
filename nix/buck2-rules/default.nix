@@ -67,6 +67,54 @@ pkgs.runCommand "buck2-rules"
         visibility = ["PUBLIC"],
     )
     BUCK
+    mkdir -p "$out/packages/@overeng/buck2-tools"
+    cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
+    filegroup(
+        name = "package_tree_runtime",
+        srcs = {
+            "package-tree.ts": "src/package-tree.ts",
+            "real-path.ts": "src/real-path.ts",
+        },
+        visibility = ["PUBLIC"],
+    )
+
+    filegroup(
+        name = "package_command_runtime",
+        srcs = {
+            "package-command-runner.ts": "src/package-command-runner.ts",
+            "real-path.ts": "src/real-path.ts",
+            "typescript-runner.ts": "src/typescript-runner.ts",
+        },
+        visibility = ["PUBLIC"],
+    )
+
+    filegroup(
+        name = "javascript_action_runtime",
+        srcs = {
+            "javascript-runner.ts": "src/javascript-runner.ts",
+            "typescript-runner.ts": "src/typescript-runner.ts",
+        },
+        visibility = ["PUBLIC"],
+    )
+
+    export_file(
+        name = "typescript-runner.ts",
+        src = "src/typescript-runner.ts",
+        visibility = ["PUBLIC"],
+    )
+
+    export_file(
+        name = "src/static-check-runner.ts",
+        src = "src/static-check-runner.ts",
+        visibility = ["PUBLIC"],
+    )
+
+    export_file(
+        name = "src/repository-policy-runner.ts",
+        src = "src/repository-policy-runner.ts",
+        visibility = ["PUBLIC"],
+    )
+    BUCK
     chmod -R u+w "$out"
     mkdir -p "$out/prelude"
     tar -xzf ${buck2.passthru.prelude} --strip-components=1 -C "$out/prelude"
