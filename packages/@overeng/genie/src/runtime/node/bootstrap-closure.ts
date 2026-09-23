@@ -308,10 +308,13 @@ const resolveFollowableSpecifier = async ({
  */
 export const checkBootstrapClosure = async ({
   genieFiles,
+  initialAnalysisFiles = [],
   reportAllViolations = false,
 }: {
   /** Absolute paths of the `.genie.ts` sources to check. */
   genieFiles: readonly string[]
+  /** Complete known source set to seed into one compiler snapshot for bounded multi-root analysis. */
+  initialAnalysisFiles?: readonly string[]
   /** Report every bare runtime package boundary instead of only the first one per source. */
   reportAllViolations?: boolean
 }): Promise<BootstrapClosureResult> => {
@@ -407,6 +410,7 @@ export const checkBootstrapClosure = async ({
   const sortedGenieFiles = genieFiles.map(canonicalRootPath).toSorted()
   const violations = await runTsFileAnalysis({
     cwd: process.cwd(),
+    initialFiles: initialAnalysisFiles,
     use: async (session) => {
       const found: BootstrapClosureViolation[] = []
       for (const root of sortedGenieFiles) {

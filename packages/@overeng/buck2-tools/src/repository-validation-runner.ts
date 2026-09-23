@@ -623,9 +623,18 @@ const main = async (): Promise<void> => {
   } else if (mode === 'devenv-trace-audit') {
     summary = checkDevenvTraceAudit({ sourceRoot, sourcePaths })
   } else if (mode === 'genie-import-closure') {
+    const analysisFiles = sourcePaths.filter((relativePath) =>
+      /\.(?:[cm]?[jt]sx?)$/u.test(relativePath),
+    )
     run({
       command: process.execPath,
-      args: [path.resolve(requireString(values.checker, '--checker')), '--root', sourceRoot],
+      args: [
+        path.resolve(requireString(values.checker, '--checker')),
+        '--root',
+        sourceRoot,
+        '--analysis-files',
+        JSON.stringify(analysisFiles),
+      ],
       cwd: sourceRoot,
       env: {
         GENIE_TYPESCRIPT_API_SERVER: path.resolve(requireString(values.server, '--server')),
