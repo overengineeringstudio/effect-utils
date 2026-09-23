@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv**: Load tracked Buck products through the flake's
+  `buckProducts`, which wires the source recipes cache-native manifest rows
+  require. The loader now requires `fromSourceProducts`, so a caller that
+  omits them fails at evaluation instead of breaking once the first
+  cache-native product is published.
 - **Buck2 product publication**: Reuse an existing Cachix pin when a later main
   commit rebuilds byte-identical product bytes, after verifying the published
   provenance binds the same artifact, instead of failing because the rebuilt

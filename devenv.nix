@@ -31,7 +31,9 @@ let
   currentSystem = pkgs.stdenv.hostPlatform.system;
   buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
-  trackedBuck2Products = import ./nix/buck2-products { pkgs = flakePkgs; };
+  # The flake wires the source recipes that cache-native manifest rows require;
+  # re-importing the loader here without them fails on every cache-native product.
+  trackedBuck2Products = repoFlake.buckProducts.${currentSystem};
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
