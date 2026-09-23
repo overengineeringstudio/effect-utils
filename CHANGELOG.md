@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Buck2 product publication**: Scope trusted main-branch publication to the
+  reviewed Megarepo source product so unrelated incomplete source recipes no
+  longer block its generated cache manifest.
 - **Buck2 native products**: Patch imported dynamic ELF entrypoints to the Nix
   glibc loader and explicit `libgcc` runtime closure after verifying their
   published runtime contract, so they execute inside pure Nix sandboxes.
