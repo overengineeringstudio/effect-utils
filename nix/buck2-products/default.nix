@@ -165,7 +165,30 @@ let
         inherit release;
       };
     };
-  checkedProducts = map checkedProduct manifest.products;
+  isLegacyProduct =
+    entry:
+    builtins.hasAttr "descriptor" entry
+    && builtins.hasAttr "release" entry
+    && !builtins.hasAttr "name" entry;
+  isCacheProduct =
+    entry:
+    builtins.hasAttr "name" entry
+    && builtins.hasAttr "provenance" entry
+    && !builtins.hasAttr "release" entry;
+  legacyEntries =
+    if manifest.schema == "effect-utils/buck2-release-products/v1" then
+      manifest.products
+    else
+      builtins.filter isLegacyProduct manifest.products;
+  cacheEntries =
+    if manifest.schema == "effect-utils/buck-cache-products/v2" then
+      manifest.products
+    else
+      builtins.filter isCacheProduct manifest.products;
+  manifestProductIdentity =
+    entry: if isCacheProduct entry then entry.name else entry.descriptor.productName;
+  manifestProductIdentities = map manifestProductIdentity manifest.products;
+  checkedProducts = map checkedProduct legacyEntries;
   publishedProductNames = map (entry: entry.name) checkedProducts;
   releaseTags = map (entry: entry.value.release.tag) checkedProducts;
   uniquePublishedProductNames = lib.unique publishedProductNames;
@@ -181,8 +204,48 @@ let
     }) checkedProducts
   );
 in
-if manifest.schema == "effect-utils/buck-cache-products/v2" then
-  import ./cache.nix { inherit pkgs fromSourceProducts; }
+if
+  manifest.schema == "effect-utils/buck-cache-products/v2"
+  || manifest.schema == "effect-utils/buck-cache-products/v3"
+then
+  let
+    cached = import ./cache.nix {
+      inherit pkgs fromSourceProducts;
+      manifest = {
+        products = cacheEntries;
+        schema = "effect-utils/buck-cache-products/v2";
+      };
+    };
+    products = builtins.listToAttrs checkedProducts // cached.products;
+  in
+  assert lib.assertMsg (
+    builtins.attrNames manifest == [
+      "products"
+      "schema"
+    ]
+  ) "buck2-products: manifest fields are not exact";
+  assert lib.assertMsg (
+    builtins.isList manifest.products && manifest.products != [ ]
+  ) "buck2-products: manifest products must be a non-empty list";
+  assert lib.assertMsg (
+    builtins.length manifestProductIdentities == builtins.length (lib.unique manifestProductIdentities)
+  ) "buck2-products: product names must be unique across cache and legacy entries";
+  assert lib.assertMsg (
+    if manifest.schema == "effect-utils/buck-cache-products/v2" then
+      legacyEntries == [ ] && builtins.length cacheEntries == builtins.length manifest.products
+    else
+      legacyEntries != [ ]
+      && cacheEntries != [ ]
+      && builtins.length legacyEntries + builtins.length cacheEntries == builtins.length manifest.products
+  ) "buck2-products: manifest entries do not match their declared schema";
+  assert lib.assertMsg (builtins.all (
+    product: builtins.elem product declaredProducts
+  ) publishedProducts) "buck2-products: legacy fallback contains an undeclared product";
+  cached
+  // {
+    inherit manifest products;
+    publishedProductNames = builtins.sort builtins.lessThan (builtins.attrNames products);
+  }
 else
   assert lib.assertMsg (
     builtins.attrNames targets == [

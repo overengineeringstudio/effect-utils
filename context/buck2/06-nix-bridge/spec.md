@@ -90,16 +90,23 @@ name that already identifies another store path; pushes the store path; and
 creates an immutable Cachix pin with the product as an artifact. Anonymous HTTP
 download and digest verification complete publication.
 
-The committed `effect-utils/buck-cache-products/v2` manifest contains exact rows
-with `name`, `version`, `sha256`, `size`, `storePath`, `artifactUrl`, and
-`provenance`. The Nix loader validates every field and treats the recorded store
-path as the substitution identity. Nix obtains that immutable path from the
-configured binary cache. A validation derivation then checks the artifact
-digest, size, and provenance before exposing the product to the consumer. The
-generated source derivation remains available as the reproducible publication
-recipe, but changing later repository metadata does not change the identity of
-an already-published product. The anonymous artifact URL is an interoperability
-path, not a second source of product authority.
+Cache-native rows contain exact `name`, `version`, `sha256`, `size`,
+`storePath`, `artifactUrl`, and `provenance` fields. The Nix loader validates
+every field and treats the recorded store path as the substitution identity.
+Nix obtains that immutable path from the configured binary cache. A validation
+derivation then checks the artifact digest, size, and provenance before exposing
+the product to the consumer.
+
+Product-scoped publication merges by product identity. During the release-asset
+to cache transition, `effect-utils/buck-cache-products/v3` may contain both
+cache-native rows and untouched `effect-utils/buck2-release-products/v1` rows;
+the cache-native row replaces the legacy row for the same product. The publisher
+validates every cache row's provenance and preserves unrelated rows. Once no
+legacy rows remain, it emits `effect-utils/buck-cache-products/v2`
+automatically. The generated source derivation remains available as the
+reproducible publication recipe, but changing later repository metadata does not
+change the identity of an already-published product. The anonymous artifact URL
+is an interoperability path, not a second source of product authority.
 
 ## Private pnpm Consumption
 
