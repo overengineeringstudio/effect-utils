@@ -173,23 +173,28 @@ const removeEmptyUnregisteredCommitWorktreeRemnant = ({
     const fs = yield* FileSystem.FileSystem
     const target = worktreePath.replace(/\/+$/u, '')
     const targetStat = yield* Effect.tryPromise({
-      try: () => lstat(target),
-      catch: (cause) => cause,
-    }).pipe(
-      Effect.catch((cause) => {
-        if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
-          return Effect.succeed(undefined)
+      try: async () => {
+        try {
+          return await lstat(target)
+        } catch (cause) {
+          if (
+            typeof cause === 'object' &&
+            cause !== null &&
+            'code' in cause &&
+            cause.code === 'ENOENT'
+          )
+            return undefined
+          throw cause
         }
-        return Effect.fail(
-          commitWorktreeRemnantConflict({
-            path: target,
-            reason: 'Ambiguous',
-            message: `Cannot inspect commit worktree target '${target}'`,
-            cause,
-          }),
-        )
-      }),
-    )
+      },
+      catch: (cause) =>
+        commitWorktreeRemnantConflict({
+          path: target,
+          reason: 'Ambiguous',
+          message: `Cannot inspect commit worktree target '${target}'`,
+          cause,
+        }),
+    })
     if (targetStat === undefined) return
     if (targetStat.isSymbolicLink() === true) {
       return yield* commitWorktreeRemnantConflict({
