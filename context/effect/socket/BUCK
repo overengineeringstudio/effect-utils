@@ -39,7 +39,21 @@ static_source_set(
     name = "static_sources",
     node_modules = ":node_modules",
     prefix = "context/effect/socket",
-    srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "context/effect/socket",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "context/effect/socket",
+    srcs = glob(["**/*.nix"]),
     visibility = ["PUBLIC"],
 )
 

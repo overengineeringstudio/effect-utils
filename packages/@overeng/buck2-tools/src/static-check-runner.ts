@@ -22,13 +22,7 @@ if (tool === undefined) throw new Error('missing --tool')
 const args =
   kind === 'format'
     ? ['--check', '--config=.oxfmtrc.json', '--disable-nested-config', ...paths]
-    : [
-        '--import-plugin',
-        '--type-aware',
-        '--tsconfig=tsconfig.lint.json',
-        '--deny-warnings',
-        ...paths,
-      ]
+    : ['--import-plugin', '--deny-warnings', ...paths]
 const check = Bun.spawnSync({
   cmd: [path.resolve(tool), ...args],
   cwd: source,

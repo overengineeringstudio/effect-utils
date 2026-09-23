@@ -9,6 +9,7 @@ import {
   ciOperationDispositions,
   developerOperationDispositions,
   operationDispositionProjection,
+  validationOperationDispositions,
 } from './operation-dispositions.ts'
 
 const sort = (values: Iterable<string>) => [...values].sort((left, right) => left.localeCompare(right))
@@ -38,6 +39,7 @@ describe('Buck operation disposition coverage', () => {
     for (const disposition of [
       ...Object.values(developerOperationDispositions),
       ...Object.values(ciOperationDispositions),
+      ...Object.values(validationOperationDispositions),
     ]) {
       expect(disposition).toMatch(
         /^(?:buck-owned|buck-pending:(?:static|editor|rust|consumer)|outside-by-policy:[a-z0-9-]+)$/,

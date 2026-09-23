@@ -6,7 +6,7 @@ import type { BootstrapClosureViolation } from './bootstrap-closure.ts'
 import { checkBootstrapClosure, formatViolationChain } from './bootstrap-closure.ts'
 
 const usage = `Usage:
-  genie-bootstrap-closure-check [--root <repo-root>]
+  genie-bootstrap-closure-check [--root <repo-root>] [--analysis-files <json-array>]
   genie-bootstrap-closure-check [--root <repo-root>] \\
     --editor-view-root-package-path <workspace-path> \\
     --editor-view-package-paths <json-array>
@@ -163,12 +163,14 @@ const parseArgs = ({
   argv: readonly string[]
   defaultRepoRoot: string
 }): {
+  readonly analysisFiles: readonly string[] | undefined
   readonly repoRoot: string
   readonly help: boolean
   readonly editorViewPackagePaths: readonly string[] | undefined
   readonly editorViewRootPackagePath: string | undefined
 } => {
   let repoRoot = defaultRepoRoot
+  let analysisFiles: readonly string[] | undefined
   let help = false
   let editorViewPackagePaths: readonly string[] | undefined
   let editorViewRootPackagePath: string | undefined
@@ -185,6 +187,15 @@ const parseArgs = ({
         throw new Error('--root requires a non-empty path')
       }
       repoRoot = path.resolve(value)
+      index += 1
+      continue
+    }
+    if (arg === '--analysis-files') {
+      const value = argv[index + 1]
+      if (value === undefined || value.length === 0) {
+        throw new Error('--analysis-files requires a non-empty JSON array')
+      }
+      analysisFiles = decodePackagePaths(value)
       index += 1
       continue
     }
@@ -216,8 +227,15 @@ const parseArgs = ({
   }
   // The walk reports every path as its on-disk identity, so the root the diagnostics are made relative
   // to has to be that same identity — otherwise a symlinked checkout renders every chain as `../..`.
+  const canonicalRepoRoot = existsSync(repoRoot) === true ? realpathSync.native(repoRoot) : repoRoot
   return {
-    repoRoot: existsSync(repoRoot) === true ? realpathSync.native(repoRoot) : repoRoot,
+    analysisFiles: analysisFiles?.map((file) => {
+      if (path.isAbsolute(file) === true || file.split('/').includes('..') === true) {
+        throw new Error(`--analysis-files entries must be normalized relative paths: ${file}`)
+      }
+      return path.join(canonicalRepoRoot, file)
+    }),
+    repoRoot: canonicalRepoRoot,
     help,
     editorViewPackagePaths,
     editorViewRootPackagePath,
@@ -259,10 +277,11 @@ export const bootstrapClosureCheckMain = async ({
   defaultRepoRoot: string
 }): Promise<void> => {
   try {
-    const { repoRoot, help, editorViewPackagePaths, editorViewRootPackagePath } = parseArgs({
-      argv,
-      defaultRepoRoot,
-    })
+    const { analysisFiles, repoRoot, help, editorViewPackagePaths, editorViewRootPackagePath } =
+      parseArgs({
+        argv,
+        defaultRepoRoot,
+      })
     if (help === true) {
       console.log(usage)
       return
@@ -272,6 +291,7 @@ export const bootstrapClosureCheckMain = async ({
     if (editorViewPackagePaths !== undefined && editorViewRootPackagePath !== undefined) {
       const result = await checkBootstrapClosure({
         genieFiles: allGenieFiles,
+        ...(analysisFiles === undefined ? {} : { initialAnalysisFiles: analysisFiles }),
         reportAllViolations: true,
       })
       const closureViolations = findEditorViewClosureViolations({
@@ -310,6 +330,7 @@ export const bootstrapClosureCheckMain = async ({
 
     const { violations, checkedSources } = await checkBootstrapClosure({
       genieFiles: bootstrapFiles,
+      ...(analysisFiles === undefined ? {} : { initialAnalysisFiles: analysisFiles }),
     })
 
     if (violations.length > 0) {

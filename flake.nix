@@ -124,6 +124,14 @@
           buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
           buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
+          cargo = pkgs.writeShellScriptBin "cargo" ''
+            exec ${pkgs.cargo}/bin/cargo "$@"
+          '';
+          deadnix = pkgs.deadnix;
+          nix = pkgs.writeShellScriptBin "nix" ''
+            exec ${pkgs.nix}/bin/nix "$@"
+          '';
+          nixfmt = pkgs.nixfmt-rfc-style;
           oxfmt = pkgs.oxfmt;
           oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
             inherit pkgs oxlintNpm;
@@ -299,8 +307,6 @@
           secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow
           worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
-          # Bootstrap-safe import-closure gate; shared packaged checker runs against the importing repo root.
-          bootstrap-closure = import ./nix/devenv-modules/tasks/shared/bootstrap-closure.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
         };
       };

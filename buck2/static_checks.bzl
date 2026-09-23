@@ -1,6 +1,7 @@
 """Repository-wide static checks over exact package-local source manifests."""
 
 load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
@@ -179,12 +180,143 @@ _repository_policy_check = rule(
     },
 )
 
+def _single_default_output(target, field):
+    outputs = target[DefaultInfo].default_outputs
+    if len(outputs) != 1:
+        fail("{} must expose exactly one default output".format(field))
+    return outputs[0]
+
+def _stage_product_executable(ctx, target):
+    product = target[ProductExecutableInfo]
+    if product.support_tree == None:
+        return product.executable, product.executable
+    staged = ctx.actions.declare_output("typescript_server", dir = True)
+    ctx.actions.run(
+        cmd_args([
+            ctx.attrs._javascript[EffectTsgoToolchainInfo].bun,
+            "-e",
+            "import { chmod, copyFile, cp, mkdir } from 'node:fs/promises'; import { dirname, join } from 'node:path'; const [executable, support, output] = process.argv.slice(1); await cp(support, output, { recursive: true }); const target = join(output, 'bin', 'typescript-api-server'); await mkdir(dirname(target), { recursive: true }); await copyFile(executable, target); await chmod(target, 0o555)",
+            product.executable,
+            product.support_tree,
+            staged.as_output(),
+        ]),
+        category = "repository_validation_server",
+        identifier = ctx.attrs.name,
+        local_only = True,
+        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+    )
+    return cmd_args(staged, format = "{}/bin/typescript-api-server"), staged
+
+
+def _repository_validation_check_impl(ctx):
+    toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
+    sources, source_tree = _collect_static_sources(ctx, "validation_source", False)
+    result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
+    hidden = [source_tree]
+    manifest = None
+    if ctx.attrs.declared_packages:
+        manifest = ctx.actions.declare_output("workspace_manifest.json")
+        ctx.actions.write_json(manifest, {
+            "declaredPackages": sorted(ctx.attrs.declared_packages),
+        })
+        hidden.append(manifest)
+
+    if ctx.attrs.script_path:
+        if manifest == None:
+            fail("script-backed repository validation requires declared_packages")
+        shell = ctx.attrs.tools["shell"][BuckSupportToolInfo]
+        args = cmd_args([
+            shell.executable,
+            cmd_args(source_tree, format = "{}/" + ctx.attrs.script_path),
+            source_tree,
+            toolchain.bun,
+            ctx.attrs._runner,
+            result.as_output(),
+            manifest,
+        ])
+        hidden.append(shell.manifest)
+        for name in sorted(ctx.attrs.tools.keys()):
+            if name == "shell":
+                continue
+            tool = ctx.attrs.tools[name][BuckSupportToolInfo]
+            args.add("--tool", cmd_args(tool.executable, format = name + "={}"))
+            hidden.append(tool.manifest)
+    else:
+        args = cmd_args([
+            toolchain.bun,
+            ctx.attrs._runner,
+            "--mode",
+            ctx.attrs.mode,
+            "--source",
+            source_tree,
+            "--output",
+            result.as_output(),
+        ])
+        for source_path in sorted(sources.keys()):
+            args.add("--path", source_path)
+        for name in sorted(ctx.attrs.tools.keys()):
+            tool = ctx.attrs.tools[name][BuckSupportToolInfo]
+            args.add("--tool", cmd_args(tool.executable, format = name + "={}"))
+            hidden.append(tool.manifest)
+        if ctx.attrs.checker != None:
+            checker = _single_default_output(ctx.attrs.checker, "checker")
+            args.add("--checker", checker)
+            hidden.append(checker)
+        if ctx.attrs.server != None:
+            server, server_tree = _stage_product_executable(ctx, ctx.attrs.server)
+            args.add("--server", server)
+            hidden.append(server_tree)
+        if manifest != None:
+            args.add("--manifest", manifest)
+    args.add(cmd_args(hidden = hidden))
+    ctx.actions.run(
+        args,
+        category = "repository_validation",
+        identifier = ctx.attrs.name,
+        local_only = True,
+        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+    )
+    return [DefaultInfo(default_output = result)]
+
+
+_repository_validation_check = rule(
+    impl = _repository_validation_check_impl,
+    attrs = {
+        "checker": attrs.option(attrs.dep(), default = None),
+        "declared_packages": attrs.list(attrs.string(), default = []),
+        "mode": attrs.enum([
+            "devenv-trace-audit",
+            "genie-import-closure",
+            "nix-source",
+            "workspace-contract",
+        ]),
+        "server": attrs.option(attrs.dep(providers = [ProductExecutableInfo]), default = None),
+        "script_path": attrs.string(default = ""),
+        "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo])),
+        "tools": attrs.dict(
+            key = attrs.string(),
+            value = attrs.exec_dep(providers = [BuckSupportToolInfo]),
+            default = {},
+        ),
+        "_javascript": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:effect_tsgo",
+            providers = [EffectTsgoToolchainInfo],
+        )),
+        "_runner": attrs.default_only(attrs.source(
+            default = "//packages/@overeng/buck2-tools:src/repository-validation-runner.ts",
+        )),
+    },
+)
+
+
 def repository_static_checks(
         name,
         declared_packages,
         source_sets,
+        nix_source_sets,
+        repository_source_sets,
         **kwargs):
-    """Checks formatting, lint, and source policy against one repository snapshot."""
+    """Checks repository formatting, lint, source policy, and deterministic validation contracts."""
     _repository_static_check(
         name = name + "_format",
         kind = "format",
@@ -205,12 +337,53 @@ def repository_static_checks(
         source_sets = source_sets,
         **kwargs
     )
+    _repository_validation_check(
+        name = "nix_source_check",
+        mode = "nix-source",
+        source_sets = nix_source_sets,
+        tools = {
+            "deadnix": "//buck2/toolchains:tool_deadnix",
+            "nixfmt": "//buck2/toolchains:tool_nixfmt",
+        },
+        **kwargs
+    )
+    _repository_validation_check(
+        name = "genie_import_closure_check",
+        checker = "//packages/@overeng/genie:genie-bootstrap-closure-check-candidate",
+        mode = "genie-import-closure",
+        server = "//packages/@overeng/genie:typescript-api-server-product-executable",
+        source_sets = repository_source_sets,
+        **kwargs
+    )
+    _repository_validation_check(
+        name = "devenv_trace_audit_check",
+        mode = "devenv-trace-audit",
+        source_sets = repository_source_sets,
+        **kwargs
+    )
+    _repository_validation_check(
+        name = "workspace_contract_check",
+        declared_packages = declared_packages,
+        mode = "workspace-contract",
+        source_sets = repository_source_sets,
+        script_path = "rust/workspace-contract.test.sh",
+        tools = {
+            "cargo": "//buck2/toolchains:tool_cargo",
+            "nix": "//buck2/toolchains:tool_nix",
+            "shell": "//buck2/toolchains:tool_rust_shell",
+        },
+        **kwargs
+    )
     native.filegroup(
         name = name,
         srcs = [
             ":" + name + "_format",
             ":" + name + "_lint",
             ":" + name + "_policy",
+            ":nix_source_check",
+            ":genie_import_closure_check",
+            ":devenv_trace_audit_check",
+            ":workspace_contract_check",
         ],
         **kwargs
     )

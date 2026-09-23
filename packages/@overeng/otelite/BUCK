@@ -9,9 +9,48 @@
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
 load("//buck2/products:defs.bzl", "build_product")
 load("//buck2/platforms:defs.bzl", "host_platform_label")
 load("//buck2/rust:defs.bzl", "rust_product_executable")
+static_source_set(
+    name = "static_sources",
+    prefix = "packages/@overeng/otelite",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/derive_spanmetrics.rs",
+        "src/inspect/canonical.rs",
+        "src/inspect/mod.rs",
+        "src/inspect/model.rs",
+        "src/inspect/parse.rs",
+        "src/inspect/summarize.rs",
+        "src/inspect_cmd.rs",
+        "src/inspect_logs.rs",
+        "src/inspect_metrics.rs",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/otlp_json.rs",
+        "src/receiver.rs",
+        "src/run.rs",
+        "src/sink.rs",
+        "tests/capture_cli.rs",
+        "tests/equivalence.rs",
+        "tests/goldens.rs",
+        "tests/inspect_cli.rs",
+        "tests/inspect_m6_cli.rs",
+        "tests/isolation.rs",
+        "tests/m10_contract.rs",
+        "tests/m6_goldens.rs",
+        "tests/properties.rs",
+        "tests/receiver.rs",
+        "tests/run_cli.rs",
+        "tests/spanmetrics.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
 native.rust_library(
     name = "lib",
     crate = "otelite",

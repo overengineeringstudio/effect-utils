@@ -26,6 +26,13 @@ export const developerOperationDispositions = {
   'test:watch': 'outside-by-policy:long-lived-watcher',
 } as const satisfies Record<string, OperationDisposition>
 
+export const validationOperationDispositions = {
+  'devenv-trace-audit': 'buck-owned',
+  'genie-import-closure': 'buck-owned',
+  'nix-source': 'buck-owned',
+  'workspace-contract': 'buck-owned',
+} as const satisfies Record<string, OperationDisposition>
+
 export type DeveloperOperation = keyof typeof developerOperationDispositions
 
 export const ciOperationDispositions = {
@@ -63,4 +70,7 @@ export const operationDispositionProjection = {
     operation,
     disposition: ciOperationDispositions[operation],
   })),
+  validationOperations: Object.entries(validationOperationDispositions).map(
+    ([operation, disposition]) => ({ operation, disposition }),
+  ),
 } as const

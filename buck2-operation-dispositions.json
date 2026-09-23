@@ -163,5 +163,23 @@
       "operation": "test:watch"
     }
   ],
-  "schemaVersion": 1
+  "schemaVersion": 1,
+  "validationOperations": [
+    {
+      "disposition": "buck-owned",
+      "operation": "devenv-trace-audit"
+    },
+    {
+      "disposition": "buck-owned",
+      "operation": "genie-import-closure"
+    },
+    {
+      "disposition": "buck-owned",
+      "operation": "nix-source"
+    },
+    {
+      "disposition": "buck-owned",
+      "operation": "workspace-contract"
+    }
+  ]
 }

@@ -162,7 +162,7 @@ g.dashboard.new('devenv task Duration Trends')
   at(
     taskDurationPanel(
       'check:quick sub-tasks (p50 / p95 / p99)',
-      'buck2:check|lint:check:oxlint|lint:check:format|lint:check:genie|genie:run|nix:check:quick:.*|workspace:check',
+      'buck2:check|lint:check|lint:check:oxlint|lint:check:format|lint:check:genie|genie:run|nix:check:quick:.*',
     ),
     12, y.checkQuickContent, 12, 8,
   ),
@@ -251,10 +251,6 @@ g.dashboard.new('devenv task Duration Trends')
     8, y.megarepoContent, 8, 8,
   ),
 
-  at(
-    taskDurationPanel('workspace:check (p50 / p95 / p99)', 'workspace:check'),
-    16, y.megarepoContent, 8, 8,
-  ),
 
   // =========================================================================
   // Row 8: Shell Entry Performance

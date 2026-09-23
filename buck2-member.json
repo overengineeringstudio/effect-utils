@@ -181,10 +181,34 @@
       "executable": "bin/buck2"
     },
     {
+      "toolId": "cargo",
+      "protocol": "rust-lang/cargo/v1",
+      "flakePackage": "cargo",
+      "executable": "bin/cargo"
+    },
+    {
       "toolId": "coreutils-readlink",
       "protocol": "gnu/coreutils/v9",
       "flakePackage": "buck2-coreutils",
       "executable": "bin/readlink"
+    },
+    {
+      "toolId": "deadnix",
+      "protocol": "astro/deadnix/v1",
+      "flakePackage": "deadnix",
+      "executable": "bin/deadnix"
+    },
+    {
+      "toolId": "nix",
+      "protocol": "nixos/nix/v1",
+      "flakePackage": "nix",
+      "executable": "bin/nix"
+    },
+    {
+      "toolId": "nixfmt",
+      "protocol": "nix-community/nixfmt/v1",
+      "flakePackage": "nixfmt",
+      "executable": "bin/nixfmt"
     },
     {
       "toolId": "node",

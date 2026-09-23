@@ -88,6 +88,30 @@ const manifestProjection = {
       ],
     },
     {
+      toolId: 'cargo',
+      protocol: 'rust-lang/cargo/v1',
+      flakePackage: 'cargo',
+      executable: 'bin/cargo',
+    },
+    {
+      toolId: 'deadnix',
+      protocol: 'astro/deadnix/v1',
+      flakePackage: 'deadnix',
+      executable: 'bin/deadnix',
+    },
+    {
+      toolId: 'nixfmt',
+      protocol: 'nix-community/nixfmt/v1',
+      flakePackage: 'nixfmt',
+      executable: 'bin/nixfmt',
+    },
+    {
+      toolId: 'nix',
+      protocol: 'nixos/nix/v1',
+      flakePackage: 'nix',
+      executable: 'bin/nix',
+    },
+    {
       toolId: 'oxfmt',
       protocol: 'oxc/oxfmt/v1',
       flakePackage: 'oxfmt',

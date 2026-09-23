@@ -131,18 +131,24 @@ export type TsFileAnalysisSession = {
 /** Run `use` against a TypeScript 7 session that analyzes on-disk files, closing the compiler process afterwards. */
 export const runTsFileAnalysis = async <A>({
   cwd,
+  initialFiles = [],
   use: run,
 }: {
   /** Working directory the compiler resolves relative paths and ancestor configs against. */
   cwd: string
+  /** Files to open in the first snapshot so a multi-root walk does not rebuild projects per root. */
+  initialFiles?: readonly string[]
   use: (session: TsFileAnalysisSession) => A | Promise<A>
 }): Promise<A> => {
   const api = new API(apiSpawnOptions(cwd))
   try {
-    const opened = new Set<string>()
-    // The newest snapshot owns the projects and ASTs: opening a file supersedes the previous
-    // snapshot, so nodes must always be read out of the snapshot the open produced.
-    let snapshot = await api.updateSnapshot()
+    const opened = new Set(initialFiles)
+    // Seed multi-root walks in one snapshot. Subsequent snapshots retain every open file so
+    // analyzing a newly discovered edge does not evict and rebuild the roots' projects.
+    let snapshot =
+      opened.size === 0
+        ? await api.updateSnapshot()
+        : await api.updateSnapshot({ openFiles: [...opened] })
 
     const analyze = async (file: string): Promise<TsFileAnalysisOutcome> => {
       // The unstable API does not infer a ScriptKind for assets such as CSS and panics if they are opened.
@@ -151,11 +157,11 @@ export const runTsFileAnalysis = async <A>({
       }
       if (opened.has(file) === false) {
         const superseded = snapshot
+        opened.add(file)
         // A snapshot pins its server-side projects, programs and ASTs until it is disposed, so every
         // superseded one is released — but only AFTER its replacement exists, so a failed open leaves
         // the current snapshot (and the files already opened in it) intact and usable.
-        snapshot = await api.updateSnapshot({ openFiles: [file] })
-        opened.add(file)
+        snapshot = await api.updateSnapshot({ openFiles: [...opened] })
         await superseded.dispose()
       }
       const project = await snapshot.getDefaultProjectForFile(file)
