@@ -137,6 +137,15 @@
     },
     {
       "kind": "javascript",
+      "name": "gh-ci-utils",
+      "outputName": "gh-ci-utils.js",
+      "packagePath": "packages/@overeng/gh-ci-utils",
+      "packageTreePath": "packages/@overeng/gh-ci-utils",
+      "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate",
+      "version": "0.0.0"
+    },
+    {
+      "kind": "javascript",
       "name": "megarepo",
       "outputName": "mr.js",
       "packagePath": "packages/@overeng/megarepo",

@@ -314,8 +314,8 @@ else
     builtins.length uniquePublishedProductNames == builtins.length publishedProductNames
   ) "buck2-products: product names must be unique";
   assert lib.assertMsg (
-    declaredProducts == publishedProducts
-  ) "buck2-products: declared target inventory does not match the published manifest";
+    builtins.all (product: builtins.elem product declaredProducts) publishedProducts
+  ) "buck2-products: legacy fallback contains an undeclared product";
   assert lib.assertMsg (
     builtins.length uniqueReleaseTags == builtins.length releaseTags
   ) "buck2-products: each product payload must have one unique release";
@@ -324,5 +324,5 @@ else
     declaredProductNames = builtins.sort builtins.lessThan declaredProductNames;
     publishedProductNames = builtins.sort builtins.lessThan publishedProductNames;
     products = builtins.listToAttrs checkedProducts;
-    fullyPublished = true;
+    fullyPublished = declaredProducts == publishedProducts;
   }

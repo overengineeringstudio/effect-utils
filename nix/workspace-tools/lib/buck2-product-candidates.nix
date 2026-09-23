@@ -93,6 +93,22 @@ let
     expectedProductKind = "cli";
     smokeTestArgs = [ "--help" ];
   };
+  gh-ci-utils = mk "gh-ci-utils" {
+    binaryName = "gh-ci-utils";
+    environment.CLI_BUILD_STAMP = buildStamp;
+    expectedExternalCapabilities = [
+      "gh"
+      "git"
+      "node"
+    ];
+    expectedProductKind = "cli";
+    pathPackages = [
+      pkgs.gh
+      pkgs.git
+      pkgs.nodejs
+    ];
+    smokeTestArgs = [ "--version" ];
+  };
   megarepo = mk "megarepo" {
     binaryName = "mr";
     environment = {
@@ -221,6 +237,7 @@ let
     ci-tools = [ "ci-tools" ];
     genie = [ "genie" ];
     genie-bootstrap-closure-check = [ "genie-bootstrap-closure-check" ];
+    gh-ci-utils = [ "gh-ci-utils" ];
     megarepo = [ "megarepo" ];
     notion-cli = [
       "notion-cli"
@@ -239,6 +256,7 @@ let
       ci-tools
       genie
       genie-bootstrap-closure-check
+      gh-ci-utils
       megarepo
       notion-cli
       notion-md

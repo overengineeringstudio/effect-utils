@@ -11,6 +11,7 @@ const javascriptProducts = [
     'packages/@overeng/genie',
     'genie-bootstrap-closure-check-candidate',
   ],
+  ['gh-ci-utils', 'gh-ci-utils.js', 'packages/@overeng/gh-ci-utils', 'gh-ci-utils-candidate'],
   ['megarepo', 'mr.js', 'packages/@overeng/megarepo', 'megarepo-candidate'],
   ['notion-cli', 'notion.js', 'packages/@overeng/notion-cli', 'notion-cli-candidate'],
   [
