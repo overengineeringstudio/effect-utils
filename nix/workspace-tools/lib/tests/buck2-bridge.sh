@@ -45,6 +45,10 @@ build_expr() {
   nix build --impure --no-link --print-out-paths --expr "$1"
 }
 
+eval_expr() {
+  nix eval --raw --impure --expr "$1"
+}
+
 expect_build_failure() {
   local label="$1"
   local expected="$2"
@@ -141,6 +145,47 @@ jq -e '
   (.runtime.symbolVersionFloors | index("F")) == null and
   (.runtime.symbolVersionFloors | index("LOCAL_DEFINITION")) == null
 ' "$dynamic_export/descriptor.json" >/dev/null
+foreign_dynamic_platform_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
+  original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+  foreignArchitecture = if original.platform.architecture == \"aarch64\" then \"x86_64\" else \"aarch64\";
+  foreignInterpreter = if foreignArchitecture == \"aarch64\" then \"/lib/ld-linux-aarch64.so.1\" else \"/lib64/ld-linux-x86-64.so.2\";
+  descriptor = original // {
+    platform = original.platform // { architecture = foreignArchitecture; };
+    runtime = original.runtime // {
+      machine = foreignArchitecture;
+      interpreter = foreignInterpreter;
+    };
+  };
+in test.mkImport {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = exported + \"/artifact.tar\";
+}"
+expect_build_failure \
+  "foreign dynamic ELF platform" \
+  "elf-dynamic platform must match pkgs.stdenv.hostPlatform" \
+  "$foreign_dynamic_platform_expr"
+incompatible_dynamic_export="$(build_expr "($base_expr).incompatibleDynamicExport")"
+export BUCK2_BRIDGE_INCOMPATIBLE_DYNAMIC_EXPORT="$incompatible_dynamic_export"
+incompatible_dynamic_import_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_INCOMPATIBLE_DYNAMIC_EXPORT\");
+  descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+in test.mkImport {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = exported + \"/artifact.tar\";
+}"
+expect_build_failure \
+  "incompatible dynamic ELF symbol floor" \
+  "dynamic ELF runtime is incompatible: bin/fixture-tool" \
+  "$incompatible_dynamic_import_expr"
+
+
 dynamic_import_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
@@ -156,12 +201,27 @@ dynamic_import="$(build_expr "$dynamic_import_expr")"
   echo "buck2-bridge-test: admitted dynamic entrypoint is missing" >&2
   exit 1
 }
+"$dynamic_import/bin/fixture-tool"
 
 inspector_expr="let
   $common_let
 in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-dynamic.nix\") { inherit pkgs; }"
 inspector_out="$(build_expr "$inspector_expr")"
 patchelf_out="$(build_expr "let $common_let in pkgs.patchelf")"
+expected_dynamic_interpreter="$(eval_expr "let $common_let in pkgs.stdenv.cc.bintools.dynamicLinker")"
+actual_dynamic_interpreter="$("$patchelf_out/bin/patchelf" --print-interpreter "$dynamic_import/bin/fixture-tool")"
+[ "$actual_dynamic_interpreter" = "$expected_dynamic_interpreter" ] || {
+  echo "buck2-bridge-test: imported dynamic ELF interpreter mismatch: expected $expected_dynamic_interpreter, got $actual_dynamic_interpreter" >&2
+  exit 1
+}
+dynamic_glibc="$(eval_expr "let $common_let in pkgs.glibc.outPath")"
+dynamic_references="$(nix-store --query --references "$dynamic_import")"
+for expected_reference in "$dynamic_glibc" "$dynamic_import"; do
+  printf '%s\n' "$dynamic_references" | grep -Fx "$expected_reference" >/dev/null || {
+    echo "buck2-bridge-test: imported dynamic ELF is missing runtime closure reference: $expected_reference" >&2
+    exit 1
+  }
+done
 rpath_root="$(mktemp -d)"
 tar --extract --file "$dynamic_export/artifact.tar" --directory "$rpath_root"
 chmod u+w "$rpath_root/bin/fixture-tool"

@@ -37,10 +37,14 @@ let
         printf '%s\n' 'LOCAL_DEFINITION { global: main; };' > executable.map
         cc -Wl,--version-script=executable.map -o payload/bin/fixture-tool \
           fixture.c './libfixture[bracket].so'
+        patchelf --set-rpath /unused 'libfixture[bracket].so'
+        patchelf --remove-rpath 'libfixture[bracket].so'
+        install -Dm0444 'libfixture[bracket].so' 'payload/lib/libfixture[bracket].so'
         # ELF string-table names may contain whitespace even though the linker
         # version-script grammar cannot spell it. Preserve the byte width while
         # making the observed version need distinguishable from field splitting.
-        sed -i 's/F123456789O/F  Flags: O/g' payload/bin/fixture-tool
+        sed -i 's/F123456789O/F  Flags: O/g' \
+          payload/bin/fixture-tool 'payload/lib/libfixture[bracket].so'
         # Replacing the wrapper-injected store RPATH before removing it ensures
         # those bytes are absent rather than merely unreachable dynamic data.
         patchelf --set-interpreter ${hostInterpreter} --set-rpath /unused payload/bin/fixture-tool
@@ -109,6 +113,29 @@ let
               toolchain: "cc-linux-glibc/v1"
             }
           }' > "$out/descriptor.json"
+      '';
+
+  incompatibleDynamicExport =
+    pkgs.runCommand "buck2-bridge-incompatible-dynamic-export"
+      {
+        nativeBuildInputs = [
+          pkgs.gnutar
+          pkgs.jq
+          pkgs.openssl
+        ];
+      }
+      ''
+        mkdir -p payload "$out"
+        tar --extract --file ${dynamicExport}/artifact.tar --directory payload
+        chmod u+w 'payload/lib/libfixture[bracket].so'
+        sed -i 's/F  Flags: O/F  Flags: X/g' 'payload/lib/libfixture[bracket].so'
+        tar --create --format=gnu --sort=name --mtime='@1' --owner=0 --group=0 \
+          --numeric-owner --file "$out/artifact.tar" --directory payload .
+        digest="sha256-$(openssl dgst -sha256 -binary "$out/artifact.tar" | openssl base64 -A)"
+        size="$(stat --format=%s "$out/artifact.tar")"
+        jq --arg digest "$digest" --argjson size "$size" \
+          '.payload.digest.sri = $digest | .payload.sizeBytes = $size' \
+          ${dynamicExport}/descriptor.json > "$out/descriptor.json"
       '';
 
   failingVersionReadelf = pkgs.writeShellScript "failing-version-readelf" ''
@@ -276,6 +303,7 @@ in
 {
   inherit
     dynamicExport
+    incompatibleDynamicExport
     staticElfProduct
     failingVersionReadelf
     emptyVersionReadelf

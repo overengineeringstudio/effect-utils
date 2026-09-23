@@ -47,12 +47,25 @@ let
   descriptorFile = pkgs.writeText "${checkedDescriptor.name}-buck-build-product.json" (
     contract.canonicalDescriptorJson checkedDescriptor
   );
+  # The descriptor proves the published FHS-linked artifact. After inspection,
+  # adapt that artifact to the explicit Nix runtime closure admitted here.
+  dynamicElfRuntimeInputs = lib.optionals (runtimeKind == "elf-dynamic") [
+    pkgs.glibc
+    pkgs.libgcc
+  ];
 in
 assert lib.assertMsg (builtins.isAttrs expectedPlatform)
   "buck2-artifact-import: expectedPlatform must be an exact platform attribute set";
 assert lib.assertMsg (
   checkedPlatform == expectedPlatform
 ) "buck2-artifact-import: platform mismatch";
+assert lib.assertMsg (
+  runtimeKind != "elf-dynamic"
+  || (
+    pkgs.stdenv.hostPlatform.system == "${checkedPlatform.architecture}-${checkedPlatform.os}"
+    && pkgs.stdenv.hostPlatform.libc == checkedPlatform.abi
+  )
+) "buck2-artifact-import: elf-dynamic platform must match pkgs.stdenv.hostPlatform";
 assert lib.assertMsg (
   !(url != null && artifact != null)
 ) "buck2-artifact-import: choose either a published URL or a declared artifact path";
@@ -72,8 +85,14 @@ else if runtimeKind == "mach-o-dynamic" && inspectMachODynamic == null then
 else
   pkgs.runCommand "${checkedDescriptor.name}-buck2-import"
     {
-      nativeBuildInputs = [ pkgs.openssl ];
-      allowedReferences = [ ];
+      nativeBuildInputs = [
+        pkgs.openssl
+      ]
+      ++ lib.optional (runtimeKind == "elf-dynamic") pkgs.autoPatchelfHook;
+      buildInputs = dynamicElfRuntimeInputs;
+      allowedReferences = lib.optionals (runtimeKind == "elf-dynamic") (
+        [ "out" ] ++ dynamicElfRuntimeInputs
+      );
       passthru = {
         descriptorDigest = expectedDescriptorDigest;
         inherit checkedDescriptor;
@@ -107,6 +126,18 @@ else
         else
           inspectMachODynamic
       } ${descriptorFile} "$out"
+      ${lib.optionalString (runtimeKind == "elf-dynamic") ''
+        ${pkgs.findutils}/bin/find "$out" -type f -exec chmod u+w {} +
+        autoPatchelf "$out"
+        while IFS= read -r entrypoint; do
+          if ! load_error="$(${pkgs.stdenv.cc.bintools.dynamicLinker} --list "$out/$entrypoint" 2>&1 >/dev/null)" \
+            || [ -n "$load_error" ]; then
+            printf '%s\n' "$load_error" >&2
+            echo "buck2-artifact-import: dynamic ELF runtime is incompatible: $entrypoint" >&2
+            exit 1
+          fi
+        done < <(${pkgs.jq}/bin/jq -r '.entrypoints[]' ${descriptorFile})
+      ''}
 
       ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
       while IFS= read -r -d "" file; do
