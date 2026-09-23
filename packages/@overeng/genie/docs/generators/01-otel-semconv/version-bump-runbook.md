@@ -2,7 +2,7 @@
 
 Operational companion to [spec.md](./spec.md) (SC-DQ4, SC-A01). Timeless procedure for
 bumping the two pinned inputs of the semantic-conventions generator and the compatibility
-constraints between them. Enforced by the `weaver:version-smoke` CI task (below).
+constraints between them. Enforced by the Buck `//:weaver_version_smoke` target.
 
 ## The three coupled pins
 
@@ -84,48 +84,24 @@ not duplicate them here; the canonical sequence is:
 
 Run in order; each must pass before committing:
 
-1. `devenv tasks run weaver:version-smoke --no-tui` — pins consistent + resolvable (fast; the
-   first gate to run, catches a forgotten `PINNED_*` edit or a stale hash immediately).
+1. `buck2 build //:weaver_version_smoke` — pins consistent + capability realizations valid;
+   catches a forgotten `PINNED_*` edit or stale source hash.
 2. `devenv tasks run genie:run` — regenerate the registry + bindings (the fingerprint changes
    because the pinned versions are fingerprint inputs, so outputs churn by design).
-3. `devenv tasks run weaver:check --no-tui` — the authoritative gate validates the freshly
-   emitted registry against the new pinned Weaver + semconv model.
-4. `devenv tasks run genie:check` — asserts generated files are up to date (locally + in CI).
+3. `buck2 build //:weaver_check` — validate the emitted registry against the new pinned Weaver
+   and semconv model.
+4. `devenv tasks run genie:check` — assert that generated files are current.
 
-## `weaver:version-smoke` (the drift gate)
+## `//:weaver_version_smoke` (the drift gate)
 
-Task file: `nix/devenv-modules/tasks/shared/weaver-version-smoke.nix`. What it asserts:
+The Buck target has two blocking lanes in one declared action:
 
-- **Lane A (string consistency, no nix, hermetic, instant) — BLOCKS on mismatch.** Parses
-  `version` + `semconvVersion` from `flake.nix` and `PINNED_WEAVER_VERSION` +
-  `PINNED_UPSTREAM_SEMCONV_VERSION` from `registry.ts`, and asserts Weaver pins are identical
-  and the semconv registry pin equals `"v" + semconvVersion`.
-- **Lane B (resolvability) — BLOCKS on build failure or version mismatch.** Builds
-  `nix/weaver-flake#semconv-model` and `#weaver` (cached), then asserts the built binary's
-  `weaver --version` equals the pin. `nix` genuinely absent from PATH degrades to a warning
-  (exit 0); everything else a bump could break blocks.
+- Parse `version` + `semconvVersion` from `flake.nix` and
+  `PINNED_WEAVER_VERSION` + `PINNED_UPSTREAM_SEMCONV_VERSION` from `registry.ts`.
+  Assert that the Weaver pins are identical and that the semconv registry pin equals
+  `"v" + semconvVersion`.
+- Resolve the exact Nix-projected Weaver and semconv-model capabilities. Assert that
+  `weaver --version` equals the pin.
 
-**Intentional divergence from `weaver:check` / GEN-R09 block-vs-degrade.** `weaver:check`
-gates registry _content_, so it degrades on a weaver-flake build failure (a broken toolchain
-must not wedge unrelated work). This smoke gates version _integrity_, so a build failure IS
-the drift signal: e.g. a bumped `version` with a stale `src.hash` surfaces only as an FOD
-hash-mismatch — which `weaver:check` would silently degrade past, so the smoke must block on
-it. Only a truly absent `nix` degrades.
-
-Hermeticity: Lane A is pure grep (no network, no nix). Lane B assumes a warm nix cache; on a
-cold cache the FOD fetches run inside the nix sandbox (network-allowed for fixed-output
-derivations), so a normal CI runner resolves them.
-
-### Wiring (for the orchestrator)
-
-The task is standalone and NOT yet wired. To activate it, in `devenv.nix`:
-
-1. Add to the `taskModules` set (near the other `shared/` imports):
-   `weaver-version-smoke = import ./nix/devenv-modules/tasks/shared/weaver-version-smoke.nix;`
-2. Instantiate it: `(taskModules.weaver-version-smoke { })`
-3. Gate `check:all` on it, mirroring the existing `weaver:check` wiring:
-   `{ tasks."check:all".after = [ "weaver:version-smoke" ]; }`
-   (List options merge across modules, so this appends without redefining `check:all`.)
-
-Run it in CI on the same job as `check:all`. It is fast when the cache is warm, so it is safe
-to keep in the default gate lane.
+The target is part of `//:all`. Capability realization, pin drift, and version mismatch all
+fail closed. A warm Buck rerun reuses the action result.

@@ -100,6 +100,24 @@ const manifestProjection = {
       executable: 'bin/oxlint',
     },
     {
+      _tag: 'ToolchainAuthority',
+      toolchain: 'weaver',
+      provides: [
+        {
+          toolId: 'weaver',
+          protocol: 'opentelemetry/weaver-cli/v0',
+          flakePackage: 'weaver',
+          executable: 'bin/weaver',
+        },
+        {
+          toolId: 'semconv-model',
+          protocol: 'opentelemetry/semconv-model/v1',
+          flakePackage: 'semconv-model',
+          executable: 'bin/semconv-model',
+        },
+      ],
+    },
+    {
       toolId: 'archive-tool',
       protocol: 'effect-utils/buck2-archive-tool/v2',
       flakePackage: 'buck2-archive-tool',

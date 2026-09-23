@@ -346,6 +346,24 @@
           "executable": "bin/tsgo"
         }
       ]
+    },
+    {
+      "_tag": "ToolchainAuthority",
+      "toolchain": "weaver",
+      "provides": [
+        {
+          "toolId": "semconv-model",
+          "protocol": "opentelemetry/semconv-model/v1",
+          "flakePackage": "semconv-model",
+          "executable": "bin/semconv-model"
+        },
+        {
+          "toolId": "weaver",
+          "protocol": "opentelemetry/weaver-cli/v0",
+          "flakePackage": "weaver",
+          "executable": "bin/weaver"
+        }
+      ]
     }
   ]
 }

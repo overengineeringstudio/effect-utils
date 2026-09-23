@@ -11,14 +11,14 @@
 # `weaver registry live-check` validates it against the ACTUALLY-EMITTED registry
 # (genie/weaver-registry/) — asserting exit 0 (conforms) plus a negative control (an undeclared
 # attribute → nonzero). Upstream OTel semconv is resolved HERMETICALLY against the local Nix FOD
-# (`nix/weaver-flake#semconv-model`), identical to weaver:check (SC-A03) — no network at gate time.
+# (`nix/weaver-flake#semconv-model`), the same model projected into `//:weaver_check` (SC-A03).
 #
 # The weaver binary + semconv-model path are handed to the test via WEAVER_BIN / WEAVER_SEMCONV_MODEL
 # (mirroring how the otelite tests take OTELITE_BIN); the test SKIPS when they are absent, so the
 # ordinary `test` lane (which does not build the heavy weaver flake) stays green and fast.
 #
-# Block-vs-degrade (GEN-R09), mirroring weaver:check: a live-check VALIDATION failure (the test
-# fails) BLOCKS; weaver UNAVAILABILITY (flake build/eval failure, binary missing) DEGRADES to a
+# Block-vs-degrade (GEN-R09), specific to this live integration check: a live-check validation
+# failure BLOCKS; Weaver unavailability (flake build/eval failure, binary missing) DEGRADES to a
 # warning (exit 0) in a separate lane.
 {
   # Repo-relative path to the emitted registry directory (passed to the test for hermetic rewrite).

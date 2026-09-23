@@ -62,6 +62,21 @@ support_tool(
     visibility = ["PUBLIC"],
 )
 
+
+support_tool(
+    name = "tool_weaver",
+    protocol = "opentelemetry/weaver-cli/v0",
+    tool_id = "weaver",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_semconv_model",
+    protocol = "opentelemetry/semconv-model/v1",
+    tool_id = "semconv-model",
+    visibility = ["PUBLIC"],
+)
+
 native_rust_toolchains(
     capabilities = CAPABILITIES,
     generation = GENERATION,
