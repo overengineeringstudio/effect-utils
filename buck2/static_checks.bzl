@@ -230,10 +230,7 @@ def _repository_validation_check_impl(ctx):
             cmd_args(source_tree, format = "{}/" + ctx.attrs.script_path),
             source_tree,
             toolchain.bun,
-            cmd_args(
-                source_tree,
-                format = "{}/packages/@overeng/buck2-tools/src/repository-validation-runner.ts",
-            ),
+            ctx.attrs._runner,
             result.as_output(),
             manifest,
         ])
