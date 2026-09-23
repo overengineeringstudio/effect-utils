@@ -1,6 +1,7 @@
 """Repository-wide static checks over exact package-local source manifests."""
 
 load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
@@ -185,6 +186,27 @@ def _single_default_output(target, field):
         fail("{} must expose exactly one default output".format(field))
     return outputs[0]
 
+def _stage_product_executable(ctx, target):
+    product = target[ProductExecutableInfo]
+    if product.support_tree == None:
+        return product.executable, product.executable
+    staged = ctx.actions.declare_output("typescript_server", dir = True)
+    ctx.actions.run(
+        cmd_args([
+            ctx.attrs._javascript[EffectTsgoToolchainInfo].bun,
+            "-e",
+            "import { chmod, copyFile, cp, mkdir } from 'node:fs/promises'; import { dirname, join } from 'node:path'; const [executable, support, output] = process.argv.slice(1); await cp(support, output, { recursive: true }); const target = join(output, 'bin', 'typescript-api-server'); await mkdir(dirname(target), { recursive: true }); await copyFile(executable, target); await chmod(target, 0o555)",
+            product.executable,
+            product.support_tree,
+            staged.as_output(),
+        ]),
+        category = "repository_validation_server",
+        identifier = ctx.attrs.name,
+        local_only = True,
+        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+    )
+    return cmd_args(staged, format = "{}/bin/typescript-api-server"), staged
+
 
 def _repository_validation_check_impl(ctx):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
@@ -244,9 +266,9 @@ def _repository_validation_check_impl(ctx):
             args.add("--checker", checker)
             hidden.append(checker)
         if ctx.attrs.server != None:
-            server = _single_default_output(ctx.attrs.server, "server")
+            server, server_tree = _stage_product_executable(ctx, ctx.attrs.server)
             args.add("--server", server)
-            hidden.append(server)
+            hidden.append(server_tree)
         if manifest != None:
             args.add("--manifest", manifest)
     args.add(cmd_args(hidden = hidden))
@@ -271,7 +293,7 @@ _repository_validation_check = rule(
             "nix-source",
             "workspace-contract",
         ]),
-        "server": attrs.option(attrs.dep(), default = None),
+        "server": attrs.option(attrs.dep(providers = [ProductExecutableInfo]), default = None),
         "script_path": attrs.string(default = ""),
         "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo])),
         "tools": attrs.dict(
