@@ -6,6 +6,7 @@
 {
   mkBuckProductFromSource,
   preparedDeps,
+  preparedDepsByProduct ? { },
   producerCommit,
   repositoryRoot ? ../..,
 }:
@@ -19,10 +20,10 @@ builtins.listToAttrs (
     value = mkBuckProductFromSource {
       inherit
         product
-        preparedDeps
         producerCommit
         repositoryRoot
         ;
+      preparedDeps = preparedDepsByProduct.${product.name} or preparedDeps;
     };
   }) inventory.products
 )

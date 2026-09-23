@@ -1193,6 +1193,8 @@ in
     after = lib.mkForce [ "genie:check" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
+      BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
+        ${pkgs.bash}/bin/bash nix/buck2-products/from-source-contract.test.sh "$PWD"
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"

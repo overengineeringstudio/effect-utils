@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 - **Buck2 native products**: Patch imported dynamic ELF entrypoints to the Nix
   glibc loader and explicit `libgcc` runtime closure after verifying their
   published runtime contract, so they execute inside pure Nix sandboxes.
+- **Buck2 products**: Rebuild the Megarepo product from its own prepared dependency
+  projection, include Weaver inputs and a generated capability cell in the
+  standalone source root, and make package-tree rewriting safe for nonempty
+  workspace projections.
 - **Megarepo tasks**: Remove `after` and `before` edges to tasks omitted through
   `disabledTasks`, including the optional bootstrap-to-Genie edge, so partial
   task cuts always leave a closed devenv graph.
