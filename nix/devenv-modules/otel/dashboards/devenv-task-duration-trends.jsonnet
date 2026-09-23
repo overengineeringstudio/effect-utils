@@ -8,7 +8,7 @@
 //
 // Main tasks tracked:
 //   - check:quick (the most common developer workflow)
-//   - buck2:check (bounded TypeScript, test, and product authority)
+//   - buck2:quick (bounded TypeScript, test, and product authority)
 //   - buck2:editor:* (dependency projection)
 //   - genie:run (config generation)
 //   - lint:check (linting)
@@ -162,7 +162,7 @@ g.dashboard.new('devenv task Duration Trends')
   at(
     taskDurationPanel(
       'check:quick sub-tasks (p50 / p95 / p99)',
-      'buck2:check|lint:check|lint:check:oxlint|lint:check:format|lint:check:genie|genie:run|nix:check:quick:.*',
+      'buck2:quick|lint:check|lint:check:oxlint|lint:check:format|lint:check:genie|genie:run|nix:check:quick:.*',
     ),
     12, y.checkQuickContent, 12, 8,
   ),

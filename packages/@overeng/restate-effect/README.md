@@ -129,7 +129,7 @@ page-per-concern guide where every code block is a verified example:
 - [The endpoint](./docs/guide/endpoint.md), [Cancellation](./docs/guide/cancellation.md), [Self-reschedule](./docs/guide/scheduling.md).
 - [OpenTelemetry](./docs/guide/observability.md), [Testing](./docs/guide/testing.md), [API reference](./docs/guide/api-reference.md).
 
-The [`examples/`](./examples) are type-checked by `devenv tasks run buck2:check` and driven against a
+The [`examples/`](./examples) are type-checked by `devenv tasks run buck2:quick` and driven against a
 native `restate-server` by `src/examples.integration.test.ts` (under `devenv tasks run check:all`),
 so a documented snippet that stopped working would fail CI.
 
