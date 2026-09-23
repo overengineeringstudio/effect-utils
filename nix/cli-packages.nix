@@ -7,15 +7,13 @@ let
       hashes.${pkgs.stdenv.hostPlatform.system}
     else
       throw "Missing deps hash for system ${pkgs.stdenv.hostPlatform.system}";
-  mkSharedHash =
-    hash:
-    {
-      hash = selectHashForSystem {
-        aarch64-darwin = hash;
-        aarch64-linux = hash;
-        x86_64-linux = hash;
-      };
+  mkSharedHash = hash: {
+    hash = selectHashForSystem {
+      aarch64-darwin = hash;
+      aarch64-linux = hash;
+      x86_64-linux = hash;
     };
+  };
 in
 {
   "megarepo-source-deps-support" = {

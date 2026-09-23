@@ -84,8 +84,7 @@
         buckProductsFromSource = import ./nix/buck2-products/source-recipes.nix {
           inherit mkBuckProductFromSource;
           preparedDeps = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
-          preparedDepsByProduct.megarepo =
-            megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
+          preparedDepsByProduct.megarepo = megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
           # Dirty flake inputs have no commit identity. The publisher rejects dirty trees and
           # verifies this field against HEAD before mutation, so the sentinel cannot escape.
           producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";

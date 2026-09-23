@@ -613,10 +613,10 @@ let
       traceScope ? null,
     }:
     let
-      traceName =
-        "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
-      packageArgument = lib.optionalString (packagePaths != null)
-        " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
+      traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
+      packageArgument = lib.optionalString (
+        packagePaths != null
+      ) " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
     in
     trace.exec traceName ''
       set -euo pipefail
@@ -866,7 +866,10 @@ in
   # first-party runtime boundary, then genie:check proves the tracked standalone
   # graph fresh and the authoritative publisher replays it.
   tasks."genie:run".after = [ "genie:editor-view-closure:check" ];
-  tasks."genie:check".after = lib.mkForce [ "genie:prepare" "genie:editor-view-closure:check" ];
+  tasks."genie:check".after = lib.mkForce [
+    "genie:prepare"
+    "genie:editor-view-closure:check"
+  ];
   tasks."lint:check:genie".after = [ "genie:editor-view-closure:check" ];
   tasks."genie:watch".after = [ "genie:editor-view-closure:check" ];
   tasks."lint:check:lockfile".description =
