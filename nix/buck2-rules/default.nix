@@ -42,28 +42,15 @@ pkgs.runCommand "buck2-rules"
     '') files}
     cp ${./inventory.json} "$out/inventory.json"
     cat > "$out/BUCK" <<'BUCK'
-    filegroup(
+    alias(
         name = "package_tree_runtime",
-        srcs = {
-            "package-tree.ts": "packages/@overeng/buck2-tools/src/package-tree.ts",
-            "real-path.ts": "packages/@overeng/buck2-tools/src/real-path.ts",
-        },
+        actual = "//packages/@overeng/buck2-tools:package_tree_runtime",
         visibility = ["PUBLIC"],
     )
 
-    filegroup(
+    alias(
         name = "package_command_runtime",
-        srcs = {
-            "package-command-runner.ts": "packages/@overeng/buck2-tools/src/package-command-runner.ts",
-            "real-path.ts": "packages/@overeng/buck2-tools/src/real-path.ts",
-            "typescript-runner.ts": "packages/@overeng/buck2-tools/src/typescript-runner.ts",
-        },
-        visibility = ["PUBLIC"],
-    )
-
-    export_file(
-        name = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
-        src = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+        actual = "//packages/@overeng/buck2-tools:package_command_runtime",
         visibility = ["PUBLIC"],
     )
     BUCK
