@@ -8,8 +8,7 @@ let
   sidecar = builtins.fromJSON (builtins.readFile sidecarPath);
   archivesByDigest = builtins.listToAttrs (
     lib.mapAttrsToList (
-      packageIdentity:
-      archive:
+      packageIdentity: archive:
       assert lib.assertMsg (
         builtins.attrNames archive == [
           "bins"
@@ -27,12 +26,10 @@ let
       assert lib.assertMsg (
         archive.classification == "public" || archive.classification == "private"
       ) "buck2-pnpm-archives: invalid classification for ${packageIdentity}";
-      assert lib.assertMsg (
-        lib.hasPrefix "https://" archive.registryUrl
-      ) "buck2-pnpm-archives: registry URL must use HTTPS for ${packageIdentity}";
-      assert lib.assertMsg (
-        lib.hasPrefix "sha512-" archive.integrity
-      ) "buck2-pnpm-archives: invalid lock integrity for ${packageIdentity}";
+      assert lib.assertMsg (lib.hasPrefix "https://" archive.registryUrl)
+        "buck2-pnpm-archives: registry URL must use HTTPS for ${packageIdentity}";
+      assert lib.assertMsg (lib.hasPrefix "sha512-" archive.integrity)
+        "buck2-pnpm-archives: invalid lock integrity for ${packageIdentity}";
       assert lib.assertMsg (
         builtins.match "[0-9a-f]{64}" archive.sha256 != null
       ) "buck2-pnpm-archives: invalid SHA-256 for ${packageIdentity}";
