@@ -459,7 +459,8 @@ export const translatePnpmLock = ({
     if (typeof settings[field] !== 'boolean')
       return fail(`pnpm-lock.yaml.settings.${field} must be a boolean`)
   }
-  const injectWorkspacePackages = settings.injectWorkspacePackages ?? false
+  const injectWorkspacePackages =
+    settings.injectWorkspacePackages === undefined ? false : settings.injectWorkspacePackages
   if (typeof injectWorkspacePackages !== 'boolean') {
     return fail('pnpm-lock.yaml.settings.injectWorkspacePackages must be a boolean')
   }

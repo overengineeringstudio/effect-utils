@@ -173,6 +173,17 @@ describe('translatePnpmLock', () => {
     )
   })
 
+  it('rejects explicit null workspace injection', () => {
+    const explicitNull = lock().replace(
+      '  injectWorkspacePackages: true\n',
+      '  injectWorkspacePackages: null\n',
+    )
+
+    expect(() =>
+      translatePnpmLock({ lockfileText: explicitNull, workspaceText: workspace() }),
+    ).toThrow('pnpm-lock.yaml.settings.injectWorkspacePackages must be a boolean')
+  })
+
   it('supports a patch only when source bytes, lock hash, and snapshot identity agree', () => {
     const patchBytes = new TextEncoder().encode('patch bytes')
     const patchHash = createHash('sha256').update(patchBytes).digest('hex')
