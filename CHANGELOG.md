@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Megarepo tasks**: Remove `after` and `before` edges to tasks omitted through
+  `disabledTasks`, including the optional bootstrap-to-Genie edge, so partial
+  task cuts always leave a closed devenv graph.
 - **Buck2 rules distribution**: Give the standalone rules artifact its own
   minimal root package for package runtimes and the TypeScript action runner,
   so consumer roots can resolve the configured TypeScript toolchain without

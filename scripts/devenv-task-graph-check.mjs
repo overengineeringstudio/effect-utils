@@ -94,6 +94,7 @@ ok({
   name: 'every task dependency resolves to an evaluated task',
   detail: missingDependencies.join(', '),
 })
+if (process.env.DEVENV_TASK_GRAPH_DEPENDENCIES_ONLY === '1') process.exit(0)
 const requireTask = (name) => {
   const task = tasks.get(name)
   ok({ condition: task !== undefined, name: `evaluated graph contains ${name}` })

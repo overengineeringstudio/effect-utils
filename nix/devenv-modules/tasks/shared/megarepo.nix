@@ -393,7 +393,19 @@ let
       '';
     };
   };
-  tasks = builtins.removeAttrs allTasks disabledTasks;
+  taskIsEnabled = taskName: builtins.elem taskName disabledTasks == false;
+  removeDisabledDependencies =
+    task:
+    task
+    // lib.optionalAttrs (task ? after) {
+      after = builtins.filter taskIsEnabled task.after;
+    }
+    // lib.optionalAttrs (task ? before) {
+      before = builtins.filter taskIsEnabled task.before;
+    };
+  tasks = lib.mapAttrs (
+    _: task: removeDisabledDependencies task
+  ) (builtins.removeAttrs allTasks disabledTasks);
 in
 {
   # mr shells out to git for clone/fetch/worktree operations
@@ -408,7 +420,7 @@ in
 
   tasks =
     cliGuard.stripGuards tasks
-    // lib.optionalAttrs (bootstrapMembers != [ ]) {
+    // lib.optionalAttrs (bootstrapMembers != [ ] && taskIsEnabled "mr:bootstrap") {
       # Repos that source-import genie helpers from bootstrap members should ensure
       # those members exist before any genie-backed task runs.
       "genie:prepare".after = lib.mkAfter [ "mr:bootstrap" ];
