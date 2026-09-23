@@ -38,6 +38,7 @@ const packageProducts = [
   '@overeng/notion-core',
   '@overeng/notion-effect-client',
   '@overeng/notion-effect-schema',
+  '@overeng/notion-react',
   '@overeng/otel-contract',
   '@overeng/restate-effect',
   '@overeng/tui-core',

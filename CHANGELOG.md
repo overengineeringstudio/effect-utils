@@ -36,6 +36,8 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/restate-effect**: Publish the Buck-built package archive through the
   shared product cache for source-free downstream consumption.
+- **@overeng/notion-react**: Publish the Buck-built package archive through the
+  shared product cache for source-free downstream consumption.
 
 - **Genie CI**: Capture every devenv task graph as OpenTelemetry spans with
   workflow, job, run, revision, runner, and task attributes; render the slowest

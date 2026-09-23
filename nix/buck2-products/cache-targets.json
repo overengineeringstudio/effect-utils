@@ -47,6 +47,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/notion-react",
+      "outputName": "overeng-notion-react.tgz",
+      "packagePath": "packages/@overeng/notion-react",
+      "packageTreePath": "packages/@overeng/notion-react",
+      "target": "effect_utils//packages/@overeng/notion-react:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/otel-contract",
       "outputName": "overeng-otel-contract.tgz",
       "packagePath": "packages/@overeng/otel-contract",
