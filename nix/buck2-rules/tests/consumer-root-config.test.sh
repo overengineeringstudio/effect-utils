@@ -38,6 +38,7 @@ forbid_line() {
 default_config="$(render_config '{}')"
 require_line "$default_config" '  remote_cache_enabled = false'
 require_line "$default_config" '  allow_cache_uploads = false'
+forbid_line "$default_config" '  default_allow_cache_upload = true'
 forbid_line "$default_config" '[buck2_re_client]'
 forbid_line "$default_config" '[archive_origin]'
 
@@ -53,6 +54,7 @@ private_config="$(render_config '{
 }')"
 require_line "$private_config" '  remote_cache_enabled = true'
 require_line "$private_config" '  allow_cache_uploads = true'
+require_line "$private_config" '  default_allow_cache_upload = true'
 require_line "$private_config" '[buck2_re_client]'
 require_line "$private_config" '  action_cache_address = https://actions.example.invalid'
 require_line "$private_config" '  cas_address = https://cas.example.invalid'

@@ -62,7 +62,7 @@ let
       file_watcher = notify
       digest_algorithms = SHA256
       remote_cache_enabled = ${boolString remoteCacheEnabled}
-      allow_cache_uploads = ${boolString allowCacheUploads}
+      allow_cache_uploads = ${boolString allowCacheUploads}${lib.optionalString allowCacheUploads "\n  default_allow_cache_upload = true"}
 
     [project]
       ignore = ${ignore}
