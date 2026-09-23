@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
@@ -214,6 +215,53 @@ const runFetchApplyCommand = ({
   env?: Record<string, string>
 }) => runMrCommand({ cwd, command: ['fetch', '--apply'], args, env })
 
+const createCommitRemnantFixture = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const store = yield* createStoreFixture([{ host: 'example.com', owner: 'acme', repo: 'lib' }])
+  const bareRepoPath = store.bareRepoPaths['example.com/acme/lib']
+  if (bareRepoPath === undefined) throw new Error('Missing bare repo')
+  const commit = (yield* runGitCommand(bareRepoPath, 'rev-parse', 'main')).trim()
+  const { workspacePath } = yield* createWorkspaceWithLock({
+    members: { lib: 'https://example.com/acme/lib#main' },
+    lockEntries: {
+      lib: {
+        url: 'https://example.com/acme/lib',
+        ref: 'main',
+        commit,
+      },
+    },
+  })
+  const targetPath = EffectPath.ops.join(
+    store.storePath,
+    EffectPath.unsafe.relativeDir(`example.com/acme/lib/refs/commits/${commit}/`),
+  )
+  const targetParent = EffectPath.ops.parent(targetPath)
+  if (targetParent === undefined) throw new Error('Missing commit target parent')
+  yield* fs.makeDirectory(targetParent, { recursive: true })
+  return {
+    fs,
+    store,
+    bareRepoPath,
+    commit,
+    workspacePath,
+    targetPath,
+    env: { CI: 'true', MEGAREPO_STORE: store.storePath.slice(0, -1) },
+  }
+})
+
+const applyCommitRemnantFixture = ({
+  workspacePath,
+  env,
+}: {
+  workspacePath: AbsoluteDirPath
+  env: Record<string, string>
+}) =>
+  runApplyCommand({
+    cwd: workspacePath,
+    args: ['--worktree-mode', 'commit', '--output', 'json'],
+    env,
+  })
+
 describe('worktree mode selection', () => {
   it.effect(
     'selects deterministic CI worktrees without requiring every caller to repeat the policy',
@@ -279,6 +327,198 @@ describe('worktree mode selection', () => {
           )
           expect(memberLink, testCase.name).toContain(testCase.expectedTarget)
         }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+})
+
+describe('commit worktree remnant cleanup', () => {
+  it.effect(
+    'replaces an empty unregistered directory',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createCommitRemnantFixture
+        yield* fixture.fs.makeDirectory(fixture.targetPath)
+
+        const result = yield* applyCommitRemnantFixture(fixture)
+
+        expect(result.exitCode).toBe(0)
+        expect(decodeSyncJsonOutput(result.stdout.trim()).results[0]?.status).not.toBe('error')
+        expect(
+          yield* fixture.fs.exists(
+            EffectPath.ops.join(fixture.targetPath, EffectPath.unsafe.relativeFile('.git')),
+          ),
+        ).toBe(true)
+        const physicalTarget = yield* fixture.fs.realPath(fixture.targetPath)
+        const registrations = yield* Git.listWorktrees(fixture.bareRepoPath)
+        const registeredPhysicalPaths = yield* Effect.all(
+          registrations.map((registration) => fixture.fs.realPath(registration.path)),
+        )
+        expect(registeredPhysicalPaths).toContain(physicalTarget)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'preserves a non-empty unregistered directory',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createCommitRemnantFixture
+        yield* fixture.fs.makeDirectory(fixture.targetPath)
+        const sentinelPath = path.join(fixture.targetPath, 'sentinel.bin')
+        const sentinel = new Uint8Array([0, 255, 17, 34])
+        yield* fixture.fs.writeFile(sentinelPath, sentinel)
+
+        const result = yield* applyCommitRemnantFixture(fixture)
+
+        expect(result.exitCode).toBe(1)
+        expect(decodeSyncJsonOutput(result.stdout.trim()).results[0]).toMatchObject({
+          status: 'error',
+          message: expect.stringContaining('directory is not empty'),
+        })
+        expect(Array.from(yield* fixture.fs.readFile(sentinelPath))).toEqual(Array.from(sentinel))
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'preserves a worktree registered through a physical-path alias',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createCommitRemnantFixture
+        const aliasPath = `${fixture.targetPath.replace(/\/+$/u, '')}-alias`
+        yield* Git.createWorktreeDetached({
+          repoPath: fixture.bareRepoPath,
+          worktreePath: aliasPath,
+          commit: fixture.commit,
+        })
+        yield* fixture.fs.rename(aliasPath, fixture.targetPath.replace(/\/+$/u, ''))
+        yield* fixture.fs.symlink(fixture.targetPath.replace(/\/+$/u, ''), aliasPath)
+        yield* fixture.fs.remove(path.join(fixture.targetPath, '.git'))
+        const registrationsBefore = yield* runGitCommand(
+          fixture.bareRepoPath,
+          'worktree',
+          'list',
+          '--porcelain',
+        )
+        expect(yield* fixture.fs.realPath(aliasPath)).toBe(
+          (yield* fixture.fs.realPath(fixture.targetPath)).replace(/\/+$/u, ''),
+        )
+
+        const result = yield* applyCommitRemnantFixture(fixture)
+
+        expect(result.exitCode).toBe(1)
+        expect(decodeSyncJsonOutput(result.stdout.trim()).results[0]).toMatchObject({
+          status: 'error',
+          message: expect.stringContaining('identifies the same physical directory'),
+        })
+        expect(yield* fixture.fs.readFileString(path.join(fixture.targetPath, 'README.md'))).toBe(
+          '# lib\n',
+        )
+        expect(yield* fixture.fs.readLink(aliasPath)).toBe(fixture.targetPath.replace(/\/+$/u, ''))
+        expect(yield* runGitCommand(fixture.bareRepoPath, 'worktree', 'list', '--porcelain')).toBe(
+          registrationsBefore,
+        )
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'preserves live and dangling symbolic links and non-directory targets',
+    Effect.fnUntraced(
+      function* () {
+        for (const kind of ['symlink', 'dangling-symlink', 'file'] as const) {
+          const fixture = yield* createCommitRemnantFixture
+          const target = fixture.targetPath.replace(/\/+$/u, '')
+          const sentinel = new Uint8Array([kind === 'file' ? 2 : 1, 0, 255])
+          let preservedPath = target
+          if (kind === 'file') {
+            yield* fixture.fs.writeFile(target, sentinel)
+          } else {
+            preservedPath = `${target}-outside`
+            if (kind === 'symlink') {
+              yield* fixture.fs.makeDirectory(preservedPath)
+              yield* fixture.fs.writeFile(path.join(preservedPath, 'sentinel.bin'), sentinel)
+            }
+            yield* fixture.fs.symlink(preservedPath, target)
+          }
+          const registrationsBefore = yield* runGitCommand(
+            fixture.bareRepoPath,
+            'worktree',
+            'list',
+            '--porcelain',
+          )
+
+          const result = yield* applyCommitRemnantFixture(fixture)
+
+          expect(result.exitCode, kind).toBe(1)
+          expect(decodeSyncJsonOutput(result.stdout.trim()).results[0], kind).toMatchObject({
+            status: 'error',
+            message: expect.stringContaining(kind === 'file' ? 'not a directory' : 'symbolic link'),
+          })
+          if (kind === 'file') {
+            expect(Array.from(yield* fixture.fs.readFile(target))).toEqual(Array.from(sentinel))
+          } else {
+            expect(yield* fixture.fs.readLink(target)).toBe(preservedPath)
+            if (kind === 'symlink') {
+              expect(
+                Array.from(yield* fixture.fs.readFile(path.join(preservedPath, 'sentinel.bin'))),
+              ).toEqual(Array.from(sentinel))
+            }
+          }
+          expect(
+            yield* runGitCommand(fixture.bareRepoPath, 'worktree', 'list', '--porcelain'),
+          ).toBe(registrationsBefore)
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'preserves the target and registrations when physical registration identity is ambiguous',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createCommitRemnantFixture
+        yield* fixture.fs.makeDirectory(fixture.targetPath)
+        const staleRegistrationPath = `${fixture.targetPath.replace(/\/+$/u, '')}-stale`
+        const movedWorktreePath = `${fixture.targetPath.replace(/\/+$/u, '')}-moved`
+        yield* Git.createWorktreeDetached({
+          repoPath: fixture.bareRepoPath,
+          worktreePath: staleRegistrationPath,
+          commit: fixture.commit,
+        })
+        yield* fixture.fs.rename(staleRegistrationPath, movedWorktreePath)
+        const registrationsBefore = yield* runGitCommand(
+          fixture.bareRepoPath,
+          'worktree',
+          'list',
+          '--porcelain',
+        )
+
+        const result = yield* applyCommitRemnantFixture(fixture)
+
+        expect(result.exitCode).toBe(1)
+        expect(decodeSyncJsonOutput(result.stdout.trim()).results[0]).toMatchObject({
+          status: 'error',
+          message: expect.stringContaining(
+            `Cannot resolve physical identity of Git worktree registration '${staleRegistrationPath}'`,
+          ),
+        })
+        expect(yield* fixture.fs.readDirectory(fixture.targetPath)).toEqual([])
+        expect(yield* fixture.fs.exists(movedWorktreePath)).toBe(true)
+        expect(yield* runGitCommand(fixture.bareRepoPath, 'worktree', 'list', '--porcelain')).toBe(
+          registrationsBefore,
+        )
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

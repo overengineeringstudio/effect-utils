@@ -4,9 +4,10 @@
  * Sync a single member using the bare repo + worktree pattern.
  */
 
+import { lstat, rmdir } from 'node:fs/promises'
 import path from 'node:path'
 
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -117,6 +118,182 @@ const createSymlink = ({ target, link }: { target: string; link: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     yield* fs.symlink(target.replace(/\/$/, ''), link.replace(/\/$/, ''))
+  })
+
+/** Fail-closed refusal to remove an unproven commit-worktree remnant. */
+export class CommitWorktreeRemnantConflict extends Schema.TaggedError<CommitWorktreeRemnantConflict>()(
+  'CommitWorktreeRemnantConflict',
+  {
+    reason: Schema.Literals([
+      'Registered',
+      'NonEmpty',
+      'NotDirectory',
+      'SymbolicLink',
+      'Ambiguous',
+    ]),
+    path: Schema.String,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+const commitWorktreeRemnantConflict = ({
+  path: conflictPath,
+  reason,
+  message,
+  cause,
+}: {
+  path: string
+  reason: CommitWorktreeRemnantConflict['reason']
+  message: string
+  cause?: unknown
+}) =>
+  new CommitWorktreeRemnantConflict({
+    path: conflictPath,
+    reason,
+    message,
+    ...(cause === undefined ? {} : { cause }),
+  })
+
+/**
+ * Remove only a proven-empty commit target that no current Git worktree registration names.
+ *
+ * Registration paths and the target are compared after resolving symlinks so an alias cannot
+ * hide a live registration. `rmdir` is the final empty-directory oracle, so an entry introduced
+ * after inspection is preserved rather than recursively deleted.
+ */
+const removeEmptyUnregisteredCommitWorktreeRemnant = ({
+  bareRepoPath,
+  worktreePath,
+}: {
+  bareRepoPath: string
+  worktreePath: string
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const target = worktreePath.replace(/\/+$/u, '')
+    const targetStat = yield* Effect.tryPromise({
+      try: () => lstat(target),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.catch((cause) => {
+        if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
+          return Effect.succeed(undefined)
+        }
+        return Effect.fail(
+          commitWorktreeRemnantConflict({
+            path: target,
+            reason: 'Ambiguous',
+            message: `Cannot inspect commit worktree target '${target}'`,
+            cause,
+          }),
+        )
+      }),
+    )
+    if (targetStat === undefined) return
+    if (targetStat.isSymbolicLink() === true) {
+      return yield* commitWorktreeRemnantConflict({
+        path: target,
+        reason: 'SymbolicLink',
+        message: `Refusing to remove commit worktree target '${target}': it is a symbolic link`,
+      })
+    }
+    if (targetStat.isDirectory() === false) {
+      return yield* commitWorktreeRemnantConflict({
+        path: target,
+        reason: 'NotDirectory',
+        message: `Refusing to remove commit worktree target '${target}': it is not a directory`,
+      })
+    }
+
+    const physicalTarget = yield* fs.realPath(target).pipe(
+      Effect.mapError((cause) =>
+        commitWorktreeRemnantConflict({
+          path: target,
+          reason: 'Ambiguous',
+          message: `Cannot resolve physical identity of commit worktree target '${target}'`,
+          cause,
+        }),
+      ),
+    )
+    const registrations = yield* Git.listWorktrees(bareRepoPath).pipe(
+      Effect.mapError((cause) =>
+        commitWorktreeRemnantConflict({
+          path: target,
+          reason: 'Ambiguous',
+          message: `Cannot inspect Git registrations before removing commit worktree target '${target}'`,
+          cause,
+        }),
+      ),
+    )
+    for (const registration of registrations) {
+      const physicalRegistration = yield* fs.realPath(registration.path).pipe(
+        Effect.mapError((cause) =>
+          commitWorktreeRemnantConflict({
+            path: target,
+            reason: 'Ambiguous',
+            message: `Cannot resolve physical identity of Git worktree registration '${registration.path}'`,
+            cause,
+          }),
+        ),
+      )
+      if (physicalRegistration === physicalTarget) {
+        return yield* commitWorktreeRemnantConflict({
+          path: target,
+          reason: 'Registered',
+          message: `Refusing to remove commit worktree target '${target}': Git registration '${registration.path}' identifies the same physical directory`,
+        })
+      }
+    }
+
+    const removalStat = yield* Effect.tryPromise({
+      try: () => lstat(target),
+      catch: (cause) =>
+        commitWorktreeRemnantConflict({
+          path: target,
+          reason: 'Ambiguous',
+          message: `Cannot recheck commit worktree target '${target}' before removal`,
+          cause,
+        }),
+    })
+    if (
+      removalStat.isDirectory() === false ||
+      removalStat.isSymbolicLink() === true ||
+      removalStat.dev !== targetStat.dev ||
+      removalStat.ino !== targetStat.ino
+    ) {
+      return yield* commitWorktreeRemnantConflict({
+        path: target,
+        reason: 'Ambiguous',
+        message: `Refusing to remove commit worktree target '${target}': its physical identity changed during inspection`,
+      })
+    }
+
+    yield* Effect.tryPromise({
+      try: () => rmdir(target),
+      catch: (cause) => {
+        const code =
+          cause instanceof Error && 'code' in cause && typeof cause.code === 'string'
+            ? cause.code
+            : undefined
+        return commitWorktreeRemnantConflict({
+          path: target,
+          reason:
+            code === 'ENOTEMPTY' || code === 'EEXIST'
+              ? 'NonEmpty'
+              : code === 'ENOTDIR'
+                ? 'NotDirectory'
+                : 'Ambiguous',
+          message:
+            code === 'ENOTEMPTY' || code === 'EEXIST'
+              ? `Refusing to remove commit worktree target '${target}': the directory is not empty`
+              : code === 'ENOTDIR'
+                ? `Refusing to remove commit worktree target '${target}': it is not a directory`
+                : `Cannot atomically remove empty commit worktree target '${target}'`,
+          cause,
+        })
+      },
+    })
   })
 
 /**
@@ -872,11 +1049,20 @@ export const syncMember = <R = never>({
             const stillNotExists = (yield* worktreePathExists(resolvedWorktreePath)) === false
             if (stillNotExists === false) return
 
-            // Clean up broken worktree remnants (directory exists but .git is missing)
-            const dirExists = yield* fs.exists(worktreePath)
-            if (dirExists === true) {
-              yield* fs.remove(worktreePath, { recursive: true })
-              yield* Git.pruneWorktrees(bareRepoPath)
+            // A commit target is safe to replace only when its physical identity is
+            // unregistered and the target itself is an empty real directory.
+            if (worktreeRefType === 'commit') {
+              yield* removeEmptyUnregisteredCommitWorktreeRemnant({
+                bareRepoPath,
+                worktreePath,
+              })
+            } else {
+              // Preserve the existing recovery policy for mutable branch and tag targets.
+              const dirExists = yield* fs.exists(worktreePath)
+              if (dirExists === true) {
+                yield* fs.remove(worktreePath, { recursive: true })
+                yield* Git.pruneWorktrees(bareRepoPath)
+              }
             }
 
             // Ensure worktree parent directory exists
@@ -945,12 +1131,10 @@ export const syncMember = <R = never>({
             })
             if (exists === true) return
 
-            // Clean up broken worktree remnants
-            const dirExists = yield* fs.exists(commitWorktreePath)
-            if (dirExists === true) {
-              yield* fs.remove(commitWorktreePath, { recursive: true })
-              yield* Git.pruneWorktrees(bareRepoPath)
-            }
+            yield* removeEmptyUnregisteredCommitWorktreeRemnant({
+              bareRepoPath,
+              worktreePath: commitWorktreePath,
+            })
 
             const parent = EffectPath.ops.parent(commitWorktreePath)
             if (parent !== undefined) {
