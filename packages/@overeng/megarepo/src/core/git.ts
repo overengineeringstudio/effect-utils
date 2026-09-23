@@ -107,14 +107,14 @@ export class GitCommandTimeoutError extends GitCommandError {
 // =============================================================================
 
 /**
- * The git command deadline is a LIVENESS bound: it kills a wedged subprocess so a
- * hung git can never wedge the calling fiber (paired with the SIGKILL finalizer in
- * {@link startGitProcess}). A single flat value cannot serve a millisecond-scale local
- * op (`rev-parse`, `status`), a worktree materialization whose runtime scales with tree
- * size, and a network transfer whose runtime scales with repository size and latency.
+ * Only network git commands carry a deadline. Their runtime depends on a remote peer that
+ * can stall indefinitely, so a bound turns a dead connection into a typed failure.
+ *
+ * Local commands (`rev-parse`, `status`, `worktree add|list|remove`, …) have no deadline:
+ * their runtime scales with tree size, worktree count, and host load, and killing one
+ * mid-write leaves partial state behind (e.g. a worktree without an index). A wedged local
+ * git is surfaced by the `git/cmd` span and interrupted by the caller, not by a guess.
  */
-const LOCAL_GIT_TIMEOUT_MILLIS = 30_000
-const DEFAULT_GIT_LONG_TREE_TIMEOUT_MILLIS = 600_000
 const DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS = 600_000
 
 /**
@@ -168,23 +168,6 @@ export const isNetworkGitCommand = (args: ReadonlyArray<string>): boolean => {
   return subcommand !== undefined && NETWORK_GIT_SUBCOMMANDS.has(subcommand)
 }
 
-/**
- * Whether a git invocation materializes or removes a working tree.
- *
- * Other `worktree` operations (`list`, `lock`, `move`, `prune`, …) stay on the tight
- * local deadline; only the two operations whose runtime scales with tree size qualify.
- */
-const isLongTreeGitCommand = (args: ReadonlyArray<string>): boolean => {
-  let index = 0
-  while (index < args.length) {
-    const token = args[index]!
-    if (token.startsWith('-') === false)
-      return token === 'worktree' && (args[index + 1] === 'add' || args[index + 1] === 'remove')
-    index += GIT_GLOBAL_OPTS_WITH_VALUE.has(token) === true ? 2 : 1
-  }
-  return false
-}
-
 const parsePositiveIntEnv = (name: string): number | undefined => {
   const raw = process.env[name]
   if (raw === undefined) return undefined
@@ -193,28 +176,33 @@ const parsePositiveIntEnv = (name: string): number | undefined => {
 }
 
 /**
- * Deadline (ms) for a git invocation, chosen by operation class.
+ * Deadline (ms) for a git invocation, or `undefined` when the command runs unbounded.
  *
- * Local ops keep a fixed {@link LOCAL_GIT_TIMEOUT_MILLIS} liveness bound. Worktree
- * add/remove receive a generous fixed tree-operation bound. Network ops get a generous
- * default tunable via `MEGAREPO_GIT_NETWORK_TIMEOUT_MS`.
+ * Network ops get a generous default tunable via `MEGAREPO_GIT_NETWORK_TIMEOUT_MS`;
+ * local ops are unbounded (see {@link DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS}).
  */
-export const gitCommandTimeoutMillis = (args: ReadonlyArray<string>): number =>
+export const gitCommandTimeoutMillis = (args: ReadonlyArray<string>): number | undefined =>
   isNetworkGitCommand(args) === true
     ? (parsePositiveIntEnv('MEGAREPO_GIT_NETWORK_TIMEOUT_MS') ?? DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS)
-    : isLongTreeGitCommand(args) === true
-      ? DEFAULT_GIT_LONG_TREE_TIMEOUT_MILLIS
-      : LOCAL_GIT_TIMEOUT_MILLIS
+    : undefined
 
 const withGitCommandTimeout =
-  <A, E, R>({ args, timeoutMillis }: { args: ReadonlyArray<string>; timeoutMillis: number }) =>
+  <A, E, R>({
+    args,
+    timeoutMillis,
+  }: {
+    args: ReadonlyArray<string>
+    timeoutMillis: number | undefined
+  }) =>
   (effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(
-      Effect.timeout(Duration.millis(timeoutMillis)),
-      Effect.catchTag('TimeoutError', () =>
-        Effect.fail(new GitCommandTimeoutError({ args, timeoutMillis })),
-      ),
-    )
+    timeoutMillis === undefined
+      ? effect
+      : effect.pipe(
+          Effect.timeout(Duration.millis(timeoutMillis)),
+          Effect.catchTag('TimeoutError', () =>
+            Effect.fail(new GitCommandTimeoutError({ args, timeoutMillis })),
+          ),
+        )
 
 /** Decode a chunk of byte buffers into a string with a single O(n) allocation. */
 const decodeChunks = (chunks: ReadonlyArray<Uint8Array>): string => {

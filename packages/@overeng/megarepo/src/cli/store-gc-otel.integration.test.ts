@@ -218,14 +218,11 @@ describe('mr store gc — OTEL instrumentation contract', () => {
         })
         trace.expectSome({ name: 'megarepo/test/store-fixture/init-source' })
         trace.expectSome({ name: 'megarepo/test/store-fixture/fetch-store-bare' })
-        // Operation-aware git deadline is wired through the real subprocess path: a LOCAL
-        // op (`init`) carries the tight 30s bound, a NETWORK op (`fetch`) the generous 10min
-        // one. This exercises the classification end-to-end (against a local remote, no
-        // actual network), not just the pure `gitCommandTimeoutMillis` helper.
-        trace.expectSome({
-          name: 'git/cmd',
-          attrs: { 'git.subcommand': 'init', 'git.timeout_ms': attr.int(30_000) },
-        })
+        // The network-only git deadline is wired through the real subprocess path: a
+        // NETWORK op (`fetch`) carries the 10min bound, while a LOCAL op (`init`) runs
+        // unbounded and therefore records no `git.timeout_ms`. This exercises the
+        // classification end-to-end (against a local remote, no actual network).
+        trace.expectSome({ name: 'git/cmd', attrs: { 'git.subcommand': 'init' } })
         trace.expectSome({
           name: 'git/cmd',
           attrs: { 'git.subcommand': 'fetch', 'git.timeout_ms': attr.int(600_000) },

@@ -237,12 +237,12 @@ describe('git', () => {
       delete process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS']
     })
 
-    it('defaults: network and long tree operations get generous bounds, local stays tight', () => {
+    it('defaults: network operations are bounded, local operations run unbounded', () => {
       expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
-      expect(gitCommandTimeoutMillis(worktreeAdd)).toBe(600_000)
-      expect(gitCommandTimeoutMillis(worktreeRemove)).toBe(600_000)
-      expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
-      expect(gitCommandTimeoutMillis(['worktree', 'list', '--porcelain'])).toBe(30_000)
+      expect(gitCommandTimeoutMillis(worktreeAdd)).toBeUndefined()
+      expect(gitCommandTimeoutMillis(worktreeRemove)).toBeUndefined()
+      expect(gitCommandTimeoutMillis(revParse)).toBeUndefined()
+      expect(gitCommandTimeoutMillis(['worktree', 'list', '--porcelain'])).toBeUndefined()
     })
 
     it('classifies through leading global options (`-c … clone` → network)', () => {
@@ -252,8 +252,8 @@ describe('git', () => {
     it('MEGAREPO_GIT_NETWORK_TIMEOUT_MS tunes network only', () => {
       process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '900000'
       expect(gitCommandTimeoutMillis(clone)).toBe(900_000)
-      expect(gitCommandTimeoutMillis(worktreeAdd)).toBe(600_000)
-      expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
+      expect(gitCommandTimeoutMillis(worktreeAdd)).toBeUndefined()
+      expect(gitCommandTimeoutMillis(revParse)).toBeUndefined()
     })
 
     it('ignores an invalid / non-positive network override', () => {
