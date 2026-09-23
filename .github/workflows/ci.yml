@@ -2906,7 +2906,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
-          nix/buck2-products/publish.sh --proposal "$proposal" --product megarepo
+          nix/buck2-products/publish.sh --proposal "$proposal" --product megarepo --product @overeng/restate-effect
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
             exit 0

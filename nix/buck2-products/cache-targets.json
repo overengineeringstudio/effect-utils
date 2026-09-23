@@ -56,6 +56,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/restate-effect",
+      "outputName": "overeng-restate-effect.tgz",
+      "packagePath": "packages/@overeng/restate-effect",
+      "packageTreePath": "packages/@overeng/restate-effect",
+      "target": "effect_utils//packages/@overeng/restate-effect:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/tui-core",
       "outputName": "overeng-tui-core.tgz",
       "packagePath": "packages/@overeng/tui-core",

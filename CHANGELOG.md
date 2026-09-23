@@ -34,6 +34,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/restate-effect**: Publish the Buck-built package archive through the
+  shared product cache for source-free downstream consumption.
+
 - **Genie CI**: Capture every devenv task graph as OpenTelemetry spans with
   workflow, job, run, revision, runner, and task attributes; render the slowest
   tasks in each job summary; and retain the OTLP payload as a CI artifact.
