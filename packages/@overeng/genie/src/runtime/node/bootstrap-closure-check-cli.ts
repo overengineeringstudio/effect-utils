@@ -227,16 +227,14 @@ const parseArgs = ({
   }
   // The walk reports every path as its on-disk identity, so the root the diagnostics are made relative
   // to has to be that same identity — otherwise a symlinked checkout renders every chain as `../..`.
-  const canonicalRepoRoot =
-    existsSync(repoRoot) === true ? realpathSync.native(repoRoot) : repoRoot
+  const canonicalRepoRoot = existsSync(repoRoot) === true ? realpathSync.native(repoRoot) : repoRoot
   return {
-    analysisFiles:
-      analysisFiles?.map((file) => {
-        if (path.isAbsolute(file) || file.split('/').includes('..')) {
-          throw new Error(`--analysis-files entries must be normalized relative paths: ${file}`)
-        }
-        return path.join(canonicalRepoRoot, file)
-      }),
+    analysisFiles: analysisFiles?.map((file) => {
+      if (path.isAbsolute(file) || file.split('/').includes('..')) {
+        throw new Error(`--analysis-files entries must be normalized relative paths: ${file}`)
+      }
+      return path.join(canonicalRepoRoot, file)
+    }),
     repoRoot: canonicalRepoRoot,
     help,
     editorViewPackagePaths,
@@ -279,16 +277,11 @@ export const bootstrapClosureCheckMain = async ({
   defaultRepoRoot: string
 }): Promise<void> => {
   try {
-    const {
-      analysisFiles,
-      repoRoot,
-      help,
-      editorViewPackagePaths,
-      editorViewRootPackagePath,
-    } = parseArgs({
-      argv,
-      defaultRepoRoot,
-    })
+    const { analysisFiles, repoRoot, help, editorViewPackagePaths, editorViewRootPackagePath } =
+      parseArgs({
+        argv,
+        defaultRepoRoot,
+      })
     if (help === true) {
       console.log(usage)
       return
@@ -298,7 +291,7 @@ export const bootstrapClosureCheckMain = async ({
     if (editorViewPackagePaths !== undefined && editorViewRootPackagePath !== undefined) {
       const result = await checkBootstrapClosure({
         genieFiles: allGenieFiles,
-        initialAnalysisFiles: analysisFiles,
+        ...(analysisFiles === undefined ? {} : { initialAnalysisFiles: analysisFiles }),
         reportAllViolations: true,
       })
       const closureViolations = findEditorViewClosureViolations({
@@ -337,7 +330,7 @@ export const bootstrapClosureCheckMain = async ({
 
     const { violations, checkedSources } = await checkBootstrapClosure({
       genieFiles: bootstrapFiles,
-      initialAnalysisFiles: analysisFiles,
+      ...(analysisFiles === undefined ? {} : { initialAnalysisFiles: analysisFiles }),
     })
 
     if (violations.length > 0) {

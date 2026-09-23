@@ -192,12 +192,16 @@ const checkWorkspaceContract = ({
   readonly workspacePackages: number
 } => {
   const rootPackage = requireRecord(readJson(sourceRoot, 'package.json'), 'package.json')
-  const packageWorkspaces = sorted(requireStrings(rootPackage.workspaces, 'package.json.workspaces'))
+  const packageWorkspaces = sorted(
+    requireStrings(rootPackage.workspaces, 'package.json.workspaces'),
+  )
   const workspaceYaml = requireRecord(
     Bun.YAML.parse(readFileSync(path.join(sourceRoot, 'pnpm-workspace.yaml'), 'utf8')),
     'pnpm-workspace.yaml',
   )
-  const pnpmWorkspaces = sorted(requireStrings(workspaceYaml.packages, 'pnpm-workspace.yaml.packages'))
+  const pnpmWorkspaces = sorted(
+    requireStrings(workspaceYaml.packages, 'pnpm-workspace.yaml.packages'),
+  )
   const declaredPackages = sorted(manifest.declaredPackages)
   for (const [field, actual] of [
     ['pnpm-workspace.yaml packages', pnpmWorkspaces],
@@ -210,7 +214,13 @@ const checkWorkspaceContract = ({
 
   const packageNames = new Map<string, string>()
   for (const packagePath of packageWorkspaces) {
-    for (const required of ['package.json', 'package.json.genie.ts', 'tsconfig.json', 'BUCK', 'BUCK.genie.ts']) {
+    for (const required of [
+      'package.json',
+      'package.json.genie.ts',
+      'tsconfig.json',
+      'BUCK',
+      'BUCK.genie.ts',
+    ]) {
       if (existsSync(path.join(sourceRoot, packagePath, required)) === false) {
         throw new Error(`${packagePath} is missing ${required}`)
       }
@@ -221,7 +231,8 @@ const checkWorkspaceContract = ({
     )
     const name = requireString(packageManifest.name, `${packagePath}/package.json.name`)
     const prior = packageNames.get(name)
-    if (prior !== undefined) throw new Error(`workspace package name ${name} is duplicated by ${prior} and ${packagePath}`)
+    if (prior !== undefined)
+      throw new Error(`workspace package name ${name} is duplicated by ${prior} and ${packagePath}`)
     packageNames.set(name, packagePath)
   }
 
@@ -230,10 +241,7 @@ const checkWorkspaceContract = ({
     'rust/Cargo.toml',
   )
   const workspace = requireRecord(cargoWorkspace.workspace, 'rust/Cargo.toml workspace')
-  const workspacePackage = requireRecord(
-    workspace.package,
-    'rust/Cargo.toml workspace.package',
-  )
+  const workspacePackage = requireRecord(workspace.package, 'rust/Cargo.toml workspace.package')
   for (const [field, expected] of [
     ['version', '0.0.0'],
     ['edition', '2021'],
@@ -304,16 +312,22 @@ const checkWorkspaceContract = ({
       `${memberPath}/Cargo.toml`,
     )
     const packageDefinition = requireRecord(cargo.package, `${memberPath}/Cargo.toml package`)
-    cargoPackageNames.push(requireString(packageDefinition.name, `${memberPath}/Cargo.toml package.name`))
+    cargoPackageNames.push(
+      requireString(packageDefinition.name, `${memberPath}/Cargo.toml package.name`),
+    )
     const resolvedWorkspace = path.posix.normalize(
-      path.posix.join(memberPath, requireString(packageDefinition.workspace, `${memberPath} package.workspace`)),
+      path.posix.join(
+        memberPath,
+        requireString(packageDefinition.workspace, `${memberPath} package.workspace`),
+      ),
     )
     if (resolvedWorkspace !== 'rust') {
       throw new Error(`${memberPath} package.workspace does not resolve to rust/Cargo.toml`)
     }
     for (const field of ['version', 'edition', 'license']) {
       const inherited = requireRecord(packageDefinition[field], `${memberPath} package.${field}`)
-      if (inherited.workspace !== true) throw new Error(`${memberPath} must inherit package.${field}`)
+      if (inherited.workspace !== true)
+        throw new Error(`${memberPath} must inherit package.${field}`)
     }
     for (const required of ['BUCK', 'BUCK.genie.ts']) {
       if (existsSync(path.join(sourceRoot, memberPath, required)) === false) {
@@ -331,13 +345,18 @@ const checkWorkspaceContract = ({
   }
 
   const scrapeManifest = requireRecord(
-    Bun.TOML.parse(readFileSync(path.join(sourceRoot, 'packages/@overeng/otel-scrape/Cargo.toml'), 'utf8')),
+    Bun.TOML.parse(
+      readFileSync(path.join(sourceRoot, 'packages/@overeng/otel-scrape/Cargo.toml'), 'utf8'),
+    ),
     'otel-scrape Cargo.toml',
   )
   const scrapeDependencies = requireRecord(scrapeManifest.dependencies, 'otel-scrape dependencies')
-  if (scrapeDependencies.libc !== '=0.2.186') throw new Error('otel-scrape must keep its exact libc pin')
+  if (scrapeDependencies.libc !== '=0.2.186')
+    throw new Error('otel-scrape must keep its exact libc pin')
   const oteliteManifest = requireRecord(
-    Bun.TOML.parse(readFileSync(path.join(sourceRoot, 'packages/@overeng/otelite/Cargo.toml'), 'utf8')),
+    Bun.TOML.parse(
+      readFileSync(path.join(sourceRoot, 'packages/@overeng/otelite/Cargo.toml'), 'utf8'),
+    ),
     'otelite Cargo.toml',
   )
   const oteliteTarget = requireRecord(oteliteManifest.target, 'otelite target dependencies')
@@ -362,7 +381,8 @@ const checkWorkspaceContract = ({
     'rust/buck2-tools/product',
   ]) {
     const buck = readFileSync(path.join(sourceRoot, memberPath, 'BUCK'), 'utf8')
-    if (buck.includes('build_product(')) throw new Error(`${memberPath}/BUCK must stay product-free`)
+    if (buck.includes('build_product('))
+      throw new Error(`${memberPath}/BUCK must stay product-free`)
   }
 
   const targets = requireRecord(
@@ -528,9 +548,16 @@ in builtins.deepSeq checked "validated"`,
     if (platformKeys.includes(platformKey(platformValue)) === false) {
       throw new Error(`manifest.products[${index}] platform is not admitted`)
     }
-    const payload = requireRecord(descriptor.payload, `manifest.products[${index}].descriptor.payload`)
-    const digest = requireRecord(payload.digest, `manifest.products[${index}].descriptor.payload.digest`)
-    if (digest.algorithm !== 'sha256') throw new Error(`manifest.products[${index}] digest is not sha256`)
+    const payload = requireRecord(
+      descriptor.payload,
+      `manifest.products[${index}].descriptor.payload`,
+    )
+    const digest = requireRecord(
+      payload.digest,
+      `manifest.products[${index}].descriptor.payload.digest`,
+    )
+    if (digest.algorithm !== 'sha256')
+      throw new Error(`manifest.products[${index}] digest is not sha256`)
     const release = requireRecord(entry.release, `manifest.products[${index}].release`)
     requireExactFields({
       value: release,
