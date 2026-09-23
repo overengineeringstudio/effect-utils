@@ -60,6 +60,12 @@ pkgs.runCommand "buck2-rules"
         src = "assemble-store.ts",
         visibility = ["PUBLIC"],
     )
+
+    export_file(
+        name = "nix-archive.ts",
+        src = "nix-archive.ts",
+        visibility = ["PUBLIC"],
+    )
     BUCK
     mkdir -p "$out/packages/@overeng/buck2-tools"
     cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
