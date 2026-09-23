@@ -20,6 +20,7 @@ export const developerOperationDispositions = {
   'lint:check': 'outside-by-policy:includes-stage-zero-freshness',
   'lint:fix': 'outside-by-policy:authoring-mutation',
   'nix:buck2-artifact-import:check': 'outside-by-policy:nix-artifact-import-contract',
+  'nix:flake:eval': 'outside-by-policy:nix-flake-evaluation',
   'nix:javascript-product-import:check': 'outside-by-policy:nix-artifact-import-contract',
   'test:<pkg>': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:genie': 'outside-by-policy:aggregate-includes-policy-excluded-tests',

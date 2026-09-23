@@ -695,8 +695,10 @@ in
         "mr:source-policy-check"
       ];
     })
-    # Repository Nix checks validate only the two artifact-import contracts.
-    # Product realization and full-flake evaluation stay in dedicated CI lanes.
+    # Repository Nix checks validate the two artifact-import contracts; check:all adds full-flake
+    # evaluation without realization. The from-source bridge contract realizes the retained
+    # Megarepo recovery product, so it runs pre-merge in the PR-only `pr-a-inert-buck` CI lane
+    # instead of either aggregate.
     (taskModules.check {
       hasMegarepoCheck = false;
       hasNixCheck = false;
@@ -711,6 +713,7 @@ in
     # no `origin/main` merge-base; its load-bearing home is the CI `weaver` lane.
     (taskModules.weaver-diff { })
     { tasks."check:all".after = [ "weaver:diff" ]; }
+    { tasks."check:all".after = [ "nix:flake:eval" ]; }
     # Live-check e2e (SC-R12): emits registry-conformant OTLP from a first-party site, captures it,
     # and asserts `weaver registry live-check` accepts it (exit 0). Runs the scoped vitest e2e with
     # the hermetic weaver + semconv-model on env; degrades to a warning if weaver is unavailable.
@@ -1131,6 +1134,14 @@ in
       "nix:buck2-artifact-import:check"
       "nix:javascript-product-import:check"
     ];
+  };
+
+  # Replaces the former `nix flake check` edge: every flake output for the host system is
+  # evaluated, but nothing is realized, so repository-source products stay out of the Nix checks.
+  tasks."nix:flake:eval" = {
+    description = "Evaluate every flake output for the host system without building";
+    after = [ "genie:check" ];
+    exec = trace.exec "nix:flake:eval" "${pkgs.nix}/bin/nix flake check --no-build";
   };
 
   tasks."buck2:nix-bridge:check" = {

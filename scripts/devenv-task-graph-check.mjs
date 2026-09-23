@@ -117,6 +117,7 @@ for (const name of [
   'nix:check:quick',
   'nix:buck2-artifact-import:check',
   'nix:javascript-product-import:check',
+  'nix:flake:eval',
   'setup:strict',
   'genie:run',
   'genie:check',
@@ -219,6 +220,18 @@ for (const checkTask of ['check:quick', 'check:all']) {
     name: `${checkTask} does not run unrestricted flake checks`,
   })
 }
+ok({
+  condition: reaches({ start: 'check:all', target: 'nix:flake:eval' }),
+  name: 'check:all evaluates every flake output',
+})
+ok({
+  condition: reaches({ start: 'nix:flake:eval', target: 'buck2:nix-bridge:check' }) === false,
+  name: 'nix:flake:eval does not realize a repository product',
+})
+ok({
+  condition: reaches({ start: 'nix:flake:eval', target: 'genie:check' }),
+  name: 'nix:flake:eval waits for source-side generation freshness',
+})
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
     condition: reaches({ start: checkTask, target: 'mr:apply' }) === false,
@@ -276,6 +289,7 @@ const standaloneBuckTaskNames = [
   'buck2:nix-bridge:check',
   'nix:buck2-artifact-import:check',
   'nix:javascript-product-import:check',
+  'nix:flake:eval',
   'lint:check',
   'lint:check:format',
   'lint:check:genie:coverage',
