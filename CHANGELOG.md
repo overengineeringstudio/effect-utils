@@ -37,6 +37,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/restate-effect** and **@overeng/notion-react**: Register Buck-built
+  package archives for digest-addressed private-tier acquisition without
+  selecting the public product publisher.
+- **Genie**: Include the existing Buck-built CLI product in trusted
+  main-branch cache publication.
+
 - **Genie CI**: Capture every devenv task graph as OpenTelemetry spans with
   workflow, job, run, revision, runner, and task attributes; render the slowest
   tasks in each job summary; and retain the OTLP payload as a CI artifact.
