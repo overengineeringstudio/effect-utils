@@ -231,23 +231,28 @@ describe('git', () => {
   describe('gitCommandTimeoutMillis', () => {
     const clone = ['clone', '--bare', 'https://example.com/repo', 'target']
     const revParse = ['rev-parse', 'HEAD']
-
+    const worktreeAdd = ['worktree', 'add', '/target', 'main']
+    const worktreeRemove = ['worktree', 'remove', '--force', '/target']
     afterEach(() => {
       delete process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS']
     })
 
-    it('defaults: network gets the generous bound, local the fixed one', () => {
+    it('defaults: network and long tree operations get generous bounds, local stays tight', () => {
       expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
+      expect(gitCommandTimeoutMillis(worktreeAdd)).toBe(600_000)
+      expect(gitCommandTimeoutMillis(worktreeRemove)).toBe(600_000)
       expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
+      expect(gitCommandTimeoutMillis(['worktree', 'list', '--porcelain'])).toBe(30_000)
     })
 
     it('classifies through leading global options (`-c … clone` → network)', () => {
       expect(gitCommandTimeoutMillis(['-c', 'http.extraHeader=x', ...clone])).toBe(600_000)
     })
 
-    it('MEGAREPO_GIT_NETWORK_TIMEOUT_MS tunes network only; local stays fixed', () => {
+    it('MEGAREPO_GIT_NETWORK_TIMEOUT_MS tunes network only', () => {
       process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '900000'
       expect(gitCommandTimeoutMillis(clone)).toBe(900_000)
+      expect(gitCommandTimeoutMillis(worktreeAdd)).toBe(600_000)
       expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
     })
 

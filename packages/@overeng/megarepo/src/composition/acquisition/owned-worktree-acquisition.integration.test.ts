@@ -1,8 +1,10 @@
+import { readdir, readFile } from 'node:fs/promises'
 import * as NodePath from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Deferred, Effect, Fiber } from 'effect'
+import { Cause, Deferred, Effect, Exit, Fiber, Option } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { afterAll, beforeAll, expect } from 'vitest'
 
@@ -46,6 +48,7 @@ const makeFixture = Effect.gen(function* () {
   yield* git(source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'base')
   yield* git(tmp, 'clone', '--bare', source, bareRepo)
   return {
+    source,
     tmp,
     bareRepo,
     workspaceRoot,
@@ -65,6 +68,48 @@ const create = <E, R>(
     startPoint: 'main',
     generate,
   })
+const installSmudge = (fixture: Effect.Success<typeof makeFixture>, scriptBody: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const filter = NodePath.join(fixture.tmp, 'test-smudge')
+    yield* fs.writeFileString(
+      EffectPath.unsafe.absoluteFile(NodePath.join(fixture.source, '.gitattributes')),
+      'payload.txt filter=test\n',
+    )
+    yield* fs.writeFileString(
+      EffectPath.unsafe.absoluteFile(NodePath.join(fixture.source, 'payload.txt')),
+      'payload\n',
+    )
+    yield* git(fixture.source, 'add', '-A')
+    yield* git(fixture.source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'test filter')
+    yield* git(fixture.bareRepo, 'fetch', fixture.source, '+refs/heads/main:refs/heads/main')
+    yield* fs.writeFileString(EffectPath.unsafe.absoluteFile(filter), `#!/bin/sh\n${scriptBody}\n`)
+    yield* fs.chmod(EffectPath.unsafe.absoluteFile(filter), 0o755)
+    yield* git(fixture.bareRepo, 'config', 'filter.test.smudge', filter)
+    yield* git(fixture.bareRepo, 'config', 'filter.test.required', 'true')
+    return filter
+  })
+
+const installBlockingSmudge = (fixture: Effect.Success<typeof makeFixture>) =>
+  installSmudge(fixture, 'sleep 60\ncat')
+
+const waitForInitializationLock = (fixture: Effect.Success<typeof makeFixture>) =>
+  Effect.tryPromise(async () => {
+    const adminRoot = NodePath.join(fixture.bareRepo, 'worktrees')
+    const deadline = Date.now() + 10_000
+    while (Date.now() < deadline) {
+      const adminNames = await readdir(adminRoot).catch(() => [])
+      for (const adminName of adminNames) {
+        const lockPath = NodePath.join(adminRoot, adminName, 'locked')
+        const reason = await readFile(lockPath, 'utf8').catch(() => undefined)
+        if (reason?.startsWith('initializing') === true) {
+          return { lockPath, reason: reason.trim() }
+        }
+      }
+      await delay(10)
+    }
+    throw new Error('Timed out waiting for the initializing worktree lock')
+  })
 
 describe('direct composed worktree creation', () => {
   it.effect('resolves an absent unregistered root as the creatable canonical P', () =>
@@ -77,6 +122,35 @@ describe('direct composed worktree creation', () => {
           branch: 'feature',
         }),
       ).toBe(`${fixture.workspaceRoot}/`)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('atomically assigns a new branch to one creator', () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture
+      const expectedOid = yield* Git.resolveRef({
+        repoPath: fixture.bareRepo,
+        ref: 'main^{commit}',
+      })
+      const claims = yield* Effect.all(
+        [
+          Git.createBranchIfAbsent({
+            repoPath: fixture.bareRepo,
+            branch: 'feature',
+            expectedOid,
+          }).pipe(Effect.exit),
+          Git.createBranchIfAbsent({
+            repoPath: fixture.bareRepo,
+            branch: 'feature',
+            expectedOid,
+          }).pipe(Effect.exit),
+        ],
+        { concurrency: 'unbounded' },
+      )
+      expect(claims.filter(Exit.isSuccess)).toHaveLength(1)
+      expect(yield* Git.resolveRef({ repoPath: fixture.bareRepo, ref: 'feature' })).toBe(
+        expectedOid,
+      )
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
@@ -101,7 +175,7 @@ describe('direct composed worktree creation', () => {
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
-  it.effect('cleans an interrupted birth with a stale index lock and permits retry', () =>
+  it.effect('rolls back failed generation even with a stale index lock and permits retry', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const fixture = yield* makeFixture
@@ -122,25 +196,19 @@ describe('direct composed worktree creation', () => {
       ).pipe(Effect.flip)
       expect(failure.reason).toBe('GenerationFailed')
       expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`))).toBe(
-        true,
+        false,
       )
-      expect(yield* Git.listWorktrees(fixture.bareRepo)).toHaveLength(1)
+      expect(yield* Git.listWorktrees(fixture.bareRepo)).toHaveLength(0)
       expect(yield* Git.refExists({ repoPath: fixture.bareRepo, ref: 'refs/heads/feature' })).toBe(
-        true,
+        false,
       )
-      const dotGit = NodePath.join(fixture.ownedWorktree, '.git')
-      const pointer = (yield* fs.readFileString(EffectPath.unsafe.absoluteFile(dotGit))).trim()
-      const adminDir = NodePath.resolve(NodePath.dirname(dotGit), pointer.slice('gitdir: '.length))
-      expect(
-        yield* fs.exists(EffectPath.unsafe.absoluteFile(NodePath.join(adminDir, 'index.lock'))),
-      ).toBe(false)
 
       const result = yield* create(fixture, () => Effect.void)
       expect(result.ownedWorktree).toBe(fixture.ownedWorktree)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
-  it.effect('keeps an interrupted generation recoverable through the exact retry path', () =>
+  it.effect('rolls back an interrupted generation and permits a fresh retry', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const fixture = yield* makeFixture
@@ -154,14 +222,188 @@ describe('direct composed worktree creation', () => {
       yield* Fiber.interrupt(fiber)
 
       expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`))).toBe(
-        true,
+        false,
       )
-      expect(yield* Git.listWorktrees(fixture.bareRepo)).toHaveLength(1)
+      expect(yield* Git.listWorktrees(fixture.bareRepo)).toHaveLength(0)
       expect(yield* Git.refExists({ repoPath: fixture.bareRepo, ref: 'refs/heads/feature' })).toBe(
-        true,
+        false,
       )
       expect((yield* create(fixture, () => Effect.void)).ownedWorktree).toBe(fixture.ownedWorktree)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('retains a pre-existing branch after generation rollback', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const fixture = yield* makeFixture
+      yield* git(fixture.bareRepo, 'branch', 'feature', 'main')
+      const featureOid = yield* Git.resolveRef({
+        repoPath: fixture.bareRepo,
+        ref: 'feature^{commit}',
+      })
+
+      const failure = yield* create(fixture, () => Effect.fail('generation failed')).pipe(
+        Effect.flip,
+      )
+      expect(failure.reason).toBe('GenerationFailed')
+      expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`))).toBe(
+        false,
+      )
+      expect(yield* Git.listWorktrees(fixture.bareRepo)).toHaveLength(0)
+      expect(yield* Git.resolveRef({ repoPath: fixture.bareRepo, ref: 'feature^{commit}' })).toBe(
+        featureOid,
+      )
+      expect((yield* create(fixture, () => Effect.void)).ownedWorktree).toBe(fixture.ownedWorktree)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect(
+    'rolls back a locked initializing birth interrupted during checkout',
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* makeFixture
+        const filter = yield* installBlockingSmudge(fixture)
+        expect(yield* git(fixture.bareRepo, 'show', 'main:.gitattributes')).toContain(
+          'payload.txt filter=test',
+        )
+        expect(yield* git(fixture.bareRepo, 'config', '--get', 'filter.test.smudge')).toBe(filter)
+        const fiber = yield* Effect.forkChild(create(fixture, () => Effect.void))
+        yield* waitForInitializationLock(fixture)
+        yield* Fiber.interrupt(fiber)
+        const interrupted = yield* Fiber.await(fiber)
+        expect(Exit.isFailure(interrupted) && Cause.hasInterruptsOnly(interrupted.cause)).toBe(true)
+
+        expect(
+          (yield* Git.listWorktrees(fixture.bareRepo)).filter(
+            (entry) => Option.getOrUndefined(entry.branch) === 'feature',
+          ),
+        ).toEqual([])
+        expect(
+          yield* Git.refExists({ repoPath: fixture.bareRepo, ref: 'refs/heads/feature' }),
+        ).toBe(false)
+        expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`))).toBe(
+          false,
+        )
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    30_000,
+  )
+
+  it.effect('removes an empty unregistered checkout remnant before retry', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const fixture = yield* makeFixture
+      yield* installSmudge(fixture, 'exit 1')
+
+      const failed = yield* create(fixture, () => Effect.void).pipe(Effect.flip)
+      expect(failed.reason).toBe('CommandFailure')
+      expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`))).toBe(
+        false,
+      )
+      expect(yield* Git.refExists({ repoPath: fixture.bareRepo, ref: 'refs/heads/feature' })).toBe(
+        false,
+      )
+
+      yield* git(fixture.bareRepo, 'config', 'filter.test.smudge', 'cat')
+      expect((yield* create(fixture, () => Effect.void)).ownedWorktree).toBe(fixture.ownedWorktree)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect(
+    'preserves a replacement registration carrying another initialization token',
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* makeFixture
+        const gate = NodePath.join(fixture.tmp, 'release-filter')
+        yield* installSmudge(fixture, `while [ ! -f '${gate}' ]; do sleep 0.01; done\ncat`)
+        const fiber = yield* Effect.forkChild(create(fixture, () => Effect.void))
+        const { lockPath, reason } = yield* waitForInitializationLock(fixture)
+        expect(reason).toMatch(
+          /^initializing:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+        )
+
+        const replacementReason = 'initializing'
+        yield* fs.writeFileString(EffectPath.unsafe.absoluteFile(lockPath), replacementReason)
+        yield* fs.writeFileString(
+          EffectPath.unsafe.absoluteFile(NodePath.join(fixture.workspaceRoot, 'megarepo.kdl')),
+          'foreign\n',
+        )
+        yield* fs.writeFileString(EffectPath.unsafe.absoluteFile(gate), '')
+        const failed = yield* Fiber.join(fiber).pipe(Effect.flip)
+        expect(failed.reason).toBe('ConfigSymlinkInvalid')
+
+        const registration = (yield* Git.listWorktrees(fixture.bareRepo)).find(
+          (entry) => Option.getOrUndefined(entry.branch) === 'feature',
+        )
+        expect(registration).toBeDefined()
+        expect(Option.getOrUndefined(registration?.lockReason ?? Option.none())).toBe(
+          replacementReason,
+        )
+        expect(
+          yield* Git.refExists({ repoPath: fixture.bareRepo, ref: 'refs/heads/feature' }),
+        ).toBe(true)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    30_000,
+  )
+
+  it.effect('rolls back checkout setup failure while the initialization token is held', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const fixture = yield* makeFixture
+      yield* fs.remove(
+        EffectPath.unsafe.absoluteFile(NodePath.join(fixture.source, 'megarepo.kdl')),
+      )
+      yield* git(fixture.source, 'add', '-A')
+      yield* git(fixture.source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'remove config')
+      yield* git(fixture.bareRepo, 'fetch', fixture.source, '+refs/heads/main:refs/heads/main')
+
+      const failed = yield* create(fixture, () => Effect.void).pipe(Effect.flip)
+      expect(failed.reason).toBe('ConfigMissing')
+      expect(
+        (yield* Git.listWorktrees(fixture.bareRepo)).filter(
+          (entry) => Option.getOrUndefined(entry.branch) === 'feature',
+        ),
+      ).toEqual([])
+      expect(yield* Git.refExists({ repoPath: fixture.bareRepo, ref: 'refs/heads/feature' })).toBe(
+        false,
+      )
+      expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`))).toBe(
+        false,
+      )
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect(
+    'removes its interrupted checkout but retains a pre-existing branch',
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* makeFixture
+        yield* installBlockingSmudge(fixture)
+        yield* git(fixture.bareRepo, 'branch', 'feature', 'main')
+        const featureOid = yield* Git.resolveRef({
+          repoPath: fixture.bareRepo,
+          ref: 'feature^{commit}',
+        })
+
+        const fiber = yield* Effect.forkChild(create(fixture, () => Effect.void))
+        yield* waitForInitializationLock(fixture)
+        yield* Fiber.interrupt(fiber)
+
+        expect(
+          (yield* Git.listWorktrees(fixture.bareRepo)).filter(
+            (entry) => Option.getOrUndefined(entry.branch) === 'feature',
+          ),
+        ).toEqual([])
+        expect(yield* Git.resolveRef({ repoPath: fixture.bareRepo, ref: 'feature^{commit}' })).toBe(
+          featureOid,
+        )
+        expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${fixture.workspaceRoot}/`))).toBe(
+          false,
+        )
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    30_000,
   )
 
   it.effect('uses physical identity below a symlinked store root', () =>
@@ -184,6 +426,27 @@ describe('direct composed worktree creation', () => {
 
       expect(result.workspaceRoot).toBe(fixture.workspaceRoot)
       expect(result.ownedWorktree).toBe(fixture.ownedWorktree)
+      const dotGit = NodePath.join(fixture.ownedWorktree, '.git')
+      const pointer = (yield* fs.readFileString(EffectPath.unsafe.absoluteFile(dotGit))).trim()
+      const adminDir = NodePath.resolve(NodePath.dirname(dotGit), pointer.slice('gitdir: '.length))
+      const linkedOwnedWorktree = NodePath.join(linkedWorkspaceRoot, 'repos', 'owner')
+      yield* fs.writeFileString(
+        EffectPath.unsafe.absoluteFile(NodePath.join(adminDir, 'gitdir')),
+        `${linkedOwnedWorktree}/.git\n`,
+      )
+      expect(
+        (yield* Git.listWorktrees(fixture.bareRepo)).find(
+          (registration) => Option.getOrUndefined(registration.branch) === 'feature',
+        )?.path,
+      ).toBe(linkedOwnedWorktree)
+      yield* createComposedOwnedWorkspace({
+        bareRepo: fixture.bareRepo,
+        workspaceRoot: fixture.workspaceRoot,
+        ownedMember: 'owner',
+        branch: 'feature',
+        startPoint: 'main',
+        generate: () => Effect.void,
+      })
       expect(
         yield* resolveStoreBranchWorktree({
           bareRepo: linkedBareRepo,

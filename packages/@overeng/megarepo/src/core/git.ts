@@ -4,7 +4,7 @@
  * Provides Effect-wrapped git operations for cloning, fetching, and managing worktrees.
  */
 
-import { Cause, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
+import { Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
 import * as Command from 'effect/unstable/process/ChildProcess'
 
 import * as Observability from './observability.ts'
@@ -104,14 +104,12 @@ export class GitCommandTimeoutError extends GitCommandError {
 /**
  * The git command deadline is a LIVENESS bound: it kills a wedged subprocess so a
  * hung git can never wedge the calling fiber (paired with the SIGKILL finalizer in
- * {@link startGitProcess}). A single flat value cannot serve both a millisecond-scale
- * local op (`rev-parse`, `status`) and a network transfer whose honest duration scales
- * with repo size — a bare clone of a large member (e.g. `effect-ts/effect`, ~140MB
- * pack) legitimately exceeds 30s under CI contention, yet a hung `rev-parse` must not be
- * allowed to hang for minutes. So the deadline is classified per operation: local ops
- * keep the tight bound, network ops (clone/fetch/pull/push/ls-remote) get a generous one.
+ * {@link startGitProcess}). A single flat value cannot serve a millisecond-scale local
+ * op (`rev-parse`, `status`), a worktree materialization whose runtime scales with tree
+ * size, and a network transfer whose runtime scales with repository size and latency.
  */
 const LOCAL_GIT_TIMEOUT_MILLIS = 30_000
+const DEFAULT_GIT_LONG_TREE_TIMEOUT_MILLIS = 600_000
 const DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS = 600_000
 
 /**
@@ -165,6 +163,23 @@ export const isNetworkGitCommand = (args: ReadonlyArray<string>): boolean => {
   return subcommand !== undefined && NETWORK_GIT_SUBCOMMANDS.has(subcommand)
 }
 
+/**
+ * Whether a git invocation materializes or removes a working tree.
+ *
+ * Other `worktree` operations (`list`, `lock`, `move`, `prune`, …) stay on the tight
+ * local deadline; only the two operations whose runtime scales with tree size qualify.
+ */
+const isLongTreeGitCommand = (args: ReadonlyArray<string>): boolean => {
+  let index = 0
+  while (index < args.length) {
+    const token = args[index]!
+    if (token.startsWith('-') === false)
+      return token === 'worktree' && (args[index + 1] === 'add' || args[index + 1] === 'remove')
+    index += GIT_GLOBAL_OPTS_WITH_VALUE.has(token) === true ? 2 : 1
+  }
+  return false
+}
+
 const parsePositiveIntEnv = (name: string): number | undefined => {
   const raw = process.env[name]
   if (raw === undefined) return undefined
@@ -175,15 +190,16 @@ const parsePositiveIntEnv = (name: string): number | undefined => {
 /**
  * Deadline (ms) for a git invocation, chosen by operation class.
  *
- * Local ops keep a fixed {@link LOCAL_GIT_TIMEOUT_MILLIS} liveness bound. Network ops —
- * whose honest runtime scales with transfer size / remote latency — get a generous
- * default, tunable via the single `MEGAREPO_GIT_NETWORK_TIMEOUT_MS` knob (also the test
- * seam). Nobody has needed to tune the local bound; add a knob back if that changes.
+ * Local ops keep a fixed {@link LOCAL_GIT_TIMEOUT_MILLIS} liveness bound. Worktree
+ * add/remove receive a generous fixed tree-operation bound. Network ops get a generous
+ * default tunable via `MEGAREPO_GIT_NETWORK_TIMEOUT_MS`.
  */
 export const gitCommandTimeoutMillis = (args: ReadonlyArray<string>): number =>
   isNetworkGitCommand(args) === true
     ? (parsePositiveIntEnv('MEGAREPO_GIT_NETWORK_TIMEOUT_MS') ?? DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS)
-    : LOCAL_GIT_TIMEOUT_MILLIS
+    : isLongTreeGitCommand(args) === true
+      ? DEFAULT_GIT_LONG_TREE_TIMEOUT_MILLIS
+      : LOCAL_GIT_TIMEOUT_MILLIS
 
 const withGitCommandTimeout =
   <A, E, R>({ args, timeoutMillis }: { args: ReadonlyArray<string>; timeoutMillis: number }) =>
@@ -209,31 +225,12 @@ const decodeChunks = (chunks: ReadonlyArray<Uint8Array>): string => {
   return new TextDecoder('utf-8').decode(merged)
 }
 
-/**
- * Start a git subprocess with piped stdout/stderr and register a SIGKILL
- * finalizer so an interrupted command never leaks a running child.
- */
+/** Start a git subprocess with piped stdout/stderr. */
 const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
-  Effect.gen(function* () {
-    const process = yield* Command.make('git', args, {
-      cwd,
-      stderr: 'pipe',
-      stdout: 'pipe',
-    })
-
-    yield* Effect.addFinalizer((exit) =>
-      Effect.gen(function* () {
-        if (exit._tag !== 'Failure' || Cause.hasInterruptsOnly(exit.cause) === false) {
-          return
-        }
-
-        const isRunning = yield* process.isRunning.pipe(Effect.orElseSucceed(() => false))
-        if (isRunning === false) return
-
-        yield* process.kill({ killSignal: 'SIGKILL' }).pipe(Effect.ignore)
-      }),
-    )
-    return process
+  Command.make('git', args, {
+    cwd,
+    stderr: 'pipe',
+    stdout: 'pipe',
   })
 
 /**
@@ -249,18 +246,13 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
     return Effect.gen(function* () {
       const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
 
-      // Collect stdout and stderr. Concat is a single O(n) allocation per stream
-      // (sum lengths once, allocate once, copy once) — the previous per-chunk
-      // `reduce` reallocated the whole buffer on every chunk, which is O(n²) in
-      // output size and OOM-killed the host on large `git status` output.
+      // Concat is one O(n) allocation per stream; per-chunk spreading is O(n²).
       const [stdoutChunks, stderrChunks] = yield* Effect.all([
         Stream.runCollect(process.stdout),
         Stream.runCollect(process.stderr),
       ])
-
       const stdout = decodeChunks(stdoutChunks)
       const stderr = decodeChunks(stderrChunks)
-
       const exitCode = yield* process.exitCode
 
       if (exitCode !== 0) {
@@ -524,9 +516,12 @@ export const createWorktree = (args: {
   createBranch?: boolean
   /** Start point for new branch (only used with createBranch: true) */
   startPoint?: string
+  /** Keep the registration locked after creation until the caller explicitly unlocks it. */
+  lockReason?: string
 }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'add']
+    if (args.lockReason !== undefined) cmdArgs.push('--lock', '--reason', args.lockReason)
     if (args.createBranch === true) {
       cmdArgs.push('-b', args.branch)
       cmdArgs.push(args.worktreePath)
@@ -550,12 +545,17 @@ export const createWorktree = (args: {
 export const removeWorktree = (args: { repoPath: string; worktreePath: string; force?: boolean }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'remove']
-    if (args.force === true) {
-      cmdArgs.push('--force')
-    }
+    if (args.force === true) cmdArgs.push('--force')
     cmdArgs.push(args.worktreePath)
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
   })
+
+/** Unlock a successfully initialized worktree registration. */
+export const unlockWorktree = (args: { repoPath: string; worktreePath: string }) =>
+  runGitCommand({
+    args: ['worktree', 'unlock', args.worktreePath],
+    cwd: args.repoPath,
+  }).pipe(Effect.asVoid)
 
 /** Prune stale worktree bookkeeping entries from a bare repo */
 export const pruneWorktrees = (repoPath: string) =>
@@ -576,42 +576,53 @@ export const moveWorktree = (args: { repoPath: string; fromPath: string; toPath:
 /**
  * List git worktrees
  */
+export interface WorktreeRegistration {
+  readonly path: string
+  readonly head: string
+  readonly branch: Option.Option<string>
+  readonly lockReason: Option.Option<string>
+}
+
+/** List registered worktrees while preserving Git's raw paths and lock reasons. */
 export const listWorktrees = (repoPath: string) =>
   Effect.gen(function* () {
-    type Worktree = { path: string; head: string; branch: Option.Option<string> }
-
     // Mutable accumulator: each completed record is PUSHED (amortized O(1)), so
     // the whole parse is O(n) — NOT a per-record `[...worktrees, x]` spread, which
     // would be O(n²) and reintroduce the buffering this refactor removes. `current`
     // stays small/immutable. Lines are folded one at a time, so memory is bounded
     // by the parsed worktree set, never the full subprocess output.
-    const worktrees: Array<Worktree> = []
-    let current: { path?: string; head?: string; branch?: string } = {}
+    const worktrees: Array<WorktreeRegistration> = []
+    let current: { path?: string; head?: string; branch?: string; lockReason?: string } = {}
     const flush = () => {
       if (current.path !== undefined && current.head !== undefined) {
         worktrees.push({
           path: current.path,
           head: current.head,
           branch: Option.fromUndefinedOr(current.branch),
+          lockReason: Option.fromUndefinedOr(current.lockReason),
         })
       }
       current = {}
     }
 
-    // `worktree list --porcelain` emits newline-delimited records separated by
-    // blank lines; a record ends on a blank line, and the final record is flushed
-    // at end-of-stream.
+    // `splitLines` need not preserve porcelain's blank separators, so a new
+    // `worktree` header flushes the prior record; end-of-stream flushes the last.
     yield* streamGitCommandLines({
       args: ['worktree', 'list', '--porcelain'],
       cwd: repoPath,
       sink: Sink.forEach((line: string) =>
         Effect.sync(() => {
           if (line.startsWith('worktree ') === true) {
+            flush()
             current.path = line.slice(9)
           } else if (line.startsWith('HEAD ') === true) {
             current.head = line.slice(5)
           } else if (line.startsWith('branch ') === true) {
             current.branch = line.slice(7).replace('refs/heads/', '')
+          } else if (line === 'locked') {
+            current.lockReason = ''
+          } else if (line.startsWith('locked ') === true) {
+            current.lockReason = line.slice(7)
           } else if (line === '') {
             flush()
           }
@@ -850,6 +861,37 @@ export const createBranch = (args: { repoPath: string; branch: string; baseRef: 
 
     return baseCommit
   })
+/** Atomically create a branch at `expectedOid`, failing if any ref already owns the name. */
+export const createBranchIfAbsent = (args: {
+  repoPath: string
+  branch: string
+  expectedOid: string
+}) =>
+  runGitCommand({
+    args: [
+      'update-ref',
+      `refs/heads/${args.branch}`,
+      args.expectedOid,
+      '0000000000000000000000000000000000000000',
+    ],
+    cwd: args.repoPath,
+  }).pipe(Effect.asVoid)
+
+/**
+ * Delete a branch only if it still points at the OID observed before creation.
+ *
+ * `update-ref` performs the comparison and deletion atomically; a moved or missing
+ * branch fails closed rather than deleting someone else's update.
+ */
+export const deleteBranchIfMatches = (args: {
+  repoPath: string
+  branch: string
+  expectedOid: string
+}) =>
+  runGitCommand({
+    args: ['update-ref', '-d', `refs/heads/${args.branch}`, args.expectedOid],
+    cwd: args.repoPath,
+  }).pipe(Effect.asVoid)
 
 /**
  * Delete a local branch ref in a (bare) repo.
