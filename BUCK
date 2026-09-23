@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:71a290c25a95c27a583a9c1f5259e0cfe3aa1cbb82b5a4d76e4cf3b1022a8d40
+# Semantic fingerprint: sha256:50429989deaa10d7bb86714d992ab181038450cee721a1ff201f34f4434249a4
 # Semantic inputs: BUCK.genie.ts, genie/buck2/mod.ts, genie/buck2/root-aggregate-projection.ts, genie/buck2/typescript-admissions.ts, buck2/check_aggregate.bzl, buck2/weaver.bzl, packages/@overeng/buck2-tools/src/weaver-check-runner.ts, context/effect/socket/BUCK.genie.ts, context/opentui/BUCK.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/buck2-tools/BUCK.genie.ts, packages/@overeng/ci-tools/BUCK.genie.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-path/BUCK.genie.ts, packages/@overeng/effect-react/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts, packages/@overeng/effect-schema-form-aria/BUCK.genie.ts, packages/@overeng/effect-schema-form/BUCK.genie.ts, packages/@overeng/genie/BUCK.genie.ts, packages/@overeng/gh-ci-utils/BUCK.genie.ts, packages/@overeng/kdl-effect/BUCK.genie.ts, packages/@overeng/kdl/BUCK.genie.ts, packages/@overeng/megarepo/BUCK.genie.ts, packages/@overeng/notion-cli/BUCK.genie.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-datasource-sync/BUCK.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-md/BUCK.genie.ts, packages/@overeng/notion-property-write/BUCK.genie.ts, packages/@overeng/notion-react/BUCK.genie.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/pty-effect/BUCK.genie.ts, packages/@overeng/react-inspector/BUCK.genie.ts, packages/@overeng/restate-effect/BUCK.genie.ts, packages/@overeng/stylex-tokens/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-stories/BUCK.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
@@ -206,6 +206,7 @@ check_aggregate(
         "//packages/@overeng/utils-dev:typecheck",
         ":weaver_check",
         ":weaver_version_smoke",
+        "//buck2/static:check",
     ],
     visibility = ["PUBLIC"],
 )

@@ -677,7 +677,6 @@ in
           "buck2:editor:publish"
           "test:run"
           "weaver:diff"
-          "workspace:check"
         ];
       };
       wireInto = [ "check:all" ];
