@@ -14,8 +14,8 @@ product cross into Nix without a sandboxed Nix build invoking Buck? Does one
 archive-digest change invalidate only its consumer?
 
 This is mechanism evidence. The architecture recommendation and proposed VRS
-amendments are recorded in
-`/srv/bulk/coding-agents/_reports/explore.global-max-acquisition.md`.
+amendments were reviewed in the private oversight report and are now recorded
+in decision 0038.
 
 ## Method
 
@@ -64,7 +64,7 @@ a controlled key mutation proving that the archive identity is per declaration:
 Buck re-executed the changed archive's extraction and no unrelated command.
 
 The 583-second fresh result is not a performance baseline. It deliberately
-forced local, cache-cold execution while dev3 was under the recorded shared-host
+forced local, cache-cold execution during the recorded shared-host resource
 pressure. The unchanged target had previously completed in 27 seconds inside a
 Nix sandbox; BUCK-R07 needs a controlled warm-cache measurement.
 

@@ -9,11 +9,11 @@ projection feed the same immutable inputs into the real 21-product Buck graph?
 
 ## Environment
 
-The `/srv/bulk` checkout is not valid for timing evidence: its 4,352-entry
+The bulk-backed checkout is not valid for timing evidence: its 4,352-entry
 pruned walk took 60.09 seconds and an unpruned walk exceeded 300 seconds. The
-same detached revision (`b9f2a8f9ff`) under `/home/schickling` contained 4,349
-pruned entries and walked in 0.17 seconds. A notify-backed Buck daemon connected
-there in 0.054 seconds. The checked-in capability projection was copied into the
+same detached revision (`b9f2a8f9ff`) on local disk contained 4,349 pruned
+entries and walked in 0.17 seconds. A notify-backed Buck daemon connected there
+in 0.054 seconds. The checked-in capability projection was copied into the
 detached control root; no watcher override was used.
 
 ## Method

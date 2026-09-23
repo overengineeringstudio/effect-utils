@@ -714,10 +714,25 @@ const extraJobs: Record<string, any> = {
       preparePinnedDevenvStep,
       prepareCiScriptsStep,
       {
+        id: 'archive-origin',
+        name: 'Resolve trusted archive origin',
+        run: withCiSourceRoot(
+          [
+            'url=$(sed -n "s/^[[:space:]]*trusted_url_prefix[[:space:]]*=[[:space:]]*//p" .buckconfig)',
+            'tier=$(sed -n "s/^[[:space:]]*trusted_tier[[:space:]]*=[[:space:]]*//p" .buckconfig)',
+            'case "$url" in http://*/cas/|https://*/cas/) ;; *) echo "invalid trusted archive origin" >&2; exit 1 ;; esac',
+            'test "$tier" = private',
+            'printf "url=%s\\ntier=%s\\n" "$url" "$tier" >> "$GITHUB_OUTPUT"',
+          ].join('\n'),
+        ),
+      },
+      {
         name: 'Verify and seed pnpm archives',
         env: {
           ...githubTokenEnv(),
           BUCK2_ARCHIVE_CAS_AUTHORIZATION: '${{ secrets.BUCK2_ARCHIVE_CAS_AUTHORIZATION }}',
+          BUCK2_ARCHIVE_CAS_URL: '${{ steps.archive-origin.outputs.url }}',
+          BUCK2_ARCHIVE_CAS_TIER: '${{ steps.archive-origin.outputs.tier }}',
         },
         run: runDevenvTasksBefore('buck2:archives:seed'),
       },

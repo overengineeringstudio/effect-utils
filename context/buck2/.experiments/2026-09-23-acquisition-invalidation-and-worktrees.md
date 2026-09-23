@@ -4,11 +4,12 @@ Date: 2026-09-23
 
 ## Environment
 
-Both experiments used detached physical worktrees on the local disk at
-`3ce4b75a10`. The `/srv/bulk` tree is excluded from timing conclusions because
-its measured filesystem walk is approximately 350 times slower. Each root used
-the checked-in capability projection, notify watcher, private archive-origin
-posture, fresh `pair` isolation, and no remote execution or action cache.
+Both experiments used detached physical worktrees on local disk at
+`3ce4b75a10`. The bulk-backed checkout is excluded from timing conclusions
+because its measured filesystem walk is approximately 350 times slower. Each
+root used the checked-in capability projection, notify watcher, private
+archive-origin posture, fresh `pair` isolation, and no remote execution or action
+cache.
 
 ## Two-worktree sample
 

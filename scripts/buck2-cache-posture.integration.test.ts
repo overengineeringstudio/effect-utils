@@ -8,10 +8,22 @@ import {
   standaloneCachePostureConfig,
 } from './buck2-cache-posture.ts'
 
+const trustedOrigin = {
+  tier: 'private',
+  urlPrefix: 'https://trusted-cache.example/cas/',
+} as const
+
 const temporaryRoots: string[] = []
 
 const makeRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), 'buck2-cache-posture-'))
+  writeFileSync(
+    join(root, '.buckconfig'),
+    `[archive_origin]
+  trusted_url_prefix = ${trustedOrigin.urlPrefix}
+  trusted_tier = ${trustedOrigin.tier}
+`,
+  )
   temporaryRoots.push(root)
   return root
 }
@@ -22,8 +34,13 @@ afterEach(() => {
 
 describe('standalone Buck cache posture', () => {
   it('selects registry for the exact public-lane opt-out and CAS otherwise', () => {
-    expect(standaloneCachePostureConfig({ current: '', env: { BUCK2_NO_REMOTE_CACHE: '1' } }))
-      .toBe(`# effect-utils standalone cache posture: begin
+    expect(
+      standaloneCachePostureConfig({
+        current: '',
+        env: { BUCK2_NO_REMOTE_CACHE: '1' },
+        trustedOrigin,
+      }),
+    ).toBe(`# effect-utils standalone cache posture: begin
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
@@ -38,10 +55,11 @@ describe('standalone Buck cache posture', () => {
         standaloneCachePostureConfig({
           current: '',
           env: { BUCK2_NO_REMOTE_CACHE: value },
+          trustedOrigin,
         }),
       ).toBe(`# effect-utils standalone cache posture: begin
 [archive_origin]
-  url_prefix = http://dev3:41046/cas/
+  url_prefix = https://trusted-cache.example/cas/
   tier = private
 # effect-utils standalone cache posture: end
 `)
@@ -71,7 +89,7 @@ describe('standalone Buck cache posture', () => {
 
 # effect-utils standalone cache posture: begin
 [archive_origin]
-  url_prefix = http://dev3:41046/cas/
+  url_prefix = https://trusted-cache.example/cas/
   tier = private
 # effect-utils standalone cache posture: end
 `)
@@ -85,7 +103,9 @@ describe('standalone Buck cache posture', () => {
     expect(existsSync(output)).toBeTrue()
 
     reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '0' } })
-    expect(readFileSync(output, 'utf8')).toContain('url_prefix = http://dev3:41046/cas/')
+    expect(readFileSync(output, 'utf8')).toContain(
+      'url_prefix = https://trusted-cache.example/cas/',
+    )
     expect(readFileSync(output, 'utf8')).not.toContain('remote_cache_enabled = false')
   })
 })

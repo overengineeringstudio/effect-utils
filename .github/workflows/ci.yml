@@ -2883,10 +2883,20 @@ jobs:
           cp -R "$scripts_src/." "$scripts_dst/"
           rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
+      - id: archive-origin
+        name: Resolve trusted archive origin
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && url=$(sed -n "s/^[[:space:]]*trusted_url_prefix[[:space:]]*=[[:space:]]*//p" .buckconfig)
+          tier=$(sed -n "s/^[[:space:]]*trusted_tier[[:space:]]*=[[:space:]]*//p" .buckconfig)
+          case "$url" in http://*/cas/|https://*/cas/) ;; *) echo "invalid trusted archive origin" >&2; exit 1 ;; esac
+          test "$tier" = private
+          printf "url=%s\ntier=%s\n" "$url" "$tier" >> "$GITHUB_OUTPUT"
       - name: Verify and seed pnpm archives
         env:
           GITHUB_TOKEN: ${{ github.token }}
           BUCK2_ARCHIVE_CAS_AUTHORIZATION: ${{ secrets.BUCK2_ARCHIVE_CAS_AUTHORIZATION }}
+          BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}
+          BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:archives:seed' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:archives:seed'
