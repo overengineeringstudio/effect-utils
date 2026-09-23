@@ -71,9 +71,4 @@ pkgs.runCommand "buck2-rules"
     mkdir -p "$out/prelude"
     tar -xzf ${buck2.passthru.prelude} --strip-components=1 -C "$out/prelude"
 
-    substituteInPlace "$out/buck2/toolchains/BUCK" \
-      --replace-fail '"//.buck2/capabilities:defs.bzl"' '"@capabilities//:defs.bzl"'
-    substituteInPlace "$out/buck2/toolchains/configured.bzl" \
-      --replace-fail '"//.buck2/capabilities:defs.bzl"' '"@capabilities//:defs.bzl"' \
-      --replace-fail '"//.buck2/capabilities/generations/' '"@capabilities//generations/'
   ''
