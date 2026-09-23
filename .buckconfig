@@ -31,9 +31,6 @@
   instance_name = effect-utils
   tls = false
 
-[archive_origin]
-  url_prefix = http://dev3:41046/cas/
-  tier = private
 
 [project]
   ignore = **/__pycache__,**/dist,**/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,packages/.editor-view,target,tmp

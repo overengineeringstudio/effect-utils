@@ -7,10 +7,19 @@ import process from 'node:process'
 const MANAGED_BEGIN = '# effect-utils standalone cache posture: begin'
 const MANAGED_END = '# effect-utils standalone cache posture: end'
 
-const DISABLED_CACHE_BLOCK = `${MANAGED_BEGIN}
+const PUBLIC_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
+[archive_origin]
+  url_prefix =
+  tier = public
+${MANAGED_END}`
+
+const TRUSTED_CACHE_BLOCK = `${MANAGED_BEGIN}
+[archive_origin]
+  url_prefix = http://dev3:41046/cas/
+  tier = private
 ${MANAGED_END}`
 
 const fail = (message: string): never => {
@@ -50,14 +59,10 @@ export const standaloneCachePostureConfig = ({
   readonly env: Readonly<Record<string, string | undefined>>
 }): string | undefined => {
   const withoutManaged = withoutManagedBlock(current)
-  if (env['BUCK2_NO_REMOTE_CACHE'] !== '1') {
-    if (withoutManaged.found === false) return current === '' ? undefined : current
-    return withoutManaged.content === '' ? undefined : `${withoutManaged.content}\n`
-  }
+  const managed =
+    env['BUCK2_NO_REMOTE_CACHE'] === '1' ? PUBLIC_CACHE_BLOCK : TRUSTED_CACHE_BLOCK
   const unmanaged = withoutManaged.content
-  return unmanaged === ''
-    ? `${DISABLED_CACHE_BLOCK}\n`
-    : `${unmanaged}\n\n${DISABLED_CACHE_BLOCK}\n`
+  return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }
 
 /** Atomically publish or remove only the managed cache posture block. */
