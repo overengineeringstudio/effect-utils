@@ -25,7 +25,7 @@ in
     inherit hashSource;
     metadataOnly = true;
     depsBuilds = {
-      "." = mkSharedHash "sha256-5UcbEEnQssUR4pWKmCE0kVrRKBM0q29DdfPHYp00KLM=";
+      "." = mkSharedHash "sha256-5VjRvCd2FBN2KP3FSQ0AA2wUOlEWxuV09trURNzrMjI=";
     };
   };
 }
