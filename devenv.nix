@@ -667,7 +667,6 @@ in
         # The verifier launches a nested, cache-refreshed task run. Keep it last
         # so its task-cache refresh cannot race sibling check:all work.
         prerequisiteTasks = [
-          "bootstrap-closure:check"
           "buck2:providers:check"
           "cargo:check"
           "dependency-materialization:evidence:check"
@@ -684,6 +683,8 @@ in
     })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
     (import ./nix/devenv-modules/gh-labels.nix { repo = "overengineeringstudio/effect-utils"; })
+    # Playwright browser drivers and environment setup
+    inputs.playwright.devenvModules.default
     # Shared task modules
     taskModules.genie
     (taskModules.megarepo {
@@ -699,14 +700,7 @@ in
     # the empty module contract to retain repository-wide flake validation.
     (taskModules.nix-cli { cliPackages = [ ]; })
     (taskModules.check {
-1: for (const name of [
-  'buck2:providers:check',
-  'buck2:quick',
-  'buck2:all',
-  'buck2:nix-bridge:check',
-  'buck2:editor:bootstrap',
-]) {
-2:       hasMegarepoCheck = false;
+      hasMegarepoCheck = false;
       checkQuickTypecheckTask = "buck2:quick";
       checkAllTypecheckTask = "buck2:all";
     })

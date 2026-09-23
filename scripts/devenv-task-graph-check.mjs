@@ -276,16 +276,13 @@ for (const name of standaloneBuckTaskNames) {
     name: `${name} waits for source-side generation freshness`,
   })
 }
-1: for (const name of [
+for (const name of [
   'buck2:providers:check',
   'buck2:quick',
   'buck2:all',
   'buck2:nix-bridge:check',
   'buck2:editor:bootstrap',
 ]) {
-2:       hasMegarepoCheck = false;
-      checkQuickTypecheckTask = "buck2:quick";
-      checkAllTypecheckTask = "buck2:all";
   ok({
     condition: reaches({ start: name, target: 'mr:apply' }) === false,
     name: `${name} remains standalone`,
