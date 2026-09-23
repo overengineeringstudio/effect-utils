@@ -400,10 +400,7 @@ describe('direct composed worktree creation', () => {
       const failed = yield* create(fixture, () =>
         Effect.gen(function* () {
           const { lockPath } = yield* waitForInitializationLock(fixture)
-          yield* fs.writeFileString(
-            EffectPath.unsafe.absoluteFile(lockPath),
-            replacementReason,
-          )
+          yield* fs.writeFileString(EffectPath.unsafe.absoluteFile(lockPath), replacementReason)
         }),
       ).pipe(Effect.flip)
 

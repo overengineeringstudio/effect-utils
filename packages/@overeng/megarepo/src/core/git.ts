@@ -556,10 +556,7 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
   })
 
 const isErrno = ({ cause, code }: { readonly cause: unknown; readonly code: string }): boolean =>
-  typeof cause === 'object' &&
-  cause !== null &&
-  'code' in cause &&
-  cause.code === code
+  typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === code
 
 /**
  * Unlock only the exact lock file carrying `expectedReason`.
@@ -960,12 +957,7 @@ export const deleteBranchIfMatches = (args: {
 }) =>
   Effect.gen(function* () {
     yield* runGitCommand({
-      args: [
-        'update-ref',
-        `refs/heads/${args.branch}`,
-        args.expectedOid,
-        args.expectedOid,
-      ],
+      args: ['update-ref', `refs/heads/${args.branch}`, args.expectedOid, args.expectedOid],
       cwd: args.repoPath,
     })
     yield* runGitCommand({
