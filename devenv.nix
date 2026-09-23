@@ -672,8 +672,7 @@ in
           "dependency-materialization:evidence:check"
           "check:devenv-eval-inputs"
           "lint:check"
-
-          "nix:flake:check"
+          "nix:check:quick"
           "buck2:editor:publish"
           "test:run"
           "weaver:diff"
@@ -696,13 +695,14 @@ in
         "mr:source-policy-check"
       ];
     })
-    # No repository JavaScript package is source-built by Nix anymore. Import
-    # the empty module contract to retain repository-wide flake validation.
-    (taskModules.nix-cli { cliPackages = [ ]; })
+    # Repository Nix checks validate only the two artifact-import contracts.
+    # Product realization and full-flake evaluation stay in dedicated CI lanes.
     (taskModules.check {
       hasMegarepoCheck = false;
+      hasNixCheck = false;
       checkQuickTypecheckTask = "buck2:quick";
       checkAllTypecheckTask = "buck2:all";
+      extraChecks = [ "nix:check:quick" ];
     })
     (taskModules.devenv-eval-input-budget { })
 
@@ -1107,16 +1107,40 @@ in
     '';
   };
 
+  tasks."nix:buck2-artifact-import:check" = {
+    description = "Check the generic Buck product descriptor and artifact-import contracts";
+    after = [ "genie:check" ];
+    exec = trace.exec "nix:buck2-artifact-import:check" ''
+      set -euo pipefail
+      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
+    '';
+  };
+
+  tasks."nix:javascript-product-import:check" = {
+    description = "Check JavaScript Buck product descriptor and artifact-import contracts";
+    after = [ "genie:check" ];
+    exec = trace.exec "nix:javascript-product-import:check" ''
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"
+    '';
+  };
+
+  tasks."nix:check:quick" = {
+    description = "Check Nix artifact-import contracts without realizing repository products";
+    after = [
+      "nix:buck2-artifact-import:check"
+      "nix:javascript-product-import:check"
+    ];
+  };
+
   tasks."buck2:nix-bridge:check" = {
-    description = "Check build-product, cache-publication, and fail-closed artifact-import contracts";
+    description = "Check the cache publisher and retained Megarepo from-source fallback";
     after = lib.mkForce [ "genie:check" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
       BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
         ${pkgs.bash}/bin/bash nix/buck2-products/from-source-contract.test.sh "$PWD"
-      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
-      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
-      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
     '';
   };
 
@@ -1270,7 +1294,6 @@ in
   tasks."buck2:providers:check" = {
     description = "Audit cross-cell provider identity for configured Buck toolchains";
     after = [
-      "buck2:nix-bridge:check"
       "buck2:task-guards:check"
       "buck2:rust-deps:check"
     ];

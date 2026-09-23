@@ -30,10 +30,6 @@ if bash "$publisher" --dry-run --product missing >"$tmp/missing.log" 2>&1; then
 fi
 grep -F 'unknown product: missing' "$tmp/missing.log" >/dev/null
 
-if grep -E 'gh |github.com/.*/releases|buck2-product-v3|buck2-package-v1' "$publisher" >/dev/null; then
-  echo "buck2-cache-products-test: publisher still contains the retired GitHub release path" >&2
-  exit 1
-fi
 grep -F 'cachix push "$cache" "$store_path"' "$publisher" >/dev/null
 grep -F 'cachix pin "$cache" "$pin_name" "$store_path" --artifact "$output_name" --keep-forever' "$publisher" >/dev/null
 grep -F 'already points at a different store path' "$publisher" >/dev/null

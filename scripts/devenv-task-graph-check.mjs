@@ -115,7 +115,8 @@ for (const name of [
   'check:quick',
   'check:all',
   'nix:check:quick',
-  'nix:flake:check',
+  'nix:buck2-artifact-import:check',
+  'nix:javascript-product-import:check',
   'setup:strict',
   'genie:run',
   'genie:check',
@@ -195,14 +196,29 @@ for (const [checkTask, aggregateTask] of [
     name: `${checkTask} reaches the Buck producer overlap guard`,
   })
 }
-ok({
-  condition: reaches({ start: 'check:quick', target: 'nix:check:quick' }),
-  name: 'check:quick retains the empty Nix fingerprint aggregate',
-})
-ok({
-  condition: reaches({ start: 'check:all', target: 'nix:flake:check' }),
-  name: 'check:all retains repository-wide Nix flake validation',
-})
+for (const checkTask of ['check:quick', 'check:all']) {
+  ok({
+    condition: reaches({ start: checkTask, target: 'nix:check:quick' }),
+    name: `${checkTask} reaches the Nix artifact-import aggregate`,
+  })
+  for (const importTask of [
+    'nix:buck2-artifact-import:check',
+    'nix:javascript-product-import:check',
+  ]) {
+    ok({
+      condition: reaches({ start: checkTask, target: importTask }),
+      name: `${checkTask} reaches ${importTask}`,
+    })
+  }
+  ok({
+    condition: reaches({ start: checkTask, target: 'buck2:nix-bridge:check' }) === false,
+    name: `${checkTask} does not realize a repository product`,
+  })
+  ok({
+    condition: reaches({ start: checkTask, target: 'nix:flake:check' }) === false,
+    name: `${checkTask} does not run unrestricted flake checks`,
+  })
+}
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
     condition: reaches({ start: checkTask, target: 'mr:apply' }) === false,
@@ -258,6 +274,8 @@ const standaloneBuckTaskNames = [
   'buck2:editor:publish:otel-contract',
   'buck2:editor:publish:playwright',
   'buck2:nix-bridge:check',
+  'nix:buck2-artifact-import:check',
+  'nix:javascript-product-import:check',
   'lint:check',
   'lint:check:format',
   'lint:check:genie:coverage',

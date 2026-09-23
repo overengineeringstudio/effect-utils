@@ -173,6 +173,16 @@ Audit cross-cell Buck provider identity separately:
 devenv tasks run buck2:providers:check
 ```
 
+### Nix Artifact Import Checks
+
+Validate the generic and JavaScript Buck product import boundaries without
+realizing repository products:
+
+```bash
+devenv tasks run nix:buck2-artifact-import:check
+devenv tasks run nix:javascript-product-import:check
+```
+
 ### Linting
 
 ```bash
