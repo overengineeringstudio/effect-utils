@@ -710,12 +710,48 @@ export const createComposedOwnedWorkspace = <R, E>({
         ),
       )
       yield* Effect.uninterruptible(
-        command({
-          path: paths.ownedWorktree,
-          effect: Git.unlockWorktree({
-            repoPath: bareRepo,
-            worktreePath: paths.ownedWorktree,
-          }),
+        Effect.gen(function* () {
+          const currentRegistrations = yield* command({
+            path: bareRepo,
+            effect: Git.listWorktrees(bareRepo),
+          })
+          const atBranch = currentRegistrations.filter(
+            (candidate) => Option.getOrUndefined(candidate.branch) === branch,
+          )
+          const atExpectedPath = yield* registrationsAtPhysicalPath({
+            registrations: currentRegistrations,
+            expectedPath: paths.ownedWorktree,
+          })
+          const candidate = atExpectedPath[0]
+          if (
+            atBranch.length !== 1 ||
+            atExpectedPath.length !== 1 ||
+            candidate === undefined ||
+            Option.getOrUndefined(candidate.branch) !== branch ||
+            candidate.head !== expectedWorktreeOid ||
+            Option.getOrUndefined(candidate.lockReason) !== initializationLockReason
+          ) {
+            return yield* failure({
+              reason: 'GitIdentityConflict',
+              path: paths.ownedWorktree,
+              message: `Initialization ownership changed before '${paths.ownedWorktree}' could be unlocked`,
+            })
+          }
+          const unlocked = yield* command({
+            path: paths.ownedWorktree,
+            effect: Git.unlockWorktreeIfMatches({
+              repoPath: bareRepo,
+              worktreePath: candidate.path,
+              expectedReason: initializationLockReason,
+            }),
+          })
+          if (unlocked === false) {
+            return yield* failure({
+              reason: 'GitIdentityConflict',
+              path: paths.ownedWorktree,
+              message: `Initialization lock ownership changed for '${paths.ownedWorktree}'`,
+            })
+          }
         }),
       )
       return composed

@@ -4,6 +4,11 @@
  * Provides Effect-wrapped git operations for cloning, fetching, and managing worktrees.
  */
 
+import { randomUUID } from 'node:crypto'
+import type { Stats } from 'node:fs'
+import { link, lstat, open, readFile, rename, unlink } from 'node:fs/promises'
+import * as NodePath from 'node:path'
+
 import { Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
 import * as Command from 'effect/unstable/process/ChildProcess'
 
@@ -550,12 +555,75 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
   })
 
-/** Unlock a successfully initialized worktree registration. */
-export const unlockWorktree = (args: { repoPath: string; worktreePath: string }) =>
-  runGitCommand({
-    args: ['worktree', 'unlock', args.worktreePath],
-    cwd: args.repoPath,
-  }).pipe(Effect.asVoid)
+const isErrno = (cause: unknown, code: string): boolean =>
+  typeof cause === 'object' &&
+  cause !== null &&
+  'code' in cause &&
+  cause.code === code
+
+/**
+ * Unlock only the exact lock file carrying `expectedReason`.
+ *
+ * Renaming the lock file first gives the ownership check a stable inode. If another
+ * lock replaced it between the initial read and rename, restore that replacement
+ * without overwriting a newer lock.
+ */
+export const unlockWorktreeIfMatches = (args: {
+  repoPath: string
+  worktreePath: string
+  expectedReason: string
+}) =>
+  Effect.gen(function* () {
+    const adminDir = yield* runGitCommand({
+      args: ['rev-parse', '--absolute-git-dir'],
+      cwd: args.worktreePath,
+    })
+    const lockPath = NodePath.join(adminDir, 'locked')
+    return yield* Effect.tryPromise(async () => {
+      let identity: Stats
+      let reason: string
+      try {
+        const handle = await open(lockPath, 'r')
+        try {
+          identity = await handle.stat()
+          reason = (await handle.readFile('utf8')).trim()
+        } finally {
+          await handle.close()
+        }
+      } catch (cause) {
+        if (isErrno(cause, 'ENOENT') === true) return false
+        throw cause
+      }
+      if (reason !== args.expectedReason) return false
+
+      const movedPath = `${lockPath}.unlock-${randomUUID()}`
+      try {
+        await rename(lockPath, movedPath)
+      } catch (cause) {
+        if (isErrno(cause, 'ENOENT') === true) return false
+        throw cause
+      }
+
+      const movedIdentity = await lstat(movedPath)
+      const movedReason = (await readFile(movedPath, 'utf8')).trim()
+      if (
+        movedIdentity.dev !== identity.dev ||
+        movedIdentity.ino !== identity.ino ||
+        movedReason !== args.expectedReason
+      ) {
+        try {
+          await link(movedPath, lockPath)
+          await unlink(movedPath)
+        } catch (cause) {
+          if (isErrno(cause, 'EEXIST') === false) throw cause
+        }
+        return false
+      }
+
+      await unlink(movedPath)
+      return true
+    })
+  })
 
 /** Prune stale worktree bookkeeping entries from a bare repo */
 export const pruneWorktrees = (repoPath: string) =>
@@ -872,26 +940,39 @@ export const createBranchIfAbsent = (args: {
       'update-ref',
       `refs/heads/${args.branch}`,
       args.expectedOid,
-      '0000000000000000000000000000000000000000',
+      '0'.repeat(args.expectedOid.length),
     ],
     cwd: args.repoPath,
   }).pipe(Effect.asVoid)
 
 /**
- * Delete a branch only if it still points at the OID observed before creation.
+ * Delete a branch only if it still points at the observed OID and no worktree
+ * has registered it.
  *
- * `update-ref` performs the comparison and deletion atomically; a moved or missing
- * branch fails closed rather than deleting someone else's update.
+ * The no-op `update-ref` is an atomic OID comparison. `git branch -D` then
+ * performs Git's checked-out-worktree guard at deletion time, so a creator that
+ * registered the branch after an earlier observation wins and cleanup fails closed.
  */
 export const deleteBranchIfMatches = (args: {
   repoPath: string
   branch: string
   expectedOid: string
 }) =>
-  runGitCommand({
-    args: ['update-ref', '-d', `refs/heads/${args.branch}`, args.expectedOid],
-    cwd: args.repoPath,
-  }).pipe(Effect.asVoid)
+  Effect.gen(function* () {
+    yield* runGitCommand({
+      args: [
+        'update-ref',
+        `refs/heads/${args.branch}`,
+        args.expectedOid,
+        args.expectedOid,
+      ],
+      cwd: args.repoPath,
+    })
+    yield* runGitCommand({
+      args: ['branch', '--delete', '--force', args.branch],
+      cwd: args.repoPath,
+    })
+  })
 
 /**
  * Delete a local branch ref in a (bare) repo.

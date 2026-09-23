@@ -32,29 +32,31 @@ afterAll(() => {
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Git.runCommand({ cwd, args: [...GIT_USER, ...args] })
 
-const makeFixture = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem
-  const tmp = yield* makeCanonicalTempDirectoryScoped()
-  const source = NodePath.join(tmp, 'source')
-  const bareRepo = NodePath.join(tmp, 'repo.git')
-  const workspaceRoot = NodePath.join(tmp, 'workspace')
-  yield* fs.makeDirectory(EffectPath.unsafe.absoluteDir(`${source}/`), { recursive: true })
-  yield* git(source, 'init', '-b', 'main')
-  yield* fs.writeFileString(
-    EffectPath.unsafe.absoluteFile(NodePath.join(source, 'megarepo.kdl')),
-    'members {}\n',
-  )
-  yield* git(source, 'add', '-A')
-  yield* git(source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'base')
-  yield* git(tmp, 'clone', '--bare', source, bareRepo)
-  return {
-    source,
-    tmp,
-    bareRepo,
-    workspaceRoot,
-    ownedWorktree: NodePath.join(workspaceRoot, 'repos', 'owner'),
-  }
-})
+const makeFixtureWithObjectFormat = (objectFormat: 'sha1' | 'sha256') =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const tmp = yield* makeCanonicalTempDirectoryScoped()
+    const source = NodePath.join(tmp, 'source')
+    const bareRepo = NodePath.join(tmp, 'repo.git')
+    const workspaceRoot = NodePath.join(tmp, 'workspace')
+    yield* fs.makeDirectory(EffectPath.unsafe.absoluteDir(`${source}/`), { recursive: true })
+    yield* git(source, 'init', `--object-format=${objectFormat}`, '-b', 'main')
+    yield* fs.writeFileString(
+      EffectPath.unsafe.absoluteFile(NodePath.join(source, 'megarepo.kdl')),
+      'members {}\n',
+    )
+    yield* git(source, 'add', '-A')
+    yield* git(source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'base')
+    yield* git(tmp, 'clone', '--bare', source, bareRepo)
+    return {
+      source,
+      tmp,
+      bareRepo,
+      workspaceRoot,
+      ownedWorktree: NodePath.join(workspaceRoot, 'repos', 'owner'),
+    }
+  })
+const makeFixture = makeFixtureWithObjectFormat('sha1')
 
 const create = <E, R>(
   fixture: Effect.Success<typeof makeFixture>,
@@ -149,6 +151,48 @@ describe('direct composed worktree creation', () => {
       )
       expect(claims.filter(Exit.isSuccess)).toHaveLength(1)
       expect(yield* Git.resolveRef({ repoPath: fixture.bareRepo, ref: 'feature' })).toBe(
+        expectedOid,
+      )
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('creates branches in SHA-256 repositories', () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixtureWithObjectFormat('sha256')
+      const expectedOid = yield* Git.resolveRef({
+        repoPath: fixture.bareRepo,
+        ref: 'main^{commit}',
+      })
+      expect(expectedOid).toHaveLength(64)
+      yield* Git.createBranchIfAbsent({
+        repoPath: fixture.bareRepo,
+        branch: 'feature',
+        expectedOid,
+      })
+      expect(yield* Git.resolveRef({ repoPath: fixture.bareRepo, ref: 'feature' })).toBe(
+        expectedOid,
+      )
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('refuses to delete a branch registered by another worktree', () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture
+      const replacement = NodePath.join(fixture.tmp, 'replacement')
+      yield* git(fixture.bareRepo, 'worktree', 'add', '-b', 'feature', replacement, 'main')
+      const expectedOid = yield* Git.resolveRef({
+        repoPath: fixture.bareRepo,
+        ref: 'feature^{commit}',
+      })
+
+      const deletion = yield* Git.deleteBranchIfMatches({
+        repoPath: fixture.bareRepo,
+        branch: 'feature',
+        expectedOid,
+      }).pipe(Effect.exit)
+
+      expect(Exit.isFailure(deletion)).toBe(true)
+      expect(yield* Git.resolveRef({ repoPath: fixture.bareRepo, ref: 'feature^{commit}' })).toBe(
         expectedOid,
       )
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -345,6 +389,33 @@ describe('direct composed worktree creation', () => {
         ).toBe(true)
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     30_000,
+  )
+
+  it.effect('preserves a replacement lock after successful generation', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const fixture = yield* makeFixture
+      const replacementReason = 'maintenance'
+
+      const failed = yield* create(fixture, () =>
+        Effect.gen(function* () {
+          const { lockPath } = yield* waitForInitializationLock(fixture)
+          yield* fs.writeFileString(
+            EffectPath.unsafe.absoluteFile(lockPath),
+            replacementReason,
+          )
+        }),
+      ).pipe(Effect.flip)
+
+      expect(failed.reason).toBe('GitIdentityConflict')
+      const registration = (yield* Git.listWorktrees(fixture.bareRepo)).find(
+        (entry) => Option.getOrUndefined(entry.branch) === 'feature',
+      )
+      expect(registration).toBeDefined()
+      expect(Option.getOrUndefined(registration?.lockReason ?? Option.none())).toBe(
+        replacementReason,
+      )
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   it.effect('rolls back checkout setup failure while the initialization token is held', () =>
