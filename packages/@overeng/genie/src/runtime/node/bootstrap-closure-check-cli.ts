@@ -230,7 +230,7 @@ const parseArgs = ({
   const canonicalRepoRoot = existsSync(repoRoot) === true ? realpathSync.native(repoRoot) : repoRoot
   return {
     analysisFiles: analysisFiles?.map((file) => {
-      if (path.isAbsolute(file) || file.split('/').includes('..')) {
+      if (path.isAbsolute(file) === true || file.split('/').includes('..') === true) {
         throw new Error(`--analysis-files entries must be normalized relative paths: ${file}`)
       }
       return path.join(canonicalRepoRoot, file)

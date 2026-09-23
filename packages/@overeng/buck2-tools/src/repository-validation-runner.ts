@@ -13,29 +13,33 @@ type WorkspaceManifest = {
   readonly declaredPackages: readonly string[]
 }
 
-const requireRecord = (value: unknown, field: string): Record<string, unknown> => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+const requireRecord = (
+  ...[value, field]: readonly [value: unknown, field: string]
+): Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) === true) {
     throw new Error(`${field} must be an object`)
   }
   return value as Record<string, unknown>
 }
 
-const requireString = (value: unknown, field: string): string => {
+const requireString = (...[value, field]: readonly [value: unknown, field: string]): string => {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`${field} must be a non-empty string`)
   }
   return value
 }
 
-const requireStrings = (value: unknown, field: string): readonly string[] => {
-  if (Array.isArray(value) === false || value.some((entry) => typeof entry !== 'string')) {
+const requireStrings = (
+  ...[value, field]: readonly [value: unknown, field: string]
+): readonly string[] => {
+  if (Array.isArray(value) === false || value.some((entry) => typeof entry !== 'string') === true) {
     throw new Error(`${field} must be an array of strings`)
   }
   return value
 }
 
 const canonicalJson = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (Array.isArray(value) === true) return `[${value.map(canonicalJson).join(',')}]`
   if (typeof value === 'object' && value !== null) {
     return `{${Object.entries(value)
       .toSorted(([left], [right]) => left.localeCompare(right))
@@ -61,18 +65,23 @@ const requireExactFields = ({
   }
 }
 
-const requireUnique = (values: readonly string[], subject: string): void => {
+const requireUnique = (
+  ...[values, subject]: readonly [values: readonly string[], subject: string]
+): void => {
   if (new Set(values).size !== values.length) throw new Error(`${subject} must be unique`)
 }
 
 const sorted = (values: Iterable<string>): readonly string[] =>
   [...values].toSorted((left, right) => left.localeCompare(right))
 
-const readJson = (sourceRoot: string, relativePath: string): unknown =>
-  JSON.parse(readFileSync(path.join(sourceRoot, relativePath), 'utf8'))
+const readJson = (
+  ...[sourceRoot, relativePath]: readonly [sourceRoot: string, relativePath: string]
+): unknown => JSON.parse(readFileSync(path.join(sourceRoot, relativePath), 'utf8'))
 
-const sourcePath = (sourceRoot: string, relativePath: string): string => {
-  if (path.isAbsolute(relativePath) || relativePath.split('/').includes('..')) {
+const sourcePath = (
+  ...[sourceRoot, relativePath]: readonly [sourceRoot: string, relativePath: string]
+): string => {
+  if (path.isAbsolute(relativePath) === true || relativePath.split('/').includes('..') === true) {
     throw new Error(`validation source path must be normalized and relative: ${relativePath}`)
   }
   return path.join(sourceRoot, relativePath)
@@ -100,7 +109,7 @@ const run = ({
   if (child.exitCode !== 0) process.exit(child.exitCode)
 }
 
-export const checkDevenvTraceAudit = ({
+const checkDevenvTraceAudit = ({
   sourceRoot,
   sourcePaths,
 }: {
@@ -122,11 +131,11 @@ export const checkDevenvTraceAudit = ({
       if (
         /trace[.](?:exec|status)|exec = null|exec = if hasPackages then null else trace[.]exec|trace[.]withStatus/u.test(
           line,
-        )
+        ) === true
       )
         continue
       const previous = index === 0 ? '' : lines[index - 1]!
-      if (`${previous}\n${line}`.includes('trace-audit-allow')) continue
+      if (`${previous}\n${line}`.includes('trace-audit-allow') === true) continue
       bypasses.push(`${relativePath}:${index + 1}:${line.trim()}`)
     }
   }
@@ -177,6 +186,16 @@ const checkNixSource = ({
   })
   return { checkedFiles: nixPaths.length }
 }
+
+const platformKey = ({
+  abi,
+  architecture,
+  os,
+}: {
+  readonly abi: string
+  readonly architecture: string
+  readonly os: string
+}): string => `${architecture}-${os}-${abi}`
 
 const checkWorkspaceContract = ({
   sourceRoot,
@@ -257,7 +276,11 @@ const checkWorkspaceContract = ({
     ),
   )
   for (const memberPath of cargoMemberPaths) {
-    if (path.posix.isAbsolute(memberPath) || memberPath === '..' || memberPath.startsWith('../')) {
+    if (
+      path.posix.isAbsolute(memberPath) === true ||
+      memberPath === '..' ||
+      memberPath.startsWith('../') === true
+    ) {
       throw new Error(`Cargo workspace member is outside the repository: ${memberPath}`)
     }
   }
@@ -307,11 +330,14 @@ const checkWorkspaceContract = ({
   ]
   const cargoPackageNames: string[] = []
   for (const memberPath of cargoMemberPaths) {
-    const cargo = requireRecord(
+    const cargoManifest = requireRecord(
       Bun.TOML.parse(readFileSync(path.join(sourceRoot, memberPath, 'Cargo.toml'), 'utf8')),
       `${memberPath}/Cargo.toml`,
     )
-    const packageDefinition = requireRecord(cargo.package, `${memberPath}/Cargo.toml package`)
+    const packageDefinition = requireRecord(
+      cargoManifest.package,
+      `${memberPath}/Cargo.toml package`,
+    )
     cargoPackageNames.push(
       requireString(packageDefinition.name, `${memberPath}/Cargo.toml package.name`),
     )
@@ -381,7 +407,7 @@ const checkWorkspaceContract = ({
     'rust/buck2-tools/product',
   ]) {
     const buck = readFileSync(path.join(sourceRoot, memberPath, 'BUCK'), 'utf8')
-    if (buck.includes('build_product('))
+    if (buck.includes('build_product(') === true)
       throw new Error(`${memberPath}/BUCK must stay product-free`)
   }
 
@@ -412,7 +438,10 @@ const checkWorkspaceContract = ({
     if (/^[A-Za-z0-9][A-Za-z0-9._+-]*$/u.test(name) === false) {
       throw new Error(`targets.products[${index}].name is malformed`)
     }
-    if (/^(?:[A-Za-z0-9_]+)?\/\/.+:.+$/u.test(target) === false || /[\s[\]]/u.test(target)) {
+    if (
+      /^(?:[A-Za-z0-9_]+)?\/\/.+:.+$/u.test(target) === false ||
+      /[\s[\]]/u.test(target) === true
+    ) {
       throw new Error(`targets.products[${index}].target is malformed`)
     }
     return { name, target }
@@ -446,15 +475,6 @@ const checkWorkspaceContract = ({
       system: requireString(entry.system, `targets.platforms[${index}].system`),
     }
   })
-  const platformKey = ({
-    abi,
-    architecture,
-    os,
-  }: {
-    readonly abi: string
-    readonly architecture: string
-    readonly os: string
-  }): string => `${architecture}-${os}-${abi}`
   const platformKeys = platformEntries.map(platformKey)
   requireUnique(platformKeys, 'native platform tuples')
   requireUnique(
@@ -599,7 +619,7 @@ in builtins.deepSeq checked "validated"`,
     throw new Error('repository rust-toolchain.toml is missing')
   }
   for (const memberPath of ['packages/@overeng/otel-scrape', 'packages/@overeng/otelite']) {
-    if (existsSync(path.join(sourceRoot, memberPath, 'rust-toolchain.toml'))) {
+    if (existsSync(path.join(sourceRoot, memberPath, 'rust-toolchain.toml')) === true) {
       throw new Error(`${memberPath} shadows the repository Rust toolchain`)
     }
   }
