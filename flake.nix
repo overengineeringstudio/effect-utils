@@ -54,6 +54,20 @@
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         mkPnpmCliSupport = import ./nix/workspace-tools/lib/mk-pnpm-cli-support.nix { inherit pkgs; };
+        cliPackageRegistry = import ./nix/cli-packages.nix { inherit pkgs; };
+        pnpm = import ./nix/pnpm.nix { inherit pkgs; };
+        mkPnpmCli = import ./nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+        megarepoSourceDepsSupport = mkPnpmCli {
+          name = "megarepo-source-deps-support";
+          entry = "packages/@overeng/megarepo/bin/mr.ts";
+          binaryName = "mr";
+          packageDir = "packages/@overeng/megarepo";
+          workspaceRoot = self;
+          depsBuilds = cliPackageRegistry."megarepo-source-deps-support".depsBuilds;
+          generateCompletions = false;
+          smokeTestArgs = [ "--version" ];
+          inherit gitRev commitTs dirty;
+        };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
         providerCliPackages = {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
@@ -70,6 +84,8 @@
         buckProductsFromSource = import ./nix/buck2-products/source-recipes.nix {
           inherit mkBuckProductFromSource;
           preparedDeps = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
+          preparedDepsByProduct.megarepo =
+            megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
           # Dirty flake inputs have no commit identity. The publisher rejects dirty trees and
           # verifies this field against HEAD before mutation, so the sentinel cannot escape.
           producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
@@ -198,6 +214,9 @@
             gh-ci-utils = ghCiUtils;
             gh-ci-utils-dirty = ghCiUtilsDirty;
             "gh-ci-utils-pnpm-deps" = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
+            "megarepo-source-deps-support" = megarepoSourceDepsSupport;
+            "megarepo-source-product-pnpm-deps" =
+              megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
             buck-products-from-source = pkgs.linkFarm "effect-utils-buck-products-from-source" (
               pkgs.lib.mapAttrsToList (name: path: {
                 name = pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name;

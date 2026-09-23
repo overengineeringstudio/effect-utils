@@ -25,6 +25,7 @@ let
           (repositoryRoot + "/.oxfmtrc.json")
           (repositoryRoot + "/.oxlintrc.json")
           (repositoryRoot + "/context")
+          (repositoryRoot + "/genie/weaver-registry")
           (repositoryRoot + "/devenv.lock")
           (repositoryRoot + "/devenv.yaml")
           (repositoryRoot + "/flake.lock")
@@ -32,6 +33,7 @@ let
           (repositoryRoot + "/megarepo.kdl")
           (repositoryRoot + "/megarepo.lock")
           (repositoryRoot + "/patches")
+          (repositoryRoot + "/nix/weaver-flake/flake.nix")
           (repositoryRoot + "/scripts")
           (repositoryRoot + "/tsconfig.lint.json")
           (repositoryRoot + "/buck2")
@@ -86,6 +88,7 @@ pkgs.stdenv.mkDerivation {
           cat > .buckconfig <<'BUCKCONFIG'
           [cells]
             effect_utils = .
+            capabilities = .buck2/capabilities
             prelude = prelude
 
           [cell_aliases]
@@ -139,7 +142,7 @@ pkgs.stdenv.mkDerivation {
 
           cat > buck2/toolchains/BUCK <<'TOOLCHAINS'
           load("//buck2/toolchains:defs.bzl", "bun_toolchain")
-          load("//.buck2/capabilities:defs.bzl", "CAPABILITIES", "GENERATION")
+          load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
           bun_toolchain(
               name = "bun",
               capabilities = CAPABILITIES,
@@ -303,15 +306,27 @@ pkgs.stdenv.mkDerivation {
               throw new Error("package_tree package_view has no dependency_view")
             }
             const dependencyEnd = source.indexOf("\n", dependencyStart)
-            const rewrittenBlock = source
+            const removeDictionaryAttribute = (block, attribute) => {
+              const opening = `    ''${attribute} = {\n`
+              const start = block.indexOf(opening)
+              if (start === -1) return block
+              if (block.indexOf(opening, start + opening.length) !== -1) {
+                throw new Error(`Expected at most one ''${attribute} attribute`)
+              }
+              const closing = "    },\n"
+              const end = block.indexOf(closing, start + opening.length)
+              if (end === -1) throw new Error(`Unterminated ''${attribute} attribute`)
+              return block.slice(0, start) + block.slice(end + closing.length)
+            }
+            let rewrittenBlock = source
               .slice(blockStart, blockEnd)
               .replace("package_view(", "package_tree(")
               .replace(
                 source.slice(dependencyStart, dependencyEnd),
                 "    node_modules = \"//:nix_prepared_node_modules\",",
               )
-              .replace("    workspace_dist = {\n    },\n", "")
-              .replace("    workspace_dependency_views = {\n    },\n", "")
+            rewrittenBlock = removeDictionaryAttribute(rewrittenBlock, "workspace_dist")
+            rewrittenBlock = removeDictionaryAttribute(rewrittenBlock, "workspace_dependency_views")
             source = source.slice(0, blockStart) + rewrittenBlock + source.slice(blockEnd)
             await Bun.write(path, source)
           '
