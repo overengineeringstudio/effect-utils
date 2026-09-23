@@ -225,10 +225,39 @@ while IFS= read -r row; do
   existing_count="$(jq 'length' <<<"$existing")"
   ((existing_count <= 1)) || fail "$pin_name is held by multiple Cachix pins"
   if ((existing_count == 1)); then
-    existing_path="$(jq -r '.[0].lastRevision.storePath' <<<"$existing")"
-    [[ "$existing_path" == "$store_path" ]] || fail "$pin_name already points at a different store path"
     jq -e --arg artifact "$output_name" '.[0].lastRevision.artifacts | index($artifact) != null' <<<"$existing" >/dev/null ||
       fail "$pin_name exists without the required artifact"
+    existing_path="$(jq -r '.[0].lastRevision.storePath' <<<"$existing")"
+    if [[ "$existing_path" != "$store_path" ]]; then
+      # The pin name is content-addressed by the artifact digest, but the store path also
+      # binds the producing commit via provenance.json. A later main commit that leaves
+      # the artifact byte-identical therefore rebuilds a different store path for an
+      # already-published artifact. Pins are immutable, so reuse the published store path
+      # and its provenance once they are proven to describe these exact bytes; the
+      # anonymous download below re-verifies the artifact digest and size.
+      [[ "$existing_path" =~ ^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$ ]] ||
+        fail "$pin_name already points at a different store path that is not a store path: $existing_path"
+      existing_hash="$(basename "$existing_path")"
+      existing_hash="${existing_hash%%-*}"
+      existing_provenance="$stage/$safe_name.published-provenance.json"
+      if $local_cache; then
+        cp "$existing_path/provenance.json" "$existing_provenance" 2>/dev/null ||
+          fail "$pin_name already points at a different store path whose provenance is unavailable"
+      else
+        env -u CACHIX_AUTH_TOKEN curl -fsS "$cache_url/serve/$existing_hash/provenance.json" -o "$existing_provenance" ||
+          fail "$pin_name already points at a different store path whose provenance is unavailable"
+      fi
+      jq -e --arg target "$target" --arg digest "$sha256" '
+        (keys | sort) == ["producerCommit","productDigest","schema","target"] and
+        .schema == "effect-utils/buck-product-provenance/v1" and
+        (.producerCommit | test("^[0-9a-f]{40}$")) and
+        .target == $target and .productDigest == $digest
+      ' "$existing_provenance" >/dev/null 2>&1 ||
+        fail "$pin_name already points at a different store path whose provenance does not bind this artifact"
+      printf 'buck2-cache-products-publish: %s is already published at %s; reusing it\n' "$pin_name" "$existing_path" >&2
+      store_path="$existing_path"
+      provenance_file="$existing_provenance"
+    fi
   fi
   store_hash="$(basename "$store_path")"
   store_hash="${store_hash%%-*}"

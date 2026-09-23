@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Buck2 product publication**: Reuse an existing Cachix pin when a later main
+  commit rebuilds byte-identical product bytes, after verifying the published
+  provenance binds the same artifact, instead of failing because the rebuilt
+  store path differs only in its producing commit.
 - **Scoped Buck2 product publication**: Merge refreshed cache products by product
   identity while retaining unrelated release-backed products, so publishing
   Megarepo no longer removes the bootstrap tools required by repository checks.

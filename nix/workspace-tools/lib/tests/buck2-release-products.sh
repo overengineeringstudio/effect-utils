@@ -115,7 +115,21 @@ esac
 EOF
 cat >"$tmp/fake-bin/curl" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$PIN_LIST"
+url=""
+out=""
+while (($#)); do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+emit() { if [[ -n "$out" ]]; then cat >"$out"; else cat; fi; }
+case "$url" in
+  */provenance.json) [[ -n "${PUBLISHED_STORE:-}" ]] && emit <"$PUBLISHED_STORE/provenance.json" && exit 0 ;;
+  */fixture.js) [[ -n "${PUBLISHED_STORE:-}" ]] && emit <"$PUBLISHED_STORE/fixture.js" && exit 0 ;;
+esac
+printf '%s\n' "$PIN_LIST" | emit
 EOF
 cat >"$tmp/fake-bin/cachix" <<'EOF'
 #!/usr/bin/env bash
@@ -141,6 +155,45 @@ grep -F 'already points at a different store path' "$tmp/collision.stderr" >/dev
 }
 [[ ! -s "$CACHIX_LOG" ]] || {
   echo "buck2-cache-products-test: publisher mutated Cachix after detecting a collision" >&2
+  exit 1
+}
+
+# The same artifact bytes rebuilt at a later main commit produce a different store path
+# (provenance.json binds the producing commit). The publisher must reuse the immutable
+# pin and its provenance instead of failing or repinning.
+mkdir -p "$tmp/published-output"
+cp "$tmp/collision-output/fixture.js" "$tmp/collision-output/descriptor.json" "$tmp/published-output/"
+cat >"$tmp/published-output/provenance.json" <<EOF
+{"producerCommit":"2222222222222222222222222222222222222222","productDigest":"$collision_sha","schema":"effect-utils/buck-product-provenance/v1","target":"effect_utils//packages/@overeng/fixture:fixture-candidate"}
+EOF
+published_store="$(nix store add-path "$tmp/published-output")"
+[[ "$published_store" != "$collision_store" ]] || {
+  echo "buck2-cache-products-test: reuse fixture did not produce a distinct store path" >&2
+  exit 1
+}
+: >"$CACHIX_LOG"
+PUBLISHED_STORE="$published_store" \
+  PIN_LIST="[{\"name\":\"fixture-$collision_sha\",\"lastRevision\":{\"storePath\":\"$published_store\",\"artifacts\":[\"fixture.js\"]}}]" \
+  GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main \
+  PATH="$tmp/fake-bin:$PATH" CACHIX_AUTH_TOKEN=fake BUCK2_CACHE_PRODUCTS_REPO="$tmp/collision-repo" \
+  bash "$publisher" --product fixture --proposal "$tmp/reuse-manifest.json" 2>"$tmp/reuse.stderr" || {
+  echo "buck2-cache-products-test: publisher rejected an identical republication:" >&2
+  cat "$tmp/reuse.stderr" >&2
+  exit 1
+}
+jq -e --arg storePath "$published_store" --arg digest "$collision_sha" '
+  (.products | length == 1) and
+  .products[0].storePath == $storePath and
+  .products[0].sha256 == $digest and
+  .products[0].provenance.producerCommit == "2222222222222222222222222222222222222222" and
+  (.products[0].artifactUrl | endswith(($storePath | ltrimstr("/nix/store/") | split("-")[0]) + "/fixture.js"))
+' "$tmp/reuse-manifest.json" >/dev/null || {
+  echo "buck2-cache-products-test: reuse did not bind the published store path and provenance" >&2
+  cat "$tmp/reuse-manifest.json" >&2
+  exit 1
+}
+[[ ! -s "$CACHIX_LOG" ]] || {
+  echo "buck2-cache-products-test: publisher repinned an already published artifact" >&2
   exit 1
 }
 
