@@ -2,6 +2,7 @@ import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mo
 
 const files = [
   'buck2-member.json',
+  'buck2/dependencies/assemble-store.ts',
   'buck2/dependencies/defs.bzl',
   'buck2/editor_view.bzl',
   'buck2/go/defs.bzl',

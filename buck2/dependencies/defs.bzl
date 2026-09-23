@@ -312,14 +312,14 @@ def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches
     )
 
 
-def pnpm_platform_configurations():
+def pnpm_platform_configurations(platforms_cell = ""):
     """Declares the four config settings owned by the store selects."""
     native.config_setting(
         name = "_pnpm_javascript_portable",
         constraint_values = [
-            "//buck2/platforms:abi_any",
-            "//buck2/platforms:cpu_any",
-            "//buck2/platforms:os_any",
+            "{}//buck2/platforms:abi_any".format(platforms_cell),
+            "{}//buck2/platforms:cpu_any".format(platforms_cell),
+            "{}//buck2/platforms:os_any".format(platforms_cell),
         ],
         visibility = [],
     )

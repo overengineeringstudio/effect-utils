@@ -733,7 +733,10 @@ export const buck2TypeScriptPackageProjection = ({
       .map((value) => requireRelativeTestPath({ field: 'TypeScript project input', value }))
       .toSorted((left, right) => compareStrings({ left, right }))
     for (const projectInput of projectInputs) {
-      if (admitSourceExtension(projectInput) === false) {
+      if (
+        admitSourceExtension(projectInput) === false &&
+        path.posix.extname(projectInput) !== '.json'
+      ) {
         throw new Error(`TypeScript project input has an unsupported extension: ${projectInput}`)
       }
       if (existsSync(path.join(process.cwd(), packagePath, projectInput)) === false) {
