@@ -173,6 +173,15 @@ describe('getHeaderComment', () => {
     },
   )
 
+  it('uses Buck config comments for .buckconfig', () => {
+    expect(
+      getHeaderComment({
+        targetFilePath: '.buckconfig',
+        sourceFile: '.buckconfig.genie.ts',
+      }),
+    ).toBe('# Generated file - DO NOT EDIT\n# Source: .buckconfig.genie.ts\n\n')
+  })
+
   it('uses Nix comments for Nix expressions', () => {
     expect(
       getHeaderComment({
