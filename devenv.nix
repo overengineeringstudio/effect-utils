@@ -1304,7 +1304,11 @@ in
   # capability/toolchain boundary rather than producing an admitted artifact.
   tasks."buck2:providers:check" = {
     description = "Audit cross-cell provider identity for configured Buck toolchains";
+    # `genie:check` waits for `buck2:editor:bootstrap`, which hashes Buck outputs. Aggregates
+    # that materialize into `buck-out` must not run concurrently with that hashing; before
+    # #1362 the removed `buck2:nix-bridge:check` edge provided this ordering transitively.
     after = [
+      "genie:check"
       "buck2:task-guards:check"
       "buck2:rust-deps:check"
     ];

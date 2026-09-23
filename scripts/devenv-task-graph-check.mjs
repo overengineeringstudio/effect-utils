@@ -232,6 +232,15 @@ ok({
   condition: reaches({ start: 'nix:flake:eval', target: 'genie:check' }),
   name: 'nix:flake:eval waits for source-side generation freshness',
 })
+// The editor bootstrap hashes Buck outputs; an aggregate materializing into `buck-out` in
+// parallel fails with "tree changed while hashing" (observed on #1362 when an unrelated edge
+// that ordered them transitively was removed).
+for (const aggregateTask of ['buck2:quick', 'buck2:all']) {
+  ok({
+    condition: reaches({ start: aggregateTask, target: 'buck2:editor:bootstrap' }),
+    name: `${aggregateTask} waits for the editor bootstrap`,
+  })
+}
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
     condition: reaches({ start: checkTask, target: 'mr:apply' }) === false,
