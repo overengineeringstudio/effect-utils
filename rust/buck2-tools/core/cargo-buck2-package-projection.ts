@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
@@ -60,28 +60,57 @@ type ProjectionDefinition = {
 export const defineCargoBuck2PackageProjection = ({
   repoName,
   repoImportMetaUrl,
-  workspaceRoot,
+  workspaceRoot: configuredWorkspaceRoot,
   cargoManifestPath: configuredCargoManifestPath,
   cargoLockPath: configuredCargoLockPath,
   reindeerConfigPath: configuredReindeerConfigPath,
-  workspaceMemberManifestPaths,
+  workspaceMemberManifestPaths: configuredWorkspaceMemberManifestPaths,
   thirdPartyBuckPath: configuredThirdPartyBuckPath,
   thirdPartyPackage = '//rust/third-party',
   buck2LoadLabelPrefix = '//buck2',
-  generatorSourcePaths = [
+  generatorSourcePaths: configuredGeneratorSourcePaths = [
     'genie/buck2/mod.ts',
     'rust/buck2-tools/core/cargo-buck2-package-projection.ts',
   ],
   regenerationCommand = 'devenv tasks run genie:run',
 }: DefineCargoBuck2PackageProjectionOptions): CargoBuck2PackageProjection => {
   const repo = defineRepoContext({ name: repoName, importMetaUrl: repoImportMetaUrl })
-  const cargoManifestPath =
-    configuredCargoManifestPath ?? path.posix.join(workspaceRoot, 'Cargo.toml')
-  const cargoLockPath = configuredCargoLockPath ?? path.posix.join(workspaceRoot, 'Cargo.lock')
-  const reindeerConfigPath =
-    configuredReindeerConfigPath ?? path.posix.join(workspaceRoot, 'reindeer.toml')
-  const thirdPartyBuckPath =
-    configuredThirdPartyBuckPath ?? path.posix.join(workspaceRoot, 'third-party/BUCK')
+  const workspaceRoot = validateRepoPath({
+    repo,
+    value: configuredWorkspaceRoot,
+    field: 'workspaceRoot',
+  })
+  const cargoManifestPath = validateRepoPath({
+    repo,
+    value: configuredCargoManifestPath ?? path.posix.join(workspaceRoot, 'Cargo.toml'),
+    field: 'cargoManifestPath',
+  })
+  const cargoLockPath = validateRepoPath({
+    repo,
+    value: configuredCargoLockPath ?? path.posix.join(workspaceRoot, 'Cargo.lock'),
+    field: 'cargoLockPath',
+  })
+  const reindeerConfigPath = validateRepoPath({
+    repo,
+    value: configuredReindeerConfigPath ?? path.posix.join(workspaceRoot, 'reindeer.toml'),
+    field: 'reindeerConfigPath',
+  })
+  const thirdPartyBuckPath = validateRepoPath({
+    repo,
+    value: configuredThirdPartyBuckPath ?? path.posix.join(workspaceRoot, 'third-party/BUCK'),
+    field: 'thirdPartyBuckPath',
+  })
+  const workspaceMemberManifestPaths = configuredWorkspaceMemberManifestPaths.map(
+    (manifestPath, index) =>
+      validateRepoPath({
+        repo,
+        value: manifestPath,
+        field: `workspaceMemberManifestPaths[${index}]`,
+      }),
+  )
+  const generatorSourcePaths = configuredGeneratorSourcePaths.map((sourcePath, index) =>
+    validateRepoPath({ repo, value: sourcePath, field: `generatorSourcePaths[${index}]` }),
+  )
   const workspaceManifest = Bun.TOML.parse(repo.readText(cargoManifestPath)) as CargoWorkspace
   const lock = Bun.TOML.parse(repo.readText(cargoLockPath)) as CargoLock
   const workspaceMembers = workspaceMemberManifestPaths.map((manifestPath) => ({
@@ -156,9 +185,13 @@ const cargoBuck2PackageProjectionFor = ({
     workspaceMembers,
     workspaceRoot,
   } = definition
-  const projectionSource = path
-    .relative(repo.rootPath, modulePathFromUrl(sourceUrl))
-    .replaceAll('\\', '/')
+  const repoRoot = realpathSync(repo.rootPath)
+  const projectionModulePath = validateAbsoluteRepoPath({
+    repo,
+    value: modulePathFromUrl(sourceUrl),
+    field: 'sourceUrl',
+  })
+  const projectionSource = path.relative(repoRoot, projectionModulePath).replaceAll('\\', '/')
   if (path.posix.basename(projectionSource) !== 'BUCK.genie.ts') {
     throw new Error(`Cargo Buck projection source must be BUCK.genie.ts: ${projectionSource}`)
   }
@@ -515,6 +548,46 @@ const sorted = (values: readonly string[]): readonly string[] =>
 const starlarkString = (value: string): string => JSON.stringify(value)
 const sha256 = (value: string): `sha256:${string}` =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`
+
+const validateAbsoluteRepoPath = ({
+  repo,
+  value,
+  field,
+}: {
+  readonly repo: RepoContext
+  readonly value: string
+  readonly field: string
+}): string => {
+  const repoRoot = realpathSync(repo.rootPath)
+  const resolved = realpathSync(value)
+  const relative = path.relative(repoRoot, resolved)
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`${field} resolves outside the repository: ${value}`)
+  }
+  return resolved
+}
+
+const validateRepoPath = ({
+  repo,
+  value,
+  field,
+}: {
+  readonly repo: RepoContext
+  readonly value: string
+  readonly field: string
+}): string => {
+  if (
+    value === '' ||
+    path.posix.isAbsolute(value) ||
+    value.includes('\\') ||
+    path.posix.normalize(value) !== value ||
+    value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`${field} must be a normalized repository-relative path: ${value}`)
+  }
+  validateAbsoluteRepoPath({ repo, value: repo.resolve(value), field })
+  return value
+}
 
 const requireValue = <TValue>({
   value,
