@@ -271,6 +271,7 @@
           lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
+          buck2-rust-deps = import ./nix/devenv-modules/tasks/shared/buck2-rust-deps.nix;
           changesets = import ./nix/devenv-modules/tasks/shared/changesets.nix;
           github-ruleset = import ./nix/devenv-modules/tasks/shared/github-ruleset.nix;
           # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels.

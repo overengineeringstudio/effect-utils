@@ -1,0 +1,5 @@
+http_archive(
+    name = "serde",
+    sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    urls = ["https://static.crates.io/crates/serde/serde-1.0.0.crate"],
+)

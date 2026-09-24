@@ -4,21 +4,28 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 GATE="$ROOT/scripts/buck2-rust-deps.sh"
+TASK_MODULE="$ROOT/nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
 TEMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
 FIXTURE="$TEMP_ROOT/repository"
+WORKSPACE_ROOT="workspaces/demo"
+WORKSPACE="$FIXTURE/$WORKSPACE_ROOT"
+THIRD_PARTY_BUCK_PATH="vendor/cargo/BUCK"
+THIRD_PARTY="$FIXTURE/vendor/cargo"
 FAKE_REINDEER="$TEMP_ROOT/reindeer"
+BUN="${BUN_BIN:-$(command -v bun || true)}"
+[ -n "$BUN" ] || { echo "FAIL: bun is required (set BUN_BIN)" >&2; exit 1; }
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
-mkdir -p "$FIXTURE/rust/third-party/fixups/example"
-printf 'vendor = false\n' >"$FIXTURE/rust/reindeer.toml"
-printf 'authoritative lock bytes\n' >"$FIXTURE/rust/Cargo.lock"
-printf '# old graph\n' >"$FIXTURE/rust/third-party/BUCK"
-printf 'buildscript.run = true\n' >"$FIXTURE/rust/third-party/fixups/example/fixups.toml"
+mkdir -p "$WORKSPACE" "$THIRD_PARTY/fixups/example"
+printf 'vendor = false\nthird_party_dir = "../../vendor/cargo"\n' >"$WORKSPACE/reindeer.toml"
+printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
+printf '# old graph\n' >"$THIRD_PARTY/BUCK"
+printf 'buildscript.run = true\n' >"$THIRD_PARTY/fixups/example/fixups.toml"
 
 cat >"$FAKE_REINDEER" <<'FAKE'
 #!/usr/bin/env bash
@@ -26,7 +33,7 @@ set -euo pipefail
 printf '%s\n' "$CARGO_HOME" >"$FAKE_REINDEER_HOME_LOG"
 printf 'invoked\n' >>"$FAKE_REINDEER_CALL_LOG"
 if [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = mutate-lock ]; then
-  printf 'rewritten lock bytes\n' >rust/Cargo.lock
+  printf 'rewritten lock bytes\n' >Cargo.lock
 fi
 if [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = unpinned ]; then
   cat <<'UNPINNED'
@@ -51,41 +58,106 @@ chmod +x "$FAKE_REINDEER"
 export FAKE_REINDEER_HOME_LOG="$TEMP_ROOT/cargo-home"
 export FAKE_REINDEER_CALL_LOG="$TEMP_ROOT/calls"
 export FAKE_REINDEER_BEHAVIOR=generate
-cp "$FIXTURE/rust/Cargo.lock" "$TEMP_ROOT/original-lock"
-"$GATE" generate "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc
-cmp -s "$TEMP_ROOT/original-lock" "$FIXTURE/rust/Cargo.lock" || fail "generate changed Cargo.lock"
-grep -Fq 'http_archive(' "$FIXTURE/rust/third-party/BUCK" || fail "generate did not install the candidate graph"
-expected_cargo_home="$FIXTURE/.devenv/reindeer-cargo-home"
+cp "$WORKSPACE/Cargo.lock" "$TEMP_ROOT/original-lock"
+"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+cmp -s "$TEMP_ROOT/original-lock" "$WORKSPACE/Cargo.lock" || fail "generate changed Cargo.lock"
+grep -Fq 'http_archive(' "$THIRD_PARTY/BUCK" || fail "generate did not install the custom-path candidate graph"
+# The gate resolves the repository physically (macOS temp dirs live behind /var -> /private/var).
+expected_cargo_home="$(cd "$FIXTURE" && pwd -P)/.devenv/reindeer-cargo-home"
 [ "$(cat "$FAKE_REINDEER_HOME_LOG")" = "$expected_cargo_home" ] || fail "buckify did not use the repository-pinned Cargo home"
-"$GATE" check "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc
+"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 
-printf '# graph that must survive a failed gate\n' >"$FIXTURE/rust/third-party/BUCK"
-cp "$FIXTURE/rust/third-party/BUCK" "$TEMP_ROOT/graph-before-lock-rewrite"
+printf '# graph that must survive a failed gate\n' >"$THIRD_PARTY/BUCK"
+cp "$THIRD_PARTY/BUCK" "$TEMP_ROOT/graph-before-lock-rewrite"
 export FAKE_REINDEER_BEHAVIOR=mutate-lock
-if "$GATE" generate "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc 2>"$TEMP_ROOT/lock-error"; then
+if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/lock-error"; then
   fail "gate accepted a buckify run that rewrote Cargo.lock"
 fi
-grep -Fq 'changed authoritative rust/Cargo.lock' "$TEMP_ROOT/lock-error" || fail "lock rewrite failure was not diagnosed"
-cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$FIXTURE/rust/third-party/BUCK" || fail "failed lock gate replaced the tracked graph"
+grep -Fq 'changed authoritative workspaces/demo/Cargo.lock' "$TEMP_ROOT/lock-error" || fail "lock rewrite failure was not diagnosed"
+cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$THIRD_PARTY/BUCK" || fail "failed lock gate replaced the tracked graph"
 
-printf 'authoritative lock bytes\n' >"$FIXTURE/rust/Cargo.lock"
+printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 export FAKE_REINDEER_BEHAVIOR=unpinned
-if "$GATE" generate "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc 2>"$TEMP_ROOT/hash-error"; then
+if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/hash-error"; then
   fail "gate accepted an unpinned http_archive"
 fi
 grep -Fq 'every generated http_archive must carry one sha256 pin' "$TEMP_ROOT/hash-error" || fail "unpinned archive failure was not diagnosed"
-cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$FIXTURE/rust/third-party/BUCK" || fail "unpinned graph replaced the tracked graph"
+cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$THIRD_PARTY/BUCK" || fail "unpinned graph replaced the tracked graph"
 
 export FAKE_REINDEER_BEHAVIOR=generate
-printf 'authoritative lock bytes\n' >"$FIXTURE/rust/Cargo.lock"
+printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 for key in extra_srcs omit_srcs; do
-  printf '%s = ["src/**/*.rs"]\n' "$key" >"$FIXTURE/rust/third-party/fixups/example/fixups.toml"
+  printf '%s = ["src/**/*.rs"]\n' "$key" >"$THIRD_PARTY/fixups/example/fixups.toml"
   : >"$FAKE_REINDEER_CALL_LOG"
-  if "$GATE" check "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc >"$TEMP_ROOT/$key.stdout" 2>"$TEMP_ROOT/$key.stderr"; then
+  if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" >"$TEMP_ROOT/$key.stdout" 2>"$TEMP_ROOT/$key.stderr"; then
     fail "gate accepted non-vendored $key"
   fi
   grep -Fq 'non-vendored fixup uses a discarded source key' "$TEMP_ROOT/$key.stderr" || fail "$key failure was not diagnosed"
   [ ! -s "$FAKE_REINDEER_CALL_LOG" ] || fail "$key lint ran Reindeer before rejecting the fixup"
 done
+
+mkdir -p "$TEMP_ROOT/outside-workspace"
+ln -s "$TEMP_ROOT/outside-workspace" "$FIXTURE/workspaces/escape"
+if "$GATE" check "$FIXTURE" "workspaces/escape" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/escape-error"; then
+  fail "gate accepted a workspace symlink escaping the repository"
+fi
+grep -Fq 'workspace root escapes repository' "$TEMP_ROOT/escape-error" || fail "physical workspace escape was not diagnosed"
+
+invalid_prefix_result="$(
+  nix-instantiate --eval --strict --expr "
+    let
+      configured = import $TASK_MODULE {
+        workspaceRoot = \"rust\";
+        taskPrefix = \"buck2:rust;\$(id)\";
+      };
+      evaluated = configured {
+        lib = {
+          splitString = separator: value:
+            builtins.filter builtins.isString (builtins.split separator value);
+          hasPrefix = prefix: value:
+            builtins.substring 0 (builtins.stringLength prefix) value == prefix;
+          hasInfix = _: _: false;
+          assertMsg = condition: message: if condition then true else throw message;
+        };
+        pkgs = {};
+      };
+    in (builtins.tryEval evaluated).success
+  "
+)"
+[ "$invalid_prefix_result" = false ] || fail "task module accepted an unsafe task prefix"
+
+mkdir -p "$FIXTURE/decoy"
+printf 'vendor = false\nthird_party_dir = "../../decoy"\n' >"$WORKSPACE/reindeer.toml"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/graph-mismatch-error"; then
+  fail "gate accepted a BUCK path that disagrees with reindeer.toml"
+fi
+grep -Fq 'third-party BUCK disagrees' "$TEMP_ROOT/graph-mismatch-error" || fail "third-party graph mismatch was not diagnosed"
+
+# A matching key inside a non-root table must not mask the root setting Reindeer uses.
+printf 'vendor = false\nthird_party_dir = "../../decoy"\n\n[buck]\nthird_party_dir = "../../vendor/cargo"\n' >"$WORKSPACE/reindeer.toml"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/table-decoy-error"; then
+  fail "gate accepted third_party_dir from a non-root table"
+fi
+grep -Fq 'third-party BUCK disagrees' "$TEMP_ROOT/table-decoy-error" || fail "non-root third_party_dir decoy was not diagnosed"
+
+printf 'third_party_dir = "../../vendor/cargo"\n\n[vendor]\ngitignore_checksum_exclude = []\n' >"$WORKSPACE/reindeer.toml"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/vendor-table-error"; then
+  fail "gate accepted a vendoring table instead of vendor = false"
+fi
+grep -Fq 'must select root-level vendor = false' "$TEMP_ROOT/vendor-table-error" || fail "vendoring table was not diagnosed"
+
+printf 'third_party_dir = "../../vendor/cargo"\n\n[buck]\nvendor = false\n' >"$WORKSPACE/reindeer.toml"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/vendor-nested-error"; then
+  fail "gate accepted vendor = false from a non-root table"
+fi
+grep -Fq 'must select root-level vendor = false' "$TEMP_ROOT/vendor-nested-error" || fail "non-root vendor setting was not diagnosed"
+
+# TOML literal strings are valid Reindeer input.
+printf 'buildscript.run = true\n' >"$THIRD_PARTY/fixups/example/fixups.toml"
+printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
+export FAKE_REINDEER_BEHAVIOR=generate
+printf "vendor = false\nthird_party_dir = '../../vendor/cargo'\n" >"$WORKSPACE/reindeer.toml"
+"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 
 echo "Buck2 Rust dependency gate tests passed."

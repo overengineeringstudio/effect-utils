@@ -85,6 +85,7 @@ let
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
+    buck2-rust-deps = import ./nix/devenv-modules/tasks/shared/buck2-rust-deps.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
@@ -713,6 +714,7 @@ in
       inherit pnpmPkg;
       materialize = false;
     })
+    (taskModules.buck2-rust-deps { workspaceRoot = "rust"; })
     # Source-side Vitest is now only what Buck does not execute: packages outside the Buck
     # test registry and each admitted lane's exact excluded files. Retained JSON therefore
     # exists exactly where the baseline gate still needs a source report.
@@ -972,6 +974,8 @@ in
     execIfModified = [
       "BUCK"
       "genie/buck2/**/*.ts"
+      "genie/buck2/fixtures/**/*"
+      "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
       "packages/@overeng/buck2-tools/src/**/*.ts"
     ];
   };
@@ -1047,32 +1051,6 @@ in
         cargo clippy --locked --workspace --all-targets -- -D warnings
         cargo fmt --all --check
       )
-    '';
-  };
-
-  tasks."buck2:rust-deps:generate" = {
-    description = "Regenerate the non-vendored Reindeer graph from the Cargo workspace";
-    exec = trace.exec "buck2:rust-deps:generate" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-rust-deps.sh" generate \
-        "$root" \
-        ${pkgs.reindeer}/bin/reindeer \
-        ${pkgs.cargo}/bin/cargo \
-        ${pkgs.rustc}/bin/rustc
-    '';
-  };
-
-  tasks."buck2:rust-deps:check" = {
-    description = "Verify the non-vendored Reindeer graph matches Cargo inputs";
-    exec = trace.exec "buck2:rust-deps:check" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-rust-deps.sh" check \
-        "$root" \
-        ${pkgs.reindeer}/bin/reindeer \
-        ${pkgs.cargo}/bin/cargo \
-        ${pkgs.rustc}/bin/rustc
     '';
   };
 

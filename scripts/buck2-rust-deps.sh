@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 5 ]; then
-  echo "usage: $0 <generate|check> <repository-root> <reindeer> <cargo> <rustc>" >&2
+if [ "$#" -ne 8 ]; then
+  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <bun>" >&2
   exit 64
 fi
 
 mode="$1"
 root="$2"
-reindeer="$3"
-cargo="$4"
-rustc="$5"
+workspace_relative="$3"
+third_party_buck_relative="$4"
+reindeer="$5"
+cargo="$6"
+rustc="$7"
+bun="$8"
 
 case "$mode" in
   generate | check) ;;
@@ -21,14 +24,61 @@ case "$mode" in
 esac
 
 cd "$root"
-root="$PWD"
-config="$root/rust/reindeer.toml"
-lock="$root/rust/Cargo.lock"
-third_party="$root/rust/third-party"
+root="$(pwd -P)"
+cd "$root/$workspace_relative"
+workspace="$(pwd -P)"
+case "$workspace" in
+  "$root" | "$root"/*) ;;
+  *)
+    echo "buck2-rust-deps: workspace root escapes repository: $workspace_relative" >&2
+    exit 64
+    ;;
+esac
+case "$third_party_buck_relative" in
+  /* | *\\* | ../* | */../* | */..)
+    echo "buck2-rust-deps: third-party BUCK must be repository-relative: $third_party_buck_relative" >&2
+    exit 64
+    ;;
+esac
+if [ "$(basename "$third_party_buck_relative")" != BUCK ]; then
+  echo "buck2-rust-deps: third-party graph path must end in BUCK: $third_party_buck_relative" >&2
+  exit 64
+fi
+third_party="$(cd "$root/$(dirname "$third_party_buck_relative")" && pwd -P)"
+case "$third_party" in
+  "$root" | "$root"/*) ;;
+  *)
+    echo "buck2-rust-deps: third-party graph escapes repository: $third_party_buck_relative" >&2
+    exit 64
+    ;;
+esac
+third_party_buck="$third_party/BUCK"
+if [ -L "$third_party_buck" ]; then
+  echo "buck2-rust-deps: third-party BUCK must not be a symlink: $third_party_buck_relative" >&2
+  exit 64
+fi
+config="$workspace/reindeer.toml"
+lock="$workspace/Cargo.lock"
 cargo_home="$root/.devenv/reindeer-cargo-home"
-
-if ! grep -Eq '^[[:space:]]*vendor[[:space:]]*=[[:space:]]*false([[:space:]]*(#.*)?)?$' "$config"; then
-  echo "buck2-rust-deps: rust/reindeer.toml must select vendor = false" >&2
+# Reindeer reads `third_party_dir` and `vendor` from the TOML root table; a
+# line scan would also match keys inside other tables or miss literal strings.
+# Bun's TOML parser is the one the Cargo projection uses for the same file.
+if ! reindeer_third_party="$(
+  "$bun" -e '
+const config = Bun.TOML.parse(await Bun.file(process.argv[1]).text());
+const dir = config.third_party_dir;
+if (typeof dir !== "string" || dir === "") throw new Error("third_party_dir must be a non-empty root-level string");
+if (/[\u0000-\u001f\u007f]/.test(dir)) throw new Error("third_party_dir must not contain control characters");
+if (config.vendor !== false) throw new Error("vendor must be the root-level boolean false");
+process.stdout.write(dir);
+' "$config"
+)"; then
+  echo "buck2-rust-deps: invalid ${config#"$root"/} (must select root-level vendor = false and third_party_dir)" >&2
+  exit 1
+fi
+configured_third_party="$(cd "$workspace/$reindeer_third_party" && pwd -P)"
+if [ "$configured_third_party" != "$third_party" ]; then
+  echo "buck2-rust-deps: third-party BUCK disagrees with ${config#"$root"/} third_party_dir" >&2
   exit 1
 fi
 
@@ -69,7 +119,7 @@ buckify_status=$?
 set -e
 
 if ! cmp -s "$lock_before" "$lock"; then
-  echo "buck2-rust-deps: Reindeer changed authoritative rust/Cargo.lock" >&2
+  echo "buck2-rust-deps: Reindeer changed authoritative ${lock#"$root"/}" >&2
   exit 1
 fi
 if [ "$buckify_status" -ne 0 ]; then
@@ -90,10 +140,10 @@ fi
 case "$mode" in
   generate)
     chmod 0644 "$candidate"
-    mv "$candidate" "$third_party/BUCK"
+    mv "$candidate" "$third_party_buck"
     ;;
   check)
-    if ! cmp -s "$third_party/BUCK" "$candidate"; then
+    if ! cmp -s "$third_party_buck" "$candidate"; then
       echo "buck2-rust-deps: generated Reindeer graph is stale" >&2
       exit 1
     fi

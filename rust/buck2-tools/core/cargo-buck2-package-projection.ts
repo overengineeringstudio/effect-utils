@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
@@ -10,46 +10,238 @@ import {
 import {
   defineRepoContext,
   modulePathFromUrl,
+  type RepoContext,
 } from '../../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
-import otelScrapeManifest from '../../../packages/@overeng/otel-scrape/Cargo.toml' with { type: 'toml' }
-import oteliteManifest from '../../../packages/@overeng/otelite/Cargo.toml' with { type: 'toml' }
-import cargoLock from '../../Cargo.lock' with { type: 'toml' }
-import cargoWorkspace from '../../Cargo.toml' with { type: 'toml' }
-import archiveToolManifest from '../archive-tool/Cargo.toml' with { type: 'toml' }
-import productManifest from '../product/Cargo.toml' with { type: 'toml' }
-import coreManifest from './Cargo.toml' with { type: 'toml' }
 
-/**
- * Every path this projector reads is repository-relative, and the reader is not always the
- * repository: `bootstrap:cold-proof` runs the Buck-built Genie product, whose working
- * directory is the composed workspace root while the tree under generation is a separate
- * install-free export. The repo context anchors reads at the repository that owns this
- * module — the compiled product pins each staged module's `import.meta` to its original
- * source location, so this identity survives import staging — and the census is therefore
- * identical from any working directory.
- */
-const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
-
-/**
- * Projects one Cargo workspace member into its generated first-party Buck package.
- */
-export const cargoBuck2PackageProjection = ({
-  buildProduct = false,
-  cliBuildStamp = false,
-  sourceUrl,
-}: {
+export type CargoBuck2PackageProjectionOptions = {
   readonly buildProduct?: boolean
   readonly cliBuildStamp?: boolean
   readonly sourceUrl: string
+}
+
+export type CargoBuck2PackageProjection = (
+  options: CargoBuck2PackageProjectionOptions,
+) => GenieOutput<unknown>
+
+export type DefineCargoBuck2PackageProjectionOptions = {
+  readonly repoName: string
+  readonly repoImportMetaUrl: string
+  readonly workspaceRoot: string
+  readonly cargoManifestPath?: string
+  readonly cargoLockPath?: string
+  readonly reindeerConfigPath?: string
+  readonly workspaceMemberManifestPaths: readonly string[]
+  readonly thirdPartyBuckPath?: string
+  readonly thirdPartyPackage?: string
+  readonly buck2LoadLabelPrefix?: string
+  readonly generatorSourcePaths?: readonly string[]
+  readonly regenerationCommand?: string
+}
+
+type ProjectionDefinition = {
+  readonly buck2LoadLabelPrefix: string
+  readonly cargoLockPath: string
+  readonly cargoManifestPath: string
+  readonly context: ProjectionContext
+  readonly generatorSourcePaths: readonly string[]
+  readonly regenerationCommand: string
+  readonly reindeerConfigPath: string
+  readonly repo: RepoContext
+  readonly thirdPartyBuckPath: string
+  readonly workspaceMembers: readonly WorkspaceMember[]
+  readonly workspaceRoot: string
+}
+
+/**
+ * Define a Cargo projector for one repository workspace. Paths are relative to the
+ * repository root anchored by `repoImportMetaUrl`, so the same implementation works from a
+ * composed consumer root and from an install-free source export.
+ */
+export const defineCargoBuck2PackageProjection = ({
+  repoName,
+  repoImportMetaUrl,
+  workspaceRoot: configuredWorkspaceRoot,
+  cargoManifestPath: configuredCargoManifestPath,
+  cargoLockPath: configuredCargoLockPath,
+  reindeerConfigPath: configuredReindeerConfigPath,
+  workspaceMemberManifestPaths: configuredWorkspaceMemberManifestPaths,
+  thirdPartyBuckPath: configuredThirdPartyBuckPath,
+  thirdPartyPackage = '//rust/third-party',
+  buck2LoadLabelPrefix = '//buck2',
+  generatorSourcePaths: configuredGeneratorSourcePaths = [
+    'genie/buck2/mod.ts',
+    'rust/buck2-tools/core/cargo-buck2-package-projection.ts',
+  ],
+  regenerationCommand = 'devenv tasks run genie:run',
+}: DefineCargoBuck2PackageProjectionOptions): CargoBuck2PackageProjection => {
+  const repo = defineRepoContext({ name: repoName, importMetaUrl: repoImportMetaUrl })
+  const workspaceRoot = validateRepoPath({
+    repo,
+    value: configuredWorkspaceRoot,
+    field: 'workspaceRoot',
+  })
+  const cargoManifestPath = validateRepoPath({
+    repo,
+    value: configuredCargoManifestPath ?? path.posix.join(workspaceRoot, 'Cargo.toml'),
+    field: 'cargoManifestPath',
+  })
+  const cargoLockPath = validateRepoPath({
+    repo,
+    value: configuredCargoLockPath ?? path.posix.join(workspaceRoot, 'Cargo.lock'),
+    field: 'cargoLockPath',
+  })
+  const reindeerConfigPath = validateRepoPath({
+    repo,
+    value: configuredReindeerConfigPath ?? path.posix.join(workspaceRoot, 'reindeer.toml'),
+    field: 'reindeerConfigPath',
+  })
+  const thirdPartyBuckPath = validateRepoPath({
+    repo,
+    value: configuredThirdPartyBuckPath ?? path.posix.join(workspaceRoot, 'third-party/BUCK'),
+    field: 'thirdPartyBuckPath',
+  })
+  const reindeerConfig = Bun.TOML.parse(repo.readText(reindeerConfigPath)) as {
+    readonly third_party_dir?: string
+  }
+  const reindeerThirdPartyDir = requireValue({
+    value: reindeerConfig.third_party_dir,
+    field: `${reindeerConfigPath} third_party_dir`,
+  })
+  if (
+    path.posix.isAbsolute(reindeerThirdPartyDir) ||
+    reindeerThirdPartyDir.includes('\\') ||
+    /[\u0000-\u001f\u007f]/.test(reindeerThirdPartyDir)
+  ) {
+    throw new Error(`${reindeerConfigPath} third_party_dir must be repository-contained`)
+  }
+  const configuredThirdPartyPath = validateRepoPath({
+    repo,
+    value: path.posix.normalize(
+      path.posix.join(path.posix.dirname(reindeerConfigPath), reindeerThirdPartyDir),
+    ),
+    field: `${reindeerConfigPath} third_party_dir`,
+  })
+  if (configuredThirdPartyPath !== path.posix.dirname(thirdPartyBuckPath)) {
+    throw new Error('thirdPartyBuckPath must match reindeer.toml third_party_dir')
+  }
+  const thirdPartyPackagePath = path.posix.dirname(thirdPartyBuckPath)
+  const expectedThirdPartyPackage = `//${thirdPartyPackagePath}`
+  if (
+    /^\/\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/.test(thirdPartyPackage) ===
+      false ||
+    thirdPartyPackage !== expectedThirdPartyPackage
+  ) {
+    throw new Error(
+      `thirdPartyPackage must be the repository-local package containing thirdPartyBuckPath: ${expectedThirdPartyPackage}`,
+    )
+  }
+  const workspaceMemberManifestPaths = configuredWorkspaceMemberManifestPaths.map(
+    (manifestPath, index) =>
+      validateRepoPath({
+        repo,
+        value: manifestPath,
+        field: `workspaceMemberManifestPaths[${index}]`,
+      }),
+  )
+  const generatorSourcePaths = configuredGeneratorSourcePaths.map((sourcePath, index) =>
+    validateRepoPath({ repo, value: sourcePath, field: `generatorSourcePaths[${index}]` }),
+  )
+  if (
+    /^(?:@[A-Za-z0-9][A-Za-z0-9._-]*)?\/\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/.test(
+      buck2LoadLabelPrefix,
+    ) === false
+  ) {
+    throw new Error(`buck2LoadLabelPrefix is not a Buck cell/package prefix`)
+  }
+  if (/[\r\n]/.test(regenerationCommand)) {
+    throw new Error('regenerationCommand must be a single line')
+  }
+  const workspaceManifest = Bun.TOML.parse(repo.readText(cargoManifestPath)) as CargoWorkspace
+  const lock = Bun.TOML.parse(repo.readText(cargoLockPath)) as CargoLock
+  const workspaceMembers = workspaceMemberManifestPaths.map((manifestPath) => ({
+    packagePath: path.posix.dirname(manifestPath),
+    manifestPath,
+    manifest: Bun.TOML.parse(repo.readText(manifestPath)) as CargoManifest,
+  }))
+  const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
+  if (workspace.resolver !== '2')
+    throw new Error('The Buck projection supports only Cargo resolver = "2"')
+  const declaredMemberPaths = sorted(
+    requireValue({ value: workspace.members, field: 'workspace.members' }).map((member) =>
+      path.posix.normalize(path.posix.join(workspaceRoot, member)),
+    ),
+  )
+  const importedMemberPaths = sorted(workspaceMembers.map((member) => member.packagePath))
+  if (JSON.stringify(declaredMemberPaths) !== JSON.stringify(importedMemberPaths)) {
+    throw new Error(
+      `Cargo workspace members and imported Buck projection manifests disagree: ${declaredMemberPaths.join(', ')}`,
+    )
+  }
+  const context: ProjectionContext = {
+    lockPackageNames: new Set(
+      (lock.package ?? []).map((entry) =>
+        requireValue({ value: entry.name, field: 'Cargo.lock package.name' }),
+      ),
+    ),
+    memberByPath: new Map(workspaceMembers.map((member) => [member.packagePath, member])),
+    thirdPartyPackage,
+    thirdPartyTargets: new Set(
+      [...repo.readText(thirdPartyBuckPath).matchAll(/^    name = "([^"]+)",$/gm)].map((match) =>
+        requireValue({ value: match[1], field: `${thirdPartyBuckPath} target name` }),
+      ),
+    ),
+    workspace,
+  }
+
+  const definition: ProjectionDefinition = {
+    buck2LoadLabelPrefix,
+    cargoLockPath,
+    cargoManifestPath,
+    context,
+    generatorSourcePaths,
+    regenerationCommand,
+    reindeerConfigPath,
+    repo,
+    thirdPartyBuckPath,
+    workspaceMembers,
+    workspaceRoot,
+  }
+  return (options) => cargoBuck2PackageProjectionFor({ definition, ...options })
+}
+
+const cargoBuck2PackageProjectionFor = ({
+  definition,
+  buildProduct = false,
+  cliBuildStamp = false,
+  sourceUrl,
+}: CargoBuck2PackageProjectionOptions & {
+  readonly definition: ProjectionDefinition
 }): GenieOutput<unknown> => {
-  const projectionSource = path
-    .relative(repo.rootPath, modulePathFromUrl(sourceUrl))
-    .replaceAll('\\', '/')
+  const {
+    buck2LoadLabelPrefix,
+    cargoLockPath,
+    cargoManifestPath,
+    context,
+    generatorSourcePaths,
+    regenerationCommand,
+    reindeerConfigPath,
+    repo,
+    thirdPartyBuckPath,
+    workspaceMembers,
+    workspaceRoot,
+  } = definition
+  const repoRoot = realpathSync(repo.rootPath)
+  const projectionModulePath = validateAbsoluteRepoPath({
+    repo,
+    value: modulePathFromUrl(sourceUrl),
+    field: 'sourceUrl',
+  })
+  const projectionSource = path.relative(repoRoot, projectionModulePath).replaceAll('\\', '/')
   if (path.posix.basename(projectionSource) !== 'BUCK.genie.ts') {
     throw new Error(`Cargo Buck projection source must be BUCK.genie.ts: ${projectionSource}`)
   }
   const packagePath = path.posix.dirname(projectionSource)
-  const member = memberByPath.get(packagePath)
+  const member = context.memberByPath.get(packagePath)
   if (member === undefined)
     throw new Error(`Buck projection source is not a Cargo workspace member: ${packagePath}`)
   const manifest = member.manifest
@@ -58,9 +250,12 @@ export const cargoBuck2PackageProjection = ({
     field: `${member.manifestPath} package`,
   })
   if (
-    path.posix.normalize(path.posix.join(packagePath, packageMetadata.workspace ?? '')) !== 'rust'
+    path.posix.normalize(path.posix.join(packagePath, packageMetadata.workspace ?? '')) !==
+    workspaceRoot
   ) {
-    throw new Error(`Cargo package ${packagePath} does not resolve workspace to rust/Cargo.toml`)
+    throw new Error(
+      `Cargo package ${packagePath} does not resolve workspace to ${cargoManifestPath}`,
+    )
   }
   if (
     packageMetadata.version === undefined ||
@@ -110,29 +305,33 @@ export const cargoBuck2PackageProjection = ({
     field: `${member.manifestPath} package.name`,
   })
   const version = requireValue({
-    value: workspace.package?.version,
+    value: context.workspace.package?.version,
     field: 'workspace.package.version',
   })
   const edition = requireValue({
-    value: workspace.package?.edition,
+    value: context.workspace.package?.edition,
     field: 'workspace.package.edition',
   })
   const normalDependencies = resolveDependencyTable({
+    context,
     member,
     dependencies: manifest.dependencies,
     field: 'dependencies',
   })
   const devDependencies = resolveDependencyTable({
+    context,
     member,
     dependencies: manifest['dev-dependencies'],
     field: 'dev-dependencies',
   })
   const conditionalNormalDependencies = resolveConditionalDependencies({
+    context,
     member,
     target: manifest.target,
     kind: 'dependencies',
   })
   const conditionalDevDependencies = resolveConditionalDependencies({
+    context,
     member,
     target: manifest.target,
     kind: 'dev-dependencies',
@@ -143,12 +342,12 @@ export const cargoBuck2PackageProjection = ({
   ].filter((dependency) => dependency.targetAvailable === false)
   if (unresolvedProductionDependencies.length > 0) {
     throw new Error(
-      `rust/third-party/BUCK is missing production targets: ${sorted(
+      `${thirdPartyBuckPath} is missing production targets: ${sorted(
         unresolvedProductionDependencies.map((dependency) => dependency.name),
       ).join(', ')}`,
     )
   }
-  const sources = discoverRustSources({ packagePath })
+  const sources = discoverRustSources({ packagePath, repo })
   const sourceSet = new Set(sources)
 
   const library = manifest.lib
@@ -201,12 +400,11 @@ export const cargoBuck2PackageProjection = ({
   }
 
   const semanticInputPaths = sorted([
-    'genie/buck2/mod.ts',
-    'rust/buck2-tools/core/cargo-buck2-package-projection.ts',
-    'rust/Cargo.toml',
-    'rust/Cargo.lock',
-    'rust/reindeer.toml',
-    'rust/third-party/BUCK',
+    ...generatorSourcePaths,
+    cargoManifestPath,
+    cargoLockPath,
+    reindeerConfigPath,
+    thirdPartyBuckPath,
     ...workspaceMembers.map((workspaceMember) => workspaceMember.manifestPath),
     projectionSource,
     `${packagePath}/src/**/*.rs`,
@@ -355,12 +553,12 @@ export const cargoBuck2PackageProjection = ({
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("@prelude//:prelude.bzl", "native")',
-    'load("//buck2:static_checks.bzl", "static_source_set")',
+    `load(${starlarkString(`${buck2LoadLabelPrefix}:static_checks.bzl`)}, "static_source_set")`,
     ...(buildProduct === true
       ? [
-          'load("//buck2/products:defs.bzl", "build_product")',
-          'load("//buck2/platforms:defs.bzl", "host_platform_label")',
-          'load("//buck2/rust:defs.bzl", "rust_product_executable")',
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/products:defs.bzl`)}, "build_product")`,
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/platforms:defs.bzl`)}, "host_platform_label")`,
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "rust_product_executable")`,
         ]
       : []),
     'static_source_set(',
@@ -382,8 +580,6 @@ export const cargoBuck2PackageProjection = ({
 
 const generator = 'effect-utils/rust/cargo-buck2-package-projection' as const
 const schemaVersion = 1 as const
-const regenerationCommand = 'devenv tasks run genie:run' as const
-const thirdPartyPackage = '//rust/third-party' as const
 
 const compareStrings = ({
   left,
@@ -397,6 +593,47 @@ const sorted = (values: readonly string[]): readonly string[] =>
 const starlarkString = (value: string): string => JSON.stringify(value)
 const sha256 = (value: string): `sha256:${string}` =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`
+
+const validateAbsoluteRepoPath = ({
+  repo,
+  value,
+  field,
+}: {
+  readonly repo: RepoContext
+  readonly value: string
+  readonly field: string
+}): string => {
+  const repoRoot = realpathSync(repo.rootPath)
+  const resolved = realpathSync(value)
+  const relative = path.relative(repoRoot, resolved)
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`${field} resolves outside the repository: ${value}`)
+  }
+  return resolved
+}
+
+const validateRepoPath = ({
+  repo,
+  value,
+  field,
+}: {
+  readonly repo: RepoContext
+  readonly value: string
+  readonly field: string
+}): string => {
+  if (
+    value === '' ||
+    path.posix.isAbsolute(value) ||
+    value.includes('\\') ||
+    path.posix.normalize(value) !== value ||
+    /[\u0000-\u001f\u007f]/.test(value) ||
+    value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`${field} must be a normalized repository-relative path: ${value}`)
+  }
+  validateAbsoluteRepoPath({ repo, value: repo.resolve(value), field })
+  return value
+}
 
 const requireValue = <TValue>({
   value,
@@ -502,66 +739,13 @@ type WorkspaceMember = {
   readonly manifest: CargoManifest
 }
 
-const workspaceManifest = cargoWorkspace as CargoWorkspace
-const lock = cargoLock as CargoLock
-const workspaceMembers = [
-  {
-    packagePath: 'packages/@overeng/otel-scrape',
-    manifestPath: 'packages/@overeng/otel-scrape/Cargo.toml',
-    manifest: otelScrapeManifest as CargoManifest,
-  },
-  {
-    packagePath: 'packages/@overeng/otelite',
-    manifestPath: 'packages/@overeng/otelite/Cargo.toml',
-    manifest: oteliteManifest as CargoManifest,
-  },
-  {
-    packagePath: 'rust/buck2-tools/archive-tool',
-    manifestPath: 'rust/buck2-tools/archive-tool/Cargo.toml',
-    manifest: archiveToolManifest as CargoManifest,
-  },
-  {
-    packagePath: 'rust/buck2-tools/core',
-    manifestPath: 'rust/buck2-tools/core/Cargo.toml',
-    manifest: coreManifest as CargoManifest,
-  },
-  {
-    packagePath: 'rust/buck2-tools/product',
-    manifestPath: 'rust/buck2-tools/product/Cargo.toml',
-    manifest: productManifest as CargoManifest,
-  },
-] as const satisfies readonly WorkspaceMember[]
-
-/** Repository-relative paths of Cargo workspace members governed by the projection. */
-export const cargoBuck2WorkspaceMemberPaths = workspaceMembers.map((member) => member.packagePath)
-
-const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
-if (workspace.resolver !== '2')
-  throw new Error('The Buck projection supports only Cargo resolver = "2"')
-const declaredMemberPaths = sorted(
-  requireValue({ value: workspace.members, field: 'workspace.members' }).map((member) =>
-    path.posix.normalize(path.posix.join('rust', member)),
-  ),
-)
-const importedMemberPaths = sorted(workspaceMembers.map((member) => member.packagePath))
-if (JSON.stringify(declaredMemberPaths) !== JSON.stringify(importedMemberPaths)) {
-  throw new Error(
-    `Cargo workspace members and imported Buck projection manifests disagree: ${declaredMemberPaths.join(', ')}`,
-  )
+type ProjectionContext = {
+  readonly lockPackageNames: ReadonlySet<string>
+  readonly memberByPath: ReadonlyMap<string, WorkspaceMember>
+  readonly thirdPartyPackage: string
+  readonly thirdPartyTargets: ReadonlySet<string>
+  readonly workspace: NonNullable<CargoWorkspace['workspace']>
 }
-
-const memberByPath = new Map(workspaceMembers.map((member) => [member.packagePath, member]))
-const lockPackageNames = new Set(
-  (lock.package ?? []).map((entry) =>
-    requireValue({ value: entry.name, field: 'Cargo.lock package.name' }),
-  ),
-)
-const thirdPartyBuck = repo.readText('rust/third-party/BUCK')
-const thirdPartyTargets = new Set(
-  [...thirdPartyBuck.matchAll(/^    name = "([^"]+)",$/gm)].map((match) =>
-    requireValue({ value: match[1], field: 'rust/third-party/BUCK target name' }),
-  ),
-)
 
 const normalizeDependencyRequest = ({
   dependencyName,
@@ -628,11 +812,13 @@ type ResolvedDependency = {
 }
 
 const resolveDependency = ({
+  context,
   member,
   dependencyName,
   request,
   field,
 }: {
+  readonly context: ProjectionContext
   readonly member: WorkspaceMember
   readonly dependencyName: string
   readonly request: CargoDependencyRequest
@@ -643,7 +829,7 @@ const resolveDependency = ({
     const dependencyPath = path.posix.normalize(
       path.posix.join(member.packagePath, memberRequest.path),
     )
-    const dependencyMember = memberByPath.get(dependencyPath)
+    const dependencyMember = context.memberByPath.get(dependencyPath)
     if (dependencyMember === undefined) {
       throw new Error(
         `Cargo path dependency at ${field} is not a workspace member: ${dependencyPath}`,
@@ -678,7 +864,7 @@ const resolveDependency = ({
   let requestSource: ResolvedDependency['requestSource'] = 'member'
   if (memberRequest.workspace === true) {
     const inheritedRequest = requireValue({
-      value: workspace.dependencies?.[dependencyName],
+      value: context.workspace.dependencies?.[dependencyName],
       field: `workspace.dependencies.${dependencyName}`,
     })
     const normalizedInherited = normalizeDependencyRequest({
@@ -698,39 +884,49 @@ const resolveDependency = ({
     requestSource = 'workspace'
   }
 
-  if (lockPackageNames.has(dependencyName) === false) {
+  if (context.lockPackageNames.has(dependencyName) === false) {
     throw new Error(`Cargo.lock has no package for dependency ${dependencyName} at ${field}`)
   }
   return {
     defaultFeatures: effectiveRequest.defaultFeatures,
     features: effectiveRequest.features,
-    label: `${thirdPartyPackage}:${dependencyName}`,
+    label: `${context.thirdPartyPackage}:${dependencyName}`,
     name: dependencyName,
     requestSource,
-    targetAvailable: thirdPartyTargets.has(dependencyName),
+    targetAvailable: context.thirdPartyTargets.has(dependencyName),
     ...(effectiveRequest.version === undefined ? {} : { version: effectiveRequest.version }),
   }
 }
 
 const resolveDependencyTable = ({
+  context,
   member,
   dependencies,
   field,
 }: {
+  readonly context: ProjectionContext
   readonly member: WorkspaceMember
   readonly dependencies: Readonly<Record<string, CargoDependencyRequest>> | undefined
   readonly field: string
 }): readonly ResolvedDependency[] =>
   Object.entries(dependencies ?? {})
     .map(([dependencyName, request]) =>
-      resolveDependency({ member, dependencyName, request, field: `${field}.${dependencyName}` }),
+      resolveDependency({
+        context,
+        member,
+        dependencyName,
+        request,
+        field: `${field}.${dependencyName}`,
+      }),
     )
     .toSorted((left, right) => compareStrings({ left: left.name, right: right.name }))
 
 const discoverRustSources = ({
   packagePath,
+  repo,
 }: {
   readonly packagePath: string
+  readonly repo: RepoContext
 }): readonly string[] => {
   const packageRoot = repo.resolve(packagePath)
   const sources: string[] = []
@@ -773,10 +969,12 @@ type ConditionalDependency = {
 }
 
 const resolveConditionalDependencies = ({
+  context,
   member,
   target,
   kind,
 }: {
+  readonly context: ProjectionContext
   readonly member: WorkspaceMember
   readonly target: CargoManifest['target']
   readonly kind: 'dependencies' | 'dev-dependencies'
@@ -793,6 +991,7 @@ const resolveConditionalDependencies = ({
       }
       const selectLabels = targetConditionLabels(condition)
       return resolveDependencyTable({
+        context,
         member,
         dependencies: tables[kind],
         field: `target.${condition}.${kind}`,
@@ -855,3 +1054,24 @@ const renderDependencies = ({
 }
 
 const crateIdentifier = (value: string): string => value.replaceAll(/[^A-Za-z0-9_]/g, '_')
+
+const effectUtilsWorkspaceMemberManifestPaths = [
+  'packages/@overeng/otel-scrape/Cargo.toml',
+  'packages/@overeng/otelite/Cargo.toml',
+  'rust/buck2-tools/archive-tool/Cargo.toml',
+  'rust/buck2-tools/core/Cargo.toml',
+  'rust/buck2-tools/product/Cargo.toml',
+] as const
+
+/** Repository-relative paths of effect-utils Cargo workspace members governed by the projection. */
+export const cargoBuck2WorkspaceMemberPaths = effectUtilsWorkspaceMemberManifestPaths.map(
+  (manifestPath) => path.posix.dirname(manifestPath),
+)
+
+/** Effect-utils' byte-stable default Cargo projection. */
+export const cargoBuck2PackageProjection = defineCargoBuck2PackageProjection({
+  repoName: 'effect-utils',
+  repoImportMetaUrl: import.meta.url,
+  workspaceRoot: 'rust',
+  workspaceMemberManifestPaths: effectUtilsWorkspaceMemberManifestPaths,
+})
