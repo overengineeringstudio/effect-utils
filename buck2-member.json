@@ -229,6 +229,12 @@
       "executable": "bin/oxlint"
     },
     {
+      "toolId": "pnpm",
+      "protocol": "pnpm/pnpm/v12.4.1",
+      "flakePackage": "pnpm",
+      "executable": "bin/pnpm"
+    },
+    {
       "toolId": "product",
       "protocol": "effect-utils/buck2-product/v1",
       "flakePackage": "buck2-product",

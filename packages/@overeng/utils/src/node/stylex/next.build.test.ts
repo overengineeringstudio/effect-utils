@@ -268,11 +268,14 @@ const installFixtureDependencies = (fixtureRoot: string) => {
   // sharp (next's optional image dependency) ships an install script; pnpm
   // refuses undecided build scripts, and the fixture needs none of them.
   writeFileSync(join(fixtureRoot, 'pnpm-workspace.yaml'), 'allowBuilds:\n  sharp: false\n')
-  const install = runFixtureCommand('corepack', ['pnpm', 'install'], {
+  const pnpm = process.env.PNPM_BIN
+  if (pnpm === undefined || pnpm === '') {
+    throw new Error('fixture pnpm install requires the declared PNPM_BIN tool')
+  }
+  const install = runFixtureCommand(pnpm, ['install'], {
     cwd: fixtureRoot,
     timeout: INSTALL_TIMEOUT_MS,
     label: 'fixture pnpm install',
-    env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' },
   })
   expect({ status: install.status, stderr: install.stderr }, 'fixture pnpm install failed').toEqual(
     { status: 0, stderr: '' },
@@ -332,7 +335,7 @@ it(
       // Next 16 defaults `build` to Turbopack; the adapter is webpack-mode.
       const buildArgs = ['build', ...(nextMajor >= 16 ? ['--webpack'] : [])]
       const buildResult = runFixtureCommand(
-        process.execPath,
+        process.env.NODE_BIN ?? process.execPath,
         [join('node_modules', 'next', 'dist', 'bin', 'next'), ...buildArgs],
         {
           cwd: nextRoot,

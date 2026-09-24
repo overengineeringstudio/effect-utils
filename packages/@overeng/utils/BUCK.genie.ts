@@ -30,6 +30,10 @@ export const buck2TypeScriptAdmission = {
     {
       name: 'test',
       runner: 'vitest',
+      tools: {
+        NODE_BIN: '//buck2/toolchains:tool_node',
+        PNPM_BIN: '//buck2/toolchains:tool_pnpm',
+      },
       // These suites need authority the Buck sandbox intentionally does not grant: otel identity
       // and telemetry spawn `otelite`, cmd runs real children while writing under the repository
       // root, and watch depends on host filesystem notifications and timing. Keep their exact

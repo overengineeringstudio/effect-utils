@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:ca164b7f63523f38a19f3e9d37ac0fd5766f59d99ca95596693615c16b95f743
+# Semantic fingerprint: sha256:79f87673674036e02f240b5eb3c2c4fc897b8efd19ce87451d37bf1750932db6
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/patches/**/*.patch, packages/@overeng/utils/src/**/*.css, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.js, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.spec.cjs, packages/@overeng/utils/src/**/*.spec.jsx, packages/@overeng/utils/src/**/*.spec.mjs, packages/@overeng/utils/src/**/*.test.cjs, packages/@overeng/utils/src/**/*.test.jsx, packages/@overeng/utils/src/**/*.test.mjs, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/src/**/__snapshots__/*.snap, packages/@overeng/utils/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -500,6 +500,10 @@ vitest_test(
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
     ],
+    tools = {
+        "NODE_BIN": "//buck2/toolchains:tool_node",
+        "PNPM_BIN": "//buck2/toolchains:tool_pnpm",
+    },
     visibility = ["PUBLIC"],
 )
 
@@ -513,5 +517,9 @@ vitest_collect(
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
     ],
+    tools = {
+        "NODE_BIN": "//buck2/toolchains:tool_node",
+        "PNPM_BIN": "//buck2/toolchains:tool_pnpm",
+    },
     visibility = ["PUBLIC"],
 )
