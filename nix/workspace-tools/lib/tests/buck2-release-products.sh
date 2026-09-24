@@ -387,6 +387,17 @@ jq -e --arg storePath "$store_path" --arg artifactUrl "$artifact_url" '
   .artifactUrl == $artifactUrl
 ' <<<"$summary" >/dev/null
 
+cp "$tmp/products/manifest.json" "$tmp/products/manifest.v2.json"
+jq '.schema = "effect-utils/buck-cache-products/v3"' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.v3.json"
+mv "$tmp/products/manifest.v3.json" "$tmp/products/manifest.json"
+if nix eval --impure --json --expr "$loader_expr" >"$tmp/schema.log" 2>&1; then
+  echo "buck2-cache-products-test: loader accepted an unsupported manifest schema" >&2
+  exit 1
+fi
+grep -F 'unsupported manifest schema' "$tmp/schema.log" >/dev/null
+mv "$tmp/products/manifest.v2.json" "$tmp/products/manifest.json"
+
 jq '.products[0].artifactUrl = "https://overeng-effect-utils.cachix.org/serve/11111111111111111111111111111111/fixture.js"' \
   "$tmp/products/manifest.json" >"$tmp/products/manifest.mutated.json"
 mv "$tmp/products/manifest.mutated.json" "$tmp/products/manifest.json"
