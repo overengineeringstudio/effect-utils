@@ -202,10 +202,16 @@ def _fetch_impl(ctx):
             )
         else:
             out = ctx.actions.declare_output("package.tgz")
+            # Bun resolves relative imports beside the executed script, not
+            # beside its separately materialized source artifacts.
+            sources = ctx.actions.copied_dir("acquisition_sources", {
+                "acquire-archive.ts": ctx.attrs._acquire_archive,
+                "public-archive-origin.ts": ctx.attrs._public_archive_origin,
+            })
             ctx.actions.run(
                 cmd_args([
                     ctx.attrs._bun[BunToolchainInfo].executable,
-                    ctx.attrs._acquire_archive,
+                    sources.project("acquire-archive.ts"),
                     "--cas-url",
                     "{}{}".format(url_prefix, ctx.attrs.sha256),
                     "--registry-url",
@@ -216,7 +222,7 @@ def _fetch_impl(ctx):
                     str(ctx.attrs.size_bytes),
                     "--output",
                     out.as_output(),
-                ]),
+                ], hidden = [sources]),
                 category = "pnpm_archive",
                 identifier = ctx.attrs.name,
                 local_only = True,
@@ -258,6 +264,9 @@ _fetch = rule(
         )),
         "_acquire_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:acquire-archive.ts",
+        )),
+        "_public_archive_origin": attrs.default_only(attrs.source(
+            default = "//buck2/dependencies:public-archive-origin.ts",
         )),
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",

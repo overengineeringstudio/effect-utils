@@ -4,7 +4,7 @@ import { rename, unlink } from 'node:fs/promises'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
-import { publicArchiveUrl } from './pnpm-lock.ts'
+import { publicArchiveRedirectUrl, publicArchiveUrl } from './public-archive-origin.ts'
 
 const fail = (message: string): never => {
   throw new Error(`pnpm archive acquisition: ${message}`)
@@ -63,13 +63,12 @@ export const acquireArchive = async ({
       publicArchiveUrl({ url: current, location: 'archive download URL' })
       response = await request(current)
       if ([301, 302, 303, 307, 308].includes(response.status) === false) break
-      const location = response.headers.get('location')
-      if (location === null) fail(`archive redirect from ${current} has no Location`)
-      await response.body?.cancel()
-      current = publicArchiveUrl({
-        url: new URL(location, current).href,
-        location: 'archive redirect URL',
+      const next = publicArchiveRedirectUrl({
+        from: current,
+        redirect: response.headers.get('location'),
       })
+      await response.body?.cancel()
+      current = next
       if (redirects === 3) fail(`archive download exceeded 3 redirects for ${registryUrl}`)
     }
   }
