@@ -34,11 +34,17 @@ const javascriptProducts = [
 ] as const
 
 const packageProducts = [
+  '@overeng/agent-session-ingest',
   '@overeng/content-address',
+  '@overeng/effect-ai-claude-cli',
   '@overeng/effect-distributed-lock',
+  '@overeng/effect-react',
+  '@overeng/genie',
   '@overeng/notion-core',
   '@overeng/notion-effect-client',
   '@overeng/notion-effect-schema',
+  '@overeng/notion-md',
+  '@overeng/notion-property-write',
   '@overeng/notion-react',
   '@overeng/otel-contract',
   '@overeng/restate-effect',

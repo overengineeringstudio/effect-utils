@@ -79,6 +79,16 @@ Use two cache trust domains:
 - CI remains force-cold until the public tier exists and a Namespace lane proves
   the exact client contract.
 
+## Amendment — 2026-09-24
+
+Johannes confirmed that trust tier follows **repository visibility**, not the
+`private` field of an npm package manifest. In public effect-utils,
+`"private": true` expresses the intent not to publish to npm; it does not
+classify the package or its Buck product as confidential. All effect-utils
+products built exclusively from this public repository and public dependency
+inputs belong to the public tier. Publication still refuses source paths
+outside the repository and private-repository dependency inputs.
+
 ## Dotfiles lead brief
 
 Target: add a public-repository Buck2 cache tier; do not alter the private cache.
