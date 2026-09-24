@@ -23,9 +23,9 @@ case "$mode" in
 esac
 
 cd "$root"
-root="$PWD"
-cd "$workspace_relative"
-workspace="$PWD"
+root="$(pwd -P)"
+cd "$root/$workspace_relative"
+workspace="$(pwd -P)"
 case "$workspace" in
   "$root" | "$root"/*) ;;
   *)
@@ -39,8 +39,23 @@ case "$third_party_buck_relative" in
     exit 64
     ;;
 esac
-third_party_buck="$root/$third_party_buck_relative"
-third_party="$(dirname "$third_party_buck")"
+if [ "$(basename "$third_party_buck_relative")" != BUCK ]; then
+  echo "buck2-rust-deps: third-party graph path must end in BUCK: $third_party_buck_relative" >&2
+  exit 64
+fi
+third_party="$(cd "$root/$(dirname "$third_party_buck_relative")" && pwd -P)"
+case "$third_party" in
+  "$root" | "$root"/*) ;;
+  *)
+    echo "buck2-rust-deps: third-party graph escapes repository: $third_party_buck_relative" >&2
+    exit 64
+    ;;
+esac
+third_party_buck="$third_party/BUCK"
+if [ -L "$third_party_buck" ]; then
+  echo "buck2-rust-deps: third-party BUCK must not be a symlink: $third_party_buck_relative" >&2
+  exit 64
+fi
 config="$workspace/reindeer.toml"
 lock="$workspace/Cargo.lock"
 cargo_home="$root/.devenv/reindeer-cargo-home"

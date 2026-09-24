@@ -92,4 +92,11 @@ for key in extra_srcs omit_srcs; do
   [ ! -s "$FAKE_REINDEER_CALL_LOG" ] || fail "$key lint ran Reindeer before rejecting the fixup"
 done
 
+mkdir -p "$TEMP_ROOT/outside-workspace"
+ln -s "$TEMP_ROOT/outside-workspace" "$FIXTURE/workspaces/escape"
+if "$GATE" check "$FIXTURE" "workspaces/escape" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc 2>"$TEMP_ROOT/escape-error"; then
+  fail "gate accepted a workspace symlink escaping the repository"
+fi
+grep -Fq 'workspace root escapes repository' "$TEMP_ROOT/escape-error" || fail "physical workspace escape was not diagnosed"
+
 echo "Buck2 Rust dependency gate tests passed."
