@@ -488,7 +488,7 @@ run_inherit_root_patched_dependencies_regression() {
   local start
   start="$(date +%s)"
 
-  echo "Check: inherit-root-patched-dependencies scalar lockfile and selector handling"
+  echo "Check: inherit-root-patched-dependencies scalar lockfile, inline empty sections, and selectors"
   local script
   script="$(
     nix build --no-link --no-write-lock-file --print-out-paths \
@@ -520,9 +520,13 @@ importers:
 YAML
   cat >"$fixture/target/pnpm-workspace.yaml" <<'YAML'
 packages: []
+
+patchedDependencies: {}
 YAML
   cat >"$fixture/target/pnpm-lock.yaml" <<'YAML'
 lockfileVersion: '9.0'
+patchedDependencies: {}
+
 
 importers:
   .:
@@ -549,6 +553,10 @@ YAML
     "$fixture/target/.root-patches/patches/foo-1.2.30.patch" \
     "$fixture/target/.root-patches/patches/peer.patch"
 
+  mkdir -p "$fixture/original/authority" "$fixture/original/target"
+  cp "$fixture/authority/pnpm-lock.yaml" "$fixture/authority/pnpm-workspace.yaml" "$fixture/original/authority/"
+  cp "$fixture/target/pnpm-lock.yaml" "$fixture/target/pnpm-workspace.yaml" "$fixture/original/target/"
+
   node "$script" "$fixture/authority" "$fixture/target"
 
   if grep -q "'foo@1.2.3'" "$fixture/target/pnpm-lock.yaml"; then
@@ -556,6 +564,13 @@ YAML
     exit 1
   fi
   grep -q "'foo@1.2.30': hash-foo-30" "$fixture/target/pnpm-lock.yaml"
+  test "$(grep -c '^patchedDependencies:' "$fixture/target/pnpm-lock.yaml")" -eq 1
+  test "$(grep -c '^patchedDependencies:' "$fixture/target/pnpm-workspace.yaml")" -eq 1
+  if grep -q '^patchedDependencies: {}$' \
+    "$fixture/target/pnpm-lock.yaml" "$fixture/target/pnpm-workspace.yaml"; then
+    echo "error: inherited patches left an inline empty patchedDependencies mapping" >&2
+    exit 1
+  fi
   grep -q "'peer-pkg@2.0.0': hash-peer" "$fixture/target/pnpm-lock.yaml"
   grep -q "version: 2.0.0(patch_hash=hash-peer)(peer@1.0.0)" "$fixture/target/pnpm-lock.yaml"
   grep -q "  peer-pkg@2.0.0:" "$fixture/target/pnpm-lock.yaml"
@@ -563,6 +578,43 @@ YAML
   grep -q "  peer-pkg@2.0.0(peer@1.0.0):" "$fixture/target/pnpm-lock.yaml"
   grep -q "'peer-pkg@2.0.0(patch_hash=hash-peer)(peer@1.0.0)':" "$fixture/target/pnpm-lock.yaml"
   grep -q "'peer-pkg@2.0.0': .root-patches/patches/peer.patch" "$fixture/target/pnpm-workspace.yaml"
+
+  cp "$fixture/original/target/"* "$fixture/target/"
+  sed -i "s/^patchedDependencies: {}$/patchedDependencies:\\n  'foo@1.2.30': hash-existing/" \
+    "$fixture/target/pnpm-lock.yaml"
+  sed -i "s|^patchedDependencies: {}$|patchedDependencies:\\n  'foo@1.2.30': patches/existing.patch|" \
+    "$fixture/target/pnpm-workspace.yaml"
+  node "$script" "$fixture/authority" "$fixture/target"
+  test "$(grep -c "'foo@1.2.30': hash-existing" "$fixture/target/pnpm-lock.yaml")" -eq 1
+  if grep -q "'foo@1.2.30': hash-foo-30" "$fixture/target/pnpm-lock.yaml"; then
+    echo "error: inherited patch overwrote an existing patched dependency" >&2
+    exit 1
+  fi
+  grep -q "'peer-pkg@2.0.0': hash-peer" "$fixture/target/pnpm-lock.yaml"
+  grep -q "'foo@1.2.30': patches/existing.patch" "$fixture/target/pnpm-workspace.yaml"
+  grep -q "'peer-pkg@2.0.0': .root-patches/patches/peer.patch" "$fixture/target/pnpm-workspace.yaml"
+
+  local location section
+  for location in authority/pnpm-lock.yaml authority/pnpm-workspace.yaml \
+    target/pnpm-lock.yaml target/pnpm-workspace.yaml; do
+    cp "$fixture/original/authority/"* "$fixture/authority/"
+    cp "$fixture/original/target/"* "$fixture/target/"
+    section=patchedDependencies
+    sed -i "s/^$section:.*$/$section: {foo@1.2.30: existing}/" "$fixture/$location"
+    if node "$script" "$fixture/authority" "$fixture/target" 2>"$fixture/inline-error.log"; then
+      echo "error: accepted non-empty inline $section in $location" >&2
+      exit 1
+    fi
+    grep -q "unsupported inline $section mapping" "$fixture/inline-error.log"
+  done
+  cp "$fixture/original/authority/"* "$fixture/authority/"
+  cp "$fixture/original/target/"* "$fixture/target/"
+  sed -i 's/^packages:$/packages: {peer-pkg@2.0.0: {}}/' "$fixture/target/pnpm-lock.yaml"
+  if node "$script" "$fixture/authority" "$fixture/target" 2>"$fixture/inline-error.log"; then
+    echo "error: accepted non-empty inline packages mapping" >&2
+    exit 1
+  fi
+  grep -q "unsupported inline packages mapping" "$fixture/inline-error.log"
   rm -rf "$fixture"
 
   echo "Timing: inherit-root-patched-dependencies $(( $(date +%s) - start ))s"
