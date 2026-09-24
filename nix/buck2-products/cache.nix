@@ -2,11 +2,11 @@
 {
   pkgs,
   fromSourceProducts,
-  manifest ? builtins.fromJSON (builtins.readFile ./manifest.json),
 }:
 
 let
   lib = pkgs.lib;
+  manifest = builtins.fromJSON (builtins.readFile ./manifest.json);
   targetInventory = builtins.fromJSON (builtins.readFile ./cache-targets.json);
   declaredProductNames = builtins.sort builtins.lessThan (
     map (product: product.name) targetInventory.products

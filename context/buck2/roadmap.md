@@ -137,17 +137,21 @@ resolution paths.
 `from-source` derivation) and the public and private binary caches are
 provisioned on every builder.
 
-**Sequence:** Generate a sandboxed Buck-invoking derivation per product and
-package (genie owns it; no hand-written recipes); replace the GitHub publisher
-with a cache publisher (push, digest-named pin, provenance, anonymous
-post-publish verification for public products); move private-shared products
-onto the private cache and prove the Nix-realized tarball path for one pnpm
-consumer; repin existing consumer edges from release URLs to cache URLs through
-the manifest; retire `publish.sh` and the release namespaces.
+**Status:** Public effect-utils products use Cachix manifest v2; the
+GitHub-release product importer and mixed-schema manifest are retired. Native
+Rust products still use their separately reviewed immutable releases.
 
-**Dissolution target:** Delete the GitHub publisher, the release-asset
-verification path in the Nix bridge, and every consumer FOD that existed only
-to stage producer sources. Remote execution is not on this path (02-execution).
+**Sequence:** Generate a sandboxed Buck-invoking derivation per product and
+package (genie owns it; no hand-written recipes); publish through Cachix
+(push, digest-named pin, provenance, anonymous post-publish verification for
+public products); move private-shared products onto the private cache and
+prove the Nix-realized tarball path for one pnpm consumer; repin existing
+consumer edges from release URLs to cache URLs through the manifest.
+
+**Dissolution target:** Delete the GitHub product publisher, the JavaScript
+release-asset import path, and every consumer FOD that existed only to stage
+producer sources. Keep the Cachix publisher and native-product import path.
+Remote execution is not on this path (02-execution).
 
 ## Phase 6 — consumer adoption
 

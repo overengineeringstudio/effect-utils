@@ -106,18 +106,14 @@ Nix obtains that immutable path from the configured binary cache. A validation
 derivation then checks the artifact digest, size, and provenance before exposing
 the product to the consumer.
 
-Product-scoped publication merges by product identity. During the release-asset
-to cache transition, `effect-utils/buck-cache-products/v3` may contain both
-cache-native rows and untouched `effect-utils/buck2-release-products/v1` rows;
-the cache-native row replaces the legacy row for the same product. The publisher
-validates every cache row's provenance and preserves unrelated rows. Once no
-legacy rows remain, it emits `effect-utils/buck-cache-products/v2`
-automatically. The generated source derivation remains available as the
-reproducible publication recipe. It rebuilds the ordinary graph rather than a
-synthetic root, prepared dependency tree, or rewritten package rule. Changing
-later repository metadata does not change the identity of an already-published
-product. The anonymous artifact URL is an interoperability path, not a second
-source of product authority.
+Product-scoped publication merges by product identity in the
+`effect-utils/buck-cache-products/v2` manifest. The publisher validates each
+cache row's provenance and preserves unrelated rows. The generated source
+derivation remains available as the reproducible publication recipe. It
+rebuilds the ordinary graph rather than a synthetic root, prepared dependency
+tree, or rewritten package rule. Changing later repository metadata does not
+change the identity of an already-published product. The anonymous artifact
+URL is an interoperability path, not a second source of product authority.
 
 ## Private pnpm Consumption
 

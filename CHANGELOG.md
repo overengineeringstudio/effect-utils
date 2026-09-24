@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- **Buck2 product import**: Remove the obsolete GitHub-release JavaScript
+  product loader and mixed manifest schema now that every published product is
+  Cachix-backed. Keep the Cachix publisher and the native Rust release importer.
 - **Nix workspace tools**: Delete the unconsumed `mk-bun-cli` builder, its
   fixtures and documentation, the matching hash updater, and their flake
   exports. Also remove the stale internal `taskModules.weaver` attribute left
