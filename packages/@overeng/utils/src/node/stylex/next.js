@@ -37,12 +37,15 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, resolve, sep } from 'node:path'
 
+import { parse } from 'postcss'
+
 /**
  * @import {
  *   StylexNextAdapter,
  *   StylexNextOptions,
  *   StylexNextWebpackConfig,
  *   StylexNextWebpackHookOptions,
+ *   StylexWebpackRule,
  * } from './next-types.d.ts'
  */
 
@@ -51,14 +54,29 @@ const STYLEX_POSTCSS_PLUGIN = '@stylexjs/postcss-plugin'
 const GUARD_NAME = 'overeng:stylex/next-css-guard'
 
 /**
- * Extensions the collector Babel-parses. `.mdx` is absent on purpose: the
- * PostCSS plugin Babel-parses every matched file and cannot parse MDX; styles
- * for a markdown surface live in `.tsx` modules the globs already cover.
+ * Babel-parser-compatible suffixes. One validated set drives the webpack
+ * test and collector globs; `.mdx` needs its own parser and is excluded.
  */
-const DEFAULT_EXTENSIONS = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs']
+const DEFAULT_EXTENSIONS = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts']
+const SUPPORTED_EXTENSIONS = new Set(DEFAULT_EXTENSIONS)
 
-/** The at-rule the PostCSS plugin replaces, exactly as it appears in source. */
-const stylexAtRulePattern = /@stylex\s*;/u
+/** @param {string} css */
+const hasStylexAtRule = (css) => {
+  let found = false
+  parse(css).walkAtRules('stylex', () => {
+    found = true
+  })
+  return found
+}
+
+/** @param {string} css */
+const hasEmptyStylexAtRule = (css) => {
+  let found = false
+  parse(css).walkAtRules('stylex', (rule) => {
+    if (rule.nodes === undefined && rule.params.trim() === '') found = true
+  })
+  return found
+}
 
 /**
  * @param {string} path
@@ -127,7 +145,7 @@ const createCarrierGuard = ({ carrierPath, cssCarrier, dev }) => ({
           for (const asset of compilation.getAssets()) {
             if (asset.name.endsWith('.css') !== true) continue
             const css = String(asset.source.source())
-            if (css.includes('@stylex') === true) {
+            if (hasStylexAtRule(css) === true) {
               compilation.errors.push(
                 new Error(
                   `[overeng:stylex/next] CSS asset ${asset.name} still contains an unreplaced \`@stylex\` at-rule, so the PostCSS plugin never collected into ${cssCarrier} and every compiled rule was dropped. Check that postcss.config loads ${STYLEX_POSTCSS_PLUGIN} and shares this adapter's instance.`,
@@ -167,7 +185,7 @@ const isClientCompilation = (nextOptions) =>
  *       cssCarrier: 'src/styles/globals.css',
  *     })
  *     // next.config.mjs
- *     export default { webpack: stylex.webpack }
+ *     export default { transpilePackages: stylex.transpilePackages, webpack: stylex.webpack }
  *     // postcss.config.mjs
  *     export default { plugins: { ...stylex.postcssPlugin } }
  *
@@ -197,18 +215,22 @@ export const createStylexNext = (options) => {
   }
 
   const extensions = options?.extensions ?? DEFAULT_EXTENSIONS
+  if (Array.isArray(extensions) !== true || extensions.length === 0) {
+    throw new Error('[overeng:stylex/next] `extensions` must be a non-empty array.')
+  }
   for (const extension of extensions) {
-    if (/^[a-z]+$/.test(extension) !== true) {
+    if (extension === 'mdx') {
       throw new Error(
-        `[overeng:stylex/next] extension ${JSON.stringify(extension)} is not a bare lowercase suffix.`,
+        '[overeng:stylex/next] `extensions` must not include mdx: the PostCSS plugin Babel-parses every matched file and cannot parse MDX.',
+      )
+    }
+    if (SUPPORTED_EXTENSIONS.has(extension) === false) {
+      throw new Error(
+        `[overeng:stylex/next] extension ${JSON.stringify(extension)} is not a supported JavaScript/TypeScript suffix.`,
       )
     }
   }
-  if (extensions.includes('mdx') === true) {
-    throw new Error(
-      '[overeng:stylex/next] `extensions` must not include mdx: the PostCSS plugin Babel-parses every matched file and cannot parse MDX.',
-    )
-  }
+  const selectedExtensions = [...new Set(extensions)]
 
   // Loud config-time checks for the two ways the emission path dies silently.
   // Both are checked again at build time by the guard on the client
@@ -219,7 +241,7 @@ export const createStylexNext = (options) => {
       `[overeng:stylex/next] cssCarrier ${cssCarrier} does not exist (resolved ${carrierPath}). The PostCSS plugin writes compiled StyleX rules there and the root layout must import it.`,
     )
   }
-  if (stylexAtRulePattern.test(readFileSync(carrierPath, 'utf8')) === false) {
+  if (hasEmptyStylexAtRule(readFileSync(carrierPath, 'utf8')) === false) {
     throw new Error(
       `[overeng:stylex/next] cssCarrier ${cssCarrier} has no \`@stylex;\` at-rule. Without it the PostCSS plugin has nowhere to write and the app silently ships with no StyleX CSS.`,
     )
@@ -287,14 +309,15 @@ export const createStylexNext = (options) => {
     ],
   }
 
-  const extensionGlob = `**/*.{${extensions.join(',')}}`
+  const extensionGlob = `**/*.{${selectedExtensions.join(',')}}`
   const includeGlobs = [
     ...sourceRoots.map(({ dir }) => `${toPosix(dir)}/${extensionGlob}`),
     ...externalPackages.map((name) => `node_modules/${name}/${extensionGlob}`),
   ]
 
+  /** @type {StylexWebpackRule} */
   const webpackRule = {
-    test: /\.[cm]?[jt]sx?$/u,
+    test: new RegExp(`\\.(${selectedExtensions.join('|')})$`, 'u'),
     include: [...sourceRoots.map(({ absolute }) => absolute), ...externalRoots],
     enforce: 'pre',
     use: [{ loader: 'babel-loader', options: stylexBabelOptions }],
@@ -313,6 +336,15 @@ export const createStylexNext = (options) => {
    */
   // oxlint-disable-next-line overeng/named-args -- Next passes a fixed positional (config, options) pair.
   const webpack = (config, nextOptions) => {
+    const configuredPackages = nextOptions?.config?.transpilePackages
+    const missingPackages = externalPackages.filter(
+      (name) => configuredPackages?.includes(name) !== true,
+    )
+    if (missingPackages.length > 0) {
+      throw new Error(
+        `[overeng:stylex/next] Next config transpilePackages must include ${missingPackages.join(', ')} from externalPackages. Spread stylex.transpilePackages into next.config to compile their TS/JSX.`,
+      )
+    }
     config.module ??= { rules: [] }
     config.module.rules ??= []
     config.module.rules.push(webpackRule)
@@ -332,5 +364,5 @@ export const createStylexNext = (options) => {
     },
   }
 
-  return { webpack, webpackRule, postcssPlugin }
+  return { webpack, webpackRule, postcssPlugin, transpilePackages: externalPackages }
 }

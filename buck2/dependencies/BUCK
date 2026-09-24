@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:d6cbbb1cee628a8bdc686c6bfdf78b2958d1c40aa0c1bd6f8e4e92652b1299dc
+# Store fingerprint: sha256:b7369bf79064d44914b969277d1fd37515b067ea97b2651314b8de5a5546cbc1
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -32,39 +32,9 @@ pnpm_platform_gated_packages(
     },
     families = {
         "@esbuild": ["@esbuild/aix-ppc64", "@esbuild/android-arm", "@esbuild/android-arm64", "@esbuild/android-x64", "@esbuild/darwin-arm64", "@esbuild/darwin-x64", "@esbuild/freebsd-arm64", "@esbuild/freebsd-x64", "@esbuild/linux-arm", "@esbuild/linux-arm64", "@esbuild/linux-ia32", "@esbuild/linux-loong64", "@esbuild/linux-mips64el", "@esbuild/linux-ppc64", "@esbuild/linux-riscv64", "@esbuild/linux-s390x", "@esbuild/linux-x64", "@esbuild/netbsd-arm64", "@esbuild/netbsd-x64", "@esbuild/openbsd-arm64", "@esbuild/openbsd-x64", "@esbuild/openharmony-arm64", "@esbuild/sunos-x64", "@esbuild/win32-arm64", "@esbuild/win32-ia32", "@esbuild/win32-x64"],
-        "@img/sharp-darwin-arm64": ["@img/sharp-darwin-arm64"],
-        "@img/sharp-darwin-x64": ["@img/sharp-darwin-x64"],
-        "@img/sharp-libvips-darwin-arm64": ["@img/sharp-libvips-darwin-arm64"],
-        "@img/sharp-libvips-darwin-x64": ["@img/sharp-libvips-darwin-x64"],
-        "@img/sharp-libvips-linux-arm": ["@img/sharp-libvips-linux-arm"],
-        "@img/sharp-libvips-linux-arm64": ["@img/sharp-libvips-linux-arm64"],
-        "@img/sharp-libvips-linux-ppc64": ["@img/sharp-libvips-linux-ppc64"],
-        "@img/sharp-libvips-linux-riscv64": ["@img/sharp-libvips-linux-riscv64"],
-        "@img/sharp-libvips-linux-s390x": ["@img/sharp-libvips-linux-s390x"],
-        "@img/sharp-libvips-linux-x64": ["@img/sharp-libvips-linux-x64"],
-        "@img/sharp-libvips-linuxmusl-arm64": ["@img/sharp-libvips-linuxmusl-arm64"],
-        "@img/sharp-libvips-linuxmusl-x64": ["@img/sharp-libvips-linuxmusl-x64"],
-        "@img/sharp-linux-arm": ["@img/sharp-linux-arm"],
-        "@img/sharp-linux-arm64": ["@img/sharp-linux-arm64"],
-        "@img/sharp-linux-ppc64": ["@img/sharp-linux-ppc64"],
-        "@img/sharp-linux-riscv64": ["@img/sharp-linux-riscv64"],
-        "@img/sharp-linux-s390x": ["@img/sharp-linux-s390x"],
-        "@img/sharp-linux-x64": ["@img/sharp-linux-x64"],
-        "@img/sharp-linuxmusl-arm64": ["@img/sharp-linuxmusl-arm64"],
-        "@img/sharp-linuxmusl-x64": ["@img/sharp-linuxmusl-x64"],
-        "@img/sharp-wasm32": ["@img/sharp-wasm32"],
-        "@img/sharp-win32-arm64": ["@img/sharp-win32-arm64"],
-        "@img/sharp-win32-ia32": ["@img/sharp-win32-ia32"],
-        "@img/sharp-win32-x64": ["@img/sharp-win32-x64"],
+        "@img/sharp": ["@img/sharp-darwin-arm64", "@img/sharp-darwin-x64", "@img/sharp-libvips-darwin-arm64", "@img/sharp-libvips-darwin-x64", "@img/sharp-libvips-linux-arm", "@img/sharp-libvips-linux-arm64", "@img/sharp-libvips-linux-ppc64", "@img/sharp-libvips-linux-riscv64", "@img/sharp-libvips-linux-s390x", "@img/sharp-libvips-linux-x64", "@img/sharp-libvips-linuxmusl-arm64", "@img/sharp-libvips-linuxmusl-x64", "@img/sharp-linux-arm", "@img/sharp-linux-arm64", "@img/sharp-linux-ppc64", "@img/sharp-linux-riscv64", "@img/sharp-linux-s390x", "@img/sharp-linux-x64", "@img/sharp-linuxmusl-arm64", "@img/sharp-linuxmusl-x64", "@img/sharp-wasm32", "@img/sharp-win32-arm64", "@img/sharp-win32-ia32", "@img/sharp-win32-x64"],
         "@msgpackr-extract": ["@msgpackr-extract/msgpackr-extract-darwin-arm64", "@msgpackr-extract/msgpackr-extract-darwin-x64", "@msgpackr-extract/msgpackr-extract-linux-arm", "@msgpackr-extract/msgpackr-extract-linux-arm64", "@msgpackr-extract/msgpackr-extract-linux-x64", "@msgpackr-extract/msgpackr-extract-win32-x64"],
-        "@next/swc-darwin-arm64": ["@next/swc-darwin-arm64"],
-        "@next/swc-darwin-x64": ["@next/swc-darwin-x64"],
-        "@next/swc-linux-arm64-gnu": ["@next/swc-linux-arm64-gnu"],
-        "@next/swc-linux-arm64-musl": ["@next/swc-linux-arm64-musl"],
-        "@next/swc-linux-x64-gnu": ["@next/swc-linux-x64-gnu"],
-        "@next/swc-linux-x64-musl": ["@next/swc-linux-x64-musl"],
-        "@next/swc-win32-arm64-msvc": ["@next/swc-win32-arm64-msvc"],
-        "@next/swc-win32-x64-msvc": ["@next/swc-win32-x64-msvc"],
+        "@next/swc": ["@next/swc-darwin-arm64", "@next/swc-darwin-x64", "@next/swc-linux-arm64-gnu", "@next/swc-linux-arm64-musl", "@next/swc-linux-x64-gnu", "@next/swc-linux-x64-musl", "@next/swc-win32-arm64-msvc", "@next/swc-win32-x64-msvc"],
         "@opentui/core": ["@opentui/core-darwin-arm64", "@opentui/core-darwin-x64", "@opentui/core-linux-arm64", "@opentui/core-linux-arm64-musl", "@opentui/core-linux-x64", "@opentui/core-linux-x64-musl", "@opentui/core-win32-arm64", "@opentui/core-win32-x64"],
         "@oxc-parser/binding": ["@oxc-parser/binding-android-arm-eabi", "@oxc-parser/binding-android-arm64", "@oxc-parser/binding-darwin-arm64", "@oxc-parser/binding-darwin-x64", "@oxc-parser/binding-freebsd-x64", "@oxc-parser/binding-linux-arm-gnueabihf", "@oxc-parser/binding-linux-arm-musleabihf", "@oxc-parser/binding-linux-arm64-gnu", "@oxc-parser/binding-linux-arm64-musl", "@oxc-parser/binding-linux-ppc64-gnu", "@oxc-parser/binding-linux-riscv64-gnu", "@oxc-parser/binding-linux-riscv64-musl", "@oxc-parser/binding-linux-s390x-gnu", "@oxc-parser/binding-linux-x64-gnu", "@oxc-parser/binding-linux-x64-musl", "@oxc-parser/binding-openharmony-arm64", "@oxc-parser/binding-wasm32-wasi", "@oxc-parser/binding-win32-arm64-msvc", "@oxc-parser/binding-win32-ia32-msvc", "@oxc-parser/binding-win32-x64-msvc"],
         "@oxc-resolver/binding": ["@oxc-resolver/binding-android-arm-eabi", "@oxc-resolver/binding-android-arm64", "@oxc-resolver/binding-darwin-arm64", "@oxc-resolver/binding-darwin-x64", "@oxc-resolver/binding-freebsd-x64", "@oxc-resolver/binding-linux-arm-gnueabihf", "@oxc-resolver/binding-linux-arm-musleabihf", "@oxc-resolver/binding-linux-arm64-gnu", "@oxc-resolver/binding-linux-arm64-musl", "@oxc-resolver/binding-linux-ppc64-gnu", "@oxc-resolver/binding-linux-riscv64-gnu", "@oxc-resolver/binding-linux-riscv64-musl", "@oxc-resolver/binding-linux-s390x-gnu", "@oxc-resolver/binding-linux-x64-gnu", "@oxc-resolver/binding-linux-x64-musl", "@oxc-resolver/binding-openharmony-arm64", "@oxc-resolver/binding-wasm32-wasi", "@oxc-resolver/binding-win32-arm64-msvc", "@oxc-resolver/binding-win32-x64-msvc"],
@@ -39117,6 +39087,7 @@ pnpm_store_view(
         "effect": "effect@4.0.0-rc.112",
         "next": "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45",
         "playwright": "playwright@1.63.0",
+        "postcss": "postcss@8.5.26",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",
         "storybook": "storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_prettier@3.9.6_react_da9aab27e30e1021",

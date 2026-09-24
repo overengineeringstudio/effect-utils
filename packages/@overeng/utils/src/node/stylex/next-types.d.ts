@@ -20,16 +20,15 @@ export interface StylexNextOptions {
   readonly cssCarrier: string
   /**
    * Packages under the app's `node_modules` that ship uncompiled StyleX
-   * source and must be compiled by us. Token-only packages whose exports are
-   * consumed through import following do not need to be listed.
-   */
+   * source. Spread the adapter's `transpilePackages` into Next config so Next
+   * also strips TS/JSX after the StyleX Babel pre-rule. Token-only packages
+   * whose exports are consumed through import following need not be listed.
   readonly externalPackages?: readonly string[]
   /**
-   * File extensions the collector scans. Defaults to
-   * `['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs']` — every extension the webpack
-   * rule's test matches, so collection is a superset of transformation by
-   * construction. `mdx` is rejected: the PostCSS plugin cannot parse it.
-   */
+   * File extensions transformed and collected. Defaults to
+   * `['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts']`.
+   * Only supported JavaScript/TypeScript suffixes are accepted; `mdx`
+   * cannot be parsed by the PostCSS plugin.
   readonly extensions?: readonly string[]
   /**
    * Emit compiled rules into cascade layers. Defaults to OFF, and that default
@@ -69,6 +68,7 @@ export interface StylexNextWebpackConfig {
 export interface StylexNextWebpackHookOptions {
   isServer?: boolean
   nextRuntime?: string
+  config?: { transpilePackages?: readonly string[] }
   [key: string]: unknown
 }
 
@@ -96,6 +96,8 @@ export interface StylexNextAdapter {
   readonly webpackRule: StylexWebpackRule
   /** Entry to spread into `postcss.config`'s `plugins`. */
   readonly postcssPlugin: { '@stylexjs/postcss-plugin': StylexPostcssPluginOptions }
+  /** Spread into Next's `transpilePackages` (alongside any app-specific entries). */
+  readonly transpilePackages: readonly string[]
 }
 
 /** Shared StyleX integration for a webpack-built Next.js app. */

@@ -1761,6 +1761,9 @@ importers:
       effect:
         specifier: 4.0.0-rc.112
         version: 4.0.0-rc.112
+      postcss:
+        specifier: 8.5.26
+        version: 8.5.26
       unplugin:
         specifier: 3.3.0
         version: 3.3.0(esbuild@0.28.2)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))

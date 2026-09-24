@@ -31,6 +31,32 @@ import { createStylexVitePlugins } from './mod.js'
  */
 const packageRoot = fileURLToPath(new URL('../../..', import.meta.url))
 
+/** Explicit bounds: Vitest cannot interrupt a synchronous child on its own. */
+const INSTALL_TIMEOUT_MS = 90_000
+const BUILD_TIMEOUT_MS = 180_000
+
+/** Run a fixture child with a deadline and a diagnostic that names the phase. */
+const runFixtureCommand = (
+  command: string,
+  args: readonly string[],
+  options: { cwd: string; timeout: number; label: string; env?: NodeJS.ProcessEnv },
+) => {
+  const result = spawnSync(command, [...args], {
+    cwd: options.cwd,
+    timeout: options.timeout,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+    env: options.env ?? process.env,
+  })
+  if (result.error !== undefined) {
+    throw new Error(
+      `${options.label} ${result.error.code === 'ETIMEDOUT' ? 'timed out' : 'failed'}: ${result.error.message}\n${result.stderr ?? ''}`,
+      { cause: result.error },
+    )
+  }
+  return result
+}
+
 /** The Vite fixture runs in-process, so plain symlinks suffice there. */
 const viteFixtureDependencies = ['react', 'react-dom', '@stylexjs/stylex']
 
@@ -101,7 +127,7 @@ const nextConfigSource = [
   "import { stylex } from './stylex.mjs'",
   '',
   "/** @type {import('next').NextConfig} */",
-  'const config = { webpack: stylex.webpack }',
+  'const config = { transpilePackages: stylex.transpilePackages, webpack: stylex.webpack }',
   '',
   'export default config',
   '',
@@ -220,6 +246,7 @@ const installFixtureDependencies = (fixtureRoot: string) => {
           react: installedVersion('react'),
           'react-dom': installedVersion('react-dom'),
           '@stylexjs/stylex': installedVersion('@stylexjs/stylex'),
+          postcss: installedVersion('postcss'),
         },
         devDependencies: {
           // Next's dependency check requires the classic typescript package
@@ -241,10 +268,10 @@ const installFixtureDependencies = (fixtureRoot: string) => {
   // sharp (next's optional image dependency) ships an install script; pnpm
   // refuses undecided build scripts, and the fixture needs none of them.
   writeFileSync(join(fixtureRoot, 'pnpm-workspace.yaml'), 'allowBuilds:\n  sharp: false\n')
-  const install = spawnSync('corepack', ['pnpm', 'install'], {
+  const install = runFixtureCommand('corepack', ['pnpm', 'install'], {
     cwd: fixtureRoot,
-    encoding: 'utf8',
-    maxBuffer: 32 * 1024 * 1024,
+    timeout: INSTALL_TIMEOUT_MS,
+    label: 'fixture pnpm install',
     env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' },
   })
   expect({ status: install.status, stderr: install.stderr }, 'fixture pnpm install failed').toEqual(
@@ -264,6 +291,18 @@ const linkFixtureDependencies = (consumerRoot: string, names: readonly string[])
 
 /** StyleX atomic class names mentioned by a stylesheet, de-duplicated. */
 const classNamesIn = (css: string) => [...new Set(css.match(/\.x[a-z0-9]+/gu) ?? [])].sort()
+
+it('terminates and identifies a hung fixture child instead of waiting for Vitest', () => {
+  // Real process deadlines cannot be driven by fake timers; this exercises
+  // Node's spawnSync timeout against a child that will never finish itself.
+  expect(() =>
+    runFixtureCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+      cwd: tmpdir(),
+      timeout: 100,
+      label: 'hung fixture',
+    }),
+  ).toThrowError(/hung fixture timed out/u)
+})
 
 it(
   'builds a fixture Next app whose StyleX CSS matches the Vite path',
@@ -292,13 +331,13 @@ it(
       const nextMajor = Number(nextPackage.version.split('.')[0])
       // Next 16 defaults `build` to Turbopack; the adapter is webpack-mode.
       const buildArgs = ['build', ...(nextMajor >= 16 ? ['--webpack'] : [])]
-      const buildResult = spawnSync(
+      const buildResult = runFixtureCommand(
         process.execPath,
         [join('node_modules', 'next', 'dist', 'bin', 'next'), ...buildArgs],
         {
           cwd: nextRoot,
-          encoding: 'utf8',
-          maxBuffer: 32 * 1024 * 1024,
+          timeout: BUILD_TIMEOUT_MS,
+          label: `next ${buildArgs.join(' ')}`,
           env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' },
         },
       )

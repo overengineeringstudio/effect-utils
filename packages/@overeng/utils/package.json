@@ -104,6 +104,7 @@
     "@overeng/otel-contract": "workspace:^",
     "@stylexjs/unplugin": "0.19.0",
     "effect": "4.0.0-rc.112",
+    "postcss": "8.5.26",
     "unplugin": "3.3.0",
     "vitest": "4.1.9"
   },

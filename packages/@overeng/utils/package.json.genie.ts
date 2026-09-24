@@ -31,6 +31,7 @@ const runtimeDeps = catalog.compose({
       // browser-pure token package — VRS stylex R11/R12, decision 0006.
       '@stylexjs/unplugin',
       'unplugin',
+      'postcss',
     ),
   },
   devDependencies: {

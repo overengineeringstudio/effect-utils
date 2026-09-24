@@ -52,6 +52,18 @@ describe('createStylexNext config-time guards', () => {
       expect(() => createStylexNext(options)).toThrowError(/no `@stylex;` at-rule/u)
     })
   })
+  it('rejects a carrier whose apparent at-rule is inside a comment or another rule', () => {
+    withAppRoot((root, options) => {
+      for (const css of [
+        '/* @stylex; */',
+        '.example { content: "@stylex;" }',
+        '@stylex something;',
+      ]) {
+        writeFileSync(join(root, 'src', 'styles', 'globals.css'), css)
+        expect(() => createStylexNext(options), css).toThrowError(/no `@stylex;` at-rule/u)
+      }
+    })
+  })
 
   it('rejects a sourceDir that does not exist', () => {
     withAppRoot((_root, options) => {
@@ -65,6 +77,14 @@ describe('createStylexNext config-time guards', () => {
     withAppRoot((_root, options) => {
       expect(() => createStylexNext({ ...options, extensions: ['ts', 'tsx', 'mdx'] })).toThrowError(
         /must not include mdx/u,
+      )
+    })
+  })
+  it('rejects extensions the StyleX Babel collector cannot parse or an empty set', () => {
+    withAppRoot((_root, options) => {
+      expect(() => createStylexNext({ ...options, extensions: [] })).toThrowError(/extensions/u)
+      expect(() => createStylexNext({ ...options, extensions: ['ts', 'css'] })).toThrowError(
+        /extension.*css/u,
       )
     })
   })
@@ -140,34 +160,56 @@ describe('createStylexNext config builders', () => {
     })
   })
 
-  it('collects from globs that cover every extension the webpack rule transforms', () => {
+  it('collects every transformed extension, including mts and cts, from app and custom roots', () => {
     withAppRoot((root, options) => {
       mkdirSync(join(root, 'lib'), { recursive: true })
       const adapter = createStylexNext({ ...options, sourceDirs: ['src', 'lib'] })
-
       expect(adapter.postcssPlugin['@stylexjs/postcss-plugin'].include).toEqual([
-        'src/**/*.{ts,tsx,js,jsx,mjs,cjs}',
-        'lib/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+        'src/**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}',
+        'lib/**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}',
+      ])
+      for (const extension of ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts']) {
+        expect(adapter.webpackRule.test.test(`/app/src/file.${extension}`), extension).toBe(true)
+      }
+      const custom = createStylexNext({ ...options, extensions: ['tsx', 'mts'] })
+      expect(custom.webpackRule.test.test('/app/src/card.tsx')).toBe(true)
+      expect(custom.webpackRule.test.test('/app/src/vars.mts')).toBe(true)
+      expect(custom.webpackRule.test.test('/app/src/old.js')).toBe(false)
+      expect(custom.postcssPlugin['@stylexjs/postcss-plugin'].include).toEqual([
+        'src/**/*.{tsx,mts}',
       ])
     })
   })
 
-  it('maps externalPackages into both the webpack include and the collector globs', () => {
+  it('requires externalPackages in Next transpilePackages while collecting and transforming them', () => {
     withAppRoot((root, options) => {
       const packageDir = join(root, 'node_modules', '@scope', 'pkg')
       mkdirSync(packageDir, { recursive: true })
       const adapter = createStylexNext({ ...options, externalPackages: ['@scope/pkg'] })
 
-      expect({
-        webpackInclude: adapter.webpackRule.include,
-        collectorGlobs: adapter.postcssPlugin['@stylexjs/postcss-plugin'].include,
-      }).toEqual({
-        webpackInclude: [join(root, 'src'), packageDir],
-        collectorGlobs: [
-          'src/**/*.{ts,tsx,js,jsx,mjs,cjs}',
-          'node_modules/@scope/pkg/**/*.{ts,tsx,js,jsx,mjs,cjs}',
-        ],
-      })
+      expect(adapter.transpilePackages).toEqual(['@scope/pkg'])
+      expect(adapter.webpackRule.include).toEqual([join(root, 'src'), packageDir])
+      expect(adapter.postcssPlugin['@stylexjs/postcss-plugin'].include).toContain(
+        'node_modules/@scope/pkg/**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}',
+      )
+      expect(() => adapter.webpack({ module: { rules: [] } }, { isServer: true })).toThrowError(
+        /transpilePackages.*@scope\/pkg/u,
+      )
+      expect(() =>
+        adapter.webpack(
+          { module: { rules: [] } },
+          { isServer: true, config: { transpilePackages: ['other'] } },
+        ),
+      ).toThrowError(/transpilePackages.*@scope\/pkg/u)
+      expect(
+        adapter.webpack(
+          { module: { rules: [] } },
+          {
+            isServer: true,
+            config: { transpilePackages: ['other', ...adapter.transpilePackages] },
+          },
+        ).module?.rules,
+      ).toHaveLength(1)
     })
   })
 })
@@ -264,6 +306,20 @@ describe('createStylexNext build-time guard', () => {
       /still contains an unreplaced `@stylex` at-rule/u,
     )
   })
+  it('ignores @stylex text in comments and declarations but detects real at-rules', () => {
+    const ordinary = runGuard({
+      carrierInGraph: true,
+      dev: false,
+      cssAssets: { 'static/css/chunk.css': '/* @stylex; */ .x { content: "@stylex;" }' },
+    })
+    const nested = runGuard({
+      carrierInGraph: true,
+      dev: false,
+      cssAssets: { 'static/css/chunk.css': '@media screen { @stylex; }' },
+    })
+    expect(ordinary).toEqual([])
+    expect(nested).toHaveLength(1)
+  })
 
   it('fails the build when the carrier is not in the client module graph', () => {
     const errors = runGuard({ carrierInGraph: false, dev: false, cssAssets: {} })
@@ -315,16 +371,19 @@ describe('createStylexNext published surface', () => {
     }).toEqual({ declarationImportsBundler: false, implementationNamesBundlerType: false })
   })
 
-  it('publishes an adapter surface with no members beyond the three consumers need', () => {
-    // The annotation is the assertion — it stops compiling the moment the
-    // published surface grows a fourth member.
+  it('publishes the transpilePackages value required by the webpack hook', () => {
     const publishedSurface: (keyof StylexNextAdapter)[] = [
       'webpack',
       'webpackRule',
       'postcssPlugin',
+      'transpilePackages',
     ]
-
-    expect(publishedSurface).toEqual(['webpack', 'webpackRule', 'postcssPlugin'])
+    expect(publishedSurface).toEqual([
+      'webpack',
+      'webpackRule',
+      'postcssPlugin',
+      'transpilePackages',
+    ])
   })
 
   it('resolves the module through the package export map', async () => {

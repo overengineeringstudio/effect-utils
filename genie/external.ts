@@ -367,6 +367,7 @@ export const catalog = defineCatalog({
   '@stylexjs/postcss-plugin': '0.19.0',
   next: '16.2.6',
   'babel-loader': '10.1.1',
+  postcss: '8.5.26',
 
   /**
    * Transitional Tailwind -> StyleX converter, used only as a first pass on
