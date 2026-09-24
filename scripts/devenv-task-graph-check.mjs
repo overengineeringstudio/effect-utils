@@ -115,7 +115,9 @@ for (const name of [
   'check:quick',
   'check:all',
   'nix:check:quick',
-  'nix:flake:check',
+  'nix:buck2-artifact-import:check',
+  'nix:javascript-product-import:check',
+  'nix:flake:eval',
   'setup:strict',
   'genie:run',
   'genie:check',
@@ -195,14 +197,50 @@ for (const [checkTask, aggregateTask] of [
     name: `${checkTask} reaches the Buck producer overlap guard`,
   })
 }
+for (const checkTask of ['check:quick', 'check:all']) {
+  ok({
+    condition: reaches({ start: checkTask, target: 'nix:check:quick' }),
+    name: `${checkTask} reaches the Nix artifact-import aggregate`,
+  })
+  for (const importTask of [
+    'nix:buck2-artifact-import:check',
+    'nix:javascript-product-import:check',
+  ]) {
+    ok({
+      condition: reaches({ start: checkTask, target: importTask }),
+      name: `${checkTask} reaches ${importTask}`,
+    })
+  }
+  ok({
+    condition: reaches({ start: checkTask, target: 'buck2:nix-bridge:check' }) === false,
+    name: `${checkTask} does not realize a repository product`,
+  })
+  ok({
+    condition: reaches({ start: checkTask, target: 'nix:flake:check' }) === false,
+    name: `${checkTask} does not run unrestricted flake checks`,
+  })
+}
 ok({
-  condition: reaches({ start: 'check:quick', target: 'nix:check:quick' }),
-  name: 'check:quick retains the empty Nix fingerprint aggregate',
+  condition: reaches({ start: 'check:all', target: 'nix:flake:eval' }),
+  name: 'check:all evaluates every flake output',
 })
 ok({
-  condition: reaches({ start: 'check:all', target: 'nix:flake:check' }),
-  name: 'check:all retains repository-wide Nix flake validation',
+  condition: reaches({ start: 'nix:flake:eval', target: 'buck2:nix-bridge:check' }) === false,
+  name: 'nix:flake:eval does not realize a repository product',
 })
+ok({
+  condition: reaches({ start: 'nix:flake:eval', target: 'genie:check' }),
+  name: 'nix:flake:eval waits for source-side generation freshness',
+})
+// The editor bootstrap hashes Buck outputs; an aggregate materializing into `buck-out` in
+// parallel fails with "tree changed while hashing" (observed on #1362 when an unrelated edge
+// that ordered them transitively was removed).
+for (const aggregateTask of ['buck2:quick', 'buck2:all']) {
+  ok({
+    condition: reaches({ start: aggregateTask, target: 'buck2:editor:bootstrap' }),
+    name: `${aggregateTask} waits for the editor bootstrap`,
+  })
+}
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
     condition: reaches({ start: checkTask, target: 'mr:apply' }) === false,
@@ -258,6 +296,9 @@ const standaloneBuckTaskNames = [
   'buck2:editor:publish:otel-contract',
   'buck2:editor:publish:playwright',
   'buck2:nix-bridge:check',
+  'nix:buck2-artifact-import:check',
+  'nix:javascript-product-import:check',
+  'nix:flake:eval',
   'lint:check',
   'lint:check:format',
   'lint:check:genie:coverage',

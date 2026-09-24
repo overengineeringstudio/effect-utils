@@ -112,7 +112,6 @@ Key features:
 - **Read-only protection** - Generated files are read-only by default
 - **CI integration** - `--check` mode verifies files are up to date
 
-
 ## Quick Start
 
 ### Enter the dev shell
@@ -171,6 +170,23 @@ Audit cross-cell Buck provider identity separately:
 
 ```bash
 devenv tasks run buck2:providers:check
+```
+
+### Nix Artifact Import Checks
+
+Validate the generic and JavaScript Buck product import boundaries without
+realizing repository products:
+
+```bash
+devenv tasks run nix:buck2-artifact-import:check
+devenv tasks run nix:javascript-product-import:check
+```
+
+`check:all` also evaluates every flake output for the host system without
+building anything:
+
+```bash
+devenv tasks run nix:flake:eval
 ```
 
 ### Linting

@@ -672,8 +672,7 @@ in
           "dependency-materialization:evidence:check"
           "check:devenv-eval-inputs"
           "lint:check"
-
-          "nix:flake:check"
+          "nix:check:quick"
           "buck2:editor:publish"
           "test:run"
           "weaver:diff"
@@ -696,13 +695,16 @@ in
         "mr:source-policy-check"
       ];
     })
-    # No repository JavaScript package is source-built by Nix anymore. Import
-    # the empty module contract to retain repository-wide flake validation.
-    (taskModules.nix-cli { cliPackages = [ ]; })
+    # Repository Nix checks validate the two artifact-import contracts; check:all adds full-flake
+    # evaluation without realization. The from-source bridge contract realizes the retained
+    # Megarepo recovery product, so it runs pre-merge in the PR-only `pr-a-inert-buck` CI lane
+    # instead of either aggregate.
     (taskModules.check {
       hasMegarepoCheck = false;
+      hasNixCheck = false;
       checkQuickTypecheckTask = "buck2:quick";
       checkAllTypecheckTask = "buck2:all";
+      extraChecks = [ "nix:check:quick" ];
     })
     (taskModules.devenv-eval-input-budget { })
 
@@ -711,6 +713,7 @@ in
     # no `origin/main` merge-base; its load-bearing home is the CI `weaver` lane.
     (taskModules.weaver-diff { })
     { tasks."check:all".after = [ "weaver:diff" ]; }
+    { tasks."check:all".after = [ "nix:flake:eval" ]; }
     # Live-check e2e (SC-R12): emits registry-conformant OTLP from a first-party site, captures it,
     # and asserts `weaver registry live-check` accepts it (exit 0). Runs the scoped vitest e2e with
     # the hermetic weaver + semconv-model on env; degrades to a warning if weaver is unavailable.
@@ -1107,16 +1110,48 @@ in
     '';
   };
 
+  tasks."nix:buck2-artifact-import:check" = {
+    description = "Check the generic Buck product descriptor and artifact-import contracts";
+    after = [ "genie:check" ];
+    exec = trace.exec "nix:buck2-artifact-import:check" ''
+      set -euo pipefail
+      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
+    '';
+  };
+
+  tasks."nix:javascript-product-import:check" = {
+    description = "Check JavaScript Buck product descriptor and artifact-import contracts";
+    after = [ "genie:check" ];
+    exec = trace.exec "nix:javascript-product-import:check" ''
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"
+    '';
+  };
+
+  tasks."nix:check:quick" = {
+    description = "Check Nix artifact-import contracts without realizing repository products";
+    after = [
+      "nix:buck2-artifact-import:check"
+      "nix:javascript-product-import:check"
+    ];
+  };
+
+  # Replaces the former `nix flake check` edge: every flake output for the host system is
+  # evaluated, but nothing is realized, so repository-source products stay out of the Nix checks.
+  tasks."nix:flake:eval" = {
+    description = "Evaluate every flake output for the host system without building";
+    after = [ "genie:check" ];
+    exec = trace.exec "nix:flake:eval" "${pkgs.nix}/bin/nix flake check --no-build";
+  };
+
   tasks."buck2:nix-bridge:check" = {
-    description = "Check build-product, cache-publication, and fail-closed artifact-import contracts";
+    description = "Check the cache publisher and retained Megarepo from-source fallback";
     after = lib.mkForce [ "genie:check" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
       BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
         ${pkgs.bash}/bin/bash nix/buck2-products/from-source-contract.test.sh "$PWD"
-      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
-      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
-      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
     '';
   };
 
@@ -1269,8 +1304,11 @@ in
   # capability/toolchain boundary rather than producing an admitted artifact.
   tasks."buck2:providers:check" = {
     description = "Audit cross-cell provider identity for configured Buck toolchains";
+    # `genie:check` waits for `buck2:editor:bootstrap`, which hashes Buck outputs. Aggregates
+    # that materialize into `buck-out` must not run concurrently with that hashing; before
+    # #1362 the removed `buck2:nix-bridge:check` edge provided this ordering transitively.
     after = [
-      "buck2:nix-bridge:check"
+      "genie:check"
       "buck2:task-guards:check"
       "buck2:rust-deps:check"
     ];

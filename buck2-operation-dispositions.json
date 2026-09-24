@@ -143,6 +143,18 @@
       "operation": "lint:fix"
     },
     {
+      "disposition": "outside-by-policy:nix-artifact-import-contract",
+      "operation": "nix:buck2-artifact-import:check"
+    },
+    {
+      "disposition": "outside-by-policy:nix-flake-evaluation",
+      "operation": "nix:flake:eval"
+    },
+    {
+      "disposition": "outside-by-policy:nix-artifact-import-contract",
+      "operation": "nix:javascript-product-import:check"
+    },
+    {
       "disposition": "outside-by-policy:aggregate-includes-policy-excluded-tests",
       "operation": "test:<pkg>"
     },

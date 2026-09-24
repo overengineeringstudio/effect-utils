@@ -162,7 +162,7 @@ g.dashboard.new('devenv task Duration Trends')
   at(
     taskDurationPanel(
       'check:quick sub-tasks (p50 / p95 / p99)',
-      'buck2:quick|lint:check|lint:check:oxlint|lint:check:format|lint:check:genie|genie:run|nix:check:quick:.*',
+      'buck2:quick|lint:check|lint:check:oxlint|lint:check:format|lint:check:genie|genie:run|nix:(buck2-artifact-import|javascript-product-import):check',
     ),
     12, y.checkQuickContent, 12, 8,
   ),
@@ -232,7 +232,10 @@ g.dashboard.new('devenv task Duration Trends')
   ),
 
   at(
-    taskDurationPanel('nix:check:quick:* (p50 / p95 / p99)', 'nix:check:quick:.*'),
+    taskDurationPanel(
+      'Nix artifact-import checks (p50 / p95 / p99)',
+      'nix:(buck2-artifact-import|javascript-product-import):check',
+    ),
     8, y.nixContent, 8, 8,
   ),
 

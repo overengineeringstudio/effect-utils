@@ -637,6 +637,11 @@ const extraJobs: Record<string, any> = {
         run: runDevenvTasksBefore('genie:check'),
       },
       {
+        name: 'Evaluate every flake output without building',
+        env: githubTokenEnv(),
+        run: runDevenvTasksBefore('nix:flake:eval'),
+      },
+      {
         name: 'Run focused normalized, projection, and runner tests',
         env: githubTokenEnv(),
         run: withCiSourceRoot(
@@ -651,16 +656,18 @@ const extraJobs: Record<string, any> = {
         ),
       },
       {
-        // Two workspace-tools contract suites bound the release-manifest boundary from both
-        // sides: the publisher (source of the manifest) and the importer (its only consumer).
-        // `buck2:nix-bridge:check` still owns the bridge/build-product suites through devenv.
-        name: 'Check product publisher and manifest import contracts',
+        // Workspace-tools and Nix contract suites bound the product boundary pre-merge: the
+        // publisher (source of the manifest), the importer (its only consumer), and the
+        // retained Megarepo from-source recovery recipe (`buck2:nix-bridge:check`'s contract,
+        // run directly because the publisher refuses `pull_request` events by design).
+        name: 'Check product publisher, manifest import, and from-source contracts',
         env: githubTokenEnv(),
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"',
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"',
+            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/from-source-contract.test.sh "$PWD"',
           ].join('\n'),
         ),
       },
