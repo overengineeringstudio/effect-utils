@@ -23,12 +23,14 @@ export interface StylexNextOptions {
    * source. Spread the adapter's `transpilePackages` into Next config so Next
    * also strips TS/JSX after the StyleX Babel pre-rule. Token-only packages
    * whose exports are consumed through import following need not be listed.
+   */
   readonly externalPackages?: readonly string[]
   /**
    * File extensions transformed and collected. Defaults to
    * `['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts']`.
    * Only supported JavaScript/TypeScript suffixes are accepted; `mdx`
    * cannot be parsed by the PostCSS plugin.
+   */
   readonly extensions?: readonly string[]
   /**
    * Emit compiled rules into cascade layers. Defaults to OFF, and that default

@@ -50,7 +50,7 @@ const runFixtureCommand = (
   })
   if (result.error !== undefined) {
     throw new Error(
-      `${options.label} ${result.error.code === 'ETIMEDOUT' ? 'timed out' : 'failed'}: ${result.error.message}\n${result.stderr ?? ''}`,
+      `${options.label} ${'code' in result.error && result.error.code === 'ETIMEDOUT' ? 'timed out' : 'failed'}: ${result.error.message}\n${result.stderr ?? ''}`,
       { cause: result.error },
     )
   }
