@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
   all 30 products in the generated inventory. Source trees outside the public
   repository and private dependency archives are refused; npm's `private`
   field does not classify a package as confidential.
+- **@overeng/utils**: `@overeng/utils/node/stylex/next` adds
+  `createStylexNext`, the shared Next.js StyleX adapter: one StyleX options
+  object feeds a webpack `enforce: 'pre'` babel-loader rule scoped to the
+  configured source dirs (keeping SWC and `next/font` intact — no root Babel
+  config) and the `@stylexjs/postcss-plugin` entry that collects into the
+  carrier stylesheet. A missing carrier import or `@stylex` at-rule fails the
+  build loudly instead of silently shipping without StyleX CSS. Supports
+  Next 15.5 and 16 in webpack mode; Turbopack remains unsupported.
 
 ### Removed
 

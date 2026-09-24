@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:f058c58b0948d31b822a734ad2f8c5d0fb547292e398e7d3334aa3aecb4be981
+# Store fingerprint: sha256:d6cbbb1cee628a8bdc686c6bfdf78b2958d1c40aa0c1bd6f8e4e92652b1299dc
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -32,7 +32,39 @@ pnpm_platform_gated_packages(
     },
     families = {
         "@esbuild": ["@esbuild/aix-ppc64", "@esbuild/android-arm", "@esbuild/android-arm64", "@esbuild/android-x64", "@esbuild/darwin-arm64", "@esbuild/darwin-x64", "@esbuild/freebsd-arm64", "@esbuild/freebsd-x64", "@esbuild/linux-arm", "@esbuild/linux-arm64", "@esbuild/linux-ia32", "@esbuild/linux-loong64", "@esbuild/linux-mips64el", "@esbuild/linux-ppc64", "@esbuild/linux-riscv64", "@esbuild/linux-s390x", "@esbuild/linux-x64", "@esbuild/netbsd-arm64", "@esbuild/netbsd-x64", "@esbuild/openbsd-arm64", "@esbuild/openbsd-x64", "@esbuild/openharmony-arm64", "@esbuild/sunos-x64", "@esbuild/win32-arm64", "@esbuild/win32-ia32", "@esbuild/win32-x64"],
+        "@img/sharp-darwin-arm64": ["@img/sharp-darwin-arm64"],
+        "@img/sharp-darwin-x64": ["@img/sharp-darwin-x64"],
+        "@img/sharp-libvips-darwin-arm64": ["@img/sharp-libvips-darwin-arm64"],
+        "@img/sharp-libvips-darwin-x64": ["@img/sharp-libvips-darwin-x64"],
+        "@img/sharp-libvips-linux-arm": ["@img/sharp-libvips-linux-arm"],
+        "@img/sharp-libvips-linux-arm64": ["@img/sharp-libvips-linux-arm64"],
+        "@img/sharp-libvips-linux-ppc64": ["@img/sharp-libvips-linux-ppc64"],
+        "@img/sharp-libvips-linux-riscv64": ["@img/sharp-libvips-linux-riscv64"],
+        "@img/sharp-libvips-linux-s390x": ["@img/sharp-libvips-linux-s390x"],
+        "@img/sharp-libvips-linux-x64": ["@img/sharp-libvips-linux-x64"],
+        "@img/sharp-libvips-linuxmusl-arm64": ["@img/sharp-libvips-linuxmusl-arm64"],
+        "@img/sharp-libvips-linuxmusl-x64": ["@img/sharp-libvips-linuxmusl-x64"],
+        "@img/sharp-linux-arm": ["@img/sharp-linux-arm"],
+        "@img/sharp-linux-arm64": ["@img/sharp-linux-arm64"],
+        "@img/sharp-linux-ppc64": ["@img/sharp-linux-ppc64"],
+        "@img/sharp-linux-riscv64": ["@img/sharp-linux-riscv64"],
+        "@img/sharp-linux-s390x": ["@img/sharp-linux-s390x"],
+        "@img/sharp-linux-x64": ["@img/sharp-linux-x64"],
+        "@img/sharp-linuxmusl-arm64": ["@img/sharp-linuxmusl-arm64"],
+        "@img/sharp-linuxmusl-x64": ["@img/sharp-linuxmusl-x64"],
+        "@img/sharp-wasm32": ["@img/sharp-wasm32"],
+        "@img/sharp-win32-arm64": ["@img/sharp-win32-arm64"],
+        "@img/sharp-win32-ia32": ["@img/sharp-win32-ia32"],
+        "@img/sharp-win32-x64": ["@img/sharp-win32-x64"],
         "@msgpackr-extract": ["@msgpackr-extract/msgpackr-extract-darwin-arm64", "@msgpackr-extract/msgpackr-extract-darwin-x64", "@msgpackr-extract/msgpackr-extract-linux-arm", "@msgpackr-extract/msgpackr-extract-linux-arm64", "@msgpackr-extract/msgpackr-extract-linux-x64", "@msgpackr-extract/msgpackr-extract-win32-x64"],
+        "@next/swc-darwin-arm64": ["@next/swc-darwin-arm64"],
+        "@next/swc-darwin-x64": ["@next/swc-darwin-x64"],
+        "@next/swc-linux-arm64-gnu": ["@next/swc-linux-arm64-gnu"],
+        "@next/swc-linux-arm64-musl": ["@next/swc-linux-arm64-musl"],
+        "@next/swc-linux-x64-gnu": ["@next/swc-linux-x64-gnu"],
+        "@next/swc-linux-x64-musl": ["@next/swc-linux-x64-musl"],
+        "@next/swc-win32-arm64-msvc": ["@next/swc-win32-arm64-msvc"],
+        "@next/swc-win32-x64-msvc": ["@next/swc-win32-x64-msvc"],
         "@opentui/core": ["@opentui/core-darwin-arm64", "@opentui/core-darwin-x64", "@opentui/core-linux-arm64", "@opentui/core-linux-arm64-musl", "@opentui/core-linux-x64", "@opentui/core-linux-x64-musl", "@opentui/core-win32-arm64", "@opentui/core-win32-x64"],
         "@oxc-parser/binding": ["@oxc-parser/binding-android-arm-eabi", "@oxc-parser/binding-android-arm64", "@oxc-parser/binding-darwin-arm64", "@oxc-parser/binding-darwin-x64", "@oxc-parser/binding-freebsd-x64", "@oxc-parser/binding-linux-arm-gnueabihf", "@oxc-parser/binding-linux-arm-musleabihf", "@oxc-parser/binding-linux-arm64-gnu", "@oxc-parser/binding-linux-arm64-musl", "@oxc-parser/binding-linux-ppc64-gnu", "@oxc-parser/binding-linux-riscv64-gnu", "@oxc-parser/binding-linux-riscv64-musl", "@oxc-parser/binding-linux-s390x-gnu", "@oxc-parser/binding-linux-x64-gnu", "@oxc-parser/binding-linux-x64-musl", "@oxc-parser/binding-openharmony-arm64", "@oxc-parser/binding-wasm32-wasi", "@oxc-parser/binding-win32-arm64-msvc", "@oxc-parser/binding-win32-ia32-msvc", "@oxc-parser/binding-win32-x64-msvc"],
         "@oxc-resolver/binding": ["@oxc-resolver/binding-android-arm-eabi", "@oxc-resolver/binding-android-arm64", "@oxc-resolver/binding-darwin-arm64", "@oxc-resolver/binding-darwin-x64", "@oxc-resolver/binding-freebsd-x64", "@oxc-resolver/binding-linux-arm-gnueabihf", "@oxc-resolver/binding-linux-arm-musleabihf", "@oxc-resolver/binding-linux-arm64-gnu", "@oxc-resolver/binding-linux-arm64-musl", "@oxc-resolver/binding-linux-ppc64-gnu", "@oxc-resolver/binding-linux-riscv64-gnu", "@oxc-resolver/binding-linux-riscv64-musl", "@oxc-resolver/binding-linux-s390x-gnu", "@oxc-resolver/binding-linux-x64-gnu", "@oxc-resolver/binding-linux-x64-musl", "@oxc-resolver/binding-openharmony-arm64", "@oxc-resolver/binding-wasm32-wasi", "@oxc-resolver/binding-win32-arm64-msvc", "@oxc-resolver/binding-win32-x64-msvc"],
@@ -818,6 +850,256 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_img_colour_1_1_0_670fb365eb43",
+    package_name = "@img/colour",
+    url = "https://registry.npmjs.org/@img/colour/-/colour-1.1.0.tgz",
+    sha256 = "6c2df3ac33d4b8647191ad8942a579e6004be00c25846677eab85f04702d85b1",
+    size_bytes = 17410,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_darwin_arm64_0_34_5_3171750647af",
+    package_name = "@img/sharp-darwin-arm64",
+    url = "https://registry.npmjs.org/@img/sharp-darwin-arm64/-/sharp-darwin-arm64-0.34.5.tgz",
+    sha256 = "553ed774fa3be2290f1e55eadbd7f8350c06001939107a15810d9d6488bf2fc2",
+    size_bytes = 105669,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_darwin_x64_0_34_5_c48bcd6db78d",
+    package_name = "@img/sharp-darwin-x64",
+    url = "https://registry.npmjs.org/@img/sharp-darwin-x64/-/sharp-darwin-x64-0.34.5.tgz",
+    sha256 = "f9d90067c4e53c2d7947c8040e842c376257644491607cc0643809f44f03b23c",
+    size_bytes = 109933,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_darwin_arm64_1_2_4_c116a798f4b6",
+    package_name = "@img/sharp-libvips-darwin-arm64",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-darwin-arm64/-/sharp-libvips-darwin-arm64-1.2.4.tgz",
+    sha256 = "2b7a106979fc6c3e9ba27a7b9e305c610a0c11c2d10aac3b3d317d706cf302f7",
+    size_bytes = 7646386,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_darwin_x64_1_2_4_1ea16cd9f934",
+    package_name = "@img/sharp-libvips-darwin-x64",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-darwin-x64/-/sharp-libvips-darwin-x64-1.2.4.tgz",
+    sha256 = "82994201ae8df58db02c35010548df2ebbb8cf39f9d21ba1bdf29b7102fb6ca4",
+    size_bytes = 8268864,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_linux_arm64_1_2_4_b6019c9a6095",
+    package_name = "@img/sharp-libvips-linux-arm64",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-linux-arm64/-/sharp-libvips-linux-arm64-1.2.4.tgz",
+    sha256 = "bbbac2ec3c5e3ba8e8051d92a23887ae40ca30ed37555da5ffe356e58781a56d",
+    size_bytes = 7768114,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_linux_arm_1_2_4_89cdf7cbb988",
+    package_name = "@img/sharp-libvips-linux-arm",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-linux-arm/-/sharp-libvips-linux-arm-1.2.4.tgz",
+    sha256 = "4c478423660c951288cae1d0c2a745fdcb4f4562137acb9a5c58f17bc2c2a0db",
+    size_bytes = 6659637,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_linux_ppc64_1_2_4_0268e261d497",
+    package_name = "@img/sharp-libvips-linux-ppc64",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-linux-ppc64/-/sharp-libvips-linux-ppc64-1.2.4.tgz",
+    sha256 = "119622389d96f92bd82ce1a5ddd8c7ea61e5674da263d7fdb500489c9b2b7d70",
+    size_bytes = 7777898,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_linux_riscv64_1_2_4_55769c4bf77c",
+    package_name = "@img/sharp-libvips-linux-riscv64",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-linux-riscv64/-/sharp-libvips-linux-riscv64-1.2.4.tgz",
+    sha256 = "d78d033e5f6dc309f6b3c4cf66520e21d502e8effa55a591210d8b8734a86fab",
+    size_bytes = 7152199,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_linux_s390x_1_2_4_e64436388d1e",
+    package_name = "@img/sharp-libvips-linux-s390x",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-linux-s390x/-/sharp-libvips-linux-s390x-1.2.4.tgz",
+    sha256 = "324a805282583029ce74a737380c0f2d8c4aca79af3a86ac4d2231c45faf79d7",
+    size_bytes = 6885778,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_linux_x64_1_2_4_24655fa4f14d",
+    package_name = "@img/sharp-libvips-linux-x64",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-linux-x64/-/sharp-libvips-linux-x64-1.2.4.tgz",
+    sha256 = "43c132f5a31dc0d38aff8376fdce66b4761118a451e41dfa36f9829d9607c07c",
+    size_bytes = 7534373,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_linuxmusl_arm64_1_2_4_100e277f77a7",
+    package_name = "@img/sharp-libvips-linuxmusl-arm64",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-arm64/-/sharp-libvips-linuxmusl-arm64-1.2.4.tgz",
+    sha256 = "b7e0dd7e2bd7721807e494487c6cda44869796120eb2577239940c78289e9192",
+    size_bytes = 7922720,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_libvips_linuxmusl_x64_1_2_4_53d51acf0d28",
+    package_name = "@img/sharp-libvips-linuxmusl-x64",
+    url = "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-x64/-/sharp-libvips-linuxmusl-x64-1.2.4.tgz",
+    sha256 = "d6742cf538f93231708988bd49790e6897774ebf7b0c6cfaeb6c14286039bfc9",
+    size_bytes = 7650497,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_linux_arm64_0_34_5_0e29d277db2c",
+    package_name = "@img/sharp-linux-arm64",
+    url = "https://registry.npmjs.org/@img/sharp-linux-arm64/-/sharp-linux-arm64-0.34.5.tgz",
+    sha256 = "a1b6abb82159f8e9700f337ea9fc977892ddf41fbcbcfe168ae047a5cddc70be",
+    size_bytes = 171044,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_linux_arm_0_34_5_480c94e623e8",
+    package_name = "@img/sharp-linux-arm",
+    url = "https://registry.npmjs.org/@img/sharp-linux-arm/-/sharp-linux-arm-0.34.5.tgz",
+    sha256 = "ab794209ceda314ed4679d158ff3a9c5f94eec6052d0d26082d9120c7dd50b4d",
+    size_bytes = 97607,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_linux_ppc64_0_34_5_38b7190b635e",
+    package_name = "@img/sharp-linux-ppc64",
+    url = "https://registry.npmjs.org/@img/sharp-linux-ppc64/-/sharp-linux-ppc64-0.34.5.tgz",
+    sha256 = "5623da2742e1276f72e5009cf12fbc7a3cc69028f436657fccc23f3f4ad65515",
+    size_bytes = 110047,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_linux_riscv64_0_34_5_d32a15efd353",
+    package_name = "@img/sharp-linux-riscv64",
+    url = "https://registry.npmjs.org/@img/sharp-linux-riscv64/-/sharp-linux-riscv64-0.34.5.tgz",
+    sha256 = "afb36919218e5c1adbf666d004768ecce11512551b2b121193f3817d409fe6f7",
+    size_bytes = 100866,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_linux_s390x_0_34_5_06013468fc24",
+    package_name = "@img/sharp-linux-s390x",
+    url = "https://registry.npmjs.org/@img/sharp-linux-s390x/-/sharp-linux-s390x-0.34.5.tgz",
+    sha256 = "01ae527c2f167d41194e9ef608aabc9fb66c407144929c80c86fb9537381fca6",
+    size_bytes = 104191,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_linux_x64_0_34_5_17e18c9342f6",
+    package_name = "@img/sharp-linux-x64",
+    url = "https://registry.npmjs.org/@img/sharp-linux-x64/-/sharp-linux-x64-0.34.5.tgz",
+    sha256 = "fe13679b222907d9584214bf837d5d92c9456ba0880fc24625dd118ab7918ef9",
+    size_bytes = 182787,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_linuxmusl_arm64_0_34_5_4bca370b71b6",
+    package_name = "@img/sharp-linuxmusl-arm64",
+    url = "https://registry.npmjs.org/@img/sharp-linuxmusl-arm64/-/sharp-linuxmusl-arm64-0.34.5.tgz",
+    sha256 = "833d3a98d57f97e34d6162e439e99ad8b41d7384a24f77452f38f6e6e180ebbd",
+    size_bytes = 113609,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_linuxmusl_x64_0_34_5_1dc248f031d1",
+    package_name = "@img/sharp-linuxmusl-x64",
+    url = "https://registry.npmjs.org/@img/sharp-linuxmusl-x64/-/sharp-linuxmusl-x64-0.34.5.tgz",
+    sha256 = "84f6666b2abf1d7f8d42e833a02540ab70b2c1d1ea726e2eef18156a9ffad5f5",
+    size_bytes = 119134,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_wasm32_0_34_5_675da5c7de59",
+    package_name = "@img/sharp-wasm32",
+    url = "https://registry.npmjs.org/@img/sharp-wasm32/-/sharp-wasm32-0.34.5.tgz",
+    sha256 = "cecbe6388d6aaabf67d5662b40d4995b76211fe5b7bd8fbdd3cb96f0520f319c",
+    size_bytes = 3813091,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_win32_arm64_0_34_5_c8cf805f4424",
+    package_name = "@img/sharp-win32-arm64",
+    url = "https://registry.npmjs.org/@img/sharp-win32-arm64/-/sharp-win32-arm64-0.34.5.tgz",
+    sha256 = "c52399c34d6f2b1c3fe0787b69a0ef92596d3cbb1bb85a277ad383132819b9ee",
+    size_bytes = 7891933,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_win32_ia32_0_34_5_c8bf26670ab1",
+    package_name = "@img/sharp-win32-ia32",
+    url = "https://registry.npmjs.org/@img/sharp-win32-ia32/-/sharp-win32-ia32-0.34.5.tgz",
+    sha256 = "5f5cfaf4a3aa63a055289b7ba41549d2661bb7ced30ba9bcb9e891751830e85e",
+    size_bytes = 8607298,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_img_sharp_win32_x64_0_34_5_808739f01b8e",
+    package_name = "@img/sharp-win32-x64",
+    url = "https://registry.npmjs.org/@img/sharp-win32-x64/-/sharp-win32-x64-0.34.5.tgz",
+    sha256 = "e6c77a8f898da7c3fc17bc637e0b7af2bb99e50d61607996967930d97081c388",
+    size_bytes = 8685030,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_internationalized_date_3_12_4_5e4b6a270af8",
     package_name = "@internationalized/date",
     url = "https://registry.npmjs.org/@internationalized/date/-/date-3.12.4.tgz",
@@ -1010,11 +1292,131 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_next_env_16_2_6_88677b29abd0",
+    package_name = "@next/env",
+    url = "https://registry.npmjs.org/@next/env/-/env-16.2.6.tgz",
+    sha256 = "d8cd0791b08d2c914f0676a4077f917ea3bcc45afdb5b9d4018d5b1afda85252",
+    size_bytes = 4784,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_next_swc_darwin_arm64_16_2_6_0bd6a3e45322",
+    package_name = "@next/swc-darwin-arm64",
+    url = "https://registry.npmjs.org/@next/swc-darwin-arm64/-/swc-darwin-arm64-16.2.6.tgz",
+    sha256 = "7540dc03ced847a2c16fe9669a906529a711f50edc790540306dc0e49396e8ce",
+    size_bytes = 41074963,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_next_swc_darwin_x64_16_2_6_52f19c42e4db",
+    package_name = "@next/swc-darwin-x64",
+    url = "https://registry.npmjs.org/@next/swc-darwin-x64/-/swc-darwin-x64-16.2.6.tgz",
+    sha256 = "670dd3daaa1db772850513806508e33bc8d425229d5b4c017c85faf828cd0cab",
+    size_bytes = 42848882,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_next_swc_linux_arm64_gnu_16_2_6_0efad7ea4b0d",
+    package_name = "@next/swc-linux-arm64-gnu",
+    url = "https://registry.npmjs.org/@next/swc-linux-arm64-gnu/-/swc-linux-arm64-gnu-16.2.6.tgz",
+    sha256 = "0654c4457ac1ad89098a2f468dc3696a46e7387edadaf3717ea8fa12fae06ac5",
+    size_bytes = 42467391,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_next_swc_linux_arm64_musl_16_2_6_bd786ec49b3b",
+    package_name = "@next/swc-linux-arm64-musl",
+    url = "https://registry.npmjs.org/@next/swc-linux-arm64-musl/-/swc-linux-arm64-musl-16.2.6.tgz",
+    sha256 = "da00cf30729c523e8c1104b075b7b2fe0c65873e9df25656f533ecc00d9bed7c",
+    size_bytes = 42194115,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_next_swc_linux_x64_gnu_16_2_6_ca41a8394656",
+    package_name = "@next/swc-linux-x64-gnu",
+    url = "https://registry.npmjs.org/@next/swc-linux-x64-gnu/-/swc-linux-x64-gnu-16.2.6.tgz",
+    sha256 = "bcd48da65938d5db713b510789f678da18f82c0b1f1f741ace3d8235cbc9594d",
+    size_bytes = 45179442,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_next_swc_linux_x64_musl_16_2_6_ff0e3c148ddd",
+    package_name = "@next/swc-linux-x64-musl",
+    url = "https://registry.npmjs.org/@next/swc-linux-x64-musl/-/swc-linux-x64-musl-16.2.6.tgz",
+    sha256 = "7b042850fe0f1495fcbc4609bdfa1b07da1ba5c10fd8c324beee563b4f6dc2f3",
+    size_bytes = 45191121,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_next_swc_win32_arm64_msvc_16_2_6_3c08dd2fc60f",
+    package_name = "@next/swc-win32-arm64-msvc",
+    url = "https://registry.npmjs.org/@next/swc-win32-arm64-msvc/-/swc-win32-arm64-msvc-16.2.6.tgz",
+    sha256 = "c46ce6661201dd17bb0d899383c12fc29746e42b50042aae9e233f00cc5c729c",
+    size_bytes = 36351635,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_next_swc_win32_x64_msvc_16_2_6_85f3c4f242ba",
+    package_name = "@next/swc-win32-x64-msvc",
+    url = "https://registry.npmjs.org/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-16.2.6.tgz",
+    sha256 = "4375e20f9b9a1437397f7ad6ef68d272a6bfe77482d41ab8cf0c9088279fb637",
+    size_bytes = 43693233,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_noble_hashes_2_4_0_1855898e0984",
     package_name = "@noble/hashes",
     url = "https://registry.npmjs.org/@noble/hashes/-/hashes-2.4.0.tgz",
     sha256 = "e1946149b780017b2564fcc092cb01c04e1d7f20627d0296c17da8868f4436dc",
     size_bytes = 167626,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_nodelib_fs_scandir_2_1_5_da9ff7b653d8",
+    package_name = "@nodelib/fs.scandir",
+    url = "https://registry.npmjs.org/@nodelib/fs.scandir/-/fs.scandir-2.1.5.tgz",
+    sha256 = "a924bfa317c78e8bdbb0bd361522aba431fffe0878bf3699a8cb35a6e50cf94c",
+    size_bytes = 6586,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_nodelib_fs_stat_2_0_5_90edd7cceba6",
+    package_name = "@nodelib/fs.stat",
+    url = "https://registry.npmjs.org/@nodelib/fs.stat/-/fs.stat-2.0.5.tgz",
+    sha256 = "d8f8533551f21aca87b3fc2d4bc2e2cc7ab221104902c07da3df20baaf52136b",
+    size_bytes = 4182,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_nodelib_fs_walk_1_2_8_8af1f120ee67",
+    package_name = "@nodelib/fs.walk",
+    url = "https://registry.npmjs.org/@nodelib/fs.walk/-/fs.walk-1.2.8.tgz",
+    sha256 = "cbf9621f69b822ce97f71e842fea8e7bf9c7e986f01285689ede282092727d3d",
+    size_bytes = 7360,
     bins = {
     },
 )
@@ -2422,6 +2824,16 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_stylexjs_postcss_plugin_0_19_0_5729505901df",
+    package_name = "@stylexjs/postcss-plugin",
+    url = "https://registry.npmjs.org/@stylexjs/postcss-plugin/-/postcss-plugin-0.19.0.tgz",
+    sha256 = "6d4cad601a2d58c81a8be9ed32ff088b7c8c539b26d6811295b2f0f21c94bce2",
+    size_bytes = 11801,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_stylexjs_shared_0_19_0_cc10928d6623",
     package_name = "@stylexjs/shared",
     url = "https://registry.npmjs.org/@stylexjs/shared/-/shared-0.19.0.tgz",
@@ -2447,6 +2859,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/@stylexjs/unplugin/-/unplugin-0.19.0.tgz",
     sha256 = "3677559b76979435abb05e1ebe681066d073bde9a3a99658437a4875276feaba",
     size_bytes = 21440,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_swc_helpers_0_5_15_fb6f5ee8b6ce",
+    package_name = "@swc/helpers",
+    url = "https://registry.npmjs.org/@swc/helpers/-/helpers-0.5.15.tgz",
+    sha256 = "97e22cf245b7f60a14f14305e07211b459321cef2c3349f33df8adcd58396456",
+    size_bytes = 54016,
     bins = {
     },
 )
@@ -3603,6 +4025,16 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_babel_loader_10_1_1_e4a8835b4015",
+    package_name = "babel-loader",
+    url = "https://registry.npmjs.org/babel-loader/-/babel-loader-10.1.1.tgz",
+    sha256 = "b977c19c1c1f66e7430f4de84382a87a4fbd2305d8b047d31a4a58c86a0e76fc",
+    size_bytes = 16374,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_bail_2_0_2_7bb145b871ec",
     package_name = "bail",
     url = "https://registry.npmjs.org/bail/-/bail-2.0.2.tgz",
@@ -4349,6 +4781,16 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_fast_glob_3_3_3_dd5e0fd017ea",
+    package_name = "fast-glob",
+    url = "https://registry.npmjs.org/fast-glob/-/fast-glob-3.3.3.tgz",
+    sha256 = "5571ed1750bd1e77a0e4b5fea6e9afb3f2eb390a9576358c9aaacd04d3f60de8",
+    size_bytes = 25301,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_fast_json_stable_stringify_2_1_0_a49874e94660",
     package_name = "fast-json-stable-stringify",
     url = "https://registry.npmjs.org/fast-json-stable-stringify/-/fast-json-stable-stringify-2.1.0.tgz",
@@ -4364,6 +4806,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/fast-levenshtein/-/fast-levenshtein-2.0.6.tgz",
     sha256 = "bb4b50306b8b0f048475efddae11810e245937dca8ae85498ab4a171697bbf3c",
     size_bytes = 3699,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_fastq_1_20_3_a7ea9f9d907e",
+    package_name = "fastq",
+    url = "https://registry.npmjs.org/fastq/-/fastq-1.20.3.tgz",
+    sha256 = "cdcbf6387484c524461ddc4c338d2acb25276c4072ecea495959178d28367fef",
+    size_bytes = 10427,
     bins = {
     },
 )
@@ -4474,6 +4926,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/get-east-asian-width/-/get-east-asian-width-1.6.0.tgz",
     sha256 = "4451f58e2f5a4ef27ae8b4ba25b64be97d3a8413dc8614a4321a10d418eee6d7",
     size_bytes = 5310,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_glob_parent_5_1_2_0a11153a0f13",
+    package_name = "glob-parent",
+    url = "https://registry.npmjs.org/glob-parent/-/glob-parent-5.1.2.tgz",
+    sha256 = "9616afebd18b93592a79d48cce6a841604593ae90563f0ec5554a07b6952d6d5",
+    size_bytes = 4853,
     bins = {
     },
 )
@@ -5210,6 +5672,16 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_merge2_1_4_1_9805d0126218",
+    package_name = "merge2",
+    url = "https://registry.npmjs.org/merge2/-/merge2-1.4.1.tgz",
+    sha256 = "b8381291c9b3c859c5b58e75da8bdde64b424344054893c774c68c3c443d7881",
+    size_bytes = 3409,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_micromark_core_commonmark_2_0_3_685b8fd66b38",
     package_name = "micromark-core-commonmark",
     url = "https://registry.npmjs.org/micromark-core-commonmark/-/micromark-core-commonmark-2.0.3.tgz",
@@ -5573,6 +6045,17 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_next_16_2_6_0ee269efda30",
+    package_name = "next",
+    url = "https://registry.npmjs.org/next/-/next-16.2.6.tgz",
+    sha256 = "caeb2bdf78396771d8b0ff12d9343429297c36b9a6251ea002f7397119cdaebe",
+    size_bytes = 34117698,
+    bins = {
+        "next": "dist/bin/next",
+    },
+)
+
+pnpm_package(
     name = "package_node_addon_api_7_1_1_a00cd7868cf5",
     package_name = "node-addon-api",
     url = "https://registry.npmjs.org/node-addon-api/-/node-addon-api-7.1.1.tgz",
@@ -5860,6 +6343,16 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_postcss_8_4_31_731e47d2c49c",
+    package_name = "postcss",
+    url = "https://registry.npmjs.org/postcss/-/postcss-8.4.31.tgz",
+    sha256 = "803bd4d3de6bd009828978749db0558375bcde95d76683fad3fdcf4aa37c8453",
+    size_bytes = 45889,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_postcss_8_5_26_dd6223d49d4c",
     package_name = "postcss",
     url = "https://registry.npmjs.org/postcss/-/postcss-8.5.26.tgz",
@@ -5936,6 +6429,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/qified/-/qified-0.10.1.tgz",
     sha256 = "5acca41a42576ff888cf16cbcf505efbe3b0d4f55232edf3a931298a4b5ca662",
     size_bytes = 21247,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_queue_microtask_1_2_3_1a3574dac1bd",
+    package_name = "queue-microtask",
+    url = "https://registry.npmjs.org/queue-microtask/-/queue-microtask-1.2.3.tgz",
+    sha256 = "ffaf0a20a201865e143aa27e57a83bf69a75547729a65cd3180bcba4f0f29ecd",
+    size_bytes = 3676,
     bins = {
     },
 )
@@ -6142,6 +6645,16 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_reusify_1_1_0_49a719604e00",
+    package_name = "reusify",
+    url = "https://registry.npmjs.org/reusify/-/reusify-1.1.0.tgz",
+    sha256 = "2460004412100eea8e96b98f14d3dfb4e22a6628654e5431d14f974c6201ca18",
+    size_bytes = 4683,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_rolldown_1_2_7_f28636c54a2e",
     package_name = "rolldown",
     url = "https://registry.npmjs.org/rolldown/-/rolldown-1.2.7.tgz",
@@ -6168,6 +6681,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/run-applescript/-/run-applescript-7.1.0.tgz",
     sha256 = "d29ace7117aaa0d6b119027e9a157c238e6899bbb35d03f508ae8d4fa9ca8c9d",
     size_bytes = 2193,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_run_parallel_1_2_0_04556ea212e9",
+    package_name = "run-parallel",
+    url = "https://registry.npmjs.org/run-parallel/-/run-parallel-1.2.0.tgz",
+    sha256 = "6ba231f5377e0b18ef7ab0c65ca895708e21f1abff5999b24629436b0ff77ac8",
+    size_bytes = 2813,
     bins = {
     },
 )
@@ -6220,6 +6743,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/seroval/-/seroval-1.6.4.tgz",
     sha256 = "365096062b8a4a72df2059cfd9947290400bcf9cf60ab7f24cf96d43cb675f8e",
     size_bytes = 86394,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_sharp_0_34_5_201146ddf941",
+    package_name = "sharp",
+    url = "https://registry.npmjs.org/sharp/-/sharp-0.34.5.tgz",
+    sha256 = "460712506f9df808cf25bc2ba15be828bfa9179bd31b6ca47a9db624980026c3",
+    size_bytes = 119719,
     bins = {
     },
 )
@@ -6462,6 +6995,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/strip-indent/-/strip-indent-4.1.1.tgz",
     sha256 = "d497fcbb11bb4a3f07b4e74d5de4ef2ed7deef7402e6fd740ed9895536d1a026",
     size_bytes = 2014,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_styled_jsx_5_1_6_c78ced262809",
+    package_name = "styled-jsx",
+    url = "https://registry.npmjs.org/styled-jsx/-/styled-jsx-5.1.6.tgz",
+    sha256 = "42484b6c98ce658ee672927a3f7b9ac8920dfff3e406c01fbd62e2a8761bb7f9",
+    size_bytes = 156474,
     bins = {
     },
 )
@@ -8096,6 +8639,283 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_img_colour_1_1_0_670fb365eb43",
+    package = ":package_img_colour_1_1_0_670fb365eb43",
+    store_key = "@img+colour@1.1.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_darwin_arm64_0_34_5_3171750647af",
+    package = ":package_img_sharp_darwin_arm64_0_34_5_3171750647af",
+    store_key = "@img+sharp-darwin-arm64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies_by_platform = {
+        "javascript_portable": {
+        },
+        "linux_aarch64": {
+        },
+        "linux_x86_64": {
+        },
+        "macos_aarch64": {
+            "@img/sharp-libvips-darwin-arm64": ":entry_img_sharp_libvips_darwin_arm64_1_2_4_c116a798f4b6",
+        },
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_darwin_x64_0_34_5_c48bcd6db78d",
+    package = ":package_img_sharp_darwin_x64_0_34_5_c48bcd6db78d",
+    store_key = "@img+sharp-darwin-x64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_darwin_arm64_1_2_4_c116a798f4b6",
+    package = ":package_img_sharp_libvips_darwin_arm64_1_2_4_c116a798f4b6",
+    store_key = "@img+sharp-libvips-darwin-arm64@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_darwin_x64_1_2_4_1ea16cd9f934",
+    package = ":package_img_sharp_libvips_darwin_x64_1_2_4_1ea16cd9f934",
+    store_key = "@img+sharp-libvips-darwin-x64@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_linux_arm64_1_2_4_b6019c9a6095",
+    package = ":package_img_sharp_libvips_linux_arm64_1_2_4_b6019c9a6095",
+    store_key = "@img+sharp-libvips-linux-arm64@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_linux_arm_1_2_4_89cdf7cbb988",
+    package = ":package_img_sharp_libvips_linux_arm_1_2_4_89cdf7cbb988",
+    store_key = "@img+sharp-libvips-linux-arm@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_linux_ppc64_1_2_4_0268e261d497",
+    package = ":package_img_sharp_libvips_linux_ppc64_1_2_4_0268e261d497",
+    store_key = "@img+sharp-libvips-linux-ppc64@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_linux_riscv64_1_2_4_55769c4bf77c",
+    package = ":package_img_sharp_libvips_linux_riscv64_1_2_4_55769c4bf77c",
+    store_key = "@img+sharp-libvips-linux-riscv64@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_linux_s390x_1_2_4_e64436388d1e",
+    package = ":package_img_sharp_libvips_linux_s390x_1_2_4_e64436388d1e",
+    store_key = "@img+sharp-libvips-linux-s390x@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_linux_x64_1_2_4_24655fa4f14d",
+    package = ":package_img_sharp_libvips_linux_x64_1_2_4_24655fa4f14d",
+    store_key = "@img+sharp-libvips-linux-x64@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_linuxmusl_arm64_1_2_4_100e277f77a7",
+    package = ":package_img_sharp_libvips_linuxmusl_arm64_1_2_4_100e277f77a7",
+    store_key = "@img+sharp-libvips-linuxmusl-arm64@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_libvips_linuxmusl_x64_1_2_4_53d51acf0d28",
+    package = ":package_img_sharp_libvips_linuxmusl_x64_1_2_4_53d51acf0d28",
+    store_key = "@img+sharp-libvips-linuxmusl-x64@1.2.4",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_linux_arm64_0_34_5_0e29d277db2c",
+    package = ":package_img_sharp_linux_arm64_0_34_5_0e29d277db2c",
+    store_key = "@img+sharp-linux-arm64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies_by_platform = {
+        "javascript_portable": {
+        },
+        "linux_aarch64": {
+            "@img/sharp-libvips-linux-arm64": ":entry_img_sharp_libvips_linux_arm64_1_2_4_b6019c9a6095",
+        },
+        "linux_x86_64": {
+        },
+        "macos_aarch64": {
+        },
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_linux_arm_0_34_5_480c94e623e8",
+    package = ":package_img_sharp_linux_arm_0_34_5_480c94e623e8",
+    store_key = "@img+sharp-linux-arm@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_linux_ppc64_0_34_5_38b7190b635e",
+    package = ":package_img_sharp_linux_ppc64_0_34_5_38b7190b635e",
+    store_key = "@img+sharp-linux-ppc64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_linux_riscv64_0_34_5_d32a15efd353",
+    package = ":package_img_sharp_linux_riscv64_0_34_5_d32a15efd353",
+    store_key = "@img+sharp-linux-riscv64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_linux_s390x_0_34_5_06013468fc24",
+    package = ":package_img_sharp_linux_s390x_0_34_5_06013468fc24",
+    store_key = "@img+sharp-linux-s390x@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_linux_x64_0_34_5_17e18c9342f6",
+    package = ":package_img_sharp_linux_x64_0_34_5_17e18c9342f6",
+    store_key = "@img+sharp-linux-x64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies_by_platform = {
+        "javascript_portable": {
+        },
+        "linux_aarch64": {
+        },
+        "linux_x86_64": {
+            "@img/sharp-libvips-linux-x64": ":entry_img_sharp_libvips_linux_x64_1_2_4_24655fa4f14d",
+        },
+        "macos_aarch64": {
+        },
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_linuxmusl_arm64_0_34_5_4bca370b71b6",
+    package = ":package_img_sharp_linuxmusl_arm64_0_34_5_4bca370b71b6",
+    store_key = "@img+sharp-linuxmusl-arm64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_linuxmusl_x64_0_34_5_1dc248f031d1",
+    package = ":package_img_sharp_linuxmusl_x64_0_34_5_1dc248f031d1",
+    store_key = "@img+sharp-linuxmusl-x64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_wasm32_0_34_5_675da5c7de59",
+    package = ":package_img_sharp_wasm32_0_34_5_675da5c7de59",
+    store_key = "@img+sharp-wasm32@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_win32_arm64_0_34_5_c8cf805f4424",
+    package = ":package_img_sharp_win32_arm64_0_34_5_c8cf805f4424",
+    store_key = "@img+sharp-win32-arm64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_win32_ia32_0_34_5_c8bf26670ab1",
+    package = ":package_img_sharp_win32_ia32_0_34_5_c8bf26670ab1",
+    store_key = "@img+sharp-win32-ia32@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_img_sharp_win32_x64_0_34_5_808739f01b8e",
+    package = ":package_img_sharp_win32_x64_0_34_5_808739f01b8e",
+    store_key = "@img+sharp-win32-x64@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_internationalized_date_3_12_4_5e4b6a270af8",
     package = ":package_internationalized_date_3_12_4_5e4b6a270af8",
     store_key = "@internationalized+date@3.12.4",
@@ -8323,11 +9143,135 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_next_env_16_2_6_88677b29abd0",
+    package = ":package_next_env_16_2_6_88677b29abd0",
+    store_key = "@next+env@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_next_swc_darwin_arm64_16_2_6_0bd6a3e45322",
+    package = ":package_next_swc_darwin_arm64_16_2_6_0bd6a3e45322",
+    store_key = "@next+swc-darwin-arm64@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_next_swc_darwin_x64_16_2_6_52f19c42e4db",
+    package = ":package_next_swc_darwin_x64_16_2_6_52f19c42e4db",
+    store_key = "@next+swc-darwin-x64@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_next_swc_linux_arm64_gnu_16_2_6_0efad7ea4b0d",
+    package = ":package_next_swc_linux_arm64_gnu_16_2_6_0efad7ea4b0d",
+    store_key = "@next+swc-linux-arm64-gnu@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_next_swc_linux_arm64_musl_16_2_6_bd786ec49b3b",
+    package = ":package_next_swc_linux_arm64_musl_16_2_6_bd786ec49b3b",
+    store_key = "@next+swc-linux-arm64-musl@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_next_swc_linux_x64_gnu_16_2_6_ca41a8394656",
+    package = ":package_next_swc_linux_x64_gnu_16_2_6_ca41a8394656",
+    store_key = "@next+swc-linux-x64-gnu@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_next_swc_linux_x64_musl_16_2_6_ff0e3c148ddd",
+    package = ":package_next_swc_linux_x64_musl_16_2_6_ff0e3c148ddd",
+    store_key = "@next+swc-linux-x64-musl@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_next_swc_win32_arm64_msvc_16_2_6_3c08dd2fc60f",
+    package = ":package_next_swc_win32_arm64_msvc_16_2_6_3c08dd2fc60f",
+    store_key = "@next+swc-win32-arm64-msvc@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_next_swc_win32_x64_msvc_16_2_6_85f3c4f242ba",
+    package = ":package_next_swc_win32_x64_msvc_16_2_6_85f3c4f242ba",
+    store_key = "@next+swc-win32-x64-msvc@16.2.6",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_noble_hashes_2_4_0_1855898e0984",
     package = ":package_noble_hashes_2_4_0_1855898e0984",
     store_key = "@noble+hashes@2.4.0",
     runtime = ":assemble-store.ts",
     dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_nodelib_fs_scandir_2_1_5_da9ff7b653d8",
+    package = ":package_nodelib_fs_scandir_2_1_5_da9ff7b653d8",
+    store_key = "@nodelib+fs.scandir@2.1.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "@nodelib/fs.stat": ":entry_nodelib_fs_stat_2_0_5_90edd7cceba6",
+        "run-parallel": ":entry_run_parallel_1_2_0_04556ea212e9",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_nodelib_fs_stat_2_0_5_90edd7cceba6",
+    package = ":package_nodelib_fs_stat_2_0_5_90edd7cceba6",
+    store_key = "@nodelib+fs.stat@2.0.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_nodelib_fs_walk_1_2_8_8af1f120ee67",
+    package = ":package_nodelib_fs_walk_1_2_8_8af1f120ee67",
+    store_key = "@nodelib+fs.walk@1.2.8",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "@nodelib/fs.scandir": ":entry_nodelib_fs_scandir_2_1_5_da9ff7b653d8",
+        "fastq": ":entry_fastq_1_20_3_a7ea9f9d907e",
     },
     visibility = ["PUBLIC"],
 )
@@ -9861,6 +10805,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
+    package = ":package_stylexjs_postcss_plugin_0_19_0_5729505901df",
+    store_key = "@stylexjs+postcss-plugin@0.19.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "@babel/core": ":entry_babel_core_7_29_7_46a08ec2c1b0",
+        "@stylexjs/babel-plugin": ":entry_stylexjs_babel_plugin_0_19_0_749472a206a4",
+        "fast-glob": ":entry_fast_glob_3_3_3_dd5e0fd017ea",
+        "glob-parent": ":entry_glob_parent_6_0_2_7b90c3653564",
+        "is-glob": ":entry_is_glob_4_0_3_ab2c83c8b42b",
+        "postcss": ":entry_postcss_8_5_26_dd6223d49d4c",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_stylexjs_shared_0_19_0_cc10928d6623",
     package = ":package_stylexjs_shared_0_19_0_cc10928d6623",
     store_key = "@stylexjs+shared@0.19.0",
@@ -9897,6 +10857,17 @@ pnpm_store_entry(
         "browserslist": ":entry_browserslist_4_28_8_3a679ad65cca",
         "lightningcss": ":entry_lightningcss_1_33_0_7129b0f44113",
         "unplugin": ":entry_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vite_8_2_2_types_node_26_5__5b95d906a093",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
+    package = ":package_swc_helpers_0_5_15_fb6f5ee8b6ce",
+    store_key = "@swc+helpers@0.5.15",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "tslib": ":entry_tslib_2_8_1_b15471035cb0",
     },
     visibility = ["PUBLIC"],
 )
@@ -11297,6 +12268,19 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_babel_loader_10_1_1_babel_core_7_29_7_7569f56cba8f",
+    package = ":package_babel_loader_10_1_1_e4a8835b4015",
+    store_key = "babel-loader@10.1.1_@babel+core@7.29.7",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "@babel/core": ":entry_babel_core_7_29_7_46a08ec2c1b0",
+        "@types/babel__core": ":entry_types_babel__core_7_20_5_1365550a8adb",
+        "find-up": ":entry_find_up_5_0_0_36b5efd728dd",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_bail_2_0_2_7bb145b871ec",
     package = ":package_bail_2_0_2_7bb145b871ec",
     store_key = "bail@2.0.2",
@@ -12087,6 +13071,21 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_fast_glob_3_3_3_dd5e0fd017ea",
+    package = ":package_fast_glob_3_3_3_dd5e0fd017ea",
+    store_key = "fast-glob@3.3.3",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "@nodelib/fs.stat": ":entry_nodelib_fs_stat_2_0_5_90edd7cceba6",
+        "@nodelib/fs.walk": ":entry_nodelib_fs_walk_1_2_8_8af1f120ee67",
+        "glob-parent": ":entry_glob_parent_5_1_2_0a11153a0f13",
+        "merge2": ":entry_merge2_1_4_1_9805d0126218",
+        "micromatch": ":entry_micromatch_4_0_8_b2e59867d4ce",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_fast_json_stable_stringify_2_1_0_a49874e94660",
     package = ":package_fast_json_stable_stringify_2_1_0_a49874e94660",
     store_key = "fast-json-stable-stringify@2.1.0",
@@ -12102,6 +13101,17 @@ pnpm_store_entry(
     store_key = "fast-levenshtein@2.0.6",
     runtime = ":assemble-store.ts",
     dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_fastq_1_20_3_a7ea9f9d907e",
+    package = ":package_fastq_1_20_3_a7ea9f9d907e",
+    store_key = "fastq@1.20.3",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "reusify": ":entry_reusify_1_1_0_49a719604e00",
     },
     visibility = ["PUBLIC"],
 )
@@ -12220,6 +13230,17 @@ pnpm_store_entry(
     store_key = "get-east-asian-width@1.6.0",
     runtime = ":assemble-store.ts",
     dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_glob_parent_5_1_2_0a11153a0f13",
+    package = ":package_glob_parent_5_1_2_0a11153a0f13",
+    store_key = "glob-parent@5.1.2",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "is-glob": ":entry_is_glob_4_0_3_ab2c83c8b42b",
     },
     visibility = ["PUBLIC"],
 )
@@ -13050,6 +14071,16 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_merge2_1_4_1_9805d0126218",
+    package = ":package_merge2_1_4_1_9805d0126218",
+    store_key = "merge2@1.4.1",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_micromark_core_commonmark_2_0_3_685b8fd66b38",
     package = ":package_micromark_core_commonmark_2_0_3_685b8fd66b38",
     store_key = "micromark-core-commonmark@2.0.3",
@@ -13517,6 +14548,83 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__1ef5e3ace57a",
+    package = ":package_next_16_2_6_0ee269efda30",
+    store_key = "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45",
+    runtime = ":assemble-store.ts",
+    dependencies_by_platform = {
+        "javascript_portable": {
+            "@next/env": ":entry_next_env_16_2_6_88677b29abd0",
+            "@opentelemetry/api": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
+            "@playwright/test": ":entry_playwright_test_1_63_0_9bc3d88e065e",
+            "@swc/helpers": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
+            "@types/babel__core": ":entry_types_babel__core_7_20_5_1365550a8adb",
+            "@types/react": ":entry_types_react_19_2_18_231c43c28c72",
+            "@types/react-dom": ":entry_types_react_dom_19_2_7_types_react_19_2_18_cafde4f429b3",
+            "baseline-browser-mapping": ":entry_baseline_browser_mapping_2_11_20_4c4f08f6d615",
+            "caniuse-lite": ":entry_caniuse_lite_1_0_30001810_2279b0f6b9ea",
+            "postcss": ":entry_postcss_8_4_31_731e47d2c49c",
+            "react": ":entry_react_19_2_8_f0ed5178d6d7",
+            "react-dom": ":entry_react_dom_19_2_8_react_19_2_8_322c46404300",
+            "sharp": ":entry_sharp_0_34_5_201146ddf941",
+            "styled-jsx": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
+        },
+        "linux_aarch64": {
+            "@next/env": ":entry_next_env_16_2_6_88677b29abd0",
+            "@next/swc-linux-arm64-gnu": ":entry_next_swc_linux_arm64_gnu_16_2_6_0efad7ea4b0d",
+            "@opentelemetry/api": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
+            "@playwright/test": ":entry_playwright_test_1_63_0_9bc3d88e065e",
+            "@swc/helpers": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
+            "@types/babel__core": ":entry_types_babel__core_7_20_5_1365550a8adb",
+            "@types/react": ":entry_types_react_19_2_18_231c43c28c72",
+            "@types/react-dom": ":entry_types_react_dom_19_2_7_types_react_19_2_18_cafde4f429b3",
+            "baseline-browser-mapping": ":entry_baseline_browser_mapping_2_11_20_4c4f08f6d615",
+            "caniuse-lite": ":entry_caniuse_lite_1_0_30001810_2279b0f6b9ea",
+            "postcss": ":entry_postcss_8_4_31_731e47d2c49c",
+            "react": ":entry_react_19_2_8_f0ed5178d6d7",
+            "react-dom": ":entry_react_dom_19_2_8_react_19_2_8_322c46404300",
+            "sharp": ":entry_sharp_0_34_5_201146ddf941",
+            "styled-jsx": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
+        },
+        "linux_x86_64": {
+            "@next/env": ":entry_next_env_16_2_6_88677b29abd0",
+            "@next/swc-linux-x64-gnu": ":entry_next_swc_linux_x64_gnu_16_2_6_ca41a8394656",
+            "@opentelemetry/api": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
+            "@playwright/test": ":entry_playwright_test_1_63_0_9bc3d88e065e",
+            "@swc/helpers": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
+            "@types/babel__core": ":entry_types_babel__core_7_20_5_1365550a8adb",
+            "@types/react": ":entry_types_react_19_2_18_231c43c28c72",
+            "@types/react-dom": ":entry_types_react_dom_19_2_7_types_react_19_2_18_cafde4f429b3",
+            "baseline-browser-mapping": ":entry_baseline_browser_mapping_2_11_20_4c4f08f6d615",
+            "caniuse-lite": ":entry_caniuse_lite_1_0_30001810_2279b0f6b9ea",
+            "postcss": ":entry_postcss_8_4_31_731e47d2c49c",
+            "react": ":entry_react_19_2_8_f0ed5178d6d7",
+            "react-dom": ":entry_react_dom_19_2_8_react_19_2_8_322c46404300",
+            "sharp": ":entry_sharp_0_34_5_201146ddf941",
+            "styled-jsx": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
+        },
+        "macos_aarch64": {
+            "@next/env": ":entry_next_env_16_2_6_88677b29abd0",
+            "@next/swc-darwin-arm64": ":entry_next_swc_darwin_arm64_16_2_6_0bd6a3e45322",
+            "@opentelemetry/api": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
+            "@playwright/test": ":entry_playwright_test_1_63_0_9bc3d88e065e",
+            "@swc/helpers": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
+            "@types/babel__core": ":entry_types_babel__core_7_20_5_1365550a8adb",
+            "@types/react": ":entry_types_react_19_2_18_231c43c28c72",
+            "@types/react-dom": ":entry_types_react_dom_19_2_7_types_react_19_2_18_cafde4f429b3",
+            "baseline-browser-mapping": ":entry_baseline_browser_mapping_2_11_20_4c4f08f6d615",
+            "caniuse-lite": ":entry_caniuse_lite_1_0_30001810_2279b0f6b9ea",
+            "postcss": ":entry_postcss_8_4_31_731e47d2c49c",
+            "react": ":entry_react_19_2_8_f0ed5178d6d7",
+            "react-dom": ":entry_react_dom_19_2_8_react_19_2_8_322c46404300",
+            "sharp": ":entry_sharp_0_34_5_201146ddf941",
+            "styled-jsx": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
+        },
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_node_addon_api_7_1_1_a00cd7868cf5",
     package = ":package_node_addon_api_7_1_1_a00cd7868cf5",
     store_key = "node-addon-api@7.1.1",
@@ -13870,6 +14978,19 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_postcss_8_4_31_731e47d2c49c",
+    package = ":package_postcss_8_4_31_731e47d2c49c",
+    store_key = "postcss@8.4.31",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "nanoid": ":entry_nanoid_3_3_18_b20a4df32f5a",
+        "picocolors": ":entry_picocolors_1_1_1_7c5f37242535",
+        "source-map-js": ":entry_source_map_js_1_2_1_43b6dddbe93e",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_postcss_8_5_26_dd6223d49d4c",
     package = ":package_postcss_8_5_26_dd6223d49d4c",
     store_key = "postcss@8.5.26",
@@ -13952,6 +15073,16 @@ pnpm_store_entry(
     runtime = ":assemble-store.ts",
     dependencies = {
         "hookified": ":entry_hookified_2_2_0_28f9e2a047fb",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_queue_microtask_1_2_3_1a3574dac1bd",
+    package = ":package_queue_microtask_1_2_3_1a3574dac1bd",
+    store_key = "queue-microtask@1.2.3",
+    runtime = ":assemble-store.ts",
+    dependencies = {
     },
     visibility = ["PUBLIC"],
 )
@@ -14233,6 +15364,16 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_reusify_1_1_0_49a719604e00",
+    package = ":package_reusify_1_1_0_49a719604e00",
+    store_key = "reusify@1.1.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_rolldown_1_2_7_f28636c54a2e",
     package = ":package_rolldown_1_2_7_f28636c54a2e",
     store_key = "rolldown@1.2.7",
@@ -14277,6 +15418,17 @@ pnpm_store_entry(
     store_key = "run-applescript@7.1.0",
     runtime = ":assemble-store.ts",
     dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_run_parallel_1_2_0_04556ea212e9",
+    package = ":package_run_parallel_1_2_0_04556ea212e9",
+    store_key = "run-parallel@1.2.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "queue-microtask": ":entry_queue_microtask_1_2_3_1a3574dac1bd",
     },
     visibility = ["PUBLIC"],
 )
@@ -14328,6 +15480,42 @@ pnpm_store_entry(
     store_key = "seroval@1.6.4",
     runtime = ":assemble-store.ts",
     dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_sharp_0_34_5_201146ddf941",
+    package = ":package_sharp_0_34_5_201146ddf941",
+    store_key = "sharp@0.34.5",
+    runtime = ":assemble-store.ts",
+    dependencies_by_platform = {
+        "javascript_portable": {
+            "@img/colour": ":entry_img_colour_1_1_0_670fb365eb43",
+            "detect-libc": ":entry_detect_libc_2_1_2_a7155eec83d1",
+            "semver": ":entry_semver_7_8_5_82a86616e50d",
+        },
+        "linux_aarch64": {
+            "@img/colour": ":entry_img_colour_1_1_0_670fb365eb43",
+            "@img/sharp-libvips-linux-arm64": ":entry_img_sharp_libvips_linux_arm64_1_2_4_b6019c9a6095",
+            "@img/sharp-linux-arm64": ":entry_img_sharp_linux_arm64_0_34_5_0e29d277db2c",
+            "detect-libc": ":entry_detect_libc_2_1_2_a7155eec83d1",
+            "semver": ":entry_semver_7_8_5_82a86616e50d",
+        },
+        "linux_x86_64": {
+            "@img/colour": ":entry_img_colour_1_1_0_670fb365eb43",
+            "@img/sharp-libvips-linux-x64": ":entry_img_sharp_libvips_linux_x64_1_2_4_24655fa4f14d",
+            "@img/sharp-linux-x64": ":entry_img_sharp_linux_x64_0_34_5_17e18c9342f6",
+            "detect-libc": ":entry_detect_libc_2_1_2_a7155eec83d1",
+            "semver": ":entry_semver_7_8_5_82a86616e50d",
+        },
+        "macos_aarch64": {
+            "@img/colour": ":entry_img_colour_1_1_0_670fb365eb43",
+            "@img/sharp-darwin-arm64": ":entry_img_sharp_darwin_arm64_0_34_5_3171750647af",
+            "@img/sharp-libvips-darwin-arm64": ":entry_img_sharp_libvips_darwin_arm64_1_2_4_c116a798f4b6",
+            "detect-libc": ":entry_detect_libc_2_1_2_a7155eec83d1",
+            "semver": ":entry_semver_7_8_5_82a86616e50d",
+        },
     },
     visibility = ["PUBLIC"],
 )
@@ -14591,6 +15779,21 @@ pnpm_store_entry(
     store_key = "strip-indent@4.1.1",
     runtime = ":assemble-store.ts",
     dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
+    package = ":package_styled_jsx_5_1_6_c78ced262809",
+    store_key = "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "@babel/core": ":entry_babel_core_7_29_7_46a08ec2c1b0",
+        "@types/babel__core": ":entry_types_babel__core_7_20_5_1365550a8adb",
+        "@types/react": ":entry_types_react_19_2_18_231c43c28c72",
+        "client-only": ":entry_client_only_0_0_1_0538f21b471e",
+        "react": ":entry_react_19_2_8_f0ed5178d6d7",
     },
     visibility = ["PUBLIC"],
 )
@@ -37902,12 +39105,20 @@ pnpm_store_view(
         "@playwright/test": "@playwright+test@1.63.0",
         "@storybook/addon-a11y": "@storybook+addon-a11y@10.6.0_storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react_f6a9940ff352e48d",
         "@storybook/react-vite": "@storybook+react-vite@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-do_9b5eccc39f239997",
+        "@stylexjs/babel-plugin": "@stylexjs+babel-plugin@0.19.0",
+        "@stylexjs/postcss-plugin": "@stylexjs+postcss-plugin@0.19.0",
+        "@stylexjs/stylex": "@stylexjs+stylex@0.19.0",
         "@stylexjs/unplugin": "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5",
         "@types/node": "@types+node@26.5.0",
+        "@types/react": "@types+react@19.2.18",
         "@vitest/browser": "@vitest+browser@4.1.9_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "@vitest/browser-playwright": "@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
+        "babel-loader": "babel-loader@10.1.1_@babel+core@7.29.7",
         "effect": "effect@4.0.0-rc.112",
+        "next": "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45",
         "playwright": "playwright@1.63.0",
+        "react": "react@19.2.8",
+        "react-dom": "react-dom@19.2.8_react@19.2.8",
         "storybook": "storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_prettier@3.9.6_react_da9aab27e30e1021",
         "typescript": "typescript@7.0.2",
         "unplugin": "unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0",
@@ -37944,13 +39155,18 @@ pnpm_store_view(
             "@effect+platform-node-shared@4.0.0-rc.112_effect@4.0.0-rc.112": ":entry_effect_platform_node_shared_4_0_0_rc_112_effect_4_0_0_rc_112_6dc74cb25388",
             "@effect+platform-node@4.0.0-rc.112_effect@4.0.0-rc.112_redis@6.2.1_@opentelemetry+api@1.9.1": ":entry_effect_platform_node_4_0_0_rc_112_effect_4_0_0_rc_112_redis_6_2_1_opente_19ca92e99e71",
             "@effect+vitest@4.0.0-rc.112_effect@4.0.0-rc.112_vitest@4.1.9": ":entry_effect_vitest_4_0_0_rc_112_effect_4_0_0_rc_112_vitest_4_1_9_4cb99aa28661",
+            "@img+colour@1.1.0": ":entry_img_colour_1_1_0_670fb365eb43",
             "@joshwooding+vite-plugin-react-docgen-typescript@0.7.0_typescript@7.0.2_vite@8.2.2_@types+node@26.5.0_e_4edf6c57b52a6484": ":entry_joshwooding_vite_plugin_react_docgen_typescript_0_7_0_typescript_7_0_2_v_8d862fe00f9b",
             "@jridgewell+gen-mapping@0.3.13": ":entry_jridgewell_gen_mapping_0_3_13_145bee95e179",
             "@jridgewell+remapping@2.3.5": ":entry_jridgewell_remapping_2_3_5_43ae96c027a1",
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@next+env@16.2.6": ":entry_next_env_16_2_6_88677b29abd0",
             "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
+            "@nodelib+fs.scandir@2.1.5": ":entry_nodelib_fs_scandir_2_1_5_da9ff7b653d8",
+            "@nodelib+fs.stat@2.0.5": ":entry_nodelib_fs_stat_2_0_5_90edd7cceba6",
+            "@nodelib+fs.walk@1.2.8": ":entry_nodelib_fs_walk_1_2_8_8af1f120ee67",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -37983,9 +39199,11 @@ pnpm_store_view(
             "@storybook+react-vite@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-do_9b5eccc39f239997": ":entry_storybook_react_vite_10_6_0_types_react_dom_19_2_7_types_react_19_2_18_t_c166a25d561c",
             "@storybook+react@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-dom@19._c8fa65d991fb5130": ":entry_storybook_react_10_6_0_types_react_dom_19_2_7_types_react_19_2_18_types__0c620321284c",
             "@stylexjs+babel-plugin@0.19.0": ":entry_stylexjs_babel_plugin_0_19_0_749472a206a4",
+            "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
             "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
+            "@swc+helpers@0.5.15": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
             "@testing-library+dom@10.4.1": ":entry_testing_library_dom_10_4_1_6157fd4c81de",
             "@testing-library+jest-dom@6.9.1": ":entry_testing_library_jest_dom_6_9_1_71e5d02913b2",
             "@testing-library+user-event@14.6.7_@testing-library+dom@10.4.1": ":entry_testing_library_user_event_14_6_7_testing_library_dom_10_4_1_2b37aa52f746",
@@ -38025,9 +39243,11 @@ pnpm_store_view(
             "assertion-error@2.0.1": ":entry_assertion_error_2_0_1_a366b9348753",
             "ast-types@0.16.3": ":entry_ast_types_0_16_3_40b2b144dcf8",
             "axe-core@4.13.0": ":entry_axe_core_4_13_0_a700db80d2c8",
+            "babel-loader@10.1.1_@babel+core@7.29.7": ":entry_babel_loader_10_1_1_babel_core_7_29_7_7569f56cba8f",
             "balanced-match@4.0.4": ":entry_balanced_match_4_0_4_5d9d8851e0b3",
             "baseline-browser-mapping@2.11.20": ":entry_baseline_browser_mapping_2_11_20_4c4f08f6d615",
             "brace-expansion@5.0.9": ":entry_brace_expansion_5_0_9_8d760e4ad257",
+            "braces@3.0.3": ":entry_braces_3_0_3_ffc711d3f86d",
             "browserslist@4.28.8": ":entry_browserslist_4_28_8_3a679ad65cca",
             "buffer-image-size@0.6.4": ":entry_buffer_image_size_0_6_4_22c01178368e",
             "bundle-name@4.1.0": ":entry_bundle_name_4_1_0_9307e757191c",
@@ -38035,6 +39255,7 @@ pnpm_store_view(
             "chai@5.3.3": ":entry_chai_5_3_3_33e8dd2e32e0",
             "chai@6.2.2": ":entry_chai_6_2_2_558bd039a17f",
             "check-error@2.1.3": ":entry_check_error_2_1_3_7cc821aa4c77",
+            "client-only@0.0.1": ":entry_client_only_0_0_1_0538f21b471e",
             "cluster-key-slot@1.1.2": ":entry_cluster_key_slot_1_1_2_c0f5d819d288",
             "convert-source-map@2.0.0": ":entry_convert_source_map_2_0_0_46e32cfc1207",
             "css-mediaquery@0.1.2": ":entry_css_mediaquery_0_1_2_da1abaddca6c",
@@ -38064,9 +39285,15 @@ pnpm_store_view(
             "esutils@2.0.3": ":entry_esutils_2_0_3_cbd4dd8d594e",
             "expect-type@1.4.0": ":entry_expect_type_1_4_0_5d0eaf26bb08",
             "fast-check@4.9.0": ":entry_fast_check_4_9_0_ee42a396162e",
+            "fast-glob@3.3.3": ":entry_fast_glob_3_3_3_dd5e0fd017ea",
+            "fastq@1.20.3": ":entry_fastq_1_20_3_a7ea9f9d907e",
             "fdir@6.5.0_picomatch@4.0.7": ":entry_fdir_6_5_0_picomatch_4_0_7_0e611784cb76",
+            "fill-range@7.1.1": ":entry_fill_range_7_1_1_15fb888391f0",
+            "find-up@5.0.0": ":entry_find_up_5_0_0_36b5efd728dd",
             "function-bind@1.1.2": ":entry_function_bind_1_1_2_83de3b394293",
             "gensync@1.0.0-beta.2": ":entry_gensync_1_0_0_beta_2_c49cbe8d6351",
+            "glob-parent@5.1.2": ":entry_glob_parent_5_1_2_0a11153a0f13",
+            "glob-parent@6.0.2": ":entry_glob_parent_6_0_2_7b90c3653564",
             "glob@13.0.6": ":entry_glob_13_0_6_59626fdea6db",
             "happy-dom@20.14.0": ":entry_happy_dom_20_14_0_02b00a98d4e4",
             "hasown@2.0.4": ":entry_hasown_2_0_4_ba2e3a5fbd10",
@@ -38074,7 +39301,10 @@ pnpm_store_view(
             "invariant@2.2.4": ":entry_invariant_2_2_4_1101ec1e2443",
             "is-core-module@2.16.2": ":entry_is_core_module_2_16_2_8bad60a1ffe7",
             "is-docker@3.0.0": ":entry_is_docker_3_0_0_b21de9a8d47c",
+            "is-extglob@2.1.1": ":entry_is_extglob_2_1_1_9975757ae9e0",
+            "is-glob@4.0.3": ":entry_is_glob_4_0_3_ab2c83c8b42b",
             "is-inside-container@1.0.0": ":entry_is_inside_container_1_0_0_3f45825f7cda",
+            "is-number@7.0.0": ":entry_is_number_7_0_0_08fd04d109dd",
             "is-wsl@3.1.1": ":entry_is_wsl_3_1_1_a44f70aa8a1b",
             "jiti@2.7.0": ":entry_jiti_2_7_0_443514e89728",
             "js-tokens@4.0.0": ":entry_js_tokens_4_0_0_f4371f095c6f",
@@ -38082,6 +39312,7 @@ pnpm_store_view(
             "json5@2.2.3": ":entry_json5_2_2_3_16281c6ea25e",
             "jsonc-parser@3.3.1": ":entry_jsonc_parser_3_3_1_867699f9fc7b",
             "lightningcss@1.33.0": ":entry_lightningcss_1_33_0_7129b0f44113",
+            "locate-path@6.0.0": ":entry_locate_path_6_0_0_ad481860c229",
             "loose-envify@1.4.0": ":entry_loose_envify_1_4_0_ad111a799171",
             "loupe@3.2.1": ":entry_loupe_3_2_1_6cb5497e77fc",
             "lru-cache@11.5.2": ":entry_lru_cache_11_5_2_e163550123a3",
@@ -38089,6 +39320,8 @@ pnpm_store_view(
             "lz-string@1.5.0": ":entry_lz_string_1_5_0_a04d0916e498",
             "magic-string@0.30.21": ":entry_magic_string_0_30_21_a2e515768834",
             "magic-string@1.2.3": ":entry_magic_string_1_2_3_7ec1ec0d5479",
+            "merge2@1.4.1": ":entry_merge2_1_4_1_9805d0126218",
+            "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mime@4.1.0": ":entry_mime_4_1_0_6887a25dc460",
             "min-indent@1.0.1": ":entry_min_indent_1_0_1_a8f7b977daaa",
             "minimatch@10.2.6": ":entry_minimatch_10_2_6_7dfd90b95b04",
@@ -38099,26 +39332,33 @@ pnpm_store_view(
             "msgpackr-extract@3.0.4": ":entry_msgpackr_extract_3_0_4_dfa8bdf9fa66",
             "msgpackr@2.1.0": ":entry_msgpackr_2_1_0_4167decebcf1",
             "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
+            "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__1ef5e3ace57a",
             "node-gyp-build-optional-packages@5.2.2": ":entry_node_gyp_build_optional_packages_5_2_2_5b7a18b851f0",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "open@10.2.0": ":entry_open_10_2_0_d014b2891443",
             "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
             "oxc-resolver@11.21.2": ":entry_oxc_resolver_11_21_2_f960d078eb2b",
+            "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
+            "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
+            "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
             "path-parse@1.0.7": ":entry_path_parse_1_0_7_bb7410d6076a",
             "path-scurry@2.0.2": ":entry_path_scurry_2_0_2_885adc94c3a1",
             "pathe@2.0.3": ":entry_pathe_2_0_3_38bf70c9f194",
             "pathval@2.0.1": ":entry_pathval_2_0_1_07a686b3e961",
             "picocolors@1.1.1": ":entry_picocolors_1_1_1_7c5f37242535",
+            "picomatch@2.3.2": ":entry_picomatch_2_3_2_6522bf8f8986",
             "picomatch@4.0.7": ":entry_picomatch_4_0_7_0eb48e249822",
             "playwright-core@1.63.0": ":entry_playwright_core_1_63_0_e708629117d9",
             "playwright@1.63.0": ":entry_playwright_1_63_0_104e1ee57575",
             "pngjs@7.0.0": ":entry_pngjs_7_0_0_c4a10d4036f3",
             "postcss-value-parser@4.2.0": ":entry_postcss_value_parser_4_2_0_43359ebbc5d4",
+            "postcss@8.4.31": ":entry_postcss_8_4_31_731e47d2c49c",
             "postcss@8.5.26": ":entry_postcss_8_5_26_dd6223d49d4c",
             "prettier@3.9.6": ":entry_prettier_3_9_6_09a37784646f",
             "pretty-format@27.5.1": ":entry_pretty_format_27_5_1_0c5358044121",
             "pure-rand@8.4.2": ":entry_pure_rand_8_4_2_67da1f7bfbd4",
+            "queue-microtask@1.2.3": ":entry_queue_microtask_1_2_3_1a3574dac1bd",
             "react-docgen-typescript@2.4.0_typescript@7.0.2": ":entry_react_docgen_typescript_2_4_0_typescript_7_0_2_65c3c070dbe5",
             "react-docgen@8.0.3": ":entry_react_docgen_8_0_3_50d1e2dba113",
             "react-dom@19.2.8_react@19.2.8": ":entry_react_dom_19_2_8_react_19_2_8_322c46404300",
@@ -38128,11 +39368,14 @@ pnpm_store_view(
             "redent@3.0.0": ":entry_redent_3_0_0_ff3ab37955e2",
             "redis@6.2.1_@opentelemetry+api@1.9.1": ":entry_redis_6_2_1_opentelemetry_api_1_9_1_1f4d9a664fc3",
             "resolve@1.22.12": ":entry_resolve_1_22_12_bacbd0cff46e",
+            "reusify@1.1.0": ":entry_reusify_1_1_0_49a719604e00",
             "rolldown@1.2.7": ":entry_rolldown_1_2_7_f28636c54a2e",
             "run-applescript@7.1.0": ":entry_run_applescript_7_1_0_d5373e028313",
+            "run-parallel@1.2.0": ":entry_run_parallel_1_2_0_04556ea212e9",
             "scheduler@0.27.0": ":entry_scheduler_0_27_0_e21311c62741",
             "semver@6.3.1": ":entry_semver_6_3_1_8b8f657069cf",
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
+            "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "siginfo@2.0.0": ":entry_siginfo_2_0_0_9681d29ff1b8",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
             "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
@@ -38143,6 +39386,7 @@ pnpm_store_view(
             "strip-bom@3.0.0": ":entry_strip_bom_3_0_0_56fe2e31ea51",
             "strip-indent@3.0.0": ":entry_strip_indent_3_0_0_f4001fb53479",
             "strip-indent@4.1.1": ":entry_strip_indent_4_1_1_b0df34845d45",
+            "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
             "styleq@0.2.1": ":entry_styleq_0_2_1_23f606d8da0e",
             "supports-preserve-symlinks-flag@1.0.0": ":entry_supports_preserve_symlinks_flag_1_0_0_0acb1923e939",
             "tiny-invariant@1.3.3": ":entry_tiny_invariant_1_3_3_dae5146503a7",
@@ -38152,6 +39396,7 @@ pnpm_store_view(
             "tinyrainbow@2.0.0": ":entry_tinyrainbow_2_0_0_dc9e638efa60",
             "tinyrainbow@3.1.1": ":entry_tinyrainbow_3_1_1_6d7c54831543",
             "tinyspy@4.0.4": ":entry_tinyspy_4_0_4_3e58b1bf8742",
+            "to-regex-range@5.0.1": ":entry_to_regex_range_5_0_1_94d9608b52e4",
             "totalist@3.0.1": ":entry_totalist_3_0_1_bf205b0e9be4",
             "ts-dedent@2.3.0": ":entry_ts_dedent_2_3_0_e8b7497b8a75",
             "tsconfig-paths@4.2.0": ":entry_tsconfig_paths_4_2_0_7aa91b457c11",
@@ -38170,6 +39415,7 @@ pnpm_store_view(
             "ws@8.21.3": ":entry_ws_8_21_3_d250ffc75a80",
             "wsl-utils@0.1.0": ":entry_wsl_utils_0_1_0_3c6cb23f48b2",
             "yallist@3.1.1": ":entry_yallist_3_1_1_63b110ffd187",
+            "yocto-queue@0.1.0": ":entry_yocto_queue_0_1_0_1acee86624de",
         },
         "linux_aarch64": {
             "@adobe+css-tools@4.5.0": ":entry_adobe_css_tools_4_5_0_05b7b19c3def",
@@ -38201,6 +39447,9 @@ pnpm_store_view(
             "@effect+platform-node@4.0.0-rc.112_effect@4.0.0-rc.112_redis@6.2.1_@opentelemetry+api@1.9.1": ":entry_effect_platform_node_4_0_0_rc_112_effect_4_0_0_rc_112_redis_6_2_1_opente_19ca92e99e71",
             "@effect+vitest@4.0.0-rc.112_effect@4.0.0-rc.112_vitest@4.1.9": ":entry_effect_vitest_4_0_0_rc_112_effect_4_0_0_rc_112_vitest_4_1_9_4cb99aa28661",
             "@esbuild+linux-arm64@0.28.2": ":entry_esbuild_linux_arm64_0_28_2_a67bfa3d5003",
+            "@img+colour@1.1.0": ":entry_img_colour_1_1_0_670fb365eb43",
+            "@img+sharp-libvips-linux-arm64@1.2.4": ":entry_img_sharp_libvips_linux_arm64_1_2_4_b6019c9a6095",
+            "@img+sharp-linux-arm64@0.34.5": ":entry_img_sharp_linux_arm64_0_34_5_0e29d277db2c",
             "@joshwooding+vite-plugin-react-docgen-typescript@0.7.0_typescript@7.0.2_vite@8.2.2_@types+node@26.5.0_e_4edf6c57b52a6484": ":entry_joshwooding_vite_plugin_react_docgen_typescript_0_7_0_typescript_7_0_2_v_8d862fe00f9b",
             "@jridgewell+gen-mapping@0.3.13": ":entry_jridgewell_gen_mapping_0_3_13_145bee95e179",
             "@jridgewell+remapping@2.3.5": ":entry_jridgewell_remapping_2_3_5_43ae96c027a1",
@@ -38208,7 +39457,12 @@ pnpm_store_view(
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
             "@msgpackr-extract+msgpackr-extract-linux-arm64@3.0.4": ":entry_msgpackr_extract_msgpackr_extract_linux_arm64_3_0_4_cf31bccf54bd",
+            "@next+env@16.2.6": ":entry_next_env_16_2_6_88677b29abd0",
+            "@next+swc-linux-arm64-gnu@16.2.6": ":entry_next_swc_linux_arm64_gnu_16_2_6_0efad7ea4b0d",
             "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
+            "@nodelib+fs.scandir@2.1.5": ":entry_nodelib_fs_scandir_2_1_5_da9ff7b653d8",
+            "@nodelib+fs.stat@2.0.5": ":entry_nodelib_fs_stat_2_0_5_90edd7cceba6",
+            "@nodelib+fs.walk@1.2.8": ":entry_nodelib_fs_walk_1_2_8_8af1f120ee67",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -38244,9 +39498,11 @@ pnpm_store_view(
             "@storybook+react-vite@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-do_9b5eccc39f239997": ":entry_storybook_react_vite_10_6_0_types_react_dom_19_2_7_types_react_19_2_18_t_c166a25d561c",
             "@storybook+react@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-dom@19._c8fa65d991fb5130": ":entry_storybook_react_10_6_0_types_react_dom_19_2_7_types_react_19_2_18_types__0c620321284c",
             "@stylexjs+babel-plugin@0.19.0": ":entry_stylexjs_babel_plugin_0_19_0_749472a206a4",
+            "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
             "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
+            "@swc+helpers@0.5.15": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
             "@testing-library+dom@10.4.1": ":entry_testing_library_dom_10_4_1_6157fd4c81de",
             "@testing-library+jest-dom@6.9.1": ":entry_testing_library_jest_dom_6_9_1_71e5d02913b2",
             "@testing-library+user-event@14.6.7_@testing-library+dom@10.4.1": ":entry_testing_library_user_event_14_6_7_testing_library_dom_10_4_1_2b37aa52f746",
@@ -38287,9 +39543,11 @@ pnpm_store_view(
             "assertion-error@2.0.1": ":entry_assertion_error_2_0_1_a366b9348753",
             "ast-types@0.16.3": ":entry_ast_types_0_16_3_40b2b144dcf8",
             "axe-core@4.13.0": ":entry_axe_core_4_13_0_a700db80d2c8",
+            "babel-loader@10.1.1_@babel+core@7.29.7": ":entry_babel_loader_10_1_1_babel_core_7_29_7_7569f56cba8f",
             "balanced-match@4.0.4": ":entry_balanced_match_4_0_4_5d9d8851e0b3",
             "baseline-browser-mapping@2.11.20": ":entry_baseline_browser_mapping_2_11_20_4c4f08f6d615",
             "brace-expansion@5.0.9": ":entry_brace_expansion_5_0_9_8d760e4ad257",
+            "braces@3.0.3": ":entry_braces_3_0_3_ffc711d3f86d",
             "browserslist@4.28.8": ":entry_browserslist_4_28_8_3a679ad65cca",
             "buffer-image-size@0.6.4": ":entry_buffer_image_size_0_6_4_22c01178368e",
             "bundle-name@4.1.0": ":entry_bundle_name_4_1_0_9307e757191c",
@@ -38297,6 +39555,7 @@ pnpm_store_view(
             "chai@5.3.3": ":entry_chai_5_3_3_33e8dd2e32e0",
             "chai@6.2.2": ":entry_chai_6_2_2_558bd039a17f",
             "check-error@2.1.3": ":entry_check_error_2_1_3_7cc821aa4c77",
+            "client-only@0.0.1": ":entry_client_only_0_0_1_0538f21b471e",
             "cluster-key-slot@1.1.2": ":entry_cluster_key_slot_1_1_2_c0f5d819d288",
             "convert-source-map@2.0.0": ":entry_convert_source_map_2_0_0_46e32cfc1207",
             "css-mediaquery@0.1.2": ":entry_css_mediaquery_0_1_2_da1abaddca6c",
@@ -38326,9 +39585,15 @@ pnpm_store_view(
             "esutils@2.0.3": ":entry_esutils_2_0_3_cbd4dd8d594e",
             "expect-type@1.4.0": ":entry_expect_type_1_4_0_5d0eaf26bb08",
             "fast-check@4.9.0": ":entry_fast_check_4_9_0_ee42a396162e",
+            "fast-glob@3.3.3": ":entry_fast_glob_3_3_3_dd5e0fd017ea",
+            "fastq@1.20.3": ":entry_fastq_1_20_3_a7ea9f9d907e",
             "fdir@6.5.0_picomatch@4.0.7": ":entry_fdir_6_5_0_picomatch_4_0_7_0e611784cb76",
+            "fill-range@7.1.1": ":entry_fill_range_7_1_1_15fb888391f0",
+            "find-up@5.0.0": ":entry_find_up_5_0_0_36b5efd728dd",
             "function-bind@1.1.2": ":entry_function_bind_1_1_2_83de3b394293",
             "gensync@1.0.0-beta.2": ":entry_gensync_1_0_0_beta_2_c49cbe8d6351",
+            "glob-parent@5.1.2": ":entry_glob_parent_5_1_2_0a11153a0f13",
+            "glob-parent@6.0.2": ":entry_glob_parent_6_0_2_7b90c3653564",
             "glob@13.0.6": ":entry_glob_13_0_6_59626fdea6db",
             "happy-dom@20.14.0": ":entry_happy_dom_20_14_0_02b00a98d4e4",
             "hasown@2.0.4": ":entry_hasown_2_0_4_ba2e3a5fbd10",
@@ -38336,7 +39601,10 @@ pnpm_store_view(
             "invariant@2.2.4": ":entry_invariant_2_2_4_1101ec1e2443",
             "is-core-module@2.16.2": ":entry_is_core_module_2_16_2_8bad60a1ffe7",
             "is-docker@3.0.0": ":entry_is_docker_3_0_0_b21de9a8d47c",
+            "is-extglob@2.1.1": ":entry_is_extglob_2_1_1_9975757ae9e0",
+            "is-glob@4.0.3": ":entry_is_glob_4_0_3_ab2c83c8b42b",
             "is-inside-container@1.0.0": ":entry_is_inside_container_1_0_0_3f45825f7cda",
+            "is-number@7.0.0": ":entry_is_number_7_0_0_08fd04d109dd",
             "is-wsl@3.1.1": ":entry_is_wsl_3_1_1_a44f70aa8a1b",
             "jiti@2.7.0": ":entry_jiti_2_7_0_443514e89728",
             "js-tokens@4.0.0": ":entry_js_tokens_4_0_0_f4371f095c6f",
@@ -38345,6 +39613,7 @@ pnpm_store_view(
             "jsonc-parser@3.3.1": ":entry_jsonc_parser_3_3_1_867699f9fc7b",
             "lightningcss-linux-arm64-gnu@1.33.0": ":entry_lightningcss_linux_arm64_gnu_1_33_0_3c8fab71fd68",
             "lightningcss@1.33.0": ":entry_lightningcss_1_33_0_7129b0f44113",
+            "locate-path@6.0.0": ":entry_locate_path_6_0_0_ad481860c229",
             "loose-envify@1.4.0": ":entry_loose_envify_1_4_0_ad111a799171",
             "loupe@3.2.1": ":entry_loupe_3_2_1_6cb5497e77fc",
             "lru-cache@11.5.2": ":entry_lru_cache_11_5_2_e163550123a3",
@@ -38352,6 +39621,8 @@ pnpm_store_view(
             "lz-string@1.5.0": ":entry_lz_string_1_5_0_a04d0916e498",
             "magic-string@0.30.21": ":entry_magic_string_0_30_21_a2e515768834",
             "magic-string@1.2.3": ":entry_magic_string_1_2_3_7ec1ec0d5479",
+            "merge2@1.4.1": ":entry_merge2_1_4_1_9805d0126218",
+            "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mime@4.1.0": ":entry_mime_4_1_0_6887a25dc460",
             "min-indent@1.0.1": ":entry_min_indent_1_0_1_a8f7b977daaa",
             "minimatch@10.2.6": ":entry_minimatch_10_2_6_7dfd90b95b04",
@@ -38362,26 +39633,33 @@ pnpm_store_view(
             "msgpackr-extract@3.0.4": ":entry_msgpackr_extract_3_0_4_dfa8bdf9fa66",
             "msgpackr@2.1.0": ":entry_msgpackr_2_1_0_4167decebcf1",
             "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
+            "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__1ef5e3ace57a",
             "node-gyp-build-optional-packages@5.2.2": ":entry_node_gyp_build_optional_packages_5_2_2_5b7a18b851f0",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "open@10.2.0": ":entry_open_10_2_0_d014b2891443",
             "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
             "oxc-resolver@11.21.2": ":entry_oxc_resolver_11_21_2_f960d078eb2b",
+            "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
+            "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
+            "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
             "path-parse@1.0.7": ":entry_path_parse_1_0_7_bb7410d6076a",
             "path-scurry@2.0.2": ":entry_path_scurry_2_0_2_885adc94c3a1",
             "pathe@2.0.3": ":entry_pathe_2_0_3_38bf70c9f194",
             "pathval@2.0.1": ":entry_pathval_2_0_1_07a686b3e961",
             "picocolors@1.1.1": ":entry_picocolors_1_1_1_7c5f37242535",
+            "picomatch@2.3.2": ":entry_picomatch_2_3_2_6522bf8f8986",
             "picomatch@4.0.7": ":entry_picomatch_4_0_7_0eb48e249822",
             "playwright-core@1.63.0": ":entry_playwright_core_1_63_0_e708629117d9",
             "playwright@1.63.0": ":entry_playwright_1_63_0_104e1ee57575",
             "pngjs@7.0.0": ":entry_pngjs_7_0_0_c4a10d4036f3",
             "postcss-value-parser@4.2.0": ":entry_postcss_value_parser_4_2_0_43359ebbc5d4",
+            "postcss@8.4.31": ":entry_postcss_8_4_31_731e47d2c49c",
             "postcss@8.5.26": ":entry_postcss_8_5_26_dd6223d49d4c",
             "prettier@3.9.6": ":entry_prettier_3_9_6_09a37784646f",
             "pretty-format@27.5.1": ":entry_pretty_format_27_5_1_0c5358044121",
             "pure-rand@8.4.2": ":entry_pure_rand_8_4_2_67da1f7bfbd4",
+            "queue-microtask@1.2.3": ":entry_queue_microtask_1_2_3_1a3574dac1bd",
             "react-docgen-typescript@2.4.0_typescript@7.0.2": ":entry_react_docgen_typescript_2_4_0_typescript_7_0_2_65c3c070dbe5",
             "react-docgen@8.0.3": ":entry_react_docgen_8_0_3_50d1e2dba113",
             "react-dom@19.2.8_react@19.2.8": ":entry_react_dom_19_2_8_react_19_2_8_322c46404300",
@@ -38391,11 +39669,14 @@ pnpm_store_view(
             "redent@3.0.0": ":entry_redent_3_0_0_ff3ab37955e2",
             "redis@6.2.1_@opentelemetry+api@1.9.1": ":entry_redis_6_2_1_opentelemetry_api_1_9_1_1f4d9a664fc3",
             "resolve@1.22.12": ":entry_resolve_1_22_12_bacbd0cff46e",
+            "reusify@1.1.0": ":entry_reusify_1_1_0_49a719604e00",
             "rolldown@1.2.7": ":entry_rolldown_1_2_7_f28636c54a2e",
             "run-applescript@7.1.0": ":entry_run_applescript_7_1_0_d5373e028313",
+            "run-parallel@1.2.0": ":entry_run_parallel_1_2_0_04556ea212e9",
             "scheduler@0.27.0": ":entry_scheduler_0_27_0_e21311c62741",
             "semver@6.3.1": ":entry_semver_6_3_1_8b8f657069cf",
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
+            "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "siginfo@2.0.0": ":entry_siginfo_2_0_0_9681d29ff1b8",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
             "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
@@ -38406,6 +39687,7 @@ pnpm_store_view(
             "strip-bom@3.0.0": ":entry_strip_bom_3_0_0_56fe2e31ea51",
             "strip-indent@3.0.0": ":entry_strip_indent_3_0_0_f4001fb53479",
             "strip-indent@4.1.1": ":entry_strip_indent_4_1_1_b0df34845d45",
+            "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
             "styleq@0.2.1": ":entry_styleq_0_2_1_23f606d8da0e",
             "supports-preserve-symlinks-flag@1.0.0": ":entry_supports_preserve_symlinks_flag_1_0_0_0acb1923e939",
             "tiny-invariant@1.3.3": ":entry_tiny_invariant_1_3_3_dae5146503a7",
@@ -38415,6 +39697,7 @@ pnpm_store_view(
             "tinyrainbow@2.0.0": ":entry_tinyrainbow_2_0_0_dc9e638efa60",
             "tinyrainbow@3.1.1": ":entry_tinyrainbow_3_1_1_6d7c54831543",
             "tinyspy@4.0.4": ":entry_tinyspy_4_0_4_3e58b1bf8742",
+            "to-regex-range@5.0.1": ":entry_to_regex_range_5_0_1_94d9608b52e4",
             "totalist@3.0.1": ":entry_totalist_3_0_1_bf205b0e9be4",
             "ts-dedent@2.3.0": ":entry_ts_dedent_2_3_0_e8b7497b8a75",
             "tsconfig-paths@4.2.0": ":entry_tsconfig_paths_4_2_0_7aa91b457c11",
@@ -38433,6 +39716,7 @@ pnpm_store_view(
             "ws@8.21.3": ":entry_ws_8_21_3_d250ffc75a80",
             "wsl-utils@0.1.0": ":entry_wsl_utils_0_1_0_3c6cb23f48b2",
             "yallist@3.1.1": ":entry_yallist_3_1_1_63b110ffd187",
+            "yocto-queue@0.1.0": ":entry_yocto_queue_0_1_0_1acee86624de",
         },
         "linux_x86_64": {
             "@adobe+css-tools@4.5.0": ":entry_adobe_css_tools_4_5_0_05b7b19c3def",
@@ -38464,6 +39748,9 @@ pnpm_store_view(
             "@effect+platform-node@4.0.0-rc.112_effect@4.0.0-rc.112_redis@6.2.1_@opentelemetry+api@1.9.1": ":entry_effect_platform_node_4_0_0_rc_112_effect_4_0_0_rc_112_redis_6_2_1_opente_19ca92e99e71",
             "@effect+vitest@4.0.0-rc.112_effect@4.0.0-rc.112_vitest@4.1.9": ":entry_effect_vitest_4_0_0_rc_112_effect_4_0_0_rc_112_vitest_4_1_9_4cb99aa28661",
             "@esbuild+linux-x64@0.28.2": ":entry_esbuild_linux_x64_0_28_2_a925772984e9",
+            "@img+colour@1.1.0": ":entry_img_colour_1_1_0_670fb365eb43",
+            "@img+sharp-libvips-linux-x64@1.2.4": ":entry_img_sharp_libvips_linux_x64_1_2_4_24655fa4f14d",
+            "@img+sharp-linux-x64@0.34.5": ":entry_img_sharp_linux_x64_0_34_5_17e18c9342f6",
             "@joshwooding+vite-plugin-react-docgen-typescript@0.7.0_typescript@7.0.2_vite@8.2.2_@types+node@26.5.0_e_4edf6c57b52a6484": ":entry_joshwooding_vite_plugin_react_docgen_typescript_0_7_0_typescript_7_0_2_v_8d862fe00f9b",
             "@jridgewell+gen-mapping@0.3.13": ":entry_jridgewell_gen_mapping_0_3_13_145bee95e179",
             "@jridgewell+remapping@2.3.5": ":entry_jridgewell_remapping_2_3_5_43ae96c027a1",
@@ -38471,7 +39758,12 @@ pnpm_store_view(
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
             "@msgpackr-extract+msgpackr-extract-linux-x64@3.0.4": ":entry_msgpackr_extract_msgpackr_extract_linux_x64_3_0_4_d261ffc94c45",
+            "@next+env@16.2.6": ":entry_next_env_16_2_6_88677b29abd0",
+            "@next+swc-linux-x64-gnu@16.2.6": ":entry_next_swc_linux_x64_gnu_16_2_6_ca41a8394656",
             "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
+            "@nodelib+fs.scandir@2.1.5": ":entry_nodelib_fs_scandir_2_1_5_da9ff7b653d8",
+            "@nodelib+fs.stat@2.0.5": ":entry_nodelib_fs_stat_2_0_5_90edd7cceba6",
+            "@nodelib+fs.walk@1.2.8": ":entry_nodelib_fs_walk_1_2_8_8af1f120ee67",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -38507,9 +39799,11 @@ pnpm_store_view(
             "@storybook+react-vite@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-do_9b5eccc39f239997": ":entry_storybook_react_vite_10_6_0_types_react_dom_19_2_7_types_react_19_2_18_t_c166a25d561c",
             "@storybook+react@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-dom@19._c8fa65d991fb5130": ":entry_storybook_react_10_6_0_types_react_dom_19_2_7_types_react_19_2_18_types__0c620321284c",
             "@stylexjs+babel-plugin@0.19.0": ":entry_stylexjs_babel_plugin_0_19_0_749472a206a4",
+            "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
             "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
+            "@swc+helpers@0.5.15": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
             "@testing-library+dom@10.4.1": ":entry_testing_library_dom_10_4_1_6157fd4c81de",
             "@testing-library+jest-dom@6.9.1": ":entry_testing_library_jest_dom_6_9_1_71e5d02913b2",
             "@testing-library+user-event@14.6.7_@testing-library+dom@10.4.1": ":entry_testing_library_user_event_14_6_7_testing_library_dom_10_4_1_2b37aa52f746",
@@ -38550,9 +39844,11 @@ pnpm_store_view(
             "assertion-error@2.0.1": ":entry_assertion_error_2_0_1_a366b9348753",
             "ast-types@0.16.3": ":entry_ast_types_0_16_3_40b2b144dcf8",
             "axe-core@4.13.0": ":entry_axe_core_4_13_0_a700db80d2c8",
+            "babel-loader@10.1.1_@babel+core@7.29.7": ":entry_babel_loader_10_1_1_babel_core_7_29_7_7569f56cba8f",
             "balanced-match@4.0.4": ":entry_balanced_match_4_0_4_5d9d8851e0b3",
             "baseline-browser-mapping@2.11.20": ":entry_baseline_browser_mapping_2_11_20_4c4f08f6d615",
             "brace-expansion@5.0.9": ":entry_brace_expansion_5_0_9_8d760e4ad257",
+            "braces@3.0.3": ":entry_braces_3_0_3_ffc711d3f86d",
             "browserslist@4.28.8": ":entry_browserslist_4_28_8_3a679ad65cca",
             "buffer-image-size@0.6.4": ":entry_buffer_image_size_0_6_4_22c01178368e",
             "bundle-name@4.1.0": ":entry_bundle_name_4_1_0_9307e757191c",
@@ -38560,6 +39856,7 @@ pnpm_store_view(
             "chai@5.3.3": ":entry_chai_5_3_3_33e8dd2e32e0",
             "chai@6.2.2": ":entry_chai_6_2_2_558bd039a17f",
             "check-error@2.1.3": ":entry_check_error_2_1_3_7cc821aa4c77",
+            "client-only@0.0.1": ":entry_client_only_0_0_1_0538f21b471e",
             "cluster-key-slot@1.1.2": ":entry_cluster_key_slot_1_1_2_c0f5d819d288",
             "convert-source-map@2.0.0": ":entry_convert_source_map_2_0_0_46e32cfc1207",
             "css-mediaquery@0.1.2": ":entry_css_mediaquery_0_1_2_da1abaddca6c",
@@ -38589,9 +39886,15 @@ pnpm_store_view(
             "esutils@2.0.3": ":entry_esutils_2_0_3_cbd4dd8d594e",
             "expect-type@1.4.0": ":entry_expect_type_1_4_0_5d0eaf26bb08",
             "fast-check@4.9.0": ":entry_fast_check_4_9_0_ee42a396162e",
+            "fast-glob@3.3.3": ":entry_fast_glob_3_3_3_dd5e0fd017ea",
+            "fastq@1.20.3": ":entry_fastq_1_20_3_a7ea9f9d907e",
             "fdir@6.5.0_picomatch@4.0.7": ":entry_fdir_6_5_0_picomatch_4_0_7_0e611784cb76",
+            "fill-range@7.1.1": ":entry_fill_range_7_1_1_15fb888391f0",
+            "find-up@5.0.0": ":entry_find_up_5_0_0_36b5efd728dd",
             "function-bind@1.1.2": ":entry_function_bind_1_1_2_83de3b394293",
             "gensync@1.0.0-beta.2": ":entry_gensync_1_0_0_beta_2_c49cbe8d6351",
+            "glob-parent@5.1.2": ":entry_glob_parent_5_1_2_0a11153a0f13",
+            "glob-parent@6.0.2": ":entry_glob_parent_6_0_2_7b90c3653564",
             "glob@13.0.6": ":entry_glob_13_0_6_59626fdea6db",
             "happy-dom@20.14.0": ":entry_happy_dom_20_14_0_02b00a98d4e4",
             "hasown@2.0.4": ":entry_hasown_2_0_4_ba2e3a5fbd10",
@@ -38599,7 +39902,10 @@ pnpm_store_view(
             "invariant@2.2.4": ":entry_invariant_2_2_4_1101ec1e2443",
             "is-core-module@2.16.2": ":entry_is_core_module_2_16_2_8bad60a1ffe7",
             "is-docker@3.0.0": ":entry_is_docker_3_0_0_b21de9a8d47c",
+            "is-extglob@2.1.1": ":entry_is_extglob_2_1_1_9975757ae9e0",
+            "is-glob@4.0.3": ":entry_is_glob_4_0_3_ab2c83c8b42b",
             "is-inside-container@1.0.0": ":entry_is_inside_container_1_0_0_3f45825f7cda",
+            "is-number@7.0.0": ":entry_is_number_7_0_0_08fd04d109dd",
             "is-wsl@3.1.1": ":entry_is_wsl_3_1_1_a44f70aa8a1b",
             "jiti@2.7.0": ":entry_jiti_2_7_0_443514e89728",
             "js-tokens@4.0.0": ":entry_js_tokens_4_0_0_f4371f095c6f",
@@ -38608,6 +39914,7 @@ pnpm_store_view(
             "jsonc-parser@3.3.1": ":entry_jsonc_parser_3_3_1_867699f9fc7b",
             "lightningcss-linux-x64-gnu@1.33.0": ":entry_lightningcss_linux_x64_gnu_1_33_0_abda693e4089",
             "lightningcss@1.33.0": ":entry_lightningcss_1_33_0_7129b0f44113",
+            "locate-path@6.0.0": ":entry_locate_path_6_0_0_ad481860c229",
             "loose-envify@1.4.0": ":entry_loose_envify_1_4_0_ad111a799171",
             "loupe@3.2.1": ":entry_loupe_3_2_1_6cb5497e77fc",
             "lru-cache@11.5.2": ":entry_lru_cache_11_5_2_e163550123a3",
@@ -38615,6 +39922,8 @@ pnpm_store_view(
             "lz-string@1.5.0": ":entry_lz_string_1_5_0_a04d0916e498",
             "magic-string@0.30.21": ":entry_magic_string_0_30_21_a2e515768834",
             "magic-string@1.2.3": ":entry_magic_string_1_2_3_7ec1ec0d5479",
+            "merge2@1.4.1": ":entry_merge2_1_4_1_9805d0126218",
+            "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mime@4.1.0": ":entry_mime_4_1_0_6887a25dc460",
             "min-indent@1.0.1": ":entry_min_indent_1_0_1_a8f7b977daaa",
             "minimatch@10.2.6": ":entry_minimatch_10_2_6_7dfd90b95b04",
@@ -38625,26 +39934,33 @@ pnpm_store_view(
             "msgpackr-extract@3.0.4": ":entry_msgpackr_extract_3_0_4_dfa8bdf9fa66",
             "msgpackr@2.1.0": ":entry_msgpackr_2_1_0_4167decebcf1",
             "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
+            "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__1ef5e3ace57a",
             "node-gyp-build-optional-packages@5.2.2": ":entry_node_gyp_build_optional_packages_5_2_2_5b7a18b851f0",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "open@10.2.0": ":entry_open_10_2_0_d014b2891443",
             "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
             "oxc-resolver@11.21.2": ":entry_oxc_resolver_11_21_2_f960d078eb2b",
+            "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
+            "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
+            "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
             "path-parse@1.0.7": ":entry_path_parse_1_0_7_bb7410d6076a",
             "path-scurry@2.0.2": ":entry_path_scurry_2_0_2_885adc94c3a1",
             "pathe@2.0.3": ":entry_pathe_2_0_3_38bf70c9f194",
             "pathval@2.0.1": ":entry_pathval_2_0_1_07a686b3e961",
             "picocolors@1.1.1": ":entry_picocolors_1_1_1_7c5f37242535",
+            "picomatch@2.3.2": ":entry_picomatch_2_3_2_6522bf8f8986",
             "picomatch@4.0.7": ":entry_picomatch_4_0_7_0eb48e249822",
             "playwright-core@1.63.0": ":entry_playwright_core_1_63_0_e708629117d9",
             "playwright@1.63.0": ":entry_playwright_1_63_0_104e1ee57575",
             "pngjs@7.0.0": ":entry_pngjs_7_0_0_c4a10d4036f3",
             "postcss-value-parser@4.2.0": ":entry_postcss_value_parser_4_2_0_43359ebbc5d4",
+            "postcss@8.4.31": ":entry_postcss_8_4_31_731e47d2c49c",
             "postcss@8.5.26": ":entry_postcss_8_5_26_dd6223d49d4c",
             "prettier@3.9.6": ":entry_prettier_3_9_6_09a37784646f",
             "pretty-format@27.5.1": ":entry_pretty_format_27_5_1_0c5358044121",
             "pure-rand@8.4.2": ":entry_pure_rand_8_4_2_67da1f7bfbd4",
+            "queue-microtask@1.2.3": ":entry_queue_microtask_1_2_3_1a3574dac1bd",
             "react-docgen-typescript@2.4.0_typescript@7.0.2": ":entry_react_docgen_typescript_2_4_0_typescript_7_0_2_65c3c070dbe5",
             "react-docgen@8.0.3": ":entry_react_docgen_8_0_3_50d1e2dba113",
             "react-dom@19.2.8_react@19.2.8": ":entry_react_dom_19_2_8_react_19_2_8_322c46404300",
@@ -38654,11 +39970,14 @@ pnpm_store_view(
             "redent@3.0.0": ":entry_redent_3_0_0_ff3ab37955e2",
             "redis@6.2.1_@opentelemetry+api@1.9.1": ":entry_redis_6_2_1_opentelemetry_api_1_9_1_1f4d9a664fc3",
             "resolve@1.22.12": ":entry_resolve_1_22_12_bacbd0cff46e",
+            "reusify@1.1.0": ":entry_reusify_1_1_0_49a719604e00",
             "rolldown@1.2.7": ":entry_rolldown_1_2_7_f28636c54a2e",
             "run-applescript@7.1.0": ":entry_run_applescript_7_1_0_d5373e028313",
+            "run-parallel@1.2.0": ":entry_run_parallel_1_2_0_04556ea212e9",
             "scheduler@0.27.0": ":entry_scheduler_0_27_0_e21311c62741",
             "semver@6.3.1": ":entry_semver_6_3_1_8b8f657069cf",
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
+            "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "siginfo@2.0.0": ":entry_siginfo_2_0_0_9681d29ff1b8",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
             "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
@@ -38669,6 +39988,7 @@ pnpm_store_view(
             "strip-bom@3.0.0": ":entry_strip_bom_3_0_0_56fe2e31ea51",
             "strip-indent@3.0.0": ":entry_strip_indent_3_0_0_f4001fb53479",
             "strip-indent@4.1.1": ":entry_strip_indent_4_1_1_b0df34845d45",
+            "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
             "styleq@0.2.1": ":entry_styleq_0_2_1_23f606d8da0e",
             "supports-preserve-symlinks-flag@1.0.0": ":entry_supports_preserve_symlinks_flag_1_0_0_0acb1923e939",
             "tiny-invariant@1.3.3": ":entry_tiny_invariant_1_3_3_dae5146503a7",
@@ -38678,6 +39998,7 @@ pnpm_store_view(
             "tinyrainbow@2.0.0": ":entry_tinyrainbow_2_0_0_dc9e638efa60",
             "tinyrainbow@3.1.1": ":entry_tinyrainbow_3_1_1_6d7c54831543",
             "tinyspy@4.0.4": ":entry_tinyspy_4_0_4_3e58b1bf8742",
+            "to-regex-range@5.0.1": ":entry_to_regex_range_5_0_1_94d9608b52e4",
             "totalist@3.0.1": ":entry_totalist_3_0_1_bf205b0e9be4",
             "ts-dedent@2.3.0": ":entry_ts_dedent_2_3_0_e8b7497b8a75",
             "tsconfig-paths@4.2.0": ":entry_tsconfig_paths_4_2_0_7aa91b457c11",
@@ -38696,6 +40017,7 @@ pnpm_store_view(
             "ws@8.21.3": ":entry_ws_8_21_3_d250ffc75a80",
             "wsl-utils@0.1.0": ":entry_wsl_utils_0_1_0_3c6cb23f48b2",
             "yallist@3.1.1": ":entry_yallist_3_1_1_63b110ffd187",
+            "yocto-queue@0.1.0": ":entry_yocto_queue_0_1_0_1acee86624de",
         },
         "macos_aarch64": {
             "@adobe+css-tools@4.5.0": ":entry_adobe_css_tools_4_5_0_05b7b19c3def",
@@ -38727,6 +40049,9 @@ pnpm_store_view(
             "@effect+platform-node@4.0.0-rc.112_effect@4.0.0-rc.112_redis@6.2.1_@opentelemetry+api@1.9.1": ":entry_effect_platform_node_4_0_0_rc_112_effect_4_0_0_rc_112_redis_6_2_1_opente_19ca92e99e71",
             "@effect+vitest@4.0.0-rc.112_effect@4.0.0-rc.112_vitest@4.1.9": ":entry_effect_vitest_4_0_0_rc_112_effect_4_0_0_rc_112_vitest_4_1_9_4cb99aa28661",
             "@esbuild+darwin-arm64@0.28.2": ":entry_esbuild_darwin_arm64_0_28_2_721282d04d4b",
+            "@img+colour@1.1.0": ":entry_img_colour_1_1_0_670fb365eb43",
+            "@img+sharp-darwin-arm64@0.34.5": ":entry_img_sharp_darwin_arm64_0_34_5_3171750647af",
+            "@img+sharp-libvips-darwin-arm64@1.2.4": ":entry_img_sharp_libvips_darwin_arm64_1_2_4_c116a798f4b6",
             "@joshwooding+vite-plugin-react-docgen-typescript@0.7.0_typescript@7.0.2_vite@8.2.2_@types+node@26.5.0_e_4edf6c57b52a6484": ":entry_joshwooding_vite_plugin_react_docgen_typescript_0_7_0_typescript_7_0_2_v_8d862fe00f9b",
             "@jridgewell+gen-mapping@0.3.13": ":entry_jridgewell_gen_mapping_0_3_13_145bee95e179",
             "@jridgewell+remapping@2.3.5": ":entry_jridgewell_remapping_2_3_5_43ae96c027a1",
@@ -38734,7 +40059,12 @@ pnpm_store_view(
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
             "@msgpackr-extract+msgpackr-extract-darwin-arm64@3.0.4": ":entry_msgpackr_extract_msgpackr_extract_darwin_arm64_3_0_4_fa8bce50cc94",
+            "@next+env@16.2.6": ":entry_next_env_16_2_6_88677b29abd0",
+            "@next+swc-darwin-arm64@16.2.6": ":entry_next_swc_darwin_arm64_16_2_6_0bd6a3e45322",
             "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
+            "@nodelib+fs.scandir@2.1.5": ":entry_nodelib_fs_scandir_2_1_5_da9ff7b653d8",
+            "@nodelib+fs.stat@2.0.5": ":entry_nodelib_fs_stat_2_0_5_90edd7cceba6",
+            "@nodelib+fs.walk@1.2.8": ":entry_nodelib_fs_walk_1_2_8_8af1f120ee67",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -38770,9 +40100,11 @@ pnpm_store_view(
             "@storybook+react-vite@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-do_9b5eccc39f239997": ":entry_storybook_react_vite_10_6_0_types_react_dom_19_2_7_types_react_19_2_18_t_c166a25d561c",
             "@storybook+react@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-dom@19._c8fa65d991fb5130": ":entry_storybook_react_10_6_0_types_react_dom_19_2_7_types_react_19_2_18_types__0c620321284c",
             "@stylexjs+babel-plugin@0.19.0": ":entry_stylexjs_babel_plugin_0_19_0_749472a206a4",
+            "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
             "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
+            "@swc+helpers@0.5.15": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
             "@testing-library+dom@10.4.1": ":entry_testing_library_dom_10_4_1_6157fd4c81de",
             "@testing-library+jest-dom@6.9.1": ":entry_testing_library_jest_dom_6_9_1_71e5d02913b2",
             "@testing-library+user-event@14.6.7_@testing-library+dom@10.4.1": ":entry_testing_library_user_event_14_6_7_testing_library_dom_10_4_1_2b37aa52f746",
@@ -38813,9 +40145,11 @@ pnpm_store_view(
             "assertion-error@2.0.1": ":entry_assertion_error_2_0_1_a366b9348753",
             "ast-types@0.16.3": ":entry_ast_types_0_16_3_40b2b144dcf8",
             "axe-core@4.13.0": ":entry_axe_core_4_13_0_a700db80d2c8",
+            "babel-loader@10.1.1_@babel+core@7.29.7": ":entry_babel_loader_10_1_1_babel_core_7_29_7_7569f56cba8f",
             "balanced-match@4.0.4": ":entry_balanced_match_4_0_4_5d9d8851e0b3",
             "baseline-browser-mapping@2.11.20": ":entry_baseline_browser_mapping_2_11_20_4c4f08f6d615",
             "brace-expansion@5.0.9": ":entry_brace_expansion_5_0_9_8d760e4ad257",
+            "braces@3.0.3": ":entry_braces_3_0_3_ffc711d3f86d",
             "browserslist@4.28.8": ":entry_browserslist_4_28_8_3a679ad65cca",
             "buffer-image-size@0.6.4": ":entry_buffer_image_size_0_6_4_22c01178368e",
             "bundle-name@4.1.0": ":entry_bundle_name_4_1_0_9307e757191c",
@@ -38823,6 +40157,7 @@ pnpm_store_view(
             "chai@5.3.3": ":entry_chai_5_3_3_33e8dd2e32e0",
             "chai@6.2.2": ":entry_chai_6_2_2_558bd039a17f",
             "check-error@2.1.3": ":entry_check_error_2_1_3_7cc821aa4c77",
+            "client-only@0.0.1": ":entry_client_only_0_0_1_0538f21b471e",
             "cluster-key-slot@1.1.2": ":entry_cluster_key_slot_1_1_2_c0f5d819d288",
             "convert-source-map@2.0.0": ":entry_convert_source_map_2_0_0_46e32cfc1207",
             "css-mediaquery@0.1.2": ":entry_css_mediaquery_0_1_2_da1abaddca6c",
@@ -38852,10 +40187,16 @@ pnpm_store_view(
             "esutils@2.0.3": ":entry_esutils_2_0_3_cbd4dd8d594e",
             "expect-type@1.4.0": ":entry_expect_type_1_4_0_5d0eaf26bb08",
             "fast-check@4.9.0": ":entry_fast_check_4_9_0_ee42a396162e",
+            "fast-glob@3.3.3": ":entry_fast_glob_3_3_3_dd5e0fd017ea",
+            "fastq@1.20.3": ":entry_fastq_1_20_3_a7ea9f9d907e",
             "fdir@6.5.0_picomatch@4.0.7": ":entry_fdir_6_5_0_picomatch_4_0_7_0e611784cb76",
+            "fill-range@7.1.1": ":entry_fill_range_7_1_1_15fb888391f0",
+            "find-up@5.0.0": ":entry_find_up_5_0_0_36b5efd728dd",
             "fsevents@2.3.3": ":entry_fsevents_2_3_3_6dbcd7937292",
             "function-bind@1.1.2": ":entry_function_bind_1_1_2_83de3b394293",
             "gensync@1.0.0-beta.2": ":entry_gensync_1_0_0_beta_2_c49cbe8d6351",
+            "glob-parent@5.1.2": ":entry_glob_parent_5_1_2_0a11153a0f13",
+            "glob-parent@6.0.2": ":entry_glob_parent_6_0_2_7b90c3653564",
             "glob@13.0.6": ":entry_glob_13_0_6_59626fdea6db",
             "happy-dom@20.14.0": ":entry_happy_dom_20_14_0_02b00a98d4e4",
             "hasown@2.0.4": ":entry_hasown_2_0_4_ba2e3a5fbd10",
@@ -38863,7 +40204,10 @@ pnpm_store_view(
             "invariant@2.2.4": ":entry_invariant_2_2_4_1101ec1e2443",
             "is-core-module@2.16.2": ":entry_is_core_module_2_16_2_8bad60a1ffe7",
             "is-docker@3.0.0": ":entry_is_docker_3_0_0_b21de9a8d47c",
+            "is-extglob@2.1.1": ":entry_is_extglob_2_1_1_9975757ae9e0",
+            "is-glob@4.0.3": ":entry_is_glob_4_0_3_ab2c83c8b42b",
             "is-inside-container@1.0.0": ":entry_is_inside_container_1_0_0_3f45825f7cda",
+            "is-number@7.0.0": ":entry_is_number_7_0_0_08fd04d109dd",
             "is-wsl@3.1.1": ":entry_is_wsl_3_1_1_a44f70aa8a1b",
             "jiti@2.7.0": ":entry_jiti_2_7_0_443514e89728",
             "js-tokens@4.0.0": ":entry_js_tokens_4_0_0_f4371f095c6f",
@@ -38872,6 +40216,7 @@ pnpm_store_view(
             "jsonc-parser@3.3.1": ":entry_jsonc_parser_3_3_1_867699f9fc7b",
             "lightningcss-darwin-arm64@1.33.0": ":entry_lightningcss_darwin_arm64_1_33_0_4e7915734c17",
             "lightningcss@1.33.0": ":entry_lightningcss_1_33_0_7129b0f44113",
+            "locate-path@6.0.0": ":entry_locate_path_6_0_0_ad481860c229",
             "loose-envify@1.4.0": ":entry_loose_envify_1_4_0_ad111a799171",
             "loupe@3.2.1": ":entry_loupe_3_2_1_6cb5497e77fc",
             "lru-cache@11.5.2": ":entry_lru_cache_11_5_2_e163550123a3",
@@ -38879,6 +40224,8 @@ pnpm_store_view(
             "lz-string@1.5.0": ":entry_lz_string_1_5_0_a04d0916e498",
             "magic-string@0.30.21": ":entry_magic_string_0_30_21_a2e515768834",
             "magic-string@1.2.3": ":entry_magic_string_1_2_3_7ec1ec0d5479",
+            "merge2@1.4.1": ":entry_merge2_1_4_1_9805d0126218",
+            "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mime@4.1.0": ":entry_mime_4_1_0_6887a25dc460",
             "min-indent@1.0.1": ":entry_min_indent_1_0_1_a8f7b977daaa",
             "minimatch@10.2.6": ":entry_minimatch_10_2_6_7dfd90b95b04",
@@ -38889,26 +40236,33 @@ pnpm_store_view(
             "msgpackr-extract@3.0.4": ":entry_msgpackr_extract_3_0_4_dfa8bdf9fa66",
             "msgpackr@2.1.0": ":entry_msgpackr_2_1_0_4167decebcf1",
             "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
+            "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__1ef5e3ace57a",
             "node-gyp-build-optional-packages@5.2.2": ":entry_node_gyp_build_optional_packages_5_2_2_5b7a18b851f0",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "open@10.2.0": ":entry_open_10_2_0_d014b2891443",
             "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
             "oxc-resolver@11.21.2": ":entry_oxc_resolver_11_21_2_f960d078eb2b",
+            "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
+            "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
+            "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
             "path-parse@1.0.7": ":entry_path_parse_1_0_7_bb7410d6076a",
             "path-scurry@2.0.2": ":entry_path_scurry_2_0_2_885adc94c3a1",
             "pathe@2.0.3": ":entry_pathe_2_0_3_38bf70c9f194",
             "pathval@2.0.1": ":entry_pathval_2_0_1_07a686b3e961",
             "picocolors@1.1.1": ":entry_picocolors_1_1_1_7c5f37242535",
+            "picomatch@2.3.2": ":entry_picomatch_2_3_2_6522bf8f8986",
             "picomatch@4.0.7": ":entry_picomatch_4_0_7_0eb48e249822",
             "playwright-core@1.63.0": ":entry_playwright_core_1_63_0_e708629117d9",
             "playwright@1.63.0": ":entry_playwright_1_63_0_104e1ee57575",
             "pngjs@7.0.0": ":entry_pngjs_7_0_0_c4a10d4036f3",
             "postcss-value-parser@4.2.0": ":entry_postcss_value_parser_4_2_0_43359ebbc5d4",
+            "postcss@8.4.31": ":entry_postcss_8_4_31_731e47d2c49c",
             "postcss@8.5.26": ":entry_postcss_8_5_26_dd6223d49d4c",
             "prettier@3.9.6": ":entry_prettier_3_9_6_09a37784646f",
             "pretty-format@27.5.1": ":entry_pretty_format_27_5_1_0c5358044121",
             "pure-rand@8.4.2": ":entry_pure_rand_8_4_2_67da1f7bfbd4",
+            "queue-microtask@1.2.3": ":entry_queue_microtask_1_2_3_1a3574dac1bd",
             "react-docgen-typescript@2.4.0_typescript@7.0.2": ":entry_react_docgen_typescript_2_4_0_typescript_7_0_2_65c3c070dbe5",
             "react-docgen@8.0.3": ":entry_react_docgen_8_0_3_50d1e2dba113",
             "react-dom@19.2.8_react@19.2.8": ":entry_react_dom_19_2_8_react_19_2_8_322c46404300",
@@ -38918,11 +40272,14 @@ pnpm_store_view(
             "redent@3.0.0": ":entry_redent_3_0_0_ff3ab37955e2",
             "redis@6.2.1_@opentelemetry+api@1.9.1": ":entry_redis_6_2_1_opentelemetry_api_1_9_1_1f4d9a664fc3",
             "resolve@1.22.12": ":entry_resolve_1_22_12_bacbd0cff46e",
+            "reusify@1.1.0": ":entry_reusify_1_1_0_49a719604e00",
             "rolldown@1.2.7": ":entry_rolldown_1_2_7_f28636c54a2e",
             "run-applescript@7.1.0": ":entry_run_applescript_7_1_0_d5373e028313",
+            "run-parallel@1.2.0": ":entry_run_parallel_1_2_0_04556ea212e9",
             "scheduler@0.27.0": ":entry_scheduler_0_27_0_e21311c62741",
             "semver@6.3.1": ":entry_semver_6_3_1_8b8f657069cf",
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
+            "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "siginfo@2.0.0": ":entry_siginfo_2_0_0_9681d29ff1b8",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
             "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
@@ -38933,6 +40290,7 @@ pnpm_store_view(
             "strip-bom@3.0.0": ":entry_strip_bom_3_0_0_56fe2e31ea51",
             "strip-indent@3.0.0": ":entry_strip_indent_3_0_0_f4001fb53479",
             "strip-indent@4.1.1": ":entry_strip_indent_4_1_1_b0df34845d45",
+            "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
             "styleq@0.2.1": ":entry_styleq_0_2_1_23f606d8da0e",
             "supports-preserve-symlinks-flag@1.0.0": ":entry_supports_preserve_symlinks_flag_1_0_0_0acb1923e939",
             "tiny-invariant@1.3.3": ":entry_tiny_invariant_1_3_3_dae5146503a7",
@@ -38942,6 +40300,7 @@ pnpm_store_view(
             "tinyrainbow@2.0.0": ":entry_tinyrainbow_2_0_0_dc9e638efa60",
             "tinyrainbow@3.1.1": ":entry_tinyrainbow_3_1_1_6d7c54831543",
             "tinyspy@4.0.4": ":entry_tinyspy_4_0_4_3e58b1bf8742",
+            "to-regex-range@5.0.1": ":entry_to_regex_range_5_0_1_94d9608b52e4",
             "totalist@3.0.1": ":entry_totalist_3_0_1_bf205b0e9be4",
             "ts-dedent@2.3.0": ":entry_ts_dedent_2_3_0_e8b7497b8a75",
             "tsconfig-paths@4.2.0": ":entry_tsconfig_paths_4_2_0_7aa91b457c11",
@@ -38960,9 +40319,11 @@ pnpm_store_view(
             "ws@8.21.3": ":entry_ws_8_21_3_d250ffc75a80",
             "wsl-utils@0.1.0": ":entry_wsl_utils_0_1_0_3c6cb23f48b2",
             "yallist@3.1.1": ":entry_yallist_3_1_1_63b110ffd187",
+            "yocto-queue@0.1.0": ":entry_yocto_queue_0_1_0_1acee86624de",
         },
     },
     bins = {
+        "next": "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45\tdist/bin/next",
         "playwright": "playwright@1.63.0\tcli.js",
         "storybook": "storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_prettier@3.9.6_react_da9aab27e30e1021\tdist/bin/dispatcher.js",
         "tsc": "typescript@7.0.2\tbin/tsc",

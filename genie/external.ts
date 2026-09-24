@@ -355,6 +355,18 @@ export const catalog = defineCatalog({
   '@stylexjs/unplugin': '0.19.0',
   /** Adopted via oxlint `jsPlugins`; its deps pin `@stylexjs/shared` 0.19.0, so it stays in lockstep with the compiler pins above. */
   '@stylexjs/eslint-plugin': '0.19.0',
+  /**
+   * Next.js webpack build integration (`@overeng/utils/node/stylex/next`).
+   * The babel/postcss pair stays in lockstep with the compiler pins above:
+   * both passes must produce identical class names for the same source.
+   * `next` is the major the reference app (schickling.dev) runs and the one
+   * the utils fixture-build test proves; `babel-loader` is the loader the
+   * webpack rule names, resolved from the consuming app.
+   */
+  '@stylexjs/babel-plugin': '0.19.0',
+  '@stylexjs/postcss-plugin': '0.19.0',
+  next: '16.2.6',
+  'babel-loader': '10.1.1',
 
   /**
    * Transitional Tailwind -> StyleX converter, used only as a first pass on

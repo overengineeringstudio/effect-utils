@@ -1679,6 +1679,8 @@
         "src/node/stylex/focus-order.unit.test.ts",
         "src/node/stylex/mod.installed-consumer.test.ts",
         "src/node/stylex/mod.unit.test.ts",
+        "src/node/stylex/next.build.test.ts",
+        "src/node/stylex/next.unit.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "sourceOwners": {
@@ -1717,6 +1719,8 @@
         "src/node/stylex/focus-order.unit.test.ts",
         "src/node/stylex/mod.installed-consumer.test.ts",
         "src/node/stylex/mod.unit.test.ts",
+        "src/node/stylex/next.build.test.ts",
+        "src/node/stylex/next.unit.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "unboundedAfter": [],
