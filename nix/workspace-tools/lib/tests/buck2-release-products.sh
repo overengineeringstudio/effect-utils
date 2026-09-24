@@ -20,37 +20,41 @@ jq -e --argjson expected "$expected_names" '
   )
 ' "$targets" >/dev/null
 
-declare -a expected_public_names=()
-declare -a private_names=()
-while IFS= read -r row; do
-  name="$(jq -r '.name' <<<"$row")"
-  if [[ "$(jq -r '.kind' <<<"$row")" == package ]]; then
-    package_manifest="$repo_root/$(jq -r '.packagePath' <<<"$row")/package.json"
-    jq -e --arg name "$name" '.name == $name' "$package_manifest" >/dev/null
-    if jq -e '.private == true' "$package_manifest" >/dev/null; then
-      private_names+=("$name")
-      continue
-    fi
-  fi
-  expected_public_names+=("$name")
-done < <(jq -c '.products[]' "$targets")
-
-expected_public="$(printf '%s\n' "${expected_public_names[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')"
 plan="$(bash "$publisher" --dry-run)"
-jq -e --argjson expected "$expected_public" '
+jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck-cache-publication-plan/v1" and
   .cache == "overeng-effect-utils" and
   [.products[].name] == $expected
 ' <<<"$plan" >/dev/null
-[[ "${#private_names[@]}" == 18 ]]
-for private_name in "${private_names[@]}"; do
-  if bash "$publisher" --dry-run --product "$private_name" >"$tmp/private-package.log" 2>&1; then
-    echo "buck2-cache-products-test: accepted a private package product: $private_name" >&2
-    exit 1
-  fi
-  grep -F "refusing public cache publication for private or misclassified package: $private_name" \
-    "$tmp/private-package.log" >/dev/null
+for public_package in '@overeng/notion-react' '@overeng/restate-effect'; do
+  bash "$publisher" --dry-run --product "$public_package" |
+    jq -e --arg name "$public_package" '.products | length == 1 and .[0].name == $name' >/dev/null
 done
+
+# A repository-external symlink and a private dependency archive must both
+# fail before the publisher can obtain credentials or build a product.
+mkdir -p "$tmp/unsafe-repo/nix/buck2-products" "$tmp/unsafe-repo/buck2/dependencies"
+cp "$targets" "$tmp/unsafe-repo/nix/buck2-products/cache-targets.json"
+cp "$repo_root/nix/buck2-products/manifest.json" "$tmp/unsafe-repo/nix/buck2-products/manifest.json"
+cp "$repo_root/buck2/dependencies/pnpm-lock.sha256.json" "$tmp/unsafe-repo/buck2/dependencies/pnpm-lock.sha256.json"
+mkdir -p "$tmp/unsafe-repo/packages/@overeng"
+ln -s "$repo_root/packages/@overeng/utils" "$tmp/unsafe-repo/packages/@overeng/utils"
+if BUCK2_CACHE_PRODUCTS_REPO="$tmp/unsafe-repo" bash "$publisher" --dry-run --product '@overeng/utils' >"$tmp/unsafe.log" 2>&1; then
+  echo "buck2-cache-products-test: accepted an external source tree" >&2
+  exit 1
+fi
+grep -F 'refusing source outside public repository:' "$tmp/unsafe.log" >/dev/null
+cp -R "$repo_root/packages/@overeng/utils" "$tmp/unsafe-repo/packages/@overeng/utils-local"
+rm "$tmp/unsafe-repo/packages/@overeng/utils"
+mv "$tmp/unsafe-repo/packages/@overeng/utils-local" "$tmp/unsafe-repo/packages/@overeng/utils"
+jq '.packages |= (to_entries | .[0].value.classification = "private" | from_entries)' \
+  "$repo_root/buck2/dependencies/pnpm-lock.sha256.json" >"$tmp/private-archives.json"
+mv "$tmp/private-archives.json" "$tmp/unsafe-repo/buck2/dependencies/pnpm-lock.sha256.json"
+if BUCK2_CACHE_PRODUCTS_REPO="$tmp/unsafe-repo" bash "$publisher" --dry-run --product '@overeng/utils' >"$tmp/unsafe.log" 2>&1; then
+  echo "buck2-cache-products-test: accepted a private dependency archive" >&2
+  exit 1
+fi
+grep -F 'refusing private-repository or non-public dependency input' "$tmp/unsafe.log" >/dev/null
 
 single="$(bash "$publisher" --dry-run --product oxc-config)"
 jq -e '(.products | length) == 1 and .products[0].name == "oxc-config"' <<<"$single" >/dev/null
@@ -83,6 +87,8 @@ if grep -E '(^|[[:space:]])set[[:space:]]+-[^[:space:]]*x' "$publisher" >/dev/nu
   exit 1
 fi
 mkdir -p "$tmp/collision-output" "$tmp/collision-repo/nix/buck2-products" "$tmp/fake-bin"
+mkdir -p "$tmp/collision-repo/packages/@overeng/fixture" "$tmp/collision-repo/buck2/dependencies"
+printf '{"packages":{}}\n' >"$tmp/collision-repo/buck2/dependencies/pnpm-lock.sha256.json"
 printf 'fixture\n' >"$tmp/collision-output/fixture.js"
 collision_sha="$(sha256sum "$tmp/collision-output/fixture.js" | cut -d' ' -f1)"
 collision_integrity="$(nix hash convert --hash-algo sha256 --to sri "$collision_sha")"
@@ -133,6 +139,7 @@ cat >"$tmp/fake-bin/git" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
   *rev-parse*) printf '%s\n' '1111111111111111111111111111111111111111' ;;
+  *"remote get-url origin"*) printf '%s\n' 'https://github.com/overengineeringstudio/effect-utils.git' ;;
   *status*) ;;
   *) exit 2 ;;
 esac
@@ -268,6 +275,8 @@ jq -e --arg prefix "$local_cache_url/serve/" '
 
 
 mkdir -p "$tmp/scope-output" "$tmp/scope-repo/nix/buck2-products" "$tmp/scope-bin" "$tmp/scope-cache"
+mkdir -p "$tmp/scope-repo/packages/@overeng/megarepo" "$tmp/scope-repo/buck2/dependencies"
+printf '{"packages":{}}\n' >"$tmp/scope-repo/buck2/dependencies/pnpm-lock.sha256.json"
 printf 'megarepo\n' >"$tmp/scope-output/mr.js"
 scope_sha="$(sha256sum "$tmp/scope-output/mr.js" | cut -d' ' -f1)"
 scope_integrity="$(nix hash convert --hash-algo sha256 --to sri "$scope_sha")"

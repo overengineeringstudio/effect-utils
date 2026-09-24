@@ -22,7 +22,7 @@ usage() {
 Usage: nix/buck2-products/publish.sh [--dry-run] [--product NAME] [--proposal PATH]
 
 --dry-run       Validate and print the complete public publication plan without building or mutating.
---product NAME  Publish only NAME. May be repeated. The default is every public inventory product.
+--product NAME  Publish only NAME. May be repeated. The default is every inventory product.
 --proposal PATH Write the merged manifest outside the Git worktree. The default writes it to stdout.
 EOF
 }
@@ -40,6 +40,7 @@ done
 [[ -f "$targets" && ! -L "$targets" ]] || fail "generated target inventory is missing: $targets"
 [[ -f "$manifest" && ! -L "$manifest" ]] || fail "current product manifest is missing: $manifest"
 command -v jq >/dev/null || fail "jq is required"
+command -v realpath >/dev/null || fail "realpath is required"
 jq -e '
   (keys | sort) == ["products", "schema", "schemaVersion"] and
   .schema == "effect-utils/buck-cache-targets/v1" and .schemaVersion == 1 and
@@ -107,32 +108,49 @@ rows="$({
       jq -cS --arg selected "$selected" ".products[] | $selection" "$targets"
     done
   else
-    while IFS= read -r row; do
-      if [[ "$(jq -r '.kind' <<<"$row")" == package ]]; then
-        name="$(jq -r '.name' <<<"$row")"
-        package_path="$(jq -r '.packagePath' <<<"$row")"
-        package_manifest="$repo_root/$package_path/package.json"
-        [[ -f "$package_manifest" && ! -L "$package_manifest" ]] ||
-          fail "package product manifest is missing: $package_manifest"
-        jq -e --arg name "$name" '.name == $name' "$package_manifest" >/dev/null ||
-          fail "package product manifest name does not match inventory: $name"
-        jq -e '.private == true' "$package_manifest" >/dev/null && continue
-      fi
-      printf '%s\n' "$row"
-    done < <(jq -cS '.products[]' "$targets")
+    jq -cS '.products[]' "$targets"
   fi
 } | jq -csS 'sort_by(.name)')"
 
+# The public publisher accepts only the repository's own Buck cell and source
+# trees. Resolve paths, not just their spelling: a symlink must not smuggle an
+# external (possibly private-repository) tree into the public product closure.
+canonical_repo="$(realpath -e "$repo_root")"
 while IFS= read -r row; do
-  [[ "$(jq -r '.kind' <<<"$row")" == package ]] || continue
   name="$(jq -r '.name' <<<"$row")"
+  kind="$(jq -r '.kind' <<<"$row")"
   package_path="$(jq -r '.packagePath' <<<"$row")"
-  package_manifest="$repo_root/$package_path/package.json"
-  [[ -f "$package_manifest" && ! -L "$package_manifest" ]] ||
-    fail "package product manifest is missing: $package_manifest"
-  jq -e --arg name "$name" '.name == $name and (.private != true)' "$package_manifest" >/dev/null ||
-    fail "refusing public cache publication for private or misclassified package: $name"
+  tree_path="$(jq -r '.packageTreePath' <<<"$row")"
+  target="$(jq -r '.target' <<<"$row")"
+  for path in "$package_path" "$tree_path"; do
+    [[ "$path" =~ ^packages/@overeng/[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+      fail "refusing source outside public repository package tree: $name ($path)"
+    resolved="$(realpath -e "$repo_root/$path")" ||
+      fail "source tree is missing: $name ($path)"
+    [[ "$resolved" == "$canonical_repo"/packages/@overeng/* ]] ||
+      fail "refusing source outside public repository: $name ($path)"
+  done
+  [[ "$target" == "effect_utils//$package_path:"* ]] ||
+    fail "refusing target outside public repository package: $name ($target)"
+  if [[ "$kind" == package ]]; then
+    [[ "$tree_path" == "$package_path" && "$target" == "effect_utils//$package_path:dist-package" ]] ||
+      fail "refusing misclassified package target: $name"
+    package_manifest="$repo_root/$package_path/package.json"
+    [[ -f "$package_manifest" && ! -L "$package_manifest" ]] ||
+      fail "package product manifest is missing: $package_manifest"
+    jq -e --arg name "$name" '.name == $name' "$package_manifest" >/dev/null ||
+      fail "package product manifest name does not match inventory: $name"
+  fi
 done < <(jq -c '.[]' <<<"$rows")
+
+# This is the only non-repository payload in the from-source recipe. A
+# private-classified archive or non-public registry is never a public input.
+archives="$repo_root/buck2/dependencies/pnpm-lock.sha256.json"
+[[ -f "$archives" && ! -L "$archives" ]] || fail "public dependency archive inventory is missing"
+jq -e 'all(.packages[];
+  .classification == "public" and
+  (.registryUrl | startswith("https://registry.npmjs.org/"))
+)' "$archives" >/dev/null || fail "refusing private-repository or non-public dependency input"
 
 plan="$(jq -cnS --arg cache "$cache" --argjson products "$rows" '{schema:"effect-utils/buck-cache-publication-plan/v1",cache:$cache,products:$products}')"
 if $dry_run; then
@@ -150,6 +168,13 @@ case "${GITHUB_EVENT_NAME:-}" in
 esac
 [[ -z "${GITHUB_REF:-}" || "${GITHUB_REF}" == refs/heads/main ]] ||
   fail "refusing publication from non-main ref: ${GITHUB_REF}"
+[[ -z "${GITHUB_REPOSITORY:-}" || "${GITHUB_REPOSITORY}" == overengineeringstudio/effect-utils ]] ||
+  fail "refusing publication from another repository: ${GITHUB_REPOSITORY}"
+origin="$(git -C "$repo_root" remote get-url origin)"
+case "$origin" in
+  git@github.com:overengineeringstudio/effect-utils.git|https://github.com/overengineeringstudio/effect-utils|https://github.com/overengineeringstudio/effect-utils.git) ;;
+  *) fail "refusing publication from a repository other than public effect-utils" ;;
+esac
 head_commit="$(git -C "$repo_root" rev-parse --verify 'HEAD^{commit}')"
 [[ -z "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]] ||
   fail "refusing to publish from a dirty Git worktree"
