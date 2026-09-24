@@ -27,18 +27,16 @@ let
     && !(lib.hasPrefix "/" workspaceRoot)
     && !(lib.hasInfix "\\" workspaceRoot)
     && builtins.all (segment: segment != "" && segment != "..") workspaceSegments;
-  command =
-    mode:
-    trace.exec "${taskPrefix}:${mode}" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bash}/bin/bash ${gate} ${mode} \
-        "$root" \
-        ${lib.escapeShellArg workspaceRoot} \
-        ${pkgs.reindeer}/bin/reindeer \
-        ${pkgs.cargo}/bin/cargo \
-        ${pkgs.rustc}/bin/rustc
-    '';
+  script = mode: ''
+    set -euo pipefail
+    root="''${DEVENV_ROOT:-$PWD}"
+    exec ${pkgs.bash}/bin/bash ${gate} ${mode} \
+      "$root" \
+      ${lib.escapeShellArg workspaceRoot} \
+      ${pkgs.reindeer}/bin/reindeer \
+      ${pkgs.cargo}/bin/cargo \
+      ${pkgs.rustc}/bin/rustc
+  '';
 in
 assert lib.assertMsg validRelativePath
   "buck2-rust-deps: workspaceRoot must be a normalized repository-relative path";
@@ -48,11 +46,11 @@ assert lib.assertMsg (
 {
   tasks."${taskPrefix}:generate" = {
     description = "Regenerate the non-vendored Reindeer graph for ${workspaceRoot}";
-    exec = command "generate";
+    exec = trace.exec "${taskPrefix}:generate" (script "generate");
   };
 
   tasks."${taskPrefix}:check" = {
     description = "Verify the non-vendored Reindeer graph for ${workspaceRoot}";
-    exec = command "check";
+    exec = trace.exec "${taskPrefix}:check" (script "check");
   };
 }
