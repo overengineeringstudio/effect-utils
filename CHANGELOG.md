@@ -23,6 +23,23 @@ All notable changes to this project will be documented in this file.
   build loudly instead of silently shipping without StyleX CSS. Supports
   Next 15.5 and 16 in webpack mode; Turbopack remains unsupported.
 
+### Added
+
+- **Buck2 editor views**: `buck2:editor:publish` (and bootstrap/check reconciliations)
+  now emit `buck2.build`, `editor-view.publish`, and `editor-view.phases` OTEL spans
+  beneath the devenv task span whenever an OTEL task trace context is active, with
+  per-phase `phase.<name>.ms` attributes; without OTEL delivery every command runs
+  unchanged.
+
+### Changed
+
+- **Buck2 editor views**: Editor-view publication proves the materialized snapshot
+  copy against the admitted pre-copy digests in an owner-resolved link form instead
+  of re-reading the declared-root sources after the copy, removing one full source
+  traversal per published package. Sources swapped after the copy completes no
+  longer fail the publication — the published snapshot still matches its recorded
+  identity, and the next publication records the new state.
+
 ### Removed
 
 - **Buck2 product import**: Remove the obsolete GitHub-release JavaScript

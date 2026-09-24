@@ -1,6 +1,8 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 
 import { describe, expect, it } from 'vitest'
 
@@ -332,6 +334,120 @@ describe('Buck watch reconciliation', () => {
       ).rejects.toThrow('stale build')
       expect(failedInvocations).toEqual(['/tools/buck2'])
     } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('wraps the build and each publication in otel-span command spans when a task trace context is active', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
+    const otelSpan = join(otelDirectory, 'otel-span')
+    writeFileSync(otelSpan, '#!/bin/sh\nexit 0\n')
+    chmodSync(otelSpan, 0o755)
+    const savedPath = process.env.PATH
+    const savedTraceparent = process.env.TRACEPARENT
+    const savedSpool = process.env.OTEL_SPAN_SPOOL_DIR
+    process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
+    process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
+    process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
+    try {
+      const manifest = join(root, 'editor-inputs.json')
+      await writeFile(
+        manifest,
+        `${JSON.stringify({
+          schema: 'effect-utils/editor-view-inputs/v1',
+          editorInputs: 'buck-out/app/node_modules',
+          packageTree: 'buck-out/app/package_tree',
+          readRoots: [],
+        })}\n`,
+      )
+      const invocations: { command: string; args: readonly string[] }[] = []
+      await reconcileBuckViews({
+        request: {
+          packagePaths: ['packages/app'],
+          changedPaths: [],
+          buildTargets: ['//packages/app:editor_view_inputs'],
+        },
+        options: {
+          plan,
+          mode: 'publish',
+          repoRoot: root,
+          workspaceRoot: root,
+          buck2: '/tools/buck2',
+          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
+          workspaceAuthority: '/repo/authority.json',
+          cp: '/tools/cp',
+          mv: '/tools/mv',
+          snapshotRetention: 3,
+          run: async ({ command, args }) => {
+            invocations.push({ command, args })
+            return command === otelSpan && args[0] === 'run' && args[2] === 'buck2.build'
+              ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              : { stdout: '', stderr: '' }
+          },
+        },
+      })
+      expect(invocations).toHaveLength(2)
+      expect(invocations[0]?.command).toBe(otelSpan)
+      expect(invocations[0]?.args).toEqual([
+        'run',
+        'effect-utils-devenv',
+        'buck2.build',
+        '--attr',
+        'buck2.targets=1',
+        '--attr',
+        'span.label=buck2 build editor view inputs',
+        '--',
+        '/tools/buck2',
+        'build',
+        '//packages/app:editor_view_inputs',
+        '--show-full-output',
+      ])
+      expect(invocations[1]?.command).toBe(otelSpan)
+      expect(invocations[1]?.args).toEqual([
+        'run',
+        'effect-utils-devenv',
+        'editor-view.publish',
+        '--attr',
+        'package.path=packages/app',
+        '--attr',
+        'span.label=publish app',
+        '--',
+        '/tools/bun',
+        '/tools/editor-view',
+        'publish',
+        '--repo-root',
+        root,
+        '--package',
+        'packages/app',
+        '--view-name',
+        'app',
+        '--cell',
+        'effect_utils',
+        '--target',
+        '//packages/app:editor_inputs',
+        '--editor-inputs',
+        join(root, 'buck-out/app/node_modules'),
+        '--node-modules',
+        join(root, 'buck-out/app/node_modules'),
+        '--cp',
+        '/tools/cp',
+        '--mv',
+        '/tools/mv',
+        '--workspace-authority',
+        '/repo/authority.json',
+        '--consumer-cache',
+        join(root, '.devenv/vite-cache/app'),
+        '--snapshot-retention',
+        '3',
+      ])
+    } finally {
+      process.env.PATH = savedPath
+      if (savedTraceparent === undefined) delete process.env.TRACEPARENT
+      else process.env.TRACEPARENT = savedTraceparent
+      if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
+      else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
+      rmSync(otelDirectory, { recursive: true, force: true })
       await rm(root, { recursive: true })
     }
   })

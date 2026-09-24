@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
+import { withOtelSpan } from './otel-span-cli.ts'
+
 /** Versioned identity of the machine-readable watch status file. */
 export const buckWatchStatusSchema = 'effect-utils/buck-watch-status/v1' as const
 /** Versioned identity of the per-package editor-view inputs manifest. */
@@ -519,9 +521,15 @@ export const reconcileBuckViews = async ({
 }): Promise<void> => {
   const execute = options.run ?? runCommand
   const buildStartedAt = performance.now()
+  const [buckCommand, ...buckArguments] = withOtelSpan({
+    name: 'buck2.build',
+    label: 'buck2 build editor view inputs',
+    attributes: [['buck2.targets', request.buildTargets.length]],
+    argv: [options.buck2, 'build', ...request.buildTargets, '--show-full-output'],
+  })
   const built = await execute({
-    command: options.buck2,
-    args: ['build', ...request.buildTargets, '--show-full-output'],
+    command: buckCommand ?? options.buck2,
+    args: buckArguments,
     cwd: options.workspaceRoot,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   })
@@ -546,10 +554,16 @@ export const reconcileBuckViews = async ({
       path: manifestOutput,
       workspaceRoot: options.workspaceRoot,
     })
+    const [publisherCommand, ...publisherPrefix] = withOtelSpan({
+      name: 'editor-view.publish',
+      label: `publish ${entry.editor.viewName}`,
+      attributes: [['package.path', entry.packagePath]],
+      argv: options.editorViewCommand,
+    })
     await execute({
-      command: options.editorViewCommand[0],
+      command: publisherCommand ?? options.editorViewCommand[0],
       args: [
-        ...options.editorViewCommand.slice(1),
+        ...publisherPrefix,
         options.mode,
         '--repo-root',
         options.repoRoot,
