@@ -59,11 +59,15 @@ action, with no synthetic root or prepared `node_modules` adapter.
    Without an archive origin, client-side `download_file` fetches the canonical
    registry URL. With `archive_origin.url_prefix` configured, a local acquisition
    action first requests `<prefix><sha256>` and falls back to the canonical
-   registry URL **only** on CAS HTTP 404. It verifies SHA-256 and byte size
-   before publishing the artifact; other CAS errors and mismatched bytes fail
-   closed. Buck's `download_file` accepts only one URL, so it cannot implement
-   this fallback itself. Downstream actions consume the verified content
-   artifact, converging on the same digest regardless of the supplying origin.
+   registry URL **only** on a direct CAS HTTP 404. CAS redirects are errors;
+   registry redirects are followed manually only while every hop passes the
+   same approved public HTTPS origin policy as the manifest. Response-header
+   and overall transfer deadlines bound acquisition. The action aborts oversized
+   streams immediately and publishes an atomic rename only after SHA-256 and
+   byte-size verification; other CAS errors and mismatched bytes fail closed.
+   Buck's `download_file` accepts only one URL, so it cannot implement this
+   fallback itself. Downstream actions consume the verified content artifact,
+   converging on the same digest regardless of the supplying origin.
 3. Archive acquisition is local rather than a remotely executed command.
    Result-producing consumers remain eligible for REAPI and receive the same
    immutable content digest. BUCK-R17 applies to those command actions.

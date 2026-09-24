@@ -168,4 +168,71 @@ describe('pnpm archive acquisition', () => {
       expect(await readdir(dirname(output))).toEqual([])
     })
   })
+  it('rejects CAS redirects without following them or falling back to the registry', async () => {
+    await withOutput(async (output) => {
+      const urls: string[] = []
+      await expect(
+        acquireArchive({
+          ...options(output),
+          fetchArchive: async (url, init) => {
+            expect(init?.redirect).toBe('manual')
+            urls.push(String(url))
+            return new Response(undefined, {
+              status: 302,
+              headers: { location: registryUrl },
+            })
+          },
+        }),
+      ).rejects.toThrow('CAS redirect is not allowed')
+      expect(urls).toEqual([casUrl])
+      expect(await readdir(dirname(output))).toEqual([])
+    })
+  })
+
+  it('rejects a registry redirect to a non-approved archive origin', async () => {
+    await withOutput(async (output) => {
+      const urls: string[] = []
+      await expect(
+        acquireArchive({
+          ...options(output),
+          fetchArchive: async (url, init) => {
+            expect(init?.redirect).toBe('manual')
+            urls.push(String(url))
+            return String(url) === casUrl
+              ? new Response(undefined, { status: 404 })
+              : new Response(undefined, {
+                  status: 302,
+                  headers: { location: 'https://unapproved.example/archive.tgz' },
+                })
+          },
+        }),
+      ).rejects.toThrow('approved public HTTPS archive origin')
+      expect(urls).toEqual([casUrl, registryUrl])
+      expect(await readdir(dirname(output))).toEqual([])
+    })
+  })
+
+  it('follows an approved public HTTPS archive redirect and verifies its bytes', async () => {
+    await withOutput(async (output) => {
+      const redirected = 'https://overeng-effect-utils.cachix.org/serve/archive.tgz'
+      const urls: string[] = []
+      const source = await acquireArchive({
+        ...options(output),
+        fetchArchive: async (url, init) => {
+          expect(init?.redirect).toBe('manual')
+          urls.push(String(url))
+          if (String(url) === casUrl) return new Response(undefined, { status: 404 })
+          if (String(url) === registryUrl)
+            return new Response(undefined, {
+              status: 302,
+              headers: { location: redirected },
+            })
+          return new Response(bytes)
+        },
+      })
+      expect(source).toBe('registry')
+      expect(urls).toEqual([casUrl, registryUrl, redirected])
+      expect(await readFile(output)).toEqual(Buffer.from(bytes))
+    })
+  })
 })

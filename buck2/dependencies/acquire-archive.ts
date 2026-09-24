@@ -4,6 +4,8 @@ import { rename, unlink } from 'node:fs/promises'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
+import { publicArchiveUrl } from './pnpm-lock.ts'
+
 const fail = (message: string): never => {
   throw new Error(`pnpm archive acquisition: ${message}`)
 }
@@ -31,8 +33,7 @@ export const acquireArchive = async ({
   if (/^[a-f0-9]{64}$/.test(sha256) === false) fail(`invalid sha256: ${sha256}`)
   if (Number.isSafeInteger(size) === false || size <= 0) fail(`invalid size: ${size}`)
   if (/^https?:\/\//.test(casUrl) === false) fail(`invalid CAS URL: ${casUrl}`)
-  if (registryUrl.startsWith('https://') === false)
-    fail(`canonical archive URL must use HTTPS: ${registryUrl}`)
+  publicArchiveUrl({ url: registryUrl, location: 'archive URL' })
 
   const deadline = AbortSignal.timeout(transferTimeoutMs)
   const request = async (url: string): Promise<Response> => {
@@ -43,7 +44,7 @@ export const acquireArchive = async ({
       headersTimeoutMs,
     )
     try {
-      const response = await fetchArchive(url, { signal })
+      const response = await fetchArchive(url, { redirect: 'manual', signal })
       if (signal.aborted) throw signal.reason
       return response
     } finally {
@@ -52,8 +53,26 @@ export const acquireArchive = async ({
   }
 
   const cas = await request(casUrl)
+  if (cas.status >= 300 && cas.status < 400) fail(`CAS redirect is not allowed: HTTP ${cas.status}`)
   const source = cas.status === 404 ? 'registry' : 'cas'
-  const response = source === 'registry' ? await request(registryUrl) : cas
+  let response = cas
+  if (source === 'registry') {
+    await cas.body?.cancel()
+    let current = registryUrl
+    for (let redirects = 0; redirects <= 3; redirects += 1) {
+      publicArchiveUrl({ url: current, location: 'archive download URL' })
+      response = await request(current)
+      if ([301, 302, 303, 307, 308].includes(response.status) === false) break
+      const location = response.headers.get('location')
+      if (location === null) fail(`archive redirect from ${current} has no Location`)
+      await response.body?.cancel()
+      current = publicArchiveUrl({
+        url: new URL(location, current).href,
+        location: 'archive redirect URL',
+      })
+      if (redirects === 3) fail(`archive download exceeded 3 redirects for ${registryUrl}`)
+    }
+  }
   if (response.ok === false) fail(`${source} returned HTTP ${response.status}`)
   if (response.body === null) fail(`${source} returned no archive body`)
 

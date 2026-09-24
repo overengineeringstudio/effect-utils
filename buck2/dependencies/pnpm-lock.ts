@@ -241,7 +241,7 @@ const archiveUrl = ({ name, version }: { name: string; version: string }): strin
 }
 
 /** A locked archive must not turn the public CAS seeder into an arbitrary URL fetcher. */
-const publicArchiveUrl = ({ url, location }: { url: string; location: string }): string => {
+export const publicArchiveUrl = ({ url, location }: { url: string; location: string }): string => {
   let parsed: URL
   try {
     parsed = new URL(url)
