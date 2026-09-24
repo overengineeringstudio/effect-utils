@@ -240,6 +240,31 @@ const archiveUrl = ({ name, version }: { name: string; version: string }): strin
   return `https://registry.npmjs.org/${name}/-/${tarballName}-${version}.tgz`
 }
 
+/** A locked archive must not turn the public CAS seeder into an arbitrary URL fetcher. */
+const publicArchiveUrl = ({ url, location }: { url: string; location: string }): string => {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return fail(`${location} must use an approved public HTTPS archive origin`)
+  }
+  const approved =
+    (parsed.hostname === 'registry.npmjs.org' &&
+      url.startsWith('https://registry.npmjs.org/')) ||
+    (parsed.hostname === 'overeng-effect-utils.cachix.org' &&
+      url.startsWith('https://overeng-effect-utils.cachix.org/serve/'))
+  if (
+    approved === false ||
+    parsed.protocol !== 'https:' ||
+    parsed.port !== '' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.hash !== ''
+  )
+    return fail(`${location} must use an approved public HTTPS archive origin`)
+  return url
+}
+
 /** Deterministic, collision-resistant Buck target name for one generated identity. */
 export const pnpmTargetName = ({
   prefix,
@@ -510,6 +535,7 @@ export const translatePnpmLock = ({
       record: entry,
       allowed: [
         'resolution',
+        'version',
         'engines',
         'peerDependencies',
         'hasBin',
@@ -545,6 +571,7 @@ export const translatePnpmLock = ({
       const directory = stringField({ record: resolution, field: 'directory', location: location })
       if (version.startsWith('file:') === false)
         return fail(`${location} directory resolution must use file:`)
+      if (entry.version !== undefined) return fail(`${location}.version requires a tarball resolution`)
       packages[key] = {
         cpu,
         hasBin,
@@ -558,13 +585,29 @@ export const translatePnpmLock = ({
       }
       continue
     }
+    const tarball = resolution.tarball
     rejectUnknownFields({
       record: resolution,
-      allowed: ['integrity'],
+      allowed: tarball === undefined ? ['integrity'] : ['integrity', 'tarball'],
       location: `${location}.resolution`,
     })
-    const integrity = stringField({ record: resolution, field: 'integrity', location: location })
-    integrityBytes({ integrity: integrity, location: `${location}.resolution.integrity` })
+    const integrity = stringField({
+      record: resolution,
+      field: 'integrity',
+      location: `${location}.resolution`,
+    })
+    integrityBytes({ integrity, location: `${location}.resolution.integrity` })
+    let url: string
+    if (tarball === undefined) {
+      if (entry.version !== undefined) return fail(`${location}.version requires a tarball resolution`)
+      url = archiveUrl({ name, version })
+    } else {
+      stringField({ record: entry, field: 'version', location })
+      url = publicArchiveUrl({
+        url: stringField({ record: resolution, field: 'tarball', location: `${location}.resolution` }),
+        location: `${location}.resolution.tarball`,
+      })
+    }
     const patch = workspacePatches[`${name}@${version}`]
     packages[key] = {
       cpu,
@@ -576,7 +619,7 @@ export const translatePnpmLock = ({
       ...(patch === undefined ? {} : { patch }),
       resolution: 'registry',
       target: pnpmTargetName({ prefix: 'package', identity: key }),
-      url: archiveUrl({ name, version }),
+      url,
       version,
     }
   }
@@ -801,9 +844,10 @@ const decodeSidecarEntry = ({
   const integrity = stringField({ record: entry, field: 'integrity', location })
   integrityBytes({ integrity, location: `${location}.integrity` })
   const packageIdentity = stringField({ record: entry, field: 'packageIdentity', location })
-  const registryUrl = stringField({ record: entry, field: 'registryUrl', location })
-  if (registryUrl.startsWith('https://registry.npmjs.org/') === false)
-    return fail(`${location}.registryUrl must be a canonical npm registry URL`)
+  const registryUrl = publicArchiveUrl({
+    url: stringField({ record: entry, field: 'registryUrl', location }),
+    location: `${location}.registryUrl`,
+  })
   const digest = stringField({ record: entry, field: 'sha256', location })
   if (sha256Pattern.test(digest) === false)
     return fail(`${location}.sha256 must be lowercase sha256`)
@@ -1041,16 +1085,32 @@ export type ArchiveFetcher = (url: string) => Promise<Uint8Array>
 export const generatePnpmSha256Sidecar = async ({
   metadata,
   previous,
+  fetchResponse = fetch,
   fetchArchive = async (url) => {
-    const response = await fetch(url)
-    if (response.ok === false)
-      return fail(`archive download failed (${response.status}) for ${url}`)
-    return new Uint8Array(await response.arrayBuffer())
+    let current = url
+    for (let redirects = 0; redirects <= 3; redirects += 1) {
+      publicArchiveUrl({ url: current, location: 'archive download URL' })
+      const response = await fetchResponse(current, { redirect: 'manual' })
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get('location')
+        if (location === null) return fail(`archive redirect from ${current} has no Location`)
+        current = publicArchiveUrl({
+          url: new URL(location, current).href,
+          location: 'archive redirect URL',
+        })
+        continue
+      }
+      if (response.ok === false)
+        return fail(`archive download failed (${response.status}) for ${current}`)
+      return new Uint8Array(await response.arrayBuffer())
+    }
+    return fail(`archive download exceeded 3 redirects for ${url}`)
   },
   concurrency = 16,
 }: {
   metadata: PnpmLockMetadata
   previous?: PnpmSha256Sidecar
+  fetchResponse?: typeof fetch
   fetchArchive?: ArchiveFetcher
   concurrency?: number
 }): Promise<PnpmSha256Sidecar> => {

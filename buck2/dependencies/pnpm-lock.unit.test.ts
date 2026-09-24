@@ -143,6 +143,141 @@ describe('translatePnpmLock', () => {
     expect(first.packages['foo@1.0.0']!.target).toMatch(/^package_foo_1_0_0_[a-f0-9]{12}$/)
   })
 
+  it('uses an integrity-verified public tarball URL as its Buck archive source', async () => {
+    const url = 'https://overeng-effect-utils.cachix.org/serve/abc123/overeng-utils.tgz'
+    const key = `@overeng/utils@${url}`
+    const metadata = translatePnpmLock({
+      lockfileText: lock({
+        importers: `  .:
+    dependencies:
+      '@overeng/utils':
+        specifier: ${url}
+        version: ${url}`,
+        packages: `  '${key}':
+    resolution: {integrity: ${archiveIntegrity}, tarball: ${url}}
+    version: 0.1.0`,
+        snapshots: `  '${key}': {}`,
+      }),
+      workspaceText: workspace(),
+    })
+    expect(metadata.packages[key]).toMatchObject({
+      integrity: archiveIntegrity,
+      resolution: 'registry',
+      url,
+      version: url,
+    })
+    const fetched: string[] = []
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async (source) => {
+        fetched.push(source)
+        return archive
+      },
+    })
+    expect(fetched).toEqual([url])
+    expect(sidecar.packages[key]).toMatchObject({
+      classification: 'public',
+      integrity: archiveIntegrity,
+      registryUrl: url,
+      sha256: createHash('sha256').update(archive).digest('hex'),
+    })
+    const decoded = decodePnpmSha256Sidecar(JSON.parse(JSON.stringify(sidecar)))
+    validatePnpmSha256Sidecar({ metadata, sidecar: decoded })
+    expect(decoded).toEqual(sidecar)
+    expect(() =>
+      decodePnpmSha256Sidecar({
+        ...sidecar,
+        packages: {
+          [key]: { ...sidecar.packages[key], registryUrl: 'https://attacker.example/archive.tgz' },
+        },
+      }),
+    ).toThrow('approved public HTTPS archive origin')
+    expect(renderPnpmPackageTargets({ metadata, sidecar })).toContain(`    url = ${JSON.stringify(url)},`)
+    await expect(
+      generatePnpmSha256Sidecar({ metadata, fetchArchive: async () => otherArchive }),
+    ).rejects.toThrow('integrity')
+    const blockedRequests: string[] = []
+    await expect(
+      generatePnpmSha256Sidecar({
+        metadata,
+        fetchResponse: async (request, init) => {
+          blockedRequests.push(String(request))
+          expect(init?.redirect).toBe('manual')
+          return Response.redirect('https://attacker.example/archive.tgz', 302)
+        },
+      }),
+    ).rejects.toThrow('approved public HTTPS archive origin')
+    expect(blockedRequests).toEqual([url])
+
+    const approvedRedirect = 'https://registry.npmjs.org/@overeng/utils/-/utils-0.1.0.tgz'
+    const approvedRequests: string[] = []
+    const redirected = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchResponse: async (request, init) => {
+        approvedRequests.push(String(request))
+        expect(init?.redirect).toBe('manual')
+        return approvedRequests.length === 1
+          ? Response.redirect(approvedRedirect, 302)
+          : new Response(archive, { status: 200 })
+      },
+    })
+    expect(approvedRequests).toEqual([url, approvedRedirect])
+    expect(redirected.packages[key]!.sha256).toBe(sidecar.packages[key]!.sha256)
+  })
+
+  it('still rejects unknown tarball fields and missing tarball integrity', () => {
+    const url = 'https://overeng-effect-utils.cachix.org/serve/abc123/overeng-utils.tgz'
+    for (const [packageFields, expectedError] of [
+      [
+        `    resolution: {integrity: ${archiveIntegrity}, tarball: ${url}}
+    version: 0.1.0
+    unrecognized: true`,
+        'unsupported fields: unrecognized',
+      ],
+      [
+        `    resolution: {tarball: ${url}}
+    version: 0.1.0`,
+        'resolution.integrity must be a non-empty string',
+      ],
+    ]) {
+      expect(() =>
+        translatePnpmLock({
+          lockfileText: lock({
+            importers: '  .: {}',
+            packages: `  '@overeng/utils@${url}':
+${packageFields}`,
+            snapshots: `  '@overeng/utils@${url}': {}`,
+          }),
+          workspaceText: workspace(),
+        }),
+      ).toThrow(expectedError)
+    }
+  })
+
+  it('rejects private, arbitrary, and non-HTTPS tarball origins before fetching', () => {
+    for (const url of [
+      'http://overeng-effect-utils.cachix.org/serve/abc123/overeng-utils.tgz',
+      'https://localhost/serve/abc123/overeng-utils.tgz',
+      'https://127.0.0.1/serve/abc123/overeng-utils.tgz',
+      'https://internal.local/serve/abc123/overeng-utils.tgz',
+      'https://attacker.example/serve/abc123/overeng-utils.tgz',
+      'https://user:secret@overeng-effect-utils.cachix.org/serve/abc123/overeng-utils.tgz',
+    ]) {
+      expect(() =>
+        translatePnpmLock({
+          lockfileText: lock({
+            importers: '  .: {}',
+            packages: `  '@overeng/utils@${url}':
+    resolution: {integrity: ${archiveIntegrity}, tarball: ${url}}
+    version: 0.1.0`,
+            snapshots: `  '@overeng/utils@${url}': {}`,
+          }),
+          workspaceText: workspace(),
+        }),
+      ).toThrow('approved public HTTPS archive origin')
+    }
+  })
+
   it('includes dependency overrides in the semantic lock fingerprint', () => {
     const baseline = translatePnpmLock({ lockfileText: lock(), workspaceText: workspace() })
     const overridden = translatePnpmLock({
