@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 5 ]; then
-  echo "usage: $0 <generate|check> <repository-root> <reindeer> <cargo> <rustc>" >&2
+if [ "$#" -ne 6 ]; then
+  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <reindeer> <cargo> <rustc>" >&2
   exit 64
 fi
 
 mode="$1"
 root="$2"
-reindeer="$3"
-cargo="$4"
-rustc="$5"
+workspace_relative="$3"
+reindeer="$4"
+cargo="$5"
+rustc="$6"
 
 case "$mode" in
   generate | check) ;;
@@ -22,13 +23,22 @@ esac
 
 cd "$root"
 root="$PWD"
-config="$root/rust/reindeer.toml"
-lock="$root/rust/Cargo.lock"
-third_party="$root/rust/third-party"
+cd "$workspace_relative"
+workspace="$PWD"
+case "$workspace" in
+  "$root" | "$root"/*) ;;
+  *)
+    echo "buck2-rust-deps: workspace root escapes repository: $workspace_relative" >&2
+    exit 64
+    ;;
+esac
+config="$workspace/reindeer.toml"
+lock="$workspace/Cargo.lock"
+third_party="$workspace/third-party"
 cargo_home="$root/.devenv/reindeer-cargo-home"
 
 if ! grep -Eq '^[[:space:]]*vendor[[:space:]]*=[[:space:]]*false([[:space:]]*(#.*)?)?$' "$config"; then
-  echo "buck2-rust-deps: rust/reindeer.toml must select vendor = false" >&2
+  echo "buck2-rust-deps: ${config#"$root"/} must select vendor = false" >&2
   exit 1
 fi
 
@@ -69,7 +79,7 @@ buckify_status=$?
 set -e
 
 if ! cmp -s "$lock_before" "$lock"; then
-  echo "buck2-rust-deps: Reindeer changed authoritative rust/Cargo.lock" >&2
+  echo "buck2-rust-deps: Reindeer changed authoritative ${lock#"$root"/}" >&2
   exit 1
 fi
 if [ "$buckify_status" -ne 0 ]; then

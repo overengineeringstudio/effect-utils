@@ -1,0 +1,12 @@
+[package]
+name = "consumer-cli"
+version.workspace = true
+edition.workspace = true
+workspace = ".."
+
+[[bin]]
+name = "consumer-cli"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true

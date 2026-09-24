@@ -1,0 +1,2 @@
+vendor = false
+third_party_dir = "../../vendor/cargo"

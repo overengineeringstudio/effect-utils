@@ -1,0 +1,12 @@
+version = 4
+
+[[package]]
+name = "consumer-cli"
+version = "0.1.0"
+dependencies = ["serde"]
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

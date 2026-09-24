@@ -7,6 +7,8 @@ GATE="$ROOT/scripts/buck2-rust-deps.sh"
 TEMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
 FIXTURE="$TEMP_ROOT/repository"
+WORKSPACE_ROOT="workspaces/demo"
+WORKSPACE="$FIXTURE/$WORKSPACE_ROOT"
 FAKE_REINDEER="$TEMP_ROOT/reindeer"
 
 fail() {
@@ -14,11 +16,11 @@ fail() {
   exit 1
 }
 
-mkdir -p "$FIXTURE/rust/third-party/fixups/example"
-printf 'vendor = false\n' >"$FIXTURE/rust/reindeer.toml"
-printf 'authoritative lock bytes\n' >"$FIXTURE/rust/Cargo.lock"
-printf '# old graph\n' >"$FIXTURE/rust/third-party/BUCK"
-printf 'buildscript.run = true\n' >"$FIXTURE/rust/third-party/fixups/example/fixups.toml"
+mkdir -p "$WORKSPACE/third-party/fixups/example"
+printf 'vendor = false\n' >"$WORKSPACE/reindeer.toml"
+printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
+printf '# old graph\n' >"$WORKSPACE/third-party/BUCK"
+printf 'buildscript.run = true\n' >"$WORKSPACE/third-party/fixups/example/fixups.toml"
 
 cat >"$FAKE_REINDEER" <<'FAKE'
 #!/usr/bin/env bash
@@ -26,7 +28,7 @@ set -euo pipefail
 printf '%s\n' "$CARGO_HOME" >"$FAKE_REINDEER_HOME_LOG"
 printf 'invoked\n' >>"$FAKE_REINDEER_CALL_LOG"
 if [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = mutate-lock ]; then
-  printf 'rewritten lock bytes\n' >rust/Cargo.lock
+  printf 'rewritten lock bytes\n' >Cargo.lock
 fi
 if [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = unpinned ]; then
   cat <<'UNPINNED'
@@ -51,37 +53,37 @@ chmod +x "$FAKE_REINDEER"
 export FAKE_REINDEER_HOME_LOG="$TEMP_ROOT/cargo-home"
 export FAKE_REINDEER_CALL_LOG="$TEMP_ROOT/calls"
 export FAKE_REINDEER_BEHAVIOR=generate
-cp "$FIXTURE/rust/Cargo.lock" "$TEMP_ROOT/original-lock"
-"$GATE" generate "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc
-cmp -s "$TEMP_ROOT/original-lock" "$FIXTURE/rust/Cargo.lock" || fail "generate changed Cargo.lock"
-grep -Fq 'http_archive(' "$FIXTURE/rust/third-party/BUCK" || fail "generate did not install the candidate graph"
+cp "$WORKSPACE/Cargo.lock" "$TEMP_ROOT/original-lock"
+"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$FAKE_REINDEER" /fake/cargo /fake/rustc
+cmp -s "$TEMP_ROOT/original-lock" "$WORKSPACE/Cargo.lock" || fail "generate changed Cargo.lock"
+grep -Fq 'http_archive(' "$WORKSPACE/third-party/BUCK" || fail "generate did not install the candidate graph"
 expected_cargo_home="$FIXTURE/.devenv/reindeer-cargo-home"
 [ "$(cat "$FAKE_REINDEER_HOME_LOG")" = "$expected_cargo_home" ] || fail "buckify did not use the repository-pinned Cargo home"
-"$GATE" check "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc
+"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$FAKE_REINDEER" /fake/cargo /fake/rustc
 
-printf '# graph that must survive a failed gate\n' >"$FIXTURE/rust/third-party/BUCK"
-cp "$FIXTURE/rust/third-party/BUCK" "$TEMP_ROOT/graph-before-lock-rewrite"
+printf '# graph that must survive a failed gate\n' >"$WORKSPACE/third-party/BUCK"
+cp "$WORKSPACE/third-party/BUCK" "$TEMP_ROOT/graph-before-lock-rewrite"
 export FAKE_REINDEER_BEHAVIOR=mutate-lock
-if "$GATE" generate "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc 2>"$TEMP_ROOT/lock-error"; then
+if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$FAKE_REINDEER" /fake/cargo /fake/rustc 2>"$TEMP_ROOT/lock-error"; then
   fail "gate accepted a buckify run that rewrote Cargo.lock"
 fi
-grep -Fq 'changed authoritative rust/Cargo.lock' "$TEMP_ROOT/lock-error" || fail "lock rewrite failure was not diagnosed"
-cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$FIXTURE/rust/third-party/BUCK" || fail "failed lock gate replaced the tracked graph"
+grep -Fq 'changed authoritative workspaces/demo/Cargo.lock' "$TEMP_ROOT/lock-error" || fail "lock rewrite failure was not diagnosed"
+cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$WORKSPACE/third-party/BUCK" || fail "failed lock gate replaced the tracked graph"
 
-printf 'authoritative lock bytes\n' >"$FIXTURE/rust/Cargo.lock"
+printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 export FAKE_REINDEER_BEHAVIOR=unpinned
-if "$GATE" generate "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc 2>"$TEMP_ROOT/hash-error"; then
+if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$FAKE_REINDEER" /fake/cargo /fake/rustc 2>"$TEMP_ROOT/hash-error"; then
   fail "gate accepted an unpinned http_archive"
 fi
 grep -Fq 'every generated http_archive must carry one sha256 pin' "$TEMP_ROOT/hash-error" || fail "unpinned archive failure was not diagnosed"
-cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$FIXTURE/rust/third-party/BUCK" || fail "unpinned graph replaced the tracked graph"
+cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$WORKSPACE/third-party/BUCK" || fail "unpinned graph replaced the tracked graph"
 
 export FAKE_REINDEER_BEHAVIOR=generate
-printf 'authoritative lock bytes\n' >"$FIXTURE/rust/Cargo.lock"
+printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 for key in extra_srcs omit_srcs; do
-  printf '%s = ["src/**/*.rs"]\n' "$key" >"$FIXTURE/rust/third-party/fixups/example/fixups.toml"
+  printf '%s = ["src/**/*.rs"]\n' "$key" >"$WORKSPACE/third-party/fixups/example/fixups.toml"
   : >"$FAKE_REINDEER_CALL_LOG"
-  if "$GATE" check "$FIXTURE" "$FAKE_REINDEER" /fake/cargo /fake/rustc >"$TEMP_ROOT/$key.stdout" 2>"$TEMP_ROOT/$key.stderr"; then
+  if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$FAKE_REINDEER" /fake/cargo /fake/rustc >"$TEMP_ROOT/$key.stdout" 2>"$TEMP_ROOT/$key.stderr"; then
     fail "gate accepted non-vendored $key"
   fi
   grep -Fq 'non-vendored fixup uses a discarded source key' "$TEMP_ROOT/$key.stderr" || fail "$key failure was not diagnosed"
