@@ -3190,11 +3190,7 @@ const describeTaggedCauseChain = (cause: unknown): string => {
   const parts: Array<string> = []
   const visited = new Set<object>()
   let current: unknown = cause
-  while (
-    typeof current === 'object' &&
-    current !== null &&
-    visited.has(current) === false
-  ) {
+  while (typeof current === 'object' && current !== null && visited.has(current) === false) {
     visited.add(current)
     const tag = '_tag' in current && typeof current._tag === 'string' ? current._tag : undefined
     const reason =
@@ -3448,7 +3444,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
       const refType =
         commit !== undefined
           ? ('commit' as const)
-          : isNewBranch
+          : isNewBranch === true
             ? ('branch' as const)
             : classifyRef(targetRef)
 

@@ -1240,10 +1240,7 @@ describe('mr store worktree new', () => {
         ).toBe(true)
         expect(
           yield* fs.exists(
-            EffectPath.ops.join(
-              worktreePath,
-              EffectPath.unsafe.relativeDir('repos/test-repo/'),
-            ),
+            EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeDir('repos/test-repo/')),
           ),
         ).toBe(false)
         expect(yield* Git.getCurrentBranch(worktreePath)).toEqual(Option.some('v2.0.0'))
@@ -1294,7 +1291,7 @@ describe('mr store worktree new', () => {
 
         expect(
           result.exitCode,
-          Exit.isFailure(result.exit) ? Cause.pretty(result.exit.cause) : undefined,
+          Exit.isFailure(result.exit) === true ? Cause.pretty(result.exit.cause) : undefined,
         ).toBe(0)
         const source = parseSourceString('test-owner/test-repo')!
         const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: fixture.storePath }))
@@ -1367,7 +1364,8 @@ describe('mr store worktree new', () => {
         })
 
         expect(result.exitCode).not.toBe(0)
-        const diagnostic = Exit.isFailure(result.exit) ? Cause.pretty(result.exit.cause) : ''
+        const diagnostic =
+          Exit.isFailure(result.exit) === true ? Cause.pretty(result.exit.cause) : ''
         expect(diagnostic).toContain('StoreCommandError')
         expect(diagnostic).toContain('OwnedWorktreeAcquisitionError')
         expect(diagnostic).toContain('GenerationFailed')
@@ -1416,7 +1414,8 @@ describe('mr store worktree new', () => {
         })
 
         expect(Exit.isFailure(result.exit)).toBe(true)
-        const diagnostic = Exit.isFailure(result.exit) ? Cause.pretty(result.exit.cause) : ''
+        const diagnostic =
+          Exit.isFailure(result.exit) === true ? Cause.pretty(result.exit.cause) : ''
         expect(diagnostic).toContain('StoreCommandError')
         expect(diagnostic).toContain('OwnedWorktreeAcquisitionError')
         expect(diagnostic).toContain('GenerationFailed')
