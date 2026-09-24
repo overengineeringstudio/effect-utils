@@ -48,7 +48,7 @@ describe('portable JavaScript product cache policy', () => {
       )
     }
     expect(packageTools).toContain(
-      'default_target_platform = "//buck2/platforms:javascript_portable",',
+      'default_target_platform = "@rules//buck2/platforms:javascript_portable",',
     )
   })
 
