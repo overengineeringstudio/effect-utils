@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 6 ]; then
-  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <reindeer> <cargo> <rustc>" >&2
+if [ "$#" -ne 7 ]; then
+  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc>" >&2
   exit 64
 fi
 
 mode="$1"
 root="$2"
 workspace_relative="$3"
-reindeer="$4"
-cargo="$5"
-rustc="$6"
+third_party_buck_relative="$4"
+reindeer="$5"
+cargo="$6"
+rustc="$7"
 
 case "$mode" in
   generate | check) ;;
@@ -32,9 +33,16 @@ case "$workspace" in
     exit 64
     ;;
 esac
+case "$third_party_buck_relative" in
+  /* | *\\* | ../* | */../* | */..)
+    echo "buck2-rust-deps: third-party BUCK must be repository-relative: $third_party_buck_relative" >&2
+    exit 64
+    ;;
+esac
+third_party_buck="$root/$third_party_buck_relative"
+third_party="$(dirname "$third_party_buck")"
 config="$workspace/reindeer.toml"
 lock="$workspace/Cargo.lock"
-third_party="$workspace/third-party"
 cargo_home="$root/.devenv/reindeer-cargo-home"
 
 if ! grep -Eq '^[[:space:]]*vendor[[:space:]]*=[[:space:]]*false([[:space:]]*(#.*)?)?$' "$config"; then
@@ -100,10 +108,10 @@ fi
 case "$mode" in
   generate)
     chmod 0644 "$candidate"
-    mv "$candidate" "$third_party/BUCK"
+    mv "$candidate" "$third_party_buck"
     ;;
   check)
-    if ! cmp -s "$third_party/BUCK" "$candidate"; then
+    if ! cmp -s "$third_party_buck" "$candidate"; then
       echo "buck2-rust-deps: generated Reindeer graph is stale" >&2
       exit 1
     fi

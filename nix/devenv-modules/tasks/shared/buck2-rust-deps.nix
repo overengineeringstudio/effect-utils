@@ -4,6 +4,7 @@
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.buck2-rust-deps {
 #       workspaceRoot = "crates/tool";
+#       thirdPartyBuckPath = "vendor/cargo/BUCK";
 #       taskPrefix = "buck2:rust-deps:tool";
 #     })
 #   ];
@@ -11,6 +12,7 @@
 # Provides `${taskPrefix}:generate` and `${taskPrefix}:check`.
 {
   workspaceRoot,
+  thirdPartyBuckPath ? "${workspaceRoot}/third-party/BUCK",
   taskPrefix ? "buck2:rust-deps",
 }:
 {
@@ -33,6 +35,7 @@ let
     exec ${pkgs.bash}/bin/bash ${gate} ${mode} \
       "$root" \
       ${lib.escapeShellArg workspaceRoot} \
+      ${lib.escapeShellArg thirdPartyBuckPath} \
       ${pkgs.reindeer}/bin/reindeer \
       ${pkgs.cargo}/bin/cargo \
       ${pkgs.rustc}/bin/rustc
