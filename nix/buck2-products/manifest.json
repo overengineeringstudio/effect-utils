@@ -34,6 +34,7 @@
       }
     },
     {
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/x9m78r83f401mx2wjgsx5mzwldhzaxcw/genie.js",
       "descriptor": {
         "externalCapabilities": [
           "actionlint",
@@ -52,7 +53,7 @@
           "@opentui/core-win32-arm64",
           "@opentui/core-win32-x64"
         ],
-        "integrity": "sha256-TteD7f7m0S/GjjhzTnZoX+VSdT288DIDO1xEqeqfMTY=",
+        "integrity": "sha256-ZfYaqilnX/RrKpj9nkaoheCrQhfMKqlP5DaKpwHikJ4=",
         "modulePath": "genie.js",
         "platform": {
           "abi": "any",
@@ -70,16 +71,21 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 6320554,
+        "sizeBytes": 6321341,
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "descriptorSha256": "aae3ec1a2fb7ee33e5caf1f11cc3aa984a234f576506b6e6537cdd6245d4fcc6",
-      "release": {
-        "hash": "sha256-TteD7f7m0S/GjjhzTnZoX+VSdT288DIDO1xEqeqfMTY=",
-        "name": "4ed783edfee6d12fc68e38734e76685fe552753dbcf032033b5c44a9ea9f3136-genie.js",
-        "tag": "buck2-product-v3-genie-4ed783edfee6d12fc68e38734e76685fe552753dbcf032033b5c44a9ea9f3136",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-4ed783edfee6d12fc68e38734e76685fe552753dbcf032033b5c44a9ea9f3136/4ed783edfee6d12fc68e38734e76685fe552753dbcf032033b5c44a9ea9f3136-genie.js"
-      }
+      "descriptorSha256": "17e2e9e6c9b9d6617fce2e3316917593aab9724b8042b20006c069023ae9bf98",
+      "name": "genie",
+      "provenance": {
+        "producerCommit": "2ddf4a75e86a8cd1f01f41a4a84367129e3fee81",
+        "productDigest": "65f61aaa29675ff46b2a98fd9e46a885e0ab4217cc2aa94fe4368aa701e2909e",
+        "schema": "effect-utils/buck-product-provenance/v1",
+        "target": "effect_utils//packages/@overeng/genie:genie-candidate"
+      },
+      "sha256": "65f61aaa29675ff46b2a98fd9e46a885e0ab4217cc2aa94fe4368aa701e2909e",
+      "size": 6321341,
+      "storePath": "/nix/store/x9m78r83f401mx2wjgsx5mzwldhzaxcw-genie-buck2-from-source-0.0.0",
+      "version": "0.0.0"
     },
     {
       "descriptor": {
@@ -160,6 +166,7 @@
       "version": "0.0.0"
     },
     {
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/hw6kwi6sk3rxvwzdji1ydlp3pckfhdym/mr.js",
       "descriptor": {
         "externalCapabilities": [
           "buck2",
@@ -169,7 +176,7 @@
           "watchman"
         ],
         "externalModules": [],
-        "integrity": "sha256-uTa28DK1bVJ9kgKRWNXRkFm04A5hnydPC8qVZq8xGik=",
+        "integrity": "sha256-QVoDnLjcPPJx/T9AzaPFB/m+5Yg8t4yXCMJd3Q+ri4g=",
         "modulePath": "mr.js",
         "platform": {
           "abi": "any",
@@ -187,16 +194,21 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3792518,
+        "sizeBytes": 3031013,
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "descriptorSha256": "59ca0c013f0262b2d5a7f3d45c630a9d3760ea5ab085c78fecd2df0b8f4f098b",
-      "release": {
-        "hash": "sha256-uTa28DK1bVJ9kgKRWNXRkFm04A5hnydPC8qVZq8xGik=",
-        "name": "b936b6f032b56d527d92029158d5d19059b4e00e619f274f0bca9566af311a29-mr.js",
-        "tag": "buck2-product-v3-megarepo-b936b6f032b56d527d92029158d5d19059b4e00e619f274f0bca9566af311a29",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-megarepo-b936b6f032b56d527d92029158d5d19059b4e00e619f274f0bca9566af311a29/b936b6f032b56d527d92029158d5d19059b4e00e619f274f0bca9566af311a29-mr.js"
-      }
+      "descriptorSha256": "7c1ceda5d8a69e98e192dddcaeeb3d44c481a7ce98d8a09ae744b986b4bb57e3",
+      "name": "megarepo",
+      "provenance": {
+        "producerCommit": "275baf021217d21efb31046b0c709df92b10289c",
+        "productDigest": "415a039cb8dc3cf271fd3f40cda3c507f9bee5883cb78c9708c25ddd0fab8b88",
+        "schema": "effect-utils/buck-product-provenance/v1",
+        "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
+      },
+      "sha256": "415a039cb8dc3cf271fd3f40cda3c507f9bee5883cb78c9708c25ddd0fab8b88",
+      "size": 3031013,
+      "storePath": "/nix/store/hw6kwi6sk3rxvwzdji1ydlp3pckfhdym-megarepo-buck2-from-source-0.0.0",
+      "version": "0.0.0"
     },
     {
       "descriptor": {
