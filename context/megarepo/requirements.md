@@ -134,11 +134,14 @@ derivation is cited per requirement. Nothing here is new policy.
   status-gated devenv task — may relocate a worktree or convert a legacy flat
   root. A legacy projection is a typed, zero-mutation refusal instructing the
   caller to recreate it. There is no in-place migration or recovery command.
-- **MR-R13 Composition happens directly at creation:** Worktree creation for a
-  repository whose target commit declares composition creates the branch
-  checkout directly at `P/repos/<owned>`, where `P` is its final store path.
-  Git worktree registration, together with matching `.git`, branch, and bare
-  repository identity at that path, is the permanent authority. An exact
-  incomplete birth may be retried in place; ambiguous roots and foreign bytes
-  are refused without relocation or deletion. Generated metadata describes the
-  rebuildable projection and never becomes a second root-identity authority.
+- **MR-R13 Explicit composition happens directly at creation:** When worktree
+  creation is explicitly requested with `--compose`, and the target commit
+  enables the composition generator, it creates the branch checkout directly
+  at `P/repos/<owned>`, where `P` is its final store path. A composition
+  declaration in `megarepo.kdl` enables the generator but never selects the
+  composed worktree shape. Git worktree registration, together with matching
+  `.git`, branch, and bare repository identity at that path, is the permanent
+  authority. An exact incomplete birth may be retried in place; ambiguous
+  roots and foreign bytes are refused without relocation or deletion.
+  Generated metadata describes the rebuildable projection and never becomes a
+  second root-identity authority.

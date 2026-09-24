@@ -161,6 +161,7 @@ export class StoreCommandError extends Schema.TaggedError<StoreCommandError>()(
   'StoreCommandError',
   {
     message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
