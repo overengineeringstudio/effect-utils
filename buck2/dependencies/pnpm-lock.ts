@@ -240,6 +240,31 @@ const archiveUrl = ({ name, version }: { name: string; version: string }): strin
   return `https://registry.npmjs.org/${name}/-/${tarballName}-${version}.tgz`
 }
 
+/** A locked archive must not turn the public CAS seeder into an arbitrary URL fetcher. */
+const publicArchiveUrl = ({ url, location }: { url: string; location: string }): string => {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return fail(`${location} must use an approved public HTTPS archive origin`)
+  }
+  const approved =
+    (parsed.hostname === 'registry.npmjs.org' &&
+      url.startsWith('https://registry.npmjs.org/')) ||
+    (parsed.hostname === 'overeng-effect-utils.cachix.org' &&
+      url.startsWith('https://overeng-effect-utils.cachix.org/serve/'))
+  if (
+    approved === false ||
+    parsed.protocol !== 'https:' ||
+    parsed.port !== '' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.hash !== ''
+  )
+    return fail(`${location} must use an approved public HTTPS archive origin`)
+  return url
+}
+
 /** Deterministic, collision-resistant Buck target name for one generated identity. */
 export const pnpmTargetName = ({
   prefix,
@@ -578,9 +603,10 @@ export const translatePnpmLock = ({
       url = archiveUrl({ name, version })
     } else {
       stringField({ record: entry, field: 'version', location })
-      url = stringField({ record: resolution, field: 'tarball', location: `${location}.resolution` })
-      if (/^https:\/\/[^/?#@]+(?:\/[^#]*)?$/u.test(url) === false)
-        return fail(`${location}.resolution.tarball must be a public HTTPS URL`)
+      url = publicArchiveUrl({
+        url: stringField({ record: resolution, field: 'tarball', location: `${location}.resolution` }),
+        location: `${location}.resolution.tarball`,
+      })
     }
     const patch = workspacePatches[`${name}@${version}`]
     packages[key] = {
@@ -818,12 +844,10 @@ const decodeSidecarEntry = ({
   const integrity = stringField({ record: entry, field: 'integrity', location })
   integrityBytes({ integrity, location: `${location}.integrity` })
   const packageIdentity = stringField({ record: entry, field: 'packageIdentity', location })
-  const registryUrl = stringField({ record: entry, field: 'registryUrl', location })
-  if (
-    registryUrl.startsWith('https://registry.npmjs.org/') === false &&
-    registryUrl.startsWith('https://overeng-effect-utils.cachix.org/serve/') === false
-  )
-    return fail(`${location}.registryUrl must be a public archive URL`)
+  const registryUrl = publicArchiveUrl({
+    url: stringField({ record: entry, field: 'registryUrl', location }),
+    location: `${location}.registryUrl`,
+  })
   const digest = stringField({ record: entry, field: 'sha256', location })
   if (sha256Pattern.test(digest) === false)
     return fail(`${location}.sha256 must be lowercase sha256`)

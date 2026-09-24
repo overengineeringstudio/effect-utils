@@ -184,6 +184,14 @@ describe('translatePnpmLock', () => {
     const decoded = decodePnpmSha256Sidecar(JSON.parse(JSON.stringify(sidecar)))
     validatePnpmSha256Sidecar({ metadata, sidecar: decoded })
     expect(decoded).toEqual(sidecar)
+    expect(() =>
+      decodePnpmSha256Sidecar({
+        ...sidecar,
+        packages: {
+          [key]: { ...sidecar.packages[key], registryUrl: 'https://attacker.example/archive.tgz' },
+        },
+      }),
+    ).toThrow('approved public HTTPS archive origin')
     expect(renderPnpmPackageTargets({ metadata, sidecar })).toContain(`    url = ${JSON.stringify(url)},`)
     await expect(
       generatePnpmSha256Sidecar({ metadata, fetchArchive: async () => otherArchive }),
@@ -216,6 +224,30 @@ ${packageFields}`,
           workspaceText: workspace(),
         }),
       ).toThrow(expectedError)
+    }
+  })
+
+  it('rejects private, arbitrary, and non-HTTPS tarball origins before fetching', () => {
+    for (const url of [
+      'http://overeng-effect-utils.cachix.org/serve/abc123/overeng-utils.tgz',
+      'https://localhost/serve/abc123/overeng-utils.tgz',
+      'https://127.0.0.1/serve/abc123/overeng-utils.tgz',
+      'https://internal.local/serve/abc123/overeng-utils.tgz',
+      'https://attacker.example/serve/abc123/overeng-utils.tgz',
+      'https://user:secret@overeng-effect-utils.cachix.org/serve/abc123/overeng-utils.tgz',
+    ]) {
+      expect(() =>
+        translatePnpmLock({
+          lockfileText: lock({
+            importers: '  .: {}',
+            packages: `  '@overeng/utils@${url}':
+    resolution: {integrity: ${archiveIntegrity}, tarball: ${url}}
+    version: 0.1.0`,
+            snapshots: `  '@overeng/utils@${url}': {}`,
+          }),
+          workspaceText: workspace(),
+        }),
+      ).toThrow('approved public HTTPS archive origin')
     }
   })
 
