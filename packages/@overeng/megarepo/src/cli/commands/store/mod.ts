@@ -3445,7 +3445,12 @@ const storeWorktreeNewCommand = Cli.Command.make(
       // Determine target ref and worktree creation mode
       const targetRef = commit ?? ref!
       const isNewBranch = base !== undefined
-      const refType = commit !== undefined ? ('commit' as const) : classifyRef(targetRef)
+      const refType =
+        commit !== undefined
+          ? ('commit' as const)
+          : isNewBranch
+            ? ('branch' as const)
+            : classifyRef(targetRef)
 
       // Compute worktree path
       const worktreePath = store.getWorktreePath({ source, ref: targetRef, refType })

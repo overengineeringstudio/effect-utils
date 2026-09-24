@@ -1187,7 +1187,7 @@ describe('mr store worktree new', () => {
   )
 
   it.effect(
-    'creates a standalone worktree by default for a composition-capable repository with .buckroot',
+    'creates a tag-like standalone branch by default for a composition-capable repository',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -1211,7 +1211,7 @@ describe('mr store worktree new', () => {
             'new',
             'test-owner/test-repo',
             '--ref',
-            'feature',
+            'v2.0.0',
             '--base',
             'origin/main',
             '--output',
@@ -1225,7 +1225,7 @@ describe('mr store worktree new', () => {
         const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: fixture.storePath }))
         const worktreePath = store.getWorktreePath({
           source,
-          ref: 'feature',
+          ref: 'v2.0.0',
           refType: 'branch',
         })
         expect(
@@ -1246,7 +1246,7 @@ describe('mr store worktree new', () => {
             ),
           ),
         ).toBe(false)
-        expect(yield* Git.getCurrentBranch(worktreePath)).toEqual(Option.some('feature'))
+        expect(yield* Git.getCurrentBranch(worktreePath)).toEqual(Option.some('v2.0.0'))
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -1279,7 +1279,7 @@ describe('mr store worktree new', () => {
             'new',
             'test-owner/test-repo',
             '--ref',
-            'composed',
+            'release-v1.0.0',
             '--base',
             'origin/main',
             '--compose',
@@ -1300,7 +1300,7 @@ describe('mr store worktree new', () => {
         const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: fixture.storePath }))
         const workspaceRoot = store.getWorktreePath({
           source,
-          ref: 'composed',
+          ref: 'release-v1.0.0',
           refType: 'branch',
         })
         const ownedWorktree = EffectPath.ops.join(
@@ -1322,7 +1322,7 @@ describe('mr store worktree new', () => {
             EffectPath.ops.join(ownedWorktree, EffectPath.unsafe.relativeFile('.buckroot')),
           ),
         ).toBe(false)
-        expect(yield* Git.getCurrentBranch(ownedWorktree)).toEqual(Option.some('composed'))
+        expect(yield* Git.getCurrentBranch(ownedWorktree)).toEqual(Option.some('release-v1.0.0'))
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
