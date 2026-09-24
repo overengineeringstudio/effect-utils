@@ -193,13 +193,35 @@ def _fetch_impl(ctx):
             fail("archive_origin.url_prefix must use http or https: {}".format(url_prefix))
         if url_prefix != "" and not url_prefix.endswith("/cas/"):
             fail("archive_origin.url_prefix must end with /cas/: {}".format(url_prefix))
-        url = "{}{}".format(url_prefix, ctx.attrs.sha256) if url_prefix != "" else ctx.attrs.url
-        out = ctx.actions.download_file(
-            "package.tgz",
-            url,
-            sha256 = ctx.attrs.sha256,
-            size_bytes = ctx.attrs.size_bytes,
-        )
+        if url_prefix == "":
+            out = ctx.actions.download_file(
+                "package.tgz",
+                ctx.attrs.url,
+                sha256 = ctx.attrs.sha256,
+                size_bytes = ctx.attrs.size_bytes,
+            )
+        else:
+            out = ctx.actions.declare_output("package.tgz")
+            ctx.actions.run(
+                cmd_args([
+                    ctx.attrs._bun[BunToolchainInfo].executable,
+                    ctx.attrs._acquire_archive,
+                    "--cas-url",
+                    "{}{}".format(url_prefix, ctx.attrs.sha256),
+                    "--registry-url",
+                    ctx.attrs.url,
+                    "--sha256",
+                    ctx.attrs.sha256,
+                    "--size",
+                    str(ctx.attrs.size_bytes),
+                    "--output",
+                    out.as_output(),
+                ]),
+                category = "pnpm_archive",
+                identifier = ctx.attrs.name,
+                local_only = True,
+                allow_cache_upload = True,
+            )
     else:
         _require_nix_store_path(archive_root, "nix_store.root")
         out = ctx.actions.declare_output("package.tgz")
@@ -233,6 +255,9 @@ _fetch = rule(
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
+        )),
+        "_acquire_archive": attrs.default_only(attrs.source(
+            default = "//buck2/dependencies:acquire-archive.ts",
         )),
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",
