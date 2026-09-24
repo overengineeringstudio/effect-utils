@@ -219,10 +219,17 @@ export const buildTargetsFor = ({
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-/** Best-effort real exit status of a failed {@link runCommand}, defaulting to 1. */
-const exitCodeOf = (error: unknown): number => {
-  const exited = /exited (\d+)/.exec(errorMessage(error))
-  return exited === null ? 1 : Number(exited[1])
+/**
+ * Real exit status of a failed command for span recording. A signaled
+ * termination has no status and counts as a failed nonzero exit; for plain
+ * rejections only the first message line is trusted, so embedded command
+ * output cannot forge a status.
+ */
+export const exitCodeOf = (error: unknown): number => {
+  if (error instanceof CommandFailure) return error.exitCode ?? 1
+  const firstLine = errorMessage(error).split('\n')[0] ?? ''
+  const exited = /exited (\d+)$/.exec(firstLine)
+  return exited === null ? 1 : Number(exited[1] ?? '1')
 }
 
 /** Persistent, coalescing reconciliation state machine. */
@@ -406,6 +413,29 @@ export type RunCommand = (options: {
   readonly signal?: AbortSignal
 }) => Promise<CommandResult>
 
+/**
+ * Rejection of the default {@link RunCommand}: carries the command's numeric
+ * exit status, or `undefined` when the process died from a signal.
+ */
+export class CommandFailure extends Error {
+  readonly exitCode: number | undefined
+  readonly signal: string | undefined
+
+  constructor({
+    message,
+    exitCode,
+    signal,
+  }: {
+    message: string
+    exitCode: number | undefined
+    signal: string | undefined
+  }) {
+    super(message)
+    this.exitCode = exitCode
+    this.signal = signal
+  }
+}
+
 /** Default {@link RunCommand}: buffers output and fails closed on a non-zero exit. */
 export const runCommand: RunCommand = ({ command, args, cwd, signal, detached }) => {
   const settled = Promise.withResolvers<CommandResult>()
@@ -428,9 +458,12 @@ export const runCommand: RunCommand = ({ command, args, cwd, signal, detached })
     if (code === 0) settled.resolve({ stdout, stderr })
     else
       settled.reject(
-        new Error(
-          `${command} exited ${code ?? `from ${childSignal ?? 'unknown signal'}`}\n${stderr || stdout}`.trim(),
-        ),
+        new CommandFailure({
+          message:
+            `${command} exited ${code ?? `from ${childSignal ?? 'unknown signal'}`}\n${stderr || stdout}`.trim(),
+          exitCode: code ?? undefined,
+          signal: childSignal ?? undefined,
+        }),
       )
   })
   return settled.promise

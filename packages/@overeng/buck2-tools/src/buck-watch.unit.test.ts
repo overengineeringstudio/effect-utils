@@ -9,7 +9,10 @@ import { describe, expect, it } from 'vitest'
 import {
   affectedPackagePaths,
   buildTargetsFor,
+  CommandFailure,
+  exitCodeOf,
   reconcileBuckViews,
+  runCommand,
   runBuckWatchLoop,
   type BuckWatchPlan,
   type WatchChangeSource,
@@ -466,6 +469,34 @@ describe('Buck watch reconciliation', () => {
       rmSync(otelDirectory, { recursive: true, force: true })
       await rm(root, { recursive: true })
     }
+  })
+
+  it('records signaled command termination as a failed nonzero exit', async () => {
+    const error = await runCommand({
+      command: process.execPath,
+      args: ['-e', 'console.error("exited 0"); process.kill(process.pid, "SIGTERM")'],
+    }).then(
+      () => undefined,
+      (rejection: unknown) => rejection,
+    )
+    expect(error).toBeInstanceOf(CommandFailure)
+    expect((error as CommandFailure).exitCode).toBeUndefined()
+    expect((error as CommandFailure).signal).toBe('SIGTERM')
+    // The signal kill must not be marked ok even though stderr contains "exited 0".
+    expect(exitCodeOf(error)).toBe(1)
+  })
+
+  it('keeps embedded command output from forging an exit status', async () => {
+    const error = await runCommand({
+      command: process.execPath,
+      args: ['-e', 'console.error("nested tool exited 0"); process.exit(5)'],
+    }).then(
+      () => undefined,
+      (rejection: unknown) => rejection,
+    )
+    expect((error as CommandFailure).exitCode).toBe(5)
+    expect(exitCodeOf(error)).toBe(5)
+    expect(exitCodeOf(new Error('unrelated failure'))).toBe(1)
   })
 
   it('closes the subscription and publishes stopped status on shutdown', async () => {
