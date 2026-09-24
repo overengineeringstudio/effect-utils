@@ -1,4 +1,6 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -158,6 +160,102 @@ describe('compiled binary import graph scheduling', () => {
       await rm(tempRoot, { recursive: true, force: true })
     }
   })
+})
+
+describe('compiled binary import graph pile-cache isolation', () => {
+  it('stages a new member pin beyond the key of a seeded old-pin transform', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-pile-cache-'))
+    const oldMemberRoot = path.join(tempRoot, 'members/old')
+    const newMemberRoot = path.join(tempRoot, 'members/new')
+    const entryPath = path.join(tempRoot, 'project/config.genie.ts')
+    const bunHome = path.join(tempRoot, 'bun-home')
+    const runnerPath = path.join(
+      process.cwd(),
+      `.genie-pile-cache-runner-${Date.now().toString()}.ts`,
+    )
+    const stagingRoots: string[] = []
+    const stagedPathFor = (sourcePath: string, stageRoot: string) =>
+      path.join(stageRoot, sourcePath.replace(/^(?:[A-Za-z]:)?[\\/]+/, ''))
+    const pileKey = (sourceCode: string) => createHash('sha256').update(sourceCode).digest('hex')
+    const stage = (memberRoot: string): { tempRoot: string; value: string } => {
+      const output = execFileSync('bun', [runnerPath, entryPath], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BUN_INSTALL: path.join(bunHome, '.bun'),
+          GENIE_MEMBER_OVERRIDE_MAP: JSON.stringify({ member: memberRoot }),
+          HOME: bunHome,
+        },
+      })
+      return JSON.parse(output) as { tempRoot: string; value: string }
+    }
+
+    try {
+      await Promise.all([
+        mkdir(oldMemberRoot, { recursive: true }),
+        mkdir(newMemberRoot, { recursive: true }),
+        mkdir(path.dirname(entryPath), { recursive: true }),
+        mkdir(bunHome, { recursive: true }),
+      ])
+      await writeFile(
+        runnerPath,
+        [
+          `import { NodeServices } from '@effect/platform-node'`,
+          `import { Effect } from 'effect'`,
+          `import { pathToFileURL } from 'node:url'`,
+          `import { stageCompiledBinaryImportGraph } from './src/core/generation.ts'`,
+          `const entryPath = process.argv[2]`,
+          `if (entryPath === undefined) throw new Error('Expected an entry path')`,
+          `const staged = await Effect.runPromise(stageCompiledBinaryImportGraph({ entryPath }).pipe(Effect.provide(NodeServices.layer)))`,
+          `const loaded = await import(\`${'${'}pathToFileURL(staged.stagePath).href}?import=${'${'}Date.now()}\`)`,
+          `console.log(JSON.stringify({ tempRoot: staged.tempRoot, value: loaded.default.value }))`,
+          '',
+        ].join('\n'),
+      )
+      const carrierSource = [
+        `import { label } from './label.ts'`,
+        `export const value = label`,
+        '',
+      ].join('\n')
+      await Promise.all([
+        writeFile(path.join(oldMemberRoot, 'label.ts'), `export const label = 'old'\n`),
+        writeFile(path.join(newMemberRoot, 'label.ts'), `export const label = 'new'\n`),
+        writeFile(path.join(oldMemberRoot, 'mod.ts'), carrierSource),
+        writeFile(path.join(newMemberRoot, 'mod.ts'), carrierSource),
+        writeFile(
+          entryPath,
+          [`import { value } from '#mr/member/mod.ts'`, `export default { value }`, ''].join('\n'),
+        ),
+      ])
+
+      const oldPin = stage(oldMemberRoot)
+      stagingRoots.push(oldPin.tempRoot)
+      const oldStagedCarrier = await readFile(
+        stagedPathFor(path.join(oldMemberRoot, 'mod.ts'), oldPin.tempRoot),
+        'utf8',
+      )
+      const seededPileCache = new Map([[pileKey(oldStagedCarrier), 'old-pin transform']])
+
+      const newPin = stage(newMemberRoot)
+      stagingRoots.push(newPin.tempRoot)
+      const newStagedCarrier = await readFile(
+        stagedPathFor(path.join(newMemberRoot, 'mod.ts'), newPin.tempRoot),
+        'utf8',
+      )
+      const newStagedEntry = await readFile(stagedPathFor(entryPath, newPin.tempRoot), 'utf8')
+
+      expect(seededPileCache.get(pileKey(newStagedCarrier))).toBeUndefined()
+      expect(newStagedEntry).toMatch(/from ['"]\.\.\/members\/new\/mod\.ts['"]/)
+      expect(newStagedEntry).not.toContain(newMemberRoot)
+      expect(newPin.value).toBe('new')
+    } finally {
+      await Promise.all([
+        rm(runnerPath, { force: true }),
+        ...stagingRoots.map((stagingRoot) => rm(stagingRoot, { recursive: true, force: true })),
+        rm(tempRoot, { recursive: true, force: true }),
+      ])
+    }
+  }, 120_000)
 })
 
 describe('getHeaderComment', () => {

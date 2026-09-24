@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import * as nodeFsSync from 'node:fs'
 import nodeFs from 'node:fs/promises'
 import os from 'node:os'
@@ -33,6 +33,7 @@ import {
   InvalidOxfmtConfigError,
 } from './errors.ts'
 import { resolveImportMapsInSource } from './import-map/mod.ts'
+import { resolveMegarepoMemberSpecifierSync } from './import-map/sync-resolver.ts'
 import * as Observability from './observability.ts'
 import type { GenerateSuccess, GenieContext } from './types.ts'
 
@@ -43,7 +44,8 @@ export type LoadedGenieFile = {
   ctx: GenieContext
 }
 
-type StagedCompiledBinaryImportGraph = {
+/** Bundled compiled-generation entry and its owning temporary staging directory. */
+export type StagedCompiledBinaryImportGraph = {
   stagePath: string
   tempRoot: string
 }
@@ -170,14 +172,11 @@ export const pinStagedModuleIdentity = ({
     use: (analysis) => pinStagedModuleIdentityWithAnalysis({ analysis, sourceCode, sourcePath }),
   })
 
-const resolveRelativeImportPath = async ({
-  importerPath,
-  specifier,
+const resolveImportFilePath = async ({
+  resolvedBase,
 }: {
-  importerPath: string
-  specifier: string
+  resolvedBase: string
 }): Promise<string | undefined> => {
-  const resolvedBase = path.resolve(path.dirname(importerPath), specifier)
   const candidates = [
     resolvedBase,
     `${resolvedBase}.ts`,
@@ -226,13 +225,46 @@ const collectRelativeImportPaths = async ({
 
   const resolvedPaths = await Promise.all(
     relativeSpecifiers.map((specifier) =>
-      resolveRelativeImportPath({ importerPath: sourcePath, specifier }),
+      resolveImportFilePath({
+        resolvedBase: path.resolve(path.dirname(sourcePath), specifier),
+      }),
     ),
   )
 
   return Array.from(
     new Set(resolvedPaths.filter((resolved): resolved is string => resolved !== undefined)),
   )
+}
+
+const collectMegarepoMemberSpecifiers = (sourceCode: string): string[] => {
+  const importSpecifierRegex = new RegExp(IMPORT_SPECIFIER_REGEX)
+  const memberSpecifiers: string[] = []
+  let match: RegExpExecArray | null = importSpecifierRegex.exec(sourceCode)
+  while (match !== null) {
+    const specifier = match[2]
+    if (specifier?.startsWith('#mr/') === true) {
+      memberSpecifiers.push(specifier)
+    }
+    match = importSpecifierRegex.exec(sourceCode)
+  }
+
+  return Array.from(new Set(memberSpecifiers))
+}
+
+const stampStagedModuleSource = ({
+  nonce,
+  sourceCode,
+}: {
+  nonce: string
+  sourceCode: string
+}): string => {
+  const banner = `// genie-staging-nonce:${nonce}\n`
+  if (sourceCode.startsWith('#!') === false) return `${banner}${sourceCode}`
+
+  const shebangEnd = sourceCode.indexOf('\n')
+  return shebangEnd === -1
+    ? `${sourceCode}\n${banner}`
+    : `${sourceCode.slice(0, shebangEnd + 1)}${banner}${sourceCode.slice(shebangEnd + 1)}`
 }
 
 const hasFileSystemErrorCode = ({ error, code }: { error: unknown; code: string }): boolean =>
@@ -289,7 +321,8 @@ const mirrorNodeModulesSearchPaths = async ({
   )
 }
 
-const stageCompiledBinaryImportGraph = ({
+/** Stage and bundle a compiled-generation import graph in an isolated temporary directory. */
+export const stageCompiledBinaryImportGraph = ({
   entryPath,
 }: {
   entryPath: string
@@ -347,8 +380,49 @@ const stageCompiledBinaryImportGraph = ({
             }),
         })
 
+        const stagedMegarepoMemberPaths = new Map<string, string>()
+        for (const specifier of collectMegarepoMemberSpecifiers(sourceCode)) {
+          const resolvedMemberPath = resolveMegarepoMemberSpecifierSync({
+            specifier,
+            importerPath: sourcePath,
+          })
+          if (resolvedMemberPath === undefined) continue
+
+          const memberSourcePath = yield* Effect.tryPromise({
+            try: () => resolveImportFilePath({ resolvedBase: resolvedMemberPath }),
+            catch: (error) =>
+              new GenieImportError({
+                genieFilePath: entryPath,
+                message: `Failed to resolve ${specifier} in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+                cause: error,
+              }),
+          })
+          if (memberSourcePath === undefined) continue
+
+          stagedMegarepoMemberPaths.set(
+            specifier,
+            yield* stageModule({ analysis, sourcePath: memberSourcePath }),
+          )
+        }
+        const sourceWithStagedMegarepoMembers = pinnedSource.replace(
+          new RegExp(IMPORT_SPECIFIER_REGEX),
+          (match, _quote, specifier: string) => {
+            const stagedMemberPath = stagedMegarepoMemberPaths.get(specifier)
+            if (stagedMemberPath === undefined) return match
+
+            const relativeStagePath = path
+              .relative(path.dirname(stagePath), stagedMemberPath)
+              .split(path.sep)
+              .join('/')
+            const stagedSpecifier =
+              relativeStagePath.startsWith('.') === true
+                ? relativeStagePath
+                : `./${relativeStagePath}`
+            return match.replace(specifier, stagedSpecifier)
+          },
+        )
         const transformedSource = yield* resolveImportMapsInSource({
-          sourceCode: pinnedSource,
+          sourceCode: sourceWithStagedMegarepoMembers,
           sourcePath,
         }).pipe(
           Effect.mapError(
@@ -374,7 +448,13 @@ const stageCompiledBinaryImportGraph = ({
         yield* Effect.tryPromise({
           try: async () => {
             await nodeFs.mkdir(path.dirname(stagePath), { recursive: true })
-            await nodeFs.writeFile(stagePath, transformedSource)
+            // Bun's persistent transpiler cache keys modules by source content while retaining the
+            // first module location. A fresh module stamp prevents either another run or another
+            // same-content module from reusing this short-lived graph location.
+            await nodeFs.writeFile(
+              stagePath,
+              stampStagedModuleSource({ nonce: randomUUID(), sourceCode: transformedSource }),
+            )
             await mirrorNodeModulesSearchPaths({ sourcePath, tempRoot })
           },
           catch: (error) =>

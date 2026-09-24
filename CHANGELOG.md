@@ -38,10 +38,13 @@ All notable changes to this project will be documented in this file.
 - **@overeng/megarepo**: Apply git command deadlines only to network commands.
   Local commands such as `worktree add`, `worktree list`, and `status` now run
   unbounded, so large stores under host load no longer fail `mr store worktree
-  new` or leave partially written worktrees behind.
+new` or leave partially written worktrees behind.
 - **Scoped Buck2 product publication**: Merge refreshed cache products by product
   identity while retaining unrelated release-backed products, so publishing
   Megarepo no longer removes the bootstrap tools required by repository checks.
+- **Genie**: Stage `#mr` members with the compiled import graph and give every
+  staged module a per-run identity, preventing Bun's persistent transpiler
+  cache from resolving an unchanged module through an earlier member pin.
 - **Genie**: Serialize compiled-binary import graph staging and bundling so
   concurrent full-workspace generation cannot retain stale generated files.
 - **Buck2 product publication**: Scope trusted main-branch publication to the
