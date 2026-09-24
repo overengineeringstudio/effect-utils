@@ -16,7 +16,7 @@ let
       [ -f "$testFile" ] || continue
       found=true
       echo "Running $testFile"
-      NIX_FLAKE_REF="git+file://$PWD?shallow=1" PYTHON=${pkgs.python3}/bin/python3 BASH_BIN=${pkgs.bashNonInteractive}/bin/bash ${pkgs.bashNonInteractive}/bin/bash "$testFile"
+      NIX_FLAKE_REF="git+file://$PWD?shallow=1" BUN_BIN=${pkgs.bun}/bin/bun BASH_BIN=${pkgs.bashNonInteractive}/bin/bash ${pkgs.bashNonInteractive}/bin/bash "$testFile"
     done
 
     if [ "$found" != true ]; then

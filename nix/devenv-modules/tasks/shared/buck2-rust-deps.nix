@@ -41,7 +41,7 @@ let
       ${pkgs.reindeer}/bin/reindeer \
       ${pkgs.cargo}/bin/cargo \
       ${pkgs.rustc}/bin/rustc \
-      ${pkgs.python3}/bin/python3
+      ${pkgs.bun}/bin/bun
   '';
 in
 assert lib.assertMsg validRelativePath

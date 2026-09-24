@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 8 ]; then
-  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <python3>" >&2
+  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <bun>" >&2
   exit 64
 fi
 
@@ -13,7 +13,7 @@ third_party_buck_relative="$4"
 reindeer="$5"
 cargo="$6"
 rustc="$7"
-python="$8"
+bun="$8"
 
 case "$mode" in
   generate | check) ;;
@@ -62,22 +62,16 @@ lock="$workspace/Cargo.lock"
 cargo_home="$root/.devenv/reindeer-cargo-home"
 # Reindeer reads `third_party_dir` and `vendor` from the TOML root table; a
 # line scan would also match keys inside other tables or miss literal strings.
+# Bun's TOML parser is the one the Cargo projection uses for the same file.
 if ! reindeer_third_party="$(
-  "$python" - "$config" <<'PY'
-import sys
-import tomllib
-
-with open(sys.argv[1], "rb") as handle:
-    config = tomllib.load(handle)
-third_party_dir = config.get("third_party_dir")
-if not isinstance(third_party_dir, str) or third_party_dir == "":
-    sys.exit("third_party_dir must be a non-empty root-level string")
-if any(ord(char) < 0x20 or ord(char) == 0x7F for char in third_party_dir):
-    sys.exit("third_party_dir must not contain control characters")
-if config.get("vendor") is not False:
-    sys.exit("vendor must be the root-level boolean false")
-print(third_party_dir)
-PY
+  "$bun" -e '
+const config = Bun.TOML.parse(await Bun.file(process.argv[1]).text());
+const dir = config.third_party_dir;
+if (typeof dir !== "string" || dir === "") throw new Error("third_party_dir must be a non-empty root-level string");
+if (/[\u0000-\u001f\u007f]/.test(dir)) throw new Error("third_party_dir must not contain control characters");
+if (config.vendor !== false) throw new Error("vendor must be the root-level boolean false");
+process.stdout.write(dir);
+' "$config"
 )"; then
   echo "buck2-rust-deps: invalid ${config#"$root"/} (must select root-level vendor = false and third_party_dir)" >&2
   exit 1

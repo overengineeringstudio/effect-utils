@@ -13,8 +13,8 @@ WORKSPACE="$FIXTURE/$WORKSPACE_ROOT"
 THIRD_PARTY_BUCK_PATH="vendor/cargo/BUCK"
 THIRD_PARTY="$FIXTURE/vendor/cargo"
 FAKE_REINDEER="$TEMP_ROOT/reindeer"
-PYTHON="${PYTHON:-$(command -v python3 || true)}"
-[ -n "$PYTHON" ] || { echo "FAIL: python3 with tomllib is required (set PYTHON)" >&2; exit 1; }
+BUN="${BUN_BIN:-$(command -v bun || true)}"
+[ -n "$BUN" ] || { echo "FAIL: bun is required (set BUN_BIN)" >&2; exit 1; }
 
 fail() {
   echo "FAIL: $*" >&2
@@ -59,17 +59,17 @@ export FAKE_REINDEER_HOME_LOG="$TEMP_ROOT/cargo-home"
 export FAKE_REINDEER_CALL_LOG="$TEMP_ROOT/calls"
 export FAKE_REINDEER_BEHAVIOR=generate
 cp "$WORKSPACE/Cargo.lock" "$TEMP_ROOT/original-lock"
-"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON"
+"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 cmp -s "$TEMP_ROOT/original-lock" "$WORKSPACE/Cargo.lock" || fail "generate changed Cargo.lock"
 grep -Fq 'http_archive(' "$THIRD_PARTY/BUCK" || fail "generate did not install the custom-path candidate graph"
 expected_cargo_home="$FIXTURE/.devenv/reindeer-cargo-home"
 [ "$(cat "$FAKE_REINDEER_HOME_LOG")" = "$expected_cargo_home" ] || fail "buckify did not use the repository-pinned Cargo home"
-"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON"
+"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 
 printf '# graph that must survive a failed gate\n' >"$THIRD_PARTY/BUCK"
 cp "$THIRD_PARTY/BUCK" "$TEMP_ROOT/graph-before-lock-rewrite"
 export FAKE_REINDEER_BEHAVIOR=mutate-lock
-if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON" 2>"$TEMP_ROOT/lock-error"; then
+if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/lock-error"; then
   fail "gate accepted a buckify run that rewrote Cargo.lock"
 fi
 grep -Fq 'changed authoritative workspaces/demo/Cargo.lock' "$TEMP_ROOT/lock-error" || fail "lock rewrite failure was not diagnosed"
@@ -77,7 +77,7 @@ cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$THIRD_PARTY/BUCK" || fail "faile
 
 printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 export FAKE_REINDEER_BEHAVIOR=unpinned
-if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON" 2>"$TEMP_ROOT/hash-error"; then
+if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/hash-error"; then
   fail "gate accepted an unpinned http_archive"
 fi
 grep -Fq 'every generated http_archive must carry one sha256 pin' "$TEMP_ROOT/hash-error" || fail "unpinned archive failure was not diagnosed"
@@ -88,7 +88,7 @@ printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 for key in extra_srcs omit_srcs; do
   printf '%s = ["src/**/*.rs"]\n' "$key" >"$THIRD_PARTY/fixups/example/fixups.toml"
   : >"$FAKE_REINDEER_CALL_LOG"
-  if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON" >"$TEMP_ROOT/$key.stdout" 2>"$TEMP_ROOT/$key.stderr"; then
+  if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" >"$TEMP_ROOT/$key.stdout" 2>"$TEMP_ROOT/$key.stderr"; then
     fail "gate accepted non-vendored $key"
   fi
   grep -Fq 'non-vendored fixup uses a discarded source key' "$TEMP_ROOT/$key.stderr" || fail "$key failure was not diagnosed"
@@ -97,7 +97,7 @@ done
 
 mkdir -p "$TEMP_ROOT/outside-workspace"
 ln -s "$TEMP_ROOT/outside-workspace" "$FIXTURE/workspaces/escape"
-if "$GATE" check "$FIXTURE" "workspaces/escape" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON" 2>"$TEMP_ROOT/escape-error"; then
+if "$GATE" check "$FIXTURE" "workspaces/escape" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/escape-error"; then
   fail "gate accepted a workspace symlink escaping the repository"
 fi
 grep -Fq 'workspace root escapes repository' "$TEMP_ROOT/escape-error" || fail "physical workspace escape was not diagnosed"
@@ -127,26 +127,26 @@ invalid_prefix_result="$(
 
 mkdir -p "$FIXTURE/decoy"
 printf 'vendor = false\nthird_party_dir = "../../decoy"\n' >"$WORKSPACE/reindeer.toml"
-if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON" 2>"$TEMP_ROOT/graph-mismatch-error"; then
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/graph-mismatch-error"; then
   fail "gate accepted a BUCK path that disagrees with reindeer.toml"
 fi
 grep -Fq 'third-party BUCK disagrees' "$TEMP_ROOT/graph-mismatch-error" || fail "third-party graph mismatch was not diagnosed"
 
 # A matching key inside a non-root table must not mask the root setting Reindeer uses.
 printf 'vendor = false\nthird_party_dir = "../../decoy"\n\n[buck]\nthird_party_dir = "../../vendor/cargo"\n' >"$WORKSPACE/reindeer.toml"
-if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON" 2>"$TEMP_ROOT/table-decoy-error"; then
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/table-decoy-error"; then
   fail "gate accepted third_party_dir from a non-root table"
 fi
 grep -Fq 'third-party BUCK disagrees' "$TEMP_ROOT/table-decoy-error" || fail "non-root third_party_dir decoy was not diagnosed"
 
 printf 'third_party_dir = "../../vendor/cargo"\n\n[vendor]\ngitignore_checksum_exclude = []\n' >"$WORKSPACE/reindeer.toml"
-if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON" 2>"$TEMP_ROOT/vendor-table-error"; then
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/vendor-table-error"; then
   fail "gate accepted a vendoring table instead of vendor = false"
 fi
 grep -Fq 'must select root-level vendor = false' "$TEMP_ROOT/vendor-table-error" || fail "vendoring table was not diagnosed"
 
 printf 'third_party_dir = "../../vendor/cargo"\n\n[buck]\nvendor = false\n' >"$WORKSPACE/reindeer.toml"
-if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON" 2>"$TEMP_ROOT/vendor-nested-error"; then
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/vendor-nested-error"; then
   fail "gate accepted vendor = false from a non-root table"
 fi
 grep -Fq 'must select root-level vendor = false' "$TEMP_ROOT/vendor-nested-error" || fail "non-root vendor setting was not diagnosed"
@@ -156,7 +156,7 @@ printf 'buildscript.run = true\n' >"$THIRD_PARTY/fixups/example/fixups.toml"
 printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 export FAKE_REINDEER_BEHAVIOR=generate
 printf "vendor = false\nthird_party_dir = '../../vendor/cargo'\n" >"$WORKSPACE/reindeer.toml"
-"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON"
-"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$PYTHON"
+"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 
 echo "Buck2 Rust dependency gate tests passed."
