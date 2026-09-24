@@ -48,7 +48,6 @@
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
         rootPath = self.outPath;
-        mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         mkPnpmCliSupport = import ./nix/workspace-tools/lib/mk-pnpm-cli-support.nix { inherit pkgs; };
         cliPackageRegistry = import ./nix/cli-packages.nix { inherit pkgs; };
@@ -231,12 +230,7 @@
           notion-md = cliPackages.notion-md.outPath;
         };
 
-        apps = {
-          update-bun-hashes = flake-utils.lib.mkApp {
-            drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
-          };
-        }
-        // pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
+        apps = pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
           otelite = flake-utils.lib.mkApp {
             drv = nativeProductPackages.otelite;
             exePath = "/bin/otelite";
@@ -294,9 +288,6 @@
 
       # CLI guard helpers: .mkCliGuard for single guards, .fromTasks/.stripGuards for task-driven guards
       lib.cliGuard = { pkgs }: import ./nix/devenv-modules/tasks/lib/cli-guard.nix { inherit pkgs; };
-
-      # Builder function for external repos to create their own Bun CLIs
-      lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
 
       # Build a materialized standalone Buck root for a consumer checkout.
       lib.mkConsumerBuckRoot = args: import ./nix/buck2-products/consumer-root.nix args;

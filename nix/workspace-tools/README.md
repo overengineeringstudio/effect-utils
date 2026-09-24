@@ -1,7 +1,8 @@
 # Workspace Tools (Nix)
 
-Reusable Nix helpers for building Bun CLIs and shared CLI utilities. These are
-pure and designed to work in both megarepo workspaces and standalone repos.
+Reusable Nix helpers for Buck products, pnpm-based workspace CLIs, and shared
+CLI utilities. These are pure and designed to work in both megarepo workspaces
+and standalone repos.
 
 ## Layout
 
@@ -13,37 +14,21 @@ pure and designed to work in both megarepo workspaces and standalone repos.
     rejected until their inspectors exist.
   - `buck2-runtime-inspect-elf-dynamic.nix` — observation-only ELF class,
     machine, interpreter, dependency, and runtime-path verification.
-  - `mk-bun-cli.nix` — Bun binary builder (deterministic, local file deps).
   - `mk-pnpm-cli.nix` — pnpm + bun compile builder for workspace CLIs.
   - `mk-pnpm-deps.nix` — FOD helper for preparing relocatable pnpm install trees that downstream builds restore without rerunning `pnpm install`.
   - `cli-build-stamp.nix` — build stamp helper for CLIs.
-  - `update-bun-hashes.nix` — helper to refresh bunDeps hashes.
   - `pnpm-install-policy.nix` — install knobs shared by live and prepared
     installs, plus the workspace-boundary rule below.
   - `pnpm-source-input-specifiers.cjs` — the staged source-input `file:`
     specifier algebra shared by every surface that writes, classifies, or
     strips one.
-- `docs/`
-  - `README.md` — index to mk-bun-cli notes.
 
 ## Flake Exports
 
 From `effect-utils/flake.nix`:
 
 ```nix
-lib.mkBunCli
 lib.cliBuildStamp
-apps.update-bun-hashes
-```
-
-## Quick Usage
-
-Build a Bun CLI:
-
-```nix
-mkBunCli = import "${effect-utils}/nix/workspace-tools/lib/mk-bun-cli.nix" {
-  inherit pkgs;
-};
 ```
 
 When a downstream repo consumes `effect-utils` packages or pnpm-based builders,

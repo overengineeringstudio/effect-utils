@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- **Nix workspace tools**: Delete the unconsumed `mk-bun-cli` builder, its
+  fixtures and documentation, the matching hash updater, and their flake
+  exports. Also remove the stale internal `taskModules.weaver` attribute left
+  behind when its module was deleted.
+
 ### Fixed
 
 - **devenv**: Load tracked Buck products through the flake's
@@ -385,9 +392,7 @@ All notable changes to this project will be documented in this file.
   appears, after which a frozen install fails `ERR_PNPM_NO_LOCKFILE`.
   `--ignore-workspace` does not prevent it and pnpm 11 scoped the same tree
   correctly. `pnpmInstallPolicy.nestedWorkspaceBoundaryShell` now asserts the
-  boundary for every staged install root and the live Materialization Root, and
-  declares an ephemeral one for the staged `mk-bun-cli` dependency roots whose
-  directory is itself a hashed build artifact.
+  boundary for every staged install root and the live Materialization Root.
   **Staged source-input specifiers**: pnpm resolves a `file:` specifier
   relative to the manifest that declares it and records that importer-relative
   form in the lockfile, so the root-relative spelling resolves only for the
