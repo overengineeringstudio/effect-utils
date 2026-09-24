@@ -4,6 +4,7 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 GATE="$ROOT/scripts/buck2-rust-deps.sh"
+TASK_MODULE="$ROOT/nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
 TEMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
 FIXTURE="$TEMP_ROOT/repository"
@@ -98,5 +99,28 @@ if "$GATE" check "$FIXTURE" "workspaces/escape" "$THIRD_PARTY_BUCK_PATH" "$FAKE_
   fail "gate accepted a workspace symlink escaping the repository"
 fi
 grep -Fq 'workspace root escapes repository' "$TEMP_ROOT/escape-error" || fail "physical workspace escape was not diagnosed"
+
+invalid_prefix_result="$(
+  nix-instantiate --eval --strict --expr "
+    let
+      configured = import $TASK_MODULE {
+        workspaceRoot = \"rust\";
+        taskPrefix = \"buck2:rust;\$(id)\";
+      };
+      evaluated = configured {
+        lib = {
+          splitString = separator: value:
+            builtins.filter builtins.isString (builtins.split separator value);
+          hasPrefix = prefix: value:
+            builtins.substring 0 (builtins.stringLength prefix) value == prefix;
+          hasInfix = _: _: false;
+          assertMsg = condition: message: if condition then true else throw message;
+        };
+        pkgs = {};
+      };
+    in (builtins.tryEval evaluated).success
+  "
+)"
+[ "$invalid_prefix_result" = false ] || fail "task module accepted an unsafe task prefix"
 
 echo "Buck2 Rust dependency gate tests passed."

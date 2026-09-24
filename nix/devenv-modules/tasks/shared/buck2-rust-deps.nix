@@ -29,6 +29,8 @@ let
     && !(lib.hasPrefix "/" workspaceRoot)
     && !(lib.hasInfix "\\" workspaceRoot)
     && builtins.all (segment: segment != "" && segment != "..") workspaceSegments;
+  validTaskPrefix =
+    builtins.isString taskPrefix && builtins.match "^[a-z0-9][a-z0-9:-]*$" taskPrefix != null;
   script = mode: ''
     set -euo pipefail
     root="''${DEVENV_ROOT:-$PWD}"
@@ -43,9 +45,7 @@ let
 in
 assert lib.assertMsg validRelativePath
   "buck2-rust-deps: workspaceRoot must be a normalized repository-relative path";
-assert lib.assertMsg (
-  builtins.isString taskPrefix && taskPrefix != ""
-) "buck2-rust-deps: taskPrefix must be a non-empty string";
+assert lib.assertMsg validTaskPrefix "buck2-rust-deps: taskPrefix must match ^[a-z0-9][a-z0-9:-]*$";
 {
   tasks."${taskPrefix}:generate" = {
     description = "Regenerate the non-vendored Reindeer graph for ${workspaceRoot}";
