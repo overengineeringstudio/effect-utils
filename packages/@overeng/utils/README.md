@@ -8,6 +8,46 @@ Shared Effect utilities for the overeng ecosystem.
 bun add @overeng/utils
 ```
 
+## Next.js StyleX (webpack)
+
+Install `@overeng/utils`, `postcss`, `babel-loader`, `@stylexjs/stylex`,
+`@stylexjs/babel-plugin`, and `@stylexjs/postcss-plugin` in the consuming app.
+
+```bash
+pnpm add @overeng/utils postcss babel-loader @stylexjs/stylex @stylexjs/babel-plugin @stylexjs/postcss-plugin
+```
+
+Use the same adapter instance in both config files:
+
+```js
+// stylex.mjs
+import { fileURLToPath } from 'node:url'
+import { createStylexNext } from '@overeng/utils/node/stylex/next'
+
+export const stylex = createStylexNext({
+  rootDir: fileURLToPath(new URL('.', import.meta.url)),
+  sourceDirs: ['src'],
+  cssCarrier: 'src/styles/globals.css',
+  // externalPackages: ['@scope/uncompiled-design-system'],
+})
+
+// next.config.mjs
+import { stylex } from './stylex.mjs'
+export default { transpilePackages: stylex.transpilePackages, webpack: stylex.webpack }
+
+// postcss.config.mjs
+import { stylex } from './stylex.mjs'
+export default { plugins: { ...stylex.postcssPlugin } }
+```
+
+Put `@stylex;` in `src/styles/globals.css` and import that stylesheet from the
+root layout. When supplying `externalPackages`, merge `stylex.transpilePackages`
+with any existing Next `transpilePackages`: the webpack hook fails if any package
+is missing. The Babel pre-rule compiles StyleX while Next transpiles the package's
+remaining TS/JSX. Next 16 defaults to Turbopack for both `next dev` and
+`next build`; run both with `--webpack`. Turbopack is unsupported because it
+does not invoke this webpack hook, leaving StyleX calls uncompiled.
+
 ## Features
 
 ### Key Features

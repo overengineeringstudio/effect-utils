@@ -36,6 +36,16 @@ export default pnpmWorkspaceYaml.root({
         '@opentui/core@0.5.11 exact-pins string-width@7.2.0; not force-overridden because string-width 8 changes emoji/wide-char width logic that the TUI renderer relies on',
       issue: '#821',
     },
+    {
+      package: 'postcss',
+      // Next 16.2.6 exact-pins 8.4.31, while the StyleX adapter parses CSS
+      // with the 8.5.26 version already used by its collector and Vite.
+      // Preserve Next's internal parser version instead of overriding it.
+      versions: ['8.5.26', '8.4.31'],
+      reason:
+        'next@16.2.6 exact-pins postcss@8.4.31 while the StyleX collector uses postcss@8.5.26; do not override the framework internal parser',
+      issue: '#1380',
+    },
   ],
   ...commonPnpmWorkspaceData,
   overrides: {

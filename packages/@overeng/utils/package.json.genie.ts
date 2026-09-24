@@ -31,6 +31,7 @@ const runtimeDeps = catalog.compose({
       // browser-pure token package — VRS stylex R11/R12, decision 0006.
       '@stylexjs/unplugin',
       'unplugin',
+      'postcss',
     ),
   },
   devDependencies: {
@@ -55,6 +56,18 @@ const runtimeDeps = catalog.compose({
         'typescript',
         'vite',
         'vitest',
+        // Next.js fixture for the `./node/stylex/next` adapter's build test:
+        // the fixture app assembles its node_modules by symlinking from this
+        // package's installed graph, so the versions under test are pinned
+        // here. The adapter itself only references them by name from the app.
+        'next',
+        'babel-loader',
+        '@stylexjs/babel-plugin',
+        '@stylexjs/postcss-plugin',
+        '@stylexjs/stylex',
+        'react',
+        'react-dom',
+        '@types/react',
       ),
     },
   },
@@ -120,6 +133,16 @@ export default packageJson(
         {
           types: './src/node/stylex/mod-types.d.ts',
           default: './src/node/stylex/mod.js',
+        },
+        { environment: 'node' },
+      ),
+      // Checked JavaScript for the same reason as `./node/stylex`: Next loads
+      // next.config.mjs / postcss.config.mjs through Node, which refuses
+      // TypeScript stripping for packages under `node_modules` (#1167).
+      './node/stylex/next': exportEntry(
+        {
+          types: './src/node/stylex/next-types.d.ts',
+          default: './src/node/stylex/next.js',
         },
         { environment: 'node' },
       ),
@@ -198,6 +221,7 @@ export default packageJson(
         './node/playwright': './dist/node/playwright/mod.js',
         './node/playwright/config': './dist/node/playwright/config/mod.js',
         './node/stylex': './dist/node/stylex/mod.js',
+        './node/stylex/next': './dist/node/stylex/next.js',
         './node/stylex/focus-order': './dist/node/stylex/focus-order.js',
         './node/storybook': './dist/node/storybook/mod.js',
         './node/storybook/config': './dist/node/storybook/config/mod.js',

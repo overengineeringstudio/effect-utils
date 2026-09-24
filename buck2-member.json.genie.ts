@@ -170,6 +170,14 @@ const manifestProjection = {
       executable: 'bin/node',
     },
     {
+      // Fixture installs run inside contained Buck tests, whose PATH has no
+      // Corepack. Bind the repo's pinned Nix pnpm and its full closure.
+      toolId: 'pnpm',
+      protocol: 'pnpm/pnpm/v12.4.1',
+      flakePackage: 'pnpm',
+      executable: 'bin/pnpm',
+    },
+    {
       toolId: 'product',
       protocol: 'effect-utils/buck2-product/v1',
       flakePackage: 'buck2-product',

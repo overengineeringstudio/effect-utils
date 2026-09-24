@@ -67,6 +67,10 @@ export const nativeDependencyPolicy = {
   '@oxc-parser/binding': { _tag: 'pure-package-artifact' },
   '@oxc-resolver/binding': { _tag: 'pure-package-artifact' },
   '@tailwindcss/oxide': { _tag: 'pure-package-artifact' },
+  // Next.js's SWC compiler and sharp's loader binaries, pulled in as next's
+  // optional CPU/OS/libc-gated dependencies (`./node/stylex/next` fixture).
+  '@next/swc': { _tag: 'pure-package-artifact' },
+  '@img/sharp': { _tag: 'pure-package-artifact' },
   '@oxlint-tsgolint': { _tag: 'pure-package-artifact' },
   '@oxlint/binding': { _tag: 'pure-package-artifact' },
 } as const satisfies Record<string, NativeDependencyPolicyEntry>
@@ -81,10 +85,9 @@ export const nativeDependencyPolicy = {
  * `graft: 'fetch-only'` families are excluded: their prebuilt platform
  * tarballs are ordinary locked packages that need no grafted store entry.
  */
-export const nixGraftedStoreOverridePackages: Readonly<Record<string, true>> =
-  Object.fromEntries(
-    Object.entries(nativeDependencyPolicy as Record<string, NativeDependencyPolicyEntry>).flatMap(
-      ([name, entry]) =>
-        entry._tag === 'nix-grafted' && entry.graft === 'link' ? [[name, true] as const] : [],
-    ),
-  )
+export const nixGraftedStoreOverridePackages: Readonly<Record<string, true>> = Object.fromEntries(
+  Object.entries(nativeDependencyPolicy as Record<string, NativeDependencyPolicyEntry>).flatMap(
+    ([name, entry]) =>
+      entry._tag === 'nix-grafted' && entry.graft === 'link' ? [[name, true] as const] : [],
+  ),
+)

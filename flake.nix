@@ -99,6 +99,7 @@
             };
         capabilityPackages = {
           inherit buck2 buck2-go;
+          inherit pnpm;
           bun = pkgs.bun;
           buck2-node = pkgs.writeShellScriptBin "node" ''
             exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"

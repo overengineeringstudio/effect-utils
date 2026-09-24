@@ -36,6 +36,14 @@ support_tool(
     visibility = ["PUBLIC"],
 )
 
+# Contained fixture installs use the repo-pinned pnpm, not ambient Corepack.
+support_tool(
+    name = "tool_pnpm",
+    protocol = "pnpm/pnpm/v12.4.1",
+    tool_id = "pnpm",
+    visibility = ["PUBLIC"],
+)
+
 # The pinned Bun a bounded CLI-contract lane spawns as a child process. The
 # toolchain already carries Bun for the action itself; this is the separate,
 # attested capability a test's own subprocess resolves through PATH.
