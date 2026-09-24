@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { unlink } from 'node:fs/promises'
+import { rename, unlink } from 'node:fs/promises'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
@@ -36,22 +36,28 @@ export const acquireArchive = async ({
   if (response.ok === false) fail(`${source} returned HTTP ${response.status}`)
   if (response.body === null) fail(`${source} returned no archive body`)
 
+  const candidate = `${output}.candidate-${randomUUID()}`
   const hash = createHash('sha256')
   let received = 0
   const verifier = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       received += chunk.byteLength
+      if (received > size) {
+        callback(new Error(`pnpm archive acquisition: archive size exceeded ${size} bytes`))
+        return
+      }
       hash.update(chunk)
       callback(undefined, chunk)
     },
   })
   try {
-    await pipeline(Readable.from(response.body), verifier, createWriteStream(output))
+    await pipeline(Readable.fromWeb(response.body), verifier, createWriteStream(candidate))
     const actual = hash.digest('hex')
     if (actual !== sha256) fail(`archive digest mismatch: expected ${sha256}, got ${actual}`)
     if (received !== size) fail(`archive size mismatch: expected ${size}, got ${received}`)
+    await rename(candidate, output)
   } catch (error) {
-    await unlink(output).catch(() => undefined)
+    await unlink(candidate).catch(() => undefined)
     throw error
   }
   return source

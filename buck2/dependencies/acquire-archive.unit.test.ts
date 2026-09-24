@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { describe, expect, it } from 'bun:test'
 
@@ -85,6 +85,43 @@ describe('pnpm archive acquisition', () => {
         }),
       ).rejects.toThrow('archive digest mismatch')
       await expect(readFile(output)).rejects.toMatchObject({ code: 'ENOENT' })
+    })
+  })
+  it('aborts an oversized archive without replacing the output or leaving a candidate', async () => {
+    await withOutput(async (output) => {
+      await writeFile(output, 'previous output')
+      let cancelled = false
+      const oversized = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(bytes.byteLength + 1))
+        },
+        cancel() {
+          cancelled = true
+        },
+      })
+      await expect(
+        acquireArchive({
+          ...options(output),
+          fetchArchive: async () => new Response(oversized),
+        }),
+      ).rejects.toThrow('archive size exceeded')
+      expect(cancelled).toBe(true)
+      expect(await readFile(output, 'utf8')).toBe('previous output')
+      expect(await readdir(dirname(output))).toEqual(['package.tgz'])
+    })
+  })
+
+  it('rejects a short archive by size without publishing a candidate', async () => {
+    await withOutput(async (output) => {
+      await expect(
+        acquireArchive({
+          ...options(output),
+          size: bytes.byteLength + 1,
+          fetchArchive: async () => new Response(bytes),
+        }),
+      ).rejects.toThrow('archive size mismatch')
+      await expect(readFile(output)).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(await readdir(dirname(output))).toEqual([])
     })
   })
 })
