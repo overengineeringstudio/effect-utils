@@ -13,6 +13,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: Make `mr store worktree new` create standalone
+  worktrees by default even when the repository exposes composition capability;
+  require the explicit `--compose` flag for the paused cross-repository shape,
+  admit tracked standalone Buck root files as nested member content, and retain
+  structured composition failure causes at the command boundary.
 - **devenv**: Load tracked Buck products through the flake's
   `buckProducts`, which wires the source recipes cache-native manifest rows
   require. The loader now requires `fromSourceProducts`, so a caller that

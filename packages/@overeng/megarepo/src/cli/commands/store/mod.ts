@@ -3186,18 +3186,36 @@ const storeFixCommand = Cli.Command.make(
     ),
 ).pipe(Cli.Command.withDescription('Fix store issues'))
 
+const describeTaggedCauseChain = (cause: unknown): string => {
+  const parts: Array<string> = []
+  const visited = new Set<object>()
+  let current: unknown = cause
+  while (
+    typeof current === 'object' &&
+    current !== null &&
+    visited.has(current) === false
+  ) {
+    visited.add(current)
+    const tag = '_tag' in current && typeof current._tag === 'string' ? current._tag : undefined
+    const reason =
+      'reason' in current && typeof current.reason === 'string' ? current.reason : undefined
+    if (tag !== undefined) parts.push(reason === undefined ? tag : `${tag}(${reason})`)
+    current = 'cause' in current ? current.cause : undefined
+  }
+  return parts.join(' -> ')
+}
+
 /**
- * Read the composition intent recorded at one commit of a bare repository.
+ * Read the composition capability recorded at one commit of a bare repository.
  *
- * The intent lives in the repository itself — a composition-enabled config plus the Buck member
- * manifest naming its own mount — so no repository name is ever hardcoded and a repository that
- * has not adopted composition keeps ordinary flat creation.
+ * `generators.composition.enabled` declares that the repository can be composed; it does not
+ * select the worktree shape. Callers reach this reader only for an explicit `--compose` request.
  *
  * Fail-closed: only a *confirmed absent* declaration returns `undefined`. Presence is decided by
  * one `ls-tree`, and every read or decode failure after that propagates, because publishing a
- * forbidden flat root is not an acceptable interpretation of "the declaration was unreadable".
+ * malformed composed root is not an acceptable interpretation of "the declaration was unreadable".
  */
-const readComposedCreationIntent = ({
+const readComposedCreationCapability = ({
   bareRepoPath,
   rev,
 }: {
@@ -3282,9 +3300,23 @@ const storeWorktreeNewCommand = Cli.Command.make(
       ),
       Cli.Flag.withDefault(false),
     ),
+    compose: Cli.Flag.boolean('compose').pipe(
+      Cli.Flag.withDescription(
+        'Create an explicitly requested cross-repository composed workspace',
+      ),
+      Cli.Flag.withDefault(false),
+    ),
     output: outputOption,
   },
-  ({ repo: repoString, ref: refOpt, base: baseOpt, commit: commitOpt, porcelain, output }) =>
+  ({
+    repo: repoString,
+    ref: refOpt,
+    base: baseOpt,
+    commit: commitOpt,
+    porcelain,
+    compose,
+    output,
+  }) =>
     Effect.gen(function* () {
       const store = yield* Store
       const fs = yield* FileSystem.FileSystem
@@ -3424,8 +3456,14 @@ const storeWorktreeNewCommand = Cli.Command.make(
         yield* fs.makeDirectory(worktreeParent, { recursive: true })
       }
 
-      const compositionIntentRev =
-        commit !== undefined || refType !== 'branch'
+      if (compose === true && (commit !== undefined || refType !== 'branch')) {
+        return yield* new StoreCommandError({
+          message: '--compose requires a branch ref',
+        })
+      }
+
+      const compositionCapabilityRev =
+        compose === false
           ? undefined
           : (base ??
             ((yield* Git.refExists({
@@ -3435,14 +3473,19 @@ const storeWorktreeNewCommand = Cli.Command.make(
               ? targetRef
               : `origin/${targetRef}`))
 
-      // Composition intent is read from the target commit before any worktree is created.
+      // An explicit request reads the repository's composition capability before creating anything.
       const composedMember =
-        compositionIntentRev === undefined
+        compositionCapabilityRev === undefined
           ? undefined
-          : yield* readComposedCreationIntent({
+          : yield* readComposedCreationCapability({
               bareRepoPath,
-              rev: compositionIntentRev,
+              rev: compositionCapabilityRev,
             })
+      if (compose === true && composedMember === undefined) {
+        return yield* new StoreCommandError({
+          message: `Commit '${compositionCapabilityRev}' does not enable composition`,
+        })
+      }
       // Fail if worktree already exists
       const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef, refType })
       if (worktreeExists === true && composedMember === undefined) {
@@ -3484,7 +3527,10 @@ const storeWorktreeNewCommand = Cli.Command.make(
               Effect.mapError(
                 (cause) =>
                   new StoreCommandError({
-                    message: `Cannot create composed workspace at '${worktreePath}': ${cause.message}`,
+                    message: `Cannot create composed workspace at '${worktreePath}' [${describeTaggedCauseChain(
+                      cause,
+                    )}]: ${cause.message}`,
+                    cause,
                   }),
               ),
             )).defaultCwd

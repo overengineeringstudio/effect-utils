@@ -155,11 +155,14 @@ authoritative only when it names `W` and agrees with `W`'s `.git` pointer and
 branch identity. Root generation metadata remains descriptive; there is no
 root ownership manifest.
 
-`mr store worktree new` reads composition intent from the target commit before
-creating anything. For a composition-enabled branch it claims an absent `P`,
-creates `P/repos`, runs `git worktree add` directly at final `W`, links the
-owned config into `P`, and runs normal composition generation. It never stages
-or publishes another root and never relocates `W`.
+`mr store worktree new` creates a standalone Git worktree by default. An explicit
+`--compose` request reads the target commit's composition capability before
+creating anything. For a capable branch it claims an absent `P`, creates
+`P/repos`, runs `git worktree add` directly at final `W`, links the owned config
+into `P`, and runs normal composition generation. The nested owned checkout
+retains its tracked standalone Buck root files as member content; generated
+authority stays at `P`. Creation never stages or publishes another root and
+never relocates `W`.
 
 Creation may retry only recognizable partial births: an otherwise empty `P`
 with an empty `repos`, or the exact registered `W` with matching Git identity
