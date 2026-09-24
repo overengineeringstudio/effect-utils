@@ -5,7 +5,17 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { Duration, Effect, FileSystem, Option, Result, Schema, Semaphore, Stream } from 'effect'
+import {
+  Duration,
+  Effect,
+  Exit,
+  FileSystem,
+  Option,
+  Result,
+  Schema,
+  Semaphore,
+  Stream,
+} from 'effect'
 import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/unstable/process/ChildProcess'
@@ -22,7 +32,7 @@ import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
-import { runTsFileAnalysis } from '../runtime/node/ts-api.ts'
+import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-api.ts'
 import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
 import { ensureImportMapResolver, isCompiledBinary } from './discovery.ts'
@@ -338,6 +348,24 @@ export const stageCompiledBinaryImportGraph = ({
         }),
     })
 
+    // Ownership of the staging root passes to the caller only on success: any failure or
+    // interruption between mkdtemp and the returned graph removes the root here, so a failed
+    // or interrupted staging cannot leak temporary directories.
+    return yield* stageGraphWithinRoot({ entryPath, tempRoot }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) === true ? removeStagingRoot(tempRoot) : Effect.void,
+      ),
+    )
+  })
+
+const stageGraphWithinRoot = ({
+  entryPath,
+  tempRoot,
+}: {
+  entryPath: string
+  tempRoot: string
+}): Effect.Effect<StagedCompiledBinaryImportGraph, GenieImportError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
     const stagedPaths = new Map<string, string>()
     const relativeEntryPath = entryPath.replace(/^(?:[A-Za-z]:)?[\\/]+/, '')
 
@@ -398,6 +426,10 @@ export const stageCompiledBinaryImportGraph = ({
               }),
           })
           if (memberSourcePath === undefined) continue
+          // Assets such as `.json` carry no TypeScript program to pin or stamp, and staging one
+          // would fail the import.meta pin above. Leave such specifiers untouched so the
+          // absolute-path rewrite of resolveImportMapsInSource carries them instead.
+          if (isAnalyzableSourcePath(memberSourcePath) === false) continue
 
           stagedMegarepoMemberPaths.set(
             specifier,
@@ -527,9 +559,8 @@ export const stageCompiledBinaryImportGraph = ({
     return { stagePath: bundledEntryPath, tempRoot }
   })
 
-const removeStagedCompiledBinaryImportGraph = ({
-  tempRoot,
-}: StagedCompiledBinaryImportGraph): Effect.Effect<void> =>
+/** Remove a compiled-binary staging root; used both for failed staging and consumer cleanup. */
+const removeStagingRoot = (tempRoot: string): Effect.Effect<void> =>
   Effect.sync(() => nodeFsSync.rmSync(tempRoot, { recursive: true, force: true })).pipe(
     Effect.ignore,
   )
@@ -924,7 +955,7 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
         const staged = yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath })
         const importPath = `${pathToFileURL(staged.stagePath).href}?import=${Date.now()}`
         return yield* importModule(importPath).pipe(
-          Effect.ensuring(removeStagedCompiledBinaryImportGraph(staged)),
+          Effect.ensuring(removeStagingRoot(staged.tempRoot)),
         )
       }))
 

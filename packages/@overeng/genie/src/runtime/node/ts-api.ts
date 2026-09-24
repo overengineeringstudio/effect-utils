@@ -39,6 +39,14 @@ const analyzableSourceExtensions: Record<string, true> = {
 }
 
 /**
+ * Whether {@link TsFileAnalysisSession.analyze} can open `file` at all. Assets such as `.json`
+ * or `.css` carry no TypeScript program, so callers that need analysis must route around them
+ * rather than fail on the session's `unsupported-extension` outcome.
+ */
+export const isAnalyzableSourcePath = (file: string): boolean =>
+  analyzableSourceExtensions[path.extname(file)] === true
+
+/**
  * The server the session spawns.
  *
  * The API client's JSON-RPC protocol is versioned with the compiler binary, so the ONLY server
@@ -152,7 +160,7 @@ export const runTsFileAnalysis = async <A>({
 
     const analyze = async (file: string): Promise<TsFileAnalysisOutcome> => {
       // The unstable API does not infer a ScriptKind for assets such as CSS and panics if they are opened.
-      if (analyzableSourceExtensions[path.extname(file)] !== true) {
+      if (isAnalyzableSourcePath(file) === false) {
         return { kind: 'unsupported-extension' }
       }
       if (opened.has(file) === false) {

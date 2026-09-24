@@ -44,7 +44,10 @@ new` or leave partially written worktrees behind.
   Megarepo no longer removes the bootstrap tools required by repository checks.
 - **Genie**: Stage `#mr` members with the compiled import graph and give every
   staged module a per-run identity, preventing Bun's persistent transpiler
-  cache from resolving an unchanged module through an earlier member pin.
+  cache from resolving an unchanged module through an earlier member pin. The
+  compiled-mode serialization from #1359 stays as a conservative mitigation
+  around the compiled Bun lifecycle; that cache behavior, not concurrency, was
+  the root cause of the stale member pin.
 - **Genie**: Serialize compiled-binary import graph staging and bundling so
   concurrent full-workspace generation cannot retain stale generated files.
 - **Buck2 product publication**: Scope trusted main-branch publication to the
