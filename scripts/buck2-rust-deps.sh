@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 7 ]; then
-  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc>" >&2
+if [ "$#" -ne 8 ]; then
+  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <python3>" >&2
   exit 64
 fi
 
@@ -13,6 +13,7 @@ third_party_buck_relative="$4"
 reindeer="$5"
 cargo="$6"
 rustc="$7"
+python="$8"
 
 case "$mode" in
   generate | check) ;;
@@ -59,24 +60,31 @@ fi
 config="$workspace/reindeer.toml"
 lock="$workspace/Cargo.lock"
 cargo_home="$root/.devenv/reindeer-cargo-home"
-configured_third_party=""
-while IFS= read -r line; do
-  if [[ "$line" =~ ^[[:space:]]*third_party_dir[[:space:]]*=[[:space:]]*\"([^\"]+)\"[[:space:]]*(#.*)?$ ]]; then
-    configured_third_party="${BASH_REMATCH[1]}"
-  fi
-done <"$config"
-if [ -z "$configured_third_party" ]; then
-  echo "buck2-rust-deps: ${config#"$root"/} must define third_party_dir" >&2
+# Reindeer reads `third_party_dir` and `vendor` from the TOML root table; a
+# line scan would also match keys inside other tables or miss literal strings.
+if ! reindeer_third_party="$(
+  "$python" - "$config" <<'PY'
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as handle:
+    config = tomllib.load(handle)
+third_party_dir = config.get("third_party_dir")
+if not isinstance(third_party_dir, str) or third_party_dir == "":
+    sys.exit("third_party_dir must be a non-empty root-level string")
+if any(ord(char) < 0x20 or ord(char) == 0x7F for char in third_party_dir):
+    sys.exit("third_party_dir must not contain control characters")
+if config.get("vendor") is not False:
+    sys.exit("vendor must be the root-level boolean false")
+print(third_party_dir)
+PY
+)"; then
+  echo "buck2-rust-deps: invalid ${config#"$root"/} (must select root-level vendor = false and third_party_dir)" >&2
   exit 1
 fi
-configured_third_party="$(cd "$workspace/$configured_third_party" && pwd -P)"
+configured_third_party="$(cd "$workspace/$reindeer_third_party" && pwd -P)"
 if [ "$configured_third_party" != "$third_party" ]; then
   echo "buck2-rust-deps: third-party BUCK disagrees with ${config#"$root"/} third_party_dir" >&2
-  exit 1
-fi
-
-if ! grep -Eq '^[[:space:]]*vendor[[:space:]]*=[[:space:]]*false([[:space:]]*(#.*)?)?$' "$config"; then
-  echo "buck2-rust-deps: ${config#"$root"/} must select vendor = false" >&2
   exit 1
 fi
 

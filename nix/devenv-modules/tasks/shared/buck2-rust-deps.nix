@@ -40,7 +40,8 @@ let
       ${lib.escapeShellArg thirdPartyBuckPath} \
       ${pkgs.reindeer}/bin/reindeer \
       ${pkgs.cargo}/bin/cargo \
-      ${pkgs.rustc}/bin/rustc
+      ${pkgs.rustc}/bin/rustc \
+      ${pkgs.python3}/bin/python3
   '';
 in
 assert lib.assertMsg validRelativePath
