@@ -120,4 +120,25 @@ describe('Cargo Buck2 package projection', () => {
       )
     }
   })
+
+  it('binds the graph path to Reindeer and rejects control characters', () => {
+    const mismatchedConfig = path.join(fixtureRoot, 'components/rust/mismatch-reindeer.toml')
+    writeFileSync(mismatchedConfig, 'vendor = false\nthird_party_dir = "."\n')
+    try {
+      expect(() =>
+        defineCargoBuck2PackageProjection({
+          ...consumerProjectionOptions,
+          reindeerConfigPath: 'components/rust/mismatch-reindeer.toml',
+        }),
+      ).toThrow('thirdPartyBuckPath must match reindeer.toml third_party_dir')
+    } finally {
+      rmSync(mismatchedConfig, { force: true })
+    }
+    expect(() =>
+      defineCargoBuck2PackageProjection({
+        ...consumerProjectionOptions,
+        cargoLockPath: 'components/rust/Cargo.lock\n# injected',
+      }),
+    ).toThrow('cargoLockPath must be a normalized repository-relative path')
+  })
 })

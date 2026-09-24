@@ -100,6 +100,30 @@ export const defineCargoBuck2PackageProjection = ({
     value: configuredThirdPartyBuckPath ?? path.posix.join(workspaceRoot, 'third-party/BUCK'),
     field: 'thirdPartyBuckPath',
   })
+  const reindeerConfig = Bun.TOML.parse(repo.readText(reindeerConfigPath)) as {
+    readonly third_party_dir?: string
+  }
+  const reindeerThirdPartyDir = requireValue({
+    value: reindeerConfig.third_party_dir,
+    field: `${reindeerConfigPath} third_party_dir`,
+  })
+  if (
+    path.posix.isAbsolute(reindeerThirdPartyDir) ||
+    reindeerThirdPartyDir.includes('\\') ||
+    /[\u0000-\u001f\u007f]/.test(reindeerThirdPartyDir)
+  ) {
+    throw new Error(`${reindeerConfigPath} third_party_dir must be repository-contained`)
+  }
+  const configuredThirdPartyPath = validateRepoPath({
+    repo,
+    value: path.posix.normalize(
+      path.posix.join(path.posix.dirname(reindeerConfigPath), reindeerThirdPartyDir),
+    ),
+    field: `${reindeerConfigPath} third_party_dir`,
+  })
+  if (configuredThirdPartyPath !== path.posix.dirname(thirdPartyBuckPath)) {
+    throw new Error('thirdPartyBuckPath must match reindeer.toml third_party_dir')
+  }
   const thirdPartyPackagePath = path.posix.dirname(thirdPartyBuckPath)
   const expectedThirdPartyPackage = `//${thirdPartyPackagePath}`
   if (
@@ -602,6 +626,7 @@ const validateRepoPath = ({
     path.posix.isAbsolute(value) ||
     value.includes('\\') ||
     path.posix.normalize(value) !== value ||
+    /[\u0000-\u001f\u007f]/.test(value) ||
     value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
   ) {
     throw new Error(`${field} must be a normalized repository-relative path: ${value}`)

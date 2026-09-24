@@ -59,6 +59,21 @@ fi
 config="$workspace/reindeer.toml"
 lock="$workspace/Cargo.lock"
 cargo_home="$root/.devenv/reindeer-cargo-home"
+configured_third_party=""
+while IFS= read -r line; do
+  if [[ "$line" =~ ^[[:space:]]*third_party_dir[[:space:]]*=[[:space:]]*\"([^\"]+)\"[[:space:]]*(#.*)?$ ]]; then
+    configured_third_party="${BASH_REMATCH[1]}"
+  fi
+done <"$config"
+if [ -z "$configured_third_party" ]; then
+  echo "buck2-rust-deps: ${config#"$root"/} must define third_party_dir" >&2
+  exit 1
+fi
+configured_third_party="$(cd "$workspace/$configured_third_party" && pwd -P)"
+if [ "$configured_third_party" != "$third_party" ]; then
+  echo "buck2-rust-deps: third-party BUCK disagrees with ${config#"$root"/} third_party_dir" >&2
+  exit 1
+fi
 
 if ! grep -Eq '^[[:space:]]*vendor[[:space:]]*=[[:space:]]*false([[:space:]]*(#.*)?)?$' "$config"; then
   echo "buck2-rust-deps: ${config#"$root"/} must select vendor = false" >&2

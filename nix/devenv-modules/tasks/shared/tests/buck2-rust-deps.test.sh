@@ -123,4 +123,11 @@ invalid_prefix_result="$(
 )"
 [ "$invalid_prefix_result" = false ] || fail "task module accepted an unsafe task prefix"
 
+mkdir -p "$FIXTURE/decoy"
+printf 'vendor = false\nthird_party_dir = "../../decoy"\n' >"$WORKSPACE/reindeer.toml"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc 2>"$TEMP_ROOT/graph-mismatch-error"; then
+  fail "gate accepted a BUCK path that disagrees with reindeer.toml"
+fi
+grep -Fq 'third-party BUCK disagrees' "$TEMP_ROOT/graph-mismatch-error" || fail "third-party graph mismatch was not diagnosed"
+
 echo "Buck2 Rust dependency gate tests passed."
