@@ -8,8 +8,8 @@ import type { GenieOutput } from '../../packages/@overeng/genie/src/runtime/core
 import otelScrapeBuck from '../../packages/@overeng/otel-scrape/BUCK.genie.ts'
 import oteliteBuck from '../../packages/@overeng/otelite/BUCK.genie.ts'
 import archiveToolBuck from '../../rust/buck2-tools/archive-tool/BUCK.genie.ts'
-import { defineCargoBuck2PackageProjection } from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
 import coreBuck from '../../rust/buck2-tools/core/BUCK.genie.ts'
+import { defineCargoBuck2PackageProjection } from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
 import productBuck from '../../rust/buck2-tools/product/BUCK.genie.ts'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
@@ -52,9 +52,8 @@ describe('Cargo Buck2 package projection', () => {
     })
     const output = project({
       buildProduct: true,
-      sourceUrl: pathToFileURL(
-        path.join(fixtureRoot, 'components/rust/consumer-cli/BUCK.genie.ts'),
-      ).href,
+      sourceUrl: pathToFileURL(path.join(fixtureRoot, 'components/rust/consumer-cli/BUCK.genie.ts'))
+        .href,
     })
 
     expect(output.stringify(genieContext)).toBe(

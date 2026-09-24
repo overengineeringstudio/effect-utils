@@ -40,7 +40,8 @@ let
         ${pkgs.rustc}/bin/rustc
     '';
 in
-assert lib.assertMsg validRelativePath "buck2-rust-deps: workspaceRoot must be a normalized repository-relative path";
+assert lib.assertMsg validRelativePath
+  "buck2-rust-deps: workspaceRoot must be a normalized repository-relative path";
 assert lib.assertMsg (
   builtins.isString taskPrefix && taskPrefix != ""
 ) "buck2-rust-deps: taskPrefix must be a non-empty string";

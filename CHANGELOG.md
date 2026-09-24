@@ -69,6 +69,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Buck2 Rust consumers**: Parameterize Cargo workspace projections for
+  consumer repository contexts, workspace manifests and members, third-party
+  package labels, and rules-cell load labels while preserving effect-utils'
+  generated packages byte-for-byte.
+- **devenv**: Export workspace-parameterized `buck2-rust-deps` generate/check
+  tasks so consumer repositories can reuse the non-vendored Reindeer lock,
+  SHA-256, and freshness gate.
 - **@overeng/restate-effect** and **@overeng/notion-react**: Register Buck-built
   package archives for digest-addressed private-tier acquisition without
   selecting the public product publisher.
