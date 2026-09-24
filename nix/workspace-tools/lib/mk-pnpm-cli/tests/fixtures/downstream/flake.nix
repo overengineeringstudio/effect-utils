@@ -116,6 +116,10 @@
           };
         profileDedupConsumerA = mkProfileDedupConsumer "profile-dedup-consumer-alpha";
         profileDedupConsumerB = mkProfileDedupConsumer "profile-dedup-consumer-bravo";
+        oxlintNpmFromLib = effect-utils.lib.mkOxlintNpm {
+          inherit pkgs;
+          bun = pkgs.bun;
+        };
       in
       {
         packages = {
@@ -124,8 +128,13 @@
           "mk-pnpm-cli-pure-eval-fixture" = pureEvalFixture;
           "mk-pnpm-cli-pure-eval-root-deps" = pureEvalFixture.passthru.depsBuildsByInstallRoot.root;
           oxlint-npm = effectUtilsPackages.oxlint-npm;
+          oxlint-npm-from-lib = oxlintNpmFromLib;
           default = effectUtilsPackages.megarepo;
         };
+        checks.mk-oxlint-npm-from-lib = pkgs.runCommand "mk-oxlint-npm-from-lib" { } ''
+          test -n '${oxlintNpmFromLib.drvPath}'
+          touch "$out"
+        '';
         checks.pure-eval-external-install-roots = pkgs.runCommand "mk-pnpm-cli-pure-eval" { } ''
           actual='${builtins.toJSON (map (root: root.installDir) pureEvalFixture.passthru.installRoots)}'
           expected='[".","repos/effect-utils"]'

@@ -220,6 +220,21 @@ run_downstream_regression() {
   echo "Timing: downstream-$attr $(( $(date +%s) - start ))s"
 }
 
+run_downstream_mk_oxlint_npm_regression() {
+  echo "Eval: downstream mkOxlintNpm (standalone effect-utils path)"
+  nix eval --raw --no-write-lock-file \
+    --apply 'drv: drv.drvPath' \
+    --override-input effect-utils "path:$WORKSPACE_REAL/effect-utils" \
+    "path:$DOWNSTREAM_DIR#packages.$SYSTEM.oxlint-npm-from-lib"
+
+  echo "Eval: downstream mkOxlintNpm (composed repos/effect-utils path)"
+  nix eval --raw --no-write-lock-file \
+    --apply 'drv: drv.drvPath' \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#packages.$SYSTEM.oxlint-npm-from-lib"
+}
+
+
 run_downstream_pure_eval_regression() {
   local start
   start="$(date +%s)"
@@ -633,6 +648,7 @@ if [ "$SKIP_DOWNSTREAM" -eq 0 ]; then
   prepare_downstream_workspace
   run_inherit_root_patched_dependencies_regression
   run_downstream_pure_eval_regression
+  run_downstream_mk_oxlint_npm_regression
   run_downstream_regression "genie" "genie"
   if [ "$SKIP_DOWNSTREAM_MEGAREPO" -eq 0 ]; then
     run_downstream_regression "megarepo" "mr"

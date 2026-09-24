@@ -366,7 +366,10 @@
           bun,
           products ? self.buckProducts.${pkgs.stdenv.hostPlatform.system}.products,
         }:
-        import ./nix/oxlint-npm.nix { inherit pkgs bun products; };
+        import ./nix/oxlint-npm.nix {
+          inherit pkgs bun products;
+          pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { inherit pkgs; };
+        };
 
       # oxlint wrapper that substitutes the overeng and @stylexjs configured
       # entries with their separate tracked module paths. Projects without
