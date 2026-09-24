@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { withOtelSpan } from './otel-span-cli.ts'
+import { emitCompletedSpan } from './otel-span-cli.ts'
 
 /** Versioned identity of the machine-readable watch status file. */
 export const buckWatchStatusSchema = 'effect-utils/buck-watch-status/v1' as const
@@ -218,6 +218,12 @@ export const buildTargetsFor = ({
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
+
+/** Best-effort real exit status of a failed {@link runCommand}, defaulting to 1. */
+const exitCodeOf = (error: unknown): number => {
+  const exited = /exited (\d+)/.exec(errorMessage(error))
+  return exited === null ? 1 : Number(exited[1])
+}
 
 /** Persistent, coalescing reconciliation state machine. */
 export const runBuckWatchLoop = async ({
@@ -521,18 +527,30 @@ export const reconcileBuckViews = async ({
 }): Promise<void> => {
   const execute = options.run ?? runCommand
   const buildStartedAt = performance.now()
-  const [buckCommand, ...buckArguments] = withOtelSpan({
-    name: 'buck2.build',
-    label: 'buck2 build editor view inputs',
-    attributes: [['buck2.targets', request.buildTargets.length]],
-    argv: [options.buck2, 'build', ...request.buildTargets, '--show-full-output'],
-  })
-  const built = await execute({
-    command: buckCommand ?? options.buck2,
-    args: buckArguments,
-    cwd: options.workspaceRoot,
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  })
+  // Telemetry is best effort: the real Buck command runs unwrapped and its exit
+  // status is preserved even when span delivery afterwards fails.
+  const emitBuildSpan = (exitCode: number): void =>
+    emitCompletedSpan({
+      name: 'buck2.build',
+      label: 'buck2 build editor view inputs',
+      attributes: [['buck2.targets', request.buildTargets.length]],
+      startedAtMs: performance.timeOrigin + buildStartedAt,
+      endedAtMs: performance.timeOrigin + performance.now(),
+      exitCode,
+    })
+  let built: CommandResult
+  try {
+    built = await execute({
+      command: options.buck2,
+      args: ['build', ...request.buildTargets, '--show-full-output'],
+      cwd: options.workspaceRoot,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    })
+  } catch (error) {
+    emitBuildSpan(exitCodeOf(error))
+    throw error
+  }
+  emitBuildSpan(0)
   options.onTiming?.({
     phase: 'buck-build',
     durationMs: performance.now() - buildStartedAt,
@@ -554,46 +572,57 @@ export const reconcileBuckViews = async ({
       path: manifestOutput,
       workspaceRoot: options.workspaceRoot,
     })
-    const [publisherCommand, ...publisherPrefix] = withOtelSpan({
-      name: 'editor-view.publish',
-      label: `publish ${entry.editor.viewName}`,
-      attributes: [['package.path', entry.packagePath]],
-      argv: options.editorViewCommand,
-    })
-    await execute({
-      command: publisherCommand ?? options.editorViewCommand[0],
-      args: [
-        ...publisherPrefix,
-        options.mode,
-        '--repo-root',
-        options.repoRoot,
-        '--package',
-        entry.packagePath,
-        '--view-name',
-        entry.editor.viewName,
-        '--cell',
-        entry.editor.cell,
-        '--target',
-        entry.editor.target,
-        '--editor-inputs',
-        absoluteArtifact(manifest.editorInputs),
-        '--node-modules',
-        absoluteArtifact(manifest.editorInputs),
-        ...manifest.readRoots.flatMap((root) => ['--backing-root', absoluteArtifact(root)]),
-        '--cp',
-        options.cp,
-        '--mv',
-        options.mv,
-        '--workspace-authority',
-        options.workspaceAuthority,
-        '--consumer-cache',
-        resolve(options.repoRoot, entry.editor.consumerCache),
-        '--snapshot-retention',
-        String(options.snapshotRetention),
-      ],
-      detached: true,
-      cwd: options.repoRoot,
-    })
+    // Telemetry is best effort here too: a publication span that cannot be
+    // delivered never changes the publisher's own exit status.
+    const emitPublicationSpan = (exitCode: number): void =>
+      emitCompletedSpan({
+        name: 'editor-view.publish',
+        label: `publish ${entry.editor.viewName}`,
+        attributes: [['package.path', entry.packagePath]],
+        startedAtMs: performance.timeOrigin + publicationStartedAt,
+        endedAtMs: performance.timeOrigin + performance.now(),
+        exitCode,
+      })
+    try {
+      await execute({
+        command: options.editorViewCommand[0],
+        args: [
+          ...options.editorViewCommand.slice(1),
+          options.mode,
+          '--repo-root',
+          options.repoRoot,
+          '--package',
+          entry.packagePath,
+          '--view-name',
+          entry.editor.viewName,
+          '--cell',
+          entry.editor.cell,
+          '--target',
+          entry.editor.target,
+          '--editor-inputs',
+          absoluteArtifact(manifest.editorInputs),
+          '--node-modules',
+          absoluteArtifact(manifest.editorInputs),
+          ...manifest.readRoots.flatMap((root) => ['--backing-root', absoluteArtifact(root)]),
+          '--cp',
+          options.cp,
+          '--mv',
+          options.mv,
+          '--workspace-authority',
+          options.workspaceAuthority,
+          '--consumer-cache',
+          resolve(options.repoRoot, entry.editor.consumerCache),
+          '--snapshot-retention',
+          String(options.snapshotRetention),
+        ],
+        detached: true,
+        cwd: options.repoRoot,
+      })
+    } catch (error) {
+      emitPublicationSpan(exitCodeOf(error))
+      throw error
+    }
+    emitPublicationSpan(0)
     options.onTiming?.({
       phase: 'editor-view',
       packagePath: entry.packagePath,

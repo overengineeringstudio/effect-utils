@@ -247,6 +247,29 @@ export type TreeLinkOwners = readonly { readonly source: string; readonly identi
 export type CanonicalTreeFingerprints = {
   readonly digest: string
   readonly resolvedLinksDigest: string | undefined
+  /**
+   * Digest over every symlink's (path, literal target) pair, order-insensitive.
+   * The owner-resolved form deliberately ignores how a link is spelled; this
+   * companion digest proves the spelling itself did not change across the copy.
+   */
+  readonly literalLinksDigest: string | undefined
+}
+
+/** Frames a byte-sorted (path, literal target) link inventory into one digest. */
+const frameLinkInventory = (
+  links: readonly (readonly [path: string, target: string])[],
+): string => {
+  const hash = createHash('sha256')
+  hash.update('effect-utils/editor-view-link-inventory/v1')
+  for (const [linkPath, target] of links.toSorted((left, right) =>
+    compareBytes({ left: left[0] ?? '', right: right[0] ?? '' }),
+  ))
+    for (const value of [linkPath, target]) {
+      const [length, bytes] = frame(value)
+      hash.update(length)
+      hash.update(bytes)
+    }
+  return hash.digest('hex')
 }
 
 /**
@@ -277,12 +300,18 @@ export const canonicalTreeFingerprintWithResolvedLinks = async ({
 }: {
   readonly tree: string
   readonly linkOwners: TreeLinkOwners
-}): Promise<{ readonly digest: string; readonly resolvedLinksDigest: string }> => {
+}): Promise<{
+  readonly digest: string
+  readonly resolvedLinksDigest: string
+  readonly literalLinksDigest: string
+}> => {
   const fingerprints = await canonicalTreeFingerprints({ tree, linkOwners })
   return {
     digest: fingerprints.digest,
     resolvedLinksDigest:
       fingerprints.resolvedLinksDigest ?? fail('tree link owners were not admitted for hashing'),
+    literalLinksDigest:
+      fingerprints.literalLinksDigest ?? fail('tree link owners were not admitted for hashing'),
   }
 }
 
@@ -313,6 +342,7 @@ const canonicalTreeFingerprints = async ({
   const resolvedHash = resolvedLinks === true ? createHash('sha256') : undefined
   resolvedHash?.update(treeDigestSchema)
   resolvedHash?.update(Buffer.from([0]))
+  const literalLinks: (readonly [path: string, target: string])[] = []
 
   /** Frames one link's owner resolution as (owner identity, path within the owner). */
   const frameLinkOwner = ({
@@ -412,6 +442,7 @@ const canonicalTreeFingerprints = async ({
       hash.update(targetLength)
       hash.update(targetBytes)
       if (resolvedHash !== undefined) {
+        literalLinks.push([relativePath, readlinkSync(absolutePath)])
         const [ownerIdentity, ownerTarget] = frameLinkOwner({
           absolutePath,
           resolved: realpathSync(absolutePath),
@@ -503,7 +534,11 @@ const canonicalTreeFingerprints = async ({
     rootAfter.ctimeNs !== rootBefore.ctimeNs
   )
     fail(`tree changed while hashing: ${absoluteTree}`)
-  return { digest: hash.digest('hex'), resolvedLinksDigest: resolvedHash?.digest('hex') }
+  return {
+    digest: hash.digest('hex'),
+    resolvedLinksDigest: resolvedHash?.digest('hex'),
+    literalLinksDigest: resolvedLinks === true ? frameLinkInventory(literalLinks) : undefined,
+  }
 }
 
 const isRecord = (value: unknown): value is JsonRecord =>
@@ -992,6 +1027,12 @@ type DeclaredRootFingerprints = {
    * materialized snapshot copy whose links were relocated into the snapshot.
    */
   readonly resolvedLinksDigest: string | undefined
+  /**
+   * Per-root literal link-inventory digests in declared-root order; compared
+   * against the link texts the materializer actually copied, so a symlink
+   * retargeted to a different spelling of the same resolution still fails.
+   */
+  readonly literalLinksDigests: readonly (string | undefined)[]
 }
 
 const fingerprintDeclaredRoots = async ({
@@ -1003,6 +1044,7 @@ const fingerprintDeclaredRoots = async ({
     readonly source: string
     readonly digest: string
     readonly resolvedLinksDigest?: string
+    readonly literalLinksDigest?: string
   }
 }): Promise<DeclaredRootFingerprints> => {
   // Declared roots are proven disjoint read-only trees, so their fingerprints are
@@ -1016,6 +1058,7 @@ const fingerprintDeclaredRoots = async ({
           identity: root.identity,
           digest: knownRoot.digest,
           resolvedLinksDigest: knownRoot.resolvedLinksDigest,
+          literalLinksDigest: knownRoot.literalLinksDigest,
         }
       const fingerprints = await canonicalTreeFingerprintWithResolvedLinks({
         tree: root.source,
@@ -1025,6 +1068,7 @@ const fingerprintDeclaredRoots = async ({
         identity: root.identity,
         digest: fingerprints.digest,
         resolvedLinksDigest: fingerprints.resolvedLinksDigest,
+        literalLinksDigest: fingerprints.literalLinksDigest,
       }
     }),
   )
@@ -1043,6 +1087,7 @@ const fingerprintDeclaredRoots = async ({
             })),
           )
         : undefined,
+    literalLinksDigests: entries.map((entry) => entry.literalLinksDigest),
   }
 }
 
@@ -1132,27 +1177,47 @@ const fingerprintSnapshotPayload = async ({
   }
 }
 
+/**
+ * Relocates every copied link into the candidate and records, per declared
+ * root, the literal link texts the copy actually holds before relocation.
+ */
 const rewriteSnapshotLinks = ({
   candidate,
   roots,
 }: {
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
-}): void => {
+}): Map<string, (readonly [path: string, target: string])[]> => {
+  const inventories = new Map<string, (readonly [path: string, target: string])[]>()
   const owners = roots
     .map((root) => ({ ...root, source: canonicalizePath(root.source) }))
     .toSorted((left, right) => right.source.length - left.source.length)
-  const visit = ({ source, destination }: { source: string; destination: string }): void => {
+  const visit = ({
+    source,
+    destination,
+    rootDestination,
+    identity,
+  }: {
+    source: string
+    destination: string
+    rootDestination: string
+    identity: string
+  }): void => {
     for (const name of readdirSync(source)) {
       const sourcePath = join(source, name)
       const destinationPath = join(destination, name)
       const before = lstatSync(sourcePath, { bigint: true })
       if (before.isDirectory() === true) {
-        visit({ source: sourcePath, destination: destinationPath })
+        visit({ source: sourcePath, destination: destinationPath, rootDestination, identity })
         continue
       }
       if (before.isSymbolicLink() === false) continue
       const target = readlinkSync(sourcePath)
+      // The copied link, not the source, is what the snapshot ships: record its
+      // literal text before relocation so the stability proof can compare it.
+      const inventory = inventories.get(identity) ?? []
+      inventory.push([relative(rootDestination, destinationPath), readlinkSync(destinationPath)])
+      inventories.set(identity, inventory)
       let liveTarget: string
       try {
         liveTarget = realpathSync(sourcePath)
@@ -1192,7 +1257,13 @@ const rewriteSnapshotLinks = ({
     }
   }
   for (const root of owners)
-    visit({ source: root.source, destination: join(candidate, root.destination) })
+    visit({
+      source: root.source,
+      destination: join(candidate, root.destination),
+      rootDestination: join(candidate, root.destination),
+      identity: root.identity,
+    })
+  return inventories
 }
 
 const materializeDeclaredRoots = ({
@@ -1203,7 +1274,7 @@ const materializeDeclaredRoots = ({
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
   cp: string
-}): void => {
+}): Map<string, (readonly [path: string, target: string])[]> => {
   mkdirSync(join(candidate, '.backing'))
   for (const root of roots) {
     const destination = join(candidate, root.destination)
@@ -1221,7 +1292,7 @@ const materializeDeclaredRoots = ({
       label: finiteCopyLabel,
     })
   }
-  rewriteSnapshotLinks({ candidate, roots })
+  return rewriteSnapshotLinks({ candidate, roots })
 }
 
 const assertByteOwnedFiniteSnapshot = ({
@@ -1854,6 +1925,9 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
               resolvedLinksDigest:
                 selectedFingerprints?.resolvedLinksDigest ??
                 fail('selected view link owners were not admitted for hashing'),
+              literalLinksDigest:
+                selectedFingerprints?.literalLinksDigest ??
+                fail('selected view link owners were not admitted for hashing'),
             },
           })
         : undefined
@@ -1894,9 +1968,10 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       mkdirSync(candidate)
       enterPhase('materialize')
       let materialized = false
+      let materializedLinks: Map<string, (readonly [path: string, target: string])[]> | undefined
       if (finite === true) {
         await options.beforeMaterialize?.()
-        materializeDeclaredRoots({ candidate, roots, cp: options.cp })
+        materializedLinks = materializeDeclaredRoots({ candidate, roots, cp: options.cp })
         assertByteOwnedFiniteSnapshot({
           sources: roots.map((root) => root.source),
           snapshot: candidate,
@@ -1927,15 +2002,30 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         snapshotDir: candidate,
         ...(finite === true ? { roots } : {}),
       })
-      if (materialized === true) {
+      if (materialized === true && declaredRoots !== undefined) {
         // The materialized copy is compared against the state admitted before the
         // copy in owner-resolved link form, so a faithful copy of unmodified roots
-        // passes without re-reading the declared-root sources.
-        const before = declaredRoots?.resolvedLinksDigest
+        // passes without re-reading the declared-root sources. The link
+        // inventories the materializer recorded additionally prove every copied
+        // link kept its admitted literal spelling, so a retarget to another
+        // spelling of the same resolution still fails closed.
+        const before = declaredRoots.resolvedLinksDigest
         if (before !== undefined && payload.resolvedRootsDigest !== before)
           fail(
             `declared backing roots changed while materializing: before=${before} after=${payload.resolvedRootsDigest ?? 'absent'}`,
           )
+        for (const [index, root] of roots.entries()) {
+          const admittedInventory =
+            declaredRoots.literalLinksDigests[index] ??
+            fail('declared root link inventory is absent')
+          const materializedInventory = frameLinkInventory(
+            materializedLinks?.get(root.identity) ?? [],
+          )
+          if (materializedInventory !== admittedInventory)
+            fail(
+              `declared backing roots changed while materializing: before=${admittedInventory} after=${materializedInventory}`,
+            )
+        }
       }
       const candidateDigest = payload.digest
       record = expectedRecord({

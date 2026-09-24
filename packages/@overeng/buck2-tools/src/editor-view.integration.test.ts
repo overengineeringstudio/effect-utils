@@ -492,6 +492,40 @@ describe('editor view publisher', () => {
     }
   })
 
+  it('fails closed when a declared root link is retargeted while materializing', async () => {
+    const fixture = makeFixture()
+    try {
+      const backingRoot = join(fixture.root, 'inputs', 'store-entry')
+      mkdirSync(join(backingRoot, 'dep'), { recursive: true })
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "first"\n')
+      const linkedView = join(fixture.root, 'inputs', 'node_modules-linked')
+      mkdirSync(linkedView)
+      const depLink = join(linkedView, 'dep')
+      symlinkSync(join(backingRoot, 'dep'), depLink)
+      const options = { ...fixture.options, nodeModules: linkedView, backingRoots: [backingRoot] }
+
+      await expect(
+        publishEditorView({
+          ...options,
+          beforeMaterialize: () => {
+            rmSync(depLink)
+            // A different spelling of the same resolved path: the owner-resolved
+            // digest alone accepts it, the copied link inventory must not.
+            symlinkSync(`${backingRoot}/./dep`, depLink)
+          },
+        }),
+      ).rejects.toThrow('declared backing roots changed while materializing')
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(
+        readdirSync(join(fixture.editorRoot, '.store')).some((name) =>
+          name.startsWith('.candidate-'),
+        ),
+      ).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   it('emits one completed editor-view.phases span per publication when tracing is active', async () => {
     const otelDirectory = mkdtempSync(join(tmpdir(), 'editor-view-otel-'))
     const otelSpan = join(otelDirectory, 'otel-span')

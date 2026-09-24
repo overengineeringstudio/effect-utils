@@ -4,14 +4,15 @@ import { join } from 'node:path'
 import process from 'node:process'
 
 /**
- * OTEL command instrumentation for the procedural buck2-tools scripts.
+ * OTEL span emission for the procedural buck2-tools scripts.
  *
- * Mirrors the shell gates of `nix/devenv-modules/tasks/lib/trace.nix`: command
- * wrapping and span emission engage only when span delivery is configured
- * (spool dir or OTLP endpoint), an `otel-span` CLI is resolvable on PATH, and a
- * well-formed W3C traceparent from the wrapping task span is present. Without
- * all three, every helper returns its input unchanged and emits nothing, so
- * these scripts behave identically in environments without OTEL.
+ * Mirrors the shell gates of `nix/devenv-modules/tasks/lib/trace.nix`: span
+ * emission engages only when span delivery is configured (spool dir or OTLP
+ * endpoint), an `otel-span` CLI is resolvable, and a well-formed W3C
+ * traceparent from the wrapping task span is present. Without all three,
+ * nothing is emitted, so these scripts behave identically in environments
+ * without OTEL. Emission is strictly best effort: the real command always runs
+ * unwrapped and its exit status is never influenced by telemetry delivery.
  */
 
 const traceparentPattern = /^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$/
@@ -54,43 +55,13 @@ const otelSpanPath = (): string | undefined => {
   return undefined
 }
 
-/**
- * Wraps one concrete command argv in an `otel-span run` command span beneath the
- * active task span, exactly like a trace.nix `trace.instr` prelude. Returns the
- * argv unchanged whenever no OTEL task trace context is active.
- */
-export const withOtelSpan = ({
-  name,
-  label,
-  attributes,
-  argv,
-}: {
-  readonly name: string
-  readonly label: string
-  readonly attributes: readonly OtelSpanAttribute[]
-  readonly argv: readonly string[]
-}): readonly string[] => {
-  const otelSpan = otelSpanPath()
-  if (otelSpan === undefined) return argv
-  return [
-    otelSpan,
-    'run',
-    'effect-utils-devenv',
-    name,
-    ...attributes.flatMap(([key, value]) => ['--attr', `${key}=${value}`]),
-    '--attr',
-    `span.label=${label}`,
-    '--',
-    ...argv,
-  ]
-}
-
 const epochNanoseconds = (milliseconds: number): string =>
   String(BigInt(Math.round(milliseconds * 1_000_000)))
 
 /**
  * Emits one completed span with explicit boundaries via `otel-span emit-span`.
- * Fire-and-forget: delivery problems must never affect the publishing process.
+ * Fire-and-forget: delivery problems must never affect the publishing process,
+ * so every failure of the CLI is swallowed and nothing is returned.
  */
 export const emitCompletedSpan = ({
   name,
@@ -98,6 +69,7 @@ export const emitCompletedSpan = ({
   attributes,
   startedAtMs,
   endedAtMs,
+  exitCode = 0,
 }: {
   readonly name: string
   readonly label: string
@@ -105,6 +77,8 @@ export const emitCompletedSpan = ({
   /** Epoch milliseconds (for example `performance.timeOrigin + performance.now()`). */
   readonly startedAtMs: number
   readonly endedAtMs: number
+  /** Real command exit status recorded on the span; nonzero marks the span error. */
+  readonly exitCode?: number
 }): void => {
   const otelSpan = otelSpanPath()
   if (otelSpan === undefined) return
@@ -125,6 +99,10 @@ export const emitCompletedSpan = ({
             ? ['--attr-bool', `${key}=${value}`]
             : ['--attr-string', `${key}=${value}`],
       ),
+      '--attr-int',
+      `exit.code=${exitCode}`,
+      '--status-code',
+      exitCode === 0 ? 'ok' : 'error',
       '--attr-string',
       `span.label=${label}`,
     ],

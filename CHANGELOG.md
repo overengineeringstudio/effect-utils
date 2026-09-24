@@ -28,17 +28,22 @@ All notable changes to this project will be documented in this file.
 - **Buck2 editor views**: `buck2:editor:publish` (and bootstrap/check reconciliations)
   now emit `buck2.build`, `editor-view.publish`, and `editor-view.phases` OTEL spans
   beneath the devenv task span whenever an OTEL task trace context is active, with
-  per-phase `phase.<name>.ms` attributes; without OTEL delivery every command runs
-  unchanged.
+  per-phase `phase.<name>.ms` attributes and the wrapped command's exit status.
+  Emission is best effort after the real command runs: telemetry failures never
+  change a build or publication outcome, and without OTEL delivery nothing runs
+  differently.
 
 ### Changed
 
 - **Buck2 editor views**: Editor-view publication proves the materialized snapshot
-  copy against the admitted pre-copy digests in an owner-resolved link form instead
-  of re-reading the declared-root sources after the copy, removing one full source
-  traversal per published package. Sources swapped after the copy completes no
-  longer fail the publication — the published snapshot still matches its recorded
-  identity, and the next publication records the new state.
+  copy against the admitted pre-copy digests in an owner-resolved link form — plus a
+  per-root inventory of every symlink's literal text, recorded by the materializer
+  before relocation, so retargeting a link to another spelling of the same
+  resolution still fails — instead of re-reading the declared-root sources after the
+  copy, removing one full source traversal per published package. Sources swapped
+  after the copy completes no longer fail the publication: the published snapshot
+  still matches its recorded identity, and the next publication records the new
+  state.
 
 ### Removed
 
