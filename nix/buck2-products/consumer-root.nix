@@ -3,6 +3,14 @@
   rules,
   capabilities,
   cellName,
+  remoteCacheEnabled ? false,
+  allowCacheUploads ? false,
+  actionCacheAddress ? null,
+  casAddress ? null,
+  cacheInstanceName ? null,
+  cacheTls ? null,
+  archiveOriginUrlPrefix ? null,
+  archiveOriginTier ? null,
   projectIgnore ? [
     "**/__pycache__"
     "**/dist"
@@ -20,6 +28,17 @@
 let
   lib = pkgs.lib;
   ignore = lib.concatStringsSep "," projectIgnore;
+  boolString = value: if value then "true" else "false";
+  remoteClientValues = [
+    actionCacheAddress
+    casAddress
+    cacheInstanceName
+    cacheTls
+  ];
+  remoteClientConfigured = builtins.any (value: value != null) remoteClientValues;
+  remoteClientComplete = builtins.all (value: value != null) remoteClientValues;
+  archiveOriginConfigured = archiveOriginUrlPrefix != null || archiveOriginTier != null;
+  archiveOriginComplete = archiveOriginUrlPrefix != null && archiveOriginTier != null;
   buckConfig = ''
     [cells]
       ${cellName} = .
@@ -42,11 +61,23 @@ let
     [buck2]
       file_watcher = notify
       digest_algorithms = SHA256
-      remote_cache_enabled = false
-      allow_cache_uploads = false
+      remote_cache_enabled = ${boolString remoteCacheEnabled}
+      allow_cache_uploads = ${boolString allowCacheUploads}${lib.optionalString allowCacheUploads "\n  default_allow_cache_upload = true"}
 
     [project]
       ignore = ${ignore}
+  ''
+  + lib.optionalString remoteClientConfigured ''
+    [buck2_re_client]
+      action_cache_address = ${actionCacheAddress}
+      cas_address = ${casAddress}
+      instance_name = ${cacheInstanceName}
+      tls = ${boolString cacheTls}
+  ''
+  + lib.optionalString archiveOriginConfigured ''
+    [archive_origin]
+      url_prefix = ${archiveOriginUrlPrefix}
+      trusted_tier = ${archiveOriginTier}
   '';
   rootBuck = ''
     load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
@@ -91,15 +122,58 @@ assert lib.assertMsg (
     "rules"
   ])
 ) "mkConsumerBuckRoot: cellName must be a non-reserved Buck cell identifier";
+assert lib.assertMsg (
+  builtins.isBool remoteCacheEnabled && builtins.isBool allowCacheUploads
+) "mkConsumerBuckRoot: remote cache switches must be booleans";
+assert lib.assertMsg (
+  !allowCacheUploads || remoteCacheEnabled
+) "mkConsumerBuckRoot: cache uploads require the remote cache";
+assert lib.assertMsg (
+  !remoteClientConfigured || remoteClientComplete
+) "mkConsumerBuckRoot: action/cache addresses, instance name, and TLS must be configured together";
+assert lib.assertMsg (
+  !remoteCacheEnabled || remoteClientComplete
+) "mkConsumerBuckRoot: the enabled remote cache requires a complete client configuration";
+assert lib.assertMsg (
+  !remoteClientComplete
+  || (
+    builtins.isString actionCacheAddress
+    && builtins.isString casAddress
+    && builtins.isString cacheInstanceName
+    && builtins.isBool cacheTls
+  )
+) "mkConsumerBuckRoot: remote cache client values have invalid types";
+assert lib.assertMsg (
+  !archiveOriginConfigured || archiveOriginComplete
+) "mkConsumerBuckRoot: archive origin URL prefix and tier must be configured together";
+assert lib.assertMsg (
+  !archiveOriginComplete
+  || (
+    builtins.isString archiveOriginUrlPrefix
+    && builtins.isString archiveOriginTier
+    && builtins.elem archiveOriginTier [
+      "private"
+      "public"
+    ]
+  )
+) "mkConsumerBuckRoot: archive origin values have invalid types";
 pkgs.runCommand "${cellName}-buck2-root"
   {
     passthru = {
       inherit
+        actionCacheAddress
+        allowCacheUploads
+        archiveOriginTier
+        archiveOriginUrlPrefix
         buckConfig
+        cacheInstanceName
+        cacheTls
         capabilities
+        casAddress
         cellName
-        rules
+        remoteCacheEnabled
         rootBuck
+        rules
         toolchainsBuck
         ;
     };

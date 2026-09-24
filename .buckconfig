@@ -8,6 +8,7 @@
   ovr_config = prelude
   fbsource = prelude
   toolchains = effect_utils
+  rules = effect_utils
 
 [external_cells]
   prelude = bundled

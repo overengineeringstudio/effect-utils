@@ -153,6 +153,37 @@ describe('translatePnpmLock', () => {
     expect(overridden.lockfileFingerprint).not.toBe(baseline.lockfileFingerprint)
   })
 
+  it('normalizes pnpm 12 omission of disabled workspace injection', () => {
+    const explicitFalse = lock().replace(
+      '  injectWorkspacePackages: true\n',
+      '  injectWorkspacePackages: false\n',
+    )
+    const omitted = lock().replace('  injectWorkspacePackages: true\n', '')
+    const options = { workspaceText: workspace() }
+
+    const explicitFalseFingerprint = translatePnpmLock({
+      ...options,
+      lockfileText: explicitFalse,
+    }).lockfileFingerprint
+    expect(
+      translatePnpmLock({ ...options, lockfileText: omitted }).lockfileFingerprint,
+    ).toBe(explicitFalseFingerprint)
+    expect(translatePnpmLock({ ...options, lockfileText: lock() }).lockfileFingerprint).not.toBe(
+      explicitFalseFingerprint,
+    )
+  })
+
+  it('rejects explicit null workspace injection', () => {
+    const explicitNull = lock().replace(
+      '  injectWorkspacePackages: true\n',
+      '  injectWorkspacePackages: null\n',
+    )
+
+    expect(() =>
+      translatePnpmLock({ lockfileText: explicitNull, workspaceText: workspace() }),
+    ).toThrow('pnpm-lock.yaml.settings.injectWorkspacePackages must be a boolean')
+  })
+
   it('supports a patch only when source bytes, lock hash, and snapshot identity agree', () => {
     const patchBytes = new TextEncoder().encode('patch bytes')
     const patchHash = createHash('sha256').update(patchBytes).digest('hex')

@@ -455,10 +455,16 @@ export const translatePnpmLock = ({
     allowed: ['autoInstallPeers', 'excludeLinksFromLockfile', 'injectWorkspacePackages'],
     location: 'pnpm-lock.yaml.settings',
   })
-  for (const field of ['autoInstallPeers', 'excludeLinksFromLockfile', 'injectWorkspacePackages']) {
+  for (const field of ['autoInstallPeers', 'excludeLinksFromLockfile']) {
     if (typeof settings[field] !== 'boolean')
       return fail(`pnpm-lock.yaml.settings.${field} must be a boolean`)
   }
+  const injectWorkspacePackages =
+    settings.injectWorkspacePackages === undefined ? false : settings.injectWorkspacePackages
+  if (typeof injectWorkspacePackages !== 'boolean') {
+    return fail('pnpm-lock.yaml.settings.injectWorkspacePackages must be a boolean')
+  }
+  const normalizedSettings = { ...settings, injectWorkspacePackages }
 
   const overrides = parseStringRecord({
     value: lock.overrides ?? {},
@@ -745,7 +751,7 @@ export const translatePnpmLock = ({
 
   const semanticLock = {
     lockfileVersion: '9.0',
-    settings,
+    settings: normalizedSettings,
     packageExtensionsChecksum: lock.packageExtensionsChecksum,
     overrides,
     patchedDependencies: lockedPatches,

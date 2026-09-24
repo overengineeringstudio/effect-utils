@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
 export BUCK2_RULES_REPO="$repo_root"
+"$repo_root/nix/buck2-rules/tests/consumer-root-config.test.sh" "$repo_root"
 
 root="$(nix build --impure --no-link --print-out-paths --expr '
   let

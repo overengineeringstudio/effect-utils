@@ -57,6 +57,8 @@ All notable changes to this project will be documented in this file.
   through the root Buck aggregates, remove the root lint solution and exported
   legacy `ts.nix` producer, and move declaration publication validation,
   rollback, and cleanup into the TypeScript authority runtime.
+- **Buck2 pnpm projection**: Normalize pnpm 12 lockfiles that omit the disabled
+  `injectWorkspacePackages` setting to the explicit `false` semantic value.
 
 ### Added
 

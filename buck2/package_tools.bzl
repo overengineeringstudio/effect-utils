@@ -297,10 +297,10 @@ _package_bin_artifact = rule(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
         )),
-        "_platform_gated_packages": attrs.default_only(attrs.dep(
+        "_platform_gated_packages": attrs.dep(
             default = "//buck2/dependencies:platform_gated_packages",
             providers = [PnpmPlatformGatedPackagesInfo],
-        )),
+        ),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
@@ -309,10 +309,14 @@ _package_bin_artifact = rule(
 )
 
 
-def package_bin_artifact(name, **kwargs):
+def package_bin_artifact(
+        name,
+        _platform_gated_packages = "//buck2/dependencies:platform_gated_packages",
+        **kwargs):
     _package_bin_artifact(
         name = name,
-        default_target_platform = "//buck2/platforms:javascript_portable",
+        default_target_platform = "@rules//buck2/platforms:javascript_portable",
+        _platform_gated_packages = _platform_gated_packages,
         **kwargs
     )
 
