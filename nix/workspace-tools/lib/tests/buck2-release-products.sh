@@ -273,136 +273,32 @@ jq -e --arg prefix "$local_cache_url/serve/" '
   (.products[0].artifactUrl | startswith($prefix))
 ' "$tmp/first-manifest.json" >/dev/null
 
-
-mkdir -p "$tmp/scope-output" "$tmp/scope-repo/nix/buck2-products" "$tmp/scope-bin" "$tmp/scope-cache"
-mkdir -p "$tmp/scope-repo/packages/@overeng/megarepo" "$tmp/scope-repo/buck2/dependencies"
-printf '{"packages":{}}\n' >"$tmp/scope-repo/buck2/dependencies/pnpm-lock.sha256.json"
-printf 'megarepo\n' >"$tmp/scope-output/mr.js"
-scope_sha="$(sha256sum "$tmp/scope-output/mr.js" | cut -d' ' -f1)"
-scope_integrity="$(nix hash convert --hash-algo sha256 --to sri "$scope_sha")"
-scope_size="$(stat -c '%s' "$tmp/scope-output/mr.js")"
-scope_target='effect_utils//packages/@overeng/megarepo:megarepo-candidate'
-cat >"$tmp/scope-output/descriptor.json" <<EOF
-{"integrity":"$scope_integrity","productName":"megarepo","sizeBytes":$scope_size,"target":"$scope_target"}
-EOF
-cat >"$tmp/scope-output/provenance.json" <<EOF
-{"producerCommit":"1111111111111111111111111111111111111111","productDigest":"$scope_sha","schema":"effect-utils/buck-product-provenance/v1","target":"$scope_target"}
-EOF
-scope_store="$(nix store add-path "$tmp/scope-output")"
-cat >"$tmp/scope-repo/nix/buck2-products/cache-targets.json" <<'EOF'
-{
-  "products": [
-    {
-      "kind": "javascript",
-      "name": "megarepo",
-      "outputName": "mr.js",
-      "packagePath": "packages/@overeng/megarepo",
-      "packageTreePath": "packages/@overeng/megarepo",
-      "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate",
-      "version": "0.0.0"
-    },
-    {
-      "kind": "javascript",
-      "name": "unrelated-broken",
-      "outputName": "broken.js",
-      "packagePath": "packages/@overeng/unrelated-broken",
-      "packageTreePath": "packages/@overeng/unrelated-broken",
-      "target": "effect_utils//packages/@overeng/unrelated-broken:unrelated-broken-candidate",
-      "version": "0.0.0"
-    }
-  ],
-  "schema": "effect-utils/buck-cache-targets/v1",
-  "schemaVersion": 1
-}
-EOF
-cat >"$tmp/scope-repo/nix/buck2-products/manifest.json" <<'EOF'
-{
-  "products": [
-    {
-      "descriptor": {
-        "productName": "megarepo",
-        "sentinel": "stale-megarepo"
-      },
-      "descriptorSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "release": {
-        "hash": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-        "name": "stale-mr.js",
-        "tag": "stale-megarepo",
-        "url": "https://example.invalid/stale-mr.js"
-      }
-    },
-    {
-      "descriptor": {
-        "productName": "unrelated-broken",
-        "sentinel": "must-remain-byte-identical"
-      },
-      "descriptorSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "release": {
-        "hash": "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
-        "name": "unrelated.js",
-        "tag": "unrelated",
-        "url": "https://example.invalid/unrelated.js"
-      }
-    }
-  ],
-  "schema": "effect-utils/buck2-release-products/v1"
-}
-EOF
-unrelated_before="$(
-  jq -cS '.products[] | select(.descriptor.productName == "unrelated-broken")' \
-    "$tmp/scope-repo/nix/buck2-products/manifest.json"
-)"
-cp "$tmp/fake-bin/git" "$tmp/scope-bin/git"
-cat >"$tmp/scope-bin/nix" <<'EOF'
-#!/usr/bin/env bash
-case "$1" in
-  build)
-    printf '%s\n' "$*" >>"$SCOPE_BUILD_LOG"
-    case "$*" in
-      *'#buck-product-megarepo-from-source') printf '%s\n' "$SCOPE_STORE_PATH" ;;
-      *) exit 97 ;;
-    esac
-    ;;
-  copy) ;;
-  hash) printf '%s\n' "$SCOPE_INTEGRITY" ;;
-  *) exit 2 ;;
-esac
-EOF
-chmod +x "$tmp/scope-bin/"*
-scope_cache_url="file://$tmp/scope-cache"
-SCOPE_BUILD_LOG="$tmp/scope-build.log" \
-  SCOPE_STORE_PATH="$scope_store" \
-  SCOPE_INTEGRITY="$scope_integrity" \
-  GITHUB_EVENT_NAME=push \
-  GITHUB_REF=refs/heads/main \
-  CACHIX_CACHE_URL="$scope_cache_url" \
-  BUCK2_CACHE_PRODUCTS_REPO="$tmp/scope-repo" \
-  PATH="$tmp/scope-bin:$PATH" \
-  bash "$publisher" --product megarepo --proposal "$tmp/scope-manifest.json"
-[[ "$(wc -l <"$tmp/scope-build.log")" == 1 ]] &&
-  grep -F '#buck-product-megarepo-from-source' "$tmp/scope-build.log" >/dev/null &&
-  ! grep -F 'unrelated-broken' "$tmp/scope-build.log" >/dev/null || {
-  echo "buck2-cache-products-test: scoped Megarepo publication evaluated an unrelated product" >&2
-  exit 1
-}
-unrelated_after="$(
-  jq -cS '.products[] | select(.descriptor.productName == "unrelated-broken")' \
-    "$tmp/scope-manifest.json"
-)"
-[[ "$unrelated_after" == "$unrelated_before" ]] || {
-  echo "buck2-cache-products-test: scoped publication changed an unrelated legacy product" >&2
-  exit 1
-}
-jq -e --arg digest "$scope_sha" '
-  .schema == "effect-utils/buck-cache-products/v3" and
+# A scoped publication must preserve unrelated cache rows and build only its
+# selected product, even when the other target cannot be built.
+jq '.products += [(.products[0] | .name = "unrelated" | .target = "effect_utils//packages/@overeng/unrelated:unrelated-candidate")]' \
+  "$tmp/collision-repo/nix/buck2-products/cache-targets.json" >"$tmp/targets.scoped.json"
+mv "$tmp/targets.scoped.json" "$tmp/collision-repo/nix/buck2-products/cache-targets.json"
+jq '.products += [(.products[0] |
+  .name = "unrelated" |
+  .sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" |
+  .provenance.productDigest = .sha256 |
+  .provenance.target = "effect_utils//packages/@overeng/unrelated:unrelated-candidate")]' \
+  "$tmp/collision-repo/nix/buck2-products/manifest.json" >"$tmp/manifest.scoped.json"
+mv "$tmp/manifest.scoped.json" "$tmp/collision-repo/nix/buck2-products/manifest.json"
+GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main \
+  CACHIX_CACHE_URL="$local_cache_url" BUCK2_CACHE_PRODUCTS_REPO="$tmp/collision-repo" \
+  PATH="$tmp/local-bin:$PATH" \
+  bash "$publisher" --product fixture --proposal "$tmp/scoped-manifest.json"
+jq -e --slurpfile previous "$tmp/collision-repo/nix/buck2-products/manifest.json" '
+  .schema == "effect-utils/buck-cache-products/v2" and
   (.products | length == 2) and
-  ([.products[] | select((has("name") | not) and .descriptor.productName == "megarepo")] | length == 0) and
-  ([.products[] | select(.name? == "megarepo")] | length == 1) and
-  (.products[] | select(.name? == "megarepo") |
-    .sha256 == $digest and
-    .provenance.schema == "effect-utils/buck-product-provenance/v1" and
-    .provenance.productDigest == $digest)
-' "$tmp/scope-manifest.json" >/dev/null
+  (.products[] | select(.name == "unrelated")) ==
+    ($previous[0].products[] | select(.name == "unrelated"))
+' "$tmp/scoped-manifest.json" >/dev/null
+[[ "$(wc -l <"$NIX_COPY_LOG")" == 1 ]] || {
+  echo "buck2-cache-products-test: scoped publication rebuilt an unrelated product" >&2
+  exit 1
+}
 
 mkdir -p "$tmp/products"
 cp "$repo_root/nix/buck2-products/default.nix" "$tmp/products/default.nix"
@@ -490,41 +386,16 @@ jq -e --arg storePath "$store_path" --arg artifactUrl "$artifact_url" '
   .sourcePath == $storePath and
   .artifactUrl == $artifactUrl
 ' <<<"$summary" >/dev/null
-cat >"$tmp/products/targets.json" <<'EOF'
-{
-  "products": [
-    {
-      "name": "legacy",
-      "target": "effect_utils//packages/@overeng/legacy:legacy-candidate"
-    }
-  ]
-}
-EOF
-legacy_descriptor='{"externalCapabilities":[],"externalModules":[],"integrity":"sha256-qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=","modulePath":"legacy.js","platform":{"abi":"any","architecture":"any","os":"any"},"productKind":"cli","productName":"legacy","provenance":{"configuredTarget":"legacy","dependencyClosureIdentity":"legacy","module":"legacy"},"runtimeContract":"javascript-esm","runtimeContractVersion":"v1","runtimeKind":"node","schema":"effect-utils/javascript-product/v2","sizeBytes":1,"target":"effect_utils//packages/@overeng/legacy:legacy-candidate"}'
-legacy_descriptor_sha="$(printf '%s' "$legacy_descriptor" | sha256sum | cut -d' ' -f1)"
+
 cp "$tmp/products/manifest.json" "$tmp/products/manifest.v2.json"
-jq -S \
-  --argjson descriptor "$legacy_descriptor" \
-  --arg descriptorSha256 "$legacy_descriptor_sha" \
-  '.schema = "effect-utils/buck-cache-products/v3" |
-   .products += [{
-     descriptor: $descriptor,
-     descriptorSha256: $descriptorSha256,
-     release: {
-       hash: "sha256-qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=",
-       name: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-legacy.js",
-       tag: "buck2-product-v3-legacy-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-       url: "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-legacy-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-legacy.js"
-     }
-   }]' \
+jq '.schema = "effect-utils/buck-cache-products/v3"' \
   "$tmp/products/manifest.json" >"$tmp/products/manifest.v3.json"
 mv "$tmp/products/manifest.v3.json" "$tmp/products/manifest.json"
-v3_summary="$(nix eval --impure --json --expr "$loader_expr")"
-jq -e '
-  .fullyPublished == true and
-  .productNames == ["fixture", "legacy"] and
-  .publishedProductNames == ["fixture", "legacy"]
-' <<<"$v3_summary" >/dev/null
+if nix eval --impure --json --expr "$loader_expr" >"$tmp/schema.log" 2>&1; then
+  echo "buck2-cache-products-test: loader accepted an unsupported manifest schema" >&2
+  exit 1
+fi
+grep -F 'unsupported manifest schema' "$tmp/schema.log" >/dev/null
 mv "$tmp/products/manifest.v2.json" "$tmp/products/manifest.json"
 
 jq '.products[0].artifactUrl = "https://overeng-effect-utils.cachix.org/serve/11111111111111111111111111111111/fixture.js"' \

@@ -57,9 +57,6 @@ jq -e '
   ([.products[].target] | length == (unique | length))
 ' "$targets" >/dev/null || fail "target inventory violates effect-utils/buck-cache-targets/v1"
 jq -e '
-  def legacy:
-    (keys | sort) == ["descriptor", "descriptorSha256", "release"] and
-    (.descriptor.productName | type == "string" and length > 0);
   def cached:
     (
       (has("descriptor") and
@@ -76,21 +73,11 @@ jq -e '
       (.producerCommit | test("^[0-9a-f]{40}$")) and
       (.target | type == "string" and length > 0)) and
     .provenance.productDigest == .sha256;
-  def identity: .name // .descriptor.productName;
   (keys | sort) == ["products", "schema"] and
+  .schema == "effect-utils/buck-cache-products/v2" and
   (.products | type == "array" and length > 0) and
-  (
-    if .schema == "effect-utils/buck2-release-products/v1" then
-      all(.products[]; legacy)
-    elif .schema == "effect-utils/buck-cache-products/v2" then
-      all(.products[]; cached)
-    elif .schema == "effect-utils/buck-cache-products/v3" then
-      all(.products[]; legacy or cached)
-    else
-      false
-    end
-  ) and
-  ([.products[] | identity] | length == (unique | length))
+  all(.products[]; cached) and
+  ([.products[].name] | length == (unique | length))
 ' "$manifest" >/dev/null || fail "current product manifest has an unsupported or invalid schema"
 
 selection='.'
@@ -347,16 +334,10 @@ done <"$entries"
 proposal_stage="$stage/manifest.json"
 replacements="$(jq -csS '.' "$entries")"
 jq -S --argjson replacements "$replacements" '
-  def identity: .name // .descriptor.productName;
-  ($replacements | map({key: identity, value: .}) | from_entries) as $replacementByName |
-  ([.products[] | . as $product | select($replacementByName[$product | identity] == null)] + $replacements | sort_by(identity)) as $products |
+  ($replacements | map({key: .name, value: .}) | from_entries) as $replacementByName |
   {
-    schema:
-      (if all($products[]; has("name"))
-       then "effect-utils/buck-cache-products/v2"
-       else "effect-utils/buck-cache-products/v3"
-       end),
-    products: $products
+    schema: "effect-utils/buck-cache-products/v2",
+    products: ([.products[] | select($replacementByName[.name] == null)] + $replacements | sort_by(.name))
   }
 ' "$manifest" >"$proposal_stage"
 if [[ -n "$proposal" ]]; then

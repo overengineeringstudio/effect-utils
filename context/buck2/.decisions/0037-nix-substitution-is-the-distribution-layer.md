@@ -77,9 +77,12 @@ S3-compatible storage as the agnostic foundation
 6. Pins are named by digest and never re-pointed; the publisher verifies the
    pinned path anonymously after publication (public) and records producer
    commit, target, and digest as provenance.
-7. The GitHub-releases layer (`nix/buck2-products/publish.sh`, the
-   `buck2-product-v3-*` / `buck2-package-v1-*` release namespaces) is retired
-   once the first product moves; existing releases stay as history.
+7. The JavaScript/package GitHub-release publication and import path
+   (`buck2-product-v3-*` and new `buck2-package-v1-*` releases) is retired
+   once its manifest contains only cache rows. Existing immutable releases
+   stay accessible for frozen consumer pins. The Cachix publisher at
+   `nix/buck2-products/publish.sh` remains; native Rust product releases are
+   a separate import path until they have a cache-backed equivalent.
 8. bazel-remote remains the disposable action cache (REUSE-A02 unchanged).
    Remote execution is decided separately.
 
@@ -90,9 +93,9 @@ S3-compatible storage as the agnostic foundation
 - vision.md lines 30-32 and criterion 6, and BRIDGE-R08, are rewritten as
   confirmed in q46.
 - New work: generated per-product derivations (genie), Cachix publish/pin
-  publisher with provenance, private-shared product lane, retirement of
-  `publish.sh`; ledger rows for publication move from GitHub to the cache
-  publisher.
+  publisher with provenance, private-shared product lane, and retirement of
+  the GitHub-release import path; ledger rows for publication move from
+  GitHub to the cache publisher.
 - Open: private pnpm `file:` variant (unproven), Cachix retention at our volume,
   R2 exit criteria, remote execution (04-reuse / 02-execution open questions).
 
