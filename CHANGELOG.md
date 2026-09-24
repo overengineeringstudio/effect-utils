@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Buck2 package products**: Register private-tier package archives for
+  `@overeng/agent-session-ingest`, `@overeng/effect-ai-claude-cli`,
+  `@overeng/effect-react`, `@overeng/genie`, `@overeng/notion-md`, and
+  `@overeng/notion-property-write`.
+- **Buck2 product publication**: Derive trusted main-branch publication from
+  every public product in the generated inventory while continuing to refuse
+  explicit public publication of packages marked private.
+
 ### Removed
 
 - **Nix workspace tools**: Delete the unconsumed `mk-bun-cli` builder, its

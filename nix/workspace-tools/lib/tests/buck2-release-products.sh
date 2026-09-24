@@ -8,11 +8,11 @@ publisher="$repo_root/nix/buck2-products/publish.sh"
 targets="$repo_root/nix/buck2-products/cache-targets.json"
 workflow="$repo_root/.github/workflows/ci.yml"
 
-expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/notion-react","@overeng/otel-contract","@overeng/restate-effect","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
+expected_names='["@overeng/agent-session-ingest","@overeng/content-address","@overeng/effect-ai-claude-cli","@overeng/effect-distributed-lock","@overeng/effect-react","@overeng/genie","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/notion-md","@overeng/notion-property-write","@overeng/notion-react","@overeng/otel-contract","@overeng/restate-effect","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck-cache-targets/v1" and
   [.products[].name] == $expected and
-  (.products | length == 24) and
+  (.products | length == 30) and
   all(.products[];
     (.kind == "javascript" or .kind == "package") and
     (.target | startswith("effect_utils//")) and
@@ -20,20 +20,46 @@ jq -e --argjson expected "$expected_names" '
   )
 ' "$targets" >/dev/null
 
-if bash "$publisher" --dry-run --product @overeng/notion-react >"$tmp/private-package.log" 2>&1; then
-  echo "buck2-cache-products-test: accepted a private package product" >&2
-  exit 1
-fi
-grep -F 'refusing public cache publication for private or misclassified package: @overeng/notion-react' \
-  "$tmp/private-package.log" >/dev/null
+declare -a expected_public_names=()
+declare -a private_names=()
+while IFS= read -r row; do
+  name="$(jq -r '.name' <<<"$row")"
+  if [[ "$(jq -r '.kind' <<<"$row")" == package ]]; then
+    package_manifest="$repo_root/$(jq -r '.packagePath' <<<"$row")/package.json"
+    jq -e --arg name "$name" '.name == $name' "$package_manifest" >/dev/null
+    if jq -e '.private == true' "$package_manifest" >/dev/null; then
+      private_names+=("$name")
+      continue
+    fi
+  fi
+  expected_public_names+=("$name")
+done < <(jq -c '.products[]' "$targets")
+
+expected_public="$(printf '%s\n' "${expected_public_names[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')"
+plan="$(bash "$publisher" --dry-run)"
+jq -e --argjson expected "$expected_public" '
+  .schema == "effect-utils/buck-cache-publication-plan/v1" and
+  .cache == "overeng-effect-utils" and
+  [.products[].name] == $expected
+' <<<"$plan" >/dev/null
+[[ "${#private_names[@]}" == 18 ]]
+for private_name in "${private_names[@]}"; do
+  if bash "$publisher" --dry-run --product "$private_name" >"$tmp/private-package.log" 2>&1; then
+    echo "buck2-cache-products-test: accepted a private package product: $private_name" >&2
+    exit 1
+  fi
+  grep -F "refusing public cache publication for private or misclassified package: $private_name" \
+    "$tmp/private-package.log" >/dev/null
+done
 
 single="$(bash "$publisher" --dry-run --product oxc-config)"
-jq -e '.products | length == 1 and .[0].name == "oxc-config"' <<<"$single" >/dev/null
+jq -e '(.products | length) == 1 and .products[0].name == "oxc-config"' <<<"$single" >/dev/null
 if bash "$publisher" --dry-run --product missing >"$tmp/missing.log" 2>&1; then
   echo "buck2-cache-products-test: accepted an unknown product" >&2
   exit 1
 fi
 grep -F 'unknown product: missing' "$tmp/missing.log" >/dev/null
+
 
 grep -F 'cachix push "$cache" "$store_path"' "$publisher" >/dev/null
 grep -F 'cachix pin "$cache" "$pin_name" "$store_path" --artifact "$output_name" --keep-forever' "$publisher" >/dev/null
@@ -43,7 +69,11 @@ grep -F 'P1 cache publisher (decision 0037)' "$publisher" >/dev/null
 grep -F 'publish-products:' "$workflow" >/dev/null
 grep -F 'CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}' "$workflow" >/dev/null
 grep -F 'pull-requests: write' "$workflow" >/dev/null
-grep -F 'nix/buck2-products/publish.sh --proposal "$proposal" --product gh-ci-utils --product megarepo --product genie' "$workflow" >/dev/null
+grep -F 'nix/buck2-products/publish.sh --proposal "$proposal"' "$workflow" >/dev/null
+if grep -F 'nix/buck2-products/publish.sh --proposal "$proposal" --product' "$workflow" >/dev/null; then
+  echo "buck2-cache-products-test: publication workflow still selects a hand-maintained product subset" >&2
+  exit 1
+fi
 if grep -F 'product_refs' "$workflow" >/dev/null; then
   echo "buck2-cache-products-test: publication workflow still prebuilds the complete inventory" >&2
   exit 1
@@ -497,5 +527,5 @@ if nix eval --impure --json --expr "$loader_expr" >"$tmp/mismatch.log" 2>&1; the
 fi
 grep -F 'artifact URL does not match its store path and artifact' "$tmp/mismatch.log" >/dev/null
 
-jq -e '.schema == "effect-utils/buck-cache-targets/v1" and (.products | length == 24)' "$targets" >/dev/null
+jq -e '.schema == "effect-utils/buck-cache-targets/v1" and (.products | length == 30)' "$targets" >/dev/null
 echo "buck2-cache-products-test: OK"

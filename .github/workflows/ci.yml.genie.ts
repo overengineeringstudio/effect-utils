@@ -802,7 +802,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
-            'nix/buck2-products/publish.sh --proposal "$proposal" --product gh-ci-utils --product megarepo --product genie',
+            'nix/buck2-products/publish.sh --proposal "$proposal"',
             'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
             '  echo "::notice::The v2 product manifest is already current"',
             '  exit 0',

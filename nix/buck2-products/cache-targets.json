@@ -2,6 +2,15 @@
   "products": [
     {
       "kind": "package",
+      "name": "@overeng/agent-session-ingest",
+      "outputName": "overeng-agent-session-ingest.tgz",
+      "packagePath": "packages/@overeng/agent-session-ingest",
+      "packageTreePath": "packages/@overeng/agent-session-ingest",
+      "target": "effect_utils//packages/@overeng/agent-session-ingest:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/content-address",
       "outputName": "overeng-content-address.tgz",
       "packagePath": "packages/@overeng/content-address",
@@ -11,11 +20,38 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/effect-ai-claude-cli",
+      "outputName": "overeng-effect-ai-claude-cli.tgz",
+      "packagePath": "packages/@overeng/effect-ai-claude-cli",
+      "packageTreePath": "packages/@overeng/effect-ai-claude-cli",
+      "target": "effect_utils//packages/@overeng/effect-ai-claude-cli:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/effect-distributed-lock",
       "outputName": "overeng-effect-distributed-lock.tgz",
       "packagePath": "packages/@overeng/effect-distributed-lock",
       "packageTreePath": "packages/@overeng/effect-distributed-lock",
       "target": "effect_utils//packages/@overeng/effect-distributed-lock:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/effect-react",
+      "outputName": "overeng-effect-react.tgz",
+      "packagePath": "packages/@overeng/effect-react",
+      "packageTreePath": "packages/@overeng/effect-react",
+      "target": "effect_utils//packages/@overeng/effect-react:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/genie",
+      "outputName": "overeng-genie.tgz",
+      "packagePath": "packages/@overeng/genie",
+      "packageTreePath": "packages/@overeng/genie",
+      "target": "effect_utils//packages/@overeng/genie:dist-package",
       "version": "0.1.0"
     },
     {
@@ -43,6 +79,24 @@
       "packagePath": "packages/@overeng/notion-effect-schema",
       "packageTreePath": "packages/@overeng/notion-effect-schema",
       "target": "effect_utils//packages/@overeng/notion-effect-schema:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/notion-md",
+      "outputName": "overeng-notion-md.tgz",
+      "packagePath": "packages/@overeng/notion-md",
+      "packageTreePath": "packages/@overeng/notion-md",
+      "target": "effect_utils//packages/@overeng/notion-md:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/notion-property-write",
+      "outputName": "overeng-notion-property-write.tgz",
+      "packagePath": "packages/@overeng/notion-property-write",
+      "packageTreePath": "packages/@overeng/notion-property-write",
+      "target": "effect_utils//packages/@overeng/notion-property-write:dist-package",
       "version": "0.1.0"
     },
     {

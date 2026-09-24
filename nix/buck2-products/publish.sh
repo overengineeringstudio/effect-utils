@@ -21,8 +21,8 @@ usage() {
   cat <<'EOF'
 Usage: nix/buck2-products/publish.sh [--dry-run] [--product NAME] [--proposal PATH]
 
---dry-run       Validate and print the complete publication plan without building or mutating.
---product NAME  Publish only NAME. May be repeated. The default is the complete generated inventory.
+--dry-run       Validate and print the complete public publication plan without building or mutating.
+--product NAME  Publish only NAME. May be repeated. The default is every public inventory product.
 --proposal PATH Write the merged manifest outside the Git worktree. The default writes it to stdout.
 EOF
 }
@@ -107,7 +107,19 @@ rows="$({
       jq -cS --arg selected "$selected" ".products[] | $selection" "$targets"
     done
   else
-    jq -cS '.products[]' "$targets"
+    while IFS= read -r row; do
+      if [[ "$(jq -r '.kind' <<<"$row")" == package ]]; then
+        name="$(jq -r '.name' <<<"$row")"
+        package_path="$(jq -r '.packagePath' <<<"$row")"
+        package_manifest="$repo_root/$package_path/package.json"
+        [[ -f "$package_manifest" && ! -L "$package_manifest" ]] ||
+          fail "package product manifest is missing: $package_manifest"
+        jq -e --arg name "$name" '.name == $name' "$package_manifest" >/dev/null ||
+          fail "package product manifest name does not match inventory: $name"
+        jq -e '.private == true' "$package_manifest" >/dev/null && continue
+      fi
+      printf '%s\n' "$row"
+    done < <(jq -cS '.products[]' "$targets")
   fi
 } | jq -csS 'sort_by(.name)')"
 
