@@ -6,7 +6,7 @@
 # realizes only the declared content-addressed module bytes.
 {
   pkgs,
-  fromSourceProducts ? { },
+  fromSourceProducts,
 }:
 
 let

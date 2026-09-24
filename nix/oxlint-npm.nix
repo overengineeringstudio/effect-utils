@@ -9,7 +9,7 @@
 # remains only the oxlint runtime packager; it does not rebuild plugin sources.
 #
 # Usage:
-#   tracked = import ./buck2-products { inherit pkgs; };
+#   tracked = import ./buck2-products { inherit pkgs fromSourceProducts; };
 #   oxlintNpm = import ./oxlint-npm.nix {
 #     inherit pkgs bun;
 #     products = tracked.products;
