@@ -27,6 +27,9 @@ All notable changes to this project will be documented in this file.
   commit rebuilds byte-identical product bytes, after verifying the published
   provenance binds the same artifact, instead of failing because the rebuilt
   store path differs only in its producing commit.
+- **Nix (pnpm)**: Expand inline empty `patchedDependencies: {}` mappings before
+  inheriting root patches into a composed install root, preventing duplicate
+  YAML keys; reject non-empty inline sections rather than silently mis-merging.
 - **Nix (pnpm)**: `align-aggregate-manifest-specifiers` reads importers from the
   project graph document, the last lockfile document that declares importers,
   instead of merging importers across every document. pnpm 12's

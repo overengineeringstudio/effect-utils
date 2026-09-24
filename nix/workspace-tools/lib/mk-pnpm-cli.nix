@@ -79,8 +79,13 @@ let
     };
 
     const findTopLevelSection = (lines, sectionName) => {
-      const startIndex = lines.findIndex((line) => line === sectionName + ":");
+      const header = sectionName + ":";
+      const startIndex = lines.findIndex((line) => line.startsWith(header));
       if (startIndex === -1) return undefined;
+      const value = lines[startIndex].slice(header.length).trim();
+      if (value !== "" && !/^\{\s*\}$/.test(value)) {
+        throw new Error("unsupported inline " + sectionName + " mapping: " + lines[startIndex]);
+      }
       let endIndex = lines.length;
       for (let index = startIndex + 1; index < lines.length; index += 1) {
         const line = lines[index];
@@ -89,7 +94,7 @@ let
           break;
         }
       }
-      return { startIndex, endIndex };
+      return { startIndex, endIndex, inlineEmpty: value !== "" };
     };
 
     const parseWorkspacePatchedDependencyPaths = (workspaceYaml) => {
@@ -202,6 +207,7 @@ let
       ]);
 
       if (section !== undefined) {
+        if (section.inlineEmpty) lines[section.startIndex] = "patchedDependencies:";
         lines.splice(section.endIndex, 0, ...rendered);
         return lines.join("\n");
       }
@@ -283,6 +289,7 @@ let
       const rendered = entries.map((entry) => "  '" + entry.key + "': .root-patches/" + entry.path);
 
       if (section !== undefined) {
+        if (section.inlineEmpty) lines[section.startIndex] = "patchedDependencies:";
         lines.splice(section.endIndex, 0, ...rendered);
         return lines.join("\n");
       }
