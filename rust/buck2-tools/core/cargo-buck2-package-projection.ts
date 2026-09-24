@@ -53,8 +53,8 @@ type ProjectionDefinition = {
 }
 
 /**
- * Define a Cargo projector for one repository workspace. Every configured path is
- * repository-relative to the caller's module, so the same implementation works from a
+ * Define a Cargo projector for one repository workspace. Paths are relative to the
+ * repository root anchored by `repoImportMetaUrl`, so the same implementation works from a
  * composed consumer root and from an install-free source export.
  */
 export const defineCargoBuck2PackageProjection = ({
