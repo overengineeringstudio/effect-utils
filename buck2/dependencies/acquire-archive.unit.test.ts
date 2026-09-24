@@ -124,4 +124,48 @@ describe('pnpm archive acquisition', () => {
       expect(await readdir(dirname(output))).toEqual([])
     })
   })
+  it('fails when CAS response headers exceed the request deadline, without trying the registry', async () => {
+    await withOutput(async (output) => {
+      let calls = 0
+      await expect(
+        acquireArchive({
+          ...options(output),
+          headersTimeoutMs: 20,
+          fetchArchive: (_url, init) => {
+            calls += 1
+            return new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {
+                once: true,
+              })
+            })
+          },
+        }),
+      ).rejects.toThrow('response headers timed out')
+      expect(calls).toBe(1)
+      expect(await readdir(dirname(output))).toEqual([])
+    })
+  })
+
+  it('aborts a stalled archive body at the overall transfer deadline', async () => {
+    await withOutput(async (output) => {
+      let cancelled = false
+      const stalled = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes.slice(0, 1))
+        },
+        cancel() {
+          cancelled = true
+        },
+      })
+      await expect(
+        acquireArchive({
+          ...options(output),
+          transferTimeoutMs: 20,
+          fetchArchive: async () => new Response(stalled),
+        }),
+      ).rejects.toThrow()
+      expect(cancelled).toBe(true)
+      expect(await readdir(dirname(output))).toEqual([])
+    })
+  })
 })

@@ -12,17 +12,21 @@ const fail = (message: string): never => {
 export const acquireArchive = async ({
   casUrl,
   fetchArchive = fetch,
+  headersTimeoutMs = 15_000,
   output,
   registryUrl,
   sha256,
   size,
+  transferTimeoutMs = 120_000,
 }: {
   readonly casUrl: string
   readonly fetchArchive?: typeof fetch
+  readonly headersTimeoutMs?: number
   readonly output: string
   readonly registryUrl: string
   readonly sha256: string
   readonly size: number
+  readonly transferTimeoutMs?: number
 }): Promise<'cas' | 'registry'> => {
   if (/^[a-f0-9]{64}$/.test(sha256) === false) fail(`invalid sha256: ${sha256}`)
   if (Number.isSafeInteger(size) === false || size <= 0) fail(`invalid size: ${size}`)
@@ -30,9 +34,26 @@ export const acquireArchive = async ({
   if (registryUrl.startsWith('https://') === false)
     fail(`canonical archive URL must use HTTPS: ${registryUrl}`)
 
-  const cas = await fetchArchive(casUrl)
+  const deadline = AbortSignal.timeout(transferTimeoutMs)
+  const request = async (url: string): Promise<Response> => {
+    const headers = new AbortController()
+    const signal = AbortSignal.any([deadline, headers.signal])
+    const timeout = setTimeout(
+      () => headers.abort(new Error('pnpm archive acquisition: response headers timed out')),
+      headersTimeoutMs,
+    )
+    try {
+      const response = await fetchArchive(url, { signal })
+      if (signal.aborted) throw signal.reason
+      return response
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  const cas = await request(casUrl)
   const source = cas.status === 404 ? 'registry' : 'cas'
-  const response = source === 'registry' ? await fetchArchive(registryUrl) : cas
+  const response = source === 'registry' ? await request(registryUrl) : cas
   if (response.ok === false) fail(`${source} returned HTTP ${response.status}`)
   if (response.body === null) fail(`${source} returned no archive body`)
 
@@ -51,7 +72,9 @@ export const acquireArchive = async ({
     },
   })
   try {
-    await pipeline(Readable.fromWeb(response.body), verifier, createWriteStream(candidate))
+    await pipeline(Readable.fromWeb(response.body), verifier, createWriteStream(candidate), {
+      signal: deadline,
+    })
     const actual = hash.digest('hex')
     if (actual !== sha256) fail(`archive digest mismatch: expected ${sha256}, got ${actual}`)
     if (received !== size) fail(`archive size mismatch: expected ${size}, got ${received}`)
