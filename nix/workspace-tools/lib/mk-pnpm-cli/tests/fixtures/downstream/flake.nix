@@ -124,6 +124,10 @@
           "mk-pnpm-cli-pure-eval-fixture" = pureEvalFixture;
           "mk-pnpm-cli-pure-eval-root-deps" = pureEvalFixture.passthru.depsBuildsByInstallRoot.root;
           oxlint-npm = effectUtilsPackages.oxlint-npm;
+          oxlint-npm-from-lib = effect-utils.lib.mkOxlintNpm {
+            inherit pkgs;
+            bun = pkgs.bun;
+          };
           default = effectUtilsPackages.megarepo;
         };
         checks.pure-eval-external-install-roots = pkgs.runCommand "mk-pnpm-cli-pure-eval" { } ''
