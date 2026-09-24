@@ -88,8 +88,6 @@ let
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
-    weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
-
     weaver-diff = import ./nix/devenv-modules/tasks/shared/weaver-diff.nix;
     weaver-live-check = import ./nix/devenv-modules/tasks/shared/weaver-live-check.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;

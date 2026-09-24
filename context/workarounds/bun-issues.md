@@ -152,11 +152,9 @@ Both **bun `file:`** and **pnpm `link:`** give packages their OWN dependency res
 
 Use these as concrete cleanup tasks once the corresponding Bun issues are resolved.
 
-- **BUN-01**: Revert mk-bun-cli to bun-only installs (remove `depsManager`, `pnpmDepsHash`, pnpm install path).
 - **BUN-02**: Switch to `workspace:*` with per-package workspaces in `package.json`.
 - **BUN-03**: Re-enable bun patchedDependencies flow once Bun fixes both local path patching and nested workspace patch handling.
 - **All BUN issues resolved**:
-  - Remove pnpm-specific code paths in `mk-bun-cli` and `mk-bun-cli/bun-deps.nix`.
   - Update genie to generate `workspaces` field in `package.json` instead of `pnpm-workspace.yaml`.
   - Remove `pnpm-workspace.yaml.genie.ts` files (or keep for pnpm compatibility).
   - Update docs to reflect bun as primary package manager.
