@@ -19,7 +19,13 @@ import {
 import * as Git from '../../core/git.ts'
 import { StoreLayer } from '../../store/store.ts'
 import { syncMember } from '../../sync/mod.ts'
-import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
+import {
+  Cwd,
+  findMegarepoRoot,
+  outputOption,
+  outputModeLayer,
+  resolveOutputOption,
+} from '../context.ts'
 import { AddCommandError } from '../errors.ts'
 import * as Observability from '../observability.ts'
 import { AddApp, AddView } from '../renderers/AddOutput/mod.ts'
@@ -79,112 +85,114 @@ export const addCommand = Cli.Command.make(
     output: outputOption,
   },
   ({ repo, name, sync, output }) =>
-    Effect.gen(function* () {
-      const cwd = yield* Cwd
-      const root = yield* findMegarepoRoot(cwd)
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        const cwd = yield* Cwd
+        const root = yield* findMegarepoRoot(cwd)
 
-      yield* run(
-        AddApp,
-        (tui) =>
-          Effect.gen(function* () {
-            if (Option.isNone(root) === true) {
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'not_in_megarepo',
-                message: 'No megarepo.json found',
-              })
-              return yield* new AddCommandError({ message: 'Not in a megarepo' })
-            }
+        yield* run(
+          AddApp,
+          (tui) =>
+            Effect.gen(function* () {
+              if (Option.isNone(root) === true) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'not_in_megarepo',
+                  message: 'No megarepo.json found',
+                })
+                return yield* new AddCommandError({ message: 'Not in a megarepo' })
+              }
 
-            // Parse the repo reference
-            const parsed = parseRepoRef(repo)
-            if (parsed === undefined) {
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'invalid_repo',
-                message: `Invalid repo reference: ${repo}`,
-              })
-              return yield* new AddCommandError({ message: 'Invalid repo reference' })
-            }
+              // Parse the repo reference
+              const parsed = parseRepoRef(repo)
+              if (parsed === undefined) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'invalid_repo',
+                  message: `Invalid repo reference: ${repo}`,
+                })
+                return yield* new AddCommandError({ message: 'Invalid repo reference' })
+              }
 
-            const memberName = Option.getOrElse(name, () => parsed.suggestedName)
+              const memberName = Option.getOrElse(name, () => parsed.suggestedName)
 
-            // Load current config
-            const { config, path: configPath } = yield* readMegarepoConfig(root.value)
+              // Load current config
+              const { config, path: configPath } = yield* readMegarepoConfig(root.value)
 
-            // Check if member already exists
-            if (memberName in config.members) {
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'already_exists',
-                message: `Member '${memberName}' already exists`,
-              })
-              return yield* new AddCommandError({ message: 'Member already exists' })
-            }
+              // Check if member already exists
+              if (memberName in config.members) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'already_exists',
+                  message: `Member '${memberName}' already exists`,
+                })
+                return yield* new AddCommandError({ message: 'Member already exists' })
+              }
 
-            // Add the new member
-            const newConfig = new MegarepoConfig({
-              ...config,
-              members: {
-                ...config.members,
-                [memberName]: parsed.sourceString,
-              },
-            })
-
-            // Write updated config (preserves format)
-            yield* writeMegarepoConfig({ configPath: configPath, config: newConfig })
-
-            // Sync if requested
-            if (sync === true) {
-              tui.dispatch({
-                _tag: 'SetAdding',
-                member: memberName,
-                source: parsed.sourceString,
+              // Add the new member
+              const newConfig = new MegarepoConfig({
+                ...config,
+                members: {
+                  ...config.members,
+                  [memberName]: parsed.sourceString,
+                },
               })
 
-              const result = yield* syncMember({
-                name: memberName,
-                sourceString: parsed.sourceString,
-                megarepoRoot: root.value,
-                lockFile: undefined,
-                mode: 'fetch',
-                dryRun: false,
-                force: false,
-              })
+              // Write updated config (preserves format)
+              yield* writeMegarepoConfig({ configPath: configPath, config: newConfig })
 
-              const syncStatus =
-                result.status === 'cloned'
-                  ? ('cloned' as const)
-                  : result.status === 'error'
-                    ? ('error' as const)
-                    : ('synced' as const)
+              // Sync if requested
+              if (sync === true) {
+                tui.dispatch({
+                  _tag: 'SetAdding',
+                  member: memberName,
+                  source: parsed.sourceString,
+                })
 
-              tui.dispatch({
-                _tag: 'SetSuccess',
-                member: memberName,
-                source: parsed.sourceString,
-                synced: true,
-                syncStatus,
-              })
-            } else {
-              tui.dispatch({
-                _tag: 'SetSuccess',
-                member: memberName,
-                source: parsed.sourceString,
-                synced: false,
-              })
-            }
-          }),
-        { view: React.createElement(AddView, { stateAtom: AddApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(
-      Effect.provide(StoreLayer),
-      Observability.withCommandSpan({
-        name: 'megarepo/add',
-        command: 'add',
-        label: Option.getOrElse(name, () => parseRepoRef(repo)?.suggestedName ?? 'add'),
-        output,
-        repo,
-      }),
+                const result = yield* syncMember({
+                  name: memberName,
+                  sourceString: parsed.sourceString,
+                  megarepoRoot: root.value,
+                  lockFile: undefined,
+                  mode: 'fetch',
+                  dryRun: false,
+                  force: false,
+                })
+
+                const syncStatus =
+                  result.status === 'cloned'
+                    ? ('cloned' as const)
+                    : result.status === 'error'
+                      ? ('error' as const)
+                      : ('synced' as const)
+
+                tui.dispatch({
+                  _tag: 'SetSuccess',
+                  member: memberName,
+                  source: parsed.sourceString,
+                  synced: true,
+                  syncStatus,
+                })
+              } else {
+                tui.dispatch({
+                  _tag: 'SetSuccess',
+                  member: memberName,
+                  source: parsed.sourceString,
+                  synced: false,
+                })
+              }
+            }),
+          { view: React.createElement(AddView, { stateAtom: AddApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
+      }).pipe(
+        Effect.provide(StoreLayer),
+        Observability.withCommandSpan({
+          name: 'megarepo/add',
+          command: 'add',
+          label: Option.getOrElse(name, () => parseRepoRef(repo)?.suggestedName ?? 'add'),
+          output: outputMode,
+          repo,
+        }),
+      ),
     ),
 ).pipe(Cli.Command.withDescription('Add a new member repository'))

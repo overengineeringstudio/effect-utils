@@ -123,7 +123,12 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, outputOption, outputModeLayer } from '../../../src/mod.tsx'
+import { createTuiApp } from '../../../src/mod.tsx'
+import {
+  outputOption,
+  outputModeLayer,
+  resolveOutputOption,
+} from '../../../src/node/mod.ts'
 import { AppState, AppAction } from './schema.ts'
 import { appReducer } from './reducer.ts'
 import { AppView } from './view.tsx'
@@ -146,7 +151,10 @@ const runApp = Effect.gen(function* () {
 }).pipe(Effect.scoped)
 
 const command = Command.make('my-app', { output: outputOption }, ({ output }) =>
-  runApp.pipe(Effect.provide(outputModeLayer(output))),
+  Effect.gen(function* () {
+    const outputMode = yield* resolveOutputOption(output)
+    return yield* runApp.pipe(Effect.provide(outputModeLayer(outputMode)))
+  }),
 )
 
 Command.runWith(command, { version: '1.0.0' })(process.argv.slice(2)).pipe(

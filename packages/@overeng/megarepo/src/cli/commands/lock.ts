@@ -4,9 +4,10 @@
  * Record current worktree HEAD commits into megarepo.lock. No network, no workspace changes.
  */
 
+import { Effect } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 
-import { outputOption, verboseOption } from '../context.ts'
+import { outputOption, resolveOutputOption, verboseOption } from '../context.ts'
 import { runCommand } from './engine.ts'
 
 /** `mr lock` — Workspace → Lock: record current worktree HEAD commits into megarepo.lock. */
@@ -44,18 +45,22 @@ export const lockCommand = Cli.Command.make(
     verbose: verboseOption,
   },
   ({ output, dryRun, force, all, only, skip, gitProtocol, verbose }) =>
-    runCommand({
-      mode: 'lock',
-      output,
-      dryRun,
-      force,
-      all,
-      only,
-      skip,
-      gitProtocol,
-      createBranches: false,
-      verbose,
-    }),
+    resolveOutputOption(output).pipe(
+      Effect.flatMap((outputMode) =>
+        runCommand({
+          mode: 'lock',
+          output: outputMode,
+          dryRun,
+          force,
+          all,
+          only,
+          skip,
+          gitProtocol,
+          createBranches: false,
+          verbose,
+        }),
+      ),
+    ),
 ).pipe(
   Cli.Command.withDescription(
     'Workspace → Lock: record current worktree HEAD commits into megarepo.lock.',

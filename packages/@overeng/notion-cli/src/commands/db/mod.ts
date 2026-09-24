@@ -11,7 +11,11 @@ import {
   makeDatasourceDbSubcommands,
   type DatasourceDbCommandHandler,
 } from '@overeng/notion-datasource-sync/cli/effect-command'
-import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
+import {
+  outputOption as tuiOutputOption,
+  outputModeLayer,
+  resolveOutputOption,
+} from '@overeng/tui-react/node'
 
 import { getInfoApp } from '../../renderers/InfoOutput/app.ts'
 import { InfoView } from '../../renderers/InfoOutput/view.tsx'
@@ -43,6 +47,7 @@ const infoCommand = Command.make(
   { databaseId: databaseIdArg, token: tokenOption, output: tuiOutputOption },
   ({ databaseId, token, output }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const resolvedToken = yield* resolveNotionToken(token)
 
       const configLayer = Layer.succeed(NotionConfig, {
@@ -93,7 +98,7 @@ const infoCommand = Command.make(
             )
           }),
         { view: React.createElement(InfoView, { stateAtom: infoApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Display information about a Notion database'))
 

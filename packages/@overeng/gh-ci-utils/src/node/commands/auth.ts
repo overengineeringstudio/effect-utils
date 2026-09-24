@@ -13,6 +13,7 @@ import {
   type OutputModeValue,
   outputModeLayer,
   outputOption,
+  resolveOutputOption,
   resolveOutputMode,
   writeStdoutLineSync,
 } from '@overeng/tui-react/node'
@@ -200,50 +201,56 @@ const performLogin = Effect.gen(function* () {
 
 const loginCommand = Cli.Command.make('login', { output: outputOption }).pipe(
   Cli.Command.withHandler(({ output }) =>
-    Effect.gen(function* () {
-      yield* Effect.log('Opening browser for GitHub login...')
-      const session = yield* performLogin
-      const expiresStr =
-        session.expiresAt > 0
-          ? new Date(session.expiresAt * 1000).toISOString().split('T')[0]
-          : 'unknown'
-      yield* reportAuthResult({
-        output,
-        session,
-        humanMessage: `Logged in as ${session.user ?? 'unknown'}. Session expires ${expiresStr}.`,
-      })
-    }).pipe(Effect.provide(outputModeLayer(output))),
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        yield* Effect.log('Opening browser for GitHub login...')
+        const session = yield* performLogin
+        const expiresStr =
+          session.expiresAt > 0
+            ? new Date(session.expiresAt * 1000).toISOString().split('T')[0]
+            : 'unknown'
+        yield* reportAuthResult({
+          output: outputMode,
+          session,
+          humanMessage: `Logged in as ${session.user ?? 'unknown'}. Session expires ${expiresStr}.`,
+        })
+      }).pipe(Effect.provide(outputModeLayer(outputMode))),
+    ),
   ),
   Cli.Command.withDescription('Log in to GitHub via browser for enhanced CI features'),
 )
 
 const authStatusCommand = Cli.Command.make('status', { output: outputOption }).pipe(
   Cli.Command.withHandler(({ output }) =>
-    Effect.gen(function* () {
-      const session = yield* loadSession.pipe(
-        Effect.orElseSucceed(() => Option.none<SessionData>()),
-      )
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        const session = yield* loadSession.pipe(
+          Effect.orElseSucceed(() => Option.none<SessionData>()),
+        )
 
-      if (Option.isNone(session)) {
+        if (Option.isNone(session)) {
+          yield* reportAuthResult({
+            output: outputMode,
+            session: undefined,
+            humanMessage:
+              'No active session. Run `gh-ci-utils auth login` for per-step logs and live streaming.',
+          })
+          return
+        }
+
+        const data = session.value
+        const nearExpiry = isSessionNearExpiry(data)
+        const expiresStr =
+          data.expiresAt > 0
+            ? new Date(data.expiresAt * 1000).toISOString().split('T')[0]
+            : 'unknown'
         yield* reportAuthResult({
-          output,
-          session: undefined,
-          humanMessage:
-            'No active session. Run `gh-ci-utils auth login` for per-step logs and live streaming.',
+          output: outputMode,
+          session: data,
+          humanMessage: `Session: ${data.user ?? 'unknown'} | Expires: ${expiresStr}${nearExpiry ? ' (expiring soon, run auth login)' : ''}`,
         })
-        return
-      }
-
-      const data = session.value
-      const nearExpiry = isSessionNearExpiry(data)
-      const expiresStr =
-        data.expiresAt > 0 ? new Date(data.expiresAt * 1000).toISOString().split('T')[0] : 'unknown'
-      yield* reportAuthResult({
-        output,
-        session: data,
-        humanMessage: `Session: ${data.user ?? 'unknown'} | Expires: ${expiresStr}${nearExpiry ? ' (expiring soon, run auth login)' : ''}`,
-      })
-    }).pipe(Effect.provide(outputModeLayer(output))),
+      }).pipe(Effect.provide(outputModeLayer(outputMode))),
+    ),
   ),
   Cli.Command.withDescription('Show session status'),
 )

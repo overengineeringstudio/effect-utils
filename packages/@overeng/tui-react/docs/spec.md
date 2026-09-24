@@ -70,7 +70,7 @@ Output behavior is determined by a `RenderConfig` with these properties:
 
 ### Mode Selection
 
-**CLI Option:** Commands use `--output` / `-o` to select the mode:
+**CLI Option:** Commands use `--output` / `-o` for all modes, or `--json` for a single final JSON document:
 
 ```bash
 # Auto-detect from environment (default)
@@ -79,8 +79,12 @@ deploy                           # TTY → tty, Pipe → pipe, CI=true → ci
 # Explicit mode selection
 deploy --output tty              # Interactive with animations
 deploy --output json             # Final JSON for scripting
+deploy --json                    # Same final JSON as --output json
 deploy --output ndjson           # Streaming NDJSON
 ```
+
+`--json` and an explicit `--output` / `-o` are mutually exclusive, even when
+both request `json`. Streaming output remains `--output ndjson`.
 
 **Auto-detection:** When `--output auto` (the default):
 
@@ -1050,22 +1054,24 @@ const stateAtom = Atom.make(testState)
 CLI option and layer for output mode selection.
 
 ```typescript
-// Standard --output / -o option
-const outputOption: Cli.Options<OutputModeValue>
+// Both flags retain presence until resolution, so an explicit conflict fails.
+const outputOption: {
+  mode: Flag<Option<OutputModeValue>>
+  json: Flag<Option<boolean>>
+}
+const resolveOutputOption: (parsed: ParsedOutputOption) => Effect<OutputModeValue, CliError>
 
-// Create layer from option value
-// For JSON modes, this also configures stderr logging
+// The resolved value configures rendering and stderr logging for JSON modes.
 const outputModeLayer: (value: OutputModeValue) => Layer<OutputMode>
 
-type OutputModeValue =
-  'auto' | 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'pipe' | 'log' | 'json' | 'ndjson'
+type OutputModeValue = 'auto' | 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'log' | 'json' | 'ndjson'
 ```
 
 **Note:** `outputModeLayer` configures logging behavior per mode:
 
 - **Progressive modes** (`tty`, `ci`, `ci-plain`, `alt-screen`): Captures all Effect logs and `console.*` output to prevent TUI corruption. Access captured logs in components via `useCapturedLogs()`.
 - **JSON modes** (`json`, `ndjson`): Redirects the Effect logger to stderr, keeping stdout clean for JSON data.
-- **Final modes** (`pipe`, `log`): No special log handling (single render at end).
+- **Final modes** (`log`): No special log handling (single render at end).
 
 ### runTuiMain
 

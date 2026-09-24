@@ -5,9 +5,10 @@
  * With `--apply`, also applies lock to workspace afterward.
  */
 
+import { Effect } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 
-import { outputOption, verboseOption } from '../context.ts'
+import { outputOption, resolveOutputOption, verboseOption } from '../context.ts'
 import { runCommand, type LockSyncMode } from './engine.ts'
 
 const lockSyncOption = Cli.Flag.choice('lock-sync', ['auto', 'off', 'direct', 'recursive']).pipe(
@@ -86,21 +87,25 @@ export const fetchCommand = Cli.Command.make(
     lockSync,
     verbose,
   }) =>
-    runCommand({
-      mode: 'fetch',
-      output,
-      dryRun,
-      force,
-      all,
-      only,
-      skip,
-      gitProtocol,
-      createBranches,
-      verbose,
-      applyAfterFetch: applyAfter,
-      worktreeMode,
-      lockSyncMode: lockSync,
-    }),
+    resolveOutputOption(output).pipe(
+      Effect.flatMap((outputMode) =>
+        runCommand({
+          mode: 'fetch',
+          output: outputMode,
+          dryRun,
+          force,
+          all,
+          only,
+          skip,
+          gitProtocol,
+          createBranches,
+          verbose,
+          applyAfterFetch: applyAfter,
+          worktreeMode,
+          lockSyncMode: lockSync,
+        }),
+      ),
+    ),
 ).pipe(
   Cli.Command.withDescription(
     'Remote → Lock: fetch upstream refs, resolve commits, write lock. Use --apply to also materialize workspace.',

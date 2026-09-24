@@ -46,14 +46,8 @@ Use `createTuiApp` for mode-dependent rendering in Effect-based CLIs:
 ```tsx
 import { Effect, Schema } from 'effect'
 import * as Cli from '@effect/cli'
-import {
-  createTuiApp,
-  useTuiAppState,
-  outputOption,
-  outputModeLayer,
-  Box,
-  Text,
-} from '@overeng/tui-react'
+import { createTuiApp, useTuiAppState, Box, Text } from '@overeng/tui-react'
+import { outputOption, resolveOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
 // 1. Define state and action schemas
 const AppState = Schema.Struct({
@@ -98,17 +92,17 @@ const AppView = () => {
   )
 }
 
-// 5. Use with @effect/cli and --output flag
+// 5. Resolve --output / --json before running the program
 const command = Cli.Command.make('mycommand', { output: outputOption }, ({ output }) =>
-  Effect.gen(function* () {
-    const tui = yield* MyApp.run(<AppView />)
-
-    tui.dispatch({ _tag: 'SetProgress', progress: 50 })
-    yield* Effect.sleep('1 second')
-    tui.dispatch({ _tag: 'Complete' })
-  }).pipe(
-    Effect.scoped,
-    Effect.provide(outputModeLayer(output)), // 'auto' detects from environment
+  resolveOutputOption(output).pipe(
+    Effect.flatMap((mode) =>
+      Effect.gen(function* () {
+        const tui = yield* MyApp.run(<AppView />)
+        tui.dispatch({ _tag: 'SetProgress', progress: 50 })
+        yield* Effect.sleep('1 second')
+        tui.dispatch({ _tag: 'Complete' })
+      }).pipe(Effect.scoped, Effect.provide(outputModeLayer(mode))),
+    ),
   ),
 )
 ```
@@ -137,7 +131,8 @@ const App = () => (
 
 ## Output Modes
 
-Use the `--output` / `-o` flag to control output mode:
+Use `--output` / `-o` to select a mode. `--json` is an alias for final
+`--output json`; do not combine the flags. Streaming JSON remains `--output ndjson`.
 
 | Mode         | Timing | Animation | Colors | Use Case                       |
 | ------------ | ------ | --------- | ------ | ------------------------------ |
@@ -146,21 +141,18 @@ Use the `--output` / `-o` flag to control output mode:
 | `alt-screen` | live   | ✓         | ✓      | Fullscreen TUI                 |
 | `ci`         | live   | ✗         | ✓      | CI with colors                 |
 | `ci-plain`   | live   | ✗         | ✗      | CI without colors              |
-| `pipe`       | final  | ✗         | ✓      | Piping output                  |
 | `log`        | final  | ✗         | ✗      | Log files                      |
 | `json`       | final  | -         | -      | Final JSON output              |
 | `ndjson`     | live   | -         | -      | Streaming NDJSON               |
 
 ```tsx
-import { outputOption, outputModeLayer, ttyLayer, jsonLayer, ciLayer } from '@overeng/tui-react'
+import { outputOption, resolveOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
-// CLI usage: mycommand --output json
-// In command handler:
-Effect.provide(outputModeLayer(output)) // output from CLI flag
-
-// Or use specific layers directly for testing:
-Effect.provide(ttyLayer)
-Effect.provide(jsonLayer)
+// CLI usage: mycommand --json (equivalent to --output json)
+// Resolve the parsed options before providing outputModeLayer.
+resolveOutputOption(output).pipe(
+  Effect.flatMap((mode) => program.pipe(Effect.provide(outputModeLayer(mode)))),
+)
 ```
 
 ## Components

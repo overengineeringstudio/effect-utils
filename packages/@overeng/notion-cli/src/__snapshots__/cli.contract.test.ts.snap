@@ -120,6 +120,7 @@ ARGUMENTS
 FLAGS
   --token, -t string     Notion API token (defaults to NOTION_API_TOKEN env var)
   --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+  --json                 Emit a single JSON document (alias for --output json)
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information

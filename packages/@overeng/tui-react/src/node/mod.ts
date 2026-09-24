@@ -29,6 +29,7 @@ export {
 // Effect CLI integration (requires node:fs transitively via detectOutputMode)
 export {
   outputOption,
+  resolveOutputOption,
   outputModeLayer,
   tuiRuntimeLayer,
   resolveOutputMode,
@@ -37,6 +38,7 @@ export {
   compactFormatError,
   OUTPUT_MODE_VALUES,
   type OutputModeValue,
+  type ParsedOutputOption,
   type RunTuiMainOptions,
   type TuiRuntime,
 } from '../effect/cli.tsx'

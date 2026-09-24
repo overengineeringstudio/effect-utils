@@ -82,7 +82,14 @@ import {
 import { classifyStoreWorktreePolicy } from '../../../store/store-worktree-policy.ts'
 import { Store, StoreLayer } from '../../../store/store.ts'
 import { getCloneUrl } from '../../../sync/mod.ts'
-import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
+import {
+  Cwd,
+  findMegarepoRoot,
+  outputOption,
+  outputModeLayer,
+  type OutputModeValue,
+  resolveOutputOption,
+} from '../../context.ts'
 import { StoreCommandError } from '../../errors.ts'
 import * as Observability from '../../observability.ts'
 import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
@@ -651,7 +658,7 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
 const generatedArtifactFingerprint = (info: Stats): string =>
   `${info.dev}:${info.ino}:${info.mode}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`
 
-const runStoreCommand = ({ output, action }: { output: string; action: StoreAction }) => {
+const runStoreCommand = ({ output, action }: { output: OutputModeValue; action: StoreAction }) => {
   const visualEffect = run(
     StoreApp,
     (tui) =>
@@ -674,7 +681,7 @@ const runStoreCommand = ({ output, action }: { output: string; action: StoreActi
     )
   })
 
-  return jsonEffect.pipe(Effect.provide(outputModeLayer(output as never)))
+  return jsonEffect.pipe(Effect.provide(outputModeLayer(output)))
 }
 
 const toStoreGcAction = ({
@@ -1673,251 +1680,260 @@ const coldReclaimRepo = ({
 
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
-  Effect.gen(function* () {
-    const store = yield* Store
-    const repos = yield* store.listRepos
+  Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const repos = yield* store.listRepos
 
-    yield* runStoreCommand({
-      output,
-      action: {
-        _tag: 'SetLs',
-        basePath: store.basePath,
-        repos: repos.map((r) => ({ relativePath: r.relativePath })),
-      },
-    })
-  }).pipe(
-    Effect.provide(StoreLayer),
-    Observability.withCommandSpan({
-      name: 'megarepo/store/ls',
-      command: 'store ls',
-      label: 'ls',
-      output,
-    }),
+      yield* runStoreCommand({
+        output: outputMode,
+        action: {
+          _tag: 'SetLs',
+          basePath: store.basePath,
+          repos: repos.map((r) => ({ relativePath: r.relativePath })),
+        },
+      })
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Observability.withCommandSpan({
+        name: 'megarepo/store/ls',
+        command: 'store ls',
+        label: 'ls',
+        output: outputMode,
+      }),
+    ),
   ),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
 
 /** Show store status and detect issues */
 const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, ({ output }) =>
-  Effect.gen(function* () {
-    const cwd = yield* Cwd
-    const store = yield* Store
-    const fs = yield* FileSystem.FileSystem
+  Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const store = yield* Store
+      const fs = yield* FileSystem.FileSystem
 
-    const root = yield* findMegarepoRoot(cwd)
-    const now = yield* Clock.currentTimeMillis
-    const liveSet = yield* collectStoreLiveSet({
-      store,
-      ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
-      pruneStaleRegistry: true,
-      refreshCurrentWorkspace: true,
-      now,
-    })
+      const root = yield* findMegarepoRoot(cwd)
+      const now = yield* Clock.currentTimeMillis
+      const liveSet = yield* collectStoreLiveSet({
+        store,
+        ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+        pruneStaleRegistry: true,
+        refreshCurrentWorkspace: true,
+        now,
+      })
 
-    // List all repos and analyze worktrees in parallel
-    const repos = yield* store.listRepos
+      // List all repos and analyze worktrees in parallel
+      const repos = yield* store.listRepos
 
-    const repoResults = yield* Effect.forEach(
-      repos,
-      (repo) =>
-        Effect.gen(function* () {
-          const bareRepoPath = EffectPath.ops.join(
-            repo.fullPath,
-            EffectPath.unsafe.relativeDir('.bare/'),
-          )
-          const bareExists = yield* fs.exists(bareRepoPath)
+      const repoResults = yield* Effect.forEach(
+        repos,
+        (repo) =>
+          Effect.gen(function* () {
+            const bareRepoPath = EffectPath.ops.join(
+              repo.fullPath,
+              EffectPath.unsafe.relativeDir('.bare/'),
+            )
+            const bareExists = yield* fs.exists(bareRepoPath)
 
-          const refsDir = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('refs/'))
-          const refsExists = yield* fs.exists(refsDir)
-          if (refsExists === false) return []
+            const refsDir = EffectPath.ops.join(
+              repo.fullPath,
+              EffectPath.unsafe.relativeDir('refs/'),
+            )
+            const refsExists = yield* fs.exists(refsDir)
+            if (refsExists === false) return []
 
-          // Reuse the bounded, source-of-truth-guarded collector (same path gc
-          // uses) so a broken worktree never makes the walk enumerate its entire
-          // checked-out working tree (the store-status OOM, same root cause).
-          const allWorktrees = yield* collectRepoStoreWorktrees({
-            fs,
-            repoPath: repo.fullPath,
-            bareRepoPath,
-          })
+            // Reuse the bounded, source-of-truth-guarded collector (same path gc
+            // uses) so a broken worktree never makes the walk enumerate its entire
+            // checked-out working tree (the store-status OOM, same root cause).
+            const allWorktrees = yield* collectRepoStoreWorktrees({
+              fs,
+              repoPath: repo.fullPath,
+              bareRepoPath,
+            })
 
-          // Analyze all worktrees for this repo in parallel
-          return yield* Effect.forEach(
-            allWorktrees,
-            ({
-              path: worktreeRootPath,
-              ownedWorktree,
-              ref: expectedRef,
-              refType: refTypeDir,
-              broken,
-            }) =>
-              Effect.gen(function* () {
-                // A composed root delegates every Git observation to its owned checkout.
-                const worktreePath = ownedWorktree ?? worktreeRootPath
-                const issues: StoreWorktreeIssue[] = []
+            // Analyze all worktrees for this repo in parallel
+            return yield* Effect.forEach(
+              allWorktrees,
+              ({
+                path: worktreeRootPath,
+                ownedWorktree,
+                ref: expectedRef,
+                refType: refTypeDir,
+                broken,
+              }) =>
+                Effect.gen(function* () {
+                  // A composed root delegates every Git observation to its owned checkout.
+                  const worktreePath = ownedWorktree ?? worktreeRootPath
+                  const issues: StoreWorktreeIssue[] = []
 
-                if (bareExists === false) {
-                  issues.push({
-                    type: 'missing_bare',
-                    severity: 'error',
-                    message: '.bare/ directory not found',
-                  })
-                }
+                  if (bareExists === false) {
+                    issues.push({
+                      type: 'missing_bare',
+                      severity: 'error',
+                      message: '.bare/ directory not found',
+                    })
+                  }
 
-                if (broken === true) {
-                  issues.push({
-                    type: 'broken_worktree',
-                    severity: 'error',
-                    message: '.git not found in worktree',
-                  })
-                } else {
-                  if (refTypeDir === 'heads') {
-                    const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
-                      Effect.orElseSucceed(() => Option.none<string>()),
+                  if (broken === true) {
+                    issues.push({
+                      type: 'broken_worktree',
+                      severity: 'error',
+                      message: '.git not found in worktree',
+                    })
+                  } else {
+                    if (refTypeDir === 'heads') {
+                      const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
+                        Effect.orElseSucceed(() => Option.none<string>()),
+                      )
+                      if (
+                        Option.isSome(actualBranch) === true &&
+                        actualBranch.value !== expectedRef
+                      ) {
+                        issues.push({
+                          type: 'ref_mismatch',
+                          severity: 'error',
+                          message: `path says '${expectedRef}' but HEAD is '${actualBranch.value}'`,
+                        })
+                      }
+                    }
+
+                    const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
+                      Effect.orElseSucceed(() => ({
+                        isDirty: false,
+                        hasUnpushed: false,
+                        changesCount: 0,
+                      })),
                     )
-                    if (
-                      Option.isSome(actualBranch) === true &&
-                      actualBranch.value !== expectedRef
-                    ) {
+                    if (worktreeStatus.isDirty === true) {
                       issues.push({
-                        type: 'ref_mismatch',
-                        severity: 'error',
-                        message: `path says '${expectedRef}' but HEAD is '${actualBranch.value}'`,
+                        type: 'dirty',
+                        severity: 'warning',
+                        message: `${worktreeStatus.changesCount} uncommitted change${worktreeStatus.changesCount !== 1 ? 's' : ''}`,
+                      })
+                    }
+                    if (worktreeStatus.hasUnpushed === true) {
+                      issues.push({
+                        type: 'unpushed',
+                        severity: 'warning',
+                        message: 'has unpushed commits',
                       })
                     }
                   }
 
-                  const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
-                    Effect.orElseSucceed(() => ({
-                      isDirty: false,
-                      hasUnpushed: false,
-                      changesCount: 0,
-                    })),
-                  )
-                  if (worktreeStatus.isDirty === true) {
+                  if (
+                    classifyStoreWorktreePolicy({
+                      liveSet,
+                      mode: 'default',
+                      worktree: {
+                        refType: refTypeDir,
+                        path: worktreeRootPath,
+                      },
+                    }).isProtected === false
+                  ) {
                     issues.push({
-                      type: 'dirty',
-                      severity: 'warning',
-                      message: `${worktreeStatus.changesCount} uncommitted change${worktreeStatus.changesCount !== 1 ? 's' : ''}`,
+                      type: 'orphaned',
+                      severity: 'info',
+                      message: 'unrooted commit worktree; eligible for store gc when clean',
                     })
                   }
-                  if (worktreeStatus.hasUnpushed === true) {
-                    issues.push({
-                      type: 'unpushed',
-                      severity: 'warning',
-                      message: 'has unpushed commits',
-                    })
-                  }
-                }
 
-                if (
-                  classifyStoreWorktreePolicy({
-                    liveSet,
-                    mode: 'default',
-                    worktree: {
-                      refType: refTypeDir,
-                      path: worktreeRootPath,
-                    },
-                  }).isProtected === false
-                ) {
-                  issues.push({
-                    type: 'orphaned',
-                    severity: 'info',
-                    message: 'unrooted commit worktree; eligible for store gc when clean',
-                  })
-                }
+                  return {
+                    repo: repo.relativePath,
+                    ref: expectedRef,
+                    refType: refTypeDir,
+                    path: worktreeRootPath,
+                    issues,
+                  } satisfies StoreWorktreeStatus
+                }),
+              { concurrency: 8 },
+            )
+          }),
+        { concurrency: 8 },
+      )
 
-                return {
-                  repo: repo.relativePath,
-                  ref: expectedRef,
-                  refType: refTypeDir,
-                  path: worktreeRootPath,
-                  issues,
-                } satisfies StoreWorktreeStatus
-              }),
-            { concurrency: 8 },
-          )
-        }),
-      { concurrency: 8 },
-    )
+      const worktreeStatuses = repoResults.flat()
+      const totalWorktreeCount = worktreeStatuses.length
 
-    const worktreeStatuses = repoResults.flat()
-    const totalWorktreeCount = worktreeStatuses.length
-
-    // Use TuiApp for output
-    yield* runStoreCommand({
-      output,
-      action: {
-        _tag: 'SetStatus',
-        basePath: store.basePath,
-        repoCount: repos.length,
-        worktreeCount: totalWorktreeCount,
-        worktrees: worktreeStatuses,
-      },
-    })
-  }).pipe(
-    Effect.provide(StoreLayer),
-    Observability.withCommandSpan({
-      name: 'megarepo/store/status',
-      command: 'store status',
-      label: 'status',
-      output,
-    }),
+      // Use TuiApp for output
+      yield* runStoreCommand({
+        output: outputMode,
+        action: {
+          _tag: 'SetStatus',
+          basePath: store.basePath,
+          repoCount: repos.length,
+          worktreeCount: totalWorktreeCount,
+          worktrees: worktreeStatuses,
+        },
+      })
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Observability.withCommandSpan({
+        name: 'megarepo/store/status',
+        command: 'store status',
+        label: 'status',
+        output: outputMode,
+      }),
+    ),
   ),
 ).pipe(Cli.Command.withDescription('Show store status and detect issues'))
 
 /** Fetch all repos in the store */
 const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({ output }) =>
-  Effect.gen(function* () {
-    const store = yield* Store
-    const repos = yield* store.listRepos
-    const startTime = Date.now()
+  Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const repos = yield* store.listRepos
+      const startTime = Date.now()
 
-    // Fetch repos with limited concurrency
-    const results = yield* Effect.forEach(
-      repos,
-      (repo) =>
-        Effect.gen(function* () {
-          const bareRepoPath = EffectPath.ops.join(
-            repo.fullPath,
-            EffectPath.unsafe.relativeDir('.bare/'),
-          )
+      // Fetch repos with limited concurrency
+      const results = yield* Effect.forEach(
+        repos,
+        (repo) =>
+          Effect.gen(function* () {
+            const bareRepoPath = EffectPath.ops.join(
+              repo.fullPath,
+              EffectPath.unsafe.relativeDir('.bare/'),
+            )
 
-          return yield* Git.fetchBare({
-            repoPath: bareRepoPath,
-          }).pipe(
-            Effect.map(() => ({ path: repo.relativePath, status: 'fetched' as const })),
-            Effect.catch((error) => {
-              const message = error instanceof Error === true ? error.message : String(error)
-              return Effect.succeed({
-                path: repo.relativePath,
-                status: 'error' as const,
-                message,
-              })
-            }),
-          )
-        }),
-      { concurrency: 4 },
-    )
+            return yield* Git.fetchBare({
+              repoPath: bareRepoPath,
+            }).pipe(
+              Effect.map(() => ({ path: repo.relativePath, status: 'fetched' as const })),
+              Effect.catch((error) => {
+                const message = error instanceof Error === true ? error.message : String(error)
+                return Effect.succeed({
+                  path: repo.relativePath,
+                  status: 'error' as const,
+                  message,
+                })
+              }),
+            )
+          }),
+        { concurrency: 4 },
+      )
 
-    const elapsed = Date.now() - startTime
+      const elapsed = Date.now() - startTime
 
-    // Use StoreApp for all output modes
-    yield* runStoreCommand({
-      output,
-      action: {
-        _tag: 'SetFetch',
-        basePath: store.basePath,
-        results: results,
-        elapsedMs: elapsed,
-      },
-    })
-  }).pipe(
-    Effect.provide(StoreLayer),
-    Observability.withCommandSpan({
-      name: 'megarepo/store/fetch',
-      command: 'store fetch',
-      label: 'fetch',
-      output,
-    }),
+      // Use StoreApp for all output modes
+      yield* runStoreCommand({
+        output: outputMode,
+        action: {
+          _tag: 'SetFetch',
+          basePath: store.basePath,
+          results: results,
+          elapsedMs: elapsed,
+        },
+      })
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Observability.withCommandSpan({
+        name: 'megarepo/store/fetch',
+        command: 'store fetch',
+        label: 'fetch',
+        output: outputMode,
+      }),
+    ),
   ),
 ).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
 
@@ -1957,6 +1973,7 @@ const storeGcCommand = Cli.Command.make(
   },
   ({ output, dryRun, force, all, generatedArtifacts, expectedPlan, candidatePath }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const cwd = yield* Cwd
       const store = yield* Store
       const storeLock = yield* StoreLock
@@ -2830,12 +2847,12 @@ const storeGcCommand = Cli.Command.make(
         })
       // Final JSON callers want one stable document, not progress states. Run the
       // GC first and serialize only the final StoreApp state.
-      const mode = yield* OutputModeTag.pipe(Effect.provide(outputModeLayer(output as never)))
+      const mode = yield* OutputModeTag.pipe(Effect.provide(outputModeLayer(outputMode)))
 
       if (mode._tag === 'json' && mode.timing === 'final') {
         yield* runGcTransaction({ progressive: false })
         yield* runStoreCommand({
-          output,
+          output: outputMode,
           action: toStoreGcAction({
             basePath: store.basePath,
             results,
@@ -2860,7 +2877,7 @@ const storeGcCommand = Cli.Command.make(
               yield* runGcTransaction({ progressive: true })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output as never)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
       }
 
       yield* Observability.annotateStoreGcResult({
@@ -2916,6 +2933,7 @@ const storeAddCommand = Cli.Command.make(
   },
   ({ source: sourceString, output }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const store = yield* Store
       const fs = yield* FileSystem.FileSystem
 
@@ -2934,7 +2952,7 @@ const storeAddCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({ message: 'Invalid source' })
       }
 
@@ -2950,7 +2968,7 @@ const storeAddCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({ message: 'Cannot add local path' })
       }
 
@@ -2967,7 +2985,7 @@ const storeAddCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({ message: 'Cannot get clone URL' })
       }
 
@@ -3055,7 +3073,7 @@ const storeAddCommand = Cli.Command.make(
             })
           }),
         { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }).pipe(
       Effect.provide(StoreLayer),
       Observability.withStoreSourceSpan({
@@ -3080,65 +3098,86 @@ const storeFixCommand = Cli.Command.make(
     ),
   },
   ({ output, member, dryRun }) =>
-    Effect.gen(function* () {
-      const cwd = yield* Cwd
-      const store = yield* Store
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        const cwd = yield* Cwd
+        const store = yield* Store
 
-      const root = yield* findMegarepoRoot(cwd)
-      if (Option.isNone(root) === true) {
-        yield* run(
-          StoreApp,
-          (tui) =>
-            Effect.sync(() => {
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'not_in_megarepo',
-                message: 'Not in a megarepo directory. Run this command from within a megarepo.',
-              })
-            }),
-          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
-        return yield* new StoreCommandError({ message: 'Not in a megarepo' })
-      }
+        const root = yield* findMegarepoRoot(cwd)
+        if (Option.isNone(root) === true) {
+          yield* run(
+            StoreApp,
+            (tui) =>
+              Effect.sync(() => {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'not_in_megarepo',
+                  message: 'Not in a megarepo directory. Run this command from within a megarepo.',
+                })
+              }),
+            { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+          ).pipe(Effect.provide(outputModeLayer(outputMode)))
+          return yield* new StoreCommandError({ message: 'Not in a megarepo' })
+        }
 
-      const { config } = yield* readMegarepoConfig(root.value)
+        const { config } = yield* readMegarepoConfig(root.value)
 
-      const lockPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-      )
-      const lockFileOpt = yield* readLockFile(lockPath)
-      if (Option.isNone(lockFileOpt) === true) {
-        yield* run(
-          StoreApp,
-          (tui) =>
-            Effect.sync(() => {
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'no_lock',
-                message: 'No megarepo.lock found. Run `mr fetch` first.',
-              })
-            }),
-          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
-        return yield* new StoreCommandError({ message: 'No lock file' })
-      }
+        const lockPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const lockFileOpt = yield* readLockFile(lockPath)
+        if (Option.isNone(lockFileOpt) === true) {
+          yield* run(
+            StoreApp,
+            (tui) =>
+              Effect.sync(() => {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'no_lock',
+                  message: 'No megarepo.lock found. Run `mr fetch` first.',
+                })
+              }),
+            { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+          ).pipe(Effect.provide(outputModeLayer(outputMode)))
+          return yield* new StoreCommandError({ message: 'No lock file' })
+        }
 
-      const lockFile = lockFileOpt.value
+        const lockFile = lockFileOpt.value
 
-      // Determine which members to check
-      const memberNames =
-        Option.isSome(member) === true ? [member.value] : Object.keys(config.members)
+        // Determine which members to check
+        const memberNames =
+          Option.isSome(member) === true ? [member.value] : Object.keys(config.members)
 
-      // Validate
-      const issues = yield* validateStoreMembers({
-        memberNames,
-        config,
-        lockFile,
-        store,
-      })
+        // Validate
+        const issues = yield* validateStoreMembers({
+          memberNames,
+          config,
+          lockFile,
+          store,
+        })
 
-      if (issues.length === 0) {
+        if (issues.length === 0) {
+          yield* run(
+            StoreApp,
+            (tui) =>
+              Effect.sync(() => {
+                tui.dispatch({
+                  _tag: 'SetFix',
+                  basePath: store.basePath,
+                  results: [],
+                  dryRun,
+                  noIssues: true,
+                })
+              }),
+            { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+          ).pipe(Effect.provide(outputModeLayer(outputMode)))
+          return
+        }
+
+        // Fix issues
+        const results = yield* fixStoreIssues({ issues, store, dryRun })
+
         yield* run(
           StoreApp,
           (tui) =>
@@ -3146,43 +3185,24 @@ const storeFixCommand = Cli.Command.make(
               tui.dispatch({
                 _tag: 'SetFix',
                 basePath: store.basePath,
-                results: [],
+                results,
                 dryRun,
-                noIssues: true,
+                noIssues: false,
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
-        return
-      }
-
-      // Fix issues
-      const results = yield* fixStoreIssues({ issues, store, dryRun })
-
-      yield* run(
-        StoreApp,
-        (tui) =>
-          Effect.sync(() => {
-            tui.dispatch({
-              _tag: 'SetFix',
-              basePath: store.basePath,
-              results,
-              dryRun,
-              noIssues: false,
-            })
-          }),
-        { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(
-      Effect.provide(StoreLayer),
-      Observability.withCommandSpan({
-        name: 'megarepo/store/fix',
-        command: 'store fix',
-        label: Option.isSome(member) === true ? member.value : 'fix',
-        output,
-        dryRun,
-        ...(Option.isSome(member) === true ? { member: member.value } : {}),
-      }),
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
+      }).pipe(
+        Effect.provide(StoreLayer),
+        Observability.withCommandSpan({
+          name: 'megarepo/store/fix',
+          command: 'store fix',
+          label: Option.isSome(member) === true ? member.value : 'fix',
+          output: outputMode,
+          dryRun,
+          ...(Option.isSome(member) === true ? { member: member.value } : {}),
+        }),
+      ),
     ),
 ).pipe(Cli.Command.withDescription('Fix store issues'))
 
@@ -3314,6 +3334,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
     output,
   }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const store = yield* Store
       const fs = yield* FileSystem.FileSystem
 
@@ -3334,7 +3355,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({ message: 'Must specify --ref or --commit' })
       }
 
@@ -3350,7 +3371,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({ message: 'Cannot specify both --ref and --commit' })
       }
 
@@ -3366,7 +3387,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({
           message: '--base requires --ref',
         })
@@ -3387,7 +3408,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({ message: 'Invalid repository' })
       }
 
@@ -3403,7 +3424,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({ message: 'Cannot use local path' })
       }
 
@@ -3420,7 +3441,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({ message: 'Cannot get clone URL' })
       }
 
@@ -3501,7 +3522,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-        ).pipe(Effect.provide(outputModeLayer(output)))
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
         return yield* new StoreCommandError({
           message: `Worktree already exists at ${worktreePath}`,
         })
@@ -3618,7 +3639,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
             })
           }),
         { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }).pipe(
       Effect.provide(StoreLayer),
       Observability.withStoreSourceSpan({

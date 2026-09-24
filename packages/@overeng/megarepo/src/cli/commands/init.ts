@@ -18,60 +18,62 @@ import {
   writeMegarepoConfig,
 } from '../../core/config.ts'
 import * as Git from '../../core/git.ts'
-import { Cwd, outputOption, outputModeLayer } from '../context.ts'
+import { Cwd, outputOption, outputModeLayer, resolveOutputOption } from '../context.ts'
 import * as Observability from '../observability.ts'
 import { InitApp, InitView } from '../renderers/InitOutput/mod.ts'
 
 /** Initialize a new megarepo in current directory */
 export const initCommand = Cli.Command.make('init', { output: outputOption }, ({ output }) =>
-  Effect.gen(function* () {
-    const cwd = yield* Cwd
+  Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
 
-    // Run TuiApp for all output (handles JSON/TTY modes automatically)
-    yield* run(
-      InitApp,
-      (tui) =>
-        Effect.gen(function* () {
-          // Check if already in a git repo
-          const isGit = yield* Git.isGitRepo(cwd)
-          if (isGit === false) {
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'not_git_repo',
-              message: 'Not a git repository',
+      // Run TuiApp for all output (handles JSON/TTY modes automatically)
+      yield* run(
+        InitApp,
+        (tui) =>
+          Effect.gen(function* () {
+            // Check if already in a git repo
+            const isGit = yield* Git.isGitRepo(cwd)
+            if (isGit === false) {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'not_git_repo',
+                message: 'Not a git repository',
+              })
+              return
+            }
+
+            // Check if any config already exists (KDL or JSON)
+            const existingPath = yield* findConfigPath(cwd)
+            if (existingPath !== undefined) {
+              tui.dispatch({ _tag: 'SetAlreadyInitialized', path: existingPath })
+              return
+            }
+
+            // Create initial config as KDL
+            const configPath = EffectPath.ops.join(
+              cwd,
+              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_KDL),
+            )
+
+            const initialConfig = new MegarepoConfig({
+              members: {},
             })
-            return
-          }
 
-          // Check if any config already exists (KDL or JSON)
-          const existingPath = yield* findConfigPath(cwd)
-          if (existingPath !== undefined) {
-            tui.dispatch({ _tag: 'SetAlreadyInitialized', path: existingPath })
-            return
-          }
+            yield* writeMegarepoConfig({ configPath: configPath, config: initialConfig })
 
-          // Create initial config as KDL
-          const configPath = EffectPath.ops.join(
-            cwd,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_KDL),
-          )
-
-          const initialConfig = new MegarepoConfig({
-            members: {},
-          })
-
-          yield* writeMegarepoConfig({ configPath: configPath, config: initialConfig })
-
-          // Output success
-          tui.dispatch({ _tag: 'SetInitialized', path: configPath })
-        }),
-      { view: React.createElement(InitView, { stateAtom: InitApp.stateAtom }) },
-    ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(
-    Observability.withCommandSpan({
-      name: 'megarepo/init',
-      command: 'init',
-      output,
-    }),
+            // Output success
+            tui.dispatch({ _tag: 'SetInitialized', path: configPath })
+          }),
+        { view: React.createElement(InitView, { stateAtom: InitApp.stateAtom }) },
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
+    }).pipe(
+      Observability.withCommandSpan({
+        name: 'megarepo/init',
+        command: 'init',
+        output: outputMode,
+      }),
+    ),
   ),
 ).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))

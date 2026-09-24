@@ -14,8 +14,9 @@ import { GenieState, GenieAction, genieReducer, createInitialGenieState } from '
  *
  * Usage in CLI:
  * ```typescript
+ * const outputMode = yield* resolveOutputOption(output)
  * const tui = yield* GenieApp.run(<GenieView stateAtom={GenieApp.stateAtom} />).pipe(
- *   Effect.provide(outputModeLayer(output))
+ *   Effect.provide(outputModeLayer(outputMode))
  * )
  *
  * // Dispatch state updates

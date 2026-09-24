@@ -1,4 +1,6 @@
-import { Effect, Schema } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import { Cause, Effect, Exit, FileSystem, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import { describe, expect, it, vi } from 'vitest'
 
 import * as stdoutModule from '@overeng/tui-react/node'
@@ -11,7 +13,7 @@ import {
 } from '../src/isomorphic/renderers/CiOutput/stories/_fixtures.ts'
 import { MutationStateSchema } from '../src/isomorphic/renderers/MutationOutput/schema.ts'
 import { RunnersStateSchema } from '../src/isomorphic/renderers/RunnersOutput/schema.ts'
-import { reportAuthResult } from '../src/node/commands/auth.ts'
+import { authCommand, reportAuthResult } from '../src/node/commands/auth.ts'
 
 const encodeJson = <T, E, RD>(schema: Schema.Codec<T, E, RD, never>, value: T) =>
   Schema.encodeUnknownSync(Schema.fromJsonString(schema))(value)
@@ -187,6 +189,49 @@ describe('CLI JSON output contracts', () => {
     } finally {
       lineSpy.mockRestore()
       rawSpy.mockRestore()
+    }
+  })
+
+  it('accepts --json as an alias on a representative command', async () => {
+    const previousHome = process.env.HOME
+    const lines: Array<string> = []
+    const push = (text: string): void => {
+      for (const line of text.split('\n')) {
+        if (line.length > 0) lines.push(line)
+      }
+    }
+    const lineSpy = vi.spyOn(stdoutModule, 'writeStdoutLineSync').mockImplementation(push)
+    const rawSpy = vi.spyOn(stdoutModule, 'writeStdoutSync').mockImplementation(push)
+    try {
+      await Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        process.env.HOME = yield* fs.makeTempDirectoryScoped()
+        yield* Cli.Command.runWith(authCommand, { version: 'test' })(['status', '--json'])
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise)
+
+      expect(lines.map((line) => JSON.parse(line))).toEqual([{ _tag: 'Unauthenticated' }])
+    } finally {
+      lineSpy.mockRestore()
+      rawSpy.mockRestore()
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      } else {
+        process.env.HOME = previousHome
+      }
+    }
+  })
+
+  it('rejects --json together with an explicit --output mode', async () => {
+    const exit = await Cli.Command.runWith(authCommand, { version: 'test' })([
+      'status',
+      '--output',
+      'json',
+      '--json',
+    ]).pipe(Effect.provide(NodeServices.layer), Effect.runPromiseExit)
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      expect(Cause.pretty(exit.cause)).toContain('--output / -o and --json')
     }
   })
 })

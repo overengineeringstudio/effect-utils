@@ -40,6 +40,7 @@ import {
   findMegarepoRoot,
   outputOption,
   outputModeLayer,
+  resolveOutputOption,
 } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
 import * as Observability from '../observability.ts'
@@ -339,253 +340,255 @@ export const statusCommand = Cli.Command.make(
     ),
   },
   ({ output, all }) =>
-    Effect.gen(function* () {
-      const cwd = yield* Cwd
-      const fs = yield* FileSystem.FileSystem
-      const root = yield* findMegarepoRoot(cwd)
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        const cwd = yield* Cwd
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root) === true) {
-        return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
-      }
-
-      const workspaceName = yield* Git.deriveMegarepoName(root.value)
-      const store = yield* Store
-
-      // Load config
-      const { config, path: configPath } = yield* readMegarepoConfig(root.value)
-
-      // Scan members (recursively if --all)
-      const members = yield* withMegarepoTraversal({
-        purpose: 'status',
-        root: root.value,
-        all,
-        effect: (traversal) =>
-          scanMembersRecursive({
-            megarepoRoot: root.value,
-            all,
-            traversal,
-          }),
-      })
-
-      // Get last sync time and lock staleness from lock file
-      const physicalConfigPath = yield* fs.realPath(configPath)
-      const configOwner =
-        EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
-      const lockPath = EffectPath.ops.join(
-        configOwner,
-        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-      )
-      const lockFileOpt = yield* readLockFile(lockPath)
-      yield* refreshWorkspaceRegistry({
-        workspaceRoot: root.value,
-        store,
-        now: yield* Clock.currentTimeMillis,
-      })
-      let lastSyncTime: Date | undefined = undefined
-      let lockStaleness:
-        | {
-            exists: boolean
-            missingFromLock: readonly string[]
-            extraInLock: readonly string[]
-          }
-        | undefined = undefined
-
-      // Determine which members are remote (need lock tracking)
-      const remoteMemberNames = new Set<string>()
-      for (const [memberName, sourceString] of Object.entries(config.members)) {
-        const source = parseSourceString(sourceString)
-        if (source !== undefined && isRemoteSource(source) === true) {
-          remoteMemberNames.add(memberName)
-        }
-      }
-
-      if (Option.isSome(lockFileOpt) === true) {
-        // Find the most recent lockedAt timestamp across all members
-        const timestamps = Object.values(lockFileOpt.value.members)
-          .map((m) => new Date(m.lockedAt).getTime())
-          .filter((t) => !Number.isNaN(t))
-        if (timestamps.length > 0) {
-          lastSyncTime = new Date(Math.max(...timestamps))
+        if (Option.isNone(root) === true) {
+          return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
         }
 
-        // Check staleness
-        const staleness = checkLockStaleness({
-          lockFile: lockFileOpt.value,
-          configMemberNames: remoteMemberNames,
+        const workspaceName = yield* Git.deriveMegarepoName(root.value)
+        const store = yield* Store
+
+        // Load config
+        const { config, path: configPath } = yield* readMegarepoConfig(root.value)
+
+        // Scan members (recursively if --all)
+        const members = yield* withMegarepoTraversal({
+          purpose: 'status',
+          root: root.value,
+          all,
+          effect: (traversal) =>
+            scanMembersRecursive({
+              megarepoRoot: root.value,
+              all,
+              traversal,
+            }),
         })
-        lockStaleness = {
-          exists: true,
-          missingFromLock: staleness.addedMembers,
-          extraInLock: staleness.removedMembers,
-        }
-      } else if (remoteMemberNames.size > 0) {
-        // Lock file doesn't exist but we have remote members
-        lockStaleness = {
-          exists: false,
-          missingFromLock: [...remoteMemberNames],
-          extraInLock: [],
-        }
-      }
 
-      // Compute current member path (for scope dimming)
-      let currentMemberPath = detectCurrentMemberPath({ cwd, megarepoRoot: root.value, all })
-
-      // If path-based detection didn't work, try symlink resolution
-      if (currentMemberPath === undefined) {
-        const cwdRealPath = yield* fs.realPath(cwd).pipe(
-          Effect.map((p) => p.replace(/\/$/, '')),
-          Effect.orElseSucceed(() => cwd.replace(/\/$/, '')),
+        // Get last sync time and lock staleness from lock file
+        const physicalConfigPath = yield* fs.realPath(configPath)
+        const configOwner =
+          EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
+        const lockPath = EffectPath.ops.join(
+          configOwner,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
         )
+        const lockFileOpt = yield* readLockFile(lockPath)
+        yield* refreshWorkspaceRegistry({
+          workspaceRoot: root.value,
+          store,
+          now: yield* Clock.currentTimeMillis,
+        })
+        let lastSyncTime: Date | undefined = undefined
+        let lockStaleness:
+          | {
+              exists: boolean
+              missingFromLock: readonly string[]
+              extraInLock: readonly string[]
+            }
+          | undefined = undefined
 
-        const findCurrentMemberPath = ({
-          memberList,
-          megarepoRoot,
-          pathSoFar,
-        }: {
-          memberList: readonly MemberStatus[]
-          megarepoRoot: string
-          pathSoFar: string[]
-        }): Effect.Effect<string[] | undefined, never, FileSystem.FileSystem> =>
-          Effect.gen(function* () {
-            for (const member of memberList) {
-              const memberSymlinkPath = getMemberPath({
-                megarepoRoot: EffectPath.unsafe.absoluteDir(megarepoRoot),
-                name: member.name,
-              })
-              const memberRealPath = yield* fs
-                .realPath(memberSymlinkPath.replace(/\/$/, ''))
-                .pipe(Effect.catch(() => Effect.void))
+        // Determine which members are remote (need lock tracking)
+        const remoteMemberNames = new Set<string>()
+        for (const [memberName, sourceString] of Object.entries(config.members)) {
+          const source = parseSourceString(sourceString)
+          if (source !== undefined && isRemoteSource(source) === true) {
+            remoteMemberNames.add(memberName)
+          }
+        }
 
-              if (memberRealPath !== undefined) {
-                const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
-                if (
-                  cwdRealPath === memberRealPathNorm ||
-                  cwdRealPath.startsWith(memberRealPathNorm + '/') === true
-                ) {
-                  const newPath = [...pathSoFar, member.name]
-                  if (cwdRealPath === memberRealPathNorm) {
+        if (Option.isSome(lockFileOpt) === true) {
+          // Find the most recent lockedAt timestamp across all members
+          const timestamps = Object.values(lockFileOpt.value.members)
+            .map((m) => new Date(m.lockedAt).getTime())
+            .filter((t) => !Number.isNaN(t))
+          if (timestamps.length > 0) {
+            lastSyncTime = new Date(Math.max(...timestamps))
+          }
+
+          // Check staleness
+          const staleness = checkLockStaleness({
+            lockFile: lockFileOpt.value,
+            configMemberNames: remoteMemberNames,
+          })
+          lockStaleness = {
+            exists: true,
+            missingFromLock: staleness.addedMembers,
+            extraInLock: staleness.removedMembers,
+          }
+        } else if (remoteMemberNames.size > 0) {
+          // Lock file doesn't exist but we have remote members
+          lockStaleness = {
+            exists: false,
+            missingFromLock: [...remoteMemberNames],
+            extraInLock: [],
+          }
+        }
+
+        // Compute current member path (for scope dimming)
+        let currentMemberPath = detectCurrentMemberPath({ cwd, megarepoRoot: root.value, all })
+
+        // If path-based detection didn't work, try symlink resolution
+        if (currentMemberPath === undefined) {
+          const cwdRealPath = yield* fs.realPath(cwd).pipe(
+            Effect.map((p) => p.replace(/\/$/, '')),
+            Effect.orElseSucceed(() => cwd.replace(/\/$/, '')),
+          )
+
+          const findCurrentMemberPath = ({
+            memberList,
+            megarepoRoot,
+            pathSoFar,
+          }: {
+            memberList: readonly MemberStatus[]
+            megarepoRoot: string
+            pathSoFar: string[]
+          }): Effect.Effect<string[] | undefined, never, FileSystem.FileSystem> =>
+            Effect.gen(function* () {
+              for (const member of memberList) {
+                const memberSymlinkPath = getMemberPath({
+                  megarepoRoot: EffectPath.unsafe.absoluteDir(megarepoRoot),
+                  name: member.name,
+                })
+                const memberRealPath = yield* fs
+                  .realPath(memberSymlinkPath.replace(/\/$/, ''))
+                  .pipe(Effect.catch(() => Effect.void))
+
+                if (memberRealPath !== undefined) {
+                  const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
+                  if (
+                    cwdRealPath === memberRealPathNorm ||
+                    cwdRealPath.startsWith(memberRealPathNorm + '/') === true
+                  ) {
+                    const newPath = [...pathSoFar, member.name]
+                    if (cwdRealPath === memberRealPathNorm) {
+                      return newPath
+                    }
+                    if (member.nestedMembers !== undefined && member.nestedMembers.length > 0) {
+                      const nestedResult = yield* findCurrentMemberPath({
+                        memberList: member.nestedMembers,
+                        megarepoRoot: memberRealPathNorm + '/',
+                        pathSoFar: newPath,
+                      })
+                      if (nestedResult !== undefined) {
+                        return nestedResult
+                      }
+                    }
                     return newPath
                   }
-                  if (member.nestedMembers !== undefined && member.nestedMembers.length > 0) {
-                    const nestedResult = yield* findCurrentMemberPath({
-                      memberList: member.nestedMembers,
-                      megarepoRoot: memberRealPathNorm + '/',
-                      pathSoFar: newPath,
-                    })
-                    if (nestedResult !== undefined) {
-                      return nestedResult
-                    }
-                  }
-                  return newPath
                 }
               }
-            }
-            return undefined
-          })
-
-        currentMemberPath = yield* findCurrentMemberPath({
-          memberList: members,
-          megarepoRoot: root.value,
-          pathSoFar: [],
-        })
-      }
-
-      // Compute workspace vs lock reconciliation needs.
-      const applyReasons: string[] = []
-      const lockReasons: string[] = []
-
-      // Helper to collect sync reasons from members recursively
-      const collectMemberSyncReasons = ({
-        memberList,
-        prefix = '',
-      }: {
-        memberList: readonly MemberStatus[]
-        prefix?: string
-      }) => {
-        for (const member of memberList) {
-          const memberLabel =
-            prefix !== undefined && prefix !== '' ? `${prefix}/${member.name}` : member.name
-          if (member.symlinkExists === false) {
-            applyReasons.push(`Member '${memberLabel}' symlink missing`)
-          } else if (member.exists === false) {
-            applyReasons.push(`Member '${memberLabel}' worktree missing`)
-          }
-          if (member.staleLock !== undefined) {
-            lockReasons.push(
-              `Member '${memberLabel}' stale lock: lock says '${member.staleLock.lockRef}' but actual is '${member.staleLock.actualRef}'`,
-            )
-          }
-          if (member.symlinkDrift !== undefined) {
-            applyReasons.push(
-              `Member '${memberLabel}' symlink drift: tracking '${member.symlinkDrift.symlinkRef}' but source says '${member.symlinkDrift.sourceRef}'`,
-            )
-          }
-          if (member.refMismatch !== undefined) {
-            applyReasons.push(
-              `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
-            )
-          }
-          if (member.commitDrift !== undefined) {
-            applyReasons.push(
-              `Member '${memberLabel}' commit drift: workspace is '${member.commitDrift.localCommit.slice(0, 8)}' but lock records '${member.commitDrift.lockedCommit.slice(0, 8)}'`,
-            )
-          }
-          if (member.nestedMembers !== undefined) {
-            collectMemberSyncReasons({ memberList: member.nestedMembers, prefix: memberLabel })
-          }
-        }
-      }
-      collectMemberSyncReasons({ memberList: members })
-
-      // Check lock staleness
-      if (lockStaleness !== undefined) {
-        if (lockStaleness.exists === false) {
-          lockReasons.push('Lock file missing')
-        }
-        for (const memberName of lockStaleness.missingFromLock) {
-          lockReasons.push(`Member '${memberName}' not in lock file`)
-        }
-        for (const memberName of lockStaleness.extraInLock) {
-          lockReasons.push(`Lock file has extra member '${memberName}'`)
-        }
-      }
-
-      const syncReasons = [...applyReasons, ...lockReasons]
-      const applyNeeded = applyReasons.length > 0
-      const lockNeeded = lockReasons.length > 0
-      const syncNeeded = syncReasons.length > 0
-
-      // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
-      yield* run(
-        StatusApp,
-        (tui) =>
-          Effect.sync(() => {
-            tui.dispatch({
-              _tag: 'SetState',
-              state: {
-                name: workspaceName,
-                root: root.value,
-                syncNeeded,
-                applyNeeded,
-                lockNeeded,
-                syncReasons,
-                members,
-                all,
-                lastSyncTime: lastSyncTime?.toISOString(),
-                lockStaleness,
-                currentMemberPath,
-              },
+              return undefined
             })
-          }),
-        { view: React.createElement(StatusView, { stateAtom: StatusApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(
-      Effect.provide(StoreLayer),
-      Observability.withCommandSpan({
-        name: 'megarepo/status',
-        command: 'status',
-        output,
-        all,
-      }),
+
+          currentMemberPath = yield* findCurrentMemberPath({
+            memberList: members,
+            megarepoRoot: root.value,
+            pathSoFar: [],
+          })
+        }
+
+        // Compute workspace vs lock reconciliation needs.
+        const applyReasons: string[] = []
+        const lockReasons: string[] = []
+
+        // Helper to collect sync reasons from members recursively
+        const collectMemberSyncReasons = ({
+          memberList,
+          prefix = '',
+        }: {
+          memberList: readonly MemberStatus[]
+          prefix?: string
+        }) => {
+          for (const member of memberList) {
+            const memberLabel =
+              prefix !== undefined && prefix !== '' ? `${prefix}/${member.name}` : member.name
+            if (member.symlinkExists === false) {
+              applyReasons.push(`Member '${memberLabel}' symlink missing`)
+            } else if (member.exists === false) {
+              applyReasons.push(`Member '${memberLabel}' worktree missing`)
+            }
+            if (member.staleLock !== undefined) {
+              lockReasons.push(
+                `Member '${memberLabel}' stale lock: lock says '${member.staleLock.lockRef}' but actual is '${member.staleLock.actualRef}'`,
+              )
+            }
+            if (member.symlinkDrift !== undefined) {
+              applyReasons.push(
+                `Member '${memberLabel}' symlink drift: tracking '${member.symlinkDrift.symlinkRef}' but source says '${member.symlinkDrift.sourceRef}'`,
+              )
+            }
+            if (member.refMismatch !== undefined) {
+              applyReasons.push(
+                `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
+              )
+            }
+            if (member.commitDrift !== undefined) {
+              applyReasons.push(
+                `Member '${memberLabel}' commit drift: workspace is '${member.commitDrift.localCommit.slice(0, 8)}' but lock records '${member.commitDrift.lockedCommit.slice(0, 8)}'`,
+              )
+            }
+            if (member.nestedMembers !== undefined) {
+              collectMemberSyncReasons({ memberList: member.nestedMembers, prefix: memberLabel })
+            }
+          }
+        }
+        collectMemberSyncReasons({ memberList: members })
+
+        // Check lock staleness
+        if (lockStaleness !== undefined) {
+          if (lockStaleness.exists === false) {
+            lockReasons.push('Lock file missing')
+          }
+          for (const memberName of lockStaleness.missingFromLock) {
+            lockReasons.push(`Member '${memberName}' not in lock file`)
+          }
+          for (const memberName of lockStaleness.extraInLock) {
+            lockReasons.push(`Lock file has extra member '${memberName}'`)
+          }
+        }
+
+        const syncReasons = [...applyReasons, ...lockReasons]
+        const applyNeeded = applyReasons.length > 0
+        const lockNeeded = lockReasons.length > 0
+        const syncNeeded = syncReasons.length > 0
+
+        // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
+        yield* run(
+          StatusApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetState',
+                state: {
+                  name: workspaceName,
+                  root: root.value,
+                  syncNeeded,
+                  applyNeeded,
+                  lockNeeded,
+                  syncReasons,
+                  members,
+                  all,
+                  lastSyncTime: lastSyncTime?.toISOString(),
+                  lockStaleness,
+                  currentMemberPath,
+                },
+              })
+            }),
+          { view: React.createElement(StatusView, { stateAtom: StatusApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
+      }).pipe(
+        Effect.provide(StoreLayer),
+        Observability.withCommandSpan({
+          name: 'megarepo/status',
+          command: 'status',
+          output: outputMode,
+          all,
+        }),
+      ),
     ),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))

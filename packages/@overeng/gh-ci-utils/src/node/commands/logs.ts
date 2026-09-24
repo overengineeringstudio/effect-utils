@@ -8,7 +8,7 @@ import { Clock, Duration, Effect, Option } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
+import { outputModeLayer, outputOption, resolveOutputOption } from '@overeng/tui-react/node'
 
 import type { WorkflowJob } from '../../isomorphic/GitHubSchemas.ts'
 import { DEFAULT_LOG_TAIL, LOG_POLL_INTERVAL } from '../../isomorphic/lib/constants.ts'
@@ -374,97 +374,308 @@ export const logsCommand = Cli.Command.make('logs', {
       watchMode,
       timeout,
     }) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* LogsApp.run(
-            React.createElement(LogsView, { stateAtom: LogsApp.stateAtom }),
-          )
-
-          const config = yield* resolveConfig({})
-
-          const preferWorkflow = Option.isSome(workflowOpt) ? workflowOpt.value : undefined
-          const localRepo = config.repos[0]
-
-          let resolved: ResolvedTarget
-          if (Option.isSome(targetInput)) {
-            resolved = yield* resolveTarget(
-              targetInput.value as string,
-              Option.fromNullishOr(localRepo),
-              preferWorkflow,
+      Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const tui = yield* LogsApp.run(
+              React.createElement(LogsView, { stateAtom: LogsApp.stateAtom }),
             )
-          } else {
-            if (!localRepo) {
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'No repo configured',
-                message: 'Could not detect repo from git remote. Use owner/repo as target.',
-              })
+
+            const config = yield* resolveConfig({})
+
+            const preferWorkflow = Option.isSome(workflowOpt) ? workflowOpt.value : undefined
+            const localRepo = config.repos[0]
+
+            let resolved: ResolvedTarget
+            if (Option.isSome(targetInput)) {
+              resolved = yield* resolveTarget(
+                targetInput.value as string,
+                Option.fromNullishOr(localRepo),
+                preferWorkflow,
+              )
+            } else {
+              if (!localRepo) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'No repo configured',
+                  message: 'Could not detect repo from git remote. Use owner/repo as target.',
+                })
+                return
+              }
+              resolved = yield* resolveTargetOrCurrentBranch(targetInput, localRepo, preferWorkflow)
+            }
+
+            const workflowMiss = unmatchedWorkflowLogAction(resolved)
+            if (workflowMiss !== null) {
+              tui.dispatch(workflowMiss)
+              const meta = yield* collectApiMeta
+              tui.dispatch({ _tag: 'SetMeta', _meta: meta })
               return
             }
-            resolved = yield* resolveTargetOrCurrentBranch(targetInput, localRepo, preferWorkflow)
-          }
 
-          const workflowMiss = unmatchedWorkflowLogAction(resolved)
-          if (workflowMiss !== null) {
-            tui.dispatch(workflowMiss)
-            const meta = yield* collectApiMeta
-            tui.dispatch({ _tag: 'SetMeta', _meta: meta })
-            return
-          }
+            const { runId, repo: resolvedRepo } = resolved
+            const { owner, repo: repoName } = splitOwnerRepo(resolvedRepo)
 
-          const { runId, repo: resolvedRepo } = resolved
-          const { owner, repo: repoName } = splitOwnerRepo(resolvedRepo)
+            const github = yield* GitHubClient
+            const logFilters: LogFilterOptions = { tail, offset, errorOnly, grep, full }
 
-          const github = yield* GitHubClient
-          const logFilters: LogFilterOptions = { tail, offset, errorOnly, grep, full }
+            const failFast = watchMode === 'first-failure'
+            /** Tracks which completed jobs we already displayed logs for in watch mode. */
+            const displayedJobIds = new Set<number>()
+            /** Jobs whose logs were retrieved or are known never to have run. */
+            const finalizedJobIds = new Set<number>()
+            /** Selected-step candidates that no longer need lookup on a later watch tick. */
+            const finalizedStepJobIds = new Set<number>()
+            /** Live backscroll is rendered repeatedly and therefore is not a completed displayed job. */
+            let renderedLiveStepOutput = false
+            /** A required capability failure must survive watch/no-logs finalization. */
+            let terminalError = false
 
-          const failFast = watchMode === 'first-failure'
-          /** Tracks which completed jobs we already displayed logs for in watch mode. */
-          const displayedJobIds = new Set<number>()
-          /** Jobs whose logs were retrieved or are known never to have run. */
-          const finalizedJobIds = new Set<number>()
-          /** Selected-step candidates that no longer need lookup on a later watch tick. */
-          const finalizedStepJobIds = new Set<number>()
-          /** Live backscroll is rendered repeatedly and therefore is not a completed displayed job. */
-          let renderedLiveStepOutput = false
-          /** A required capability failure must survive watch/no-logs finalization. */
-          let terminalError = false
+            const fetchAndDisplayLogs = () =>
+              Effect.gen(function* () {
+                const run = yield* github.getWorkflowRun({ repo: resolvedRepo, runId })
+                const { jobs } = yield* github.listWorkflowJobs({ repo: resolvedRepo, runId })
+                const runCompleted = run.status === 'completed'
+                const verdictConclusion = logsVerdictConclusion({
+                  runConclusion: run.conclusion,
+                  jobConclusions: jobs.map((job) => job.conclusion),
+                })
+                const hasUnsuccessfulConclusion = verdictConclusion === 'failure'
+                tui.dispatch({ _tag: 'SetVerdict', conclusion: verdictConclusion })
 
-          const fetchAndDisplayLogs = () =>
-            Effect.gen(function* () {
-              const run = yield* github.getWorkflowRun({ repo: resolvedRepo, runId })
-              const { jobs } = yield* github.listWorkflowJobs({ repo: resolvedRepo, runId })
-              const runCompleted = run.status === 'completed'
-              const verdictConclusion = logsVerdictConclusion({
-                runConclusion: run.conclusion,
-                jobConclusions: jobs.map((job) => job.conclusion),
-              })
-              const hasUnsuccessfulConclusion = verdictConclusion === 'failure'
-              tui.dispatch({ _tag: 'SetVerdict', conclusion: verdictConclusion })
-
-              let filteredJobs: WorkflowJob[] = jobs
-              if (failed) {
-                filteredJobs = filteredJobs.filter((job) => shouldIncludeFailedLog(job.conclusion))
-              }
-              if (Option.isSome(jobFilter)) {
-                const filter = jobFilter.value
-                const asNumber = Number(filter)
-                if (Number.isFinite(asNumber) && asNumber > 0) {
-                  filteredJobs = filteredJobs.filter((j) => j.id === asNumber)
-                } else {
-                  const pattern = filter.toLowerCase()
-                  filteredJobs = filteredJobs.filter((j) => j.name.toLowerCase().includes(pattern))
+                let filteredJobs: WorkflowJob[] = jobs
+                if (failed) {
+                  filteredJobs = filteredJobs.filter((job) =>
+                    shouldIncludeFailedLog(job.conclusion),
+                  )
                 }
-              }
+                if (Option.isSome(jobFilter)) {
+                  const filter = jobFilter.value
+                  const asNumber = Number(filter)
+                  if (Number.isFinite(asNumber) && asNumber > 0) {
+                    filteredJobs = filteredJobs.filter((j) => j.id === asNumber)
+                  } else {
+                    const pattern = filter.toLowerCase()
+                    filteredJobs = filteredJobs.filter((j) =>
+                      j.name.toLowerCase().includes(pattern),
+                    )
+                  }
+                }
 
-              /** Try per-step logs via internal API if session available and step filter given */
-              if (Option.isSome(stepFilter)) {
-                const internal = yield* GitHubInternal
-                const sessionResult = yield* internal.getSession
+                /** Try per-step logs via internal API if session available and step filter given */
+                if (Option.isSome(stepFilter)) {
+                  const internal = yield* GitHubInternal
+                  const sessionResult = yield* internal.getSession
 
-                if (Option.isNone(sessionResult)) {
-                  terminalError = true
-                  tui.dispatch(missingStepSessionAuthError)
+                  if (Option.isNone(sessionResult)) {
+                    terminalError = true
+                    tui.dispatch(missingStepSessionAuthError)
+                    return {
+                      completed: runCompleted,
+                      hasUnsuccessfulConclusion,
+                      retryableLogsPending: false,
+                      verdictConclusion,
+                    }
+                  }
+
+                  if (Option.isSome(sessionResult)) {
+                    const session = sessionResult.value
+                    const unavailableStepJobNames = new Set<string>()
+                    let anyStepMatched = false
+                    for (const j of filteredJobs) {
+                      if (finalizedStepJobIds.has(j.id)) continue
+                      if (isLoglessTerminalJob(j)) {
+                        finalizedStepJobIds.add(j.id)
+                        continue
+                      }
+
+                      const internalId = yield* Effect.result(
+                        internal.resolveInternalJobId({
+                          owner,
+                          repo: repoName,
+                          runId,
+                          restJobId: j.id,
+                          session,
+                        }),
+                      )
+
+                      if (internalId._tag === 'Failure') {
+                        if (
+                          classifyStepLookupFailure({
+                            operation: 'resolve-job',
+                            failure: internalId.failure,
+                          }) === 'retryable'
+                        ) {
+                          unavailableStepJobNames.add(j.name)
+                          continue
+                        }
+                        terminalError = true
+                        tui.dispatch(terminalStepLogErrorAction(internalId.failure))
+                        break
+                      }
+
+                      const stepsResult = yield* Effect.result(
+                        internal.getSteps({
+                          owner,
+                          repo: repoName,
+                          runId,
+                          internalJobId: internalId.success,
+                          session,
+                          changeId: 0,
+                        }),
+                      )
+                      if (stepsResult._tag === 'Failure') {
+                        if (
+                          classifyStepLookupFailure({
+                            operation: 'resolve-job',
+                            failure: stepsResult.failure,
+                          }) === 'retryable'
+                        ) {
+                          unavailableStepJobNames.add(j.name)
+                          continue
+                        }
+                        terminalError = true
+                        tui.dispatch(terminalStepLogErrorAction(stepsResult.failure))
+                        break
+                      }
+                      const steps = stepsResult.success
+
+                      const matchingStep = steps.find((s) =>
+                        s.name.toLowerCase().includes(stepFilter.value.toLowerCase()),
+                      )
+
+                      if (!matchingStep) {
+                        if (j.status === 'completed') finalizedStepJobIds.add(j.id)
+                        else unavailableStepJobNames.add(j.name)
+                        continue
+                      }
+
+                      anyStepMatched = true
+                      if (matchingStep.status !== 'completed') {
+                        const backscroll = yield* internal.getBackscroll({
+                          owner,
+                          repo: repoName,
+                          runId,
+                          internalJobId: internalId.success,
+                          stepUuid: matchingStep.id,
+                          session,
+                        })
+                        const result = collectLogText({
+                          logText: backscroll.lines.map((line) => line.line).join('\n'),
+                          jobName: `${j.name} > ${matchingStep.name}`,
+                          conclusion: matchingStep.conclusion ?? matchingStep.status,
+                          filters: logFilters,
+                        })
+                        tui.dispatch({
+                          _tag: 'SetLogs',
+                          sectionId: `${j.id}:${matchingStep.number}`,
+                          jobName: result.jobName,
+                          sectionConclusion: result.conclusion,
+                          verdictConclusion,
+                          lines: result.lines,
+                          notice: result.notice,
+                          truncation: result.truncation,
+                        })
+                        renderedLiveStepOutput = true
+                      } else {
+                        const logResult = yield* Effect.result(
+                          internal.getCompletedStepLog({
+                            owner,
+                            repo: repoName,
+                            headSha: run.head_sha,
+                            restJobId: j.id,
+                            stepNumber: matchingStep.number,
+                            session,
+                          }),
+                        )
+                        if (logResult._tag === 'Failure') {
+                          if (
+                            classifyStepLookupFailure({
+                              operation: 'completed-log',
+                              failure: logResult.failure,
+                            }) === 'retryable'
+                          ) {
+                            unavailableStepJobNames.add(j.name)
+                            continue
+                          }
+                          terminalError = true
+                          tui.dispatch(terminalStepLogErrorAction(logResult.failure))
+                          break
+                        }
+                        if (classifyCompletedStepLogText(logResult.success) === 'retryable') {
+                          unavailableStepJobNames.add(j.name)
+                          continue
+                        }
+
+                        const result = collectLogText({
+                          logText: logResult.success,
+                          jobName: `${j.name} > ${matchingStep.name}`,
+                          conclusion: matchingStep.conclusion ?? matchingStep.status,
+                          filters: logFilters,
+                        })
+                        tui.dispatch({
+                          _tag: 'SetLogs',
+                          sectionId: `${j.id}:${matchingStep.number}`,
+                          jobName: result.jobName,
+                          sectionConclusion: result.conclusion,
+                          verdictConclusion,
+                          lines: result.lines,
+                          notice: result.notice,
+                          truncation: result.truncation,
+                        })
+                        displayedJobIds.add(j.id)
+                        finalizedStepJobIds.add(j.id)
+                      }
+                    }
+                    if (terminalError) {
+                      return {
+                        completed: false,
+                        hasUnsuccessfulConclusion,
+                        retryableLogsPending: false,
+                        verdictConclusion,
+                      }
+                    }
+                    if (!watch && unavailableStepJobNames.size > 0) {
+                      terminalError = true
+                      tui.dispatch(
+                        selectedStepLogsUnavailableAction([...unavailableStepJobNames].toSorted()),
+                      )
+                      return {
+                        completed: false,
+                        hasUnsuccessfulConclusion,
+                        retryableLogsPending: false,
+                        verdictConclusion,
+                      }
+                    }
+                    if (!anyStepMatched && !watch) {
+                      tui.dispatch({
+                        _tag: 'SetNoLogs',
+                        message: `No step matching '${stepFilter.value}' in any job`,
+                        conclusion: verdictConclusion,
+                      })
+                    }
+                    const retryableLogsPending = shouldRetryStepLogLookup({
+                      watch,
+                      candidateJobIds: filteredJobs.map((job) => job.id),
+                      finalizedJobIds: finalizedStepJobIds,
+                    })
+                    return {
+                      completed: runCompleted && !retryableLogsPending,
+                      hasUnsuccessfulConclusion,
+                      retryableLogsPending,
+                      verdictConclusion,
+                    }
+                  }
+                }
+
+                if (filteredJobs.length === 0 && !watch) {
+                  tui.dispatch({
+                    _tag: 'SetNoLogs',
+                    message: failed
+                      ? 'No failed jobs found.'
+                      : `No jobs matching filter in run ${runId}.`,
+                    conclusion: verdictConclusion,
+                  })
                   return {
                     completed: runCompleted,
                     hasUnsuccessfulConclusion,
@@ -473,351 +684,146 @@ export const logsCommand = Cli.Command.make('logs', {
                   }
                 }
 
-                if (Option.isSome(sessionResult)) {
-                  const session = sessionResult.value
-                  const unavailableStepJobNames = new Set<string>()
-                  let anyStepMatched = false
-                  for (const j of filteredJobs) {
-                    if (finalizedStepJobIds.has(j.id)) continue
-                    if (isLoglessTerminalJob(j)) {
-                      finalizedStepJobIds.add(j.id)
-                      continue
-                    }
+                /** Tier 1: REST API full job logs */
+                /** Finalize completed jobs, retrieving logs only for jobs that ran. */
+                const completedJobs = filteredJobs.filter((job) => job.status === 'completed')
 
-                    const internalId = yield* Effect.result(
-                      internal.resolveInternalJobId({
-                        owner,
-                        repo: repoName,
-                        runId,
-                        restJobId: j.id,
-                        session,
-                      }),
-                    )
+                /** In watch mode, only show newly completed jobs */
+                const newJobs = watch
+                  ? completedJobs.filter((j) => !finalizedJobIds.has(j.id))
+                  : completedJobs
 
-                    if (internalId._tag === 'Failure') {
-                      if (
-                        classifyStepLookupFailure({
-                          operation: 'resolve-job',
-                          failure: internalId.failure,
-                        }) === 'retryable'
-                      ) {
-                        unavailableStepJobNames.add(j.name)
-                        continue
-                      }
-                      terminalError = true
-                      tui.dispatch(terminalStepLogErrorAction(internalId.failure))
-                      break
-                    }
-
-                    const stepsResult = yield* Effect.result(
-                      internal.getSteps({
-                        owner,
-                        repo: repoName,
-                        runId,
-                        internalJobId: internalId.success,
-                        session,
-                        changeId: 0,
-                      }),
-                    )
-                    if (stepsResult._tag === 'Failure') {
-                      if (
-                        classifyStepLookupFailure({
-                          operation: 'resolve-job',
-                          failure: stepsResult.failure,
-                        }) === 'retryable'
-                      ) {
-                        unavailableStepJobNames.add(j.name)
-                        continue
-                      }
-                      terminalError = true
-                      tui.dispatch(terminalStepLogErrorAction(stepsResult.failure))
-                      break
-                    }
-                    const steps = stepsResult.success
-
-                    const matchingStep = steps.find((s) =>
-                      s.name.toLowerCase().includes(stepFilter.value.toLowerCase()),
-                    )
-
-                    if (!matchingStep) {
-                      if (j.status === 'completed') finalizedStepJobIds.add(j.id)
-                      else unavailableStepJobNames.add(j.name)
-                      continue
-                    }
-
-                    anyStepMatched = true
-                    if (matchingStep.status !== 'completed') {
-                      const backscroll = yield* internal.getBackscroll({
-                        owner,
-                        repo: repoName,
-                        runId,
-                        internalJobId: internalId.success,
-                        stepUuid: matchingStep.id,
-                        session,
-                      })
-                      const result = collectLogText({
-                        logText: backscroll.lines.map((line) => line.line).join('\n'),
-                        jobName: `${j.name} > ${matchingStep.name}`,
-                        conclusion: matchingStep.conclusion ?? matchingStep.status,
-                        filters: logFilters,
-                      })
-                      tui.dispatch({
-                        _tag: 'SetLogs',
-                        sectionId: `${j.id}:${matchingStep.number}`,
-                        jobName: result.jobName,
-                        sectionConclusion: result.conclusion,
-                        verdictConclusion,
-                        lines: result.lines,
-                        notice: result.notice,
-                        truncation: result.truncation,
-                      })
-                      renderedLiveStepOutput = true
-                    } else {
-                      const logResult = yield* Effect.result(
-                        internal.getCompletedStepLog({
-                          owner,
-                          repo: repoName,
-                          headSha: run.head_sha,
-                          restJobId: j.id,
-                          stepNumber: matchingStep.number,
-                          session,
-                        }),
-                      )
-                      if (logResult._tag === 'Failure') {
-                        if (
-                          classifyStepLookupFailure({
-                            operation: 'completed-log',
-                            failure: logResult.failure,
-                          }) === 'retryable'
-                        ) {
-                          unavailableStepJobNames.add(j.name)
-                          continue
-                        }
-                        terminalError = true
-                        tui.dispatch(terminalStepLogErrorAction(logResult.failure))
-                        break
-                      }
-                      if (classifyCompletedStepLogText(logResult.success) === 'retryable') {
-                        unavailableStepJobNames.add(j.name)
-                        continue
-                      }
-
-                      const result = collectLogText({
-                        logText: logResult.success,
-                        jobName: `${j.name} > ${matchingStep.name}`,
-                        conclusion: matchingStep.conclusion ?? matchingStep.status,
-                        filters: logFilters,
-                      })
-                      tui.dispatch({
-                        _tag: 'SetLogs',
-                        sectionId: `${j.id}:${matchingStep.number}`,
-                        jobName: result.jobName,
-                        sectionConclusion: result.conclusion,
-                        verdictConclusion,
-                        lines: result.lines,
-                        notice: result.notice,
-                        truncation: result.truncation,
-                      })
-                      displayedJobIds.add(j.id)
-                      finalizedStepJobIds.add(j.id)
-                    }
-                  }
-                  if (terminalError) {
-                    return {
-                      completed: false,
-                      hasUnsuccessfulConclusion,
-                      retryableLogsPending: false,
-                      verdictConclusion,
-                    }
-                  }
-                  if (!watch && unavailableStepJobNames.size > 0) {
-                    terminalError = true
-                    tui.dispatch(
-                      selectedStepLogsUnavailableAction([...unavailableStepJobNames].toSorted()),
-                    )
-                    return {
-                      completed: false,
-                      hasUnsuccessfulConclusion,
-                      retryableLogsPending: false,
-                      verdictConclusion,
-                    }
-                  }
-                  if (!anyStepMatched && !watch) {
-                    tui.dispatch({
-                      _tag: 'SetNoLogs',
-                      message: `No step matching '${stepFilter.value}' in any job`,
-                      conclusion: verdictConclusion,
-                    })
-                  }
-                  const retryableLogsPending = shouldRetryStepLogLookup({
-                    watch,
-                    candidateJobIds: filteredJobs.map((job) => job.id),
-                    finalizedJobIds: finalizedStepJobIds,
+                if (newJobs.length === 0 && !watch) {
+                  tui.dispatch({
+                    _tag: 'SetNoLogs',
+                    message: 'No completed jobs with logs yet.',
+                    conclusion: verdictConclusion,
                   })
                   return {
-                    completed: runCompleted && !retryableLogsPending,
+                    completed: runCompleted,
                     hasUnsuccessfulConclusion,
-                    retryableLogsPending,
+                    retryableLogsPending: false,
                     verdictConclusion,
                   }
                 }
-              }
 
-              if (filteredJobs.length === 0 && !watch) {
-                tui.dispatch({
-                  _tag: 'SetNoLogs',
-                  message: failed
-                    ? 'No failed jobs found.'
-                    : `No jobs matching filter in run ${runId}.`,
-                  conclusion: verdictConclusion,
-                })
-                return {
-                  completed: runCompleted,
-                  hasUnsuccessfulConclusion,
-                  retryableLogsPending: false,
-                  verdictConclusion,
-                }
-              }
-
-              /** Tier 1: REST API full job logs */
-              /** Finalize completed jobs, retrieving logs only for jobs that ran. */
-              const completedJobs = filteredJobs.filter((job) => job.status === 'completed')
-
-              /** In watch mode, only show newly completed jobs */
-              const newJobs = watch
-                ? completedJobs.filter((j) => !finalizedJobIds.has(j.id))
-                : completedJobs
-
-              if (newJobs.length === 0 && !watch) {
-                tui.dispatch({
-                  _tag: 'SetNoLogs',
-                  message: 'No completed jobs with logs yet.',
-                  conclusion: verdictConclusion,
-                })
-                return {
-                  completed: runCompleted,
-                  hasUnsuccessfulConclusion,
-                  retryableLogsPending: false,
-                  verdictConclusion,
-                }
-              }
-
-              let retrievedThisTick = false
-              let retryableMessage: string | undefined
-              for (const j of newJobs) {
-                const r = yield* collectJobLog({
-                  github,
-                  repo: resolvedRepo,
-                  job: j,
-                  filters: logFilters,
-                })
-                if (r.availability === 'terminal') {
-                  terminalError = true
-                  tui.dispatch({
-                    _tag: 'SetError',
-                    error: 'Log retrieval failed',
-                    message: r.lines.join('\n'),
+                let retrievedThisTick = false
+                let retryableMessage: string | undefined
+                for (const j of newJobs) {
+                  const r = yield* collectJobLog({
+                    github,
+                    repo: resolvedRepo,
+                    job: j,
+                    filters: logFilters,
                   })
-                  break
-                }
-                if (r.availability === 'retryable') {
-                  retryableMessage ??= r.lines.join('\n')
-                  continue
-                }
-                if (r.availability === 'absent') {
-                  finalizedJobIds.add(j.id)
-                  continue
-                }
-                tui.dispatch({
-                  _tag: 'SetLogs',
-                  sectionId: String(j.id),
-                  jobName: r.jobName,
-                  sectionConclusion: r.conclusion,
-                  verdictConclusion,
-                  lines: r.lines,
-                  notice: r.notice,
-                  truncation: r.truncation,
-                })
-                displayedJobIds.add(j.id)
-                finalizedJobIds.add(j.id)
-                retrievedThisTick = true
-              }
-
-              if (terminalError) {
-                return {
-                  completed: false,
-                  hasUnsuccessfulConclusion,
-                  retryableLogsPending: false,
-                  verdictConclusion,
-                }
-              }
-
-              if (!watch && !retrievedThisTick) {
-                tui.dispatch({
-                  _tag: 'SetNoLogs',
-                  message: retryableMessage ?? 'No completed jobs produced logs.',
-                  conclusion: verdictConclusion,
-                })
-              }
-
-              const retryableLogsPending = filteredJobs.some(
-                (job) =>
-                  !finalizedJobIds.has(job.id) && (runCompleted || job.status === 'completed'),
-              )
-              return {
-                completed: watch
-                  ? isLogsWatchComplete({
-                      runCompleted,
-                      jobs: filteredJobs,
-                      finalizedJobIds,
+                  if (r.availability === 'terminal') {
+                    terminalError = true
+                    tui.dispatch({
+                      _tag: 'SetError',
+                      error: 'Log retrieval failed',
+                      message: r.lines.join('\n'),
                     })
-                  : runCompleted,
-                hasUnsuccessfulConclusion,
-                retryableLogsPending,
-                verdictConclusion,
-              }
-            })
+                    break
+                  }
+                  if (r.availability === 'retryable') {
+                    retryableMessage ??= r.lines.join('\n')
+                    continue
+                  }
+                  if (r.availability === 'absent') {
+                    finalizedJobIds.add(j.id)
+                    continue
+                  }
+                  tui.dispatch({
+                    _tag: 'SetLogs',
+                    sectionId: String(j.id),
+                    jobName: r.jobName,
+                    sectionConclusion: r.conclusion,
+                    verdictConclusion,
+                    lines: r.lines,
+                    notice: r.notice,
+                    truncation: r.truncation,
+                  })
+                  displayedJobIds.add(j.id)
+                  finalizedJobIds.add(j.id)
+                  retrievedThisTick = true
+                }
 
-          const finalResultOption = watch
-            ? yield* watchLogPolls({
-                poll: fetchAndDisplayLogs(),
-                timeoutSeconds: timeout,
-                shouldStop: (result) =>
-                  terminalError ||
-                  result.completed ||
-                  (failFast && result.hasUnsuccessfulConclusion && !result.retryableLogsPending),
+                if (terminalError) {
+                  return {
+                    completed: false,
+                    hasUnsuccessfulConclusion,
+                    retryableLogsPending: false,
+                    verdictConclusion,
+                  }
+                }
+
+                if (!watch && !retrievedThisTick) {
+                  tui.dispatch({
+                    _tag: 'SetNoLogs',
+                    message: retryableMessage ?? 'No completed jobs produced logs.',
+                    conclusion: verdictConclusion,
+                  })
+                }
+
+                const retryableLogsPending = filteredJobs.some(
+                  (job) =>
+                    !finalizedJobIds.has(job.id) && (runCompleted || job.status === 'completed'),
+                )
+                return {
+                  completed: watch
+                    ? isLogsWatchComplete({
+                        runCompleted,
+                        jobs: filteredJobs,
+                        finalizedJobIds,
+                      })
+                    : runCompleted,
+                  hasUnsuccessfulConclusion,
+                  retryableLogsPending,
+                  verdictConclusion,
+                }
               })
-            : Option.some(yield* fetchAndDisplayLogs())
-          if (Option.isNone(finalResultOption)) {
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'Timeout',
-              message: `Watch timed out after ${Math.round(timeout)}s. Run is still in progress.`,
-            })
-            return
-          }
-          const finalResult = finalResultOption.value
 
-          /** If watch completed but no logs were ever rendered, emit a final state. */
-          if (
-            !terminalError &&
-            shouldFinalizeWatchWithNoLogs({
-              watch,
-              displayedJobCount: displayedJobIds.size,
-              renderedLiveStepOutput,
-            })
-          ) {
-            tui.dispatch({
-              _tag: 'SetNoLogs',
-              message: failed ? 'No failed job logs found.' : 'No matching jobs produced logs.',
-              conclusion: finalResult.verdictConclusion,
-            })
-          }
+            const finalResultOption = watch
+              ? yield* watchLogPolls({
+                  poll: fetchAndDisplayLogs(),
+                  timeoutSeconds: timeout,
+                  shouldStop: (result) =>
+                    terminalError ||
+                    result.completed ||
+                    (failFast && result.hasUnsuccessfulConclusion && !result.retryableLogsPending),
+                })
+              : Option.some(yield* fetchAndDisplayLogs())
+            if (Option.isNone(finalResultOption)) {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'Timeout',
+                message: `Watch timed out after ${Math.round(timeout)}s. Run is still in progress.`,
+              })
+              return
+            }
+            const finalResult = finalResultOption.value
 
-          const meta = yield* collectApiMeta
-          tui.dispatch({ _tag: 'SetMeta', _meta: meta })
-        }),
-      ).pipe(Effect.provide(outputModeLayer(output))),
+            /** If watch completed but no logs were ever rendered, emit a final state. */
+            if (
+              !terminalError &&
+              shouldFinalizeWatchWithNoLogs({
+                watch,
+                displayedJobCount: displayedJobIds.size,
+                renderedLiveStepOutput,
+              })
+            ) {
+              tui.dispatch({
+                _tag: 'SetNoLogs',
+                message: failed ? 'No failed job logs found.' : 'No matching jobs produced logs.',
+                conclusion: finalResult.verdictConclusion,
+              })
+            }
+
+            const meta = yield* collectApiMeta
+            tui.dispatch({ _tag: 'SetMeta', _meta: meta })
+          }),
+        ).pipe(Effect.provide(outputModeLayer(outputMode))),
+      ),
   ),
   Cli.Command.withDescription(
     `Show job logs (last ${DEFAULT_LOG_TAIL} lines by default)

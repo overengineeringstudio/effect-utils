@@ -3,7 +3,12 @@ import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
 import React from 'react'
 
 import { run, isJson } from '@overeng/tui-react'
-import { outputOption, outputModeLayer, resolveOutputMode } from '@overeng/tui-react/node'
+import {
+  outputOption,
+  outputModeLayer,
+  resolveOutputMode,
+  resolveOutputOption,
+} from '@overeng/tui-react/node'
 
 import { captureStoryProps, StoryCaptureError } from '../StoryCapture.ts'
 import { discoverStories } from '../StoryDiscovery.ts'
@@ -62,6 +67,7 @@ export const renderCommand = Command.make(
   },
   ({ storyId, storyName, path, width, output, final: isFinal, at, argOverrides }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const { modules } = yield* discoverStories({ packageDirs: [path] })
 
       const query = storyName._tag === 'Some' ? `${storyId}/${storyName.value}` : storyId
@@ -95,7 +101,7 @@ export const renderCommand = Command.make(
        * When the outer command outputs JSON (e.g. auto → json in a pipe), render
        * the story as plain text so the JSON payload doesn't contain ANSI escapes.
        */
-      const effectiveMode = resolveOutputMode(output)
+      const effectiveMode = resolveOutputMode(outputMode)
       const storyRenderOutput = isJson(effectiveMode) === true ? 'log' : 'ci'
 
       const result = yield* renderStory({
@@ -123,6 +129,6 @@ export const renderCommand = Command.make(
             })
           }),
         { view: React.createElement(RenderView, { stateAtom: RenderApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Render a story to terminal output'))

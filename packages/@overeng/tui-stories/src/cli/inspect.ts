@@ -3,7 +3,7 @@ import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
-import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
+import { outputOption, outputModeLayer, resolveOutputOption } from '@overeng/tui-react/node'
 
 import { StoryCaptureError } from '../StoryCapture.ts'
 import { discoverStories } from '../StoryDiscovery.ts'
@@ -24,6 +24,7 @@ export const inspectCommand = Command.make(
   { storyId: storyIdArg, path: pathOption, output: outputOption },
   ({ storyId, path, output }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const { modules } = yield* discoverStories({ packageDirs: [path] })
       const story = findStory({ modules, query: storyId })
 
@@ -61,6 +62,6 @@ export const inspectCommand = Command.make(
             })
           }),
         { view: React.createElement(InspectView, { stateAtom: InspectApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Inspect story metadata and available args'))

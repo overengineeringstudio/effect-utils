@@ -8,7 +8,7 @@ import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
-import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
+import { outputOption, outputModeLayer, resolveOutputOption } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory, watchCauseMessage, watchScoped } from '@overeng/utils/node'
 
 import {
@@ -211,6 +211,7 @@ export const genieCommand = Cli.Command.make(
     const cliMode = watch ? 'watch' : check ? 'check' : dryRun ? 'dry-run' : 'generate'
     const selectedPhase: GeneratorPhase | undefined = Option.getOrUndefined(phase)
     const handler = Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const fs = yield* FileSystem.FileSystem
       const readOnly = !writeable
       const currentWorkingDirectory = yield* CurrentWorkingDirectory
@@ -350,8 +351,8 @@ export const genieCommand = Cli.Command.make(
             }),
           ),
         { view: <GenieView stateAtom={GenieApp.stateAtom} /> },
-      )
-    }).pipe(Effect.provide(outputModeLayer(output)), withCliModeSpan(cliMode))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
+    }).pipe(withCliModeSpan(cliMode))
 
     return handler
   },

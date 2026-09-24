@@ -11,7 +11,7 @@ import React from 'react'
 import { run } from '@overeng/tui-react'
 
 import { DEFAULT_STORE_PATH } from '../../core/config.ts'
-import { outputOption, outputModeLayer } from '../context.ts'
+import { outputOption, outputModeLayer, resolveOutputOption } from '../context.ts'
 import * as Observability from '../observability.ts'
 import { EnvApp, EnvView } from '../renderers/EnvOutput/mod.ts'
 
@@ -26,27 +26,29 @@ export const envCommand = Cli.Command.make(
     output: outputOption,
   },
   ({ shell, output }) =>
-    run(
-      EnvApp,
-      (tui) =>
-        Effect.sync(() => {
-          // Get store path from env or use default
-          const storePath = process.env['MEGAREPO_STORE'] ?? DEFAULT_STORE_PATH
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      run(
+        EnvApp,
+        (tui) =>
+          Effect.sync(() => {
+            // Get store path from env or use default
+            const storePath = process.env['MEGAREPO_STORE'] ?? DEFAULT_STORE_PATH
 
-          tui.dispatch({
-            _tag: 'SetEnv',
-            MEGAREPO_STORE: storePath,
-            shell,
-          })
+            tui.dispatch({
+              _tag: 'SetEnv',
+              MEGAREPO_STORE: storePath,
+              shell,
+            })
+          }),
+        { view: React.createElement(EnvView, { stateAtom: EnvApp.stateAtom }) },
+      ).pipe(
+        Effect.provide(outputModeLayer(outputMode)),
+        Observability.withCommandSpan({
+          name: 'megarepo/env',
+          command: 'env',
+          label: shell,
+          output: outputMode,
         }),
-      { view: React.createElement(EnvView, { stateAtom: EnvApp.stateAtom }) },
-    ).pipe(
-      Effect.provide(outputModeLayer(output)),
-      Observability.withCommandSpan({
-        name: 'megarepo/env',
-        command: 'env',
-        label: shell,
-        output,
-      }),
+      ),
     ),
 ).pipe(Cli.Command.withDescription('Output environment variables for shell integration'))

@@ -27,6 +27,7 @@ import {
   findMegarepoRoot,
   outputOption,
   outputModeLayer,
+  resolveOutputOption,
 } from '../context.ts'
 import * as Observability from '../observability.ts'
 import { LsApp, LsView } from '../renderers/LsOutput/mod.ts'
@@ -125,65 +126,67 @@ export const lsCommand = Cli.Command.make(
     ),
   },
   ({ output, all }) =>
-    Effect.gen(function* () {
-      const cwd = yield* Cwd
-      const root = yield* findMegarepoRoot(cwd)
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        const cwd = yield* Cwd
+        const root = yield* findMegarepoRoot(cwd)
 
-      // Run TuiApp for all output (handles JSON/TTY modes automatically)
-      yield* run(
-        LsApp,
-        (tui) =>
-          Effect.gen(function* () {
-            if (Option.isNone(root) === true) {
-              // Dispatch error state
-              tui.dispatch({
-                _tag: 'SetError',
-                error: 'not_found',
-                message: 'No megarepo.json found',
+        // Run TuiApp for all output (handles JSON/TTY modes automatically)
+        yield* run(
+          LsApp,
+          (tui) =>
+            Effect.gen(function* () {
+              if (Option.isNone(root) === true) {
+                // Dispatch error state
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'not_found',
+                  message: 'No megarepo.json found',
+                })
+                return
+              }
+
+              // Get megarepo name
+              const megarepoName = yield* Git.deriveMegarepoName(root.value)
+
+              // Scan members (recursively if --all)
+              const members = yield* withMegarepoTraversal({
+                purpose: 'ls',
+                root: root.value,
+                all,
+                effect: (traversal) =>
+                  scanMembersRecursive({
+                    megarepoRoot: root.value,
+                    all,
+                    traversal,
+                  }),
               })
-              return
-            }
 
-            // Get megarepo name
-            const megarepoName = yield* Git.deriveMegarepoName(root.value)
+              // Detect current member path for scope dimming
+              const currentMemberPath = detectCurrentMemberPath({
+                cwd,
+                megarepoRoot: root.value,
+                all,
+              })
 
-            // Scan members (recursively if --all)
-            const members = yield* withMegarepoTraversal({
-              purpose: 'ls',
-              root: root.value,
-              all,
-              effect: (traversal) =>
-                scanMembersRecursive({
-                  megarepoRoot: root.value,
-                  all,
-                  traversal,
-                }),
-            })
-
-            // Detect current member path for scope dimming
-            const currentMemberPath = detectCurrentMemberPath({
-              cwd,
-              megarepoRoot: root.value,
-              all,
-            })
-
-            tui.dispatch({
-              _tag: 'SetMembers',
-              members,
-              all,
-              megarepoName,
-              root: root.value,
-              currentMemberPath,
-            })
-          }),
-        { view: React.createElement(LsView, { stateAtom: LsApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(
-      Observability.withCommandSpan({
-        name: 'megarepo/ls',
-        command: 'ls',
-        output,
-        all,
-      }),
+              tui.dispatch({
+                _tag: 'SetMembers',
+                members,
+                all,
+                megarepoName,
+                root: root.value,
+                currentMemberPath,
+              })
+            }),
+          { view: React.createElement(LsView, { stateAtom: LsApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
+      }).pipe(
+        Observability.withCommandSpan({
+          name: 'megarepo/ls',
+          command: 'ls',
+          output: outputMode,
+          all,
+        }),
+      ),
     ),
 ).pipe(Cli.Command.withDescription('List all members in the megarepo'))

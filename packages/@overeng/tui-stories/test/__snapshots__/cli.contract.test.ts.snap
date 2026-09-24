@@ -24,6 +24,7 @@ FLAGS
   --path string          Package directory to search for stories
   --width, -w integer    Terminal width for layout
   --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+  --json                 Emit a single JSON document (alias for --output json)
   --final                Apply all timeline events (show final state)
   --at integer           Apply timeline events up to this timestamp (ms)
   --arg, -a string       Override story arg (key=value format, repeatable)
@@ -56,6 +57,7 @@ FLAGS
   --path string          Package directory to search for stories
   --width, -w integer    Terminal width for layout
   --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+  --json                 Emit a single JSON document (alias for --output json)
   --final                Apply all timeline events (show final state)
   --at integer           Apply timeline events up to this timestamp (ms)
   --arg, -a string       Override story arg (key=value format, repeatable)
@@ -90,6 +92,7 @@ USAGE
 FLAGS
   --path string          Package directory to search for stories
   --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+  --json                 Emit a single JSON document (alias for --output json)
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information
@@ -120,6 +123,7 @@ USAGE
 FLAGS
   --path string          Package directory to search for stories
   --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+  --json                 Emit a single JSON document (alias for --output json)
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information

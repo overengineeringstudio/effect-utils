@@ -70,8 +70,14 @@ describe('genie CLI contract baselines (status/signal invariant, prose owner-reb
     ['version', ['--version']],
     ['missing option value', ['--cwd']],
     ['invalid phase', ['--phase', 'nope', '--dry-run']],
-    ['invalid phase with json output (stdout guard)', ['--phase', 'nope', '--output', 'json']],
+    ['invalid phase with json output (stdout guard)', ['--phase', 'nope', '--json']],
   ] as const)('%s', (_name, args) => {
     expect(runCli(...args)).toMatchSnapshot()
   })
+})
+
+it('rejects conflicting output flags', () => {
+  const result = runCli('--dry-run', '--output', 'json', '--json')
+  expect(result.status).toBe(1)
+  expect(result.stderr).toContain('use only one of --output / -o or --json')
 })

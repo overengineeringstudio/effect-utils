@@ -6,7 +6,7 @@ import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { Effect, FileSystem, Layer, Option, Schema } from 'effect'
-import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
+import { Argument as Args, CliError, Command, Flag as Options } from 'effect/unstable/cli'
 import { FetchHttpClient } from 'effect/unstable/http'
 import React from 'react'
 
@@ -17,6 +17,7 @@ import {
   OUTPUT_MODE_VALUES,
   outputOption as tuiOutputOption,
   outputModeLayer,
+  resolveOutputOption,
 } from '@overeng/tui-react/node'
 
 import { getDiffApp } from '../../renderers/DiffOutput/app.ts'
@@ -93,14 +94,18 @@ const outputOption = Options.file('output').pipe(
 )
 
 /**
- * TUI render-mode option for commands that also take a file `--output`/`-o`.
- * Uses a distinct `--output-mode` flag (no `-o` alias) so the file-output option
- * keeps `--output`/`-o`; the shared tui `outputOption` claims those and would
- * otherwise shadow the file path, making `generate <id> -o file.ts` fail.
+ * TUI render-mode flags for a command that already uses `--output`/`-o` for
+ * its file path. Keep the render mode on `--output-mode`, while exposing the
+ * shared `--json` shorthand and conflict behavior.
  */
 const tuiOutputModeOption = Options.choice('output-mode', OUTPUT_MODE_VALUES).pipe(
   Options.withDescription('TUI render mode (auto, pretty, ci-plain, json, ...)'),
-  Options.withDefault('auto' as (typeof OUTPUT_MODE_VALUES)[number]),
+  Options.optional,
+)
+
+const jsonOutputOption = Options.boolean('json').pipe(
+  Options.withDescription('Emit a single JSON document (alias for --output-mode json)'),
+  Options.optional,
 )
 
 const nameOption = Options.string('name').pipe(
@@ -175,6 +180,7 @@ export const generateCommand = Command.make(
     includeApi: includeApiOption,
     writable: writableOption,
     tuiOutput: tuiOutputModeOption,
+    json: jsonOutputOption,
   },
   ({
     databaseId,
@@ -190,8 +196,18 @@ export const generateCommand = Command.make(
     includeApi,
     writable,
     tuiOutput,
+    json,
   }) =>
     Effect.gen(function* () {
+      if (Option.isSome(tuiOutput) === true && Option.isSome(json) === true) {
+        return yield* new CliError.InvalidValue({
+          option: 'output-mode',
+          value: '--output-mode and --json',
+          expected: 'use only one of --output-mode or --json',
+          kind: 'flag',
+        })
+      }
+      const outputMode = yield* resolveOutputOption({ mode: tuiOutput, json })
       const resolvedToken = yield* resolveNotionToken(token)
       const generatorVersion = yield* getGeneratorVersion
 
@@ -309,7 +325,7 @@ export const generateCommand = Command.make(
             )
           }),
         { view: React.createElement(GenerateView, { stateAtom: generateApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(tuiOutput)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Generate Effect schema from a Notion database'))
 
@@ -326,6 +342,7 @@ const introspectCommand = Command.make(
   { databaseId: introspectDatabaseIdArg, token: tokenOption, output: tuiOutputOption },
   ({ databaseId, token, output }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const resolvedToken = yield* resolveNotionToken(token)
 
       const configLayer = Layer.succeed(NotionConfig, {
@@ -406,7 +423,7 @@ const introspectCommand = Command.make(
             )
           }),
         { view: React.createElement(IntrospectView, { stateAtom: introspectApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Introspect a Notion database and display its schema'))
 
@@ -433,6 +450,7 @@ const generateFromConfigCommand = Command.make(
   },
   ({ config, token, dryRun, writable, output }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const { config: resolvedConfig, path: resolvedConfigPath } = yield* loadConfig(
         Option.isSome(config) === true ? config.value : undefined,
       )
@@ -538,7 +556,7 @@ const generateFromConfigCommand = Command.make(
         {
           view: React.createElement(GenerateConfigView, { stateAtom: generateConfigApp.stateAtom }),
         },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Generate schemas for all databases in a config file'))
 
@@ -571,6 +589,7 @@ const diffCommand = Command.make(
   },
   ({ databaseId, file, token, exitCode, output }) =>
     Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
       const resolvedToken = yield* resolveNotionToken(token)
       const fs = yield* FileSystem.FileSystem
 
@@ -644,7 +663,7 @@ const diffCommand = Command.make(
             )
           }),
         { view: React.createElement(DiffView, { stateAtom: diffApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(
   Command.withDescription('Compare a Notion database schema with a generated file to detect drift'),

@@ -7,7 +7,7 @@
  *
  * Run:
  *   bun examples/06-log-capture/log-capture.tsx
- *   bun examples/06-log-capture/log-capture.tsx --output json
+ *   bun examples/06-log-capture/log-capture.tsx --json
  */
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
@@ -16,7 +16,7 @@ import { Command } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'
-import { outputOption, outputModeLayer } from '../../src/node/mod.ts'
+import { outputOption, outputModeLayer, resolveOutputOption } from '../../src/node/mod.ts'
 import { TaskRunnerState, TaskRunnerAction, taskRunnerReducer } from './schema.ts'
 import { TaskRunnerView } from './view.tsx'
 
@@ -67,7 +67,10 @@ const runTaskRunner = run(
 // =============================================================================
 
 const logCaptureCmd = Command.make('log-capture', { output: outputOption }, ({ output }) =>
-  runTaskRunner.pipe(Effect.provide(outputModeLayer(output))),
+  Effect.gen(function* () {
+    const outputMode = yield* resolveOutputOption(output)
+    return yield* runTaskRunner.pipe(Effect.provide(outputModeLayer(outputMode)))
+  }),
 )
 
 const cli = Command.runWith(logCaptureCmd, {

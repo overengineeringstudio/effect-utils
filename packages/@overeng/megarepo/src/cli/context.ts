@@ -144,6 +144,7 @@ export const verboseOption = Cli.Flag.boolean('verbose').pipe(
 
 export {
   outputOption,
+  resolveOutputOption,
   outputModeLayer,
   type OutputModeValue,
   resolveOutputMode,

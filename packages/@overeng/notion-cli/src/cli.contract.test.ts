@@ -67,3 +67,9 @@ describe('notion-cli CLI contract baselines (status/signal invariant, prose owne
     expect(runCli(...args)).toMatchSnapshot()
   })
 })
+
+it('rejects conflicting db info output flags', () => {
+  const result = runCli('db', 'info', 'db-id', '--output', 'json', '--json')
+  expect(result.status).toBe(1)
+  expect(result.stderr).toContain('use only one of --output / -o or --json')
+})
