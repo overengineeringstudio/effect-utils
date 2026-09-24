@@ -62,7 +62,8 @@ cp "$WORKSPACE/Cargo.lock" "$TEMP_ROOT/original-lock"
 "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 cmp -s "$TEMP_ROOT/original-lock" "$WORKSPACE/Cargo.lock" || fail "generate changed Cargo.lock"
 grep -Fq 'http_archive(' "$THIRD_PARTY/BUCK" || fail "generate did not install the custom-path candidate graph"
-expected_cargo_home="$FIXTURE/.devenv/reindeer-cargo-home"
+# The gate resolves the repository physically (macOS temp dirs live behind /var -> /private/var).
+expected_cargo_home="$(cd "$FIXTURE" && pwd -P)/.devenv/reindeer-cargo-home"
 [ "$(cat "$FAKE_REINDEER_HOME_LOG")" = "$expected_cargo_home" ] || fail "buckify did not use the repository-pinned Cargo home"
 "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 
