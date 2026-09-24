@@ -92,4 +92,19 @@ describe('Cargo Buck2 package projection', () => {
       rmSync(outsideRoot, { recursive: true, force: true })
     }
   })
+
+  it('rejects injectable Buck labels and generated comments', () => {
+    expect(() =>
+      defineCargoBuck2PackageProjection({
+        ...consumerProjectionOptions,
+        buck2LoadLabelPrefix: '@rules//buck2")\nmalicious_rule(',
+      }),
+    ).toThrow('buck2LoadLabelPrefix is not a Buck cell/package prefix')
+    expect(() =>
+      defineCargoBuck2PackageProjection({
+        ...consumerProjectionOptions,
+        regenerationCommand: 'devenv tasks run genie:run\nmalicious_rule()',
+      }),
+    ).toThrow('regenerationCommand must be a single line')
+  })
 })

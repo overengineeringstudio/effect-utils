@@ -111,6 +111,16 @@ export const defineCargoBuck2PackageProjection = ({
   const generatorSourcePaths = configuredGeneratorSourcePaths.map((sourcePath, index) =>
     validateRepoPath({ repo, value: sourcePath, field: `generatorSourcePaths[${index}]` }),
   )
+  if (
+    /^(?:@[A-Za-z0-9][A-Za-z0-9._-]*)?\/\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/.test(
+      buck2LoadLabelPrefix,
+    ) === false
+  ) {
+    throw new Error(`buck2LoadLabelPrefix is not a Buck cell/package prefix`)
+  }
+  if (/[\r\n]/.test(regenerationCommand)) {
+    throw new Error('regenerationCommand must be a single line')
+  }
   const workspaceManifest = Bun.TOML.parse(repo.readText(cargoManifestPath)) as CargoWorkspace
   const lock = Bun.TOML.parse(repo.readText(cargoLockPath)) as CargoLock
   const workspaceMembers = workspaceMemberManifestPaths.map((manifestPath) => ({
@@ -508,12 +518,12 @@ const cargoBuck2PackageProjectionFor = ({
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("@prelude//:prelude.bzl", "native")',
-    `load("${buck2LoadLabelPrefix}:static_checks.bzl", "static_source_set")`,
+    `load(${starlarkString(`${buck2LoadLabelPrefix}:static_checks.bzl`)}, "static_source_set")`,
     ...(buildProduct === true
       ? [
-          `load("${buck2LoadLabelPrefix}/products:defs.bzl", "build_product")`,
-          `load("${buck2LoadLabelPrefix}/platforms:defs.bzl", "host_platform_label")`,
-          `load("${buck2LoadLabelPrefix}/rust:defs.bzl", "rust_product_executable")`,
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/products:defs.bzl`)}, "build_product")`,
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/platforms:defs.bzl`)}, "host_platform_label")`,
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "rust_product_executable")`,
         ]
       : []),
     'static_source_set(',
