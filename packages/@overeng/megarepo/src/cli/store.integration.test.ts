@@ -1007,9 +1007,11 @@ describe('mr store ls', () => {
 
 const seedCompositionCapableMain = ({
   upstream,
+  withBuckRoot = true,
   withLock = true,
 }: {
   readonly upstream: AbsoluteDirPath
+  readonly withBuckRoot?: boolean
   readonly withLock?: boolean
 }) =>
   Effect.gen(function* () {
@@ -1020,10 +1022,12 @@ const seedCompositionCapableMain = ({
       worktreePath: checkout,
       branch: 'main',
     })
-    yield* fs.writeFileString(
-      EffectPath.ops.join(checkout, EffectPath.unsafe.relativeFile('.buckroot')),
-      '',
-    )
+    if (withBuckRoot === true) {
+      yield* fs.writeFileString(
+        EffectPath.ops.join(checkout, EffectPath.unsafe.relativeFile('.buckroot')),
+        '',
+      )
+    }
     yield* fs.writeFileString(
       EffectPath.ops.join(checkout, EffectPath.unsafe.relativeFile('flake.lock')),
       '{}\n',
@@ -1081,6 +1085,60 @@ generators {
       cwd: checkout,
     })
   })
+
+const makeCompositionRuntimeEnv = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const runtimeDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+  const makeExecutable = (name: string, body: string) =>
+    Effect.gen(function* () {
+      const path = EffectPath.ops.join(runtimeDir, EffectPath.unsafe.relativeFile(name))
+      yield* fs.writeFileString(path, `#!/bin/sh\n${body}\n`)
+      yield* fs.chmod(path, 0o755)
+      return path
+    })
+  const git = yield* makeExecutable('git', 'exec git "$@"')
+  const cp = yield* makeExecutable('cp', 'exec cp "$@"')
+  const mv = yield* makeExecutable('mv', 'exec mv "$@"')
+  const nixOutput = process.execPath.replace(/\/bin\/[^/]+$/u, '')
+  const nix = yield* makeExecutable(
+    'nix',
+    `out_link=''
+previous=''
+for argument in "$@"; do
+  if [ "$previous" = '--out-link' ]; then out_link="$argument"; break; fi
+  previous="$argument"
+done
+if [ -n "$out_link" ]; then
+  '${process.execPath}' -e 'require("node:fs").symlinkSync(process.argv[1], process.argv[2])' '${nixOutput}' "$out_link"
+fi
+printf '%s\\n' '${nixOutput}'`,
+  )
+  const watchman = yield* makeExecutable(
+    'watchman',
+    `case "$2" in
+  watch-list) printf '{"roots":[]}\\n' ;;
+  watch-project) printf '{"watch":"%s"}\\n' "$3" ;;
+  watch-del) printf '{"watch-del":true}\\n' ;;
+esac`,
+  )
+
+  return {
+    MR_CAPABILITY_NIX_BIN: nix,
+    MR_CAPABILITY_MV_BIN: mv,
+    MR_COMPOSITION_BUCK2_BIN: process.execPath,
+    MR_COMPOSITION_BUCK2_PROTOCOL: 'test',
+    MR_COMPOSITION_CP_BIN: cp,
+    MR_COMPOSITION_GIT_BIN: git,
+    MR_COMPOSITION_PLATFORM: process.platform === 'darwin' ? 'darwin' : 'linux',
+    MR_COMPOSITION_SYSTEM:
+      process.platform === 'darwin'
+        ? 'aarch64-darwin'
+        : process.arch === 'arm64'
+          ? 'aarch64-linux'
+          : 'x86_64-linux',
+    MR_COMPOSITION_WATCHMAN_BIN: watchman,
+  }
+})
 
 describe('mr store worktree new', () => {
   it.effect(
@@ -1196,7 +1254,7 @@ describe('mr store worktree new', () => {
   )
 
   it.effect(
-    '--compose creates a composed workspace for a standalone-root repository',
+    '--compose creates a composed workspace when member roots carry no Buck authority',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -1210,43 +1268,8 @@ describe('mr store worktree new', () => {
         ])
         yield* seedCompositionCapableMain({
           upstream: fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!,
+          withBuckRoot: false,
         })
-
-        const runtimeDir = EffectPath.unsafe.absoluteDir(
-          `${yield* fs.makeTempDirectoryScoped()}/`,
-        )
-        const makeExecutable = (name: string, body: string) =>
-          Effect.gen(function* () {
-            const path = EffectPath.ops.join(runtimeDir, EffectPath.unsafe.relativeFile(name))
-            yield* fs.writeFileString(path, `#!/bin/sh\n${body}\n`)
-            yield* fs.chmod(path, 0o755)
-            return path
-          })
-        const git = yield* makeExecutable('git', 'exec git "$@"')
-        const cp = yield* makeExecutable('cp', 'exec cp "$@"')
-        const mv = yield* makeExecutable('mv', 'exec mv "$@"')
-        const nixOutput = process.execPath.replace(/\/bin\/[^/]+$/u, '')
-        const nix = yield* makeExecutable(
-          'nix',
-          `out_link=''
-previous=''
-for argument in "$@"; do
-  if [ "$previous" = '--out-link' ]; then out_link="$argument"; break; fi
-  previous="$argument"
-done
-if [ -n "$out_link" ]; then
-  '${process.execPath}' -e 'require("node:fs").symlinkSync(process.argv[1], process.argv[2])' '${nixOutput}' "$out_link"
-fi
-printf '%s\\n' '${nixOutput}'`,
-        )
-        const watchman = yield* makeExecutable(
-          'watchman',
-          `case "$2" in
-  watch-list) printf '{"roots":[]}\\n' ;;
-  watch-project) printf '{"watch":"%s"}\\n' "$3" ;;
-  watch-del) printf '{"watch-del":true}\\n' ;;
-esac`,
-        )
 
         const result = yield* runMrCommand({
           cwd: fixture.storePath,
@@ -1265,20 +1288,7 @@ esac`,
           ],
           env: {
             MEGAREPO_STORE: fixture.storePath,
-            MR_CAPABILITY_NIX_BIN: nix,
-            MR_CAPABILITY_MV_BIN: mv,
-            MR_COMPOSITION_BUCK2_BIN: process.execPath,
-            MR_COMPOSITION_BUCK2_PROTOCOL: 'test',
-            MR_COMPOSITION_CP_BIN: cp,
-            MR_COMPOSITION_GIT_BIN: git,
-            MR_COMPOSITION_PLATFORM: process.platform === 'darwin' ? 'darwin' : 'linux',
-            MR_COMPOSITION_SYSTEM:
-              process.platform === 'darwin'
-                ? 'aarch64-darwin'
-                : process.arch === 'arm64'
-                  ? 'aarch64-linux'
-                  : 'x86_64-linux',
-            MR_COMPOSITION_WATCHMAN_BIN: watchman,
+            ...(yield* makeCompositionRuntimeEnv),
           },
         })
 
@@ -1311,8 +1321,59 @@ esac`,
           yield* fs.exists(
             EffectPath.ops.join(ownedWorktree, EffectPath.unsafe.relativeFile('.buckroot')),
           ),
-        ).toBe(true)
+        ).toBe(false)
         expect(yield* Git.getCurrentBranch(ownedWorktree)).toEqual(Option.some('composed'))
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    '--compose fails closed when the member root carries Buck authority',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createStoreFixture([
+          {
+            host: 'github.com',
+            owner: 'test-owner',
+            repo: 'test-repo',
+            withRemote: true,
+          },
+        ])
+        yield* seedCompositionCapableMain({
+          upstream: fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!,
+        })
+
+        const result = yield* runMrCommand({
+          cwd: fixture.storePath,
+          command: [
+            'store',
+            'worktree',
+            'new',
+            'test-owner/test-repo',
+            '--ref',
+            'refused-composition',
+            '--base',
+            'origin/main',
+            '--compose',
+            '--output',
+            'json',
+          ],
+          env: {
+            MEGAREPO_STORE: fixture.storePath,
+            ...(yield* makeCompositionRuntimeEnv),
+          },
+        })
+
+        expect(result.exitCode).not.toBe(0)
+        const diagnostic = Exit.isFailure(result.exit) ? Cause.pretty(result.exit.cause) : ''
+        expect(diagnostic).toContain('StoreCommandError')
+        expect(diagnostic).toContain('OwnedWorktreeAcquisitionError')
+        expect(diagnostic).toContain('GenerationFailed')
+        expect(diagnostic).toContain('CompositionCommandError')
+        expect(diagnostic).toContain('InvalidMemberManifest')
+        expect(diagnostic).toContain('Member root must not carry .buckroot')
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

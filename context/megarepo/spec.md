@@ -159,10 +159,10 @@ root ownership manifest.
 `--compose` request reads the target commit's composition capability before
 creating anything. For a capable branch it claims an absent `P`, creates
 `P/repos`, runs `git worktree add` directly at final `W`, links the owned config
-into `P`, and runs normal composition generation. The nested owned checkout
-retains its tracked standalone Buck root files as member content; generated
-authority stays at `P`. Creation never stages or publishes another root and
-never relocates `W`.
+into `P`, and runs normal composition generation. Composition fails closed when
+the nested owned checkout carries `.buckconfig` or `.buckroot`; those markers
+would let Buck2 discover a second project when invoked from the member. Creation
+never stages or publishes another root and never relocates `W`.
 
 Creation may retry only recognizable partial births: an otherwise empty `P`
 with an empty `repos`, or the exact registered `W` with matching Git identity
