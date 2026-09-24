@@ -510,6 +510,7 @@ export const translatePnpmLock = ({
       record: entry,
       allowed: [
         'resolution',
+        'version',
         'engines',
         'peerDependencies',
         'hasBin',
@@ -545,6 +546,7 @@ export const translatePnpmLock = ({
       const directory = stringField({ record: resolution, field: 'directory', location: location })
       if (version.startsWith('file:') === false)
         return fail(`${location} directory resolution must use file:`)
+      if (entry.version !== undefined) return fail(`${location}.version requires a tarball resolution`)
       packages[key] = {
         cpu,
         hasBin,
@@ -558,13 +560,28 @@ export const translatePnpmLock = ({
       }
       continue
     }
+    const tarball = resolution.tarball
     rejectUnknownFields({
       record: resolution,
-      allowed: ['integrity'],
+      allowed: tarball === undefined ? ['integrity'] : ['integrity', 'tarball'],
       location: `${location}.resolution`,
     })
-    const integrity = stringField({ record: resolution, field: 'integrity', location: location })
-    integrityBytes({ integrity: integrity, location: `${location}.resolution.integrity` })
+    const integrity = stringField({
+      record: resolution,
+      field: 'integrity',
+      location: `${location}.resolution`,
+    })
+    integrityBytes({ integrity, location: `${location}.resolution.integrity` })
+    let url: string
+    if (tarball === undefined) {
+      if (entry.version !== undefined) return fail(`${location}.version requires a tarball resolution`)
+      url = archiveUrl({ name, version })
+    } else {
+      stringField({ record: entry, field: 'version', location })
+      url = stringField({ record: resolution, field: 'tarball', location: `${location}.resolution` })
+      if (/^https:\/\/[^/?#@]+(?:\/[^#]*)?$/u.test(url) === false)
+        return fail(`${location}.resolution.tarball must be a public HTTPS URL`)
+    }
     const patch = workspacePatches[`${name}@${version}`]
     packages[key] = {
       cpu,
@@ -576,7 +593,7 @@ export const translatePnpmLock = ({
       ...(patch === undefined ? {} : { patch }),
       resolution: 'registry',
       target: pnpmTargetName({ prefix: 'package', identity: key }),
-      url: archiveUrl({ name, version }),
+      url,
       version,
     }
   }

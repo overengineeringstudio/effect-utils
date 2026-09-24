@@ -143,6 +143,79 @@ describe('translatePnpmLock', () => {
     expect(first.packages['foo@1.0.0']!.target).toMatch(/^package_foo_1_0_0_[a-f0-9]{12}$/)
   })
 
+  it('uses an integrity-verified public tarball URL as its Buck archive source', async () => {
+    const url = 'https://overeng-effect-utils.cachix.org/serve/abc123/overeng-utils.tgz'
+    const key = `@overeng/utils@${url}`
+    const metadata = translatePnpmLock({
+      lockfileText: lock({
+        importers: `  .:
+    dependencies:
+      '@overeng/utils':
+        specifier: ${url}
+        version: ${url}`,
+        packages: `  '${key}':
+    resolution: {integrity: ${archiveIntegrity}, tarball: ${url}}
+    version: 0.1.0`,
+        snapshots: `  '${key}': {}`,
+      }),
+      workspaceText: workspace(),
+    })
+    expect(metadata.packages[key]).toMatchObject({
+      integrity: archiveIntegrity,
+      resolution: 'registry',
+      url,
+      version: url,
+    })
+    const fetched: string[] = []
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async (source) => {
+        fetched.push(source)
+        return archive
+      },
+    })
+    expect(fetched).toEqual([url])
+    expect(sidecar.packages[key]).toMatchObject({
+      classification: 'public',
+      integrity: archiveIntegrity,
+      registryUrl: url,
+      sha256: createHash('sha256').update(archive).digest('hex'),
+    })
+    expect(renderPnpmPackageTargets({ metadata, sidecar })).toContain(`    url = ${JSON.stringify(url)},`)
+    await expect(
+      generatePnpmSha256Sidecar({ metadata, fetchArchive: async () => otherArchive }),
+    ).rejects.toThrow('integrity')
+  })
+
+  it('still rejects unknown tarball fields and missing tarball integrity', () => {
+    const url = 'https://overeng-effect-utils.cachix.org/serve/abc123/overeng-utils.tgz'
+    for (const [packageFields, expectedError] of [
+      [
+        `    resolution: {integrity: ${archiveIntegrity}, tarball: ${url}}
+    version: 0.1.0
+    unrecognized: true`,
+        'unsupported fields: unrecognized',
+      ],
+      [
+        `    resolution: {tarball: ${url}}
+    version: 0.1.0`,
+        'resolution.integrity must be a non-empty string',
+      ],
+    ]) {
+      expect(() =>
+        translatePnpmLock({
+          lockfileText: lock({
+            importers: '  .: {}',
+            packages: `  '@overeng/utils@${url}':
+${packageFields}`,
+            snapshots: `  '@overeng/utils@${url}': {}`,
+          }),
+          workspaceText: workspace(),
+        }),
+      ).toThrow(expectedError)
+    }
+  })
+
   it('includes dependency overrides in the semantic lock fingerprint', () => {
     const baseline = translatePnpmLock({ lockfileText: lock(), workspaceText: workspace() })
     const overridden = translatePnpmLock({
