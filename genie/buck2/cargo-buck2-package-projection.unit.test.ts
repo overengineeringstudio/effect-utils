@@ -107,4 +107,17 @@ describe('Cargo Buck2 package projection', () => {
       }),
     ).toThrow('regenerationCommand must be a single line')
   })
+
+  it('binds the third-party label to the validated local graph', () => {
+    for (const thirdPartyPackage of ['@other//vendor/cargo', '//vendor/other']) {
+      expect(() =>
+        defineCargoBuck2PackageProjection({
+          ...consumerProjectionOptions,
+          thirdPartyPackage,
+        }),
+      ).toThrow(
+        'thirdPartyPackage must be the repository-local package containing thirdPartyBuckPath',
+      )
+    }
+  })
 })

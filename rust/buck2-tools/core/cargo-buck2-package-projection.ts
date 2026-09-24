@@ -100,6 +100,17 @@ export const defineCargoBuck2PackageProjection = ({
     value: configuredThirdPartyBuckPath ?? path.posix.join(workspaceRoot, 'third-party/BUCK'),
     field: 'thirdPartyBuckPath',
   })
+  const thirdPartyPackagePath = path.posix.dirname(thirdPartyBuckPath)
+  const expectedThirdPartyPackage = `//${thirdPartyPackagePath}`
+  if (
+    /^\/\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/.test(thirdPartyPackage) ===
+      false ||
+    thirdPartyPackage !== expectedThirdPartyPackage
+  ) {
+    throw new Error(
+      `thirdPartyPackage must be the repository-local package containing thirdPartyBuckPath: ${expectedThirdPartyPackage}`,
+    )
+  }
   const workspaceMemberManifestPaths = configuredWorkspaceMemberManifestPaths.map(
     (manifestPath, index) =>
       validateRepoPath({
