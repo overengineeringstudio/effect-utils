@@ -819,8 +819,11 @@ const decodeSidecarEntry = ({
   integrityBytes({ integrity, location: `${location}.integrity` })
   const packageIdentity = stringField({ record: entry, field: 'packageIdentity', location })
   const registryUrl = stringField({ record: entry, field: 'registryUrl', location })
-  if (registryUrl.startsWith('https://registry.npmjs.org/') === false)
-    return fail(`${location}.registryUrl must be a canonical npm registry URL`)
+  if (
+    registryUrl.startsWith('https://registry.npmjs.org/') === false &&
+    registryUrl.startsWith('https://overeng-effect-utils.cachix.org/serve/') === false
+  )
+    return fail(`${location}.registryUrl must be a public archive URL`)
   const digest = stringField({ record: entry, field: 'sha256', location })
   if (sha256Pattern.test(digest) === false)
     return fail(`${location}.sha256 must be lowercase sha256`)

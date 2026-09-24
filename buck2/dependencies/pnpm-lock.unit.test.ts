@@ -181,6 +181,9 @@ describe('translatePnpmLock', () => {
       registryUrl: url,
       sha256: createHash('sha256').update(archive).digest('hex'),
     })
+    const decoded = decodePnpmSha256Sidecar(JSON.parse(JSON.stringify(sidecar)))
+    validatePnpmSha256Sidecar({ metadata, sidecar: decoded })
+    expect(decoded).toEqual(sidecar)
     expect(renderPnpmPackageTargets({ metadata, sidecar })).toContain(`    url = ${JSON.stringify(url)},`)
     await expect(
       generatePnpmSha256Sidecar({ metadata, fetchArchive: async () => otherArchive }),
