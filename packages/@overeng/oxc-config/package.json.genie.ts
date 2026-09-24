@@ -28,9 +28,10 @@ const deps = catalog.compose({
         '@typescript-eslint/rule-tester',
         '@typescript-eslint/utils',
         'eslint',
+        'oxlint',
+        'oxlint-tsgolint',
         'typescript',
         'vitest',
-        'oxlint-tsgolint',
       ),
       /** @typescript-eslint does not yet support the TypeScript 7 package API. */
       typescript: '5.9.3',

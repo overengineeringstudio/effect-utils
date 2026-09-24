@@ -68,6 +68,7 @@ export const nativeDependencyPolicy = {
   '@oxc-resolver/binding': { _tag: 'pure-package-artifact' },
   '@tailwindcss/oxide': { _tag: 'pure-package-artifact' },
   '@oxlint-tsgolint': { _tag: 'pure-package-artifact' },
+  '@oxlint/binding': { _tag: 'pure-package-artifact' },
 } as const satisfies Record<string, NativeDependencyPolicyEntry>
 
 /**

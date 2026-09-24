@@ -9,98 +9,50 @@
 # remains only the oxlint runtime packager; it does not rebuild plugin sources.
 #
 # Usage:
-#   tracked = import ./buck2-products { inherit pkgs fromSourceProducts; };
+#   pnpmArchives = import ./buck2-products/pnpm-archives.nix { inherit pkgs; };
+#   products = repoFlake.buckProducts.${pkgs.stdenv.hostPlatform.system}.products;
 #   oxlintNpm = import ./oxlint-npm.nix {
-#     inherit pkgs bun;
-#     products = tracked.products;
+#     inherit pkgs bun pnpmArchives products;
 #   };
 #   # => oxlintNpm.pluginPath is the overeng plugin module
 #   # => oxlintNpm.stylexUpstreamPluginPath is the @stylexjs plugin module
-# =============================================================================
-# Updating to a new version
-# =============================================================================
 #
-# 1. Check latest version:
-#    npm view oxlint version
-#
-# 2. Update `version` below to the new version number
-#
-# 3. Calculate new hashes (run in /tmp to avoid devenv cache issues):
-#    cd /tmp
-#    VERSION=1.82.0  # <-- set to new version
-#
-#    # Main package
-#    nix hash convert --to sri --hash-algo sha256 \
-#      $(nix-prefetch-url https://registry.npmjs.org/oxlint/-/oxlint-$VERSION.tgz)
-#
-#    # Platform binaries: 1.45 and newer publish `@oxlint/binding-<target>`;
-#    # 1.43 and older published `@oxlint/<target>`.
-#    for pkg in binding-darwin-arm64 binding-darwin-x64 binding-linux-x64-gnu binding-linux-arm64-gnu; do
-#      echo "$pkg:"
-#      nix hash convert --to sri --hash-algo sha256 \
-#        $(nix-prefetch-url https://registry.npmjs.org/@oxlint/$pkg/-/$pkg-$VERSION.tgz)
-#    done
-#
-# 4. Update hashes in this file (mainPackage.hash and platformPackages.*.hash)
-#
-# 5. Reload devenv and verify:
-#    rm -rf .devenv
-#    oxlint --version
-#    mono lint  # should show "WARNING: JS plugins are experimental..."
+# The package version and archive digests are generated from package.json,
+# pnpm-lock.yaml, and buck2/dependencies/pnpm-lock.sha256.json. There are no
+# independently maintained fetch hashes in this module.
 #
 # =============================================================================
 {
   pkgs,
   bun,
+  pnpmArchives,
   products,
 }:
 let
   lib = pkgs.lib;
 
-  # https://github.com/oxc-project/oxc/releases for latest version
-  #
-  # Keep in lockstep with the `oxlint` pin in genie/external.ts: the JS-plugin
-  # rule API and the config schema are versioned with the binary, so a split
-  # between this package and the workspace pin means two different linters.
-  version = "1.82.0";
+  package = builtins.fromJSON (builtins.readFile (../packages + "/@overeng/oxc-config/package.json"));
+  version =
+    package.devDependencies.oxlint
+      or (throw "oxlint-npm: packages/@overeng/oxc-config/package.json does not declare oxlint");
+  archiveFor =
+    packageIdentity:
+    pnpmArchives.archivesByIdentity.${packageIdentity}
+      or (throw "oxlint-npm: missing reviewed pnpm archive ${packageIdentity}");
 
   # Platform-specific package mapping (NAPI binding packages, `@oxlint/binding-*`)
   platformPackages = {
-    "aarch64-darwin" = {
-      name = "@oxlint/binding-darwin-arm64";
-      hash = "sha256-em2Q1r1nI3TFATUugqGlCHeZ5de7CJ9bUXskbtsumSo=";
-    };
-    "x86_64-darwin" = {
-      name = "@oxlint/binding-darwin-x64";
-      hash = "sha256-wkA2gv7N9AP9Wsq+lN/LeujGou9XI1smt0lcfnM1Ub4=";
-    };
-    "x86_64-linux" = {
-      name = "@oxlint/binding-linux-x64-gnu";
-      hash = "sha256-r9ILzW5kjzQEc93U3Q5Fo2KBVtou0e6L7qLeQiUQEvM=";
-    };
-    "aarch64-linux" = {
-      name = "@oxlint/binding-linux-arm64-gnu";
-      hash = "sha256-GL3gDjGReOg4l7V3j0fuy8EmcZ3CoM2k5jdVkrY0fpU=";
-    };
+    "aarch64-darwin".name = "@oxlint/binding-darwin-arm64";
+    "x86_64-darwin".name = "@oxlint/binding-darwin-x64";
+    "x86_64-linux".name = "@oxlint/binding-linux-x64-gnu";
+    "aarch64-linux".name = "@oxlint/binding-linux-arm64-gnu";
   };
 
   system = pkgs.stdenv.hostPlatform.system;
   platformPkg = platformPackages.${system} or (throw "Unsupported platform: ${system}");
 
-  # Fetch the main oxlint npm package
-  mainPackage = pkgs.fetchurl {
-    url = "https://registry.npmjs.org/oxlint/-/oxlint-${version}.tgz";
-    hash = "sha256-IGZIRCAAKmzRYqQbXRCTB8vnzpG7+wSXV4RtSnveLA0=";
-  };
-
-  # Fetch the platform-specific binary package
-  # npm scoped packages use a different URL pattern
-  binaryPackage = pkgs.fetchurl {
-    url = "https://registry.npmjs.org/${platformPkg.name}/-/${
-      builtins.replaceStrings [ "@oxlint/" ] [ "" ] platformPkg.name
-    }-${version}.tgz";
-    hash = platformPkg.hash;
-  };
+  mainPackage = archiveFor "oxlint@${version}";
+  binaryPackage = archiveFor "${platformPkg.name}@${version}";
 
   importProduct = import ./workspace-tools/lib/javascript-product-import.nix { inherit pkgs; };
   importPlugin =

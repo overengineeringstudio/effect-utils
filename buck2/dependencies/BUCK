@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:08864e683760c4edb78d2d7dc6c023cf85709ad98a982deb4d17e511f23155b7
+# Store fingerprint: sha256:f058c58b0948d31b822a734ad2f8c5d0fb547292e398e7d3334aa3aecb4be981
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -37,6 +37,7 @@ pnpm_platform_gated_packages(
         "@oxc-parser/binding": ["@oxc-parser/binding-android-arm-eabi", "@oxc-parser/binding-android-arm64", "@oxc-parser/binding-darwin-arm64", "@oxc-parser/binding-darwin-x64", "@oxc-parser/binding-freebsd-x64", "@oxc-parser/binding-linux-arm-gnueabihf", "@oxc-parser/binding-linux-arm-musleabihf", "@oxc-parser/binding-linux-arm64-gnu", "@oxc-parser/binding-linux-arm64-musl", "@oxc-parser/binding-linux-ppc64-gnu", "@oxc-parser/binding-linux-riscv64-gnu", "@oxc-parser/binding-linux-riscv64-musl", "@oxc-parser/binding-linux-s390x-gnu", "@oxc-parser/binding-linux-x64-gnu", "@oxc-parser/binding-linux-x64-musl", "@oxc-parser/binding-openharmony-arm64", "@oxc-parser/binding-wasm32-wasi", "@oxc-parser/binding-win32-arm64-msvc", "@oxc-parser/binding-win32-ia32-msvc", "@oxc-parser/binding-win32-x64-msvc"],
         "@oxc-resolver/binding": ["@oxc-resolver/binding-android-arm-eabi", "@oxc-resolver/binding-android-arm64", "@oxc-resolver/binding-darwin-arm64", "@oxc-resolver/binding-darwin-x64", "@oxc-resolver/binding-freebsd-x64", "@oxc-resolver/binding-linux-arm-gnueabihf", "@oxc-resolver/binding-linux-arm-musleabihf", "@oxc-resolver/binding-linux-arm64-gnu", "@oxc-resolver/binding-linux-arm64-musl", "@oxc-resolver/binding-linux-ppc64-gnu", "@oxc-resolver/binding-linux-riscv64-gnu", "@oxc-resolver/binding-linux-riscv64-musl", "@oxc-resolver/binding-linux-s390x-gnu", "@oxc-resolver/binding-linux-x64-gnu", "@oxc-resolver/binding-linux-x64-musl", "@oxc-resolver/binding-openharmony-arm64", "@oxc-resolver/binding-wasm32-wasi", "@oxc-resolver/binding-win32-arm64-msvc", "@oxc-resolver/binding-win32-x64-msvc"],
         "@oxlint-tsgolint": ["@oxlint-tsgolint/darwin-arm64", "@oxlint-tsgolint/darwin-x64", "@oxlint-tsgolint/linux-arm64", "@oxlint-tsgolint/linux-x64", "@oxlint-tsgolint/win32-arm64", "@oxlint-tsgolint/win32-x64"],
+        "@oxlint/binding": ["@oxlint/binding-android-arm-eabi", "@oxlint/binding-android-arm64", "@oxlint/binding-darwin-arm64", "@oxlint/binding-darwin-x64", "@oxlint/binding-freebsd-x64", "@oxlint/binding-linux-arm-gnueabihf", "@oxlint/binding-linux-arm-musleabihf", "@oxlint/binding-linux-arm64-gnu", "@oxlint/binding-linux-arm64-musl", "@oxlint/binding-linux-ppc64-gnu", "@oxlint/binding-linux-riscv64-gnu", "@oxlint/binding-linux-riscv64-musl", "@oxlint/binding-linux-s390x-gnu", "@oxlint/binding-linux-x64-gnu", "@oxlint/binding-linux-x64-musl", "@oxlint/binding-openharmony-arm64", "@oxlint/binding-win32-arm64-msvc", "@oxlint/binding-win32-ia32-msvc", "@oxlint/binding-win32-x64-msvc"],
         "@rolldown/binding": ["@rolldown/binding-android-arm-eabi", "@rolldown/binding-android-arm64", "@rolldown/binding-darwin-arm64", "@rolldown/binding-darwin-x64", "@rolldown/binding-freebsd-x64", "@rolldown/binding-linux-arm-gnueabihf", "@rolldown/binding-linux-arm64-gnu", "@rolldown/binding-linux-arm64-musl", "@rolldown/binding-linux-ppc64-gnu", "@rolldown/binding-linux-s390x-gnu", "@rolldown/binding-linux-x64-gnu", "@rolldown/binding-linux-x64-musl", "@rolldown/binding-openharmony-arm64", "@rolldown/binding-win32-arm64-msvc", "@rolldown/binding-win32-x64-msvc"],
         "@typescript/typescript": ["@typescript/typescript-aix-ppc64", "@typescript/typescript-darwin-arm64", "@typescript/typescript-darwin-x64", "@typescript/typescript-freebsd-arm64", "@typescript/typescript-freebsd-x64", "@typescript/typescript-linux-arm", "@typescript/typescript-linux-arm64", "@typescript/typescript-linux-loong64", "@typescript/typescript-linux-mips64el", "@typescript/typescript-linux-ppc64", "@typescript/typescript-linux-riscv64", "@typescript/typescript-linux-s390x", "@typescript/typescript-linux-x64", "@typescript/typescript-netbsd-arm64", "@typescript/typescript-netbsd-x64", "@typescript/typescript-openbsd-arm64", "@typescript/typescript-openbsd-x64", "@typescript/typescript-sunos-x64", "@typescript/typescript-win32-arm64", "@typescript/typescript-win32-x64"],
         "fsevents": ["fsevents"],
@@ -1744,6 +1745,196 @@ pnpm_package(
     url = "https://registry.npmjs.org/@oxlint-tsgolint/win32-x64/-/win32-x64-7.0.2001.tgz",
     sha256 = "a678257b5233ccc1cc50911f1d25d559e8a045d665639ab5b4a8d61596439351",
     size_bytes = 7866761,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_android_arm_eabi_1_82_0_17b3c960b549",
+    package_name = "@oxlint/binding-android-arm-eabi",
+    url = "https://registry.npmjs.org/@oxlint/binding-android-arm-eabi/-/binding-android-arm-eabi-1.82.0.tgz",
+    sha256 = "6586036ce616355861a06019512f4a6a7b259dc68b1e73cf60d12d45da940b8d",
+    size_bytes = 5161475,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_android_arm64_1_82_0_b0db0015d127",
+    package_name = "@oxlint/binding-android-arm64",
+    url = "https://registry.npmjs.org/@oxlint/binding-android-arm64/-/binding-android-arm64-1.82.0.tgz",
+    sha256 = "b56a69de85c9792a597064e34b552df3758005bf87eb6b3b8add189d63f697c8",
+    size_bytes = 6119494,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
+    package_name = "@oxlint/binding-darwin-arm64",
+    url = "https://registry.npmjs.org/@oxlint/binding-darwin-arm64/-/binding-darwin-arm64-1.82.0.tgz",
+    sha256 = "7a6d90d6bd672374c501352e82a1a5087799e5d7bb089f5b517b246edb2e992a",
+    size_bytes = 5627286,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_darwin_x64_1_82_0_e54212cebc57",
+    package_name = "@oxlint/binding-darwin-x64",
+    url = "https://registry.npmjs.org/@oxlint/binding-darwin-x64/-/binding-darwin-x64-1.82.0.tgz",
+    sha256 = "c2403682fecdf403fd5acabe94dfcb7ae8c6a2ef57235b26b7495c7e733551be",
+    size_bytes = 6054524,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_freebsd_x64_1_82_0_2d8d7ed77b30",
+    package_name = "@oxlint/binding-freebsd-x64",
+    url = "https://registry.npmjs.org/@oxlint/binding-freebsd-x64/-/binding-freebsd-x64-1.82.0.tgz",
+    sha256 = "91cdbaaf4c94db862cd8cf17e4782b8dd3a72ff9b74adbcb89429b1c4d7acd3a",
+    size_bytes = 6246143,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_arm_gnueabihf_1_82_0_6c5f6b351cbf",
+    package_name = "@oxlint/binding-linux-arm-gnueabihf",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.82.0.tgz",
+    sha256 = "7c4cc08564979b640c765f0672143d42ef7603405ae0a6305475f3c1b478a281",
+    size_bytes = 5808073,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_arm_musleabihf_1_82_0_825ab3dcd7a5",
+    package_name = "@oxlint/binding-linux-arm-musleabihf",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm-musleabihf/-/binding-linux-arm-musleabihf-1.82.0.tgz",
+    sha256 = "e505e9cf924dc6e05ee53b6cc8befcc982eca7b8806c06373ffef2bb064767ef",
+    size_bytes = 5833271,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
+    package_name = "@oxlint/binding-linux-arm64-gnu",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.82.0.tgz",
+    sha256 = "18bde00e319178e83897b5778f47eecbc126719dc2a0cda4e6375592b6347e95",
+    size_bytes = 6140433,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_arm64_musl_1_82_0_c7dda0149c3e",
+    package_name = "@oxlint/binding-linux-arm64-musl",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.82.0.tgz",
+    sha256 = "6250a008a001b416bd606ca6e93c4dbe55b76119d0c6ba55902bce02f1ac2092",
+    size_bytes = 6127685,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_ppc64_gnu_1_82_0_4c415a180705",
+    package_name = "@oxlint/binding-linux-ppc64-gnu",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.82.0.tgz",
+    sha256 = "2b46a6e65a47c0b9f8a4a83ccef358bf7839d01d26ce2303a8bb419be83eead3",
+    size_bytes = 7567586,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_riscv64_gnu_1_82_0_306b77562593",
+    package_name = "@oxlint/binding-linux-riscv64-gnu",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-gnu/-/binding-linux-riscv64-gnu-1.82.0.tgz",
+    sha256 = "01d98588a6d23d6b0a480354e9dc6f59e0182a618d0faf0546c03cf96e8805b8",
+    size_bytes = 6450140,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_riscv64_musl_1_82_0_67887b144248",
+    package_name = "@oxlint/binding-linux-riscv64-musl",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-1.82.0.tgz",
+    sha256 = "2eedef4845b05d75633b428113a903be65a6b1a707d68aa8cfcd1d02ba47b5ec",
+    size_bytes = 6483190,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_s390x_gnu_1_82_0_114c6d8983b7",
+    package_name = "@oxlint/binding-linux-s390x-gnu",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.82.0.tgz",
+    sha256 = "e03d630e26ffd6c49359f012aff727932dc0d3193eaed11d738291be5b9547dc",
+    size_bytes = 6738507,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
+    package_name = "@oxlint/binding-linux-x64-gnu",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.82.0.tgz",
+    sha256 = "afd20bcd6e648f340473ddd4dd0e45a3628156da2ed1ee8beea2de42251012f3",
+    size_bytes = 6514610,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_linux_x64_musl_1_82_0_3b99abaa2cd5",
+    package_name = "@oxlint/binding-linux-x64-musl",
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-x64-musl/-/binding-linux-x64-musl-1.82.0.tgz",
+    sha256 = "31dd0cd1b377cc86549d292c90065b3ec186555e62d6bad14056b26b329881c8",
+    size_bytes = 6461971,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_openharmony_arm64_1_82_0_2d927a84f037",
+    package_name = "@oxlint/binding-openharmony-arm64",
+    url = "https://registry.npmjs.org/@oxlint/binding-openharmony-arm64/-/binding-openharmony-arm64-1.82.0.tgz",
+    sha256 = "4ed09db223ea2920b13a4b2b6acfc88362e7855447b9499b1584fda283ae842d",
+    size_bytes = 6132085,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_win32_arm64_msvc_1_82_0_f407c8ca29f4",
+    package_name = "@oxlint/binding-win32-arm64-msvc",
+    url = "https://registry.npmjs.org/@oxlint/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.82.0.tgz",
+    sha256 = "b8689f6cc9f8ef9335f9d87637ab6e3d63402c9032f0a2adb6780d05be83b063",
+    size_bytes = 5712485,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_win32_ia32_msvc_1_82_0_427524bf3b4f",
+    package_name = "@oxlint/binding-win32-ia32-msvc",
+    url = "https://registry.npmjs.org/@oxlint/binding-win32-ia32-msvc/-/binding-win32-ia32-msvc-1.82.0.tgz",
+    sha256 = "218d22ecc40101d1abfe7af64be7700c34b803570fae37a97d9d5989f878c288",
+    size_bytes = 5701728,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxlint_binding_win32_x64_msvc_1_82_0_d1eb57188aed",
+    package_name = "@oxlint/binding-win32-x64-msvc",
+    url = "https://registry.npmjs.org/@oxlint/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.82.0.tgz",
+    sha256 = "3f5bd44c36cb74795ac290e82662fcdf176bb70923bb0813b111d227a7228e3b",
+    size_bytes = 5977465,
     bins = {
     },
 )
@@ -5506,6 +5697,17 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxlint_1_82_0_b1d52a4a3427",
+    package_name = "oxlint",
+    url = "https://registry.npmjs.org/oxlint/-/oxlint-1.82.0.tgz",
+    sha256 = "2066484420002a6cd162a41b5d109307cbe7ce91bbfb049757846d4a7bde2c0d",
+    size_bytes = 378203,
+    bins = {
+        "oxlint": "bin/oxlint",
+    },
+)
+
+pnpm_package(
     name = "package_p_limit_3_1_0_c16cf2138c21",
     package_name = "p-limit",
     url = "https://registry.npmjs.org/p-limit/-/p-limit-3.1.0.tgz",
@@ -8935,6 +9137,196 @@ pnpm_store_entry(
     name = "entry_oxlint_tsgolint_win32_x64_7_0_2001_448011f72ac4",
     package = ":package_oxlint_tsgolint_win32_x64_7_0_2001_448011f72ac4",
     store_key = "@oxlint-tsgolint+win32-x64@7.0.2001",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_android_arm_eabi_1_82_0_17b3c960b549",
+    package = ":package_oxlint_binding_android_arm_eabi_1_82_0_17b3c960b549",
+    store_key = "@oxlint+binding-android-arm-eabi@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_android_arm64_1_82_0_b0db0015d127",
+    package = ":package_oxlint_binding_android_arm64_1_82_0_b0db0015d127",
+    store_key = "@oxlint+binding-android-arm64@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
+    package = ":package_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
+    store_key = "@oxlint+binding-darwin-arm64@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_darwin_x64_1_82_0_e54212cebc57",
+    package = ":package_oxlint_binding_darwin_x64_1_82_0_e54212cebc57",
+    store_key = "@oxlint+binding-darwin-x64@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_freebsd_x64_1_82_0_2d8d7ed77b30",
+    package = ":package_oxlint_binding_freebsd_x64_1_82_0_2d8d7ed77b30",
+    store_key = "@oxlint+binding-freebsd-x64@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_arm_gnueabihf_1_82_0_6c5f6b351cbf",
+    package = ":package_oxlint_binding_linux_arm_gnueabihf_1_82_0_6c5f6b351cbf",
+    store_key = "@oxlint+binding-linux-arm-gnueabihf@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_arm_musleabihf_1_82_0_825ab3dcd7a5",
+    package = ":package_oxlint_binding_linux_arm_musleabihf_1_82_0_825ab3dcd7a5",
+    store_key = "@oxlint+binding-linux-arm-musleabihf@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
+    package = ":package_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
+    store_key = "@oxlint+binding-linux-arm64-gnu@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_arm64_musl_1_82_0_c7dda0149c3e",
+    package = ":package_oxlint_binding_linux_arm64_musl_1_82_0_c7dda0149c3e",
+    store_key = "@oxlint+binding-linux-arm64-musl@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_ppc64_gnu_1_82_0_4c415a180705",
+    package = ":package_oxlint_binding_linux_ppc64_gnu_1_82_0_4c415a180705",
+    store_key = "@oxlint+binding-linux-ppc64-gnu@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_riscv64_gnu_1_82_0_306b77562593",
+    package = ":package_oxlint_binding_linux_riscv64_gnu_1_82_0_306b77562593",
+    store_key = "@oxlint+binding-linux-riscv64-gnu@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_riscv64_musl_1_82_0_67887b144248",
+    package = ":package_oxlint_binding_linux_riscv64_musl_1_82_0_67887b144248",
+    store_key = "@oxlint+binding-linux-riscv64-musl@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_s390x_gnu_1_82_0_114c6d8983b7",
+    package = ":package_oxlint_binding_linux_s390x_gnu_1_82_0_114c6d8983b7",
+    store_key = "@oxlint+binding-linux-s390x-gnu@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
+    package = ":package_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
+    store_key = "@oxlint+binding-linux-x64-gnu@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_linux_x64_musl_1_82_0_3b99abaa2cd5",
+    package = ":package_oxlint_binding_linux_x64_musl_1_82_0_3b99abaa2cd5",
+    store_key = "@oxlint+binding-linux-x64-musl@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_openharmony_arm64_1_82_0_2d927a84f037",
+    package = ":package_oxlint_binding_openharmony_arm64_1_82_0_2d927a84f037",
+    store_key = "@oxlint+binding-openharmony-arm64@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_win32_arm64_msvc_1_82_0_f407c8ca29f4",
+    package = ":package_oxlint_binding_win32_arm64_msvc_1_82_0_f407c8ca29f4",
+    store_key = "@oxlint+binding-win32-arm64-msvc@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_win32_ia32_msvc_1_82_0_427524bf3b4f",
+    package = ":package_oxlint_binding_win32_ia32_msvc_1_82_0_427524bf3b4f",
+    store_key = "@oxlint+binding-win32-ia32-msvc@1.82.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_binding_win32_x64_msvc_1_82_0_d1eb57188aed",
+    package = ":package_oxlint_binding_win32_x64_msvc_1_82_0_d1eb57188aed",
+    store_key = "@oxlint+binding-win32-x64-msvc@1.82.0",
     runtime = ":assemble-store.ts",
     dependencies = {
     },
@@ -13292,6 +13684,31 @@ pnpm_store_entry(
         },
         "macos_aarch64": {
             "@oxlint-tsgolint/darwin-arm64": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
+        },
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+    package = ":package_oxlint_1_82_0_b1d52a4a3427",
+    store_key = "oxlint@1.82.0_oxlint-tsgolint@7.0.2001",
+    runtime = ":assemble-store.ts",
+    dependencies_by_platform = {
+        "javascript_portable": {
+            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+        },
+        "linux_aarch64": {
+            "@oxlint/binding-linux-arm64-gnu": ":entry_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
+            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+        },
+        "linux_x86_64": {
+            "@oxlint/binding-linux-x64-gnu": ":entry_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
+            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+        },
+        "macos_aarch64": {
+            "@oxlint/binding-darwin-arm64": ":entry_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
+            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
         },
     },
     visibility = ["PUBLIC"],
@@ -32383,6 +32800,7 @@ pnpm_store_view(
         "@typescript-eslint/rule-tester": "@typescript-eslint+rule-tester@8.69.0_eslint@10.10.0_jiti@2.7.0_typescript@5.9.3",
         "@typescript-eslint/utils": "@typescript-eslint+utils@8.69.0_eslint@10.10.0_jiti@2.7.0_typescript@5.9.3",
         "eslint": "eslint@10.10.0_jiti@2.7.0",
+        "oxlint": "oxlint@1.82.0_oxlint-tsgolint@7.0.2001",
         "oxlint-tsgolint": "oxlint-tsgolint@7.0.2001",
         "typescript": "typescript@5.9.3",
         "vitest": "vitest@4.1.9_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@4.1.9_happy-dom@20._f830263be88a0e28",
@@ -32509,6 +32927,7 @@ pnpm_store_view(
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
             "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -32577,6 +32996,7 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.148.0": ":entry_oxc_project_types_0_148_0_25bb4dfc3213",
+            "@oxlint+binding-linux-arm64-gnu@1.82.0": ":entry_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
             "@oxlint-tsgolint+linux-arm64@7.0.2001": ":entry_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-linux-arm64-gnu@1.2.7": ":entry_rolldown_binding_linux_arm64_gnu_1_2_7_b564cdf057d1",
@@ -32679,6 +33099,7 @@ pnpm_store_view(
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
             "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -32747,6 +33168,7 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.148.0": ":entry_oxc_project_types_0_148_0_25bb4dfc3213",
+            "@oxlint+binding-linux-x64-gnu@1.82.0": ":entry_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
             "@oxlint-tsgolint+linux-x64@7.0.2001": ":entry_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-linux-x64-gnu@1.2.7": ":entry_rolldown_binding_linux_x64_gnu_1_2_7_2b8bc0885731",
@@ -32849,6 +33271,7 @@ pnpm_store_view(
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
             "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -32917,6 +33340,7 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.148.0": ":entry_oxc_project_types_0_148_0_25bb4dfc3213",
+            "@oxlint+binding-darwin-arm64@1.82.0": ":entry_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
             "@oxlint-tsgolint+darwin-arm64@7.0.2001": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-darwin-arm64@1.2.7": ":entry_rolldown_binding_darwin_arm64_1_2_7_c213ca2a9ab4",
@@ -33020,6 +33444,7 @@ pnpm_store_view(
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
             "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -33068,6 +33493,7 @@ pnpm_store_view(
     },
     bins = {
         "eslint": "eslint@10.10.0_jiti@2.7.0\tbin/eslint.js",
+        "oxlint": "oxlint@1.82.0_oxlint-tsgolint@7.0.2001\tbin/oxlint",
         "tsc": "typescript@5.9.3\tbin/tsc",
         "tsgolint": "oxlint-tsgolint@7.0.2001\tbin/tsgolint.js",
         "tsserver": "typescript@5.9.3\tbin/tsserver",

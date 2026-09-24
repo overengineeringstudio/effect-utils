@@ -150,15 +150,13 @@
           inherit pkgs capabilityPackages;
           src = rootPath;
         };
-        # Buck is the sole producer for admitted repository products. The
-        # unadmitted gh-ci-utils CLI keeps its source-built Nix package until a
-        # later authority transfer explicitly admits it.
+        # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products {
           inherit pkgs;
           fromSourceProducts = buckProductsFromSource;
         };
         oxlintNpm = import ./nix/oxlint-npm.nix {
-          inherit pkgs;
+          inherit pkgs pnpmArchives;
           bun = pkgs.bun;
           products = trackedBuck2Products.products;
         };
@@ -184,20 +182,6 @@
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           capabilityProjection = buck2Capabilities;
         };
-        ghCiUtils = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
-          inherit
-            pkgs
-            gitRev
-            commitTs
-            dirty
-            ;
-          src = self;
-        };
-        ghCiUtilsDirty = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
-          inherit pkgs gitRev commitTs;
-          src = self;
-          dirty = true;
-        };
         cliPackages = buck2ProductCandidates // {
           genie = buck2ProductCandidates.genie.overrideAttrs (old: {
             passthru = (old.passthru or { }) // {
@@ -219,9 +203,6 @@
             buck2-capabilities = buck2Capabilities;
             buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
-            gh-ci-utils = ghCiUtils;
-            gh-ci-utils-dirty = ghCiUtilsDirty;
-            "gh-ci-utils-pnpm-deps" = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
             "megarepo-source-deps-support" = megarepoSourceDepsSupport;
             "megarepo-source-product-pnpm-deps" =
               megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
@@ -243,14 +224,11 @@
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
           ci-tools = cliPackages.ci-tools.outPath;
-          gh-ci-utils = ghCiUtils.outPath;
+          gh-ci-utils = cliPackages.gh-ci-utils.outPath;
           megarepo = cliPackages.megarepo.outPath;
           tui-stories = cliPackages.tui-stories.outPath;
           notion-cli = cliPackages.notion-cli.outPath;
           notion-md = cliPackages.notion-md.outPath;
-        };
-        cliOutPathsDirty = {
-          gh-ci-utils = ghCiUtilsDirty.outPath;
         };
 
         apps = {

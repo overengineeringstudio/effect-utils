@@ -47,6 +47,18 @@ export const javaScriptProductRegistry = {
       targetName: 'genie-bootstrap-closure-check-candidate',
     },
   ],
+  'packages/@overeng/gh-ci-utils': [
+    {
+      entrypoint: 'bin/gh-ci-utils.ts',
+      externalCapabilities: ['gh', 'git', 'node'],
+      kind: 'cli',
+      output: 'gh-ci-utils.js',
+      productName: 'gh-ci-utils',
+      runtime: 'bun',
+      smokeArgs: ['--version'],
+      targetName: 'gh-ci-utils-candidate',
+    },
+  ],
   'packages/@overeng/megarepo': [
     {
       entrypoint: 'bin/mr.ts',

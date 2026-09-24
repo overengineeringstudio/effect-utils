@@ -35,15 +35,35 @@ let
         toHashFormat = "sri";
       };
       artifactName = recipe.artifactName;
-      publishedStore = builtins.fetchClosure {
-        fromStore = "https://overeng-effect-utils.cachix.org";
-        fromPath = entry.storePath;
-        inputAddressed = true;
-      };
+      provenance = entry.provenance;
+      publishedStore =
+        if builtins ? fetchClosure then
+          builtins.fetchClosure {
+            fromStore = "https://overeng-effect-utils.cachix.org";
+            fromPath = entry.storePath;
+            inputAddressed = true;
+          }
+        else
+          null;
+      publishedArtifact =
+        if publishedStore != null then
+          "${publishedStore}/${artifactName}"
+        else
+          pkgs.fetchurl {
+            name = "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-${artifactName}";
+            url = entry.artifactUrl;
+            hash = expectedIntegrity;
+          };
+      publishedProvenance =
+        if publishedStore != null then
+          "${publishedStore}/provenance.json"
+        else
+          pkgs.writeText "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-provenance.json" (
+            builtins.toJSON provenance
+          );
       storeBaseName = builtins.baseNameOf entry.storePath;
       storeHash = builtins.head (lib.splitString "-" storeBaseName);
       expectedUrl = "${cacheBase}/${storeHash}/${artifactName}";
-      provenance = entry.provenance;
       checkedArtifact =
         pkgs.runCommand "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-validated"
           {
@@ -65,7 +85,7 @@ let
           }
           ''
             set -euo pipefail
-            artifact=${lib.escapeShellArg "${publishedStore}/${artifactName}"}
+            artifact=${lib.escapeShellArg publishedArtifact}
             test -f "$artifact"
             test "$(sha256sum "$artifact" | cut -d' ' -f1)" = ${lib.escapeShellArg entry.sha256}
             test "$(stat -c '%s' "$artifact")" = ${toString entry.size}
@@ -77,10 +97,10 @@ let
                .schema == "effect-utils/buck-product-provenance/v1" and
                .producerCommit == $producerCommit and .target == $target and
                .productDigest == $productDigest' \
-              ${publishedStore}/provenance.json >/dev/null
+              ${publishedProvenance} >/dev/null
             mkdir -p "$out"
             cp "$artifact" "$out/${artifactName}"
-            cp ${publishedStore}/provenance.json "$out/provenance.json"
+            cp ${publishedProvenance} "$out/provenance.json"
           '';
     in
     assert lib.assertMsg (

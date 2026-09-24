@@ -86,6 +86,13 @@ projects those archives through `nix_store.root`; Buck verifies each projected
 archive before extraction. The derivation emits the artifact plus
 `effect-utils/buck-product-provenance/v1`.
 
+Npm archive acquisition has one digest authority. Package manifests select
+versions, the pnpm lock records registry URLs and integrity, and the generated
+`buck2/dependencies/pnpm-lock.sha256.json` sidecar records the reviewed SHA-256
+and size of those exact bytes. Nix consumers select archives by package identity
+from that sidecar-backed projection. They do not carry hand-maintained URLs,
+versions, or hashes beside the lock-derived data.
+
 The cache publisher builds the derivation before it performs any cache mutation.
 It validates the provenance commit, target, and artifact digest; rejects a pin
 name that already identifies another store path; pushes the store path; and
