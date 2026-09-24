@@ -31,17 +31,14 @@
 let
   lib = pkgs.lib;
 
-  package = builtins.fromJSON (
-    builtins.readFile (../packages + "/@overeng/oxc-config/package.json")
-  );
-  version = package.devDependencies.oxlint or (
-    throw "oxlint-npm: packages/@overeng/oxc-config/package.json does not declare oxlint"
-  );
+  package = builtins.fromJSON (builtins.readFile (../packages + "/@overeng/oxc-config/package.json"));
+  version =
+    package.devDependencies.oxlint
+      or (throw "oxlint-npm: packages/@overeng/oxc-config/package.json does not declare oxlint");
   archiveFor =
     packageIdentity:
-    pnpmArchives.archivesByIdentity.${packageIdentity} or (
-      throw "oxlint-npm: missing reviewed pnpm archive ${packageIdentity}"
-    );
+    pnpmArchives.archivesByIdentity.${packageIdentity}
+      or (throw "oxlint-npm: missing reviewed pnpm archive ${packageIdentity}");
 
   # Platform-specific package mapping (NAPI binding packages, `@oxlint/binding-*`)
   platformPackages = {

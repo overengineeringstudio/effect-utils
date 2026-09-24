@@ -67,15 +67,16 @@ echo ""
 # ---------------------------------------------------------------------------
 # 0. the two oxlint pins move together, and the binary under test is that pin
 # ---------------------------------------------------------------------------
-# `nix/oxlint-npm.nix` says "keep in lockstep with the `oxlint` pin in
-# genie/external.ts", and nothing enforced it: this cohort found the npm build
-# on 1.39.0 while the workspace pin had already moved to 1.70.0, so the config
-# schema and JS-plugin rule API in use were two majors from the declared pin.
-# A comment is not a gate; this is.
-OXLINT_NPM_NIX="$ROOT/nix/oxlint-npm.nix"
+# `nix/oxlint-npm.nix` builds the oxlint version declared by
+# `packages/@overeng/oxc-config/package.json` (its archives come from the
+# lock-derived digest sidecar). That declaration must match the `oxlint` pin in
+# genie/external.ts: an earlier cohort found the npm build on 1.39.0 while the
+# workspace pin had already moved to 1.70.0, so the config schema and JS-plugin
+# rule API in use were two majors from the declared pin.
+OXLINT_NIX_SOURCE="$ROOT/packages/@overeng/oxc-config/package.json"
 CATALOG_TS="$ROOT/genie/external.ts"
 
-oxlint_npm_pin() { sed -n 's/^  version = "\(.*\)";$/\1/p' "$1" | head -1; }
+oxlint_npm_pin() { jq -r '.devDependencies.oxlint // empty' "$1"; }
 oxlint_catalog_pin() { sed -n "s/^  oxlint: '\(.*\)',$/\1/p" "$1" | head -1; }
 
 # Pure: reads two files, prints nothing when the pins agree and a diagnostic
@@ -87,7 +88,7 @@ oxlint_pin_disagreement() {
   catalog_version="$(oxlint_catalog_pin "$2")"
 
   if [ -z "$nix_version" ]; then
-    echo "could not read the \`version\` pin from $1"
+    echo "could not read the \`devDependencies.oxlint\` pin from $1"
     return
   fi
   if [ -z "$catalog_version" ]; then
@@ -95,26 +96,26 @@ oxlint_pin_disagreement() {
     return
   fi
   if [ "$nix_version" != "$catalog_version" ]; then
-    echo "oxlint pins disagree: nix/oxlint-npm.nix has $nix_version, genie/external.ts has $catalog_version"
+    echo "oxlint pins disagree: oxc-config (built by nix/oxlint-npm.nix) has $nix_version, genie/external.ts has $catalog_version"
   fi
 }
 
-disagreement="$(oxlint_pin_disagreement "$OXLINT_NPM_NIX" "$CATALOG_TS")"
+disagreement="$(oxlint_pin_disagreement "$OXLINT_NIX_SOURCE" "$CATALOG_TS")"
 [ -z "$disagreement" ] || fail "oxlint pins are in lockstep" "$disagreement"
 echo "  ok: oxlint pins are in lockstep"
 
 # Negative control: the check is only worth its runtime if a real split trips
-# it, so mutate a copy of the Nix pin and require a diagnostic.
+# it, so mutate a copy of the Nix version source and require a diagnostic.
 drift_probe="$(mktemp)"
-sed 's/^  version = ".*";$/  version = "1.39.0";/' "$OXLINT_NPM_NIX" > "$drift_probe"
-grep -q '^  version = "1.39.0";$' "$drift_probe" ||
+jq '.devDependencies.oxlint = "1.39.0"' "$OXLINT_NIX_SOURCE" > "$drift_probe"
+[ "$(oxlint_npm_pin "$drift_probe")" = "1.39.0" ] ||
   fail "drift fixture" "the mutated copy did not take: $drift_probe"
 drift_out="$(oxlint_pin_disagreement "$drift_probe" "$CATALOG_TS")"
 rm -f "$drift_probe"
 assert_contains "oxlint pins disagree" "$drift_out" \
   "a split between the npm build and the workspace pin is reported"
 
-pinned_version="$(oxlint_npm_pin "$OXLINT_NPM_NIX")"
+pinned_version="$(oxlint_npm_pin "$OXLINT_NIX_SOURCE")"
 
 # The npm/NAPI build is the linter this repo actually runs (only it executes the
 # @overeng/oxc-config JS plugin). Inside the devenv shell the wrapper is already
