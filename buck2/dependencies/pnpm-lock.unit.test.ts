@@ -196,6 +196,33 @@ describe('translatePnpmLock', () => {
     await expect(
       generatePnpmSha256Sidecar({ metadata, fetchArchive: async () => otherArchive }),
     ).rejects.toThrow('integrity')
+    const blockedRequests: string[] = []
+    await expect(
+      generatePnpmSha256Sidecar({
+        metadata,
+        fetchResponse: async (request, init) => {
+          blockedRequests.push(String(request))
+          expect(init?.redirect).toBe('manual')
+          return Response.redirect('https://attacker.example/archive.tgz', 302)
+        },
+      }),
+    ).rejects.toThrow('approved public HTTPS archive origin')
+    expect(blockedRequests).toEqual([url])
+
+    const approvedRedirect = 'https://registry.npmjs.org/@overeng/utils/-/utils-0.1.0.tgz'
+    const approvedRequests: string[] = []
+    const redirected = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchResponse: async (request, init) => {
+        approvedRequests.push(String(request))
+        expect(init?.redirect).toBe('manual')
+        return approvedRequests.length === 1
+          ? Response.redirect(approvedRedirect, 302)
+          : new Response(archive, { status: 200 })
+      },
+    })
+    expect(approvedRequests).toEqual([url, approvedRedirect])
+    expect(redirected.packages[key]!.sha256).toBe(sidecar.packages[key]!.sha256)
   })
 
   it('still rejects unknown tarball fields and missing tarball integrity', () => {

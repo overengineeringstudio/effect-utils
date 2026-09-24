@@ -1085,16 +1085,32 @@ export type ArchiveFetcher = (url: string) => Promise<Uint8Array>
 export const generatePnpmSha256Sidecar = async ({
   metadata,
   previous,
+  fetchResponse = fetch,
   fetchArchive = async (url) => {
-    const response = await fetch(url)
-    if (response.ok === false)
-      return fail(`archive download failed (${response.status}) for ${url}`)
-    return new Uint8Array(await response.arrayBuffer())
+    let current = url
+    for (let redirects = 0; redirects <= 3; redirects += 1) {
+      publicArchiveUrl({ url: current, location: 'archive download URL' })
+      const response = await fetchResponse(current, { redirect: 'manual' })
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get('location')
+        if (location === null) return fail(`archive redirect from ${current} has no Location`)
+        current = publicArchiveUrl({
+          url: new URL(location, current).href,
+          location: 'archive redirect URL',
+        })
+        continue
+      }
+      if (response.ok === false)
+        return fail(`archive download failed (${response.status}) for ${current}`)
+      return new Uint8Array(await response.arrayBuffer())
+    }
+    return fail(`archive download exceeded 3 redirects for ${url}`)
   },
   concurrency = 16,
 }: {
   metadata: PnpmLockMetadata
   previous?: PnpmSha256Sidecar
+  fetchResponse?: typeof fetch
   fetchArchive?: ArchiveFetcher
   concurrency?: number
 }): Promise<PnpmSha256Sidecar> => {
