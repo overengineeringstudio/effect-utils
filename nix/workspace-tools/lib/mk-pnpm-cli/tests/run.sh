@@ -221,15 +221,17 @@ run_downstream_regression() {
 }
 
 run_downstream_mk_oxlint_npm_regression() {
-  echo "Check: downstream mkOxlintNpm (standalone effect-utils path)"
-  nix build --no-link --no-write-lock-file \
+  echo "Eval: downstream mkOxlintNpm (standalone effect-utils path)"
+  nix eval --raw --no-write-lock-file \
+    --apply 'drv: drv.drvPath' \
     --override-input effect-utils "path:$WORKSPACE_REAL/effect-utils" \
-    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.mk-oxlint-npm-from-lib"
+    "path:$DOWNSTREAM_DIR#packages.$SYSTEM.oxlint-npm-from-lib"
 
-  echo "Check: downstream mkOxlintNpm (composed repos/effect-utils path)"
-  nix build --no-link --no-write-lock-file \
+  echo "Eval: downstream mkOxlintNpm (composed repos/effect-utils path)"
+  nix eval --raw --no-write-lock-file \
+    --apply 'drv: drv.drvPath' \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
-    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.mk-oxlint-npm-from-lib"
+    "path:$DOWNSTREAM_DIR#packages.$SYSTEM.oxlint-npm-from-lib"
 }
 
 
