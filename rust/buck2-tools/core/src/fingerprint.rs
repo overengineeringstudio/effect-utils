@@ -43,7 +43,7 @@ fn relative(root: &Path, path: &Path) -> Vec<u8> {
     let shared = root.iter().zip(&path).take_while(|(a, b)| a == b).count();
     let mut parts = vec![b"..".to_vec(); root.len() - shared];
     parts.extend(path[shared..].iter().map(|part| part.as_os_str().as_bytes().to_vec()));
-    parts.join(&[b'/'][..])
+    parts.join(&b"/"[..])
 }
 
 fn inside(root: &Path, path: &Path) -> bool {

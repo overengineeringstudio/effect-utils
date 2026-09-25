@@ -25,7 +25,7 @@ fn canonical_tree_modes_and_owner_root_links() {
     assert_eq!(plain.literal_links_digest, repeat.literal_links_digest);
     assert_eq!(plain.resolved_links_digest, repeat.resolved_links_digest);
     assert_ne!(plain.digest, plain.resolved_links_digest.unwrap());
-    let dereferenced = fingerprint(&source, true, &[backing.clone()], &[]).unwrap();
+    let dereferenced = fingerprint(&source, true, std::slice::from_ref(&backing), &[]).unwrap();
     assert_ne!(plain.digest, dereferenced.digest);
     assert!(fingerprint(&source, true, &[], &[]).is_err());
     let relocated = scratch.path().join("relocated");
