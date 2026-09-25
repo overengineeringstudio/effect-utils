@@ -13,6 +13,7 @@ import {
   Label,
   ListLayout,
   ListBox,
+  Link,
   ListBoxSection,
   ListBoxItem,
   Modal,
@@ -38,7 +39,7 @@ import {
   type ExplorerProjection,
   type ExplorerProjectionStore,
 } from './projection.ts'
-import { RpcRecordDetail } from './RpcRecordDetail.tsx'
+import { RpcRecordDetail, type TraceHref } from './RpcRecordDetail.tsx'
 import { explorerTokens } from './tokens.stylex.ts'
 import {
   activeStates,
@@ -438,6 +439,14 @@ const styles = stylex.create({
     color: explorerTokens['muted-text'],
     whiteSpace: 'nowrap',
   },
+  traceLink: {
+    color: explorerTokens.info,
+    textDecoration: 'underline',
+    outline: {
+      default: 'none',
+      '[data-focus-visible]': `2px solid ${explorerTokens['focus-ring']}`,
+    },
+  },
   mono: { fontFamily: explorerTokens['font-data'], fontVariantNumeric: 'tabular-nums' },
   status: {
     display: 'inline-flex',
@@ -578,6 +587,7 @@ interface RpcExplorerProps {
   readonly client: ExplorerClient
   readonly initialFilters?: ExplorerInitialFilters
   readonly presentation?: RpcExplorerPresentation
+  readonly traceHref?: TraceHref
 }
 
 const SelectFilter = ({
@@ -660,18 +670,21 @@ const RecordRow = ({
   nowMillis,
   compact,
   columnLayout,
+  traceHref,
 }: {
   record: RpcRecord
   descriptor: RpcDescriptorWire | undefined
   nowMillis: number
   compact: boolean
   columnLayout: stylex.StyleXStyles | undefined
+  traceHref?: TraceHref
 }): React.ReactNode => {
   const durationEnd =
     activeStates.has(record.state) === true ? nowMillis : record.lastAt.wallClockMillis
   const retainedMarker = record.retainedStreamValues < record.streamValues ? ' · truncated' : ''
   const direction =
     record.key.direction === 'clientToServer' ? 'Client → server' : 'Server → client'
+  const traceLink = record.trace === undefined ? undefined : traceHref?.(record.trace)
   return (
     <ListBoxItem
       id={recordIdentityKey(record.key)}
@@ -729,7 +742,23 @@ const RecordRow = ({
         title={`${record.chunkEnvelopes} envelopes / ${record.streamValues} values${retainedMarker === '' ? '' : '; retained values truncated'}; ${record.trace === undefined ? 'no trace' : 'trace linked'}${record.evidence.length === 0 ? '' : '; anomaly observed'}`}
       >
         {record.chunkEnvelopes}/{record.streamValues}
-        {record.trace === undefined ? '' : ' · trace'}
+        {record.trace === undefined ? (
+          ''
+        ) : traceLink === undefined ? (
+          ' · trace'
+        ) : (
+          <>
+            {' · '}
+            <Link
+              href={traceLink}
+              target="_blank"
+              rel="noreferrer"
+              {...stylex.props(styles.traceLink)}
+            >
+              trace
+            </Link>
+          </>
+        )}
         {retainedMarker === '' ? '' : ' · truncated'}
         {record.evidence.length === 0 ? '' : ' · anomaly'}
       </span>
@@ -783,6 +812,7 @@ const RpcExplorer = ({
   client,
   initialFilters,
   presentation,
+  traceHref,
 }: RpcExplorerProps): React.ReactNode => {
   const store = React.useMemo(() => createExplorerProjectionStore(client), [client])
   const projection = useProjection(store)
@@ -1440,6 +1470,7 @@ const RpcExplorer = ({
                         nowMillis={nowMillis}
                         compact={compactRows}
                         columnLayout={columnLayout}
+                        traceHref={traceHref}
                       />
                     )}
                   </Collection>
@@ -1506,6 +1537,7 @@ const RpcExplorer = ({
               descriptor={projection.descriptors.get(selected.descriptorId)}
               projection={projection}
               nowMillis={nowMillis}
+              traceHref={traceHref}
               onBack={returnToList}
               backVisibility={singlePane === true ? 'always' : 'never'}
             />

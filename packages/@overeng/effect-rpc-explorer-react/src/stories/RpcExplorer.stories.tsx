@@ -107,6 +107,36 @@ export const LifecycleWide: Story = {
   args: { presentation: { layout: 'wide', nowMillis: () => fixtureNow } },
 }
 
+/** The host supplies trace navigation; the explorer never constructs a tracing URL. */
+export const TraceNavigation: Story = {
+  args: {
+    client: safetyClient,
+    presentation: { layout: 'narrow', nowMillis: () => fixtureNow },
+    traceHref: ({ traceId, spanId }) =>
+      `https://traces.example.test/trace/${traceId}?span=${spanId ?? ''}`,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    const row = await canvas.findByRole('option', { name: /projects\.lookup.*trace linked/ })
+    const rowLink = within(row).getByRole('link', { name: 'trace' })
+    await expect(rowLink).toHaveAttribute(
+      'href',
+      'https://traces.example.test/trace/4bf92f3577b34da6a3ce929d0e0e4736?span=00f067aa0ba902b7',
+    )
+    await expect(rowLink).toHaveAttribute('target', '_blank')
+    await expect(rowLink).toHaveAttribute('rel', 'noreferrer')
+    await userEvent.click(row)
+    await userEvent.click(await canvas.findByRole('tab', { name: 'Trace' }))
+    const detailLink = await canvas.findByRole('link', {
+      name: '4bf92f3577b34da6a3ce929d0e0e4736',
+    })
+    await expect(detailLink).toHaveAttribute('href', rowLink.getAttribute('href'))
+    await expect(detailLink).toHaveAttribute('target', '_blank')
+    await expect(detailLink).toHaveAttribute('rel', 'noreferrer')
+  },
+}
+
 /** RPC-level documentation stays separate from channel-schema annotations. */
 export const RpcDocumentation: Story = {
   args: { presentation: { layout: 'narrow', nowMillis: () => fixtureNow } },
