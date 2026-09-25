@@ -4,6 +4,8 @@ import {
   type GitHubWorkflowArgs,
 } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { RUNNER_PROFILES, type RunnerProfile } from '../ci.ts'
+import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
+import { validateWorkflowCachePolicy } from './cache-policy.ts'
 
 export { RUNNER_PROFILES, type RunnerProfile }
 
@@ -179,6 +181,7 @@ export const ciWorkflowConcurrency = {
 
 export type CiWorkflowArgs = GitHubWorkflowArgs & {
   readonly trustTier: CiTrustTier
+  readonly binaryCaches?: readonly BinaryCacheDescriptor[]
 }
 
 const withStandardCIEnv = ({
@@ -209,24 +212,27 @@ const withStandardCIEnv = ({
  * `concurrency` field, and individual jobs can opt out or provide their own
  * `concurrency`.
  */
-export const ciWorkflow = ({ trustTier, ...args }: CiWorkflowArgs) =>
-  (({ concurrency, actionlint, jobs, on, ...rest }) =>
-    githubWorkflow({
-      ...rest,
-      on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
-      ...(concurrency === undefined ? {} : { concurrency }),
-      actionlint: actionlint ?? defaultActionlintConfig,
-      jobs: withStandardCIEnv({
-        trustTier,
-        jobs:
-          concurrency === undefined
-            ? withDefaultJobConcurrency({
-                jobs,
-                measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
-              })
-            : jobs,
-      }),
-    }))(args)
+export const ciWorkflow = ({ trustTier, binaryCaches, ...args }: CiWorkflowArgs) => {
+  const { concurrency, actionlint, jobs, on, ...rest } = args
+  const workflow = {
+    ...rest,
+    on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
+    ...(concurrency === undefined ? {} : { concurrency }),
+    actionlint: actionlint ?? defaultActionlintConfig,
+    jobs: withStandardCIEnv({
+      trustTier,
+      jobs:
+        concurrency === undefined
+          ? withDefaultJobConcurrency({
+              jobs,
+              measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
+            })
+          : jobs,
+    }),
+  }
+  validateWorkflowCachePolicy({ workflow, caches: binaryCaches })
+  return githubWorkflow(workflow)
+}
 
 export type NixConfigOptions = {
   unrestrictedEval?: boolean

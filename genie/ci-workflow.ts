@@ -110,6 +110,7 @@ export {
   isFleetCacheRunner,
   PrivateBinaryCacheRunnerError,
 } from './ci-workflow/binary-cache-composition.ts'
+export { CachePublisherJobError, validateWorkflowCachePolicy } from './ci-workflow/cache-policy.ts'
 export {
   ciMeasurementMetrics,
   ciMeasurementBaselineBackfillPredicate,
@@ -192,7 +193,6 @@ export {
   cachixStep,
   cachixPublisherStep,
   cachixPushStep,
-  CachePublisherJobError,
   ciOtelSpansArtifactStep,
   ciOtelSpansSummaryStep,
   checkoutStep,

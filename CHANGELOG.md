@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking changes
+- **Genie build cache configuration** (dotfiles#3164): Replace
+  `NixBinaryCache` and `cachixBinaryCache` with producer-authored, tagged
+  descriptors in JSON, validated with `binaryCacheDescriptorSchema` when read
+  from TypeScript. Replace `nixBinaryCachesExtraConf` with
+  `binaryCachesExtraConfForJob({ runner, caches })` for standalone composition,
+  or pass `binaryCaches` to `installNixStep` inside `ciWorkflow`, which checks
+  the final job runner before emitting a private cache URI. Remove
+  `withPrivateCachixReadAuth`: private cache admission is fleet-runner policy,
+  not a Cachix token wrapper. Replace `cachixHostsFromBinaryCaches` with
+  explicit publisher names from the producer descriptors; read-only Cachix
+  steps use `cachixStep`, while writes use the protected
+  `cachixPublisherStep`/`cachixPushStep` constructors. Producer flakes must not
+  advertise private caches in `nixConfig`, which bypasses workflow policy.
+
 ### Added
 - **Genie build caches**: Producer-authored, credential-free Nix/REAPI cache
   descriptors validate in TypeScript and Nix. Private descriptors require a

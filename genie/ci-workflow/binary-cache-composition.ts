@@ -1,5 +1,4 @@
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
-import { darwinArm64Runner, linuxArm64Runner, linuxX64Runner } from './shared.ts'
 
 export class PrivateBinaryCacheRunnerError extends Error {
   readonly _tag = 'PrivateBinaryCacheRunnerError'
@@ -22,33 +21,25 @@ export class ConflictingBinaryCacheError extends Error {
 }
 
 const fleetLabels: Record<string, true> = {
-  [linuxX64Runner[0]]: true,
-  [linuxArm64Runner[0]]: true,
-  [darwinArm64Runner[0]]: true,
+  'sh-linux-x64': true,
+  'sh-linux-arm64': true,
+  'sh-darwin-arm64': true,
 }
 
 /** Static fleet labels only; namespace, GitHub-hosted, dynamic and mixed selectors fail closed. */
 export const isFleetCacheRunner = (runner: string | readonly string[]): boolean => {
-  const labels = typeof runner === 'string' ? [runner] : runner
+  const labels =
+    typeof runner === 'string' ? [runner] : Array.isArray(runner) === true ? runner : []
   return (
     labels.some((label) => fleetLabels[label] === true) &&
     labels.every((label) => label === 'nix' || fleetLabels[label] === true)
   )
 }
 
-/** A descriptor never carries credentials. REAPI metadata does not become Nix config. */
-export const binaryCachesExtraConfForJob = ({
-  runner,
-  caches,
-}: {
-  readonly runner: string | readonly string[]
-  readonly caches: readonly BinaryCacheDescriptor[]
-}): string => {
+/** Job admission is checked on the final workflow; this only renders descriptor values. */
+export const renderBinaryCachesExtraConf = (caches: readonly BinaryCacheDescriptor[]): string => {
   const resolved = new Map<string, BinaryCacheDescriptor>()
   for (const cache of caches) {
-    if (cache.visibility === 'private' && isFleetCacheRunner(runner) === false) {
-      throw new PrivateBinaryCacheRunnerError({ cacheName: cache.name, runner })
-    }
     const previous = resolved.get(cache.name)
     const conflict =
       previous !== undefined &&
@@ -80,4 +71,19 @@ export const binaryCachesExtraConfForJob = ({
     `extra-substituters = ${nixCaches.map((cache) => cache.uri).join(' ')}`,
     `extra-trusted-public-keys = ${nixCaches.map((cache) => cache.publicKey).join(' ')}`,
   ].join('\n')
+}
+
+/** Caller-level composition for already-known runners; the final workflow validator is authoritative. */
+export const binaryCachesExtraConfForJob = ({
+  runner,
+  caches,
+}: {
+  readonly runner: string | readonly string[]
+  readonly caches: readonly BinaryCacheDescriptor[]
+}): string => {
+  const privateCache = caches.find((cache) => cache.visibility === 'private')
+  if (privateCache !== undefined && isFleetCacheRunner(runner) === false) {
+    throw new PrivateBinaryCacheRunnerError({ cacheName: privateCache.name, runner })
+  }
+  return renderBinaryCachesExtraConf(caches)
 }

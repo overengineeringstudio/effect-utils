@@ -1,7 +1,8 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { RunnerProfile } from '../ci.ts'
-import { binaryCachesExtraConfForJob } from './binary-cache-composition.ts'
+import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
+import { jobCacheDescriptors, CachePublisherJobError } from './cache-policy.ts'
 import { applyMegarepoLockStep } from './megarepo.ts'
 import {
   bashShellDefaults,
@@ -174,12 +175,12 @@ export const appendGitHubAccessTokenToNixConfigStep = (opts: {
  * access-tokens there by reading GITHUB_TOKEN from the environment.
  */
 export const installNixStep = (opts?: {
-  runner?: string | readonly string[]
   binaryCaches?: readonly BinaryCacheDescriptor[]
   extraConf?: string
   githubAccessTokenExpression?: string
   summarize?: boolean
 }) => ({
+  [jobCacheDescriptors]: opts?.binaryCaches ?? [],
   name: 'Install Nix',
   uses: 'DeterminateSystems/determinate-nix-action@v3' as const,
   env: githubTokenEnv(opts?.githubAccessTokenExpression),
@@ -193,10 +194,7 @@ export const installNixStep = (opts?: {
       'experimental-features = nix-command flakes',
       /** Trust flake-level nixConfig (e.g. additional repo-local substituters) */
       'accept-flake-config = true',
-      binaryCachesExtraConfForJob({
-        runner: opts?.runner ?? 'ubuntu-latest',
-        caches: opts?.binaryCaches ?? [],
-      }),
+      renderBinaryCachesExtraConf(opts?.binaryCaches ?? []),
       `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
     ].join('\n'),
@@ -230,15 +228,6 @@ export const cachixStep = (opts: { name: string }) => ({
   with: { name: opts.name, skipPush: true },
 })
 
-/** The job trigger and ref are checked before any step can receive a write secret. */
-export class CachePublisherJobError extends Error {
-  readonly _tag = 'CachePublisherJobError'
-  constructor() {
-    super('Cache publisher requires push, workflow_dispatch or schedule on refs/heads/main')
-    this.name = 'CachePublisherJobError'
-  }
-}
-
 type CachePublisherScope = {
   jobIf: string
   triggers: readonly ('push' | 'workflow_dispatch' | 'schedule')[]
@@ -252,7 +241,7 @@ const protectedPublisherIf = (opts: CachePublisherScope) => {
       (trigger) => opts.jobIf.includes(`github.event_name == '${trigger}'`) === false,
     ) === true
   ) {
-    throw new CachePublisherJobError()
+    throw new CachePublisherJobError('publisher')
   }
   return `github.ref == 'refs/heads/main' && (${opts.triggers.map((trigger) => `github.event_name == '${trigger}'`).join(' || ')})`
 }

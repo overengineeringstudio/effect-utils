@@ -11,6 +11,7 @@ import {
   type BinaryCacheDescriptor as Cache,
 } from './binary-cache-descriptors.ts'
 import { BinaryCacheDescriptorSchema, readBinaryCacheDescriptors } from './binary-cache-schema.ts'
+import { validateWorkflowCachePolicy } from './cache-policy.ts'
 import {
   cachixPublisherStep,
   cachixPushStep,
@@ -18,6 +19,7 @@ import {
   CachePublisherJobError,
   installNixStep,
 } from './setup.ts'
+import { ciWorkflow } from './shared.ts'
 
 const publicCache = effectUtilsBinaryCaches['overeng-effect-utils']!
 const privateCache: Cache = {
@@ -38,9 +40,9 @@ describe('build cache composition', () => {
     expect(
       binaryCachesExtraConfForJob({ runner: ['sh-linux-x64', 'nix'], caches: [privateCache] }),
     ).toContain(privateCache.uri)
-    expect(
-      installNixStep({ runner: 'sh-linux-x64', binaryCaches: [privateCache] }).with['extra-conf'],
-    ).toContain(privateCache.uri)
+    expect(installNixStep({ binaryCaches: [privateCache] }).with['extra-conf']).toContain(
+      privateCache.uri,
+    )
   })
 
   it('rejects private caches on untrusted, mixed and dynamic runners', () => {
@@ -56,9 +58,57 @@ describe('build cache composition', () => {
         PrivateBinaryCacheRunnerError,
       )
     }
-    expect(() => installNixStep({ binaryCaches: [privateCache] })).toThrow(
-      PrivateBinaryCacheRunnerError,
-    )
+    expect(() =>
+      ciWorkflow({
+        trustTier: 'public',
+        on: { push: { branches: ['main'] } },
+        jobs: {
+          invalid: {
+            'runs-on': 'ubuntu-latest',
+            steps: [installNixStep({ binaryCaches: [privateCache] })],
+          },
+        },
+      }),
+    ).toThrow(PrivateBinaryCacheRunnerError)
+  })
+
+  it('validates final runner rather than any detached install argument', () => {
+    const step = installNixStep({ binaryCaches: [privateCache] })
+    for (const runsOn of [
+      'ubuntu-latest',
+      '${{ matrix.runner }}',
+      ['sh-linux-x64', '${{ matrix.extra }}'],
+      'sh-unregistered',
+    ]) {
+      expect(() =>
+        ciWorkflow({
+          trustTier: 'public',
+          on: { push: { branches: ['main'] } },
+          jobs: { build: { 'runs-on': runsOn, steps: [{ ...step }] } },
+        }),
+      ).toThrow(PrivateBinaryCacheRunnerError)
+    }
+    expect(() =>
+      ciWorkflow({
+        trustTier: 'public',
+        on: { push: { branches: ['main'] } },
+        jobs: { build: { 'runs-on': ['sh-linux-x64', 'nix'], steps: [step] } },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      ciWorkflow({
+        trustTier: 'public',
+        on: { push: { branches: ['main'] } },
+        binaryCaches: [privateCache],
+        jobs: {
+          build: {
+            'runs-on': 'ubuntu-latest',
+            env: { NIX_CONFIG: `extra-substituters = ${privateCache.uri}` },
+            steps: [{ run: 'true' }],
+          },
+        },
+      }),
+    ).toThrow(PrivateBinaryCacheRunnerError)
   })
 
   it('deduplicates by name and rejects conflicting identities and keys', () => {
@@ -154,6 +204,99 @@ describe('Cachix publisher', () => {
           step: { run: 'cachix push example ./result' },
         }),
       ).toThrow(CachePublisherJobError)
+    }
+  })
+
+  it('checks final job-level scope and workflow triggers, not publisher constructor claims', () => {
+    const publisher = cachixPublisherStep({
+      name: 'example',
+      authToken: 'token',
+      jobIf: protectedIf,
+      triggers: ['push'],
+    })
+    for (const [on, condition] of [
+      [{ pull_request: null }, protectedIf],
+      [{ workflow_dispatch: null }, "github.ref == 'refs/heads/main'"],
+      [
+        { push: { branches: ['main'] } },
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push') || github.event_name == 'pull_request'",
+      ],
+    ] as const) {
+      expect(() =>
+        ciWorkflow({
+          trustTier: 'public',
+          on,
+          jobs: { publish: { 'runs-on': 'ubuntu-latest', if: condition, steps: [publisher] } },
+        }),
+      ).toThrow(CachePublisherJobError)
+    }
+    expect(() =>
+      ciWorkflow({
+        trustTier: 'public',
+        on: { push: { branches: ['main'] }, pull_request: null },
+        jobs: {
+          publish: {
+            'runs-on': 'ubuntu-latest',
+            if: "github.ref == 'refs/heads/main' && (github.event_name == 'push')",
+            steps: [publisher],
+          },
+        },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      validateWorkflowCachePolicy({
+        workflow: {
+          on: { schedule: [{ cron: '0 0 * * *' }] },
+          jobs: {
+            publish: {
+              'runs-on': 'ubuntu-latest',
+              if: "github.ref == 'refs/heads/main' && github.event_name == 'schedule'",
+              steps: [{ run: 'cachix push example ./result', env: { CACHIX_AUTH_TOKEN: 'token' } }],
+            },
+          },
+        },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      validateWorkflowCachePolicy({
+        workflow: {
+          on: { workflow_dispatch: null },
+          jobs: {
+            publish: {
+              'runs-on': 'ubuntu-latest',
+              if: "github.event_name == 'workflow_dispatch'",
+              steps: [{ run: 'cachix push example ./result', env: { CACHIX_AUTH_TOKEN: 'token' } }],
+            },
+          },
+        },
+      }),
+    ).toThrow(CachePublisherJobError)
+  })
+
+  it('rejects implicit Cachix action writes and job-wide tokens', () => {
+    for (const workflow of [
+      {
+        on: { push: { branches: ['main'] } },
+        jobs: {
+          build: {
+            'runs-on': 'ubuntu-latest',
+            steps: [{ uses: 'cachix/cachix-action@v16', with: { name: 'example' } }],
+          },
+        },
+      },
+      {
+        on: { push: { branches: ['main'] } },
+        jobs: {
+          build: {
+            'runs-on': 'ubuntu-latest',
+            if: protectedIf,
+            env: { CACHIX_AUTH_TOKEN: 'token' },
+            steps: [{ run: 'true' }],
+          },
+        },
+      },
+    ] as const) {
+      expect(() => validateWorkflowCachePolicy({ workflow })).toThrow(CachePublisherJobError)
     }
   })
 })

@@ -964,6 +964,7 @@ export {
   ConflictingBinaryCacheError,
   effectUtilsBinaryCaches,
   isFleetCacheRunner,
+  validateWorkflowCachePolicy,
   PrivateBinaryCacheRunnerError,
   devenvBinaryCache,
   devenvPerfArtifactStep,
