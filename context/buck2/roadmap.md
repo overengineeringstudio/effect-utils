@@ -185,6 +185,17 @@ by separate processes.
 **Dissolution target:** bazel-remote and its service module once NativeLink
 carries both tiers; no second cache backend is kept indefinitely.
 
+## Observability lane (07-observability)
+
+The telemetry lane is specified in
+[07-observability](./07-observability/spec.md) and is sequenced
+independently of the admission phases: its VRS lands first, then the
+implementation stack (the event-log adapter crate, the `otel-span` buck2
+mode, run-record seal/upload, the ingest CLI, and a dotfiles brief for the
+ingester, auth front, store, archive, and Tempo volume measurement). It
+carries no admission of its own; measured bottlenecks it surfaced are
+recorded as findings in the owning subsystems' open questions.
+
 ## Cross-phase gates
 
 - One authority transfer, ledger row, and deletion entry form the review unit.

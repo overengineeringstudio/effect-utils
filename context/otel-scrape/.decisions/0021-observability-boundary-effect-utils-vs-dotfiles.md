@@ -77,3 +77,17 @@ features. See the dotfiles architecture VRS / #1238 for the migration plan.
   **dotfiles** work, not effect-utils changes.
 - The adapter fleet (`context/otel-scrape/adapters/`) is unaffected — it is pure
   tool contract and stays in effect-utils.
+
+## Cross-reference — the Buck2 event-log lane (2026-09-25)
+
+The Buck2 event-log observability lane — caller correlation, run records,
+the direct-decode event-log adapter, trace views, and CI ingest/archive — is
+owned by the buck2 tree's
+[`context/buck2/07-observability`](../../buck2/07-observability/spec.md) by
+decision (q7, 2026-09-25), consciously overriding this boundary's
+stack/ingest split _for that lane_: the buck2 tree specifies the
+ingest/archive contract, and the dotfiles fleet config implements the
+deployed pieces (ingester, auth front, store lifecycle, retention timer).
+This decision stands unchanged for everything else otel-scrape touches; the
+adapter admission cross-reference is in
+[0012](./0012-adapter-admission-policy.md).

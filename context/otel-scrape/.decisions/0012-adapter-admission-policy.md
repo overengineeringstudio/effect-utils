@@ -80,3 +80,15 @@ The candidate queue above was audited and re-ranked by
 `pnpm` (phase lane) is promoted to first candidate, `deadnix` and `nix` (build
 lane) are added, and the fleet vertical slices live under
 [../adapters/](../adapters/spec.md).
+
+## Cross-reference — the Buck2 event-log lane is exempt
+
+The Buck2 event-log → OTLP adapter is **not** admitted through this gate: it
+is owned by the buck2 tree's observability lane
+([`context/buck2/07-observability`](../../buck2/07-observability/spec.md))
+by decision (q7, 2026-09-25), which consciously overrides this admission
+policy and the boundary in
+[0021](./0021-observability-boundary-effect-utils-vs-dotfiles.md) for that
+lane. Its "structured source" is a versioned wire format (the vendored,
+pinned event-log schema), not tool output; its vertical-slice evidence
+(decode bakeoffs, corpus replay, Tempo readback) lives in the buck2 tree.
