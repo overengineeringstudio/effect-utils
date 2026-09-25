@@ -150,14 +150,10 @@ const RemoteCacheInstanceName = Schema.String.check(
   ),
 ).annotate({ identifier: 'Megarepo.BuckRemoteCacheInstanceName' })
 
-/**
- * Platform-hub-owned, credential-free remote cache coordinates. The tracked tier
- * is read-only; only a protected publisher materializes an untracked writer overlay.
- */
+/** Platform-hub-owned, credential-free remote cache coordinates. */
 export const BuckMemberRemoteCacheSchema = Schema.Struct({
   endpoint: RemoteCacheEndpoint,
   instanceName: RemoteCacheInstanceName,
-  tls: Schema.Boolean,
 }).annotate({ identifier: 'Megarepo.BuckMemberRemoteCache' })
 export type BuckMemberRemoteCache = typeof BuckMemberRemoteCacheSchema.Type
 
@@ -339,7 +335,6 @@ export const normalizeBuckMemberManifest = (manifest: BuckMemberManifest): BuckM
         remoteCache: {
           endpoint: manifest.remoteCache.endpoint,
           instanceName: manifest.remoteCache.instanceName,
-          tls: manifest.remoteCache.tls,
         },
       }),
   projectIgnore: canonicalStringSet(manifest.projectIgnore),
@@ -466,14 +461,14 @@ export const BuckCacheSectionSchema = Schema.Struct({
   .annotate({ identifier: 'Megarepo.BuckCacheSection' })
 export type BuckCacheSection = typeof BuckCacheSectionSchema.Type
 
-/** Lower platform-hub cache coordinates into canonical read-only buckconfig sections. */
+/** Lower platform-hub cache coordinates into canonical generated buckconfig sections. */
 export const buckMemberRemoteCacheSections = (
   remoteCache: BuckMemberRemoteCache,
 ): ReadonlyArray<BuckCacheSection> => [
   {
     section: 'buck2',
     entries: [
-      { key: 'allow_cache_uploads', value: 'false' },
+      { key: 'default_allow_cache_upload', value: 'true' },
       { key: 'digest_algorithms', value: 'SHA256' },
     ],
   },
@@ -483,8 +478,12 @@ export const buckMemberRemoteCacheSections = (
       { key: 'action_cache_address', value: remoteCache.endpoint },
       { key: 'cas_address', value: remoteCache.endpoint },
       { key: 'engine_address', value: remoteCache.endpoint },
+      {
+        key: 'http_headers',
+        value: 'authorization: Basic $BUCK2_REMOTE_CACHE_BASIC_AUTH',
+      },
       { key: 'instance_name', value: remoteCache.instanceName },
-      { key: 'tls', value: remoteCache.tls === true ? 'true' : 'false' },
+      { key: 'tls', value: 'false' },
     ],
   },
 ]

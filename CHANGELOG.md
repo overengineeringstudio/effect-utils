@@ -85,15 +85,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- **Buck2 remote cache**: effect-utils now points at the public cache tier
+- **Buck2 remote cache**: the standalone effect-utils checkout now points its
+  tracked `.buckconfig` at the public cache tier
   (`grpc://dev3.tail8108.ts.net:8443`, TLS) instead of the private tailnet
-  endpoint, per decision 0033. Tracked Buck config and composed roots read
-  anonymously with uploads off; `BuckMemberRemoteCache` gains a required `tls`
-  field and no longer lowers an auth header. Only a job holding
-  `BUCK2_CACHE_WRITE_BASIC_AUTH` gets the publisher posture in
+  endpoint, per decision 0033, and reads anonymously with uploads off. Only a
+  job holding `BUCK2_CACHE_WRITE_BASIC_AUTH` gets the publisher posture in
   `.buckconfig.local`. The trusted remote-cache proof on protected `main` is now
   the public tier's writer and uses the `BUCK2_PUBLIC_CACHE_WRITE_AUTH` Actions
-  secret. `BUCK2_REMOTE_CACHE_BASIC_AUTH` is removed.
+  secret. Composed roots (`buck2-member.json` `remoteCache`) are unchanged.
 
 - **Buck2 editor views**: Editor-view publication proves the materialized snapshot
   copy against the admitted pre-copy digests in an owner-resolved link form — plus a

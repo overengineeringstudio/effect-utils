@@ -3,9 +3,8 @@
   "cell": "effect_utils",
   "mount": "repos/effect-utils",
   "remoteCache": {
-    "endpoint": "grpc://dev3.tail8108.ts.net:8443",
-    "instanceName": "effect-utils",
-    "tls": true
+    "endpoint": "grpc://dev3:41045",
+    "instanceName": "effect-utils"
   },
   "projectIgnore": [
     "**/__pycache__",

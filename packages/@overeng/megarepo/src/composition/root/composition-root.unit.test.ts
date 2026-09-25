@@ -137,9 +137,8 @@ describe('buck2 member manifest', () => {
 
   it('strictly decodes canonical credential-free remote cache coordinates', () => {
     const remoteCache: BuckMemberRemoteCache = {
-      endpoint: 'grpc://cache.example.com:8443',
+      endpoint: 'grpc://dev3:41045',
       instanceName: 'effect-utils',
-      tls: true,
     }
     const decoded = decodeBuckMemberManifest({
       ...manifest({ cell: 'alpha' }),
@@ -154,27 +153,26 @@ describe('buck2 member manifest', () => {
       })(remoteCache),
     ).toEqual(remoteCache)
     const encoded = encodeBuckMemberManifestJson(decoded)
+    expect(encoded).not.toContain('BUCK2_REMOTE_CACHE_BASIC_AUTH')
     expect(encoded).not.toContain('authorization')
     expect(encoded).not.toContain('http_headers')
   })
 
   it.each([
-    ['missing endpoint', { instanceName: 'effect-utils', tls: true }],
-    ['missing instance', { endpoint: 'grpc://dev3:41045', tls: true }],
-    ['missing tls', { endpoint: 'grpc://dev3:41045', instanceName: 'effect-utils' }],
-    ['non-boolean tls', { endpoint: 'grpc://dev3:41045', instanceName: 'effect-utils', tls: 'true' }],
-    ['non-string endpoint', { endpoint: 41045, instanceName: 'effect-utils', tls: true }],
-    ['endpoint whitespace', { endpoint: ' grpc://dev3:41045', instanceName: 'effect-utils', tls: true }],
-    ['endpoint credentials', { endpoint: 'grpc://user@dev3:41045', instanceName: 'effect-utils', tls: true }],
-    ['endpoint path', { endpoint: 'grpc://dev3:41045/cache', instanceName: 'effect-utils', tls: true }],
-    ['uppercase endpoint', { endpoint: 'GRPC://dev3:41045', instanceName: 'effect-utils', tls: true }],
-    ['zero port', { endpoint: 'grpc://dev3:0', instanceName: 'effect-utils', tls: true }],
-    ['out-of-range port', { endpoint: 'grpc://dev3:65536', instanceName: 'effect-utils', tls: true }],
-    ['instance path', { endpoint: 'grpc://dev3:41045', instanceName: 'team/effect-utils', tls: true }],
-    ['uppercase instance', { endpoint: 'grpc://dev3:41045', instanceName: 'Effect-Utils', tls: true }],
+    ['missing endpoint', { instanceName: 'effect-utils' }],
+    ['missing instance', { endpoint: 'grpc://dev3:41045' }],
+    ['non-string endpoint', { endpoint: 41045, instanceName: 'effect-utils' }],
+    ['endpoint whitespace', { endpoint: ' grpc://dev3:41045', instanceName: 'effect-utils' }],
+    ['endpoint credentials', { endpoint: 'grpc://user@dev3:41045', instanceName: 'effect-utils' }],
+    ['endpoint path', { endpoint: 'grpc://dev3:41045/cache', instanceName: 'effect-utils' }],
+    ['uppercase endpoint', { endpoint: 'GRPC://dev3:41045', instanceName: 'effect-utils' }],
+    ['zero port', { endpoint: 'grpc://dev3:0', instanceName: 'effect-utils' }],
+    ['out-of-range port', { endpoint: 'grpc://dev3:65536', instanceName: 'effect-utils' }],
+    ['instance path', { endpoint: 'grpc://dev3:41045', instanceName: 'team/effect-utils' }],
+    ['uppercase instance', { endpoint: 'grpc://dev3:41045', instanceName: 'Effect-Utils' }],
     [
       'unknown field',
-      { endpoint: 'grpc://dev3:41045', instanceName: 'effect-utils', tls: true, token: 'secret' },
+      { endpoint: 'grpc://dev3:41045', instanceName: 'effect-utils', token: 'secret' },
     ],
   ])('rejects remote cache coordinates with %s', (_name, remoteCache) => {
     expect(() =>
@@ -182,29 +180,32 @@ describe('buck2 member manifest', () => {
     ).toThrow()
   })
 
-  it.each([true, false])('lowers remote cache coordinates read-only (tls=%s)', (tls) => {
+  it('lowers remote cache coordinates to the exact canonical cache sections', () => {
     expect(
       buckMemberRemoteCacheSections({
-        endpoint: 'grpc://cache.example.com:8443',
+        endpoint: 'grpc://dev3:41045',
         instanceName: 'effect-utils',
-        tls,
       }),
     ).toEqual([
       {
         section: 'buck2',
         entries: [
-          { key: 'allow_cache_uploads', value: 'false' },
+          { key: 'default_allow_cache_upload', value: 'true' },
           { key: 'digest_algorithms', value: 'SHA256' },
         ],
       },
       {
         section: 'buck2_re_client',
         entries: [
-          { key: 'action_cache_address', value: 'grpc://cache.example.com:8443' },
-          { key: 'cas_address', value: 'grpc://cache.example.com:8443' },
-          { key: 'engine_address', value: 'grpc://cache.example.com:8443' },
+          { key: 'action_cache_address', value: 'grpc://dev3:41045' },
+          { key: 'cas_address', value: 'grpc://dev3:41045' },
+          { key: 'engine_address', value: 'grpc://dev3:41045' },
+          {
+            key: 'http_headers',
+            value: 'authorization: Basic $BUCK2_REMOTE_CACHE_BASIC_AUTH',
+          },
           { key: 'instance_name', value: 'effect-utils' },
-          { key: 'tls', value: String(tls) },
+          { key: 'tls', value: 'false' },
         ],
       },
     ])
@@ -439,7 +440,6 @@ describe('composition root goldens', () => {
         cacheSections: buckMemberRemoteCacheSections({
           endpoint: 'grpc://cache.example:1234',
           instanceName: 'alpha',
-          tls: true,
         }),
       }),
     )
@@ -466,15 +466,16 @@ describe('composition root goldens', () => {
 
 [buck2]
   file_watcher = watchman
-  allow_cache_uploads = false
+  default_allow_cache_upload = true
   digest_algorithms = SHA256
 
 [buck2_re_client]
   action_cache_address = grpc://cache.example:1234
   cas_address = grpc://cache.example:1234
   engine_address = grpc://cache.example:1234
+  http_headers = authorization: Basic $BUCK2_REMOTE_CACHE_BASIC_AUTH
   instance_name = alpha
-  tls = true
+  tls = false
 
 [project]
   ignore = **/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,repos/.staging-*,repos/alpha/**/dist,repos/alpha/.git,target,tmp
@@ -957,7 +958,6 @@ describe('composition input failures', () => {
               remoteCache: {
                 endpoint: 'grpc://dev3:41045',
                 instanceName: 'effect-utils',
-                tls: false,
               },
             },
           },

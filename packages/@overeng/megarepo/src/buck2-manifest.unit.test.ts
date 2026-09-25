@@ -53,9 +53,8 @@ const overlay: BuckMemberDistOverlay = {
 }
 
 const remoteCache: BuckMemberRemoteCache = {
-  endpoint: 'grpc://cache.example.com:8443',
+  endpoint: 'grpc://dev3:41045',
   instanceName: 'effect-utils',
-  tls: true,
 }
 
 const manifest: BuckMemberManifest = {
@@ -84,6 +83,7 @@ describe('@overeng/megarepo/buck2-manifest', () => {
     const encodedManifestJson = encodeBuckMemberManifestJson(decoded)
     expect(encodedManifest).toEqual(decoded)
     expect(decodeBuckMemberManifestJson(encodedManifestJson)).toEqual(decoded)
+    expect(encodedManifestJson).not.toContain('BUCK2_REMOTE_CACHE_BASIC_AUTH')
     expect(encodedManifestJson).not.toContain('authorization')
     expect(encodedManifestJson).not.toContain('http_headers')
     expect(buckMemberCapabilityByToolId({ manifest: decoded, toolId: 'buck2' })).toEqual(capability)
@@ -94,18 +94,22 @@ describe('@overeng/megarepo/buck2-manifest', () => {
       {
         section: 'buck2',
         entries: [
-          { key: 'allow_cache_uploads', value: 'false' },
+          { key: 'default_allow_cache_upload', value: 'true' },
           { key: 'digest_algorithms', value: 'SHA256' },
         ],
       },
       {
         section: 'buck2_re_client',
         entries: [
-          { key: 'action_cache_address', value: 'grpc://cache.example.com:8443' },
-          { key: 'cas_address', value: 'grpc://cache.example.com:8443' },
-          { key: 'engine_address', value: 'grpc://cache.example.com:8443' },
+          { key: 'action_cache_address', value: 'grpc://dev3:41045' },
+          { key: 'cas_address', value: 'grpc://dev3:41045' },
+          { key: 'engine_address', value: 'grpc://dev3:41045' },
+          {
+            key: 'http_headers',
+            value: 'authorization: Basic $BUCK2_REMOTE_CACHE_BASIC_AUTH',
+          },
           { key: 'instance_name', value: 'effect-utils' },
-          { key: 'tls', value: 'true' },
+          { key: 'tls', value: 'false' },
         ],
       },
     ])
