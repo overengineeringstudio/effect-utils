@@ -13,10 +13,14 @@ const shell = realpathSync(
 const bun = realpathSync(execFileSync(shell, ['-c', 'command -v bun'], { encoding: 'utf8' }).trim())
 
 const runner = fileURLToPath(new URL('./javascript-runner.ts', import.meta.url))
-const fingerprintTool = process.env['BUCK2_FINGERPRINT_TOOL']
+const fingerprintTool = ((): string => {
+  const tool = process.env['FINGERPRINT_BIN']
+  if (tool === undefined || tool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
+  return tool
+})()
 
 describe('JavaScript runner', () => {
-  it.skipIf(fingerprintTool === undefined)(
+  it(
     'creates a declared nested writable directory before launching the command',
     async () => {
       const root = await mkdtemp(
@@ -43,7 +47,7 @@ if (path === undefined || statSync(path).isDirectory() === false) process.exit(7
             packageTree,
             'assert-writable.ts',
             '--fingerprint-tool',
-            fingerprintTool!,
+            fingerprintTool,
             '--writable-directory',
             'CACHE_PATH',
             'cache/vitest',

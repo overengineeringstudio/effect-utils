@@ -94,7 +94,7 @@ describe('TypeScript emit declaration command', () => {
     ).toEqual(['/a-dependency', '/z-dependency'])
   })
 
-  it.skipIf(process.env['BUCK2_FINGERPRINT_TOOL'] === undefined)(
+  it(
     'hashes every canonical declared input root and does not follow symlink cycles',
     async () => {
       const { root } = createFixture()
@@ -106,7 +106,8 @@ describe('TypeScript emit declaration command', () => {
       writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 1\n')
       symlinkSync(first, join(second, 'cycle'))
 
-      const tool = process.env['BUCK2_FINGERPRINT_TOOL']!
+      const tool = process.env['FINGERPRINT_BIN'] ?? ''
+      if (tool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
       const before = await hashDeclaredInputRoots({
         roots: [second, first, second],
         fingerprintTool: tool,

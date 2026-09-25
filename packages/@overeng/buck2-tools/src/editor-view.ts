@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
@@ -22,6 +22,7 @@ import process from 'node:process'
 
 import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath } from './real-path.ts'
+import { runFingerprintTool } from './typescript-runner.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
 export const editorViewSchema = 'effect-utils/editor-view/v2' as const
@@ -344,31 +345,8 @@ const canonicalTreeFingerprints = async ({
       ...backingRoots.flatMap((root) => ['--backing-root', root]),
       ...linkOwners.flatMap(({ source, identity }) => ['--link-owner', `${source}=${identity}`]),
     ]
-    // Asynchronous so the concurrent root fan-outs below keep running in parallel.
-    const result = await new Promise<{ readonly status: number | null; readonly stdout: string }>(
-      (resolveResult, reject) => {
-        const child = spawn(fingerprintTool, args, {
-          cwd: '/',
-          env: { PATH: '' },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-        const stdout: Buffer[] = []
-        const stderr: Buffer[] = []
-        child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
-        child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-        child.on('error', reject)
-        child.on('close', (status) => {
-          if (status !== 0)
-            reject(
-              new Error(
-                `editor view: fingerprint tool failed: ${Buffer.concat(stderr).toString('utf8')}`,
-              ),
-            )
-          else resolveResult({ status, stdout: Buffer.concat(stdout).toString('utf8') })
-        })
-      },
-    )
-    const lines = result.stdout.trimEnd().split('\n')
+    const stdout = await runFingerprintTool({ tool: fingerprintTool, args })
+    const lines = stdout.trimEnd().split('\n')
     const values = new Map(lines.map((line) => line.split(' ', 2) as [string, string]))
     if (
       lines.length !== (linkOwners.length > 0 && dereference !== true ? 3 : 1) ||
@@ -379,7 +357,7 @@ const canonicalTreeFingerprints = async ({
         (fingerprintPattern.test(values.get('resolved') ?? '') === false ||
           fingerprintPattern.test(values.get('literal') ?? '') === false))
     )
-      fail(`fingerprint tool returned invalid output: ${result.stdout}`)
+      fail(`fingerprint tool returned invalid output: ${stdout}`)
     return {
       digest: values.get('digest') ?? fail('fingerprint tool omitted digest'),
       resolvedLinksDigest: values.get('resolved'),

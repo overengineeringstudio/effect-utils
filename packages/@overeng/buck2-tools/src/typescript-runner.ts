@@ -220,6 +220,39 @@ const canonicalRoots = (roots: readonly string[]): readonly string[] =>
   [...new Set(roots.map((root) => resolve(root)))].toSorted()
 
 /**
+ * Runs the immutable fingerprint executable without blocking the event loop, so concurrent
+ * root walks stay parallel. A non-zero exit rejects with the tool's stderr.
+ */
+export const runFingerprintTool = ({
+  tool,
+  args,
+}: {
+  readonly tool: string
+  readonly args: readonly string[]
+}): Promise<string> =>
+  new Promise((resolveOutput, reject) => {
+    const child = spawn(requireFingerprintTool(tool), args, {
+      cwd: '/',
+      env: { PATH: '' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const stdout: Buffer[] = []
+    const stderr: Buffer[] = []
+    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+    child.on('error', reject)
+    child.on('close', (code, signal) => {
+      if (code === 0) resolveOutput(Buffer.concat(stdout).toString('utf8'))
+      else
+        reject(
+          new Error(
+            `fingerprint tool failed for ${args[0] ?? ''} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
+          ),
+        )
+    })
+  })
+
+/**
  * Hashes each declared root using the pinned Rust CLI. The outer framing preserves the
  * absolute root identity, while the CLI commits to entry types, modes, links and file bytes.
  */
@@ -233,41 +266,11 @@ export const hashDeclaredInputRoots = async ({
   const executable = requireFingerprintTool(fingerprintTool)
   const orderedRoots = canonicalRoots(roots)
   const digests = await Promise.all(
-    orderedRoots.map(
-      (root) =>
-        new Promise<string>((resolveDigest, reject) => {
-          const child = spawn(executable, [root, '--input-roots'], {
-            env: { PATH: '' },
-            stdio: ['ignore', 'pipe', 'pipe'],
-          })
-          const stdout: Buffer[] = []
-          const stderr: Buffer[] = []
-          child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
-          child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-          child.on('error', reject)
-          child.on('close', (code, signal) => {
-            if (code !== 0) {
-              reject(
-                new Error(
-                  `typescript runner: fingerprint tool failed for ${root} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
-                ),
-              )
-              return
-            }
-            const result = Buffer.concat(stdout).toString('utf8')
-            const match = /^digest ([a-f0-9]{64})\n$/u.exec(result)
-            if (match === null) {
-              reject(
-                new Error(
-                  `typescript runner: invalid fingerprint tool output for ${root}: ${result}`,
-                ),
-              )
-              return
-            }
-            resolveDigest(match[1]!)
-          })
-        }),
-    ),
+    orderedRoots.map(async (root) => {
+      const result = await runFingerprintTool({ tool: executable, args: [root, '--input-roots'] })
+      return /^digest ([a-f0-9]{64})\n$/u.exec(result)?.[1] ??
+        fail(`invalid fingerprint tool output for ${root}: ${result}`)
+    }),
   )
   const hash = createHash('sha256')
   orderedRoots.forEach((root, index) => {

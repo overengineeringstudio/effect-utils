@@ -1003,7 +1003,6 @@ in
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
-      export BUCK2_FINGERPRINT_TOOL="$FINGERPRINT_BIN"
       cd "$root/packages/@overeng/buck2-tools"
       exec ${pkgs.bun}/bin/bun test src/*.test.ts
     ''

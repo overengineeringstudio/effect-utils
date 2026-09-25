@@ -8,10 +8,14 @@ import { describe, expect, it } from 'vitest'
 
 const bun = realpathSync(process.execPath)
 const runner = fileURLToPath(new URL('./package-command-runner.ts', import.meta.url))
-const fingerprintTool = process.env['BUCK2_FINGERPRINT_TOOL']
+const fingerprintTool = ((): string => {
+  const tool = process.env['FINGERPRINT_BIN']
+  if (tool === undefined || tool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
+  return tool
+})()
 
 describe('package command input immutability', () => {
-  it.skipIf(fingerprintTool === undefined).each([
+  it.each([
     { name: 'package tree', readRoot: false },
     { name: 'declared read root', readRoot: true },
   ])('rejects a successful command that mutates its $name', async ({ readRoot }) => {
@@ -38,7 +42,7 @@ writeFileSync(process.argv[2]!, 'mutated')
         'mutate.ts',
         verdict,
         '--fingerprint-tool',
-        fingerprintTool!,
+        fingerprintTool,
         '--arg',
         mutationTarget,
         ...(readRoot === true ? ['--read-root', dependency] : []),
