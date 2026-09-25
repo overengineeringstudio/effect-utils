@@ -24,15 +24,17 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils' }),
   dependencies: {
     workspace: [effectDistributedLockPkg, otelContractPkg],
-    external: catalog.pick(
-      '@noble/hashes',
-      '@opentelemetry/api',
-      // StyleX build integration (`./node/stylex`) lives here rather than in the
-      // browser-pure token package — VRS stylex R11/R12, decision 0006.
-      '@stylexjs/unplugin',
-      'unplugin',
-      'postcss',
-    ),
+    external: {
+      ...catalog.pick(
+        '@noble/hashes',
+        '@opentelemetry/api',
+        // StyleX build integration (`./node/stylex`) lives here rather than in the
+        // browser-pure token package — VRS stylex R11/R12, decision 0006.
+        '@stylexjs/unplugin',
+        'unplugin',
+      ),
+      postcss: '8.5.26',
+    },
   },
   devDependencies: {
     workspace: [utilsDevPkg],
@@ -58,9 +60,8 @@ const runtimeDeps = catalog.compose({
         'vitest',
         // Next.js fixture for the `./node/stylex/next` adapter's build test:
         // the fixture app assembles its node_modules by symlinking from this
-        // package's installed graph, so the versions under test are pinned
-        // here. The adapter itself only references them by name from the app.
-        'next',
+        // package's installed graph. The app, not the shared catalog, selects
+        // its own Next.js version.
         'babel-loader',
         '@stylexjs/babel-plugin',
         '@stylexjs/postcss-plugin',
@@ -69,6 +70,7 @@ const runtimeDeps = catalog.compose({
         'react-dom',
         '@types/react',
       ),
+      next: '16.2.6',
     },
   },
   peerDependencies: {
