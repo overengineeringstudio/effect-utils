@@ -677,7 +677,7 @@ const RecordRow = ({
   nowMillis: number
   compact: boolean
   columnLayout: stylex.StyleXStyles | undefined
-  traceHref?: TraceHref
+  traceHref?: TraceHref | undefined
 }): React.ReactNode => {
   const durationEnd =
     activeStates.has(record.state) === true ? nowMillis : record.lastAt.wallClockMillis

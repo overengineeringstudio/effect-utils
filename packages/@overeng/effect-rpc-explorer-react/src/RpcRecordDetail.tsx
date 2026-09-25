@@ -438,7 +438,7 @@ const TracePanel = ({
   traceHref,
 }: {
   record: RpcRecord
-  traceHref?: TraceHref
+  traceHref?: TraceHref | undefined
 }): ReactNode => {
   if (record.trace === undefined) {
     return <p {...stylex.props(styles.empty)}>No trace context observed</p>
@@ -477,7 +477,7 @@ interface RpcRecordDetailProps {
   readonly projection: ExplorerProjection
   readonly nowMillis: number
   readonly onBack: () => void
-  readonly traceHref?: TraceHref
+  readonly traceHref?: TraceHref | undefined
   readonly backVisibility: 'auto' | 'always' | 'never'
 }
 
