@@ -17,23 +17,31 @@ sequencing (effect-utils#1054), or remote execution (deferred; see roadmap).
 ## Client Contract
 
 ```ini
-# buckconfig FILE (repo .buckconfig or untracked .buckconfig.local);
+# tracked buckconfig: the repository's trust tier, read-only (decision 0033);
 # -c CLI overrides do not reach the RE client
 [buck2]
 digest_algorithms = SHA256
-default_allow_cache_upload = true
+allow_cache_uploads = false
 [buck2_re_client]
-engine_address = grpc://<dev3-tailnet-host>:<port>
-action_cache_address = grpc://<dev3-tailnet-host>:<port>
-cas_address = grpc://<dev3-tailnet-host>:<port>
+engine_address = grpc://<tier-host>:<port>
+action_cache_address = grpc://<tier-host>:<port>
+cas_address = grpc://<tier-host>:<port>
 instance_name = <repo-name>
-tls = false
+tls = <true for the public tier>
 ```
 
-Executor platforms set `remote_enabled = False`, `remote_cache_enabled = True`,
-`allow_cache_uploads = True` (cache-only: local execution, remote reuse).
-Disable toggle: pointing the client section away (or removing it) restores
-pure-local builds — documented as the outage escape hatch (REUSE-R04).
+Public effect-utils uses the public tier. A protected publisher holding
+`BUCK2_CACHE_WRITE_BASIC_AUTH` gets an untracked `.buckconfig.local` overlay
+(`scripts/buck2-cache-posture.ts`) that sets `allow_cache_uploads = true`,
+`default_allow_cache_upload = true`, and
+`http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH`. Buck
+expands the variable in the daemon, so no credential value is written to a file.
+
+Executor platforms set `remote_enabled = False` and read `remote_cache_enabled`
+and `allow_cache_uploads` from the root config (cache-only: local execution,
+remote reuse). Disable toggle: pointing the client section away (or removing
+it) restores pure-local builds — documented as the outage escape hatch
+(REUSE-R04).
 
 ## Reuse Verification
 

@@ -840,7 +840,8 @@ const extraJobs: Record<string, any> = {
   },
   /**
    * Trusted-only proof that a second plain checkout can consume an action
-   * uploaded by an independent standalone root through the tailnet cache.
+   * uploaded by an independent standalone root through the public cache tier.
+   * Protected main is the tier's only writer (decision 0033).
    */
   'trusted-buck2-remote-cache-proof': {
     if: trustedSecretCiIf,
@@ -864,20 +865,28 @@ const extraJobs: Record<string, any> = {
         name: 'Prove fresh-root remote action and test-cache hits',
         env: {
           ...githubTokenEnv(),
-          BUCK2_REMOTE_CACHE_BASIC_AUTH: '${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}',
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: '${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}',
         },
         run: [
           'set -euo pipefail',
+          'if [ -z "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then',
+          '  echo "::error::BUCK2_PUBLIC_CACHE_WRITE_AUTH is required for the trusted remote-cache proof"',
+          '  exit 1',
+          'fi',
+          '# Buck sends the header verbatim; only the Base64 form reaches the daemon.',
+          'BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf \'%s\' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d \'\\n\')"',
+          'echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"',
+          'export BUCK2_CACHE_WRITE_BASIC_AUTH',
+          'unset BUCK2_PUBLIC_CACHE_WRITE_AUTH',
           'proof_script="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof.sh"',
           `trap 'rm -f "$proof_script"' EXIT`,
           `cat > "$proof_script" <<'BUCK2_REMOTE_CACHE_PROOF'`,
           'set -euo pipefail',
-          'if [ -z "${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}" ]; then',
-          '  echo "::error::BUCK2_REMOTE_CACHE_BASIC_AUTH is required for the trusted remote-cache proof"',
-          '  exit 1',
-          'fi',
           'source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"',
           'cd "$source_root"',
+          '# The writer credential selects the publisher posture in the untracked .buckconfig.local.',
+          'bun scripts/buck2-cache-posture.ts "$source_root"',
+          `grep -Fq 'allow_cache_uploads = true' .buckconfig.local || { echo "::error::publisher cache posture was not selected"; exit 1; }`,
           'buck="${BUCK2_BIN:?BUCK2_BIN not set}"',
           'context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"',
           'target="effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"',

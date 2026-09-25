@@ -1421,9 +1421,6 @@ in
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
-    # Buck2 expands the cache header in the daemon; keep the optional credential
-    # defined so unauthenticated cache reads work when SecretSpec is not active.
-    export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
     capability_parent="$WORKSPACE_ROOT/.buck2"
     capability_link="$capability_parent/capabilities"
     ${pkgs.coreutils}/bin/mkdir -p "$capability_parent"

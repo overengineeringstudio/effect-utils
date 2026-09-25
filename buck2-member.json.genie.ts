@@ -13,9 +13,12 @@ const buckMemberSchemaVersion = COMPOSITION_ROOT_SCHEMA_VERSION
 const manifestProjection = {
   cell: 'effect_utils',
   mount: 'repos/effect-utils',
+  // Public repository → public cache tier (decision 0033): anonymous TLS reads.
+  // Only protected-main publisher lanes add an untracked writer overlay.
   remoteCache: {
-    endpoint: 'grpc://dev3:41045',
+    endpoint: 'grpc://dev3.tail8108.ts.net:8443',
     instanceName: 'effect-utils',
+    tls: true,
   },
   projectIgnore: [
     '**/__pycache__',

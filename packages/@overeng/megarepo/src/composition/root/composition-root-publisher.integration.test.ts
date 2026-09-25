@@ -1158,6 +1158,7 @@ describe('composition root publisher', () => {
                 remoteCache: {
                   endpoint: 'grpc://tracked-cache.example:41045',
                   instanceName: 'tracked-platform-hub',
+                  tls: false,
                 },
               }),
             },
@@ -1165,7 +1166,8 @@ describe('composition root publisher', () => {
 
           yield* publishCompositionRoot(optionsFor({ fixture }))
           const enabled = (yield* readGenerated(fixture, '.buckconfig')).toString()
-          expect(enabled).toContain('default_allow_cache_upload = true')
+          expect(enabled).toContain('allow_cache_uploads = false')
+          expect(enabled).not.toContain('http_headers')
           expect(enabled).toContain('digest_algorithms = SHA256')
           expect(enabled).toContain('action_cache_address = grpc://tracked-cache.example:41045')
           expect(enabled).toContain('cas_address = grpc://tracked-cache.example:41045')
@@ -1182,6 +1184,7 @@ describe('composition root publisher', () => {
                   remoteCache: {
                     endpoint: 'grpc://tracked-cache-next.example:41045',
                     instanceName: 'tracked-platform-hub-next',
+                    tls: false,
                   },
                 }),
               ),
@@ -1217,6 +1220,7 @@ describe('composition root publisher', () => {
               remoteCache: {
                 endpoint: 'grpc://non-hub-cache.example:41045',
                 instanceName: 'non-hub',
+                tls: false,
               },
             }),
           },
