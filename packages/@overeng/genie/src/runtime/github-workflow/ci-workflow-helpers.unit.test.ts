@@ -955,16 +955,6 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).toContain('export const withGitHubAccessTokenEnv')
   })
 
-  it('can wrap shell steps with job-local private Cachix read auth', () => {
-    expect(ciWorkflowSource).toContain('export const withPrivateCachixReadAuth')
-    expect(ciWorkflowSource).toContain('CACHIX_AUTH_TOKEN: opts.authTokenExpression')
-    expect(ciWorkflowSource).toContain(
-      'cachix_netrc="$(mktemp "${RUNNER_TEMP:-/tmp}/cachix-netrc.XXXXXX")"',
-    )
-    expect(ciWorkflowSource).toContain('netrc-file = $cachix_netrc')
-    expect(ciWorkflowSource).toContain('export NIX_CONFIG="$NIX_CONFIG_WITH_APPEND"')
-  })
-
   it('only appends GitHub access tokens to NIX_CONFIG through GITHUB_ENV', () => {
     expect(ciWorkflowSource).toContain('export const appendGitHubAccessTokenToNixConfigStep')
     expect(ciWorkflowSource).toContain('access-tokens = github.com=%s')

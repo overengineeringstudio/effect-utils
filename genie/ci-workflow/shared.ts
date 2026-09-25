@@ -233,43 +233,14 @@ export type NixConfigOptions = {
   extraLines?: readonly string[]
 }
 
-export type NixBinaryCache = {
-  readonly uri: string
-  readonly publicKey: string
-}
-
+/** Public bootstrap cache for the pinned devenv binary, not an implicit job cache. */
 export const devenvBinaryCache = {
+  kind: 'nix-binary',
+  name: 'devenv',
+  visibility: 'public',
   uri: 'https://devenv.cachix.org',
   publicKey: 'devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
-} as const satisfies NixBinaryCache
-
-/** Build a binary-cache descriptor for a Cachix cache. */
-export const cachixBinaryCache = (opts: { name: string; publicKey: string }): NixBinaryCache => ({
-  uri: `https://${opts.name}.cachix.org`,
-  publicKey: opts.publicKey,
-})
-
-const dedupeBinaryCaches = (caches: readonly NixBinaryCache[]) => [
-  ...new Map(caches.map((cache) => [cache.uri, cache])).values(),
-]
-
-export const cachixHostsFromBinaryCaches = (caches: readonly NixBinaryCache[]) => [
-  ...new Set(
-    caches.flatMap((cache) => {
-      const host = new URL(cache.uri).host
-      return host.endsWith('.cachix.org') === true ? [host] : []
-    }),
-  ),
-]
-
-/** Render `extra-conf` lines for one or more binary caches. */
-export const nixBinaryCachesExtraConf = (caches: readonly NixBinaryCache[]) => {
-  const resolvedCaches = dedupeBinaryCaches([devenvBinaryCache, ...caches])
-  return [
-    `extra-substituters = ${resolvedCaches.map((cache) => cache.uri).join(' ')}`,
-    `extra-trusted-public-keys = ${resolvedCaches.map((cache) => cache.publicKey).join(' ')}`,
-  ].join('\n')
-}
+} as const
 
 export const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
 

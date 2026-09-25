@@ -67,7 +67,6 @@ export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions =
 export {
   RUNNER_PROFILES,
   bashShellDefaults,
-  cachixBinaryCache,
   ciWorkflow,
   ciWorkflowConcurrency,
   createRunDevenvTasksBefore,
@@ -87,7 +86,6 @@ export {
   linuxArm64Runner,
   linuxX64Runner,
   namespaceLinuxX64PairedPerfRunner,
-  nixBinaryCachesExtraConf,
   nixExtraConf,
   preparedCiRuntimeScriptsDir,
   prepareJobLocalRustState,
@@ -98,9 +96,22 @@ export {
   type CiTrustTier,
   type CiWorkflowArgs,
   type GcRaceRetryOptions,
-  type NixBinaryCache,
   type RunnerProfile,
 } from './ci-workflow/shared.ts'
+export {
+  BinaryCacheDescriptor,
+  BinaryCacheDescriptorError,
+  effectUtilsBinaryCaches,
+  readBinaryCacheDescriptors,
+  type NixBinaryCacheDescriptor,
+  type BinaryCacheDescriptor as BinaryCache,
+} from './ci-workflow/binary-cache-descriptors.ts'
+export {
+  binaryCachesExtraConfForJob,
+  ConflictingBinaryCacheError,
+  isFleetCacheRunner,
+  PrivateBinaryCacheRunnerError,
+} from './ci-workflow/binary-cache-composition.ts'
 export {
   ciMeasurementMetrics,
   ciMeasurementBaselineBackfillPredicate,
@@ -181,6 +192,9 @@ export {
   appendGitHubAccessTokenToNixConfigStep,
   cachixCliBuildStep,
   cachixStep,
+  cachixPublisherStep,
+  cachixPushStep,
+  CachePublisherJobError,
   ciOtelSpansArtifactStep,
   ciOtelSpansSummaryStep,
   checkoutStep,
@@ -218,7 +232,6 @@ export {
   validateNixStoreStepFor,
   withSinglePnpmStatePublisher,
   withGitHubAccessTokenEnv,
-  withPrivateCachixReadAuth,
   type StandardSelfHostedDevenvTaskJobOptions,
 } from './ci-workflow/setup.ts'
 export {

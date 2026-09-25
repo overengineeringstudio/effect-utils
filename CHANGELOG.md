@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Genie build caches**: Producer-authored, credential-free Nix/REAPI cache
+  descriptors validate in TypeScript and Nix. Private descriptors require a
+  static fleet runner, ordinary Cachix steps are read-only, and protected
+  publisher steps alone receive write credentials.
 
 - **Buck2 package products**: Register public-repository package archives for
   `@overeng/agent-session-ingest`, `@overeng/effect-ai-claude-cli`,
