@@ -10,8 +10,8 @@ All notable changes to this project will be documented in this file.
   descriptors in JSON, validated with `binaryCacheDescriptorSchema` when read
   from TypeScript. Replace `nixBinaryCachesExtraConf` with
   `binaryCachesExtraConfForJob({ runner, caches })` for standalone composition,
-  or pass `binaryCaches` to `installNixStep` inside `ciWorkflow`, which checks
-  the final job runner before emitting a private cache URI. Remove
+  or pass `binaryCaches` to `installNixStep` in a workflow; the shared
+  `githubWorkflow` output boundary checks the final job runner. Remove
   `withPrivateCachixReadAuth`: private cache admission is fleet-runner policy,
   not a Cachix token wrapper. Replace `cachixHostsFromBinaryCaches` with
   explicit publisher names from the producer descriptors; read-only Cachix

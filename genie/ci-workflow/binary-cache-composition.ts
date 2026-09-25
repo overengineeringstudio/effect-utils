@@ -1,16 +1,9 @@
+import {
+  isFleetCacheRunner,
+  PrivateBinaryCacheRunnerError,
+} from '../../packages/@overeng/genie/src/runtime/github-workflow/cache-policy.ts'
+export { isFleetCacheRunner, PrivateBinaryCacheRunnerError }
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
-
-export class PrivateBinaryCacheRunnerError extends Error {
-  readonly _tag = 'PrivateBinaryCacheRunnerError'
-  readonly cacheName: string
-  readonly runner: string | readonly string[]
-  constructor({ cacheName, runner }: { cacheName: string; runner: string | readonly string[] }) {
-    super(`Private build cache ${cacheName} requires a static fleet sh-* runner`)
-    this.name = 'PrivateBinaryCacheRunnerError'
-    this.cacheName = cacheName
-    this.runner = runner
-  }
-}
 
 export class ConflictingBinaryCacheError extends Error {
   readonly _tag = 'ConflictingBinaryCacheError'
@@ -18,22 +11,6 @@ export class ConflictingBinaryCacheError extends Error {
     super(`Conflicting build cache descriptor: ${cacheName}`)
     this.name = 'ConflictingBinaryCacheError'
   }
-}
-
-const fleetLabels: Record<string, true> = {
-  'sh-linux-x64': true,
-  'sh-linux-arm64': true,
-  'sh-darwin-arm64': true,
-}
-
-/** Static fleet labels only; namespace, GitHub-hosted, dynamic and mixed selectors fail closed. */
-export const isFleetCacheRunner = (runner: string | readonly string[]): boolean => {
-  const labels =
-    typeof runner === 'string' ? [runner] : Array.isArray(runner) === true ? runner : []
-  return (
-    labels.some((label) => fleetLabels[label] === true) &&
-    labels.every((label) => label === 'nix' || fleetLabels[label] === true)
-  )
 }
 
 /** Job admission is checked on the final workflow; this only renders descriptor values. */

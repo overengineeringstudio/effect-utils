@@ -2,7 +2,11 @@ import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runti
 import type { RunnerProfile } from '../ci.ts'
 import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
-import { jobCacheDescriptors, CachePublisherJobError } from './cache-policy.ts'
+import {
+  jobCacheDescriptors,
+  publisherWriteSecret,
+  CachePublisherJobError,
+} from './cache-policy.ts'
 import { applyMegarepoLockStep } from './megarepo.ts'
 import {
   bashShellDefaults,
@@ -246,12 +250,16 @@ const protectedPublisherIf = (opts: CachePublisherScope) => {
   return `github.ref == 'refs/heads/main' && (${opts.triggers.map((trigger) => `github.event_name == '${trigger}'`).join(' || ')})`
 }
 
+const publisherSecretName = (authToken: string) =>
+  /\bsecrets\.([A-Za-z_][A-Za-z_0-9]*)\b/.exec(authToken)?.[1] ?? 'CACHIX_AUTH_TOKEN'
+
 /** Guard an explicit `cachix push` shell step; only this step receives the write secret. */
 export const cachixPushStep = <TStep extends { if?: string; env?: Record<string, string> }>(
   opts: CachePublisherScope & { step: TStep; authToken: string },
 ) => {
   const condition = protectedPublisherIf(opts)
   return {
+    [publisherWriteSecret]: publisherSecretName(opts.authToken),
     ...opts.step,
     if: opts.step.if === undefined ? condition : `${condition} && (${opts.step.if})`,
     env: { ...opts.step.env, CACHIX_AUTH_TOKEN: opts.authToken },
@@ -264,6 +272,7 @@ export const cachixPublisherStep = (
     authToken: string
   },
 ) => ({
+  [publisherWriteSecret]: publisherSecretName(opts.authToken),
   name: 'Publish to Cachix',
   if: protectedPublisherIf(opts),
   uses: 'cachix/cachix-action@v17' as const,

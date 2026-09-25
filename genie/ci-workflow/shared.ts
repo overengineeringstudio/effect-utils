@@ -5,7 +5,7 @@ import {
 } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { RUNNER_PROFILES, type RunnerProfile } from '../ci.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
-import { validateWorkflowCachePolicy } from './cache-policy.ts'
+import { workflowCacheDescriptors } from './cache-policy.ts'
 
 export { RUNNER_PROFILES, type RunnerProfile }
 
@@ -215,6 +215,7 @@ const withStandardCIEnv = ({
 export const ciWorkflow = ({ trustTier, binaryCaches, ...args }: CiWorkflowArgs) => {
   const { concurrency, actionlint, jobs, on, ...rest } = args
   const workflow = {
+    [workflowCacheDescriptors]: binaryCaches ?? [],
     ...rest,
     on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
     ...(concurrency === undefined ? {} : { concurrency }),
@@ -230,7 +231,6 @@ export const ciWorkflow = ({ trustTier, binaryCaches, ...args }: CiWorkflowArgs)
           : jobs,
     }),
   }
-  validateWorkflowCachePolicy({ workflow, caches: binaryCaches })
   return githubWorkflow(workflow)
 }
 

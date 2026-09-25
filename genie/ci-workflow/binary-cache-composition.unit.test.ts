@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { githubWorkflow } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   binaryCachesExtraConfForJob,
   ConflictingBinaryCacheError,
@@ -159,6 +160,20 @@ describe('build cache composition', () => {
   })
 })
 
+it('guards private descriptors through direct githubWorkflow output', () => {
+  expect(() =>
+    githubWorkflow({
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [installNixStep({ binaryCaches: [privateCache] })],
+        },
+      },
+    }),
+  ).toThrow(PrivateBinaryCacheRunnerError)
+})
+
 describe('Cachix publisher', () => {
   it('makes ordinary action read-only and limits push token to protected publisher', () => {
     expect(cachixStep({ name: 'example' }).with).toEqual({ name: 'example', skipPush: true })
@@ -298,5 +313,63 @@ describe('Cachix publisher', () => {
     ] as const) {
       expect(() => validateWorkflowCachePolicy({ workflow })).toThrow(CachePublisherJobError)
     }
+  })
+
+  it('keeps named publisher secret expressions inside the publishing step', () => {
+    const token = '${{ secrets.PUBLISH_TOKEN }}'
+    const publisher = cachixPublisherStep({
+      name: 'example',
+      authToken: token,
+      jobIf: protectedIf,
+      triggers: ['push'],
+    })
+    const job = {
+      'runs-on': 'ubuntu-latest',
+      if: protectedIf,
+      steps: [publisher],
+    }
+    const on = { push: { branches: ['main'] } } as const
+    expect(() => githubWorkflow({ on, jobs: { publish: job } })).not.toThrow()
+    expect(() =>
+      githubWorkflow({
+        on,
+        env: { PUBLISH_TOKEN: token },
+        jobs: { publish: job },
+      }),
+    ).toThrow(CachePublisherJobError)
+    expect(() =>
+      githubWorkflow({
+        on,
+        jobs: { publish: { ...job, env: { PUBLISH_TOKEN: token } } },
+      }),
+    ).toThrow(CachePublisherJobError)
+    expect(() =>
+      githubWorkflow({
+        on,
+        jobs: {
+          publish: {
+            ...job,
+            steps: [{ run: 'echo read', env: { PUBLISH_TOKEN: token } }, publisher],
+          },
+        },
+      }),
+    ).toThrow(CachePublisherJobError)
+    expect(() =>
+      githubWorkflow({
+        on,
+        jobs: {
+          publish: {
+            ...job,
+            steps: [{ uses: 'actions/cache@v4', with: { authToken: token } }, publisher],
+          },
+        },
+      }),
+    ).toThrow(CachePublisherJobError)
+    expect(() =>
+      githubWorkflow({
+        on,
+        jobs: { publish: { ...job, steps: [{ run: `echo ${token}` }, publisher] } },
+      }),
+    ).toThrow(CachePublisherJobError)
   })
 })
