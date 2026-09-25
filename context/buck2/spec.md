@@ -122,6 +122,8 @@ ledger
     target                      Buck label once buck-owned or claimed
     dissolution                 for residual/legacy: the condition that retires the producer
     exclusion                   for excluded: why it is outside Buck by policy (unbounded, live)
+                                or, on a `repository` row, why a dormant repository is outside
+                                the migration and the change that revives it
     transfer                    pr, merged revision, deleted producers (BUCK-R09)
     net                         added, deleted, measured-at revision, measuring command,
                                 amortization rationale when added > deleted (BUCK-R15)
@@ -146,6 +148,9 @@ Semantics the check enforces:
   At every close, that repository's row sum and the cumulative sum must be
   negative (BUCK-R15). The check fails on any later change to a closed
   repository that flips the sign.
+- The migration epic closes when every repository either has closed or carries
+  only an `excluded` repository row; an excluded repository re-enters by
+  replacing that row with real rows (decision q37, 2026-09-19).
 - Rendering is deterministic: the same instance renders the same progress
   view; the view carries no fact absent from the instance.
 - The instance carries no secrets and no fleet endpoints; those stay in the

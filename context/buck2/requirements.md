@@ -160,8 +160,12 @@ invariants named in its own document:
   not a close (decision q56, confirmed 2026-09-20).
 - **BUCK-R16 Benchmark evidence:** Efficiency claims are measured, never
   asserted. Each admission's ledger row records warm no-op time, fresh-context
-  time with a warm shared cache, cache hit rate for unchanged targets, and CI
-  wall-clock delta against the pre-admission baseline. A regression against the
+  time with a warm shared cache, cache hit rate for unchanged targets, zero local
+  actions from a second same-platform context that shares no host state with
+  the first (a sandboxed context stands in until a second host of that platform
+  exists; cross-architecture reuse of portable products is recorded as
+  informational until [04-reuse](./04-reuse/requirements.md) designs it), and
+  CI wall-clock delta against the pre-admission baseline. A regression against the
   BUCK-R07 budgets or the recorded baseline blocks further widening until it is
   fixed or explicitly accepted in a decision record.
 - **BUCK-R17 Remote command execution:** Every admitted result-producing command

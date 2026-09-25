@@ -1,15 +1,29 @@
-# Decision 0036: Static operation authority follows bounded inputs
+# 0036 Static operation authority follows bounded inputs
 
-## Status
+Status: accepted
 
 Accepted on 2026-09-11.
 
-## Problem
+## Context
 
 The former CI static lanes mixed deterministic repository checks with package-manager installation,
 change-relative history, Nix realization, and live integration. Treating each aggregate job as one
 portable Buck action would either hide undeclared inputs or duplicate those external producers inside
 Buck.
+
+## Evidence and Argument
+
+The rejected alternatives below were ruled out by the circularity and second-producer arguments stated in the context; no measurement was taken for this boundary decision (recorded as such when the record was reshaped to the decision contract on 2026-09-19; the original 2026-09-11 text is preserved unchanged in Context, Decision, Consequences, and Options).
+
+## Options
+
+| Option                                                         | Tradeoff                                                                                                                                                                                                                                                                                                                         | Outcome  |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Chosen                                                         | Buck owns deterministic formatting, type-aware linting, repository policy, and the Vite/Rollup bundle contract. Each action consumes generated package views or explicit repository source sets and publishes one target-addressed result. Source tasks and CI call those targets; they do not retain alternate implementations. | Accepted |
+| Reimplement Weaver validation in TypeScript                    | duplicates an upstream semantic validator and would provide weaker evidence.                                                                                                                                                                                                                                                     | Rejected |
+| Run default-ref policy through composed Buck                   | rejects invalid first-party refs only after `mr:apply` has materialized and executed setup from them, reversing the trust boundary.                                                                                                                                                                                              | Rejected |
+| Let Buck invoke `nix build` or inspect the live Git merge base | creates undeclared, mutable inputs inside an action.                                                                                                                                                                                                                                                                             | Rejected |
+| Call the whole lint job Buck-owned now                         | its lockfile check still realizes and mutates the root pnpm dependency topology.                                                                                                                                                                                                                                                 | Rejected |
 
 ## Decision
 
@@ -45,14 +59,3 @@ The remaining aggregate boundaries are classified rather than disguised:
   hermeticity claims.
 - Moving a remaining aggregate to `buck-owned` requires first splitting or eliminating its external
   members.
-
-## Rejected alternatives
-
-- **Reimplement Weaver validation in TypeScript:** duplicates an upstream semantic validator and would
-  provide weaker evidence.
-- **Run default-ref policy through composed Buck:** rejects invalid first-party refs only after
-  `mr:apply` has materialized and executed setup from them, reversing the trust boundary.
-- **Let Buck invoke `nix build` or inspect the live Git merge base:** creates undeclared, mutable inputs
-  inside an action.
-- **Call the whole lint job Buck-owned now:** its lockfile check still realizes and mutates the root pnpm
-  dependency topology.
