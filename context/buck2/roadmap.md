@@ -35,26 +35,27 @@ and irrelevant invalidation, hostile environment behavior, strict task ordering,
 dependent project-reference edges, package task edges, and any synthetic
 evidence producer superseded by Buck-native evidence.
 
-## Phase 2 — one-writable-member workspaces
+## Phase 2 — standalone repository roots
 
-**Entry conditions:** A synthesized workspace makes the store worktree its
-root; every repository is a canonical member cell; exactly one owned member is
-writable; other members are protected copies with atomic advance and the R6
-post-condition.
+**Entry conditions:** Each repository's tracked checkout is a standalone Buck
+root with its canonical cell at `.` and a Nix-produced capability cell;
+cross-repository consumption goes through published artifacts and Nix outputs
+(decisions 0034, 0037).
 
-**Sequence:** Land refusal guards before materialization and advance. Then
-project canonical cells and capabilities, prove standalone/composed key
-stability, and move consumers to the owned-member authoring surface.
+**Sequence:** Move every Buck task and CI lane onto the standalone root, then
+retire the composed shape.
 
-**Dissolution target:** Retire legacy symlink mounts, shared branch attachments,
-in-mount writes, member-local Buck roots, and cache-upload exceptions as their
-consumers pass these proofs:
+**Dissolution target:** The composed Buck root, its publisher, dist overlays,
+per-workspace capability resolver, `cp -a` member mounts, and `--compose`
+workspaces are deleted (principal q5, 2026-09-25); mr keeps only member source
+mounts, which are never Buck cells. Consumers retire source-mount execution and
+cross-member writes as they pass these proofs:
 
-| Consumer class                                  | Retirement change                                                                                                   | Admission proof                                                                          |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| CLI executed from another member's source mount | Execute the already-packaged Nix CLI; move each consumer's mount execution to that package                          | Command succeeds with the source mount protected and unchanged                           |
-| Dependency task that writes another member      | Move the producer into that member's owned workspace; consume only committed source plus declared artifact overlays | Mutation sentinel remains clean across apply, task execution, and teardown               |
-| Live cross-workspace branch sharing             | Commit upstream in its owned workspace, advance the consumer lock, then re-apply                                    | No non-owned mount is branch-attached; the lock advance alone changes the consumer input |
+| Consumer class                                  | Retirement change                                                                            | Admission proof                                                   |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| CLI executed from another member's source mount | Execute the already-packaged Nix CLI; move each consumer's mount execution to that package   | Command succeeds without reading the source mount                 |
+| Dependency task that writes another member      | Move the producer into that member's own repository; consume only its published artifacts    | Mutation sentinel on the member stays clean across task execution |
+| Live cross-workspace branch sharing             | Commit upstream in its own repository, publish, then advance the consumer's pin              | The pin advance alone changes the consumer input                  |
 
 ## Phase 2b — declared dependency closure
 
@@ -156,8 +157,9 @@ Remote execution is not on this path (02-execution).
 ## Phase 6 — consumer adoption
 
 **Entry conditions:** The producer repository is closed or exposes the required
-admitted targets from merged authority; the consumer has a composed workspace,
-stable cross-member labels, and trust-appropriate cache access.
+admitted targets from merged authority; the consumer has a standalone root that
+takes producer artifacts through Nix substitution, and trust-appropriate cache
+access.
 
 **Sequence:** Adopt consumers in dependency order, beginning only from merged
 producer authority. A consumer enters when its contributor and lifecycle

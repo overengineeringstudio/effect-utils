@@ -20,10 +20,9 @@ systems becomes a hidden second producer for another.
 Reuse is the point, and identity is what makes it work. Action keys follow
 result-affecting inputs and nothing else, so one shared cache serves
 same-platform standalone checkouts within a trust tier. The tracked repository
-root is the normative development and single-repository CI shape. Mount paths,
-cell names, platform labels, and the isolation dir enter action identity, so
-the paused composed exception is a distinct migration shape rather than a
-promised source of cross-shape action-key parity.
+root is the only Buck project shape. Cell names, platform labels, and the
+isolation dir enter action identity; repositories consume each other through
+published artifacts, never through a shared Buck graph.
 
 The reusable part is deliberately smaller than a repository: shared rules and
 schemas carry no private facts, so a second consumer (dotfiles first) can

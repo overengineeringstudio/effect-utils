@@ -24,7 +24,7 @@ authored intent (genie models, manifests, lockfiles)
 01 semantic graph ──projects──> BUCK files + closure descriptors
         |
         v
-05 composition root (.buckconfig cells: members at repos/<name>)
+05 standalone root (.buckconfig: repository cell at .)
         |
         v
 configured Buck graph
@@ -55,7 +55,7 @@ configured Buck graph
 | Dependency materialization (build, editor) | Buck actions          | `pnpm deploy` from manifests, atomic view flips |
 | Repository-local deterministic work        | Buck                  | Providers, configured platforms, action keys    |
 | Tools and system inputs                    | Nix                   | Immutable `/nix/store` providers                |
-| Cross-member source dependencies           | Buck cells            | Canonical composition root (megarepo/genie)     |
+| Cross-repository dependencies              | Published artifacts   | Nix substitution (decision 0037)                |
 | Shared reuse                               | Remote AC/CAS (dev3)  | REAPI cache-only, tailnet trust                 |
 | Portable artifact                          | Buck                  | `buck-build-product/v1` descriptor and payload  |
 | Product validation and store import        | Nix                   | Exact descriptor and payload checks             |
@@ -63,20 +63,19 @@ configured Buck graph
 
 ## Composition Shape
 
-Every build — single-repo and composed alike — runs from a synthesized
-composition root: a project root whose `.buckconfig` declares each member as a
-cell at its canonical mount path. Megarepo materializes member sources; genie
-projects the root configuration. There is no bare-checkout build shape in the
-shared cache namespace; an external consumer building a public repository
-standalone uses the same synthesized single-member root and simply inhabits its
-own cache namespace. Mechanism and the key-stability discipline:
+Every build runs from the repository's tracked standalone root: a project root
+whose `.buckconfig` declares the repository's canonical cell at `.`, the
+bundled prelude, and the Nix-produced capability cell. No tool synthesizes a
+cross-repository Buck root; megarepo member mounts are source checkouts, never
+cells. An external consumer building a public repository uses the same root
+and inhabits its own cache namespace. Mechanism:
 [05-composition](./05-composition/spec.md).
 
 ## Invocation Flow
 
 ```text
 1. genie freshness gate: projections match authored intent
-2. composition root selects admitted targets and platforms
+2. the standalone root selects admitted targets and platforms
 3. Buck analyzes and executes; unchanged work resolves from the shared cache
 4. dependency views flip atomically for the editor surface when manifests changed
 5. products cross to Nix through independent import when requested

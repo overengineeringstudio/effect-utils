@@ -1,5 +1,15 @@
 # Composition Open Questions
 
+## Resolved 2026-09-25: the composed Buck root is retired (principal q5)
+
+No consumer used the paused composed shape (`mr store worktree new --compose`,
+the composition root and publisher, dist overlays, the per-workspace
+capability resolver, and `cp -a` member mounts). All of it is deleted from mr
+and from effect-utils' own declaration. Composition is now limited to source
+mounts, which are never Buck cells (COMP-R02); COMP-R09 to COMP-R11 are
+retired. The capability projection survives as the Nix
+`buck2-capabilities` output for standalone roots.
+
 ## Resolved 2026-09-22: effect-utils CI uses the standalone checkout root
 
 Decision q58 made the tracked standalone repository root normative for
@@ -8,12 +18,10 @@ from the actions checkout; the trusted remote-cache proof compares a second
 plain checkout at the same revision. CI no longer prepares or cleans a
 composition root.
 
-COMP-T01 and COMP-R01/R02/R06/R07 now scope canonical `repos/<name>` mounts,
-the one-writable-mount contract, and the `megarepo` isolation directory to an
-explicitly requested cross-repository composition during the paused retirement
-window. Decisions 0020 Amendment 4 and 0027 Amendment 1 record the same
-boundary. The public trust-tier deployment gates the live cache proof, not the
-root-shape contract.
+Decisions 0020 Amendment 4 and 0027 Amendment 1 recorded the paused composed
+shape as the only exception; the 2026-09-25 retirement above removed it. The
+public trust-tier deployment gates the live cache proof, not the root-shape
+contract.
 
 ## Resolved 2026-09-15: accept artifact-default composition? — decision 0034; composition machinery is on the deletion path (q47, 2026-09-19)
 
@@ -33,7 +41,7 @@ hybrid, and Nix outputs on the same edge, and the no-registry publication proof
 (PR #1289: `@overeng/utils` published as a release asset, dotfiles notion-scan
 consuming by URL, typecheck + 28 tests green) met the proposal's gate.
 
-## Resolved 2026-09-17: root-owned capability cell (superseded for consumers by 0037 - a standalone root takes capabilities as a Nix output; remains only for the composed development root until L3 cut 2)
+## Resolved 2026-09-17: root-owned capability cell (the composed half retired 2026-09-25; standalone roots take capabilities as a Nix output per 0037)
 
 The composition root declares `capabilities = .buck2/capabilities`, and hub
 toolchains load `capabilities//:defs.bzl` plus generation-keyed labels from that
@@ -47,7 +55,7 @@ per-mount write requirement while retaining strict manifest, platform,
 executable, closure, and generation checks. Decision 0028 Amendment 1 records
 the ownership change.
 
-## Resolved 2026-08-30: consumers share the hub's toolchain pins
+## Resolved 2026-08-30: consumers share the hub's toolchain pins (requirement resolution retired 2026-09-25 with the composed root; consumers take the pins through the shipped rules and capability outputs)
 
 The platform hub is the sole authority for Bun, pnpm, tsgo, and subsequent
 toolchain instances. Member manifests declare typed toolchain requirements but

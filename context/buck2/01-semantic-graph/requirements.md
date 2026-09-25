@@ -46,9 +46,9 @@ buck-projection sub-subsystems; language-specific binding detail lives in the
   operation has one declared role and owner, validated by the stateless census
   ([decision 0004](../.decisions/0004-stateless-owned-file-assertion.md));
   overlaps and unowned sources fail.
-- **GRAPH-R07 Composition projection:** The projection emits the synthesized
-  composition root — cell declarations, canonical mounts, platform wiring —
-  under the discipline of [05-composition](../05-composition/requirements.md).
+- **GRAPH-R07 Composition projection:** Retired with the composed Buck root
+  (principal q5, 2026-09-25); the standalone root's `.buckconfig` is tracked
+  under [05-composition](../05-composition/requirements.md).
 - **GRAPH-R08 No private facts in shared schema:** Shared graph schemas and
   rule facades carry no physical tool paths, private topology, or
   repository-private labels (BUCK-R14).
