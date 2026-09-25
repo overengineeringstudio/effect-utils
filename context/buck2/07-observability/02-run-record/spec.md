@@ -22,18 +22,19 @@ retention (05 / dotfiles); decode mechanics (03).
 
 ```text
 <spool-dir>/<run-key>/
-  manifest.json            sealed last; the record's content identity is
-                           sha256 over the canonical manifest
-  spans/<worker>.jsonl     the existing otel-span spool format, unchanged
-  buck2/<command>.pb.zst   explicit per-invocation event-log copies (byte-identical
-                           to the default log; the second write costs < 10 ms)
-  buck2/<command>.build-id per-invocation build-id file
-  buck2/<command>.report   build reports, where produced
+  manifest.json                 sealed last; the record's content identity is
+                                sha256 over the canonical manifest
+  spans/<worker>.jsonl          the existing otel-span spool format, unchanged
+  buck2/<command>.pb.zst        explicit per-command event-log copies (byte-identical
+                                to the default log; the second write costs < 10 ms)
+  buck2/<command>.buck-trace-id per-command file holding the Buck trace id
+                                (written by the upstream --write-build-id flag)
+  buck2/<command>.report        build reports, where produced
 ```
 
 `run-key` identifies (repository, run, attempt, job) — provider-neutral: the
 CI system supplies these as environment/configuration, exactly as a local
-invocation supplies its own.
+run supplies its own.
 
 ## Manifest Schema (v1)
 
@@ -50,14 +51,16 @@ invocation supplies its own.
     "fork": false,
     "trusted": true
   },
-  "traceIds": ["<deterministic ingest trace ids>"],
   "files": [{ "path": "buck2/171713_build.pb.zst", "bytes": 711142, "sha256": "…" }]
 }
 ```
 
 Every field is provider-neutral; a provider contributes only attribute values.
 The manifest never contains hostnames, host paths, usernames, or credentials
-(BUCK.OBS.REC-R05).
+(BUCK.OBS.REC-R05), and it never contains trace ids: record identity is the
+manifest digest, and trace ids derive from a **pre-manifest identity**
+(repository, run, attempt, job, Buck trace id, view kind — see 05), so the
+digest cannot depend on them. Discovered trace ids live in the ingest index.
 
 ## Lifecycle
 
@@ -84,14 +87,14 @@ backfilled by scanning the store's index, not by re-running builds.
   label-gated prior art: association must be reconciled by head identity, not
   by event metadata).
 - The uploader and the build remain provider-neutral: they see a generic
-  capability, never label syntax. Ingested untrusted records carry trust
-  markers so queries can filter (05 stamps them; BUCK.OBS.REC-R07 bounds the
-  decode).
+  capability, never label syntax. Ingested untrusted records carry
+  `ci.pr.fork=true` so queries can filter (05 stamps it;
+  BUCK.OBS.REC-R07 bounds the decode).
 
 ## Conformance
 
-- Same-record check: a local pipeline run and a CI-shaped invocation of the
-  same command produce structurally identical records modulo attribute values.
+- Same-record check: a local pipeline run and a CI-shaped run of the same
+  command produce structurally identical records modulo attribute values.
 - Upload idempotency: two uploads of one sealed record commit once; a
   no-credential run reports spool-only with the record intact.
 - Trust: a fork-shaped run without the signal never uploads; with the signal,

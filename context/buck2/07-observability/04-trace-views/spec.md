@@ -37,11 +37,13 @@ Both views derive deterministically from the same span model — the same run
 record always yields the same two traces (idempotent re-ingest).
 
 Measured shape on the largest cold-CI command (12,622 spans): full view
-12.70 MB; critical view at 1 s ≈ 1,113–1,225 spans / ~1.6–1.8 MB (91–92%
-reduction) while keeping 15 of 21 critical-path action names and 543 actions;
-at corpus scale, 66,948 spans → 5,870 (15 CI logs). The raw record for that
-command is 711 KB — 5.6% of its full-view OTLP bytes — which is why the
-record, not the trace store, is the forensic artifact.
+12.70 MB; the 1 s rule yields a **pre-escalation candidate** of ≈ 1,113–1,225
+spans / ~1.6–1.8 MB (91–92% reduction) keeping 15 of 21 critical-path action
+names and 543 actions — the cap then escalates the threshold to land at
+≤ 1,200 stored spans (the span-cap benchmark's stored result: exactly 1,200 /
+1.81 MB); at corpus scale, 66,948 spans → 5,870 (15 CI logs). The raw record
+for that command is 711 KB — 5.6% of its full-view OTLP bytes — which is why
+the record, not the trace store, is the forensic artifact.
 
 ## Why 1,200
 
@@ -62,16 +64,19 @@ retention.
 
 ## Metrics
 
-Emitted at ingest alongside the views, named per the fleet conventions
-(`<tool>_<subsystem>_<name>_<unit>`, base units, `_total` ⇒ counter):
+Emitted at ingest alongside the views. **Canonical names are the OTel dotted
+forms** (instrumentation emits OTLP); the Prometheus/Mimir translation below
+is the single statement of the backend mapping (unit suffix `_seconds`,
+counter suffix `_total`, dots → underscores) — dashboards and contract tests
+query the Mimir names, and no other file restates them:
 
-| Metric                                    | Type      | Labels (closed enums)               |
-| ----------------------------------------- | --------- | ----------------------------------- |
-| `buck2_command_duration_seconds`          | histogram | subcommand                          |
-| `buck2_critical_path_duration_seconds`    | histogram | subcommand                          |
-| `buck2_action_count_total`                | counter   | category, execution_kind, cache_hit |
-| `buck2_action_execution_duration_seconds` | histogram | category                            |
-| `buck2_action_queue_duration_seconds`     | histogram | category                            |
+| Canonical (OTel)                      | Mimir / Prometheus                        | Type      | Labels (closed enums)               |
+| ------------------------------------- | ----------------------------------------- | --------- | ----------------------------------- |
+| `buck2.command.duration` (s)          | `buck2_command_duration_seconds`          | histogram | subcommand                          |
+| `buck2.critical_path.duration` (s)    | `buck2_critical_path_duration_seconds`    | histogram | subcommand                          |
+| `buck2.action.count`                  | `buck2_action_count_total`                | counter   | category, execution_kind, cache_hit |
+| `buck2.action.execution.duration` (s) | `buck2_action_execution_duration_seconds` | histogram | category                            |
+| `buck2.action.queue.duration` (s)     | `buck2_action_queue_duration_seconds`     | histogram | category                            |
 
 Observed dimensions are bounded by Buck's enums (10–21 categories, 3–5
 execution kinds across the corpus). Generic span-derived RED metrics cannot

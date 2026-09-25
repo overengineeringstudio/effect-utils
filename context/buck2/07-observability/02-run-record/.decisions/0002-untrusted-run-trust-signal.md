@@ -42,9 +42,10 @@ Untrusted runs ingest only when an explicit, provider-level trust signal
 authorizes it — on GitHub: a PR label. The signal is consumed by a trusted
 adapter that grants a short-lived, write-only upload capability bound to the
 exact PR head; the build and the uploader see a generic capability and stay
-provider-neutral. Ingested untrusted records are tagged so queries can filter
-(the tag is expressed through provider-neutral OTel attributes at ingest; see
-[05](../../05-ingest-and-archive/requirements.md)).
+provider-neutral. Ingested untrusted records are tagged `ci.pr.fork=true`
+so queries can filter (05 stamps the agreed key; its later migration to the
+OTel CICD key family is tracked as
+[OQ4](../../open-questions.md)).
 
 ## Consequences
 

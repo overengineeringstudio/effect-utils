@@ -48,9 +48,14 @@ lives.
 
 Ingest converts sealed run records through the adapter into both views and
 bounded metrics, identically locally and on the fleet dev host, with ids
-derived only from record-borne identity. Tempo keeps 30 days; long-term
-trends come from the bounded metrics; raw run records are archived ~1 year
-(≤115 GiB/yr corridor) in the dated, indexed layout with a retention timer.
+derived only from a pre-manifest record-borne identity (including the view
+kind, so each command's two views get distinct stable ids). Tempo keeps 30
+days; long-term trends come from the bounded metrics; raw run records are
+archived ~1 year in the dated, job-keyed, indexed layout with a retention
+timer, within a ≤150 GiB/yr corridor at the planning volume (measured
+projection ~125 GiB/yr — q14's earlier ≤115 figure was an estimate, not a
+requirement; the corridor is re-measured under
+[OQ1](../../open-questions.md)).
 The ingester service, auth front, store ACL/lifecycle, index, and timer are
 implemented by the dotfiles fleet config against this contract; no CI-artifact
 replay is built, and direct OTLP remains a later optional fast path
@@ -58,9 +63,9 @@ replay is built, and direct OTLP remains a later optional fast path
 
 ## Consequences
 
-- Ingest code has exactly one path to maintain; a laptop can replay any
+- Ingest code has exactly one path to maintain; a laptop can re-ingest any
   archived run identically.
-- Fork-run traces arrive only through 02's trust signal and carry explicit
-  markers; the bounded decoder is the poison boundary.
+- Fork-run traces arrive only through 02's trust signal and carry
+  `ci.pr.fork=true`; the bounded decoder is the poison boundary.
 - Tempo volume under both-views ingest is unmeasured and tracked
   ([OQ1](../../open-questions.md)) with dial-in options.

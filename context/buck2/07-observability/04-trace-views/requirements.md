@@ -28,10 +28,10 @@ the BUCK.OBS-T02 tradeoff of the
   neither is a read-time transformation of the other.
 - **BUCK.OBS.VIEW-R02 Critical view rule:** the critical view retains the
   critical path and its stage children, all spans at or above the view
-  threshold, all their ancestors, and exact full-invocation command summary
-  attributes (action, cache-hit, critical-path counts), under a hard **view
-  cap of 1,200 spans**; the threshold rises only as far as the cap requires
-  (never truncation by input order). Default threshold 1 s.
+  threshold, all their ancestors, and exact whole-command summary attributes
+  (action, cache-hit, critical-path counts), under a hard **view cap of
+  1,200 spans**; the threshold rises only as far as the cap requires (never
+  truncation by input order). Default threshold 1 s.
 - **BUCK.OBS.VIEW-R03 No read-time caps:** consumers see the same stored
   trace; no per-consumer projection at read time (consumers would disagree
   and unstored spans are unqueryable).
@@ -40,15 +40,19 @@ the BUCK.OBS-T02 tradeoff of the
   not the trace store, is forensic truth).
 - **BUCK.OBS.VIEW-R05 Command summaries are exact:** every view carries the
   command's exact aggregate counts (actions, cache hits, critical-path
-  actions); the invocation cache ratio never depends on retained child
-  spans.
-- **BUCK.OBS.VIEW-R06 Bounded metrics (refines BUCK.OBS-R05):** the metrics
-  set is the five closed-enum series — `buck2.command.duration`,
-  `buck2.critical_path.duration`, `buck2.action.count{category,
-execution_kind, cache_hit}`, `buck2.action.execution.duration{category}`,
-  `buck2.action.queue.duration{category}` — named per the fleet metrics
-  conventions. No target, identifier, digest, run id, build id, or host
-  label ever appears.
+  actions); the cache ratio never depends on retained child spans.
+- **BUCK.OBS.VIEW-R06 Bounded metric labels (refines BUCK.OBS-R05):** the
+  canonical metric names are the OTel dotted forms with units —
+  `buck2.command.duration` (s), `buck2.critical_path.duration` (s),
+  `buck2.action.count` (unitless), `buck2.action.execution.duration` (s),
+  `buck2.action.queue.duration` (s) — with closed-enum labels
+  (`subcommand`; `category`, `execution_kind`, `cache_hit`). The
+  Prometheus/Mimir translation (`buck2_command_duration_seconds`,
+  `buck2_critical_path_duration_seconds`, `buck2_action_count_total`,
+  `buck2_action_execution_duration_seconds`,
+  `buck2_action_queue_duration_seconds`) is stated once in the
+  [spec](./spec.md). No target, identifier, digest, run id, trace id, or
+  host label ever appears.
 - **BUCK.OBS.VIEW-R07 Dropped children are visible:** retained parents carry
   a dropped-children count; the view never pretends omitted spans are
   queryable.

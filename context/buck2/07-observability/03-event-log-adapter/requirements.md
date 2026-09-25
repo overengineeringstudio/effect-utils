@@ -38,18 +38,21 @@ attribution at ingest. It refines BUCK.OBS-R01 and BUCK.OBS-R02 of the
 - **BUCK.OBS.ADP-R03 Bump policy:** Every Buck version bump regenerates the
   vendored schema and diffs both field numbers _and types_ (a measured
   `bool → enum` retag at a stable field number shows type drift is the real
-  hazard), replays the cross-version corpus, and lands as one reviewable
-  change.
+  hazard), decodes the cross-version corpus fixtures, and lands as one
+  reviewable change.
 - **BUCK.OBS.ADP-R04 Unknown fields are data loss (refines BUCK.OBS-R02):**
-  Unknown fields are skipped and counted per log; a framing failure falls
+  Unknown fields are skipped and counted per log; a decode never fails a
+  pipeline stage on content. A framing failure in a **trusted** record falls
   back to `buck2 log show` with the matching binary and alerts on the
-  mismatch. A decode never fails a pipeline stage on content.
+  mismatch. Untrusted (fork) logs never reach the fallback and never spawn
+  an external process: they pass only through the bounded Rust decoder, and
+  a framing failure quarantines the log with a recorded reason.
 - **BUCK.OBS.ADP-R05 Dedicated Rust crate:** The adapter is a new, dedicated
   Rust crate (prost) in the Buck-tooling workspace — not part of otel-scrape —
   shipped through cargo → Buck product → Nix like the other native tools.
 - **BUCK.OBS.ADP-R06 Deterministic span model:** The same bytes produce the
   same spans: v2 span names, parent edges, timestamps, critical-path
-  membership, and per-invocation salted span ids (01). Re-running ingest is
+  membership, and per-command salted span ids (01). Re-running ingest is
   idempotent.
 - **BUCK.OBS.ADP-R07 Daemon wait at ingest:** Ingest attributes daemon waits
   by joining the run's logs: peers scoped exactly by the daemon-provided

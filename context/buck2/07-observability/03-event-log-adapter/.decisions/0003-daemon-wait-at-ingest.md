@@ -63,7 +63,7 @@ small dice-hook PR are filed in parallel and never gate this design
 - Wait spans are derived evidence, explicitly marked (confidence tier,
   inferred flag) — the trace answers "why waited" directly while remaining
   regenerable from the record.
-- Wait span ids derive from the waiter's invocation key + gap start, so
+- Wait span ids derive from the waiter's command key + gap start, so
   re-joins are idempotent.
 - If upstream ever ships owner events, the join demotes to fallback and the
   gap attributes remain.

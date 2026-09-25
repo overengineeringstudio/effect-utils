@@ -28,7 +28,7 @@ upstream contribution itself (tracked, not gated).
        2..n:    CommandProgress { BuckEvent | PartialResult | CommandResult }
   -> vendored prost types (data.proto + error.proto + host_sharing.proto
                            + subscription.proto + daemon.proto, ~190 KB)
-  -> span model: span tree, v2 names, per-invocation salted ids,
+  -> span model: span tree, v2 names, per-command salted ids,
      in-band critical_path2 / slowest_path from BuildGraphExecutionInfo
   -> truncation: stop at last complete record; flag `truncated`
 ```
@@ -59,8 +59,8 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 2. Diff field numbers _and declared types_ against the previous pin
    (the 2026-04 → 2026-08 drift was field-number-additive but retagged
    `did_cache_upload: bool → cache_upload_result: enum` at stable numbers).
-3. Replay the cross-version corpus (older writers' logs; the fleet keeps
-   them in the archive) and the truncation fixtures.
+3. Decode the cross-version corpus fixtures (older writers' logs; the fleet
+   keeps them in the archive) and the truncation fixtures.
 4. Land regeneration + diff + corpus results as one change.
 
 ## Daemon-Wait Join
@@ -78,7 +78,7 @@ inferred: gap (default >= 1 s; 500 ms opt-in) in waiter W with no W-owned
 tiers:   exact <= 0.1 ms alignment · high <= 1 ms · medium <= 10 ms
 always:  gap summary attributes on the command span (count, total ms, max ms)
          — the per-log floor that needs no batch
-ids:     wait span id derived from waiter invocation key + gap start
+ids:     wait span id derived from waiter command key + gap start
          (deterministic; re-joins idempotent)
 ```
 
@@ -91,12 +91,14 @@ does not gate this design.
 
 ## Fallback and Failure Behavior
 
-| Condition                        | Behavior                                                       |
-| -------------------------------- | -------------------------------------------------------------- |
-| Unknown fields                   | Skip; count bytes/fields per log (recorded data loss)          |
-| Framing damage / schema conflict | Fall back to `buck2 log show` with the matching binary; alert  |
-| Truncated log (crash)            | Decode readable prefix; mark truncated; inferred end semantics |
-| Missing sidecar line             | Independent trace keyed by the log's own uuid                  |
+| Condition                        | Behavior                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| Unknown fields                   | Skip; count bytes/fields per log (recorded data loss)                          |
+| Framing damage / schema conflict | Trusted record: fall back to `buck2 log show` (matching binary); alert.        |
+|                                  | Untrusted record: no fallback, no external process — quarantine the log with a |
+|                                  | recorded reason (REC-R07)                                                      |
+| Truncated log (crash)            | Decode readable prefix; mark truncated; inferred end semantics                 |
+| Missing sidecar line             | Independent trace keyed by the log's own uuid                                  |
 
 ## Conformance
 

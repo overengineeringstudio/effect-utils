@@ -33,7 +33,7 @@ everything.
 
 Two identity facts drive the design. Buck span ids are per-command counters
 that always include 0 — every pair of commands collides — so exported span ids
-are salted deterministically per invocation. And Buck accepts any 32-hex
+are salted deterministically per command. And Buck accepts any 32-hex
 `BUCK_WRAPPER_UUID` but fails the whole build on a malformed one, so the
 caller-side wrapper validates the W3C context first and degrades to _unset_,
 never to garbage. Correlation is thus a pure function: the wrapper trace id

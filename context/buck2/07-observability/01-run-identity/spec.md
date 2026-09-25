@@ -26,14 +26,17 @@ caller task span (task run)
           ├─ valid  -> BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id))
           │            append sidecar "<uuid> <traceparent-of-command-span>"
           └─ invalid/absent/all-zero -> export nothing
-       3. exec buck2 ... --event-log <path> --write-build-id <path>   (direct, 0011)
-       4. close command span with exit status
+       3. spawn buck2 ... --event-log <path> --write-build-id <path>   (direct child, 0011)
+          as a waited child: forward stdio and signals, wait for exit
+       4. close command span with Buck's exit status; exit with Buck's code
 ```
 
-The mode is caller-side preparation, not interposition: Buck remains a direct
-child; the wrapper never sits between the caller and Buck's stdio, signals, or
-result. This is the standing 0011 boundary; the amendment records it
-explicitly.
+The mode runs Buck as a **waited child**, never as a replacing `exec`: a
+successful `exec` would replace the wrapper and leave nobody to close the
+command span. The wrapper stays out of the way — stdio pass through
+unchanged, signals forward to Buck, its exit code equals Buck's — so it is
+caller-side preparation, not interposition. This is the standing 0011
+boundary; the amendment records it explicitly.
 
 **Call sites.** The devenv task shell (`trace.exec`), TypeScript subprocess
 spawners (the #1382 `otel-span emit-span` pattern), and CI job wrappers all
@@ -42,12 +45,12 @@ invariant (BUCK.OBS.ID-T01).
 
 **Salting.** The adapter (03) salts OTLP span ids as
 `sha256("<log-uuid>:<buck-span-id>")[:16]` — deterministic from the log, unique
-per invocation; the nested editor-publish reproduction showed 8,526/8,526
+per command; the nested editor-publish reproduction showed 8,526/8,526
 unique ids across two commands under one task trace, and sequential,
 concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
 
-**Daemon sharing.** Wrapper trace ids stay unique per invocation even when
-commands share a daemon (Buck re-reads the env per client invocation); two
+**Daemon sharing.** Wrapper trace ids stay unique per command even when
+commands share a daemon (Buck re-reads the env per client command); two
 interleaved commands on one daemon produced two distinct logs keyed by their
 uuids with no cross-contamination. Daemon waits themselves are attributed at
 ingest ([03](../03-event-log-adapter/spec.md)).

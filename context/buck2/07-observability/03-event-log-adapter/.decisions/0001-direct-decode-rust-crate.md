@@ -22,7 +22,7 @@ when unclear).
   a 136 MB pinned Buck. The JSONL key set follows the _reader binary's_
   proto, not the log's — a measured `bool → enum` retag misrendering — so
   `log show` has no stability advantage; the pin is simply made explicit and
-  auditable. `chrome-trace`/`what-ran`/invocation-record are incomplete span
+  auditable. `chrome-trace`/`what-ran`/the invocation-record JSON are incomplete span
   sources (992 of 12,622 spans on the big log).
 - **Home (B2 then B2b):** for the JSONL source the validated TypeScript
   converter was _faster_ than a minimal Rust port (0.60 s vs 0.72 s) — but
@@ -52,7 +52,7 @@ and debugging surface; unknown fields are recorded data loss, never errors.
 Implement as a new dedicated Rust crate (prost) in the Buck-tooling
 workspace, shipped through the existing cargo → Buck product → Nix path. The
 bump procedure (regen + field-number _and type_ diff + cross-version corpus
-replay) is part of the contract (BUCK.OBS.ADP-R03).
+decode) is part of the contract (BUCK.OBS.ADP-R03).
 
 ## Consequences
 

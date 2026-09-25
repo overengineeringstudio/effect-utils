@@ -40,11 +40,12 @@ experiments (as tested hypotheses).
 ## OQ4: When do the `ci.*` vendor keys migrate to OTel CICD attributes? — open
 
 - The ontology (q19) adopts `cicd.pipeline.*`, `cicd.worker.*`, and `vcs.*`
-  for local _and_ CI runs; today's `ci.*` keys and `devenv.task.exec` naming
-  predate that. Migration timing depends on the otel-scrape semconv pin
-  (v1.37.0) catching up to the now-RC CICD set and on a coordinated rename
-  across the spool, ingester, and dashboards. The build path must not carry
-  two schemes indefinitely.
+  for local _and_ CI runs; today's `ci.*` keys (`ci.provider`,
+  `ci.pr.fork`, and the run/job identity keys) and the `devenv.task.exec`
+  naming predate that. Migration timing depends on the otel-scrape semconv
+  pin (v1.37.0) catching up to the now-RC CICD set and on a coordinated
+  rename across the spool, ingester, and dashboards. The build path must
+  not carry two schemes indefinitely.
 
 ## OQ5: Evidence-namespace lifecycle details — open (dotfiles contract gaps)
 

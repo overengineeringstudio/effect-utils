@@ -32,16 +32,19 @@ refines BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07, and BUCK.OBS-R08 of the
 - **BUCK.OBS.REC-R01 Same record everywhere (refines BUCK.OBS-R03):** Every
   pipeline run — laptop or CI — writes the same local artifacts into its spool
   directory: the manifest, the span spool, and the native evidence (explicit
-  per-invocation event-log copies and build reports). No CI-provider artifact
+  per-command event-log copies and build reports). No CI-provider artifact
   API participates in producing the record.
 - **BUCK.OBS.REC-R02 Capture wiring (refines BUCK.OBS-R07):** Traced callers
-  run Buck with `--event-log <path> --write-build-id <path>` and the
-  caller-derived `BUCK_WRAPPER_UUID` (01); capture overhead is bounded
+  run Buck with `--event-log <path> --write-build-id <path>` (the upstream
+  flag writes the Buck trace id) and the caller-derived `BUCK_WRAPPER_UUID`
+  (01); capture overhead is bounded
   (< 10 ms / < 0.1% of a working build) so it is unconditional, not opt-in.
 - **BUCK.OBS.REC-R03 Seal:** Sealing freezes the manifest — file list, byte
   sizes, SHA-256 digests, schema version, producer and converter versions,
-  deterministic trace ids, run/attempt identity, event type, and trust
-  markers — before anything leaves the host.
+  run/attempt identity, event type, and trust markers — before anything
+  leaves the host. Trace ids are **not** manifest fields: they derive from a
+  pre-manifest identity and are recorded by the ingest index (05), so the
+  record digest never depends on them.
 - **BUCK.OBS.REC-R04 Upload:** One provider-neutral, content-addressed PUT
   carries the sealed record (idempotent; conditional-create where supported);
   the local record is retained until an acknowledged commit; a missing
@@ -58,9 +61,10 @@ refines BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07, and BUCK.OBS-R08 of the
   label syntax; authorization binds to the exact PR head and is re-checked
   before use.
 - **BUCK.OBS.REC-R07 Bounded ingestion of untrusted bytes:** Ingest decodes
-  untrusted records with the bounded Rust decoder — no shell, per-file and
-  total size caps, path-traversal rejection, digest verification before
-  conversion.
+  untrusted records with the bounded Rust decoder only — no shell, per-file
+  and total size caps, path-traversal rejection, digest verification before
+  conversion — and never routes untrusted bytes to any external process
+  (03: no `buck2 log show` fallback for untrusted records).
 - **BUCK.OBS.REC-R08 Named deletions (refines BUCK.OBS-R09):** Landing the
   upload step supersedes the CI span-artifact upload step and any compatibility
   replay; the transfer change deletes them.

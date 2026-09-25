@@ -18,7 +18,7 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 - Builds on [BUCK-R13](../requirements.md): native evidence stays execution
   truth; telemetry links to it without replacing it.
 - [Decision 0011](../.decisions/0011-direct-native-evidence-observation.md):
-  the caller owns the invocation span; versioned adapters decode native
+  the caller owns the command span; versioned adapters decode native
   evidence; no component interposes on Buck.
 - This lane is owned here, not in `context/otel-scrape`, by decision
   ([0001](./.decisions/0001-composite-node-and-lane-ownership.md)); the
@@ -57,14 +57,17 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 ### Must keep telemetry subordinate to native evidence
 
 - **BUCK.OBS-R01 Derived, never authoritative (refines BUCK-R13):** Every
-  telemetry artifact this subsystem produces — trace views, daemon-wait spans,
-  metrics, the run record itself — is derived from native evidence and can be
-  regenerated from it. Export, ingest, or decode failure never changes a Buck
-  result and never blocks a build.
+  telemetry artifact this subsystem derives from a run record's native
+  evidence — trace views, daemon-wait spans, bounded metrics — is derived,
+  never authoritative, and can be regenerated from the archived run record.
+  The run record itself is the source of record for those derivations, not
+  something Buck's evidence can regenerate (it also carries the caller's
+  span spool and run metadata). Export, ingest, or decode failure never
+  changes a Buck result and never blocks a build.
 - **BUCK.OBS-R02 Unknown fields are data loss, not errors:** Fields the pinned
   schema does not know are skipped and counted per log; a decode never fails
   because of unknown content. Only framing damage or schema-type conflicts fall
-  back (and then loudly).
+  back (and then loudly; untrusted records never fall back — see 03).
 
 ### Must be identical locally and in CI
 
@@ -82,13 +85,20 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 
 ### Must bound volume and cardinality
 
-- **BUCK.OBS-R05 Bounded attributes (refines BUCK-R13):** Telemetry attributes
-  and metric labels are closed enums or bounded values. Target labels,
-  identifiers, digests, run ids, and hostnames never appear as metric labels.
+- **BUCK.OBS-R05 Bounded metric labels (refines BUCK-R13):** Metric labels
+  are closed enums or bounded values — never target labels, identifiers,
+  digests, run ids, trace ids, or hostnames. Trace and resource attributes
+  are permitted a fixed set of high-cardinality identifiers for per-run
+  discovery: `cicd.pipeline.run.id`, `cicd.pipeline.run.attempt`,
+  `cicd.pipeline.task.run.id`, `vcs.ref.head.revision`,
+  `vcs.repository.url.full`, `vcs.change.id`, `ci.provider`, `ci.pr.fork`,
+  and the Buck trace id. None of these ever becomes a metric label.
 - **BUCK.OBS-R06 Retention corridor:** Trace storage holds 30 days; long-term
   trends come from bounded metrics; raw native evidence is archived for about
-  one year at a bounded budget (≤115 GiB/yr at the planning volume). Widening
-  beyond the corridor requires a measured volume decision.
+  one year at a bounded budget (≤150 GiB/yr at the planning volume — the
+  measured projection is ~125 GiB/yr — re-measured under
+  [OQ1](./open-questions.md)). Widening beyond the corridor requires a
+  measured volume decision.
 
 ### Must own identity exactly
 
