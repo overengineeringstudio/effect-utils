@@ -5,7 +5,7 @@ import { Schema } from 'effect'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 
 const Name = Schema.String.check(Schema.isPattern(/^[^\s]+$/))
-const Visibility = Schema.Literal('public', 'private')
+const Visibility = Schema.Literals(['public', 'private'])
 const NixBinaryCacheDescriptor = Schema.Struct({
   kind: Schema.Literal('nix-binary'),
   name: Name,

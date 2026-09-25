@@ -1,3 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -157,6 +162,31 @@ describe('build cache composition', () => {
     expect(
       readBinaryCacheDescriptors(new URL('../../nix/binary-caches.json', import.meta.url)),
     ).toEqual(effectUtilsBinaryCaches)
+  })
+
+  it('reads private Nix and REAPI descriptors through the JSON reader', () => {
+    const privateReapi: Cache = {
+      kind: 'reapi',
+      name: 'private-reapi',
+      visibility: 'private',
+      endpoint: 'grpcs://reapi.example.test:443',
+      instanceName: 'effect-utils',
+      digest: 'SHA256',
+    }
+    const dir = mkdtempSync(join(tmpdir(), 'binary-caches-'))
+    try {
+      const file = join(dir, 'binary-caches.json')
+      writeFileSync(
+        file,
+        JSON.stringify({ [privateCache.name]: privateCache, [privateReapi.name]: privateReapi }),
+      )
+      expect(readBinaryCacheDescriptors(pathToFileURL(file))).toEqual({
+        [privateCache.name]: privateCache,
+        [privateReapi.name]: privateReapi,
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
