@@ -254,6 +254,8 @@ const bundleProduct = (prefix: string): { readonly bytes: string; readonly descr
       'fixture//p:cli-module',
       '--platform-gated-manifest',
       manifest,
+      '--fingerprint-tool',
+      process.env['BUCK2_FINGERPRINT_TOOL'] ?? 'missing BUCK2_FINGERPRINT_TOOL',
       ...closureRoots.flatMap((closureRoot) => [
         '--closure-root',
         `${closureRoot.name}\t${closureRoot.path}`,
