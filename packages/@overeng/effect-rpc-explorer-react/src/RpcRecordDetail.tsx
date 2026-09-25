@@ -21,8 +21,9 @@ import type {
 } from '@overeng/effect-rpc-explorer'
 import { fontSizes, spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
-import { ChannelContentPanel } from './ChannelContentPanel.tsx'
+import { ChannelContentPanel, channelLabel } from './ChannelContentPanel.tsx'
 import type { ExplorerProjection } from './projection.ts'
+import { SchemaTree } from './SchemaTree.tsx'
 import { explorerTokens } from './tokens.stylex.ts'
 import {
   activeStates,
@@ -62,6 +63,7 @@ const styles = stylex.create({
     top: 0,
     zIndex: 2,
     display: 'flex',
+    flexWrap: { default: 'nowrap', '@media (max-width: 63.99rem)': 'wrap' },
     alignItems: 'center',
     gap: explorerTokens['density-gap'],
     padding: explorerTokens['density-gap'],
@@ -71,13 +73,14 @@ const styles = stylex.create({
     borderBlockEndColor: explorerTokens.border,
   },
   detailTitle: {
+    flexGrow: 1,
     minWidth: 0,
     margin: 0,
     fontSize: fontSizes.sm,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
-  back: { display: { default: 'none', '@media (max-width: 47.99rem)': 'inline-flex' } },
+  back: { display: { default: 'none', '@media (max-width: 63.99rem)': 'inline-flex' } },
   hidden: { display: 'none' },
   visible: { display: 'inline-flex' },
   status: {
@@ -133,7 +136,7 @@ const styles = stylex.create({
   timeline: { display: 'grid', gap: 0, margin: 0, padding: 0, listStyle: 'none' },
   timelineItem: {
     display: 'grid',
-    gridTemplateColumns: '6rem 1fr auto',
+    gridTemplateColumns: 'minmax(0, 6rem) minmax(0, 1fr) auto',
     gap: explorerTokens['density-gap'],
     paddingBlock: explorerTokens['density-block'],
     borderBlockEndWidth: 1,
@@ -142,18 +145,6 @@ const styles = stylex.create({
   },
   mono: { fontFamily: explorerTokens['font-data'], fontVariantNumeric: 'tabular-nums' },
   metadata: { color: explorerTokens['muted-text'], fontVariantNumeric: 'tabular-nums' },
-  schema: {
-    maxHeight: '24rem',
-    margin: 0,
-    padding: explorerTokens['density-gap'],
-    overflow: 'auto',
-    backgroundColor: explorerTokens.panel,
-    color: explorerTokens.text,
-    fontFamily: explorerTokens['font-data'],
-    fontSize: explorerTokens['font-size'],
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'anywhere',
-  },
   warningBox: {
     padding: explorerTokens['density-gap'],
     borderInlineStartWidth: 2,
@@ -315,7 +306,13 @@ const LifecycleTimeline = ({
   )
 }
 
-const ContentDetail = ({ events }: { events: ReadonlyArray<ExplorerEvent> }): ReactNode => {
+const ContentDetail = ({
+  events,
+  descriptor,
+}: {
+  events: ReadonlyArray<ExplorerEvent>
+  descriptor: RpcDescriptorWire | undefined
+}): ReactNode => {
   const observations = events.flatMap(observationsForEvent)
   const grouped = new Map<CaptureChannel, Array<ChannelObservation>>()
   for (const observation of observations) {
@@ -332,6 +329,7 @@ const ContentDetail = ({ events }: { events: ReadonlyArray<ExplorerEvent> }): Re
           <ChannelContentPanel
             key={`${channel}-${JSON.stringify(observation)}`}
             observation={observation}
+            schema={descriptor?.channels[channel].schema}
           />
         )),
       )}
@@ -361,7 +359,9 @@ const DescriptorPanel = ({
     return (
       <p {...stylex.props(styles.warningBox)}>Descriptor unavailable for this observed identity.</p>
     )
-  const channels: ReadonlyArray<readonly [string, RpcDescriptorWire['terminal']]> = [
+  const channels: ReadonlyArray<
+    readonly [CaptureChannel | 'terminal', RpcDescriptorWire['terminal']]
+  > = [
     ...(Object.entries(descriptor.channels) as ReadonlyArray<
       readonly [CaptureChannel, RpcDescriptorWire['channels'][CaptureChannel]]
     >),
@@ -376,26 +376,28 @@ const DescriptorPanel = ({
         <Property label="Observation">{descriptor.observe}</Property>
       </dl>
       <CopyIdentifier label="descriptor key" value={descriptor.key} />
-      {channels.map(([channel, projection]) => (
-        <section key={channel}>
-          <Heading level={4}>{channel}</Heading>
-          {projection.projection === 'unavailable' ? (
-            <p {...stylex.props(styles.warningBox)}>
-              Schema projection unavailable
-              {projection.warning === undefined ? '.' : `: ${projection.warning}`}
-            </p>
-          ) : (
-            <>
-              {projection.projection === 'bestEffort' ? (
-                <p {...stylex.props(styles.warningBox)}>Best-effort JSON Schema projection.</p>
-              ) : undefined}
-              <pre {...stylex.props(styles.schema)}>
-                {JSON.stringify(projection.schema, undefined, 2)}
-              </pre>
-            </>
-          )}
-        </section>
-      ))}
+      {channels
+        .filter(
+          ([, projection]) =>
+            projection.projection === 'unavailable' ||
+            projection.schema !== undefined ||
+            projection.warning !== undefined,
+        )
+        .map(([channel, projection]) => (
+          <section key={channel}>
+            <Heading level={4}>
+              {channel === 'terminal' ? 'Terminal' : channelLabel[channel]}
+            </Heading>
+            {projection.projection === 'unavailable' ? (
+              <p {...stylex.props(styles.warningBox)}>
+                Schema projection unavailable
+                {projection.warning === undefined ? '.' : `: ${projection.warning}`}
+              </p>
+            ) : (
+              <SchemaTree document={projection.schema} />
+            )}
+          </section>
+        ))}
     </div>
   )
 }
@@ -484,7 +486,7 @@ const RpcRecordDetail = ({
           <LifecycleTimeline record={record} events={events} />
         </TabPanel>
         <TabPanel id="content" {...stylex.props(styles.tabPanel)}>
-          <ContentDetail events={events} />
+          <ContentDetail events={events} descriptor={descriptor} />
         </TabPanel>
         <TabPanel id="descriptor" {...stylex.props(styles.tabPanel)}>
           <DescriptorPanel descriptor={descriptor} />

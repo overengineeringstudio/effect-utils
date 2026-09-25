@@ -110,3 +110,18 @@ decoration, content policy, or application RPC control.
   observable core frames, not implementation wiring, and must cover each
   lifecycle/policy/retention boundary represented by the UI.
   Refines: RPCX-R28.
+
+### Must preserve theme and schema meaning
+
+- **RPCX.UI-R17 Dual color schemes:** The explorer must provide light and dark
+  theme variants through semantic StyleX tokens and preserve accessible contrast,
+  focus visibility, and state distinctions in both schemes across supported
+  viewports.
+  Refines: RPCX-R25, RPCX-R26.
+- **RPCX.UI-R18 Schema-derived inspection:** Where a descriptor exposes
+  projected Schema metadata, the UI must show channel fields as an accessible
+  hierarchy using available titles, descriptions, examples, and required/optional
+  semantics, and label captured normalized fields with their schema titles
+  without reconstructing omitted or redacted values. Unavailable projections
+  must be identified explicitly.
+  Refines: RPCX-R09, RPCX-R14, RPCX-R15, RPCX-R24.

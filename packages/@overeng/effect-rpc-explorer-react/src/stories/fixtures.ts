@@ -15,16 +15,51 @@ import type { ExplorerClient } from '../projection.ts'
 export const fixtureNow = 1_795_027_210_000
 const baseWallClock = fixtureNow - 12_000
 
-const channel = (projection: 'bestEffort' | 'unavailable' = 'bestEffort') => ({
+const requestSchema = {
+  title: 'Project lookup request',
+  description: 'A bounded diagnostic projection of the lookup request.',
+  type: 'object',
+  properties: {
+    projectId: {
+      title: 'Project ID',
+      description: 'Stable identifier of the requested project.',
+      type: 'string',
+      examples: ['prj_fixture'],
+    },
+  },
+  required: ['projectId'],
+}
+
+const resultSchema = {
+  title: 'Project lookup result',
+  description: 'Fields returned by the project lookup.',
+  type: 'object',
+  properties: {
+    visible: { title: 'Display name', type: 'string', description: 'Public project name.' },
+    secret: { title: 'Credential', type: 'string', description: 'Redacted by capture policy.' },
+  },
+  required: ['visible'],
+}
+
+const failureSchema = {
+  title: 'Lookup failure',
+  type: 'object',
+  properties: {
+    code: { title: 'Failure code', type: 'string', examples: ['NotFound'] },
+    detail: { title: 'Failure detail', type: 'string' },
+  },
+  required: ['code'],
+}
+
+const channel = ({
+  projection = 'bestEffort',
+  schema = requestSchema,
+}: {
+  projection?: 'bestEffort' | 'unavailable'
+  schema?: Readonly<Record<string, unknown>>
+} = {}) => ({
   projection,
-  schema:
-    projection === 'unavailable'
-      ? undefined
-      : {
-          type: 'object',
-          properties: { projectId: { type: 'string' } },
-          required: ['projectId'],
-        },
+  schema: projection === 'unavailable' ? undefined : schema,
   warning: projection === 'unavailable' ? 'Schema annotations could not be projected' : undefined,
 })
 
@@ -38,14 +73,20 @@ export const descriptors: ReadonlyArray<RpcDescriptorWire> = [
     observe: 'include',
     channels: {
       requestPayload: channel(),
-      success: channel(),
-      typedFailure: channel(),
-      defect: channel('unavailable'),
-      streamElement: channel('unavailable'),
-      streamError: channel('unavailable'),
-      headers: channel(),
+      success: channel({ schema: resultSchema }),
+      typedFailure: channel({ schema: failureSchema }),
+      defect: { projection: 'unavailable', schema: undefined, warning: undefined },
+      streamElement: channel({ projection: 'unavailable' }),
+      streamError: channel({ projection: 'unavailable' }),
+      headers: channel({
+        schema: {
+          title: 'Request headers',
+          type: 'object',
+          additionalProperties: { type: 'string' },
+        },
+      }),
     },
-    terminal: channel(),
+    terminal: channel({ schema: { title: 'Terminal signal', type: 'null' } }),
   },
   {
     descriptorId: 'rpc:events.subscribe',
@@ -55,14 +96,26 @@ export const descriptors: ReadonlyArray<RpcDescriptorWire> = [
     observe: 'include',
     channels: {
       requestPayload: channel(),
-      success: channel('unavailable'),
-      typedFailure: channel('unavailable'),
-      defect: channel('unavailable'),
-      streamElement: channel(),
-      streamError: channel(),
-      headers: channel(),
+      success: channel({ projection: 'unavailable' }),
+      typedFailure: channel({ projection: 'unavailable' }),
+      defect: channel({ projection: 'unavailable' }),
+      streamElement: channel({
+        schema: {
+          title: 'Subscribed event',
+          type: 'object',
+          properties: { eventId: { title: 'Event ID', type: 'string' } },
+        },
+      }),
+      streamError: channel({ schema: { title: 'Subscription failure', type: 'string' } }),
+      headers: channel({
+        schema: {
+          title: 'Request headers',
+          type: 'object',
+          additionalProperties: { type: 'string' },
+        },
+      }),
     },
-    terminal: channel(),
+    terminal: channel({ schema: { title: 'Terminal signal', type: 'null' } }),
   },
 ]
 

@@ -8,6 +8,7 @@ export const statusByState: Record<
   RecordState,
   {
     readonly label: string
+    readonly compactLabel?: string
     readonly symbol: string
     readonly tone: StatusTone
   }
@@ -16,14 +17,24 @@ export const statusByState: Record<
   sent: { label: 'Sent', symbol: '→', tone: 'info' },
   awaiting: { label: 'Awaiting', symbol: '…', tone: 'info' },
   streaming: { label: 'Streaming', symbol: '⇢', tone: 'info' },
-  cancellationRequested: { label: 'Cancellation requested', symbol: '!', tone: 'warning' },
+  cancellationRequested: {
+    label: 'Cancellation requested',
+    compactLabel: 'Cancel req.',
+    symbol: '!',
+    tone: 'warning',
+  },
   sendFailed: { label: 'Send failed', symbol: '×', tone: 'failure' },
   succeeded: { label: 'Succeeded', symbol: '✓', tone: 'success' },
   failed: { label: 'Typed failure', symbol: '×', tone: 'failure' },
   defect: { label: 'Defect', symbol: '◆', tone: 'fault' },
   interrupted: { label: 'Interrupted', symbol: '■', tone: 'warning' },
   uncertain: { label: 'Uncertain', symbol: '?', tone: 'fault' },
-  notificationSent: { label: 'Notification sent', symbol: '✓', tone: 'success' },
+  notificationSent: {
+    label: 'Notification sent',
+    compactLabel: 'Notified',
+    symbol: '✓',
+    tone: 'success',
+  },
 }
 
 /** States whose elapsed duration continues through the current clock sample. */

@@ -21,6 +21,7 @@ routing.
 | Layout and information model             | RPCX.UI-R04–R08 |
 | Accessibility and responsive interaction | RPCX.UI-R09–R12 |
 | Storybook and tests                      | RPCX.UI-R13–R16 |
+| Theme and projected-schema semantics     | RPCX.UI-R17–R18 |
 
 ## Client Projection
 
@@ -56,20 +57,28 @@ it supplies exactly the `ExplorerClient` contract.
 ## Layout and Information Model
 
 ```text
-┌ Explorer header: active/completed counts · filters · connection state ┐
-├──────────────────────────────┬───────────────────────────────────────┤
-│ Record collection             │ Selected record                       │
-│ side  RPC  state  age stream  │ summary + status text                  │
-│ ...                           │ lifecycle timeline                     │
-│                               │ content / policy / schema / trace tabs │
-└──────────────────────────────┴───────────────────────────────────────┘
+Idle:     ┌ Explorer header: connection · search · secondary filters ┐
+          ├───────────────────────────────────────────────────────────┤
+          │ Full-width sectioned record collection                    │
+          └───────────────────────────────────────────────────────────┘
+Selected: ┌ Record list · sort/resize ┬ Summary / Timeline / Content ┐
+          │ RPC  side  state  dur  E/V │ Descriptor / Trace           │
+          └────────────────────────────┴──────────────────────────────┘
+Compact:  ┌ Search · filter disclosure ┐
+          ├ Sectioned list ⇄ detail    ┤
+          └─────────────────────────────┘
 ```
 
 The header announces inspector connection state, current revision, active and
 completed counts, and content-free retention/reset indicators. Its filters use
-closed enum controls for state, side, direction, descriptor, and a text search
-that matches only descriptor key/tag and status labels already in the model. It
-does not search content or emit search input to telemetry.
+closed enum controls for state, side, direction, descriptor, and sort order, plus
+a text search that matches only descriptor key/tag and status labels already
+in the model. It does not search content or emit search input to telemetry.
+At compact container widths, a React Aria disclosure hides secondary filters
+and the history action while search and an active-filter summary remain visible.
+The record heading offers All, Active, and Failures quick filters against the
+same state filter; `/` focuses search only within the explorer and outside
+inputs and overlays.
 
 `Clear diagnostic history` is an explicit toolbar action using `clearHistory()`.
 Its confirmation states that it removes completed explorer history while keeping
@@ -90,18 +99,34 @@ record identity. Each row contains:
 | trace          | `trace linked` or `no trace`                                |
 | fault          | explicit uncertain/anomaly marker when present              |
 
-Active rows precede completed rows in distinct labelled sections. New active
+Active rows precede completed rows in distinct labelled sections. Distinct
+minimum-zero cells expose RPC identity, side/direction, lifecycle, duration,
+and envelope/value counts; trace, truncation and anomaly text supplements the
+last cell. Below the space needed for five readable cells, the same facts occupy
+two compact lines per row. The row's full accessible name provides untruncated
+identity, direction, state, timing, stream, trace and anomaly facts. New active
 items may be visually highlighted without stealing focus or announcing every
-row. The list virtualizes row rendering when item count warrants it while
-preserving the collection's logical keyboard order and selected item semantics.
+row. The React Aria ListBox virtualizes rows while preserving section labels,
+logical keyboard order, and stable selected-item semantics.
+
+Sorting and width adjustment live in a separate labelled toolbar adjacent to
+the collection, not in simulated table headers: each sort button names its
+column and current direction, exposes pressed state, and toggles ascending /
+descending order. Keyboard and pointer-operable separators resize adjacent
+desktop columns and expose their numeric width with `aria-valuenow`; compact
+two-line rows hide those handles. This is deliberately a ListBox, not a Table:
+virtualized section headings and stable single selection are primary, so the
+toolbar does not claim `columnheader` or `aria-sort` semantics it cannot provide.
 
 Detail has Summary, Timeline, Content, Descriptor, and Trace tabs. Summary
 contains state, typed identity display, notification/send facts, duration,
 stream counts, and bounded retention evidence. Timeline shows ordered typed
 events with relative monotonic order and wall-clock display time. Descriptor
-shows kind and each channel's JSON Schema projection plus clear `best effort` or
-`unavailable` warning. Trace shows actual IDs only when present and renders
-`No trace context observed` otherwise.
+shows kind and each available channel's JSON Schema as a progressively disclosed
+field tree, retaining annotation titles, descriptions, examples, and required
+field semantics. Unavailable projections remain visible with or without a
+warning; an available best-effort projection is not presented as a validation guarantee.
+Trace shows actual IDs only when present and renders `No trace context observed` otherwise.
 
 Content displays each channel observation separately. It derives labels from
 outcome metadata and renders `captured` only when the outcome is `Captured`:
@@ -116,15 +141,19 @@ outcome metadata and renders `captured` only when the outcome is `Captured`:
 | `Unsupported`              | `Unsupported value type: <type>`           |
 | `Truncated`                | `Value truncated: <reason>`                |
 
-The tree renders only normalized model nodes. `ChannelContentPanel` reuses
-`@overeng/react-inspector` when its public API accepts this normalized value
-algebra without live-object inspection; otherwise it owns a minimal renderer
-over that algebra. Host-specific actions remain outside this package. Copy
-controls are present only for safe structured identifiers, trace IDs, descriptor
-keys, and already-rendered normalized text; omitted/redacted placeholders
-cannot be expanded or copied as source data. `uncertain` records show a
-connection-fault reference and explain that the protocol provided no
-request-level attribution.
+The content tree renders only normalized model nodes. Where a projected
+descriptor schema is available, it displays the root title and description,
+annotated field titles, and keyboard-reachable field explanations (description,
+examples, and required/optional status). The descriptor presents the projected
+JSON Schema as a React Aria tree with arrow-key navigation and labelled rows;
+annotation notes disclose on demand. Schema metadata is inert and never
+executes, decodes, or reconstructs omitted or redacted payload values.
+`ChannelContentPanel` owns a minimal renderer over the normalized value algebra.
+Copy controls are present only for safe structured identifiers, trace IDs,
+descriptor keys, rendered normalized text, and tagged JSON of the already
+normalized algebra. Tagged placeholders remain placeholders, not source data;
+omitted/redacted roots cannot be expanded or copied. `uncertain` records show a
+connection-fault reference without guessed request-level attribution.
 
 ## Accessibility and Responsive Behavior
 
@@ -141,22 +170,29 @@ hides it, focus remains on the filter with `Selected record is filtered out`;
 if retention evicts it, focus moves to the record collection and announces
 `Selected record expired from bounded history`.
 
-At wide width the list and detail are a resizable split layout with a semantic
-minimum width for each pane. At narrow width selection navigates to a detail
-view with a labelled Back button returning focus to the originating list row.
-Filters remain available on both views. Keyboard behavior is:
+The explorer measures its own container. Until a record is selected, the list
+owns the entire work area; selection opens a resizable list/detail split only
+when the container is at least 1200 CSS pixels wide. Below that threshold,
+including an explicitly wide story in a narrow host container, selection drills
+into detail with a labelled Back control that restores the originating row's
+focus. The list uses two-line rows when its own projected width is below 600
+CSS pixels. Filters remain available on both views.
 
-| Input               | Outcome                                                     |
-| ------------------- | ----------------------------------------------------------- |
-| Arrow keys/Home/End | collection navigation                                       |
-| Enter/Space         | select current record/open detail on narrow layout          |
-| Escape              | close a disclosure/dialog; in narrow detail, return to list |
-| Tab/Shift+Tab       | normal, visible focus order through controls and tabs       |
-| text filter         | filters label/key only and retains focus in the filter      |
+| Input                       | Outcome                                                         |
+| --------------------------- | --------------------------------------------------------------- |
+| Arrow keys/Home/End         | collection navigation                                           |
+| Enter/Space                 | select current record/open detail on narrow layout              |
+| Escape                      | close a disclosure/dialog; in narrow detail, return to list     |
+| Tab/Shift+Tab               | normal, visible focus order through controls and tabs           |
+| text filter                 | filters label/key only and retains focus in the filter          |
+| `/` outside text/overlays   | focuses the explorer-local text filter                          |
+| Left/Right on resize handle | adjusts and persists the desktop pane or adjacent column widths |
 
 StyleX defines package-local semantic tokens for canvas, panel, border, text,
 muted text, success, failure, warning, fault, focus ring, density, and motion.
-States use tokenized borders/icons/text in addition to hue. `prefers-reduced-motion`
+The package supplies a light default and an explicit dark theme class; Storybook
+exercises both against the same layouts and interaction states. States use
+tokenized borders/icons/text in addition to hue. `prefers-reduced-motion`
 disables attention animation. High-contrast mode preserves visible borders,
 focus, and status text; host themes may supply token values but cannot remove
 semantic labels.

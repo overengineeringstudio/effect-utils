@@ -23,13 +23,21 @@ const storyStyles = stylex.create({
 })
 
 const never = <T,>(): Promise<T> => Promise.withResolvers<T>().promise
+const openClearHistory = async (canvasElement: HTMLElement): Promise<void> => {
+  const canvas = within(canvasElement)
+  if (canvas.queryByRole('button', { name: 'Clear history' }) === null)
+    await userEvent.click(canvas.getByRole('button', { name: /^Filters and actions/ }))
+  await userEvent.click(canvas.getByRole('button', { name: 'Clear history' }))
+}
 
 const lifecycleClient = makeFixtureClient(lifecycleSnapshot)
 const emptyClient = makeFixtureClient(emptySnapshot)
 const safetyClient = makeFixtureClient(safetySnapshot)
 const denseClient = makeFixtureClient(denseSnapshot)
+const clearFailureBase = makeFixtureClient(lifecycleSnapshot)
 const clearFailureClient: ExplorerClient = {
-  ...makeFixtureClient(lifecycleSnapshot),
+  getSnapshot: () => clearFailureBase.getSnapshot(),
+  watch: () => clearFailureBase.watch(),
   clearHistory: async () => Promise.reject(new Error('Fixture clear failed')),
 }
 
@@ -73,14 +81,77 @@ export default {
 type Story = StoryObj<typeof RpcExplorer>
 
 /** Empty retained history after the initial inspector snapshot. */
-export const Empty: Story = { args: { client: emptyClient } }
+export const Empty: Story = {
+  args: { client: emptyClient },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).findByText(
+        'Waiting for observed RPCs. Captured calls will appear here.',
+      ),
+    ).resolves.toBeVisible()
+  },
+}
 
 /** Cold client before its first snapshot resolves. */
-export const Loading: Story = { args: { client: loadingClient } }
+export const Loading: Story = {
+  args: { client: loadingClient },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).findByText('Loading the inspector snapshot…'),
+    ).resolves.toBeVisible()
+  },
+}
 
 /** Active and completed unary/stream lifecycles, including every terminal boundary. */
 export const LifecycleWide: Story = {
   args: { presentation: { layout: 'wide', nowMillis: () => fixtureNow } },
+}
+
+/** Projected titles, descriptions, required fields, and examples remain readable in detail. */
+export const SchemaAnnotatedPayload: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    await userEvent.click((await canvas.findAllByRole('option'))[0]!)
+    await userEvent.click(await canvas.findByRole('tab', { name: 'Content' }))
+    await expect(
+      canvas.findByRole('button', { name: 'Project lookup request · object · 1 field' }),
+    ).resolves.toBeVisible()
+    await expect(canvas.findByText(/Project ID:/)).resolves.toBeVisible()
+    await userEvent.click(await canvas.findByRole('tab', { name: 'Descriptor' }))
+    const tree = (await canvas.findAllByRole('treegrid', { name: 'Projected channel schema' }))[0]!
+    const root = within(tree).getAllByRole('row')[0]!
+    root.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Project ID string required')
+    await userEvent.click(within(tree).getByRole('button', { name: 'Schema notes for Project ID' }))
+    await expect(
+      canvas.findByText('Stable identifier of the requested project.'),
+    ).resolves.toBeVisible()
+    await expect(canvas.findByText('Example: "prj_fixture"')).resolves.toBeVisible()
+    await expect(canvas.findByText('Schema projection unavailable.')).resolves.toBeVisible()
+  },
+}
+
+/** The React Aria resize handle has keyboard parity with pointer dragging. */
+export const KeyboardResize: Story = {
+  args: { presentation: { layout: 'wide', nowMillis: () => fixtureNow } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    await userEvent.click((await canvas.findAllByRole('option'))[0]!)
+    const handle = canvas.queryByRole('button', { name: 'Resize record pane' })
+    if (handle === null) {
+      await expect(canvas.findByRole('button', { name: 'Back to records' })).resolves.toBeVisible()
+      return
+    }
+    await expect(handle).toHaveAccessibleDescription(/Use Left and Right arrow keys/)
+    handle.focus()
+    await userEvent.keyboard('{ArrowLeft}')
+    const left = handle.getBoundingClientRect().left
+    await userEvent.keyboard('{ArrowRight}')
+    expect(handle.getBoundingClientRect().left).toBeGreaterThan(left)
+  },
 }
 
 /** Narrow collection drill-in and explicit Back flow. */
@@ -88,7 +159,7 @@ export const LifecycleNarrow: Story = {
   args: { presentation: { layout: 'narrow', nowMillis: () => fixtureNow } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await canvas.findByText('Inspector connected')
+    await canvas.findByRole('img', { name: 'Inspector connected' })
     await userEvent.click((await canvas.findAllByRole('option'))[0]!)
     await expect(canvas.findByRole('button', { name: /Back to records/ })).resolves.toBeVisible()
     await userEvent.click(await canvas.findByRole('button', { name: /Back to records/ }))
@@ -103,7 +174,7 @@ export const ContentSafety: Story = {
   args: { client: safetyClient },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await canvas.findByText('Inspector connected')
+    await canvas.findByRole('img', { name: 'Inspector connected' })
     await userEvent.click(await canvas.findByRole('option'))
     await userEvent.click(await canvas.findByRole('tab', { name: 'Content' }))
     await expect(canvas.findByText('Not captured — default policy')).resolves.toBeVisible()
@@ -125,7 +196,7 @@ export const ContentSafety: Story = {
 export const RetentionEvidence: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await expect(canvas.findByText('3 records expired by retention')).resolves.toBeVisible()
+    await expect(canvas.findByTitle('3 records expired by retention')).resolves.toBeVisible()
     await expect(canvas.findAllByText(/truncated/)).resolves.not.toHaveLength(0)
   },
 }
@@ -141,14 +212,14 @@ export const ClearHistoryReset: Story = {
   render: () => <DeterministicClearHarness />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await expect(canvas.findByText(/1 active · 1 completed/)).resolves.toBeVisible()
+    await expect(canvas.findByText(/1 active · 1 done/)).resolves.toBeVisible()
     const records = await canvas.findAllByRole('option')
     await userEvent.click(records[1]!)
-    await userEvent.click(canvas.getByRole('button', { name: 'Clear history' }))
+    await openClearHistory(canvasElement)
     const body = within(document.body)
     await userEvent.click(await body.findByRole('button', { name: 'Clear diagnostic history' }))
-    await expect(canvas.findByText(/1 active · 0 completed/)).resolves.toBeVisible()
-    await expect(canvas.findByText('Last reset: cleared')).resolves.toBeVisible()
+    await expect(canvas.findByText(/1 active · 0 done/)).resolves.toBeVisible()
+    await expect(canvas.findByTitle('Last reset: cleared')).resolves.toBeVisible()
     await expect(canvas.findByRole('status')).resolves.toHaveTextContent(
       'Selected record expired from bounded history',
     )
@@ -163,11 +234,13 @@ export const ClearHistoryFailure: Story = {
   args: { client: clearFailureClient },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await canvas.findByText('Inspector connected')
-    await userEvent.click(canvas.getByRole('button', { name: 'Clear history' }))
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    await openClearHistory(canvasElement)
     const body = within(document.body)
     await userEvent.click(await body.findByRole('button', { name: 'Clear diagnostic history' }))
-    await expect(canvas.findByText('Inspector error: Fixture clear failed')).resolves.toBeVisible()
+    await expect(
+      canvas.findByRole('img', { name: 'Inspector error: Fixture clear failed' }),
+    ).resolves.toBeVisible()
   },
 }
 
@@ -176,10 +249,47 @@ export const DenseLongList: Story = {
   args: { client: denseClient },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await canvas.findByText('Inspector connected')
+    await canvas.findByRole('img', { name: 'Inspector connected' })
     expect((await canvas.findAllByRole('option')).length).toBeLessThan(
       denseSnapshot.active.length + denseSnapshot.completed.length,
     )
+  },
+}
+
+/** Sorting by newest changes which active lifecycle is first in the collection. */
+export const SortByNewest: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    await expect((await canvas.findAllByRole('option'))[0]).toHaveTextContent('Sending')
+    if (canvas.queryByRole('button', { name: /^Oldest first Sort/ }) === null)
+      await userEvent.click(canvas.getByRole('button', { name: /^Filters and actions/ }))
+    await userEvent.click(canvas.getByRole('button', { name: /^Oldest first Sort/ }))
+    await userEvent.click(within(document.body).getByRole('option', { name: 'Newest first' }))
+    await expect((await canvas.findAllByRole('option'))[0]).toHaveAccessibleName(
+      /Cancellation requested/,
+    )
+  },
+}
+
+/** Sorting and resizing remain keyboard-accessible beside the virtualized ListBox. */
+export const ColumnSortAndResize: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    const sort = canvas.getByRole('button', { name: 'Sort RPC: inactive' })
+    await userEvent.click(sort)
+    await expect(canvas.getByRole('button', { name: 'Sort RPC: ascending' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await expect((await canvas.findAllByRole('option'))[0]).toHaveTextContent('events.subscribe')
+    const separator = canvas.queryByRole('separator', { name: 'Resize RPC column' })
+    if (separator === null) return
+    const before = separator.getAttribute('aria-valuenow')
+    separator.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    await expect(separator).not.toHaveAttribute('aria-valuenow', before)
   },
 }
 
@@ -194,7 +304,9 @@ export const StaleResetReconnect: Story = {
   render: () => <StaleResetHarness />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await expect(canvas.findByText(/Inspector recovering: instanceChanged/)).resolves.toBeVisible()
+    await expect(
+      canvas.findByText('Inspector recovering: instanceChanged', { selector: 'header span' }),
+    ).resolves.toBeVisible()
   },
 }
 
@@ -234,16 +346,16 @@ export const LiveCoreProtocol: Story = {
   render: () => <LiveCoreHarness />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await canvas.findByText('Inspector connected')
-    await expect(canvas.findByText(/1 active · 0 completed/)).resolves.toBeVisible()
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    await expect(canvas.findByText(/1 active · 0 done/)).resolves.toBeVisible()
     expect(canvas.queryByText('Unknown descriptor')).toBeNull()
     await userEvent.click(canvas.getByRole('button', { name: 'Emit application lifecycle' }))
-    await expect(canvas.findByText(/1 active · 1 completed/)).resolves.toBeVisible()
+    await expect(canvas.findByText(/1 active · 1 done/)).resolves.toBeVisible()
     expect(canvas.queryByText('Unknown descriptor')).toBeNull()
     const records = await canvas.findAllByRole('option')
     await userEvent.click(records[0]!)
 
-    await userEvent.click(canvas.getByRole('button', { name: 'Clear history' }))
+    await openClearHistory(canvasElement)
     const body = within(document.body)
     await userEvent.click(await body.findByRole('button', { name: 'Clear diagnostic history' }))
     await expect(canvas.findByText(/1 active · 0 completed/)).resolves.toBeVisible()

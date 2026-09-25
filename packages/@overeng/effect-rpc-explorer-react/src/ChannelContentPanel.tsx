@@ -1,17 +1,20 @@
 import * as stylex from '@stylexjs/stylex'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Button, Disclosure, DisclosurePanel, Heading } from 'react-aria-components'
 
 import type { ChannelObservation, NormalizedValue } from '@overeng/effect-rpc-explorer'
 import { spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
 import { normalizedValueText } from './normalized-value.ts'
+import { schemaFieldMetadata, type SchemaFieldMetadata } from './schema-field.ts'
 import { explorerTokens } from './tokens.stylex.ts'
 
 /** Inputs for rendering one policy-governed capture channel. */
 export type { ChannelContentPanelProps }
 /** Safe normalized channel renderer and text serializer. */
 export { ChannelContentPanel }
+/** Human-readable names shared by captured content and descriptor schemas. */
+export { channelLabel }
 export { normalizedValueText } from './normalized-value.ts'
 
 const styles = stylex.create({
@@ -50,6 +53,11 @@ const styles = stylex.create({
   row: { minWidth: 0 },
   key: { color: explorerTokens['muted-text'] },
   value: { overflowWrap: 'anywhere' },
+  fieldNote: {
+    marginBlock: explorerTokens['density-block'],
+    color: explorerTokens['muted-text'],
+    overflowWrap: 'anywhere',
+  },
   disclosureButton: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -65,6 +73,7 @@ const styles = stylex.create({
       '[data-focus-visible]': `1px solid ${explorerTokens['focus-ring']}`,
     },
   },
+  copyActions: { display: 'flex', flexWrap: 'wrap', gap: explorerTokens['density-gap'] },
   copyButton: {
     justifySelf: 'start',
     minHeight: explorerTokens['control-height'],
@@ -86,15 +95,63 @@ const styles = stylex.create({
   },
 })
 
+const emptyPath: ReadonlyArray<string> = []
+
+const FieldAnnotation = ({
+  label,
+  metadata,
+}: {
+  label: string
+  metadata: SchemaFieldMetadata | undefined
+}): ReactNode => {
+  if (
+    metadata === undefined ||
+    (metadata.description === undefined &&
+      metadata.examples.length === 0 &&
+      metadata.required === undefined)
+  )
+    return undefined
+  return (
+    <Disclosure>
+      <Button
+        slot="trigger"
+        aria-label={`Schema notes for ${label}`}
+        {...stylex.props(styles.disclosureButton, styles.key)}
+      >
+        About {label}
+      </Button>
+      <DisclosurePanel>
+        <div {...stylex.props(styles.fieldNote)}>
+          {metadata.required === undefined ? undefined : (
+            <div>{metadata.required === true ? 'Required field' : 'Optional field'}</div>
+          )}
+          {metadata.description === undefined ? undefined : <div>{metadata.description}</div>}
+          {metadata.examples.length === 0 ? undefined : (
+            <div>
+              Example: {metadata.examples.map((example) => JSON.stringify(example)).join(', ')}
+            </div>
+          )}
+        </div>
+      </DisclosurePanel>
+    </Disclosure>
+  )
+}
+
 const NormalizedNode = ({
   value,
   label,
+  schema,
+  path = emptyPath,
 }: {
   value: NormalizedValue
   label?: string
+  schema?: unknown
+  path?: ReadonlyArray<string>
 }): ReactNode => {
   const prefix =
     label === undefined ? undefined : <span {...stylex.props(styles.key)}>{label}: </span>
+  const rootTitle =
+    path.length === 0 ? schemaFieldMetadata({ document: schema, path })?.title : undefined
 
   if (value._tag === 'Array' || value._tag === 'Object') {
     const entries: ReadonlyArray<readonly [string, NormalizedValue]> =
@@ -102,23 +159,43 @@ const NormalizedNode = ({
         ? value.value.map((child, index) => [String(index), child] as const)
         : Object.entries(value.value)
     const summary =
-      value._tag === 'Array' ? `Array(${entries.length})` : `Object(${entries.length})`
+      rootTitle === undefined
+        ? value._tag === 'Array'
+          ? `Array(${entries.length})`
+          : `Object(${entries.length})`
+        : `${value._tag === 'Array' ? 'array' : 'object'} · ${entries.length} ${value._tag === 'Array' ? (entries.length === 1 ? 'item' : 'items') : entries.length === 1 ? 'field' : 'fields'}`
     return (
       <Disclosure defaultExpanded>
-        <Button slot="trigger" {...stylex.props(styles.disclosureButton)}>
-          <span aria-hidden="true">▾</span>
-          {prefix}
-          {summary}
-        </Button>
-        <DisclosurePanel>
-          <ul {...stylex.props(styles.tree)}>
-            {entries.map(([key, child]) => (
-              <li key={key} {...stylex.props(styles.row)}>
-                <NormalizedNode value={child} label={key} />
-              </li>
-            ))}
-          </ul>
-        </DisclosurePanel>
+        {({ isExpanded }) => (
+          <>
+            <Button slot="trigger" {...stylex.props(styles.disclosureButton)}>
+              <span aria-hidden="true">{isExpanded === true ? '▾' : '▸'}</span>
+              {prefix}
+              {rootTitle === undefined ? '' : `${rootTitle} · `}
+              {summary}
+            </Button>
+            <DisclosurePanel>
+              <ul {...stylex.props(styles.tree)}>
+                {entries.map(([key, child]) => {
+                  const childPath = [...path, key]
+                  const annotation = schemaFieldMetadata({ document: schema, path: childPath })
+                  const childLabel = annotation?.title ?? key
+                  return (
+                    <li key={key} {...stylex.props(styles.row)}>
+                      <NormalizedNode
+                        value={child}
+                        label={childLabel}
+                        schema={schema}
+                        path={childPath}
+                      />
+                      <FieldAnnotation label={childLabel} metadata={annotation} />
+                    </li>
+                  )
+                })}
+              </ul>
+            </DisclosurePanel>
+          </>
+        )}
       </Disclosure>
     )
   }
@@ -168,12 +245,18 @@ const channelLabel: Record<ChannelObservation['channel'], string> = {
 
 interface ChannelContentPanelProps {
   readonly observation: ChannelObservation
+  readonly schema?: unknown
   readonly style?: stylex.StyleXStyles
 }
 
 /** Renders one policy-governed channel without accepting or inspecting unknown live values. */
-const ChannelContentPanel = ({ observation, style }: ChannelContentPanelProps): ReactNode => {
+const ChannelContentPanel = ({
+  observation,
+  schema,
+  style,
+}: ChannelContentPanelProps): ReactNode => {
   const title = channelLabel[observation.channel]
+  const [copyStatus, setCopyStatus] = useState('')
 
   if ('captured' in observation === false) {
     const { outcome } = observation
@@ -195,6 +278,18 @@ const ChannelContentPanel = ({ observation, style }: ChannelContentPanelProps): 
 
   const { outcome, captured: value } = observation
   const mayCopy = value._tag !== 'Redacted'
+  const rootDescription = schemaFieldMetadata({ document: schema, path: emptyPath })?.description
+  const copy = (format: 'text' | 'json'): void => {
+    if (navigator.clipboard === undefined) {
+      setCopyStatus('Clipboard unavailable')
+      return
+    }
+    const content = format === 'json' ? JSON.stringify(value, null, 2) : normalizedValueText(value)
+    void navigator.clipboard.writeText(content).then(
+      () => setCopyStatus(`Copied normalized ${format === 'json' ? 'JSON' : 'text'}`),
+      () => setCopyStatus('Copy failed — check clipboard permissions'),
+    )
+  }
   return (
     <section {...stylex.props(styles.panel, style)}>
       <Heading level={4} {...stylex.props(styles.heading)}>
@@ -203,16 +298,25 @@ const ChannelContentPanel = ({ observation, style }: ChannelContentPanelProps): 
       <span {...stylex.props(styles.legend)}>
         {outcome.mode === 'redact' ? 'Redacted projection' : 'Captured'} — {outcome.source} policy
       </span>
-      <NormalizedNode value={value} />
+      {rootDescription === undefined ? undefined : (
+        <span {...stylex.props(styles.legend)}>{rootDescription}</span>
+      )}
+      <NormalizedNode value={value} schema={schema} />
       {mayCopy === true ? (
-        <Button
-          aria-label={`Copy rendered ${title.toLowerCase()}`}
-          {...stylex.props(styles.copyButton)}
-          onPress={() => void navigator.clipboard.writeText(normalizedValueText(value))}
-        >
-          Copy rendered value
-        </Button>
+        <div {...stylex.props(styles.copyActions)}>
+          <Button {...stylex.props(styles.copyButton)} onPress={() => copy('text')}>
+            Copy normalized text
+          </Button>
+          <Button {...stylex.props(styles.copyButton)} onPress={() => copy('json')}>
+            Copy normalized JSON
+          </Button>
+        </div>
       ) : undefined}
+      {copyStatus === '' ? undefined : (
+        <span role="status" {...stylex.props(styles.legend)}>
+          {copyStatus}
+        </span>
+      )}
     </section>
   )
 }
