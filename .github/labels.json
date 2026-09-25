@@ -186,6 +186,16 @@
       "description": "@overeng/effect-react package · Set: manual"
     },
     {
+      "name": "system:effect-rpc-explorer",
+      "color": "a371f7",
+      "description": "@overeng/effect-rpc-explorer package · Set: manual"
+    },
+    {
+      "name": "system:effect-rpc-explorer-react",
+      "color": "a371f7",
+      "description": "@overeng/effect-rpc-explorer-react package · Set: manual"
+    },
+    {
       "name": "system:effect-rpc-tanstack",
       "color": "a371f7",
       "description": "@overeng/effect-rpc-tanstack package · Set: manual"
