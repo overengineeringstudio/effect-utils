@@ -105,9 +105,8 @@ describe('RPC descriptors', () => {
   })
 
   it('accepts middleware-carrying groups that AnyWithProps variance rejects', () => {
-    const ObservingMiddleware = RpcMiddleware.Service<'ObservingMiddleware'>()(
-      'ObservingMiddleware',
-    )
+    const ObservingMiddleware =
+      RpcMiddleware.Service<'ObservingMiddleware'>()('ObservingMiddleware')
     const observed = Rpc.make('ObservedRpc', { success: Schema.String }).middleware(
       ObservingMiddleware,
     )

@@ -113,7 +113,6 @@ const retiredProviderTerms = [
 
 describe('declared-closure package projection', () => {
   it('publishes editor views for the complete workspace package registry', () => {
-    expect(editorViewConsumerPackagePaths).toHaveLength(39)
     expect(editorViewConsumerPackagePaths).toEqual(
       Object.values(buck2TypeScriptAdmissions)
         .map((admission) => admission.packagePath)

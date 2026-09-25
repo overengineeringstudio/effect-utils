@@ -484,6 +484,11 @@ let
       name = "gh-ci-utils";
       port = 6016;
     }
+    {
+      path = "packages/@overeng/effect-rpc-explorer-react";
+      name = "effect-rpc-explorer-react";
+      port = 6017;
+    }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
   # Repository-specific semantic inputs read by Genie sources. The shared
