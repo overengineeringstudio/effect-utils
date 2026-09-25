@@ -148,25 +148,35 @@ export const withGitHubAccessTokenEnv = <
 const withPrivateCachixReadAuthCommand = ({
   command,
   cacheHosts,
+  additionalCacheAuth,
 }: {
   command: string
   cacheHosts: readonly string[]
+  additionalCacheAuth: readonly { host: string; tokenVariable: string }[]
 }) => {
-  if (cacheHosts.length === 0) {
+  if (cacheHosts.length === 0 && additionalCacheAuth.length === 0) {
     return command
   }
 
   return [
-    'if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then',
-    '  echo "::error::CACHIX_AUTH_TOKEN is not set"',
-    '  exit 1',
-    'fi',
+    ...[
+      ...(cacheHosts.length > 0 ? ['CACHIX_AUTH_TOKEN'] : []),
+      ...additionalCacheAuth.map(({ tokenVariable }) => tokenVariable),
+    ].map(
+      (variable) =>
+        `if [ -z "\${${variable}:-}" ]; then echo "::error::${variable} is not set"; exit 1; fi`,
+    ),
     'cachix_netrc="$(mktemp "${RUNNER_TEMP:-/tmp}/cachix-netrc.XXXXXX")"',
     'trap \'rm -f "$cachix_netrc"\' EXIT',
     'chmod 600 "$cachix_netrc"',
-    `for host in ${cacheHosts.map(shellSingleQuote).join(' ')}; do`,
-    `  printf 'machine %s\\npassword %s\\n' "$host" "$CACHIX_AUTH_TOKEN" >> "$cachix_netrc"`,
-    'done',
+    ...cacheHosts.map(
+      (host) =>
+        `printf 'machine %s\\npassword %s\\n' ${shellSingleQuote(host)} "$CACHIX_AUTH_TOKEN" >> "$cachix_netrc"`,
+    ),
+    ...additionalCacheAuth.map(
+      ({ host, tokenVariable }) =>
+        `printf 'machine %s\\npassword %s\\n' ${shellSingleQuote(host)} "$${tokenVariable}" >> "$cachix_netrc"`,
+    ),
     'if [ -n "${NIX_CONFIG:-}" ]; then',
     '  NIX_CONFIG_WITH_APPEND=$(printf \'%s\\n%s\' "$NIX_CONFIG" "netrc-file = $cachix_netrc")',
     'else',
@@ -195,9 +205,21 @@ export const withPrivateCachixReadAuth = <
   step: TStep
   authTokenExpression: string
   binaryCaches: readonly NixBinaryCache[]
+  additionalCacheAuth?: readonly {
+    binaryCache: NixBinaryCache
+    authTokenExpression: string
+  }[]
 }): TStep => {
   const cacheHosts = cachixHostsFromBinaryCaches(opts.binaryCaches)
-  if (cacheHosts.length === 0) {
+  const additionalCacheAuth = (opts.additionalCacheAuth ?? []).flatMap(
+    ({ binaryCache, authTokenExpression }, index) =>
+      cachixHostsFromBinaryCaches([binaryCache]).map((host) => ({
+        host,
+        tokenVariable: `CACHIX_ADDITIONAL_AUTH_TOKEN_${index}`,
+        authTokenExpression,
+      })),
+  )
+  if (cacheHosts.length === 0 && additionalCacheAuth.length === 0) {
     return step
   }
 
@@ -205,11 +227,18 @@ export const withPrivateCachixReadAuth = <
     ...step,
     env: {
       ...step.env,
-      CACHIX_AUTH_TOKEN: opts.authTokenExpression,
+      ...(cacheHosts.length > 0 ? { CACHIX_AUTH_TOKEN: opts.authTokenExpression } : {}),
+      ...Object.fromEntries(
+        additionalCacheAuth.map(({ tokenVariable, authTokenExpression }) => [
+          tokenVariable,
+          authTokenExpression,
+        ]),
+      ),
     },
     run: withPrivateCachixReadAuthCommand({
       command: step.run,
       cacheHosts,
+      additionalCacheAuth,
     }),
   }
 }
