@@ -19,6 +19,36 @@ import {
   type WatchLoopStatus,
 } from './buck-watch.ts'
 
+/** Every gate input the OTEL helpers read; tests pin each one explicitly. */
+type OtelGateEnvironment = Record<
+  | 'OTEL_TASK_TRACEPARENT'
+  | 'OTEL_SPAN_BIN'
+  | 'OTELITE_HTTP_ENDPOINT'
+  | 'OTEL_EXPORTER_OTLP_ENDPOINT',
+  string | undefined
+>
+
+/** Clears inherited gate inputs, keeps PATH/spool/traceparent from the test itself. */
+const hermeticOtelGate = (): OtelGateEnvironment => {
+  const saved: OtelGateEnvironment = {
+    OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
+    OTEL_SPAN_BIN: process.env.OTEL_SPAN_BIN,
+    OTELITE_HTTP_ENDPOINT: process.env.OTELITE_HTTP_ENDPOINT,
+    OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+  }
+  delete process.env.OTEL_TASK_TRACEPARENT
+  delete process.env.OTEL_SPAN_BIN
+  delete process.env.OTELITE_HTTP_ENDPOINT
+  delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+  return saved
+}
+
+const restoreOtelGate = (saved: OtelGateEnvironment): void => {
+  for (const [key, value] of Object.entries(saved))
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+}
+
 const plan: BuckWatchPlan = {
   reloadPaths: ['genie/buck2'],
   reloadSuffixes: ['BUCK.genie.ts'],
@@ -354,6 +384,7 @@ describe('Buck watch reconciliation', () => {
     process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
     process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
     process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
+    const savedEnvironment = hermeticOtelGate()
     try {
       const manifest = join(root, 'editor-inputs.json')
       await writeFile(
@@ -407,6 +438,7 @@ describe('Buck watch reconciliation', () => {
       else process.env.TRACEPARENT = savedTraceparent
       if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
       else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
+      restoreOtelGate(savedEnvironment)
       rmSync(otelDirectory, { recursive: true, force: true })
       await rm(root, { recursive: true })
     }
@@ -424,6 +456,7 @@ describe('Buck watch reconciliation', () => {
     process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
     process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
     process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
+    const savedEnvironment = hermeticOtelGate()
     try {
       const manifest = join(root, 'editor-inputs.json')
       await writeFile(
@@ -466,6 +499,7 @@ describe('Buck watch reconciliation', () => {
       else process.env.TRACEPARENT = savedTraceparent
       if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
       else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
+      restoreOtelGate(savedEnvironment)
       rmSync(otelDirectory, { recursive: true, force: true })
       await rm(root, { recursive: true })
     }
@@ -475,6 +509,7 @@ describe('Buck watch reconciliation', () => {
     const error = await runCommand({
       command: process.execPath,
       args: ['-e', 'console.error("exited 0"); process.kill(process.pid, "SIGTERM")'],
+      cwd: tmpdir(),
     }).then(
       () => undefined,
       (rejection: unknown) => rejection,
@@ -490,6 +525,7 @@ describe('Buck watch reconciliation', () => {
     const error = await runCommand({
       command: process.execPath,
       args: ['-e', 'console.error("nested tool exited 0"); process.exit(5)'],
+      cwd: tmpdir(),
     }).then(
       () => undefined,
       (rejection: unknown) => rejection,

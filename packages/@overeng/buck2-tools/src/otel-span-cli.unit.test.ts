@@ -21,6 +21,11 @@ const activateFakeOtelSpan = (): { readonly bin: string; readonly captures: () =
   process.env.PATH = `${directory}:${process.env.PATH ?? ''}`
   process.env.TRACEPARENT = traceparent
   process.env.OTEL_SPAN_SPOOL_DIR = directory
+  // CI exports OTEL_SPAN_BIN and endpoint vars; pin every gate input hermetically.
+  delete process.env.OTEL_SPAN_BIN
+  delete process.env.OTELITE_HTTP_ENDPOINT
+  delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+  delete process.env.OTEL_TASK_TRACEPARENT
   activeDirectory = directory
   return {
     bin,
@@ -72,8 +77,10 @@ describe('otel span cli', () => {
 
   it('rejects malformed traceparents even when delivery is configured', () => {
     const directory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
+    activeDirectory = directory
     process.env.OTEL_SPAN_SPOOL_DIR = directory
     process.env.TRACEPARENT = '00-not-a-traceparent'
+    delete process.env.OTEL_TASK_TRACEPARENT
     expect(otelTraceContextActive()).toBe(false)
   })
 

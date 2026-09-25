@@ -535,9 +535,17 @@ describe('editor view publisher', () => {
     const savedPath = process.env.PATH
     const savedTraceparent = process.env.TRACEPARENT
     const savedSpool = process.env.OTEL_SPAN_SPOOL_DIR
+    const savedSpanBin = process.env.OTEL_SPAN_BIN
+    const savedTaskTraceparent = process.env.OTEL_TASK_TRACEPARENT
+    const savedHttpEndpoint = process.env.OTELITE_HTTP_ENDPOINT
+    const savedOtlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
     process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
     process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
     process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
+    delete process.env.OTEL_SPAN_BIN
+    delete process.env.OTEL_TASK_TRACEPARENT
+    delete process.env.OTELITE_HTTP_ENDPOINT
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
     const fixture = makeFixture()
     try {
       await publishEditorView(fixture.options)
@@ -555,6 +563,14 @@ describe('editor view publisher', () => {
       else process.env.TRACEPARENT = savedTraceparent
       if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
       else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
+      if (savedSpanBin === undefined) delete process.env.OTEL_SPAN_BIN
+      else process.env.OTEL_SPAN_BIN = savedSpanBin
+      if (savedTaskTraceparent === undefined) delete process.env.OTEL_TASK_TRACEPARENT
+      else process.env.OTEL_TASK_TRACEPARENT = savedTaskTraceparent
+      if (savedHttpEndpoint === undefined) delete process.env.OTELITE_HTTP_ENDPOINT
+      else process.env.OTELITE_HTTP_ENDPOINT = savedHttpEndpoint
+      if (savedOtlpEndpoint === undefined) delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+      else process.env.OTEL_EXPORTER_OTLP_ENDPOINT = savedOtlpEndpoint
       rmSync(otelDirectory, { recursive: true, force: true })
     }
   })
