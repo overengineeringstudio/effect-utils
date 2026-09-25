@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
@@ -344,14 +344,30 @@ const canonicalTreeFingerprints = async ({
       ...backingRoots.flatMap((root) => ['--backing-root', root]),
       ...linkOwners.flatMap(({ source, identity }) => ['--link-owner', `${source}=${identity}`]),
     ]
-    const result = spawnSync(fingerprintTool, args, {
-      encoding: 'utf8',
-      maxBuffer: 1024 * 1024,
-      cwd: '/',
-      env: { PATH: '' },
-    })
-    if (result.error !== undefined || result.status !== 0)
-      fail(`fingerprint tool failed: ${result.error?.message ?? result.stderr}`)
+    // Asynchronous so the concurrent root fan-outs below keep running in parallel.
+    const result = await new Promise<{ readonly status: number | null; readonly stdout: string }>(
+      (resolveResult, reject) => {
+        const child = spawn(fingerprintTool, args, {
+          cwd: '/',
+          env: { PATH: '' },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+        const stdout: Buffer[] = []
+        const stderr: Buffer[] = []
+        child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
+        child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+        child.on('error', reject)
+        child.on('close', (status) => {
+          if (status !== 0)
+            reject(
+              new Error(
+                `editor view: fingerprint tool failed: ${Buffer.concat(stderr).toString('utf8')}`,
+              ),
+            )
+          else resolveResult({ status, stdout: Buffer.concat(stdout).toString('utf8') })
+        })
+      },
+    )
     const lines = result.stdout.trimEnd().split('\n')
     const values = new Map(lines.map((line) => line.split(' ', 2) as [string, string]))
     if (
