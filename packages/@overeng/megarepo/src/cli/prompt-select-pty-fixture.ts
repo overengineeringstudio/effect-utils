@@ -20,7 +20,7 @@ type PromptTrace =
 const isRaw = () => (process.stdin as NodeJS.ReadStream & { isRaw?: boolean }).isRaw === true
 
 const prompt = (message: string) =>
-  Prompt.select<'create' | 'skip' | 'abort'>({
+  Prompt.Select<'create' | 'skip' | 'abort'>({
     message,
     choices: [
       { title: 'Create branch', value: 'create' },

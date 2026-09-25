@@ -32,16 +32,16 @@ type ExecMode = 'parallel' | 'sequential'
 export const execCommand = Cli.Command.make(
   'exec',
   {
-    command: Cli.Argument.string('command').pipe(
+    command: Cli.Argument.String('command').pipe(
       Cli.Argument.withDescription('Command to execute'),
     ),
     output: outputOption,
-    member: Cli.Flag.string('member').pipe(
+    member: Cli.Flag.String('member').pipe(
       Cli.Flag.withAlias('m'),
       Cli.Flag.withDescription('Run only in this member'),
       Cli.Flag.optional,
     ),
-    mode: Cli.Flag.choice('mode', ['parallel', 'sequential'] as const).pipe(
+    mode: Cli.Flag.Literals('mode', ['parallel', 'sequential'] as const).pipe(
       Cli.Flag.withDescription('Execution mode: parallel (default) or sequential'),
       Cli.Flag.withDefault('parallel' as ExecMode),
     ),

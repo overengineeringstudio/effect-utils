@@ -1860,28 +1860,28 @@ const storeGcCommand = Cli.Command.make(
   'gc',
   {
     output: outputOption,
-    dryRun: Cli.Flag.boolean('dry-run').pipe(
+    dryRun: Cli.Flag.Boolean('dry-run').pipe(
       Cli.Flag.withDescription('Show what would be removed without removing'),
       Cli.Flag.withDefault(false),
     ),
-    force: Cli.Flag.boolean('force').pipe(
+    force: Cli.Flag.Boolean('force').pipe(
       Cli.Flag.withAlias('f'),
       Cli.Flag.withDescription('Remove dirty worktrees (with uncommitted changes)'),
       Cli.Flag.withDefault(false),
     ),
-    all: Cli.Flag.boolean('all').pipe(
+    all: Cli.Flag.Boolean('all').pipe(
       Cli.Flag.withDescription('Remove all worktrees (not just unused ones)'),
       Cli.Flag.withDefault(false),
     ),
-    generatedArtifacts: Cli.Flag.boolean('generated-artifacts').pipe(
+    generatedArtifacts: Cli.Flag.Boolean('generated-artifacts').pipe(
       Cli.Flag.withDescription('Plan configured generated-artifact cleanup'),
       Cli.Flag.withDefault(false),
     ),
-    expectedPlan: Cli.Flag.string('expected-plan').pipe(
+    expectedPlan: Cli.Flag.String('expected-plan').pipe(
       Cli.Flag.withDescription('Apply only the exact generated-artifact dry-run plan'),
       Cli.Flag.optional,
     ),
-    candidatePath: Cli.Flag.string('candidate-path').pipe(
+    candidatePath: Cli.Flag.String('candidate-path').pipe(
       Cli.Flag.withDescription('Apply exactly one candidate from the expected dry-run plan'),
       Cli.Flag.optional,
     ),
@@ -2841,7 +2841,7 @@ const storeGcCommand = Cli.Command.make(
 const storeAddCommand = Cli.Command.make(
   'add',
   {
-    source: Cli.Argument.string('source').pipe(
+    source: Cli.Argument.String('source').pipe(
       Cli.Argument.withDescription('Repository source (owner/repo, URL, or owner/repo#ref)'),
     ),
     output: outputOption,
@@ -3003,11 +3003,11 @@ const storeFixCommand = Cli.Command.make(
   'fix',
   {
     output: outputOption,
-    member: Cli.Argument.string('member').pipe(
+    member: Cli.Argument.String('member').pipe(
       Cli.Argument.withDescription('Member to fix (optional, fixes all if omitted)'),
       Cli.Argument.optional,
     ),
-    dryRun: Cli.Flag.boolean('dry-run').pipe(
+    dryRun: Cli.Flag.Boolean('dry-run').pipe(
       Cli.Flag.withDescription('Show what would be fixed without making changes'),
       Cli.Flag.withDefault(false),
     ),
@@ -3128,22 +3128,22 @@ const storeFixCommand = Cli.Command.make(
 const storeWorktreeNewCommand = Cli.Command.make(
   'new',
   {
-    repo: Cli.Argument.string('repo').pipe(
+    repo: Cli.Argument.String('repo').pipe(
       Cli.Argument.withDescription('Repository (owner/repo, URL, or store-relative path)'),
     ),
-    ref: Cli.Flag.string('ref').pipe(
+    ref: Cli.Flag.String('ref').pipe(
       Cli.Flag.withDescription('Branch or tag name to check out'),
       Cli.Flag.optional,
     ),
-    base: Cli.Flag.string('base').pipe(
+    base: Cli.Flag.String('base').pipe(
       Cli.Flag.withDescription('Base ref for creating a new branch (used with --ref)'),
       Cli.Flag.optional,
     ),
-    commit: Cli.Flag.string('commit').pipe(
+    commit: Cli.Flag.String('commit').pipe(
       Cli.Flag.withDescription('Commit SHA to check out (detached HEAD)'),
       Cli.Flag.optional,
     ),
-    porcelain: Cli.Flag.boolean('porcelain').pipe(
+    porcelain: Cli.Flag.Boolean('porcelain').pipe(
       Cli.Flag.withDescription(
         'Output only the worktree path for scripting (e.g. cd $(mr store worktree new ... --porcelain))',
       ),
@@ -3425,10 +3425,10 @@ const storeWorktreeCommand = Cli.Command.make('worktree', {}).pipe(
 const storeLeaseCommand = Cli.Command.make(
   'lease',
   {
-    ownerPath: Cli.Flag.string('owner-path').pipe(
+    ownerPath: Cli.Flag.String('owner-path').pipe(
       Cli.Flag.withDescription('Store worktree path whose reclamation the lease must exclude'),
     ),
-    command: Cli.Argument.string('command').pipe(
+    command: Cli.Argument.String('command').pipe(
       Cli.Argument.withDescription('Command and arguments to run while holding the lease'),
       Cli.Argument.atLeast(1),
     ),

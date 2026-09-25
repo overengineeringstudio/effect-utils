@@ -694,7 +694,7 @@ export interface EndpointOptions<AppR> {
   readonly services: ReadonlyArray<AnyImplementation<AppR>>
   /**
    * The handler-endpoint port the server listens on. Either a literal `number`
-   * or a `Config<number>` (e.g. `Config.integer('PORT')`) resolved on layer
+   * or a `Config<number>` (e.g. `Config.Int('PORT')`) resolved on layer
    * acquisition — so the port can come from the environment without a separate
    * read. A `Config` that fails (unset / unparseable) fails the layer with a
    * `ConfigError`.
@@ -782,7 +782,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
 ): Effect.Effect<EndpointServer, RestateError | Config.ConfigError, AppROf<S> | Scope.Scope> =>
   Effect.gen(function* () {
     type AppR = AppROf<S>
-    /* Resolve a `Config<number>` port (e.g. `Config.integer('PORT')`) on
+    /* Resolve a `Config<number>` port (e.g. `Config.Int('PORT')`) on
      * acquisition; a literal `number` passes through. A failing Config fails
      * the layer with a `ConfigError`. */
     const port = typeof opts.port === 'number' ? opts.port : yield* opts.port

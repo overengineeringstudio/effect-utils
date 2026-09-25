@@ -10,7 +10,7 @@ export const resolveNotionToken = (token: Option.Option<string>) =>
     : resolveNotionTokenFromEnv()
 
 /** CLI option for providing a Notion API token (defaults to `NOTION_API_TOKEN`). */
-export const tokenOption = Options.string('token').pipe(
+export const tokenOption = Options.String('token').pipe(
   Options.withAlias('t'),
   Options.withDescription('Notion API token (defaults to NOTION_API_TOKEN env var)'),
   Options.optional,

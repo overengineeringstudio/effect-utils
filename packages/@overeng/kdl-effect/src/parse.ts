@@ -19,7 +19,7 @@ const ParseKdl = Schema.String.annotate({
 })
   .pipe(
     Schema.decodeTo(Schema.Unknown, {
-      decode: SchemaGetter.transformOrFail((text) =>
+      decode: SchemaGetter.transformEffect((text) =>
         Effect.try({
           try: () => kdlToObject(parse(text)),
           catch: (e) =>
@@ -28,7 +28,7 @@ const ParseKdl = Schema.String.annotate({
             }),
         }),
       ),
-      encode: SchemaGetter.transformOrFail((value) =>
+      encode: SchemaGetter.transformEffect((value) =>
         Effect.try({
           try: () => format(objectToKdlDocument(value as Record<string, unknown>)),
           catch: (e) =>

@@ -30,7 +30,7 @@ import { run } from '@overeng/tui-react'
 
 import { resolveNotionToken, tokenOption } from '../shared.ts'
 
-const databaseIdArg = Args.string('database-id').pipe(
+const databaseIdArg = Args.String('database-id').pipe(
   Args.withDescription('The Notion database ID to operate on'),
 )
 

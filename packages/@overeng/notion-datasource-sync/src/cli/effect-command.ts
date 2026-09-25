@@ -9,37 +9,37 @@ export type CompletionShell = 'bash' | 'fish' | 'sh' | 'zsh'
 
 const defaultHandler: DatasourceDbCommandHandler = () => Effect.void
 
-const workspaceRootArg = Args.string('workspace-root').pipe(
+const workspaceRootArg = Args.String('workspace-root').pipe(
   Args.withDescription('Workspace root or SQLite replica path'),
   Args.optional,
 )
 
-const dryRunOption = Options.boolean('dry-run').pipe(
+const dryRunOption = Options.Boolean('dry-run').pipe(
   Options.withDescription('Validate without mutating local or remote state'),
   Options.withDefault(false),
 )
 
-const outputOption = Options.file('output').pipe(
+const outputOption = Options.File('output').pipe(
   Options.withDescription('Export output path'),
   Options.optional,
 )
 
-const sqliteOption = Options.file('sqlite').pipe(
+const sqliteOption = Options.File('sqlite').pipe(
   Options.withDescription('SQLite store path'),
   Options.optional,
 )
 
-const rootIdOption = Options.string('root-id').pipe(
+const rootIdOption = Options.String('root-id').pipe(
   Options.withDescription('Sync root id'),
   Options.optional,
 )
 
-const dataSourceIdOption = Options.string('data-source-id').pipe(
+const dataSourceIdOption = Options.String('data-source-id').pipe(
   Options.withDescription('Notion data source id'),
   Options.optional,
 )
 
-const workspaceRootOption = Options.directory('workspace-root').pipe(
+const workspaceRootOption = Options.Directory('workspace-root').pipe(
   Options.withDescription('Local workspace root'),
   Options.optional,
 )
@@ -51,7 +51,7 @@ const commonOptions = {
   workspaceRootOption,
 } as const
 
-const noMaterializeBodiesOption = Options.boolean('no-materialize-bodies').pipe(
+const noMaterializeBodiesOption = Options.Boolean('no-materialize-bodies').pipe(
   Options.withDescription('Skip local NotionMD body materialization'),
   Options.withDefault(false),
 )
@@ -103,32 +103,32 @@ export const makeDatasourceDbSubcommands = (
       ...commonOptions,
       workspaceRoot: workspaceRootArg,
       dryRun: dryRunOption,
-      watch: Options.boolean('watch').pipe(
+      watch: Options.Boolean('watch').pipe(
         Options.withDescription('Continuously sync and process local SQLite changes'),
         Options.withDefault(false),
       ),
-      state: Options.file('state').pipe(
+      state: Options.File('state').pipe(
         Options.withDescription('Durable watch state file path'),
         Options.optional,
       ),
-      maxCycles: Options.integer('max-cycles').pipe(
+      maxCycles: Options.Int('max-cycles').pipe(
         Options.withDescription('Maximum watch cycles before exiting'),
         Options.optional,
       ),
-      watchPriority: Options.choice('watch-priority', [
+      watchPriority: Options.Literals('watch-priority', [
         'development',
         'normal',
         'low-priority',
       ]).pipe(Options.withDescription('Watch daemon pacing priority'), Options.optional),
-      webhook: Options.choice('webhook', ['none', 'tailscale', 'manual']).pipe(
+      webhook: Options.Literals('webhook', ['none', 'tailscale', 'manual']).pipe(
         Options.withDescription('Webhook wakeup provider'),
         Options.optional,
       ),
-      webhookRequired: Options.boolean('webhook-required').pipe(
+      webhookRequired: Options.Boolean('webhook-required').pipe(
         Options.withDescription('Fail if webhook exposure cannot be established'),
         Options.withDefault(false),
       ),
-      nonInteractive: Options.boolean('non-interactive').pipe(
+      nonInteractive: Options.Boolean('non-interactive').pipe(
         Options.withDescription('Disable interactive daemon affordances'),
         Options.withDefault(false),
       ),
@@ -157,15 +157,15 @@ export const makeDatasourceDbSubcommands = (
         description: 'Resolve a conflict',
         handler,
         extraConfig: {
-          conflictId: Options.string('conflict-id').pipe(
+          conflictId: Options.String('conflict-id').pipe(
             Options.withDescription('Conflict id to resolve'),
             Options.optional,
           ),
-          strategy: Options.choice('strategy', ['keep-remote', 'keep-local', 'manual']).pipe(
+          strategy: Options.Literals('strategy', ['keep-remote', 'keep-local', 'manual']).pipe(
             Options.withDescription('Conflict resolution strategy'),
             Options.optional,
           ),
-          valueJson: Options.string('value-json').pipe(
+          valueJson: Options.String('value-json').pipe(
             Options.withDescription('Manual resolution value as JSON'),
             Options.optional,
           ),
@@ -188,17 +188,17 @@ export const makeDatasourceDbSubcommands = (
     'track',
     {
       ...commonOptions,
-      remoteRef: Args.string('remote-ref').pipe(
+      remoteRef: Args.String('remote-ref').pipe(
         Args.withDescription('Notion data source or database URL to adopt'),
         Args.optional,
       ),
       workspaceRoot: workspaceRootArg,
-      mode: Options.choice('mode', ['local', 'remote', 'shared']).pipe(
+      mode: Options.Literals('mode', ['local', 'remote', 'shared']).pipe(
         Options.withDescription('Workspace authority mode (persisted to the manifest)'),
         Options.optional,
       ),
       dryRun: dryRunOption,
-      limit: Options.integer('limit').pipe(
+      limit: Options.Int('limit').pipe(
         Options.withDescription('Dry-run preview row limit for track --dry-run'),
         Options.optional,
       ),
@@ -226,17 +226,17 @@ export const makeDatasourceDbSubcommands = (
         ...commonOptions,
         workspaceRoot: workspaceRootArg,
         output: outputOption,
-        refresh: Options.boolean('refresh').pipe(
+        refresh: Options.Boolean('refresh').pipe(
           Options.withDescription(
             'Re-observe the established binding (remote observe/project only) before exporting',
           ),
           Options.withDefault(false),
         ),
-        format: Options.choice('format', ['ndjson', 'json']).pipe(
+        format: Options.Literals('format', ['ndjson', 'json']).pipe(
           Options.withDescription('Export file format'),
           Options.optional,
         ),
-        requireClean: Options.boolean('require-clean').pipe(
+        requireClean: Options.Boolean('require-clean').pipe(
           Options.withDescription('Fail if the replica has pending local changes or conflicts'),
           Options.withDefault(false),
         ),
@@ -259,7 +259,7 @@ export const makeDatasourceDbSubcommands = (
       description: 'Archive or forget a page locally',
       handler,
       extraConfig: {
-        pageId: Options.string('page-id').pipe(
+        pageId: Options.String('page-id').pipe(
           Options.withDescription('Notion page id'),
           Options.optional,
         ),
@@ -271,7 +271,7 @@ export const makeDatasourceDbSubcommands = (
       description: 'Restore a forgotten page locally',
       handler,
       extraConfig: {
-        pageId: Options.string('page-id').pipe(
+        pageId: Options.String('page-id').pipe(
           Options.withDescription('Notion page id'),
           Options.optional,
         ),

@@ -321,35 +321,35 @@ export const logsCommand = Cli.Command.make('logs', {
   output: outputOption,
   target: targetArg,
   workflow: workflowOption,
-  job: Cli.Flag.string('job').pipe(
+  job: Cli.Flag.String('job').pipe(
     Cli.Flag.optional,
     Cli.Flag.withDescription('Job name (substring) or numeric job ID'),
   ),
-  step: Cli.Flag.string('step').pipe(
+  step: Cli.Flag.String('step').pipe(
     Cli.Flag.optional,
     Cli.Flag.withDescription('Step name (requires session auth)'),
   ),
-  failed: Cli.Flag.boolean('failed').pipe(
+  failed: Cli.Flag.Boolean('failed').pipe(
     Cli.Flag.withDefault(false),
     Cli.Flag.withDescription('Only show failed job logs'),
   ),
-  tail: Cli.Flag.integer('tail').pipe(
+  tail: Cli.Flag.Int('tail').pipe(
     Cli.Flag.withDefault(DEFAULT_LOG_TAIL),
     Cli.Flag.withDescription(`Show last N lines (default ${DEFAULT_LOG_TAIL})`),
   ),
-  offset: Cli.Flag.integer('offset').pipe(
+  offset: Cli.Flag.Int('offset').pipe(
     Cli.Flag.withDefault(0),
     Cli.Flag.withDescription('Skip N lines from the end for pagination'),
   ),
-  error: Cli.Flag.boolean('error').pipe(
+  error: Cli.Flag.Boolean('error').pipe(
     Cli.Flag.withDefault(false),
     Cli.Flag.withDescription('Show only extracted error lines'),
   ),
-  grep: Cli.Flag.string('grep').pipe(
+  grep: Cli.Flag.String('grep').pipe(
     Cli.Flag.optional,
     Cli.Flag.withDescription('Filter log lines by pattern'),
   ),
-  full: Cli.Flag.boolean('full').pipe(
+  full: Cli.Flag.Boolean('full').pipe(
     Cli.Flag.withDefault(false),
     Cli.Flag.withDescription('Show full log (no truncation)'),
   ),

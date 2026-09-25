@@ -30,10 +30,10 @@ import {
 } from './quarantine.ts'
 
 const nonEmptyTextOption = (opts: { readonly name: string; readonly description: string }) =>
-  Options.string(opts.name).pipe(Options.withDescription(opts.description))
+  Options.String(opts.name).pipe(Options.withDescription(opts.description))
 
 const optionalTextOption = (opts: { readonly name: string; readonly description: string }) =>
-  Options.string(opts.name).pipe(Options.withDescription(opts.description), Options.withDefault(''))
+  Options.String(opts.name).pipe(Options.withDescription(opts.description), Options.withDefault(''))
 
 const optionalString = (value: string) => (value.length === 0 ? undefined : value)
 
@@ -94,11 +94,11 @@ const collectBundleCommand = Command.make(
       name: 'output-path',
       description: 'Path that receives the encoded bundle JSON',
     }),
-    recordMarker: Options.string('record-marker').pipe(
+    recordMarker: Options.String('record-marker').pipe(
       Options.withDescription('Line marker prefix for workflow report records'),
       Options.withDefault(workflowReportRecordLineMarker),
     ),
-    allowMissingInput: Options.boolean('allow-missing-input').pipe(
+    allowMissingInput: Options.Boolean('allow-missing-input').pipe(
       Options.withDescription('Ignore missing input files'),
       Options.withDefault(false),
     ),
@@ -168,11 +168,11 @@ const renderCommentBodyCommand = Command.make(
       name: 'created-at-utc',
       description: 'Current report history entry timestamp, defaults to latest record timestamp',
     }),
-    timeZone: Options.string('time-zone').pipe(
+    timeZone: Options.String('time-zone').pipe(
       Options.withDescription('IANA time zone for rendered timestamps'),
       Options.withDefault('UTC'),
     ),
-    managedMarker: Options.string('managed-marker').pipe(
+    managedMarker: Options.String('managed-marker').pipe(
       Options.withDescription('Managed comment marker'),
       Options.withDefault(workflowReportManagedMarker),
     ),
@@ -238,7 +238,7 @@ const findCommentCommand = Command.make(
       name: 'state-id',
       description: 'Stable managed state identifier',
     }),
-    managedMarker: Options.string('managed-marker').pipe(
+    managedMarker: Options.String('managed-marker').pipe(
       Options.withDescription('Managed comment marker'),
       Options.withDefault(workflowReportManagedMarker),
     ),
@@ -270,89 +270,89 @@ const netlifyDeployCommand = Command.make(
       name: 'artifact-dir',
       description: 'Local static directory to deploy',
     }),
-    mode: Options.choice('mode', ['prod', 'pr', 'draft']).pipe(
+    mode: Options.Literals('mode', ['prod', 'pr', 'draft']).pipe(
       Options.withDescription('Netlify deploy mode'),
       Options.withDefault('draft' as const),
     ),
-    displayName: Options.string('display-name').pipe(
+    displayName: Options.String('display-name').pipe(
       Options.withDescription('Human-readable deploy target label'),
       Options.optional,
     ),
-    pr: Options.integer('pr').pipe(
+    pr: Options.Int('pr').pipe(
       Options.withDescription('Pull request number for PR deploy mode'),
       Options.optional,
     ),
-    siteName: Options.string('site-name').pipe(
+    siteName: Options.String('site-name').pipe(
       Options.withDescription('Netlify site slug used for final alias URLs'),
       Options.optional,
     ),
-    siteIdEnv: Options.string('site-id-env').pipe(
+    siteIdEnv: Options.String('site-id-env').pipe(
       Options.withDescription('Environment variable containing the Netlify site id'),
       Options.withDefault('NETLIFY_SITE_ID'),
     ),
-    authTokenEnv: Options.string('auth-token-env').pipe(
+    authTokenEnv: Options.String('auth-token-env').pipe(
       Options.withDescription('Environment variable containing the Netlify auth token'),
       Options.withDefault('NETLIFY_AUTH_TOKEN'),
     ),
-    accountSlugEnv: Options.string('account-slug-env').pipe(
+    accountSlugEnv: Options.String('account-slug-env').pipe(
       Options.withDescription('Optional environment variable containing the Netlify account slug'),
       Options.optional,
     ),
-    workspaceFilter: Options.string('workspace-filter').pipe(
+    workspaceFilter: Options.String('workspace-filter').pipe(
       Options.withDescription('Optional Netlify monorepo workspace filter passed to the CLI'),
       Options.optional,
     ),
-    workflowReportOutputFile: Options.string('workflow-report-output-file').pipe(
+    workflowReportOutputFile: Options.String('workflow-report-output-file').pipe(
       Options.withDescription('Optional JSONL file that receives marked workflow-report records'),
       Options.optional,
     ),
-    githubOutputFile: Options.string('github-output-file').pipe(
+    githubOutputFile: Options.String('github-output-file').pipe(
       Options.withDescription('Optional GitHub Actions output file that receives deploy outputs'),
       Options.optional,
     ),
-    githubEnvFile: Options.string('github-env-file').pipe(
+    githubEnvFile: Options.String('github-env-file').pipe(
       Options.withDescription('Optional GitHub Actions env file that receives deploy env vars'),
       Options.optional,
     ),
-    urlEnvKey: Options.string('url-env-key').pipe(
+    urlEnvKey: Options.String('url-env-key').pipe(
       Options.withDescription('Optional env var name for the final deploy URL'),
       Options.optional,
     ),
-    netlifyBin: Options.string('netlify-bin').pipe(
+    netlifyBin: Options.String('netlify-bin').pipe(
       Options.withDescription('Netlify CLI binary path'),
       Options.withDefault('netlify'),
     ),
-    netlifyApiBaseUrl: Options.string('netlify-api-base-url').pipe(
+    netlifyApiBaseUrl: Options.String('netlify-api-base-url').pipe(
       Options.withDescription('Netlify API base URL'),
       Options.withDefault('https://api.netlify.com'),
     ),
-    missingAuthPolicy: Options.choice('missing-auth-policy', ['fail', 'skip']).pipe(
+    missingAuthPolicy: Options.Literals('missing-auth-policy', ['fail', 'skip']).pipe(
       Options.withDescription('Whether missing Netlify auth fails or emits a skipped record'),
       Options.withDefault('fail' as const),
     ),
-    unauthorizedPolicy: Options.choice('unauthorized-policy', ['fail', 'skip']).pipe(
+    unauthorizedPolicy: Options.Literals('unauthorized-policy', ['fail', 'skip']).pipe(
       Options.withDescription(
         'Whether unauthorized Netlify credentials fail or emit a skipped record',
       ),
       Options.withDefault('fail' as const),
     ),
-    createdAtUtc: Options.string('created-at-utc').pipe(
+    createdAtUtc: Options.String('created-at-utc').pipe(
       Options.withDescription('Override record creation timestamp for deterministic tests'),
       Options.optional,
     ),
-    e2eAllowSharedProject: Options.boolean('e2e-allow-shared-project').pipe(
+    e2eAllowSharedProject: Options.Boolean('e2e-allow-shared-project').pipe(
       Options.withDescription('Enable shared-project live E2E alias guardrails'),
       Options.withDefault(false),
     ),
-    e2eReservedAliasPrefix: Options.string('e2e-reserved-alias-prefix').pipe(
+    e2eReservedAliasPrefix: Options.String('e2e-reserved-alias-prefix').pipe(
       Options.withDescription('Required alias prefix when shared-project E2E is enabled'),
       Options.withDefault('ci-tools-e2e'),
     ),
-    e2eVerifyPath: Options.string('e2e-verify-path').pipe(
+    e2eVerifyPath: Options.String('e2e-verify-path').pipe(
       Options.withDescription('Optional live E2E path to fetch after deploy'),
       Options.optional,
     ),
-    e2eVerifyText: Options.string('e2e-verify-text').pipe(
+    e2eVerifyText: Options.String('e2e-verify-text').pipe(
       Options.withDescription('Optional live E2E marker text expected at the verify path'),
       Options.optional,
     ),
@@ -386,119 +386,119 @@ const vercelDeployCommand = Command.make(
       name: 'artifact-dir',
       description: 'Local static directory to package and deploy as prebuilt Vercel output',
     }),
-    artifactKind: Options.choice('artifact-kind', ['static', 'prebuilt-output']).pipe(
+    artifactKind: Options.Literals('artifact-kind', ['static', 'prebuilt-output']).pipe(
       Options.withDescription(
         'Whether artifact-dir is static files or a Vercel Build Output API directory',
       ),
       Options.withDefault('static' as const),
     ),
-    mode: Options.choice('mode', ['prod', 'pr', 'preview']).pipe(
+    mode: Options.Literals('mode', ['prod', 'pr', 'preview']).pipe(
       Options.withDescription('Vercel deploy mode'),
       Options.withDefault('preview' as const),
     ),
-    displayName: Options.string('display-name').pipe(
+    displayName: Options.String('display-name').pipe(
       Options.withDescription('Human-readable deploy target label'),
       Options.optional,
     ),
-    pr: Options.integer('pr').pipe(
+    pr: Options.Int('pr').pipe(
       Options.withDescription('Pull request number for PR deploy mode'),
       Options.optional,
     ),
-    aliasPrefix: Options.string('alias-prefix').pipe(
+    aliasPrefix: Options.String('alias-prefix').pipe(
       Options.withDescription('Optional Vercel alias prefix; defaults to target'),
       Options.optional,
     ),
-    aliasSuffix: Options.string('alias-suffix').pipe(
+    aliasSuffix: Options.String('alias-suffix').pipe(
       Options.withDescription('Optional suffix appended to Vercel aliases'),
       Options.optional,
     ),
-    productionDomain: Options.string('production-domain').pipe(
+    productionDomain: Options.String('production-domain').pipe(
       Options.withDescription('Production hostname to alias to the deployment (repeatable)'),
       Options.atLeast(0),
     ),
-    projectIdEnv: Options.string('project-id-env').pipe(
+    projectIdEnv: Options.String('project-id-env').pipe(
       Options.withDescription('Environment variable containing the Vercel project id'),
       Options.withDefault('VERCEL_PROJECT_ID'),
     ),
-    orgIdEnv: Options.string('org-id-env').pipe(
+    orgIdEnv: Options.String('org-id-env').pipe(
       Options.withDescription('Environment variable containing the Vercel org/team id'),
       Options.withDefault('VERCEL_ORG_ID'),
     ),
-    authTokenEnv: Options.string('auth-token-env').pipe(
+    authTokenEnv: Options.String('auth-token-env').pipe(
       Options.withDescription('Environment variable containing the Vercel auth token'),
       Options.withDefault('VERCEL_TOKEN'),
     ),
-    teamIdEnv: Options.string('team-id-env').pipe(
+    teamIdEnv: Options.String('team-id-env').pipe(
       Options.withDescription('Optional environment variable containing the Vercel team id'),
       Options.optional,
     ),
-    scopeEnv: Options.string('scope-env').pipe(
+    scopeEnv: Options.String('scope-env').pipe(
       Options.withDescription('Optional environment variable containing the Vercel CLI scope slug'),
       Options.optional,
     ),
-    protectionBypassEnv: Options.string('protection-bypass-env').pipe(
+    protectionBypassEnv: Options.String('protection-bypass-env').pipe(
       Options.withDescription(
         'Optional environment variable containing the Vercel protection bypass secret for live verification',
       ),
       Options.optional,
     ),
-    workflowReportOutputFile: Options.string('workflow-report-output-file').pipe(
+    workflowReportOutputFile: Options.String('workflow-report-output-file').pipe(
       Options.withDescription('Optional JSONL file that receives marked workflow-report records'),
       Options.optional,
     ),
-    githubOutputFile: Options.string('github-output-file').pipe(
+    githubOutputFile: Options.String('github-output-file').pipe(
       Options.withDescription('Optional GitHub Actions output file that receives deploy outputs'),
       Options.optional,
     ),
-    githubEnvFile: Options.string('github-env-file').pipe(
+    githubEnvFile: Options.String('github-env-file').pipe(
       Options.withDescription('Optional GitHub Actions env file that receives deploy env vars'),
       Options.optional,
     ),
-    urlEnvKey: Options.string('url-env-key').pipe(
+    urlEnvKey: Options.String('url-env-key').pipe(
       Options.withDescription('Optional env var name for the final deploy URL'),
       Options.optional,
     ),
-    buildPrebuiltOutput: Options.boolean('build-prebuilt-output').pipe(
+    buildPrebuiltOutput: Options.Boolean('build-prebuilt-output').pipe(
       Options.withDescription('Run vercel pull/build before deploying a prebuilt-output artifact'),
       Options.withDefault(false),
     ),
-    vercelRootDirectory: Options.string('vercel-root-directory').pipe(
+    vercelRootDirectory: Options.String('vercel-root-directory').pipe(
       Options.withDescription(
         'Optional Vercel project rootDirectory used while building prebuilt output',
       ),
       Options.optional,
     ),
-    buildEnv: Options.string('build-env').pipe(
+    buildEnv: Options.String('build-env').pipe(
       Options.withDescription(
         'Environment variable for local vercel build (KEY=VALUE, repeatable)',
       ),
       Options.atLeast(0),
     ),
-    vercelBin: Options.string('vercel-bin').pipe(
+    vercelBin: Options.String('vercel-bin').pipe(
       Options.withDescription('Vercel CLI binary path'),
       Options.withDefault('vercel'),
     ),
-    vercelApiBaseUrl: Options.string('vercel-api-base-url').pipe(
+    vercelApiBaseUrl: Options.String('vercel-api-base-url').pipe(
       Options.withDescription('Vercel API base URL'),
       Options.withDefault('https://api.vercel.com'),
     ),
-    createdAtUtc: Options.string('created-at-utc').pipe(
+    createdAtUtc: Options.String('created-at-utc').pipe(
       Options.withDescription('Override record creation timestamp for deterministic tests'),
       Options.optional,
     ),
-    e2eAllowSharedProject: Options.boolean('e2e-allow-shared-project').pipe(
+    e2eAllowSharedProject: Options.Boolean('e2e-allow-shared-project').pipe(
       Options.withDescription('Enable shared-project live E2E alias guardrails'),
       Options.withDefault(false),
     ),
-    e2eReservedAliasPrefix: Options.string('e2e-reserved-alias-prefix').pipe(
+    e2eReservedAliasPrefix: Options.String('e2e-reserved-alias-prefix').pipe(
       Options.withDescription('Required alias prefix when shared-project E2E is enabled'),
       Options.withDefault('ci-tools-e2e'),
     ),
-    e2eVerifyPath: Options.string('e2e-verify-path').pipe(
+    e2eVerifyPath: Options.String('e2e-verify-path').pipe(
       Options.withDescription('Optional live E2E path to fetch after deploy'),
       Options.optional,
     ),
-    e2eVerifyText: Options.string('e2e-verify-text').pipe(
+    e2eVerifyText: Options.String('e2e-verify-text').pipe(
       Options.withDescription('Optional live E2E marker text expected at the verify path'),
       Options.optional,
     ),
@@ -540,7 +540,7 @@ const quarantineValidateCommand = Command.make(
       name: 'ledger',
       description: 'Path to the quarantine ledger JSON',
     }),
-    today: Options.string('today').pipe(
+    today: Options.String('today').pipe(
       Options.withDescription(
         'Evaluate expiry against this YYYY-MM-DD date instead of the current day',
       ),
@@ -580,7 +580,7 @@ const quarantineAnnounceCommand = Command.make(
       name: 'label',
       description: 'Test target whose failure was tolerated; must match the entry target',
     }),
-    summaryFile: Options.string('summary-file').pipe(
+    summaryFile: Options.String('summary-file').pipe(
       Options.withDescription('Job summary file to append to (defaults to $GITHUB_STEP_SUMMARY)'),
       Options.withDefault(''),
     ),

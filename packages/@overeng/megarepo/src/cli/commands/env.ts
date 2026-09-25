@@ -19,7 +19,7 @@ import { EnvApp, EnvView } from '../renderers/EnvOutput/mod.ts'
 export const envCommand = Cli.Command.make(
   'env',
   {
-    shell: Cli.Flag.choice('shell', ['bash', 'zsh', 'fish']).pipe(
+    shell: Cli.Flag.Literals('shell', ['bash', 'zsh', 'fish']).pipe(
       Cli.Flag.withDescription('Shell type for output format'),
       Cli.Flag.withDefault('bash' as const),
     ),

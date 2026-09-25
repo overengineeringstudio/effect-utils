@@ -69,13 +69,13 @@ import { PinApp, PinView } from '../renderers/PinOutput/mod.ts'
 export const pinCommand = Cli.Command.make(
   'pin',
   {
-    member: Cli.Argument.string('member').pipe(Cli.Argument.withDescription('Member to pin')),
-    checkout: Cli.Flag.string('checkout').pipe(
+    member: Cli.Argument.String('member').pipe(Cli.Argument.withDescription('Member to pin')),
+    checkout: Cli.Flag.String('checkout').pipe(
       Cli.Flag.withAlias('c'),
       Cli.Flag.withDescription('Ref to switch to (branch, tag, or commit SHA)'),
       Cli.Flag.optional,
     ),
-    dryRun: Cli.Flag.boolean('dry-run').pipe(
+    dryRun: Cli.Flag.Boolean('dry-run').pipe(
       Cli.Flag.withDescription('Show what would be changed without making changes'),
       Cli.Flag.withDefault(false),
     ),
@@ -569,7 +569,7 @@ const shortenPath = (path: string): string => {
 export const unpinCommand = Cli.Command.make(
   'unpin',
   {
-    member: Cli.Argument.string('member').pipe(Cli.Argument.withDescription('Member to unpin')),
+    member: Cli.Argument.String('member').pipe(Cli.Argument.withDescription('Member to unpin')),
     output: outputOption,
   },
   ({ member, output }) =>

@@ -160,15 +160,15 @@ export const pushRefsCommand = Cli.Command.make(
   'push-refs',
   {
     output: outputOption,
-    dryRun: Cli.Flag.boolean('dry-run').pipe(
+    dryRun: Cli.Flag.Boolean('dry-run').pipe(
       Cli.Flag.withDescription('Show what would change without writing files'),
       Cli.Flag.withDefault(false),
     ),
-    all: Cli.Flag.boolean('all').pipe(
+    all: Cli.Flag.Boolean('all').pipe(
       Cli.Flag.withDescription('Recursively push refs to nested-of-nested megarepos'),
       Cli.Flag.withDefault(false),
     ),
-    only: Cli.Flag.string('only').pipe(
+    only: Cli.Flag.String('only').pipe(
       Cli.Flag.withDescription('Only push refs for these shared members (comma-separated)'),
       Cli.Flag.optional,
     ),

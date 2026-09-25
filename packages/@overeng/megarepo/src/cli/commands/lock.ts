@@ -15,28 +15,28 @@ export const lockCommand = Cli.Command.make(
   'lock',
   {
     output: outputOption,
-    dryRun: Cli.Flag.boolean('dry-run').pipe(
+    dryRun: Cli.Flag.Boolean('dry-run').pipe(
       Cli.Flag.withDescription('Show what would be done without making changes'),
       Cli.Flag.withDefault(false),
     ),
-    force: Cli.Flag.boolean('force').pipe(
+    force: Cli.Flag.Boolean('force').pipe(
       Cli.Flag.withAlias('f'),
       Cli.Flag.withDescription('Force lock operation even when members are pinned or need repair'),
       Cli.Flag.withDefault(false),
     ),
-    all: Cli.Flag.boolean('all').pipe(
+    all: Cli.Flag.Boolean('all').pipe(
       Cli.Flag.withDescription('Recursively operate on nested megarepos'),
       Cli.Flag.withDefault(false),
     ),
-    only: Cli.Flag.string('only').pipe(
+    only: Cli.Flag.String('only').pipe(
       Cli.Flag.withDescription('Only operate on specified members (comma-separated)'),
       Cli.Flag.optional,
     ),
-    skip: Cli.Flag.string('skip').pipe(
+    skip: Cli.Flag.String('skip').pipe(
       Cli.Flag.withDescription('Skip specified members (comma-separated)'),
       Cli.Flag.optional,
     ),
-    gitProtocol: Cli.Flag.choice('git-protocol', ['ssh', 'https', 'auto']).pipe(
+    gitProtocol: Cli.Flag.Literals('git-protocol', ['ssh', 'https', 'auto']).pipe(
       Cli.Flag.withDescription(
         'Git protocol for cloning: ssh (default for new clones), https, or auto (use lock file URL if available)',
       ),

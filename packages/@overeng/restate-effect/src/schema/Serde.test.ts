@@ -1,7 +1,6 @@
 import { it as fcIt } from '@effect/vitest'
 import * as restate from '@restatedev/restate-sdk'
 import { Schema } from 'effect'
-import * as FastCheck from 'effect/testing/FastCheck'
 import { describe, expect, it } from 'vitest'
 
 import { normalizeStateSchema } from '../authoring/RestateContext.ts'
@@ -195,7 +194,7 @@ describe('State.for optional field serde (papercut)', () => {
 /**
  * Property-based serde round-trips (docs/vrs/02-schema-serde/spec.md §1 + docs/vrs/09-testing/spec.md §3). The claim "`decode(encode(x))
  * ≡ x` over an `Arbitrary` derived from the schema is first-class" is made REAL
- * here: `@effect/vitest` `it.prop` derives a `fast-check` arbitrary from each
+ * here: `@effect/vitest` `it.prop` derives a native `Arbitrary` from each
  * schema and asserts `deserialize(serialize(x))` is equivalent to `x` for every
  * generated value. Comparison uses `Schema.toEquivalence(schema)` — NOT
  * `toStrictEqual` — so transformed/branded values compare by their decoded VALUE,
@@ -209,7 +208,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     active: Schema.Boolean,
     tags: Schema.Array(Schema.String),
   })
-  fcIt.prop('round-trips a plain struct', [Schema.toArbitrary(Plain)(FastCheck)], ([value]) => {
+  fcIt.prop('round-trips a plain struct', [Plain], ([value]) => {
     const serde = effectSerde({ schema: Plain })
     const eq = Schema.toEquivalence(Plain)
     expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
@@ -224,7 +223,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   })
   fcIt.prop(
     'round-trips a transformed schema (encoded ≠ decoded)',
-    [Schema.toArbitrary(Transformed)(FastCheck)],
+    [Transformed],
     ([value]) => {
       const serde = effectSerde({ schema: Transformed })
       const eq = Schema.toEquivalence(Transformed)
@@ -241,7 +240,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const OptionalState = normalizeStateSchema(Schema.optional(FiniteValue))
   fcIt.prop(
     'round-trips an optional state field value (normalizeStateSchema)',
-    [Schema.toArbitrary(FiniteValue)(FastCheck)],
+    [FiniteValue],
     ([value]) => {
       const serde = effectSerde({ schema: OptionalState })
       const eq = Schema.toEquivalence(OptionalState)
@@ -262,7 +261,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const cipher = aesGcmCipher(new Uint8Array(32).fill(7))
   fcIt.prop(
     'round-trips the redaction transform by value (encrypt∘decrypt ≡ id)',
-    [Schema.toArbitrary(Redacted)(FastCheck)],
+    [Redacted],
     ([value]) => {
       const serde = effectSerde({ schema: Redacted, slot: 'internal', redaction: cipher })
       const eq = Schema.toEquivalence(Redacted)

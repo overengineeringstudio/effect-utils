@@ -86,19 +86,19 @@ const PositiveInteger = Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))).a
  */
 
 /** Local `.nmd` paths (file or directory). `status`/`sync` take only local paths. */
-const localTargetsArg = Args.string('path').pipe(
+const localTargetsArg = Args.String('path').pipe(
   Args.withDescription('Local .nmd file or directory tree (--recursive selects flat batch mode)'),
   Args.withSchema(NonEmptyCliText),
   Args.atLeast(1),
 )
 
 /** `track` is the only command that takes a Notion page id/url. */
-const trackPageRefArg = Args.string('page-id-or-url').pipe(
+const trackPageRefArg = Args.String('page-id-or-url').pipe(
   Args.withDescription('Notion page id or URL to track'),
   Args.withSchema(NonEmptyCliText),
 )
 
-const trackOutPathArg = Args.string('path').pipe(
+const trackOutPathArg = Args.String('path').pipe(
   Args.withDescription(
     'Local .nmd file, or an existing directory for the full child-page tree (default: <page-id>.nmd)',
   ),
@@ -106,40 +106,40 @@ const trackOutPathArg = Args.string('path').pipe(
   Args.optional,
 )
 
-const trackAsOption = Options.choice('as', ['local', 'remote', 'shared']).pipe(
+const trackAsOption = Options.Literals('as', ['local', 'remote', 'shared']).pipe(
   Options.withDescription(
     'Sync direction to record (local|remote|shared); default remote — this tracks existing Notion state',
   ),
   Options.withDefault('remote'),
 )
 
-const dryRunOption = Options.boolean('dry-run').pipe(
+const dryRunOption = Options.Boolean('dry-run').pipe(
   Options.withDescription('Plan and validate without writing local files, sidecars, or Notion'),
   Options.withDefault(false),
 )
 
-const forceOption = Options.boolean('force').pipe(
+const forceOption = Options.Boolean('force').pipe(
   Options.withDescription(
     'Override a `shared` 3-way-merge divergence (local wins). Inert on single-source files',
   ),
   Options.withDefault(false),
 )
 
-const allowDeleteUnknownBlocksOption = Options.boolean('allow-delete-unknown-blocks').pipe(
+const allowDeleteUnknownBlocksOption = Options.Boolean('allow-delete-unknown-blocks').pipe(
   Options.withDescription(
     'Explicit destructive mode: allow a body write that may delete unresolved unsupported Notion blocks',
   ),
   Options.withDefault(false),
 )
 
-const allowReviewMarkupOption = Options.boolean('allow-review-markup').pipe(
+const allowReviewMarkupOption = Options.Boolean('allow-review-markup').pipe(
   Options.withDescription(
     'Explicit destructive mode: allow unresolved Roughdraft review markup to be written as literal Notion body content',
   ),
   Options.withDefault(false),
 )
 
-const gcObjectsOption = Options.boolean('gc-objects').pipe(
+const gcObjectsOption = Options.Boolean('gc-objects').pipe(
   Options.withDescription(
     'After validation, remove unreachable .notion-md/objects files; with --dry-run, report the GC plan only',
   ),
@@ -153,37 +153,37 @@ const gcObjectsOption = Options.boolean('gc-objects').pipe(
  * per-command `--prune` flag should be reconciled with the global convention.
  * For now, default-dry-run + explicit-prune is the safe interim (R15).
  */
-const pruneOption = Options.boolean('prune').pipe(
+const pruneOption = Options.Boolean('prune').pipe(
   Options.withDescription(
     'Actually delete unreachable .notion-md/objects files (default: plan-only, no deletion)',
   ),
   Options.withDefault(false),
 )
 
-const watchOption = Options.boolean('watch').pipe(
+const watchOption = Options.Boolean('watch').pipe(
   Options.withDescription('Continuously sync after local file changes and remote polling'),
   Options.withDefault(false),
 )
 
-const pollIntervalMsOption = Options.integer('poll-interval-ms').pipe(
+const pollIntervalMsOption = Options.Int('poll-interval-ms').pipe(
   Options.withDescription('Remote polling interval in milliseconds for --watch'),
   Options.withDefault(30_000),
   Options.withSchema(PositiveInteger),
 )
 
-const recursiveOption = Options.boolean('recursive').pipe(
+const recursiveOption = Options.Boolean('recursive').pipe(
   Options.withAlias('r'),
   Options.withDescription('Discover existing .nmd files recursively under a directory target'),
   Options.withDefault(false),
 )
 
-const concurrencyOption = Options.integer('concurrency').pipe(
+const concurrencyOption = Options.Int('concurrency').pipe(
   Options.withDescription('Maximum number of .nmd files to reconcile concurrently'),
   Options.withDefault(4),
   Options.withSchema(PositiveInteger),
 )
 
-const jsonOption = Options.boolean('json').pipe(
+const jsonOption = Options.Boolean('json').pipe(
   Options.withDescription('Emit machine-readable JSON instead of git-porcelain text'),
   Options.withDefault(false),
 )
@@ -953,24 +953,24 @@ const gcCommand = Command.make(
 // Editor surfaces: cat / put / edit (VRS "Editor Surfaces")
 // ---------------------------------------------------------------------------
 
-const pageArg = Args.string('page').pipe(
+const pageArg = Args.String('page').pipe(
   Args.withDescription('Notion page id, dashed id, or URL'),
   Args.withSchema(NonEmptyCliText),
 )
 
-const frontmatterOption = Options.boolean('frontmatter').pipe(
+const frontmatterOption = Options.Boolean('frontmatter').pipe(
   Options.withDescription(
     'Use the full strict `.nmd` envelope instead of the default `# title` + body',
   ),
   Options.withDefault(false),
 )
 
-const baseHashOption = Options.string('base-hash').pipe(
+const baseHashOption = Options.String('base-hash').pipe(
   Options.withDescription('Optimistic-concurrency token from a prior `cat` (guards the write)'),
   Options.optional,
 )
 
-const readOnlyOption = Options.boolean('read-only').pipe(
+const readOnlyOption = Options.Boolean('read-only').pipe(
   Options.withDescription(
     'Open the page in $EDITOR for inspection only; discard edits and never push (like `vim -R`)',
   ),

@@ -1,29 +1,29 @@
 import { NodeRuntime } from '@effect/platform-node'
-import { Duration, Effect, Fiber, Schema, Stream } from 'effect'
-import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
+import { Duration, Effect, Fiber, Schema } from 'effect'
+import type { SocketError } from 'effect/unstable/socket/Socket'
 import {
   CloseEvent,
   layerWebSocketConstructorGlobal,
   makeWebSocket,
-  toChannelString,
+  readerString,
 } from 'effect/unstable/socket/Socket'
 
 /**
  * Example: WebSocket JSON client with schema validation.
  *
  * Demonstrates:
- * - `Schema.parseJson` for safe decoding/encoding
+ * - `Schema.fromJsonString` for safe decoding/encoding
  * - typed request/response handling
+ * - pull-based text reads via `Socket.readerString`
  * - graceful close after messages
  */
 /** WebSocket endpoint for the JSON server. */
 const url = 'ws://127.0.0.1:8791'
 
-/** Convert socket messages into a Stream of text frames. */
-const socketTextStream = (socket: SocketType) =>
-  Stream.fromIterable<Uint8Array | string | CloseEvent>([]).pipe(
-    Stream.pipeThroughChannel(toChannelString(socket)),
-  )
+/** Every close fails the pull; treat normal (1000) and abnormal (1006) closes as the end of the connection. */
+const isCleanClose = (error: SocketError) =>
+  error.reason._tag === 'SocketCloseError' &&
+  (error.reason.code === 1000 || error.reason.code === 1006)
 
 /** Tagged union for client -> server messages. */
 const ClientMessageSchema = Schema.Union([
@@ -72,7 +72,9 @@ const runClient = Effect.gen(function* () {
   return yield* Effect.scoped(
     Effect.gen(function* () {
       /** Writer is scoped to the connection lifecycle. */
-      const write = yield* socket.writer
+      const writer = yield* socket.writer
+      /** Acquiring the reader dials the server (bounded by `openTimeout`). */
+      const pull = yield* readerString(socket)
 
       /** Emit a ping then an echo message, then close cleanly. */
       const sendLoop = Effect.gen(function* () {
@@ -82,27 +84,28 @@ const runClient = Effect.gen(function* () {
         const pingJson = yield* encodeClientMessage(ping)
         const echoJson = yield* encodeClientMessage(echo)
 
-        yield* write(pingJson)
+        yield* writer.write(pingJson)
         yield* Effect.sleep(Duration.millis(300))
-        yield* write(echoJson)
+        yield* writer.write(echoJson)
         yield* Effect.sleep(Duration.millis(300))
-        yield* write(new CloseEvent(1000, 'done'))
+        yield* writer.write(new CloseEvent(1000, 'done'))
       }).pipe(Effect.withSpan('ws-json.client.send'))
 
-      const receive = socketTextStream(socket).pipe(
-        Stream.mapEffect((text) =>
-          decodeServerMessage(text).pipe(
-            Effect.tap((decoded) => Effect.log(decoded)),
-            Effect.catch((error) => Effect.logError({ message: 'invalid server message', error })),
-          ),
-        ),
-        Stream.runDrain,
-      )
+      /** Decode and log every server response until the connection closes. */
+      const receive = Effect.gen(function* () {
+        while (true) {
+          for (const text of yield* pull) {
+            yield* decodeServerMessage(text).pipe(
+              Effect.tap((decoded) => Effect.log(decoded)),
+              Effect.catch((error) => Effect.logError({ message: 'invalid server message', error })),
+            )
+          }
+        }
+      }).pipe(Effect.catchIf(isCleanClose, () => Effect.void))
 
       const sendFiber = yield* Effect.forkScoped(sendLoop)
-      const result = yield* receive
+      yield* receive
       yield* Fiber.join(sendFiber)
-      return result
     }),
   ).pipe(Effect.withSpan('ws-json.client.scope'))
 }).pipe(Effect.withSpan('ws-json.client'))

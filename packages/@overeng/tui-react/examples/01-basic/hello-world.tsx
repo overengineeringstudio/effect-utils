@@ -29,7 +29,7 @@ import { HelloWorldView } from './view.tsx'
 // CLI Options
 // =============================================================================
 
-const durationOption = Options.integer('duration').pipe(
+const durationOption = Options.Int('duration').pipe(
   Options.withAlias('d'),
   Options.withDescription('Duration in seconds before auto-exit'),
   Options.withDefault(3),

@@ -227,8 +227,8 @@ export interface OtelConfigValues {
 }
 
 const otelConfig: Config.Config<OtelConfigValues> = Config.all({
-  serviceName: Config.option(Config.string('OTEL_SERVICE_NAME')),
-  endpoint: Config.option(Config.string('OTEL_EXPORTER_OTLP_ENDPOINT')),
+  serviceName: Config.option(Config.String('OTEL_SERVICE_NAME')),
+  endpoint: Config.option(Config.String('OTEL_EXPORTER_OTLP_ENDPOINT')),
 })
 
 /**

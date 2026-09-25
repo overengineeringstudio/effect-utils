@@ -288,7 +288,7 @@ export const statusCommand = Cli.Command.make(
   'status',
   {
     output: outputOption,
-    all: Cli.Flag.boolean('all').pipe(
+    all: Cli.Flag.Boolean('all').pipe(
       Cli.Flag.withDescription('Recursively show status of nested megarepos'),
       Cli.Flag.withDefault(false),
     ),

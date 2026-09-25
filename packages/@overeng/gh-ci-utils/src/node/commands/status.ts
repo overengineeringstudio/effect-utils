@@ -299,7 +299,7 @@ const fetchSingleRunData = ({
     }
   })
 
-const includeStepsOption = Cli.Flag.boolean('include-steps').pipe(
+const includeStepsOption = Cli.Flag.Boolean('include-steps').pipe(
   Cli.Flag.withDefault(false),
   Cli.Flag.withDescription('Include full step arrays in job output'),
 )

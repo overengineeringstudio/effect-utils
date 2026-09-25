@@ -52,7 +52,7 @@ export const rerunCommand = Cli.Command.make('rerun', {
   output: outputOption,
   target: targetArg,
   workflow: workflowOption,
-  failed: Cli.Flag.boolean('failed').pipe(
+  failed: Cli.Flag.Boolean('failed').pipe(
     Cli.Flag.withDefault(false),
     Cli.Flag.withDescription('Re-run only failed jobs'),
   ),
@@ -156,17 +156,17 @@ Examples:
 /** CLI subcommand to trigger a new workflow run */
 export const runCommand = Cli.Command.make('run', {
   output: outputOption,
-  workflow: Cli.Flag.string('workflow').pipe(
+  workflow: Cli.Flag.String('workflow').pipe(
     Cli.Flag.withDefault('CI'),
     Cli.Flag.withDescription('Workflow name (default: CI)'),
   ),
-  field: Cli.Flag.keyValuePair('field').pipe(
+  field: Cli.Flag.KeyValuePair('field').pipe(
     Cli.Flag.withDescription(
       'Workflow dispatch input as key=value (repeatable, e.g. --field image=abc)',
     ),
     Cli.Flag.optional,
   ),
-  inputs: Cli.Flag.string('inputs').pipe(
+  inputs: Cli.Flag.String('inputs').pipe(
     Cli.Flag.withDescription('Workflow dispatch inputs as a JSON object (script escape hatch)'),
     Cli.Flag.optional,
   ),

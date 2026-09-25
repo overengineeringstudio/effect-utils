@@ -95,7 +95,7 @@ export class RestateIngress extends Context.Service<RestateIngress, RestateIngre
   /**
    * Build a `RestateIngress` layer from `Config` (env-driven): the ingress URL
    * from `RESTATE_INGRESS_URL` and an OPTIONAL bearer API key from
-   * `RESTATE_INGRESS_KEY` (read as a `Config.redacted`, so the secret stays a
+   * `RESTATE_INGRESS_KEY` (read as a `Config.Redacted`, so the secret stays a
    * `Redacted` and never prints). A thin `Config`-then-literal wrapper over
    * {@link RestateIngress.layer} — secured/Cloud ingress with zero call-site
    * secret handling. Fails the layer with a `ConfigError` if `RESTATE_INGRESS_URL`
@@ -105,8 +105,8 @@ export class RestateIngress extends Context.Service<RestateIngress, RestateIngre
     Layer.effect(
       RestateIngress,
       Effect.gen(function* () {
-        const url = yield* Config.url('RESTATE_INGRESS_URL')
-        const apiKey = yield* Config.option(Config.redacted('RESTATE_INGRESS_KEY'))
+        const url = yield* Config.URL('RESTATE_INGRESS_URL')
+        const apiKey = yield* Config.option(Config.Redacted('RESTATE_INGRESS_KEY'))
         const redaction = yield* Effect.serviceOption(RestateRedaction)
         return makeIngress({
           url: url.toString(),

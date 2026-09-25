@@ -586,7 +586,7 @@ const createMissingRefPrompt = (
   info: MissingRefInfo,
 ): Effect.Effect<MissingRefAction, never, Prompt.Environment> =>
   Effect.gen(function* () {
-    const prompt = Prompt.select<MissingRefAction>({
+    const prompt = Prompt.Select<MissingRefAction>({
       message: `Branch '${info.ref}' doesn't exist in ${info.memberName}`,
       choices: [
         {

@@ -3,7 +3,7 @@
  * `RestateIngress.layer({ url, apiKey })` sends the API key as an
  * `Authorization: Bearer …` header, and `RestateIngress.layerConfig` reads the URL
  * + key from `RESTATE_INGRESS_URL` / `RESTATE_INGRESS_KEY` via `Config` (the key a
- * `Config.redacted`, so it never prints). We mock `connect` to capture the
+ * `Config.Redacted`, so it never prints). We mock `connect` to capture the
  * connection options it receives.
  */
 import type * as clients from '@restatedev/restate-sdk-clients'

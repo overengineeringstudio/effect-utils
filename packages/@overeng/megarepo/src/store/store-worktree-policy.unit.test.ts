@@ -1,5 +1,6 @@
 import { describe, it } from '@effect/vitest'
-import * as fc from 'effect/testing/FastCheck'
+import { Schema } from 'effect'
+import * as Arbitrary from 'effect/unstable/arbitrary/Arbitrary'
 import { expect } from 'vitest'
 
 import type { StoreGcConfig } from './store-gc-config.ts'
@@ -274,26 +275,29 @@ describe('classifyColdWorktree near-misses', () => {
 // Property-based invariants (decisions 0001–0009, invariants 1–3)
 // =============================================================================
 
-const arbPrState: fc.Arbitrary<PrStateInfo> = fc.oneof(
-  fc.constant<PrStateInfo>({ state: 'open' }),
-  fc.constant<PrStateInfo>({ state: 'none' }),
-  fc
-    .option(fc.integer({ min: 0, max: NOW }), { nil: undefined })
-    .map((mergedAt): PrStateInfo => ({ state: 'merged', mergedAt })),
-  fc
-    .option(fc.integer({ min: 0, max: NOW }), { nil: undefined })
-    .map((closedAt): PrStateInfo => ({ state: 'closed', closedAt })),
+const Timestamp = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: NOW }))
+const UnpushedCount = (minimum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum: 50 }))
+
+const OpenOrNonePrState = Schema.Union([
+  Schema.Struct({ state: Schema.Literal('open') }),
+  Schema.Struct({ state: Schema.Literal('none') }),
+])
+
+const arbOpenOrNonePrState: Arbitrary.Arbitrary<PrStateInfo> = Arbitrary.schema(OpenOrNonePrState)
+
+const arbPrState: Arbitrary.Arbitrary<PrStateInfo> = Arbitrary.schema(
+  Schema.Union([
+    OpenOrNonePrState,
+    Schema.Struct({ state: Schema.Literal('merged'), mergedAt: Schema.UndefinedOr(Timestamp) }),
+    Schema.Struct({ state: Schema.Literal('closed'), closedAt: Schema.UndefinedOr(Timestamp) }),
+  ]),
 )
 
-const arbLossless: fc.Arbitrary<StoreWorktreeLossless> = fc.record({
-  unpushed: fc.integer({ min: 0, max: 50 }),
-  dirty: fc.boolean(),
-  hasStash: fc.boolean(),
-})
+const arbLossless: Arbitrary.Arbitrary<StoreWorktreeLossless> = Arbitrary.schema(
+  Schema.Struct({ unpushed: UnpushedCount(0), dirty: Schema.Boolean, hasStash: Schema.Boolean }),
+)
 
-const arbColdSince: fc.Arbitrary<number | undefined> = fc.option(fc.integer({ min: 0, max: NOW }), {
-  nil: undefined,
-})
+const arbColdSince: Arbitrary.Arbitrary<number | undefined> = Arbitrary.schema(Schema.UndefinedOr(Timestamp))
 
 describe('classifyColdWorktree invariants (property)', () => {
   it.prop(
@@ -311,12 +315,12 @@ describe('classifyColdWorktree invariants (property)', () => {
       })
       expect(decision).toEqual<ColdWorktreeDecision>({ _tag: 'keep', reason: 'live' })
     },
-    { fastCheck: { numRuns: 200 } },
+    { arbitrary: { runs: 200 } },
   )
 
   it.prop(
     'open or no-PR worktrees are always kept (decision 0001)',
-    [fc.constantFrom<PrStateInfo>({ state: 'open' }, { state: 'none' }), arbLossless, arbColdSince],
+    [arbOpenOrNonePrState, arbLossless, arbColdSince],
     ([prState, lossless, coldSinceMs]) => {
       const decision = classifyColdWorktree({
         worktree: target,
@@ -329,12 +333,12 @@ describe('classifyColdWorktree invariants (property)', () => {
       })
       expect(decision._tag).toBe('keep')
     },
-    { fastCheck: { numRuns: 200 } },
+    { arbitrary: { runs: 200 } },
   )
 
   it.prop(
     'unpushed>0 always keeps (lossless floor, invariant 2)',
-    [arbPrState, fc.integer({ min: 1, max: 50 }), fc.boolean(), fc.boolean(), arbColdSince],
+    [arbPrState, UnpushedCount(1), Schema.Boolean, Schema.Boolean, arbColdSince],
     ([prState, unpushed, dirty, hasStash, coldSinceMs]) => {
       const decision = classifyColdWorktree({
         worktree: target,
@@ -347,12 +351,12 @@ describe('classifyColdWorktree invariants (property)', () => {
       })
       expect(decision._tag).toBe('keep')
     },
-    { fastCheck: { numRuns: 200 } },
+    { arbitrary: { runs: 200 } },
   )
 
   it.prop(
     'hasStash always keeps (lossless floor, invariant 2)',
-    [arbPrState, fc.integer({ min: 0, max: 50 }), fc.boolean(), arbColdSince],
+    [arbPrState, UnpushedCount(0), Schema.Boolean, arbColdSince],
     ([prState, unpushed, dirty, coldSinceMs]) => {
       const decision = classifyColdWorktree({
         worktree: target,
@@ -365,6 +369,6 @@ describe('classifyColdWorktree invariants (property)', () => {
       })
       expect(decision._tag).toBe('keep')
     },
-    { fastCheck: { numRuns: 200 } },
+    { arbitrary: { runs: 200 } },
   )
 })

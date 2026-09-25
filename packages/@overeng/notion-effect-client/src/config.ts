@@ -47,7 +47,7 @@ export class NotionTokenMissing extends Schema.TaggedError<NotionTokenMissing>()
  */
 export const resolveNotionToken = Effect.fn('resolveNotionToken')(function* () {
   for (const name of NOTION_TOKEN_ENV_VARS) {
-    const candidate = yield* Config.option(Config.redacted(name))
+    const candidate = yield* Config.option(Config.Redacted(name))
     if (Option.isSome(candidate) === true && Redacted.value(candidate.value).length > 0) {
       return candidate.value
     }
