@@ -4,7 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking changes
+- **Genie build cache configuration** (dotfiles#3164): Replace
+  `NixBinaryCache` and `cachixBinaryCache` with producer-authored, tagged
+  descriptors in JSON, validated with `binaryCacheDescriptorSchema` when read
+  from TypeScript. Replace `nixBinaryCachesExtraConf` with
+  `binaryCachesExtraConfForJob({ runner, caches })` for standalone composition,
+  or pass `binaryCaches` to `installNixStep` in a workflow; the shared
+  `githubWorkflow` output boundary checks the final job runner. Remove
+  `withPrivateCachixReadAuth`: private cache admission is fleet-runner policy,
+  not a Cachix token wrapper. Replace `cachixHostsFromBinaryCaches` with
+  explicit publisher names from the producer descriptors; read-only Cachix
+  steps use `cachixStep`, while writes use the protected
+  `cachixPublisherStep`/`cachixPushStep` constructors. Producer flakes must not
+  advertise private caches in `nixConfig`, which bypasses workflow policy.
+  Generation-time validation cannot cover raw workflow YAML outside Genie or
+  inherited secrets passed to reusable workflows via `secrets: inherit`.
+
 ### Added
+- **Genie build caches**: Producer-authored, credential-free Nix/REAPI cache
+  descriptors validate in TypeScript and Nix. Private descriptors require a
+  static fleet runner, ordinary Cachix steps are read-only, and protected
+  publisher steps alone receive write credentials.
 
 - **Buck2 package products**: Register public-repository package archives for
   `@overeng/agent-session-ingest`, `@overeng/effect-ai-claude-cli`,

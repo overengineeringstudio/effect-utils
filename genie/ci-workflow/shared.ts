@@ -4,6 +4,8 @@ import {
   type GitHubWorkflowArgs,
 } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { RUNNER_PROFILES, type RunnerProfile } from '../ci.ts'
+import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
+import { workflowCacheDescriptors } from './cache-policy.ts'
 
 export { RUNNER_PROFILES, type RunnerProfile }
 
@@ -179,6 +181,7 @@ export const ciWorkflowConcurrency = {
 
 export type CiWorkflowArgs = GitHubWorkflowArgs & {
   readonly trustTier: CiTrustTier
+  readonly binaryCaches?: readonly BinaryCacheDescriptor[]
 }
 
 const withStandardCIEnv = ({
@@ -209,67 +212,41 @@ const withStandardCIEnv = ({
  * `concurrency` field, and individual jobs can opt out or provide their own
  * `concurrency`.
  */
-export const ciWorkflow = ({ trustTier, ...args }: CiWorkflowArgs) =>
-  (({ concurrency, actionlint, jobs, on, ...rest }) =>
-    githubWorkflow({
-      ...rest,
-      on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
-      ...(concurrency === undefined ? {} : { concurrency }),
-      actionlint: actionlint ?? defaultActionlintConfig,
-      jobs: withStandardCIEnv({
-        trustTier,
-        jobs:
-          concurrency === undefined
-            ? withDefaultJobConcurrency({
-                jobs,
-                measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
-              })
-            : jobs,
-      }),
-    }))(args)
+export const ciWorkflow = ({ trustTier, binaryCaches, ...args }: CiWorkflowArgs) => {
+  const { concurrency, actionlint, jobs, on, ...rest } = args
+  const workflow = {
+    [workflowCacheDescriptors]: binaryCaches ?? [],
+    ...rest,
+    on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
+    ...(concurrency === undefined ? {} : { concurrency }),
+    actionlint: actionlint ?? defaultActionlintConfig,
+    jobs: withStandardCIEnv({
+      trustTier,
+      jobs:
+        concurrency === undefined
+          ? withDefaultJobConcurrency({
+              jobs,
+              measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
+            })
+          : jobs,
+    }),
+  }
+  return githubWorkflow(workflow)
+}
 
 export type NixConfigOptions = {
   unrestrictedEval?: boolean
   extraLines?: readonly string[]
 }
 
-export type NixBinaryCache = {
-  readonly uri: string
-  readonly publicKey: string
-}
-
+/** Public bootstrap cache for the pinned devenv binary, not an implicit job cache. */
 export const devenvBinaryCache = {
+  kind: 'nix-binary',
+  name: 'devenv',
+  visibility: 'public',
   uri: 'https://devenv.cachix.org',
   publicKey: 'devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
-} as const satisfies NixBinaryCache
-
-/** Build a binary-cache descriptor for a Cachix cache. */
-export const cachixBinaryCache = (opts: { name: string; publicKey: string }): NixBinaryCache => ({
-  uri: `https://${opts.name}.cachix.org`,
-  publicKey: opts.publicKey,
-})
-
-const dedupeBinaryCaches = (caches: readonly NixBinaryCache[]) => [
-  ...new Map(caches.map((cache) => [cache.uri, cache])).values(),
-]
-
-export const cachixHostsFromBinaryCaches = (caches: readonly NixBinaryCache[]) => [
-  ...new Set(
-    caches.flatMap((cache) => {
-      const host = new URL(cache.uri).host
-      return host.endsWith('.cachix.org') === true ? [host] : []
-    }),
-  ),
-]
-
-/** Render `extra-conf` lines for one or more binary caches. */
-export const nixBinaryCachesExtraConf = (caches: readonly NixBinaryCache[]) => {
-  const resolvedCaches = dedupeBinaryCaches([devenvBinaryCache, ...caches])
-  return [
-    `extra-substituters = ${resolvedCaches.map((cache) => cache.uri).join(' ')}`,
-    `extra-trusted-public-keys = ${resolvedCaches.map((cache) => cache.publicKey).join(' ')}`,
-  ].join('\n')
-}
+} as const
 
 export const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
 

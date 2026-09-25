@@ -2,6 +2,7 @@ import { createGenieOutput, type GenieActionlintConfig, type GenieContext } from
 import type { GenieOutput, Strict } from '../mod.ts'
 import * as yaml from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
+import { validateWorkflowCachePolicy } from './cache-policy.ts'
 
 /** Configuration for actionlint validation in `githubWorkflow()` (alias of {@link GenieActionlintConfig}). */
 export type ActionlintConfig = GenieActionlintConfig
@@ -763,11 +764,16 @@ export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
   args: Strict<T, GitHubWorkflowArgs>,
 ): GenieOutput<T> => {
   const normalizedArgs = { ...args, on: normalizeWorkflowOn(args.on) }
+  validateWorkflowCachePolicy({ workflow: normalizedArgs })
   const { actionlint: _actionlint, ...yamlArgs } = normalizedArgs
   return createGenieOutput({
     data: args,
-    stringify: (_ctx) => yaml.stringify(yamlArgs),
+    stringify: (_ctx) => {
+      validateWorkflowCachePolicy({ workflow: normalizedArgs })
+      return yaml.stringify(yamlArgs)
+    },
     validate: (ctx) => {
+      validateWorkflowCachePolicy({ workflow: normalizedArgs })
       const yamlContent = yaml.stringify(yamlArgs)
       return validateWorkflow({ args: normalizedArgs, yamlContent, ctx })
     },

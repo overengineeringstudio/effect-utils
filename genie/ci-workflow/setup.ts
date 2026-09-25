@@ -1,13 +1,18 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { RunnerProfile } from '../ci.ts'
+import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
+import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
+import {
+  jobCacheDescriptors,
+  publisherWriteSecret,
+  CachePublisherJobError,
+} from './cache-policy.ts'
 import { applyMegarepoLockStep } from './megarepo.ts'
 import {
   bashShellDefaults,
-  cachixHostsFromBinaryCaches,
   defaultCiRuntimeScriptsDir,
   jobLocalCiDiagnosticsDir,
   githubTokenEnv,
-  nixBinaryCachesExtraConf,
   resolveDevenvRevScriptFor,
   linuxX64Runner,
   runDevenvTasksBefore,
@@ -21,7 +26,6 @@ import {
   ciPnpmStore,
   ciCompositionStateRoot,
   withCiSourceRoot,
-  type NixBinaryCache,
 } from './shared.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
@@ -67,7 +71,6 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
   uses: 'actions/checkout@v6' as const,
   with: { 'persist-credentials': false, ...opts },
 })
-
 
 export const prepareCiScriptsStep = {
   name: 'Prepare CI helper scripts',
@@ -145,104 +148,6 @@ export const withGitHubAccessTokenEnv = <
   },
 })
 
-const withPrivateCachixReadAuthCommand = ({
-  command,
-  cacheHosts,
-  additionalCacheAuth,
-}: {
-  command: string
-  cacheHosts: readonly string[]
-  additionalCacheAuth: readonly { host: string; tokenVariable: string }[]
-}) => {
-  if (cacheHosts.length === 0 && additionalCacheAuth.length === 0) {
-    return command
-  }
-
-  return [
-    ...[
-      ...(cacheHosts.length > 0 ? ['CACHIX_AUTH_TOKEN'] : []),
-      ...additionalCacheAuth.map(({ tokenVariable }) => tokenVariable),
-    ].map(
-      (variable) =>
-        `if [ -z "\${${variable}:-}" ]; then echo "::error::${variable} is not set"; exit 1; fi`,
-    ),
-    'cachix_netrc="$(mktemp "${RUNNER_TEMP:-/tmp}/cachix-netrc.XXXXXX")"',
-    'trap \'rm -f "$cachix_netrc"\' EXIT',
-    'chmod 600 "$cachix_netrc"',
-    ...cacheHosts.map(
-      (host) =>
-        `printf 'machine %s\\npassword %s\\n' ${shellSingleQuote(host)} "$CACHIX_AUTH_TOKEN" >> "$cachix_netrc"`,
-    ),
-    ...additionalCacheAuth.map(
-      ({ host, tokenVariable }) =>
-        `printf 'machine %s\\npassword %s\\n' ${shellSingleQuote(host)} "$${tokenVariable}" >> "$cachix_netrc"`,
-    ),
-    'if [ -n "${NIX_CONFIG:-}" ]; then',
-    '  NIX_CONFIG_WITH_APPEND=$(printf \'%s\\n%s\' "$NIX_CONFIG" "netrc-file = $cachix_netrc")',
-    'else',
-    '  NIX_CONFIG_WITH_APPEND="netrc-file = $cachix_netrc"',
-    'fi',
-    'export NIX_CONFIG="$NIX_CONFIG_WITH_APPEND"',
-    command,
-  ].join('\n')
-}
-
-/**
- * Attach job-local Cachix read auth to a shell step.
- *
- * This keeps private cache pull auth local to the step instead of relying on
- * host-global netrc state owned by the runner image.
- */
-export const withPrivateCachixReadAuth = <
-  TStep extends {
-    run: string
-    env?: Record<string, string>
-  },
->({
-  step,
-  ...opts
-}: {
-  step: TStep
-  authTokenExpression: string
-  binaryCaches: readonly NixBinaryCache[]
-  additionalCacheAuth?: readonly {
-    binaryCache: NixBinaryCache
-    authTokenExpression: string
-  }[]
-}): TStep => {
-  const cacheHosts = cachixHostsFromBinaryCaches(opts.binaryCaches)
-  const additionalCacheAuth = (opts.additionalCacheAuth ?? []).flatMap(
-    ({ binaryCache, authTokenExpression }, index) =>
-      cachixHostsFromBinaryCaches([binaryCache]).map((host) => ({
-        host,
-        tokenVariable: `CACHIX_ADDITIONAL_AUTH_TOKEN_${index}`,
-        authTokenExpression,
-      })),
-  )
-  if (cacheHosts.length === 0 && additionalCacheAuth.length === 0) {
-    return step
-  }
-
-  return {
-    ...step,
-    env: {
-      ...step.env,
-      ...(cacheHosts.length > 0 ? { CACHIX_AUTH_TOKEN: opts.authTokenExpression } : {}),
-      ...Object.fromEntries(
-        additionalCacheAuth.map(({ tokenVariable, authTokenExpression }) => [
-          tokenVariable,
-          authTokenExpression,
-        ]),
-      ),
-    },
-    run: withPrivateCachixReadAuthCommand({
-      command: step.run,
-      cacheHosts,
-      additionalCacheAuth,
-    }),
-  }
-}
-
 /**
  * Append a GitHub access token line to NIX_CONFIG for later shell steps.
  *
@@ -274,11 +179,12 @@ export const appendGitHubAccessTokenToNixConfigStep = (opts: {
  * access-tokens there by reading GITHUB_TOKEN from the environment.
  */
 export const installNixStep = (opts?: {
-  binaryCaches?: readonly NixBinaryCache[]
+  binaryCaches?: readonly BinaryCacheDescriptor[]
   extraConf?: string
   githubAccessTokenExpression?: string
   summarize?: boolean
 }) => ({
+  [jobCacheDescriptors]: opts?.binaryCaches ?? [],
   name: 'Install Nix',
   uses: 'DeterminateSystems/determinate-nix-action@v3' as const,
   env: githubTokenEnv(opts?.githubAccessTokenExpression),
@@ -292,7 +198,7 @@ export const installNixStep = (opts?: {
       'experimental-features = nix-command flakes',
       /** Trust flake-level nixConfig (e.g. additional repo-local substituters) */
       'accept-flake-config = true',
-      nixBinaryCachesExtraConf(opts?.binaryCaches ?? []),
+      renderBinaryCachesExtraConf(opts?.binaryCaches ?? []),
       `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
     ].join('\n'),
@@ -319,14 +225,58 @@ export const cachixCliBuildStep = {
   ].join('\n'),
 } as const
 
-/** Enable a Cachix binary cache. Requires `cachixCliBuildStep` earlier in the job. */
-export const cachixStep = (opts: { name: string; authToken?: string }) => ({
+/** Read-only Cachix action. Publishing requires the protected publisher constructor. */
+export const cachixStep = (opts: { name: string }) => ({
   name: 'Enable Cachix cache',
   uses: 'cachix/cachix-action@v17' as const,
-  with: {
-    name: opts.name,
-    ...(opts.authToken !== undefined ? { authToken: opts.authToken } : {}),
+  with: { name: opts.name, skipPush: true },
+})
+
+type CachePublisherScope = {
+  jobIf: string
+  triggers: readonly ('push' | 'workflow_dispatch' | 'schedule')[]
+}
+
+const protectedPublisherIf = (opts: CachePublisherScope) => {
+  if (
+    opts.jobIf.includes("github.ref == 'refs/heads/main'") === false ||
+    opts.triggers.length === 0 ||
+    opts.triggers.some(
+      (trigger) => opts.jobIf.includes(`github.event_name == '${trigger}'`) === false,
+    ) === true
+  ) {
+    throw new CachePublisherJobError('publisher')
+  }
+  return `github.ref == 'refs/heads/main' && (${opts.triggers.map((trigger) => `github.event_name == '${trigger}'`).join(' || ')})`
+}
+
+const publisherSecretName = (authToken: string) =>
+  /\bsecrets\.([A-Za-z_][A-Za-z_0-9]*)\b/.exec(authToken)?.[1] ?? 'CACHIX_AUTH_TOKEN'
+
+/** Guard an explicit `cachix push` shell step; only this step receives the write secret. */
+export const cachixPushStep = <TStep extends { if?: string; env?: Record<string, string> }>(
+  opts: CachePublisherScope & { step: TStep; authToken: string },
+) => {
+  const condition = protectedPublisherIf(opts)
+  return {
+    [publisherWriteSecret]: publisherSecretName(opts.authToken),
+    ...opts.step,
+    if: opts.step.if === undefined ? condition : `${condition} && (${opts.step.if})`,
+    env: { ...opts.step.env, CACHIX_AUTH_TOKEN: opts.authToken },
+  }
+}
+
+export const cachixPublisherStep = (
+  opts: CachePublisherScope & {
+    name: string
+    authToken: string
   },
+) => ({
+  [publisherWriteSecret]: publisherSecretName(opts.authToken),
+  name: 'Publish to Cachix',
+  if: protectedPublisherIf(opts),
+  uses: 'cachix/cachix-action@v17' as const,
+  with: { name: opts.name, authToken: opts.authToken },
 })
 
 /**

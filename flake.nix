@@ -1,4 +1,4 @@
-{
+rec {
   # Nix flake for sharing helper libraries across repos.
   #
   # We already have a devenv-based setup for local development, but repos that
@@ -9,6 +9,8 @@
   # Prepared pnpm trees are content-addressed against the effect-utils build
   # graph, so downstream repos should make their root nixpkgs follow
   # `effect-utils/nixpkgs` instead of overriding the input the other way around.
+  # Flake nixConfig is independently honored by Nix on every runner. Never
+  # list private caches here: genie can only guard explicit job composition.
   nixConfig = {
     extra-substituters = [ "https://overeng-effect-utils.cachix.org" ];
     extra-trusted-public-keys = [
@@ -244,6 +246,15 @@
       }
     )
     // {
+      binaryCaches =
+        let
+          descriptors = import ./nix/binary-caches.nix;
+          cache = descriptors."overeng-effect-utils";
+        in
+        assert cache.kind == "nix-binary" && cache.visibility == "public";
+        assert nixConfig.extra-substituters == [ cache.uri ];
+        assert nixConfig.extra-trusted-public-keys == [ cache.publicKey ];
+        descriptors;
       # Devenv modules for importing into other repos
       devenvModules = {
         # Lightweight native-devenv + effect-utils capture, optionally composed

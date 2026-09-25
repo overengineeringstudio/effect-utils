@@ -1,0 +1,9 @@
+{
+  "overeng-effect-utils": {
+    "kind": "nix-binary",
+    "name": "overeng-effect-utils",
+    "visibility": "public",
+    "uri": "https://overeng-effect-utils.cachix.org",
+    "publicKey": "overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc="
+  }
+}
