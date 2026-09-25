@@ -94,7 +94,11 @@ fn direct_decode_truncation_and_trace_views() {
     raw.extend_from_slice(&[12, 1, 2]);
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("small_events.pb.zst");
-    fs::write(&path, compress_to_vec(raw.as_slice(), CompressionLevel::Fastest)).unwrap();
+    fs::write(
+        &path,
+        compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
+    )
+    .unwrap();
     let model = decode(&path).unwrap();
     assert!(model.truncated);
     assert_eq!(model.spans.len(), 2);
@@ -121,4 +125,85 @@ fn direct_decode_truncation_and_trace_views() {
     );
     assert_eq!(model.spans[1].critical, true);
     assert_eq!(truncated_at + 3, raw.len());
+}
+
+/// Real local `buck2 build` log (be6971d4), byte-scrubbed at equal length
+/// (user, host, NIC names). Counts match the `buck2 log show` prototype
+/// converter on the same file: 25 spans, 2 actions.
+#[test]
+fn golden_local_build_log() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/local-build.pb.zst");
+    let model = decode(&path).unwrap();
+    assert!(!model.truncated);
+    assert_eq!(model.unknown_fields, 0);
+    assert_eq!(model.uuid, "4b68ac2f-58e1-4846-afb2-eff9358143b6");
+    let views = make_views(&model, None);
+    let (critical, full) = (&views[0], &views[1]);
+    assert_eq!((critical.0, full.0), ("critical", "full"));
+    let kinds = |spans: &[Value]| {
+        let mut counts = std::collections::BTreeMap::new();
+        for span in spans {
+            let name = span["name"].as_str().unwrap();
+            *counts
+                .entry(name.split(' ').next().unwrap().to_string())
+                .or_insert(0) += 1;
+        }
+        counts.into_iter().collect::<Vec<(String, usize)>>()
+    };
+    let expect = |pairs: &[(&str, usize)]| {
+        pairs
+            .iter()
+            .map(|(k, n)| (k.to_string(), *n))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        kinds(&full.2),
+        expect(&[
+            ("buck2.action", 2),
+            ("buck2.command", 1),
+            ("buck2.materialization", 2),
+            ("buck2.phase", 11),
+            ("buck2.stage", 9),
+        ])
+    );
+    assert_eq!(
+        kinds(&critical.2),
+        expect(&[
+            ("buck2.action", 2),
+            ("buck2.command", 1),
+            ("buck2.materialization", 1),
+            ("buck2.phase", 4),
+            ("buck2.stage", 9),
+        ])
+    );
+    // Without a sidecar both views are independent roots; the critical view links to the full one.
+    assert_ne!(critical.1, full.1);
+    assert!(critical.2[0].get("parentSpanId").is_none());
+    assert_eq!(critical.2[0]["links"][0]["traceId"], full.1);
+    // Every non-root span in each view has its parent inside the same view.
+    for (_, _, spans) in &views {
+        let ids: HashSet<_> = spans
+            .iter()
+            .map(|s| s["spanId"].as_str().unwrap())
+            .collect();
+        for span in &spans[1..] {
+            assert!(
+                ids.contains(span["parentSpanId"].as_str().unwrap()),
+                "{span}"
+            );
+        }
+    }
+    let command_attr = |key: &str| {
+        full.2[0]["attributes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["key"] == key)
+            .map(|a| a["value"]["intValue"].clone())
+    };
+    assert_eq!(command_attr("buck2.action_count"), Some(json!("2")));
+    assert_eq!(
+        command_attr("buck2.critical_path_action_count"),
+        Some(json!("2"))
+    );
 }
