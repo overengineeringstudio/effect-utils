@@ -1,12 +1,18 @@
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import { buck2RulesInventory } from '../../nix/buck2-rules/inventory.json.genie.ts'
 
+const repoRoot = new URL('../../', import.meta.url)
+
 const expectedFiles = [
   'buck2-member.json',
+  'buck2/dependencies/acquire-archive.ts',
   'buck2/dependencies/assemble-store.ts',
   'buck2/dependencies/defs.bzl',
   'buck2/dependencies/nix-archive.ts',
+  'buck2/dependencies/public-archive-origin.ts',
   'buck2/editor_view.bzl',
   'buck2/go/defs.bzl',
   'buck2/javascript.bzl',
@@ -68,5 +74,22 @@ describe('Buck rules product inventory', () => {
           path.startsWith('packages/@overeng/megarepo/src/composition/capabilities/') === false,
       ),
     ).toEqual([])
+  })
+
+  /* Rule defaults resolve inside the consumer's `rules` cell, so every source they name must ship and be exported there (#1386 regression). */
+  it('ships and exports every //buck2/dependencies source that rule defaults reference', () => {
+    const referenced = new Set<string>()
+    for (const path of buck2RulesInventory.files.filter((file) => file.endsWith('.bzl'))) {
+      const text = readFileSync(new URL(path, repoRoot), 'utf8')
+      for (const match of text.matchAll(/default = "\/\/buck2\/dependencies:([^"]+\.ts)"/g)) {
+        referenced.add(match[1]!)
+      }
+    }
+    expect(referenced.size).toBeGreaterThan(0)
+    const rulesCell = readFileSync(new URL('nix/buck2-rules/default.nix', repoRoot), 'utf8')
+    for (const file of referenced) {
+      expect(buck2RulesInventory.files).toContain(`buck2/dependencies/${file}`)
+      expect(rulesCell).toContain(`name = "${file}",`)
+    }
   })
 })

@@ -56,6 +56,12 @@ pkgs.runCommand "buck2-rules"
     BUCK
     cat > "$out/buck2/dependencies/BUCK" <<'BUCK'
     export_file(
+        name = "acquire-archive.ts",
+        src = "acquire-archive.ts",
+        visibility = ["PUBLIC"],
+    )
+
+    export_file(
         name = "assemble-store.ts",
         src = "assemble-store.ts",
         visibility = ["PUBLIC"],
@@ -64,6 +70,12 @@ pkgs.runCommand "buck2-rules"
     export_file(
         name = "nix-archive.ts",
         src = "nix-archive.ts",
+        visibility = ["PUBLIC"],
+    )
+
+    export_file(
+        name = "public-archive-origin.ts",
+        src = "public-archive-origin.ts",
         visibility = ["PUBLIC"],
     )
     BUCK
