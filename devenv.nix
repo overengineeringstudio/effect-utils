@@ -622,7 +622,10 @@ let
           --attr-int "exit.code=$buck_exit" || true
       fi
       if [ -n "$spool" ] && [ -s "$event_log" ]; then
+        # Each OTLP request is bounded in the adapter; this outer cap also bounds
+        # decode so a wedged collector or hostile log never holds the task.
         OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+          ${pkgs.coreutils}/bin/timeout -k 5 60 \
           ${repoPackages.buck2-events}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" || true
       fi
       exit "$buck_exit"
@@ -1085,7 +1088,10 @@ in
 
   tasks."cargo:check" = {
     description = "Test, lint, and format-check the shared Cargo workspace";
-    after = [ "cargo:test:buck2-foundation" ];
+    after = [
+      "cargo:test:buck2-foundation"
+      "cargo:proto-bindings:check"
+    ];
     exec = trace.exec "cargo:check" ''
       set -euo pipefail
       (
@@ -1094,6 +1100,16 @@ in
         cargo clippy --locked --workspace --all-targets -- -D warnings
         cargo fmt --all --check
       )
+    '';
+  };
+
+  tasks."cargo:proto-bindings:check" = {
+    description = "Check the committed buck2-events prost bindings against the vendored Buck2 protos";
+    exec = trace.exec "cargo:proto-bindings:check" ''
+      set -euo pipefail
+      cargo run --quiet --locked \
+        --manifest-path rust/buck2-tools/events/proto/generate/Cargo.toml \
+        --target-dir rust/target/proto-generate -- --check
     '';
   };
 
@@ -1344,6 +1360,7 @@ in
 
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
+    "cargo:proto-bindings:check"
     "check:buck2-producer-overlap"
     "nix:check:quick"
   ];
