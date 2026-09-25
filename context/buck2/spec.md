@@ -84,7 +84,10 @@ own cache namespace. Mechanism and the key-stability discipline:
 ```
 
 Buck's result is determined at step 3. Export, retention, or import failures
-are separate outcomes and never rewrite it.
+are separate outcomes and never rewrite it. The telemetry lane that links
+caller traces to native evidence without replacing it — correlation, the
+portable run record, the event-log adapter, trace views, and ingest — is
+specified in [07-observability](./07-observability/spec.md).
 
 ## Forbidden Edges
 
@@ -162,4 +165,5 @@ Semantics the check enforces:
 | BUCK-R05, BUCK-R14           | 05 Composition         |
 | BUCK-R03, BUCK-R10           | 06 Nix Bridge          |
 | BUCK-R09, BUCK-R15, BUCK-R16 | Root: Authority Ledger |
+| BUCK-R13 (telemetry lane)    | 07 Observability       |
 | BUCK-R12, BUCK-R13           | Root + all subsystems  |

@@ -28,3 +28,18 @@ divergence is tracked as
 [DELTA-001](./.delta/DELTA-001-assembler-hardlinks-pending-0025.md); on
 filesystems without reflink support the fallback is a plain copy, and the
 original hazard cannot recur because links are no longer produced.
+
+## Findings from the observability lane (recorded 2026-09-25, q8)
+
+Measured via the [07-observability](../07-observability/spec.md) lane; the
+fixes are owned here, not there:
+
+- **Editor bootstrap is never cached in CI:** `buck2:editor:bootstrap` runs
+  the same 912-action graph in every CI job (37–48 s each) and never hits a
+  cache — a repeated cost across all three jobs of a run.
+- **Publish tail cost structure:** at capture time the largest CI task was
+  mostly outside Buck (645.9 s task vs 152.4 s Buck part; ≈77% of each
+  per-package publication was hashing). The merged #1382 spans and the
+  redundant-walk removal address part of this; the remaining tail is
+  tracked with the buck2-tools Rust rewrite
+  ([issue #1394](https://github.com/overengineeringstudio/effect-utils/issues/1394)).
