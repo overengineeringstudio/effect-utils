@@ -65,6 +65,45 @@ describe('standalone Buck cache posture', () => {
 `)
   })
 
+  it('selects the publisher posture only with a writer credential and never writes the credential', () => {
+    const credential = 'd3JpdGVyOnNlY3JldA=='
+    const publisher = standaloneCachePostureConfig({
+      current: '',
+      env: { BUCK2_NO_REMOTE_CACHE: '0', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
+      trustedOrigin,
+    })
+    expect(publisher).toBe(`# effect-utils standalone cache posture: begin
+[buck2]
+  allow_cache_uploads = true
+  default_allow_cache_upload = true
+[buck2_re_client]
+  http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH
+[archive_origin]
+  url_prefix =
+  tier = public
+# effect-utils standalone cache posture: end
+`)
+    expect(publisher).not.toContain(credential)
+
+    for (const value of [undefined, ''])
+      expect(
+        standaloneCachePostureConfig({
+          current: '',
+          env: { BUCK2_CACHE_WRITE_BASIC_AUTH: value },
+          trustedOrigin,
+        }),
+      ).not.toContain('allow_cache_uploads = true')
+
+    // The exact public-lane opt-out wins over a leaked credential.
+    expect(
+      standaloneCachePostureConfig({
+        current: '',
+        env: { BUCK2_NO_REMOTE_CACHE: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
+        trustedOrigin,
+      }),
+    ).not.toContain('allow_cache_uploads = true')
+  })
+
   it('preserves local overrides while adding and removing the managed posture atomically', () => {
     const root = makeRoot()
     const output = join(root, '.buckconfig.local')

@@ -46,6 +46,24 @@ const PUBLIC_CACHE_BLOCK = `${MANAGED_BEGIN}
   tier = public
 ${MANAGED_END}`
 
+/**
+ * Protected public-tier publisher. The tracked cache tier is read-only; a job that
+ * holds the writer credential enables uploads and the Basic header. Buck expands
+ * the header variable in the daemon, so the credential value never enters any
+ * config file. Publishers run off the tailnet, so archives come from the public
+ * registry rather than the private trusted origin.
+ */
+const PUBLISHER_CACHE_BLOCK = `${MANAGED_BEGIN}
+[buck2]
+  allow_cache_uploads = true
+  default_allow_cache_upload = true
+[buck2_re_client]
+  http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH
+[archive_origin]
+  url_prefix =
+  tier = public
+${MANAGED_END}`
+
 const trustedCacheBlock = ({ tier, urlPrefix }: TrustedArchiveOrigin): string => `${MANAGED_BEGIN}
 [archive_origin]
   url_prefix = ${urlPrefix}
@@ -80,7 +98,10 @@ const withoutManagedBlock = (
   return { content: output.join('\n').trimEnd(), found }
 }
 
-/** Derive the standalone checkout's local Buck config from the exact trust-tier opt-out. */
+/**
+ * Derive the standalone checkout's local Buck config. The exact public-lane
+ * opt-out wins; a present writer credential selects the publisher posture.
+ */
 export const standaloneCachePostureConfig = ({
   current,
   env,
@@ -92,7 +113,11 @@ export const standaloneCachePostureConfig = ({
 }): string => {
   const withoutManaged = withoutManagedBlock(current)
   const managed =
-    env['BUCK2_NO_REMOTE_CACHE'] === '1' ? PUBLIC_CACHE_BLOCK : trustedCacheBlock(trustedOrigin)
+    env['BUCK2_NO_REMOTE_CACHE'] === '1'
+      ? PUBLIC_CACHE_BLOCK
+      : (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
+        ? PUBLISHER_CACHE_BLOCK
+        : trustedCacheBlock(trustedOrigin)
   const unmanaged = withoutManaged.content
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }
