@@ -126,6 +126,12 @@ pkgs.runCommand "buck2-rules"
         src = "src/repository-policy-runner.ts",
         visibility = ["PUBLIC"],
     )
+
+    export_file(
+        name = "src/repository-validation-runner.ts",
+        src = "src/repository-validation-runner.ts",
+        visibility = ["PUBLIC"],
+    )
     BUCK
     chmod -R u+w "$out"
     mkdir -p "$out/prelude"
