@@ -123,7 +123,7 @@ fn direct_decode_truncation_and_trace_views() {
             .unwrap()["value"]["intValue"],
         "1"
     );
-    assert_eq!(model.spans[1].critical, true);
+    assert!(model.spans[1].critical);
     assert_eq!(truncated_at + 3, raw.len());
 }
 
