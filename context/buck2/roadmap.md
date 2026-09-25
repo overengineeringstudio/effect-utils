@@ -166,8 +166,9 @@ repository identities, order, and status live only in the private ledger.
 
 **Dissolution target:** Delete each consumer's source-mount CLI execution,
 cross-member dependency writers, live branch sharing, duplicate build
-producers, and composition exceptions. At repository close, its residual list
-is empty and both repository and cumulative net-complexity sums are negative.
+producers, and composition exceptions. At a consumer's close, its residual list
+is empty and its own net-complexity sum is negative; the cumulative sum keeps
+falling from reconciliation to reconciliation.
 
 ## Phase 7 — action-level remote execution (BUCK-R17)
 

@@ -131,8 +131,9 @@ ledger
     benchmark                   warm no-op, fresh with warm cache, hit rate unchanged,
                                 CI delta, evidence URI (BUCK-R16)
     owner                       agent or human identity that holds the row while claimed
-  closes[]                      one per repository adoption close: repo, revision, repo net,
-                                cumulative net
+  closes[]                      one per consumer adoption close: repo, revision, repo net,
+                                cumulative net (recorded, not gated)
+  reconciliations[]             trajectory snapshots: revision, cumulative net, date
 ```
 
 Semantics the check enforces:
@@ -144,11 +145,13 @@ Semantics the check enforces:
 - `net` is recomputed from the merged revision using the repo's path patterns;
   a stored value that disagrees fails the check.
 - A repository closes when it has no `residual`, `legacy`, or `claimed` rows;
-  the platform hub records `hubReady` (revision) at that point and closes
-  jointly with its first consumer (BUCK-R15 as amended).
-  At every close, that repository's row sum and the cumulative sum must be
-  negative (BUCK-R15). The check fails on any later change to a closed
-  repository that flips the sign.
+  the platform hub records `hubReady` (revision) at that point, a milestone
+  rather than a close (BUCK-R15 as amended).
+  At every consumer close, that repository's row sum must be negative
+  (BUCK-R15). The check fails on any later change to a closed repository that
+  flips the sign.
+- The last reconciliation's cumulative net must be lower than the previous
+  one's (BUCK-R15 trajectory); the cumulative sum itself carries no sign test.
 - Rendering is deterministic: the same instance renders the same progress
   view; the view carries no fact absent from the instance.
 - The instance carries no secrets and no fleet endpoints; those stay in the

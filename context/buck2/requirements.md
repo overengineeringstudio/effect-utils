@@ -140,24 +140,21 @@ invariants named in its own document:
   complexity; growth in one place is justified only by larger deletion
   elsewhere. The ledger (BUCK-R09) carries, per row, build-machinery lines added
   versus legacy lines deleted (excluding VRS documents, tests, and lockfiles).
-  The gate is hard and folds per repository: when a repository's residual
-  non-Buck gate list reaches zero (its adoption close), the sum of its rows must
-  be negative, and at every such close the cumulative sum across all repositories
-  must be negative; a violation blocks widening to the next repository. A single
-  change may be net positive when its row records the amortization rationale
-  (which later deletion pays for it); the per-change signal is advisory, the
-  per-close gate is not
+  The gate is hard and folds per consumer repository: when a consumer's
+  residual non-Buck gate list reaches zero (its adoption close), the sum of its
+  own rows must be negative; a violation blocks widening to the next
+  repository. A single change may be net positive when its row records the
+  amortization rationale (which later deletion pays for it); the per-change
+  signal is advisory, the per-close gate is not
   ([decision 0031](./.decisions/0031-complexity-gate-and-authority-ledger.md)).
-  Between closes the gate has a trajectory: at every reconciliation the
-  cumulative sum must be lower than at the previous reconciliation, or
-  admissions pause until it is (decision 0031, Amendment 1).
+  The cumulative sum across repositories need not be negative; it carries a
+  trajectory: at every reconciliation it must be lower than at the previous
+  reconciliation, or admissions pause until it is (decision 0031, Amendments 1
+  and 2). The platform hub (effect-utils) carries foundation cost that is
+  amortized across its consumers: its residual list reaching zero records a
+  hub-ready milestone, not a negative-sum close (decision 0031, Amendment 2).
   When BUCK-R15 conflicts with coverage (BUCK-R01) or the wall-clock budgets
   (BUCK-R07), BUCK-R15 wins: the others are constraints with tolerances.
-  The platform hub (effect-utils) closes jointly with its first consumer
-  (dotfiles): the per-repository negative-sum test applies to consumers, the
-  cumulative test fires at each consumer close (the first of which includes the
-  hub), and the hub's residual list reaching zero records a hub-ready milestone,
-  not a close (decision q56, confirmed 2026-09-20).
 - **BUCK-R16 Benchmark evidence:** Efficiency claims are measured, never
   asserted. Each admission's ledger row records warm no-op time, fresh-context
   time with a warm shared cache, cache hit rate for unchanged targets, and CI
