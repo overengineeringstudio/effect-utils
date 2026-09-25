@@ -231,6 +231,8 @@ struct Limits {
     decompressed_bytes: u64,
     records: u64,
     spans: usize,
+    /// Critical-path span ids read across all BuildGraphInfo events.
+    critical_ids: u64,
 }
 impl Default for Limits {
     fn default() -> Self {
@@ -241,6 +243,7 @@ impl Default for Limits {
             decompressed_bytes: 1 << 30,
             records: 5_000_000,
             spans: 150_000,
+            critical_ids: 1_000_000,
         }
     }
 }
@@ -349,6 +352,7 @@ struct Span {
     critical: bool,
     action: bool,
     cache_hit: bool,
+    ended: bool,
 }
 struct Model {
     uuid: String,
@@ -553,6 +557,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
     let mut critical = HashSet::new();
     let mut last_time = 0;
     let mut records = 1u64;
+    let mut critical_ids_read = 0u64;
     loop {
         match read_record(&mut reader, &mut buf) {
             Ok(Some(())) => {}
@@ -657,12 +662,18 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                         critical: false,
                         action,
                         cache_hit: false,
+                        ended: false,
                     });
                 }
             }
             Some(buck_event::Data::SpanEnd(end)) => {
                 if let Some(&index) = by_id.get(&e.span_id) {
                     let span = &mut model.spans[index];
+                    // Only the first end counts; repeats must not grow attributes.
+                    if span.ended {
+                        continue;
+                    }
+                    span.ended = true;
                     span.end = now;
                     if let Some(data) = end.data {
                         match data {
@@ -698,8 +709,23 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
             }
             Some(buck_event::Data::Instant(instant)) => {
                 if let Some(instant_event::Data::BuildGraphInfo(info)) = instant.data {
-                    for entry in info.critical_path2 {
-                        critical.extend(entry.span_ids);
+                    // Buck emits the graph after the spans it names; ids of unknown
+                    // spans cannot mark anything and are not retained.
+                    for id in info.critical_path2.into_iter().flat_map(|e| e.span_ids) {
+                        critical_ids_read += 1;
+                        if critical_ids_read > limits.critical_ids {
+                            break;
+                        }
+                        if by_id.contains_key(&id) {
+                            critical.insert(id);
+                        }
+                    }
+                    if critical_ids_read > limits.critical_ids {
+                        model.stop_reason = Some(format!(
+                            "limit: critical path ids exceed {}",
+                            limits.critical_ids
+                        ));
+                        break;
                     }
                 }
             }
@@ -723,7 +749,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         return Err("no Buck event in log".into());
     }
     for span in &mut model.spans {
-        if span.end == 0 {
+        if !span.ended {
             span.end = last_time.max(span.start);
             span.attrs.push(bool_attr("buck2.unclosed", true));
         }

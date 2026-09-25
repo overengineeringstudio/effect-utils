@@ -77,16 +77,17 @@ fn direct_decode_truncation_and_trace_views() {
             )),
         })),
     };
+    // Buck emits BuildGraphInfo after the spans it names.
     append(
         &mut raw,
         &CommandProgress {
-            progress: Some(command_progress::Progress::Event(graph)),
+            progress: Some(command_progress::Progress::Event(action)),
         },
     );
     append(
         &mut raw,
         &CommandProgress {
-            progress: Some(command_progress::Progress::Event(action)),
+            progress: Some(command_progress::Progress::Event(graph)),
         },
     );
     let truncated_at = raw.len();
@@ -129,6 +130,71 @@ fn direct_decode_truncation_and_trace_views() {
     );
     assert!(model.spans[1].critical);
     assert_eq!(truncated_at + 3, raw.len());
+}
+
+/// Repeated ends and oversized critical-path id lists must not amplify memory.
+#[test]
+fn repeated_ends_and_critical_ids_stay_bounded() {
+    let mut raw = synthetic_log(1, true); // command span 1, action span 2
+    let end = || {
+        event(
+            2,
+            1,
+            buck_event::Data::SpanEnd(data::SpanEndEvent {
+                data: Some(span_end_event::Data::ActionExecution(
+                    data::ActionExecutionEnd::default(),
+                )),
+                ..Default::default()
+            }),
+        )
+    };
+    for _ in 0..1_000 {
+        append(&mut raw, &end());
+    }
+    let graph = |ids: Vec<u64>| {
+        event(
+            0,
+            0,
+            buck_event::Data::Instant(data::InstantEvent {
+                data: Some(instant_event::Data::BuildGraphInfo(
+                    data::BuildGraphExecutionInfo {
+                        critical_path2: vec![data::CriticalPathEntry2 {
+                            span_ids: ids,
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                )),
+            }),
+        )
+    };
+    // One known id among many unknown ones.
+    append(&mut raw, &graph((2..20_002).collect()));
+    let compressed = compress_to_vec(raw.as_slice(), CompressionLevel::Fastest);
+    let directory = tempfile::tempdir().unwrap();
+    let path = write_log(&directory, "amplify_events.pb.zst", &compressed);
+
+    let model = decode(&path).unwrap();
+    assert_eq!(model.stop_reason, None);
+    let action = &model.spans[1];
+    let count = |key: &str| action.attrs.iter().filter(|a| a["key"] == key).count();
+    assert_eq!(count("buck2.execution_kind"), 1);
+    assert_eq!(count("buck2.cache_hit"), 1);
+    assert!(action.critical);
+
+    let capped = decode_with(
+        &path,
+        Limits {
+            critical_ids: 5_000,
+            ..Limits::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        capped.stop_reason.as_deref(),
+        Some("limit: critical path ids exceed 5000")
+    );
+    assert_eq!(capped.spans.len(), 2);
 }
 
 fn event(span_id: u64, parent_id: u64, data: buck_event::Data) -> CommandProgress {
