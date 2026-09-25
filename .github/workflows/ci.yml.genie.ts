@@ -44,16 +44,20 @@ import {
   prReviewsResolvedJobId,
   githubTokenEnv,
 } from '../../genie/ci-workflow.ts'
+import { readBinaryCacheDescriptors } from '../../genie/ci-workflow/binary-cache-schema.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
 
 const trustedCachixStep = cachixStep({ name: 'overeng-effect-utils' })
+const binaryCache = readBinaryCacheDescriptors(
+  new URL('../../nix/binary-caches.json', import.meta.url),
+)['overeng-effect-utils']!
 
 const baseSteps = [
   checkoutStep(),
-  installNixStep(),
+  installNixStep({ binaryCaches: [binaryCache] }),
   ciMeasurementBaselineCheckoutStep,
   cachixCliBuildStep,
   trustedCachixStep,
@@ -802,31 +806,31 @@ const extraJobs: Record<string, any> = {
           if: "steps.publication-scope.outputs.publish == 'true'",
           env: githubTokenEnv(),
           run: withCiSourceRoot(
-          [
-            'set -euo pipefail',
-            'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
-            'nix/buck2-products/publish.sh --proposal "$proposal"',
-            'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
-            '  echo "::notice::The v2 product manifest is already current"',
-            '  exit 0',
-            'fi',
-            '',
-            'branch=automation/buck2-products-manifest',
-            'git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true',
-            'git switch -C "$branch"',
-            'cp "$proposal" nix/buck2-products/manifest.json',
-            'git add nix/buck2-products/manifest.json',
-            `git config user.name 'github-actions[bot]'`,
-            `git config user.email '41898282+github-actions[bot]@users.noreply.github.com'`,
-            `git commit -m 'chore(buck2): update product cache manifest'`,
-            'gh auth setup-git',
-            'git push --force-with-lease origin "HEAD:refs/heads/$branch"',
-            'if ! gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\' | grep -q .; then',
-            '  gh pr create --base main --head "$branch" \\',
-            `    --title 'chore(buck2): update product cache manifest' \\`,
-            `    --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'`,
-            'fi',
-          ].join('\n'),
+            [
+              'set -euo pipefail',
+              'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
+              'nix/buck2-products/publish.sh --proposal "$proposal"',
+              'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
+              '  echo "::notice::The v2 product manifest is already current"',
+              '  exit 0',
+              'fi',
+              '',
+              'branch=automation/buck2-products-manifest',
+              'git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true',
+              'git switch -C "$branch"',
+              'cp "$proposal" nix/buck2-products/manifest.json',
+              'git add nix/buck2-products/manifest.json',
+              `git config user.name 'github-actions[bot]'`,
+              `git config user.email '41898282+github-actions[bot]@users.noreply.github.com'`,
+              `git commit -m 'chore(buck2): update product cache manifest'`,
+              'gh auth setup-git',
+              'git push --force-with-lease origin "HEAD:refs/heads/$branch"',
+              'if ! gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\' | grep -q .; then',
+              '  gh pr create --base main --head "$branch" \\',
+              `    --title 'chore(buck2): update product cache manifest' \\`,
+              `    --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'`,
+              'fi',
+            ].join('\n'),
           ),
         },
       }),

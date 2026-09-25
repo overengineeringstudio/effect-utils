@@ -1,53 +1,22 @@
 import { readFileSync } from 'node:fs'
 
-import { Schema } from 'effect'
-
-const Name = Schema.String.check(Schema.isPattern(/^[^\s]+$/))
-const Visibility = Schema.Literal('public', 'private')
-const NixBinaryCacheDescriptor = Schema.Struct({
-  kind: Schema.Literal('nix-binary'),
-  name: Name,
-  visibility: Visibility,
-  uri: Schema.String.check(Schema.isPattern(/^https:\/\/[^\s]+$/)),
-  publicKey: Schema.String.check(Schema.isPattern(/^[^\s:]+:[^\s]+$/)),
-})
-const ReapiCacheDescriptor = Schema.Struct({
-  kind: Schema.Literal('reapi'),
-  name: Name,
-  visibility: Visibility,
-  endpoint: Schema.String.check(Schema.isPattern(/^grpcs?:\/\/[^\s]+$/)),
-  instanceName: Name,
-  digest: Schema.Literal('SHA256'),
-})
-
-/** Credential-free contract shared by producer JSON, genie, and the Nix reader. */
-export const BinaryCacheDescriptor = Schema.Union([NixBinaryCacheDescriptor, ReapiCacheDescriptor])
-export type BinaryCacheDescriptor = typeof BinaryCacheDescriptor.Type
-export type NixBinaryCacheDescriptor = typeof NixBinaryCacheDescriptor.Type
-
-const Registry = Schema.Record(Schema.String, BinaryCacheDescriptor)
-
-/** Read a producer's JSON once at workflow generation, rejecting malformed or renamed entries. */
-export const readBinaryCacheDescriptors = (path: URL): Readonly<Record<string, BinaryCacheDescriptor>> => {
-  const descriptors = Schema.decodeUnknownSync(Schema.fromJsonString(Registry), { onExcessProperty: 'error' })(
-    readFileSync(path, 'utf8'),
-  )
-  for (const [name, descriptor] of Object.entries(descriptors)) {
-    if (descriptor.name !== name) {
-      throw new BinaryCacheDescriptorError(name, 'registry key differs from descriptor name')
+/** Credential-free producer contract. Effect Schema validation runs at composition time. */
+export type BinaryCacheDescriptor = {
+  readonly name: string
+  readonly visibility: 'public' | 'private'
+} & (
+  | { readonly kind: 'nix-binary'; readonly uri: string; readonly publicKey: string }
+  | {
+      readonly kind: 'reapi'
+      readonly endpoint: string
+      readonly instanceName: string
+      readonly digest: 'SHA256'
     }
-  }
-  return descriptors
-}
+)
 
-export class BinaryCacheDescriptorError extends Error {
-  readonly _tag = 'BinaryCacheDescriptorError'
-  constructor(readonly cacheName: string, reason: string) {
-    super(`Invalid build cache ${cacheName}: ${reason}`)
-    this.name = 'BinaryCacheDescriptorError'
-  }
-}
+export type NixBinaryCacheDescriptor = Extract<BinaryCacheDescriptor, { kind: 'nix-binary' }>
 
-export const effectUtilsBinaryCaches = readBinaryCacheDescriptors(
-  new URL('../../nix/binary-caches.json', import.meta.url),
+/** The bootstrap-safe export reads producer JSON without loading runtime-only Effect. */
+export const effectUtilsBinaryCaches: Readonly<Record<string, BinaryCacheDescriptor>> = JSON.parse(
+  readFileSync(new URL('../../nix/binary-caches.json', import.meta.url), 'utf8'),
 )

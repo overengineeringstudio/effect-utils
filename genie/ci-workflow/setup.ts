@@ -1,5 +1,7 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { RunnerProfile } from '../ci.ts'
+import { binaryCachesExtraConfForJob } from './binary-cache-composition.ts'
+import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 import { applyMegarepoLockStep } from './megarepo.ts'
 import {
   bashShellDefaults,
@@ -20,8 +22,6 @@ import {
   ciCompositionStateRoot,
   withCiSourceRoot,
 } from './shared.ts'
-import { binaryCachesExtraConfForJob } from './binary-cache-composition.ts'
-import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
@@ -66,7 +66,6 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
   uses: 'actions/checkout@v6' as const,
   with: { 'persist-credentials': false, ...opts },
 })
-
 
 export const prepareCiScriptsStep = {
   name: 'Prepare CI helper scripts',
@@ -144,7 +143,6 @@ export const withGitHubAccessTokenEnv = <
   },
 })
 
-
 /**
  * Append a GitHub access token line to NIX_CONFIG for later shell steps.
  *
@@ -195,7 +193,10 @@ export const installNixStep = (opts?: {
       'experimental-features = nix-command flakes',
       /** Trust flake-level nixConfig (e.g. additional repo-local substituters) */
       'accept-flake-config = true',
-      binaryCachesExtraConfForJob({ runner: opts?.runner ?? 'ubuntu-latest', caches: opts?.binaryCaches ?? [] }),
+      binaryCachesExtraConfForJob({
+        runner: opts?.runner ?? 'ubuntu-latest',
+        caches: opts?.binaryCaches ?? [],
+      }),
       `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
     ].join('\n'),
@@ -245,9 +246,11 @@ type CachePublisherScope = {
 
 const protectedPublisherIf = (opts: CachePublisherScope) => {
   if (
-    !opts.jobIf.includes("github.ref == 'refs/heads/main'") ||
+    opts.jobIf.includes("github.ref == 'refs/heads/main'") === false ||
     opts.triggers.length === 0 ||
-    opts.triggers.some((trigger) => !opts.jobIf.includes(`github.event_name == '${trigger}'`))
+    opts.triggers.some(
+      (trigger) => opts.jobIf.includes(`github.event_name == '${trigger}'`) === false,
+    ) === true
   ) {
     throw new CachePublisherJobError()
   }
@@ -266,10 +269,12 @@ export const cachixPushStep = <TStep extends { if?: string; env?: Record<string,
   }
 }
 
-export const cachixPublisherStep = (opts: CachePublisherScope & {
-  name: string
-  authToken: string
-}) => ({
+export const cachixPublisherStep = (
+  opts: CachePublisherScope & {
+    name: string
+    authToken: string
+  },
+) => ({
   name: 'Publish to Cachix',
   if: protectedPublisherIf(opts),
   uses: 'cachix/cachix-action@v17' as const,
