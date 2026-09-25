@@ -1,3 +1,7 @@
+import {
+  type BinaryCacheDescriptor,
+  decodeBinaryCacheDescriptor,
+} from './binary-cache-descriptor.ts'
 import type { GitHubWorkflowArgs } from './mod.ts'
 
 /** Symbol metadata survives step spreading but is not serialized into workflow YAML. */
@@ -6,14 +10,6 @@ export const jobCacheDescriptors = Symbol('jobCacheDescriptors')
 export const workflowCacheDescriptors = Symbol('workflowCacheDescriptors')
 /** Publisher step metadata identifying the write-secret expression's name. */
 export const publisherWriteSecret = Symbol('publisherWriteSecret')
-
-type CacheAddress = {
-  readonly name: string
-  readonly visibility: 'public' | 'private'
-} & (
-  | { readonly kind: 'nix-binary'; readonly uri: string }
-  | { readonly kind: 'reapi'; readonly endpoint: string }
-)
 
 /** Private cache exposure on a non-fleet runner. */
 export class PrivateBinaryCacheRunnerError extends Error {
@@ -110,6 +106,8 @@ const isWriteStep = (step: GitHubWorkflowArgs['jobs'][string]['steps'][number]):
 
 /**
  * Inspect the complete workflow at the common githubWorkflow output boundary.
+ * Every attached cache descriptor is decoded here, so invalid producer JSON
+ * fails composition even when a caller skipped the JSON reader.
  * Raw YAML outside Genie and reusable-workflow `secrets: inherit` are not
  * covered by this generation-time validation.
  */
@@ -118,7 +116,7 @@ export const validateWorkflowCachePolicy = ({
   caches = [],
 }: {
   workflow: GitHubWorkflowArgs
-  caches?: readonly CacheAddress[]
+  caches?: readonly BinaryCacheDescriptor[]
 }): void => {
   const triggers = workflowEvents(workflow.on)
   const writeSecrets = new Set(['CACHIX_AUTH_TOKEN'])
@@ -144,12 +142,12 @@ export const validateWorkflowCachePolicy = ({
     const jobCaches = [
       ...caches,
       ...(workflowCacheDescriptors in workflow
-        ? (workflow[workflowCacheDescriptors] as readonly CacheAddress[])
+        ? (workflow[workflowCacheDescriptors] as readonly unknown[])
         : []),
       ...job.steps.flatMap((step) =>
-        jobCacheDescriptors in step ? (step[jobCacheDescriptors] as readonly CacheAddress[]) : [],
+        jobCacheDescriptors in step ? (step[jobCacheDescriptors] as readonly unknown[]) : [],
       ),
-    ]
+    ].map((cache) => decodeBinaryCacheDescriptor(cache))
     const allText = JSON.stringify({ env: workflow.env, jobEnv: job.env, steps: job.steps })
     for (const cache of jobCaches) {
       if (cache.visibility !== 'private') continue

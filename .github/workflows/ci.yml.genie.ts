@@ -43,8 +43,8 @@ import {
   prReviewsResolvedJob,
   prReviewsResolvedJobId,
   githubTokenEnv,
+  readBinaryCacheDescriptors,
 } from '../../genie/ci-workflow.ts'
-import { readBinaryCacheDescriptors } from '../../genie/ci-workflow/binary-cache-schema.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
 
 const workflowReportFlakeRef =

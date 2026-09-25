@@ -99,7 +99,9 @@ export {
   type RunnerProfile,
 } from './ci-workflow/shared.ts'
 export {
+  BinaryCacheDescriptorError,
   effectUtilsBinaryCaches,
+  readBinaryCacheDescriptors,
   type BinaryCacheDescriptor,
   type NixBinaryCacheDescriptor,
   type BinaryCacheDescriptor as BinaryCache,
