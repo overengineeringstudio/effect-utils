@@ -2,9 +2,11 @@ import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mo
 
 const files = [
   'buck2-member.json',
+  'buck2/dependencies/acquire-archive.ts',
   'buck2/dependencies/assemble-store.ts',
   'buck2/dependencies/defs.bzl',
   'buck2/dependencies/nix-archive.ts',
+  'buck2/dependencies/public-archive-origin.ts',
   'buck2/editor_view.bzl',
   'buck2/go/defs.bzl',
   'buck2/javascript.bzl',
@@ -31,6 +33,7 @@ const files = [
   'packages/@overeng/buck2-tools/src/package-tree.ts',
   'packages/@overeng/buck2-tools/src/real-path.ts',
   'packages/@overeng/buck2-tools/src/repository-policy-runner.ts',
+  'packages/@overeng/buck2-tools/src/repository-validation-runner.ts',
   'packages/@overeng/buck2-tools/src/static-check-runner.ts',
   'packages/@overeng/buck2-tools/src/typescript-runner.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
