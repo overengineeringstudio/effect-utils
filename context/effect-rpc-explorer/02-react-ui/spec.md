@@ -107,7 +107,9 @@ two compact lines per row. The row's full accessible name provides untruncated
 identity, direction, state, timing, stream, trace and anomaly facts. New active
 items may be visually highlighted without stealing focus or announcing every
 row. The React Aria ListBox virtualizes rows while preserving section labels,
-logical keyboard order, and stable selected-item semantics.
+logical keyboard order, and stable selected-item semantics. The RPC cell keeps
+the key/tag identity; an optional projected RPC summary appears in its tooltip
+and accessible row name without increasing row height.
 
 Sorting and width adjustment live in a separate labelled toolbar adjacent to
 the collection, not in simulated table headers: each sort button names its
@@ -127,6 +129,11 @@ field tree, retaining annotation titles, descriptions, examples, and required
 field semantics. Unavailable projections remain visible with or without a
 warning; an available best-effort projection is not presented as a validation guarantee.
 Trace shows actual IDs only when present and renders `No trace context observed` otherwise.
+The detail header uses the projected RPC title when present, otherwise the
+descriptor tag display, followed by the optional summary and a textual
+`Deprecated` badge when the projected deprecation flag is true. The Descriptor
+tab displays the projected RPC description independently of channel-schema
+annotations. No UI documentation is inferred from payloads or schema metadata.
 
 Content displays each channel observation separately. It derives labels from
 outcome metadata and renders `captured` only when the outcome is `Captured`:

@@ -1,8 +1,10 @@
 import { Schema } from 'effect'
+import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
 import { Rpc, RpcGroup, RpcMiddleware } from 'effect/unstable/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { makeRpcDescriptors, RpcExplorerObserve } from './descriptor.ts'
+import { RpcDescriptorWire } from './inspector.ts'
 
 const unaryPayload = Schema.Struct({ id: Schema.String })
 const unarySuccess = Schema.String.annotate({ title: 'Unary success' })
@@ -102,6 +104,61 @@ describe('RPC descriptors', () => {
 
     expect(applicationDescriptor!.observe).toBe('include')
     expect(inspectorDescriptor!.observe).toBe('exclude')
+  })
+
+  it('projects only explicitly set RPC documentation, including false deprecation', () => {
+    const annotated = Rpc.make('Documented')
+      .annotate(OpenApi.Title, 'Read project')
+      .annotate(OpenApi.Summary, 'Returns a project by ID.')
+      .annotate(OpenApi.Description, 'Reads the public project record.')
+      .annotate(OpenApi.Deprecated, true)
+    const partial = Rpc.make('Current').annotate(OpenApi.Deprecated, false)
+    const [fullDescriptor, partialDescriptor, bareDescriptor] = makeRpcDescriptors(
+      RpcGroup.make(annotated, partial, Rpc.make('Bare')),
+    )
+
+    const docs = ({
+      title,
+      summary,
+      description,
+      deprecated,
+    }: {
+      readonly title?: string | undefined
+      readonly summary?: string | undefined
+      readonly description?: string | undefined
+      readonly deprecated?: boolean | undefined
+    }) => ({ title, summary, description, deprecated })
+    expect(docs(fullDescriptor!)).toEqual({
+      title: 'Read project',
+      summary: 'Returns a project by ID.',
+      description: 'Reads the public project record.',
+      deprecated: true,
+    })
+    expect(docs(partialDescriptor!)).toEqual({
+      title: undefined,
+      summary: undefined,
+      description: undefined,
+      deprecated: false,
+    })
+    expect(docs(bareDescriptor!)).toEqual({
+      title: undefined,
+      summary: undefined,
+      description: undefined,
+      deprecated: undefined,
+    })
+    expect(Schema.decodeUnknownSync(RpcDescriptorWire)(fullDescriptor!)).toHaveProperty(
+      'title',
+      'Read project',
+    )
+    expect(Schema.decodeUnknownSync(RpcDescriptorWire)(partialDescriptor!)).toHaveProperty(
+      'deprecated',
+      false,
+    )
+    const bareWire = Schema.decodeUnknownSync(RpcDescriptorWire)(bareDescriptor!)
+    expect(Object.keys(bareWire)).not.toContain('title')
+    expect(Object.keys(bareWire)).not.toContain('summary')
+    expect(Object.keys(bareWire)).not.toContain('description')
+    expect(Object.keys(bareWire)).not.toContain('deprecated')
   })
 
   it('accepts middleware-carrying groups that AnyWithProps variance rejects', () => {

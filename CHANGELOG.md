@@ -94,6 +94,12 @@ All notable changes to this project will be documented in this file.
   rejects malformed descriptors that bypass it.
 
 ### Added
+- **@overeng/effect-rpc-explorer**: Add a passive Effect RPC observer with
+  policy-safe capture, bounded revisioned records, inspector snapshots/deltas,
+  schema and OpenAPI descriptors, and schema-backed lifecycle telemetry.
+- **@overeng/effect-rpc-explorer-react**: Add the responsive React Aria/StyleX
+  inspector for RPC lifecycles, captured fields, schema metadata, and
+  accessible filtering, sorting, and keyboard navigation.
 
 - **Repository-wide**: move the Effect 4 cohort from `effect@4.0.0-rc.112` to
   `effect@4.0.0-rc.113` (with `@effect/platform-node`, `@effect/vitest`,
@@ -149,6 +155,8 @@ All notable changes to this project will be documented in this file.
   differently.
 
 ### Changed
+- **@overeng/otel-contract**: Accept an additive `incremental` counter option
+  so OTLP metrics preserve monotonic counter semantics.
 
 - **Buck2 editor views**: Editor-view publication proves the materialized snapshot
   copy against the admitted pre-copy digests in an owner-resolved link form — plus a

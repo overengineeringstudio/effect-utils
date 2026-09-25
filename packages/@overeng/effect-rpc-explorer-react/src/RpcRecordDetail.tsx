@@ -72,13 +72,28 @@ const styles = stylex.create({
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: explorerTokens.border,
   },
+  detailIdentity: { display: 'grid', flexGrow: 1, minWidth: 0, gap: spacing['0.5'] },
   detailTitle: {
-    flexGrow: 1,
     minWidth: 0,
     margin: 0,
     fontSize: fontSizes.sm,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+  },
+  detailSummary: {
+    margin: 0,
+    color: explorerTokens['muted-text'],
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  deprecated: {
+    paddingInline: explorerTokens['density-inline'],
+    color: explorerTokens.warning,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: explorerTokens.warning,
+    fontWeight: 600,
   },
   back: { display: { default: 'none', '@media (max-width: 63.99rem)': 'inline-flex' } },
   hidden: { display: 'none' },
@@ -369,6 +384,7 @@ const DescriptorPanel = ({
   ]
   return (
     <div {...stylex.props(styles.stack)}>
+      {descriptor.description === undefined ? undefined : <p>{descriptor.description}</p>}
       <dl {...stylex.props(styles.propertyGrid)}>
         <Property label="Key">{descriptor.key}</Property>
         <Property label="Tag">{descriptor.tag}</Property>
@@ -455,9 +471,19 @@ const RpcRecordDetail = ({
         >
           ← Back to records
         </Button>
-        <Heading id="rpc-explorer-detail-title" level={2} {...stylex.props(styles.detailTitle)}>
-          {descriptorName(descriptor)}
-        </Heading>
+        <div {...stylex.props(styles.detailIdentity)}>
+          <Heading id="rpc-explorer-detail-title" level={2} {...stylex.props(styles.detailTitle)}>
+            {descriptor?.title ?? descriptorName(descriptor)}
+          </Heading>
+          {descriptor?.summary === undefined ? undefined : (
+            <p {...stylex.props(styles.detailSummary)} title={descriptor.summary}>
+              {descriptor.summary}
+            </p>
+          )}
+        </div>
+        {descriptor?.deprecated === true ? (
+          <span {...stylex.props(styles.deprecated)}>Deprecated</span>
+        ) : undefined}
         <StatusBadge state={record.state} />
         <CopyIdentifier label="request identity" value={identityText(record.key)} />
       </header>

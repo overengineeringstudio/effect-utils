@@ -1,5 +1,6 @@
 import { type Cause, Deferred, Duration, Effect, Fiber, type Queue, Schema, Stream } from 'effect'
 import { Headers } from 'effect/unstable/http'
+import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
 import { Rpc, RpcGroup, RpcMessage } from 'effect/unstable/rpc'
 import { describe, expect, it } from 'vitest'
 
@@ -62,7 +63,11 @@ const applicationDescriptors = makeRpcDescriptors(
     Rpc.make('ApplicationRpc', {
       payload: Schema.String,
       success: Schema.String,
-    }),
+    })
+      .annotate(OpenApi.Title, 'Application operation')
+      .annotate(OpenApi.Summary, 'Inspects the application.')
+      .annotate(OpenApi.Description, 'Returns the public application result.')
+      .annotate(OpenApi.Deprecated, false),
   ),
 )
 
@@ -120,6 +125,12 @@ describe('RPC explorer inspector', () => {
     })
     expect(snapshot.descriptors).toHaveLength(1)
     expect(snapshot.descriptors[0]).not.toHaveProperty('live')
+    expect(snapshot.descriptors[0]).toMatchObject({
+      title: 'Application operation',
+      summary: 'Inspects the application.',
+      description: 'Returns the public application result.',
+      deprecated: false,
+    })
 
     const encoded = encodeWatchFrameNdjson(snapshot)
     expect(encoded.endsWith('\n')).toBe(true)

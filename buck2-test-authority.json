@@ -162,11 +162,19 @@
       "packageName": "effect-rpc-explorer-react",
       "packagePath": "packages/@overeng/effect-rpc-explorer-react",
       "runner": "vitest",
-      "selectedTestFiles": ["src/ChannelContentPanel.unit.test.ts", "src/projection.unit.test.ts"],
+      "selectedTestFiles": [
+        "src/ChannelContentPanel.unit.test.ts",
+        "src/SchemaTree.unit.test.ts",
+        "src/projection.unit.test.ts"
+      ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-rpc-explorer-react:test",
       "taskName": "test:effect-rpc-explorer-react",
-      "testFiles": ["src/ChannelContentPanel.unit.test.ts", "src/projection.unit.test.ts"],
+      "testFiles": [
+        "src/ChannelContentPanel.unit.test.ts",
+        "src/SchemaTree.unit.test.ts",
+        "src/projection.unit.test.ts"
+      ],
       "unboundedAfter": [],
       "unboundedFiles": []
     },

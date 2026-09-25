@@ -1,4 +1,5 @@
 import { Context, type JsonSchema, Schema } from 'effect'
+import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
 import { Rpc, type RpcGroup, RpcSchema } from 'effect/unstable/rpc'
 
 import type { CaptureChannel } from './model.ts'
@@ -41,6 +42,10 @@ export interface RpcDescriptor {
   readonly descriptorId: string
   readonly key: string
   readonly tag: string
+  readonly title?: string | undefined
+  readonly summary?: string | undefined
+  readonly description?: string | undefined
+  readonly deprecated?: boolean | undefined
   readonly kind: 'unary' | 'stream'
   readonly observe: ObservationInclusion
   readonly channels: Readonly<Record<CaptureChannel, DescriptorChannel>>
@@ -118,11 +123,23 @@ export const makeRpcDescriptors = (group: RpcGroup.Any): ReadonlyArray<RpcDescri
     const typedFailure = isStream === true ? undefined : projectSchema(rpc.errorSchema)
     const streamElement = isStream === true ? projectSchema(rpc.successSchema.success) : undefined
     const streamError = isStream === true ? projectSchema(rpc.successSchema.error) : undefined
+    // Rpc.AnyWithProps erases the annotation service union, not the Context values.
+    const annotations = rpc.annotations as Context.Context<
+      OpenApi.Title | OpenApi.Summary | OpenApi.Description | OpenApi.Deprecated
+    >
+    const title = Context.getOrUndefined(annotations, OpenApi.Title)
+    const summary = Context.getOrUndefined(annotations, OpenApi.Summary)
+    const description = Context.getOrUndefined(annotations, OpenApi.Description)
+    const deprecated = Context.getOrUndefined(annotations, OpenApi.Deprecated)
 
     descriptors.push({
       descriptorId,
       key: rpc.key,
       tag: rpc._tag,
+      ...(title === undefined ? {} : { title }),
+      ...(summary === undefined ? {} : { summary }),
+      ...(description === undefined ? {} : { description }),
+      ...(deprecated === undefined ? {} : { deprecated }),
       kind: isStream === true ? 'stream' : 'unary',
       observe: Context.get(rpc.annotations, RpcExplorerObserve) === true ? 'include' : 'exclude',
       channels: {

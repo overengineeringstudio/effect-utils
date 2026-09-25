@@ -107,6 +107,42 @@ export const LifecycleWide: Story = {
   args: { presentation: { layout: 'wide', nowMillis: () => fixtureNow } },
 }
 
+/** RPC-level documentation stays separate from channel-schema annotations. */
+export const RpcDocumentation: Story = {
+  args: { presentation: { layout: 'narrow', nowMillis: () => fixtureNow } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    const row = await canvas.findByRole('option', {
+      name: /Look up a project by its stable identifier.*Sending/,
+    })
+    await expect(row).toBeVisible()
+    await userEvent.click(row)
+    await expect(canvas.findByRole('heading', { name: 'Find project' })).resolves.toBeVisible()
+    await expect(
+      canvas.findByText('Look up a project by its stable identifier.'),
+    ).resolves.toBeVisible()
+    await userEvent.click(await canvas.findByRole('tab', { name: 'Descriptor' }))
+    await expect(
+      canvas.findByText('Returns the public project record; credentials are never exposed.'),
+    ).resolves.toBeVisible()
+  },
+}
+
+/** A deprecated RPC retains an explicit text badge in its detail header. */
+export const DeprecatedRpc: Story = {
+  args: { presentation: { layout: 'narrow', nowMillis: () => fixtureNow } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    await userEvent.click(await canvas.findByRole('option', { name: /events.subscribe/ }))
+    await expect(
+      canvas.findByRole('heading', { name: 'Subscribe to events' }),
+    ).resolves.toBeVisible()
+    await expect(canvas.findByText('Deprecated')).resolves.toBeVisible()
+  },
+}
+
 /** Projected titles, descriptions, required fields, and examples remain readable in detail. */
 export const SchemaAnnotatedPayload: Story = {
   play: async ({ canvasElement }) => {

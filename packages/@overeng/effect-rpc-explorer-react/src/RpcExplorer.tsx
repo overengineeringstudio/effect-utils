@@ -677,7 +677,7 @@ const RecordRow = ({
       id={recordIdentityKey(record.key)}
       data-record-id={stableDomId(record.key)}
       textValue={`${descriptorName(descriptor)} ${statusByState[record.state].label}`}
-      aria-label={`${descriptorName(descriptor)}. ${record.key.observerSide}, ${direction}. ${statusByState[record.state].label}. Started ${formatDuration(nowMillis - record.startedAt.wallClockMillis)} ago; duration ${formatDuration(durationEnd - record.startedAt.wallClockMillis)}; ${record.chunkEnvelopes} envelopes, ${record.streamValues} values${retainedMarker}; ${record.trace === undefined ? 'no trace' : 'trace linked'}${record.evidence.length === 0 ? '' : '; anomaly observed'}.`}
+      aria-label={`${descriptorName(descriptor)}. ${descriptor?.summary === undefined ? '' : `${descriptor.summary}${descriptor.summary.endsWith('.') === true ? '' : '.'} `}${record.key.observerSide}, ${direction}. ${statusByState[record.state].label}. Started ${formatDuration(nowMillis - record.startedAt.wallClockMillis)} ago; duration ${formatDuration(durationEnd - record.startedAt.wallClockMillis)}; ${record.chunkEnvelopes} envelopes, ${record.streamValues} values${retainedMarker}; ${record.trace === undefined ? 'no trace' : 'trace linked'}${record.evidence.length === 0 ? '' : '; anomaly observed'}.`}
       {...stylex.props(
         styles.row,
         columnLayout,
@@ -691,7 +691,11 @@ const RecordRow = ({
           styles.mono,
           compact === true ? styles.compactIdentity : undefined,
         )}
-        title={descriptorName(descriptor)}
+        title={
+          descriptor?.summary === undefined
+            ? descriptorName(descriptor)
+            : `${descriptorName(descriptor)} — ${descriptor.summary}`
+        }
       >
         {descriptorName(descriptor)}
       </span>

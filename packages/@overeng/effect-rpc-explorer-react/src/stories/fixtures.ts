@@ -69,6 +69,9 @@ export const descriptors: ReadonlyArray<RpcDescriptorWire> = [
     descriptorId: 'rpc:projects.lookup',
     key: 'projects.lookup',
     tag: 'LookupProject',
+    title: 'Find project',
+    summary: 'Look up a project by its stable identifier.',
+    description: 'Returns the public project record; credentials are never exposed.',
     kind: 'unary',
     observe: 'include',
     channels: {
@@ -92,6 +95,10 @@ export const descriptors: ReadonlyArray<RpcDescriptorWire> = [
     descriptorId: 'rpc:events.subscribe',
     key: 'events.subscribe',
     tag: 'SubscribeEvents',
+    title: 'Subscribe to events',
+    summary: 'Stream project events as they arrive.',
+    description: 'Receives incremental project events until the subscription closes.',
+    deprecated: true,
     kind: 'stream',
     observe: 'include',
     channels: {
@@ -116,6 +123,23 @@ export const descriptors: ReadonlyArray<RpcDescriptorWire> = [
       }),
     },
     terminal: channel({ schema: { title: 'Terminal signal', type: 'null' } }),
+  },
+  {
+    descriptorId: 'rpc:projects.health',
+    key: 'projects.health',
+    tag: 'CheckProjectHealth',
+    kind: 'unary',
+    observe: 'include',
+    channels: {
+      requestPayload: channel(),
+      success: channel({ schema: { type: 'boolean' } }),
+      typedFailure: channel({ projection: 'unavailable' }),
+      defect: channel({ projection: 'unavailable' }),
+      streamElement: channel({ projection: 'unavailable' }),
+      streamError: channel({ projection: 'unavailable' }),
+      headers: { projection: 'available' },
+    },
+    terminal: channel({ schema: { type: 'null' } }),
   },
 ]
 

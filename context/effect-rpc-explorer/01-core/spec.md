@@ -102,6 +102,10 @@ type RpcDescriptor = {
   readonly descriptorId: string // stable `rpc:<rpc.key>`, package-owned grammar
   readonly key: string
   readonly tag: string
+  readonly title?: string
+  readonly summary?: string
+  readonly description?: string
+  readonly deprecated?: boolean
   readonly kind: 'unary' | 'stream'
   readonly observe: 'include' | 'exclude'
   readonly channels: Readonly<Record<CaptureChannel, DescriptorChannel>>
@@ -125,6 +129,11 @@ Schema uses `Schema.toJsonSchemaDocument`. The projection is marked
 `bestEffort` whenever generated. A projection exception leaves the descriptor
 usable with `projection: "unavailable"` and a bounded warning; no event
 capture depends on JSON Schema.
+RPC documentation comes only from the RPC's own Context annotations:
+`OpenApi.Title`, `OpenApi.Summary`, `OpenApi.Description`, and
+`OpenApi.Deprecated`. Unset fields are absent from the inspector wire
+descriptor; explicit `deprecated: false` remains distinct from absence.
+Neither the tag nor root/channel Schema annotations supply RPC documentation.
 
 ## Observation at Public Effect Seams
 

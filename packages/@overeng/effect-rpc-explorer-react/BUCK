@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:56ab2a72726f8cd84ae54ecf8190bf5e01554d2ba745f771c4f22dc8f20bbeb8
+# Semantic fingerprint: sha256:7b133b8bea3f7adeb4160003f0bd1c5f85e80799396a344bde340d1d93867b5b
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/src/**/*.css, packages/@overeng/effect-rpc-explorer-react/src/**/*.cts, packages/@overeng/effect-rpc-explorer-react/src/**/*.js, packages/@overeng/effect-rpc-explorer-react/src/**/*.mts, packages/@overeng/effect-rpc-explorer-react/src/**/*.spec.cjs, packages/@overeng/effect-rpc-explorer-react/src/**/*.spec.jsx, packages/@overeng/effect-rpc-explorer-react/src/**/*.spec.mjs, packages/@overeng/effect-rpc-explorer-react/src/**/*.test.cjs, packages/@overeng/effect-rpc-explorer-react/src/**/*.test.jsx, packages/@overeng/effect-rpc-explorer-react/src/**/*.test.mjs, packages/@overeng/effect-rpc-explorer-react/src/**/*.ts, packages/@overeng/effect-rpc-explorer-react/src/**/*.tsx, packages/@overeng/effect-rpc-explorer-react/src/**/__snapshots__/*.snap, packages/@overeng/effect-rpc-explorer-react/tsconfig.json.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/stylex-tokens/BUCK.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -26,10 +26,13 @@ export_materialization_inputs([
     "src/ChannelContentPanel.unit.test.ts",
     "src/RpcExplorer.tsx",
     "src/RpcRecordDetail.tsx",
+    "src/SchemaTree.tsx",
+    "src/SchemaTree.unit.test.ts",
     "src/mod.ts",
     "src/normalized-value.ts",
     "src/projection.ts",
     "src/projection.unit.test.ts",
+    "src/schema-field.ts",
     "src/stories/RpcExplorer.stories.tsx",
     "src/stories/fixtures.ts",
     "src/stories/live-core.ts",
@@ -82,10 +85,13 @@ package_view(
         "src/ChannelContentPanel.unit.test.ts": "src/ChannelContentPanel.unit.test.ts",
         "src/RpcExplorer.tsx": "src/RpcExplorer.tsx",
         "src/RpcRecordDetail.tsx": "src/RpcRecordDetail.tsx",
+        "src/SchemaTree.tsx": "src/SchemaTree.tsx",
+        "src/SchemaTree.unit.test.ts": "src/SchemaTree.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/normalized-value.ts": "src/normalized-value.ts",
         "src/projection.ts": "src/projection.ts",
         "src/projection.unit.test.ts": "src/projection.unit.test.ts",
+        "src/schema-field.ts": "src/schema-field.ts",
         "src/stories/RpcExplorer.stories.tsx": "src/stories/RpcExplorer.stories.tsx",
         "src/stories/fixtures.ts": "src/stories/fixtures.ts",
         "src/stories/live-core.ts": "src/stories/live-core.ts",
@@ -119,10 +125,13 @@ package_view(
         "src/ChannelContentPanel.unit.test.ts": "src/ChannelContentPanel.unit.test.ts",
         "src/RpcExplorer.tsx": "src/RpcExplorer.tsx",
         "src/RpcRecordDetail.tsx": "src/RpcRecordDetail.tsx",
+        "src/SchemaTree.tsx": "src/SchemaTree.tsx",
+        "src/SchemaTree.unit.test.ts": "src/SchemaTree.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/normalized-value.ts": "src/normalized-value.ts",
         "src/projection.ts": "src/projection.ts",
         "src/projection.unit.test.ts": "src/projection.unit.test.ts",
+        "src/schema-field.ts": "src/schema-field.ts",
         "src/stories/RpcExplorer.stories.tsx": "src/stories/RpcExplorer.stories.tsx",
         "src/stories/fixtures.ts": "src/stories/fixtures.ts",
         "src/stories/live-core.ts": "src/stories/live-core.ts",
