@@ -32,25 +32,32 @@ composition scripts), so the invariant must have one enforcement point.
 
 ## Options
 
-| Option                         | Tradeoff                                                                                         | Outcome  |
-| ------------------------------ | ------------------------------------------------------------------------------------------------ | -------- |
-| `otel-span` buck2 mode         | One enforcement point in the existing caller-side tracer; one extra ~ms process per Buck command | Accepted |
-| Per-caller helpers (bash + TS) | No extra process; the invariant is implemented twice and drift breaks builds (rc=2)              | Rejected |
-| Nix wrapper around buck2       | Automatic coverage; reopens 0011's rejected interposition                                        | Rejected |
+| Option                         | Tradeoff                                                                                                               | Outcome  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | -------- |
+| `otel-span` buck2 mode         | One enforcement point in the existing caller-side tracer; two ~ms processes per Buck command (prepare + post-hoc emit) | Accepted |
+| Per-caller helpers (bash + TS) | No extra process; the invariant is implemented twice and drift breaks builds (rc=2)                                    | Rejected |
+| Nix wrapper around buck2       | Automatic coverage; reopens 0011's rejected interposition                                                              | Rejected |
 
 ## Decision
 
-`otel-span` gains a buck2 mode that opens the command span, validates the W3C
-context, exports `BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id))`
-or leaves it unset, and appends the sidecar line
-`<uuid> <traceparent-of-command-span>` to the run-record spool. `trace.nix`
-and the TypeScript call sites use it; exported OTLP span ids are salted per
-command (the adapter applies the salt; BUCK.OBS.ID-R05).
+`otel-span` gains a buck2 mode that PREPARES only: it pre-derives the
+command span id, validates the W3C context, exports
+`BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id))` or leaves
+it unset, and appends the sidecar line
+`<uuid> <traceparent-of-command-span>` to the run-record spool — then exits.
+The caller invokes Buck directly, and after Buck exits it completes the
+command span post hoc with `otel-span emit-span` and the pre-derived span id
+(fail-open, the #1382 pattern; the CLI already accepts `--span-id`).
+`trace.nix` and the TypeScript call sites use both halves; exported OTLP
+span ids are salted per command (the adapter applies the salt;
+BUCK.OBS.ID-R05).
 
 ## Consequences
 
-- Correlation is a pure function of the sidecar: trace id, parent span id, and
-  build correlation all derive from one line per command.
-- Bad contexts degrade to _unset_ — a build never fails from telemetry input.
-- The mode is caller-side preparation, not interposition (0011 Amendment 1);
-  a measured gap would still be required before any observer process.
+- Correlation is a pure function of the sidecar: trace id, parent span id,
+  and build correlation all derive from one line per command.
+- The mode never runs or supervises Buck: preparation plus post-hoc span
+  completion keeps 0011's interposition bar untouched (Amendment 1); a
+  measured gap would still be required before any observer process.
+- Bad contexts degrade to _unset_ — a build never fails from telemetry
+  input, and a failed post-hoc emit never changes the caller's exit code.

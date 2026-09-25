@@ -2,9 +2,9 @@
 
 Status: accepted
 
-Accepted 2026-09-25 (decisions q14 and q18; Johannes), on the retention
-question and the CI→Tempo replay prototype (B7, recorded as the rejected
-baseline).
+Accepted 2026-09-25 (decisions q14 and q18; Johannes; the archive budget
+figure was superseded by q32, 2026-09-25), on the retention question and
+the CI→Tempo replay prototype (B7, recorded as the rejected baseline).
 
 ## Context
 
@@ -48,13 +48,15 @@ lives.
 
 Ingest converts sealed run records through the adapter into both views and
 bounded metrics, identically locally and on the fleet dev host, with ids
-derived only from a pre-manifest record-borne identity (including the view
-kind, so each command's two views get distinct stable ids). Tempo keeps 30
-days; long-term trends come from the bounded metrics; raw run records are
-archived ~1 year in the dated, job-keyed, indexed layout with a retention
-timer, within a ≤150 GiB/yr corridor at the planning volume (measured
-projection ~125 GiB/yr — q14's earlier ≤115 figure was an estimate, not a
-requirement; the corridor is re-measured under
+derived only from a pre-manifest record-borne identity (view placement and
+per-view ids per [05](../spec.md): with a caller context the critical view
+lives in the caller's trace and the full view is a separate linked trace).
+Tempo keeps 30 days; long-term trends come from the bounded metrics; raw
+run records are archived ~1 year in the dated, job-keyed, indexed layout
+with a retention timer, within a **≤150 GiB/yr corridor at the planning
+volume** (measured projection ~125 GiB/yr). This supersedes the ≤115 GiB/yr
+figure recorded with q14 by Johannes's explicit follow-up answer (q32,
+2026-09-25: ≤150 GiB/yr, 1-year retention, re-measured under
 [OQ1](../../open-questions.md)).
 The ingester service, auth front, store ACL/lifecycle, index, and timer are
 implemented by the dotfiles fleet config against this contract; no CI-artifact

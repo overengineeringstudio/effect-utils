@@ -94,9 +94,10 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
   `vcs.repository.url.full`, `vcs.change.id`, `ci.provider`, `ci.pr.fork`,
   and the Buck trace id. None of these ever becomes a metric label.
 - **BUCK.OBS-R06 Retention corridor:** Trace storage holds 30 days; long-term
-  trends come from bounded metrics; raw native evidence is archived for about
-  one year at a bounded budget (≤150 GiB/yr at the planning volume — the
-  measured projection is ~125 GiB/yr — re-measured under
+  trends come from bounded metrics; raw native evidence is archived for
+  about one year at a bounded budget (**≤150 GiB/yr** at the planning
+  volume, superseding q14's earlier figure per q32, 2026-09-25; measured
+  projection ~125 GiB/yr; re-measured under
   [OQ1](./open-questions.md)). Widening beyond the corridor requires a
   measured volume decision.
 
@@ -118,8 +119,8 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 
 - **BUCK.OBS-R09 Named deletions (refines BUCK-R09):** Each landed mechanism
   names the producer it supersedes — the CI span artifact upload step, the
-  scratch converter, any compatibility replay — and the transfer change deletes
-  it.
+  scratch converter, any compatibility artifact re-ingest path — and the
+  transfer change deletes it.
 
 ## Requirement Trace
 

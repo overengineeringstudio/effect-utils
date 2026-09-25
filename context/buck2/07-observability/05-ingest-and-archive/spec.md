@@ -25,20 +25,28 @@ sealed run record (content-addressed store or local path)
   1. verify manifest digests; bounded decode (untrusted records: 02 rules)
   2. read sidecar lines (01); assign task/command nesting
   3. decode event logs (03) -> span model + daemon-wait join (batch-scoped)
-  4. derive views + metrics (04); per-view trace ids (below)
+  4. derive views + metrics (04); place views per the ancestry rule (below)
   5. push OTLP traces in chunks < ~3.5 MB; push bounded metrics to Mimir
   6. stamp provider-neutral run attributes (cicd.* / vcs.* / ci.provider;
      untrusted runs additionally ci.pr.fork=true)
   7. archive raw record + write index rows; record both trace ids per command
 ```
 
-**Trace-id derivation.** `trace_id = f(repository, run, attempt, job, Buck
-trace id, view kind)` with `view kind ∈ {critical, full}` — a pre-manifest
-identity, never the manifest digest and never an API call. Each Buck command
-yields exactly two deterministic, distinct ids (one per view); both are
+**View ancestry and trace ids.** With a caller context (sidecar line
+present): the **critical view lives in the caller's trace** — its trace id
+_is_ the caller's trace id, and `buck2.command` is parented under the
+pre-derived command span id, so the single-trace caller→Buck hierarchy the
+sidecar promises stays valid. The **full view is a separate deterministic
+trace**: `trace_id = f(repository, run, attempt, job, Buck trace id,
+view kind = full)` — a pre-manifest identity, never the manifest digest and
+never an API call — whose `buck2.command` root carries a span link to the
+caller command span. Without a caller context, both views are such derived
+traces (view kind ∈ {critical, full}), unparented. Both ids per command are
 recorded in the ingest index and run summary so either view is discoverable
-by id. Steps 2–7 are identical locally and on the fleet dev host: the same
-binary, the same code path, environment supplying only endpoints
+by id.
+
+Steps 2–7 are identical locally and on the fleet dev host: the same binary,
+the same code path, environment supplying only endpoints
 (BUCK.OBS-ING-R01 / BUCK.OBS-R03). Re-ingesting the same record reproduces
 byte-identical traces (measured ×3 at the span-id level in the replay
 baseline below).
@@ -63,20 +71,14 @@ directory with its own manifest — two jobs of a run never share or overwrite
 an archive path — and matches the index key exactly, so per-job backfill
 resolves one row.
 
-Retention timer: removes raw event logs older than 365 days (then optional
-normalized copies), skips `incoming/` and active manifests, reports bytes and
-files removed, keeps tombstone rows at the boundary. A daily reconciliation
-compares index rows with the filesystem and marks missing bundles — the index
-never becomes authoritative over the store.
-
 ## Volume Model
 
 Measured per full CI run: ~3.9 MB sealed record; both views ~61 MB OTLP JSON
 (~67 k spans) into Tempo (30 d); raw archive projection ~125 GiB/yr at
 ~90 runs/day (~351 MB/day) before overhead, inside the ≤150 GiB/yr corridor
-budget (BUCK.OBS-R06) and re-measured under
-[OQ1](../../open-questions.md), which also carries the unmeasured
-both-views Tempo cost.
+budget (BUCK.OBS-R06, per q32 superseding q14's earlier figure) and
+re-measured under [OQ1](../../open-questions.md), which also carries the
+unmeasured both-views Tempo cost.
 
 ## Backend Quirks (designed around)
 

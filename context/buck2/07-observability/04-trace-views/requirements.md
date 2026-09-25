@@ -25,7 +25,11 @@ the BUCK.OBS-T02 tradeoff of the
 - **BUCK.OBS.VIEW-R01 Two identified views:** Every ingested Buck command is
   exported as two separately identified traces: the **critical view** (the
   default) and the **full view**. Both are always ingested (decision q24);
-  neither is a read-time transformation of the other.
+  neither is a read-time transformation of the other. With a caller
+  context, the critical view lives in the caller's trace and the full view
+  is a separate deterministic trace whose root links to the caller command
+  span (placement per [05](../05-ingest-and-archive/requirements.md)
+  ING-R02).
 - **BUCK.OBS.VIEW-R02 Critical view rule:** the critical view retains the
   critical path and its stage children, all spans at or above the view
   threshold, all their ancestors, and exact whole-command summary attributes

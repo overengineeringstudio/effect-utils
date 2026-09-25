@@ -34,7 +34,11 @@ span model (all spans, salted ids, daemon waits)
 ```
 
 Both views derive deterministically from the same span model — the same run
-record always yields the same two traces (idempotent re-ingest).
+record always yields the same two traces (idempotent re-ingest). Their
+placement differs ([05](../05-ingest-and-archive/spec.md)): with a caller
+context the critical view is parented inside the caller's trace (sidecar),
+and the full view is a separate deterministic trace whose `buck2.command`
+root links to the caller command span.
 
 Measured shape on the largest cold-CI command (12,622 spans): full view
 12.70 MB; the 1 s rule yields a **pre-escalation candidate** of ≈ 1,113–1,225

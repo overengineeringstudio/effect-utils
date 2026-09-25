@@ -20,28 +20,37 @@ the adapter that consumes the sidecar (03), or CI workflow wiring.
 
 ```text
 caller task span (task run)
-  └─ otel-span buck2 mode
-       1. open command span "buck2.command <subcommand>"
-       2. read W3C context; validate regex
-          ├─ valid  -> BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id))
-          │            append sidecar "<uuid> <traceparent-of-command-span>"
-          └─ invalid/absent/all-zero -> export nothing
-       3. spawn buck2 ... --event-log <path> --write-build-id <path>   (direct child, 0011)
-          as a waited child: forward stdio and signals, wait for exit
-       4. close command span with Buck's exit status; exit with Buck's code
+  ├─ otel-span buck2 mode  — PREPARES only, then exits (never runs Buck)
+  │    1. pre-derive the command span id and record the start time
+  │    2. read W3C context; validate regex
+  │       ├─ valid  -> BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id))
+  │       │            append sidecar "<uuid> <traceparent-of-command-span>"
+  │       └─ invalid/absent/all-zero -> export nothing
+  │    3. hand the caller the derived env + span id, and exit
+  ├─ caller invokes buck2 ... --event-log <path> --write-build-id <path>
+  │    directly (task shell or TS spawn; nothing sits between — 0011)
+  └─ after Buck exits: caller emits the completed command span post hoc —
+       otel-span emit-span <service> "buck2.command <subcommand>"
+         --span-id <pre-derived id> --start-time-ns <start> --end-time-ns <end>
+         --status-code ok|error --attr-int exit.code=<n>
+       (fail-open: emit failures are ignored)
 ```
 
-The mode runs Buck as a **waited child**, never as a replacing `exec`: a
-successful `exec` would replace the wrapper and leave nobody to close the
-command span. The wrapper stays out of the way — stdio pass through
-unchanged, signals forward to Buck, its exit code equals Buck's — so it is
-caller-side preparation, not interposition. This is the standing 0011
-boundary; the amendment records it explicitly.
+The mode is **preparation plus post-hoc completion**, never supervision. No
+process sits between the caller and Buck: the caller invokes Buck directly
+with the prepared environment, and after Buck exits the caller completes the
+command span itself, exactly the #1382 pattern (`emitCompletedSpan` in
+buck2-tools: fire-and-forget, failures swallowed). `otel-span emit-span`
+already accepts a caller-chosen span id (`--span-id`, with `--trace-id`,
+`--parent-span-id`, explicit start/end nanoseconds, and status), so the
+post-hoc emit needs no new CLI capability — the buck2 mode only fixes _which_
+id to pass. This keeps the standing 0011 boundary intact; the amendment
+records it explicitly.
 
 **Call sites.** The devenv task shell (`trace.exec`), TypeScript subprocess
 spawners (the #1382 `otel-span emit-span` pattern), and CI job wrappers all
-invoke the same mode; there is exactly one implementation of the validation
-invariant (BUCK.OBS.ID-T01).
+use the same preparation and the same post-hoc emit; there is exactly one
+implementation of the validation invariant (BUCK.OBS.ID-T01).
 
 **Salting.** The adapter (03) salts OTLP span ids as
 `sha256("<log-uuid>:<buck-span-id>")[:16]` — deterministic from the log, unique
@@ -49,21 +58,16 @@ per command; the nested editor-publish reproduction showed 8,526/8,526
 unique ids across two commands under one task trace, and sequential,
 concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
 
-**Daemon sharing.** Wrapper trace ids stay unique per command even when
-commands share a daemon (Buck re-reads the env per client command); two
-interleaved commands on one daemon produced two distinct logs keyed by their
-uuids with no cross-contamination. Daemon waits themselves are attributed at
-ingest ([03](../03-event-log-adapter/spec.md)).
-
 ## Failure Behavior
 
 | Condition                       | Behavior                                                                               |
 | ------------------------------- | -------------------------------------------------------------------------------------- |
-| No OTEL context                 | No export; independent trace; no build impact                                          |
+| No OTEL context                 | No export; both views become derived traces (05); no build impact                      |
 | Malformed / empty `TRACEPARENT` | Treated as absent (never exported — Buck fails on malformed `BUCK_WRAPPER_UUID`, rc=2) |
 | All-zero trace id               | Treated as absent                                                                      |
 | Sidecar append fails            | Warn; the trace degrades to an independent root                                        |
-| Wrapper process failure         | Caller proceeds without the env; build unaffected                                      |
+| Preparation process fails       | Caller invokes Buck anyway without the env; build unaffected                           |
+| Post-hoc emit fails             | Ignored (fail-open); the command span is missing, the build result is unaffected       |
 
 ## Conformance
 
@@ -72,5 +76,8 @@ ingest ([03](../03-event-log-adapter/spec.md)).
 - End-to-end: a real task trace whose `buck2.command` parent decodes to the
   command span id; a nested two-command task with zero id collisions; a
   concurrent same-daemon pair with distinct logs.
+- Post-hoc emit: a completed command span with the pre-derived span id,
+  measured start/end, and Buck's exit code appears in the caller's trace;
+  a failed emit never changes the caller's exit code.
 - Evidence: [caller-correlation bakeoff](./.experiments/2026-09-25-caller-correlation-and-salting.md)
   and [decision 0001](./.decisions/0001-otel-span-buck2-mode.md).

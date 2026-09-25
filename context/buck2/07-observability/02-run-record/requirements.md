@@ -66,5 +66,5 @@ refines BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07, and BUCK.OBS-R08 of the
   conversion — and never routes untrusted bytes to any external process
   (03: no `buck2 log show` fallback for untrusted records).
 - **BUCK.OBS.REC-R08 Named deletions (refines BUCK.OBS-R09):** Landing the
-  upload step supersedes the CI span-artifact upload step and any compatibility
-  replay; the transfer change deletes them.
+  upload step supersedes the CI span-artifact upload step and any
+  compatibility artifact re-ingest path; the transfer change deletes them.

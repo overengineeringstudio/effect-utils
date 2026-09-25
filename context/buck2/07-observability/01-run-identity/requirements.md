@@ -8,9 +8,10 @@ refines BUCK.OBS-R03 and BUCK.OBS-R07 of the
 
 ## Assumptions
 
-- **BUCK.OBS.ID-A01 Direct execution:** Buck runs as a direct child
+- **BUCK.OBS.ID-A01 Direct execution:** the caller invokes Buck directly
   ([decision 0011](../../.decisions/0011-direct-native-evidence-observation.md));
-  identity machinery prepares environment and spans only — never interposes.
+  the buck2 mode prepares the environment and span identity only and never
+  runs or supervises Buck.
 - **BUCK.OBS.ID-A02 Buck parsing:** Buck lexically parses `BUCK_WRAPPER_UUID`
   (any 32-hex accepted; no version/variant validation) and a malformed or
   empty value fails the client at startup (measured rc=2).
@@ -19,10 +20,11 @@ refines BUCK.OBS-R03 and BUCK.OBS-R07 of the
 
 ## Acceptable Tradeoffs
 
-- **BUCK.OBS.ID-T01 One wrapper process per Buck command:** the `otel-span`
-  buck2 mode costs one extra short-lived process (~ms) per Buck command;
-  accepted for a single enforcement point over per-caller helpers that can
-  drift (a drifted helper breaks builds).
+- **BUCK.OBS.ID-T01 One preparation plus one post-hoc emit process:** the
+  `otel-span` buck2 mode costs two short-lived processes (~ms each) per
+  Buck command — one before (prepare) and one after (emit-span); accepted
+  for a single enforcement point over per-caller helpers that can drift (a
+  drifted helper breaks builds).
 
 ## Requirements
 

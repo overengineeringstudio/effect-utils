@@ -22,11 +22,12 @@ recorded for other owners.
 
 ```text
 caller (devenv task / CI job)
-  |  otel-span buck2 mode: command span, W3C validation,
-  |  BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id)), sidecar line
+  |  otel-span buck2 mode PREPARES (then exits): pre-derived command span id,
+  |  W3C validation, BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id)),
+  |  sidecar line
   v
-buck2 command (invoked directly, 0011) --native evidence--> *_events.pb.zst + build report
-  |
+buck2 command (invoked directly by the caller, 0011) --native evidence--> *_events.pb.zst + build report
+  |  caller emits the completed command span post hoc (emit-span, pre-derived id, fail-open)
   v
 run record  = manifest + span spool + native evidence      [02-run-record]
   |  seal: freeze manifest with digests
@@ -35,7 +36,8 @@ run record  = manifest + span spool + native evidence      [02-run-record]
 ingest (identical locally and on the fleet dev host)       [05-ingest-and-archive]
   |  event-log adapter: direct zstd+protobuf decode, vendored pinned schema,
   |  span model, daemon-wait join                           [03-event-log-adapter]
-  |  trace views: critical view + full view, bounded metrics [04-trace-views]
+  |  trace views: critical view (in the caller's trace) + full view
+  |  (separate linked trace), bounded metrics               [04-trace-views]
   |  chunked OTLP (<~3.5 MB) --> Tempo (30 d); metrics --> Mimir
   v
 archive: raw run records ~1 y, indexed, retention-timed     [05-ingest-and-archive]
@@ -76,8 +78,9 @@ selected. Nothing flows backward.
   findings in the owning subsystems' open questions; this lane owns only their
   measurement.
 - **buck2 decision 0011:** amended — the versioned adapter is a direct-decode
-  Rust crate and the caller-side `otel-span` buck2 mode prepares environment
-  and span without interposition
+  Rust crate, and the caller-side `otel-span` buck2 mode only prepares
+  environment and span identity; the caller invokes Buck directly and
+  completes the command span post hoc — no supervision, no interposition
   ([Amendment 1](../.decisions/0011-direct-native-evidence-observation.md)).
 
 ## Open Design Questions
