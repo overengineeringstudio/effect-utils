@@ -1739,10 +1739,13 @@ type SnapshotValidation =
   | { readonly record: EditorViewRecord; readonly error?: never }
   | { readonly record?: never; readonly error: unknown }
 
-const validateSnapshotContents = async (
-  snapshotDir: string,
-  fingerprintTool: string,
-): Promise<EditorViewRecord> => {
+const validateSnapshotContents = async ({
+  snapshotDir,
+  fingerprintTool,
+}: {
+  readonly snapshotDir: string
+  readonly fingerprintTool: string
+}): Promise<EditorViewRecord> => {
   requireDirectory({ path: snapshotDir, field: 'snapshot' })
   const record = readRecord(join(snapshotDir, 'editor-view.json'))
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
