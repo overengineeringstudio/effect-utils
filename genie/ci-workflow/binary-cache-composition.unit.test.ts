@@ -372,4 +372,57 @@ describe('Cachix publisher', () => {
       }),
     ).toThrow(CachePublisherJobError)
   })
+
+  it('rejects bracket aliases and aggregate or dynamic secrets outside publisher steps', () => {
+    const publisher = cachixPublisherStep({
+      name: 'example',
+      authToken: '${{ secrets.PUBLISH_TOKEN }}',
+      jobIf: protectedIf,
+      triggers: ['push'],
+    })
+    const on = { push: { branches: ['main'] } } as const
+    const job = { 'runs-on': 'ubuntu-latest', if: protectedIf, steps: [publisher] }
+    for (const alias of ["${{ secrets['PUBLISH_TOKEN'] }}", '${{ secrets["PUBLISH_TOKEN"] }}']) {
+      expect(() =>
+        githubWorkflow({
+          on,
+          env: { ALIAS: alias },
+          jobs: { publish: job },
+        }),
+      ).toThrow(CachePublisherJobError)
+      expect(() =>
+        githubWorkflow({
+          on,
+          jobs: {
+            publish: { ...job, steps: [{ run: 'echo read', env: { ALIAS: alias } }, publisher] },
+          },
+        }),
+      ).toThrow(CachePublisherJobError)
+    }
+    for (const aggregate of [
+      '${{ toJSON(secrets) }}',
+      '${{ secrets[inputs.token] }}',
+      '${{ secrets }}',
+    ]) {
+      expect(() =>
+        githubWorkflow({
+          on,
+          env: { ALIAS: aggregate },
+          jobs: { publish: job },
+        }),
+      ).toThrow(CachePublisherJobError)
+      expect(() =>
+        githubWorkflow({
+          on,
+          jobs: { publish: { ...job, env: { ALIAS: aggregate } } },
+        }),
+      ).toThrow(CachePublisherJobError)
+      expect(() =>
+        githubWorkflow({
+          on,
+          jobs: { publish: { ...job, steps: [{ run: `echo '${aggregate}'` }, publisher] } },
+        }),
+      ).toThrow(CachePublisherJobError)
+    }
+  })
 })

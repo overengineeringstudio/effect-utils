@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
   steps use `cachixStep`, while writes use the protected
   `cachixPublisherStep`/`cachixPushStep` constructors. Producer flakes must not
   advertise private caches in `nixConfig`, which bypasses workflow policy.
+  Generation-time validation cannot cover raw workflow YAML outside Genie or
+  inherited secrets passed to reusable workflows via `secrets: inherit`.
 
 ### Added
 - **Genie build caches**: Producer-authored, credential-free Nix/REAPI cache

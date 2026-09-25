@@ -85,10 +85,19 @@ const protectedJobEvents = (condition: string | undefined): readonly string[] =>
 const workflowEvents = (on: GitHubWorkflowArgs['on']): readonly string[] =>
   typeof on === 'string' ? [on] : Array.isArray(on) === true ? on : Object.keys(on)
 
-const secretReferences = (value: unknown): readonly string[] =>
-  [...JSON.stringify(value ?? '').matchAll(/\bsecrets\.([A-Za-z_][A-Za-z_0-9]*)\b/g)].map(
-    (match) => match[1]!,
+const namedSecretReference =
+  /\bsecrets(?:\.([A-Za-z_][A-Za-z_0-9]*)|\[\s*['"]([A-Za-z_][A-Za-z_0-9]*)['"]\s*\])/g
+
+const secretReferences = (value: unknown): readonly string[] => {
+  const text = JSON.stringify(value ?? '').replace(/\\"/g, '"')
+  const names = [...text.matchAll(namedSecretReference)].map((match) => (match[1] ?? match[2])!)
+  // Only expression bodies can pass the aggregate `secrets` context: ordinary
+  // shell prose mentioning secrets is not a GitHub Actions context reference.
+  const aggregate = [...text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].some((match) =>
+    /\bsecrets\b/.test(match[1]!.replace(namedSecretReference, '')),
   )
+  return aggregate === true ? [...names, '*'] : names
+}
 
 const isWriteStep = (step: GitHubWorkflowArgs['jobs'][string]['steps'][number]): boolean => {
   const action = 'uses' in step && step.uses.startsWith('cachix/cachix-action@')
@@ -99,7 +108,11 @@ const isWriteStep = (step: GitHubWorkflowArgs['jobs'][string]['steps'][number]):
   )
 }
 
-/** Inspect the complete workflow at the common githubWorkflow output boundary. */
+/**
+ * Inspect the complete workflow at the common githubWorkflow output boundary.
+ * Raw YAML outside Genie and reusable-workflow `secrets: inherit` are not
+ * covered by this generation-time validation.
+ */
 export const validateWorkflowCachePolicy = ({
   workflow,
   caches = [],
@@ -113,12 +126,14 @@ export const validateWorkflowCachePolicy = ({
     for (const step of job.steps) {
       if (publisherWriteSecret in step) writeSecrets.add(step[publisherWriteSecret] as string)
       if (isWriteStep(step) === true) {
-        for (const secret of secretReferences(step)) writeSecrets.add(secret)
+        for (const secret of secretReferences(step)) {
+          if (secret !== '*') writeSecrets.add(secret)
+        }
       }
     }
   }
   const containsWriteSecret = (value: unknown): boolean =>
-    secretReferences(value).some((secret) => writeSecrets.has(secret) === true)
+    secretReferences(value).some((secret) => secret === '*' || writeSecrets.has(secret) === true)
   if (containsWriteSecret(workflow.env) === true || workflow.env?.CACHIX_AUTH_TOKEN !== undefined) {
     throw new CachePublisherJobError('workflow')
   }
