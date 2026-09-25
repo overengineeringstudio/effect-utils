@@ -10,6 +10,7 @@ import {
 } from 'effect/unstable/rpc'
 import { describe, expect, it } from 'vitest'
 
+import { RpcExplorerCapture } from './descriptor.ts'
 import { makeExplorer } from './explorer.ts'
 import { ClearHistory, GetSnapshot, Watch } from './inspector.ts'
 import type { ExplorerBounds, Timestamp } from './model.ts'
@@ -252,5 +253,154 @@ describe('explorer composition', () => {
     expect(JSON.stringify(normalizationMeasurements)).not.toContain('raw-request-secret')
     expect(unregisterCount).toBe(1)
     expect(spans.some((span) => span.name === 'rpc.explorer.pipeline.fault')).toBe(false)
+  })
+
+  it('resolves per-RPC host and annotation policies once for protocol and middleware observations', async () => {
+    const hostOverride = Rpc.make('HostOverride', {
+      payload: Schema.String,
+      success: Schema.String,
+    }).annotate(RpcExplorerCapture, {
+      requestPayload: { _tag: 'reveal' },
+      defect: { _tag: 'reveal' },
+    })
+    const rpcFallback = Rpc.make('RpcFallback', {
+      payload: Schema.String,
+      success: Schema.String,
+    }).annotate(RpcExplorerCapture, { defect: { _tag: 'reveal' } })
+    const unannotated = Rpc.make('Unannotated', {
+      payload: Schema.String,
+      success: Schema.String,
+    })
+    const selected: Array<string> = []
+    const result = await Effect.gen(function* () {
+      const explorer = yield* makeExplorer({
+        group: RpcGroup.make(hostOverride, rpcFallback, unannotated),
+        config: {
+          instanceId: 'per-rpc-capture',
+          bounds,
+          capture: ({ tag, key, kind }) => {
+            selected.push(tag)
+            expect(key).toContain(tag)
+            expect(kind).toBe(tag === 'RpcExplorer.Watch' ? 'stream' : 'unary')
+            return tag === 'HostOverride'
+              ? { requestPayload: { _tag: 'omit' }, defect: { _tag: 'omit' } }
+              : tag === 'Unannotated'
+                ? { requestPayload: { _tag: 'reveal' } }
+                : tag === 'RpcFallback'
+                  ? { requestPayload: { _tag: 'omit' } }
+                  : undefined
+          },
+          telemetry: {
+            registerRetainedGauge: () => () => {},
+            registerNormalizationHistogram: () => () => {},
+          },
+        },
+      })
+      const protocol = explorer.decorateClientProtocol({
+        protocol: {
+          run: () => Effect.never,
+          send: () => Effect.void,
+          supportsAck: true,
+          supportsTransferables: false,
+          codecFor: RpcSerialization.json.codecFor,
+        },
+        encodedDecodersByTag: new Map([
+          ['HostOverride', { requestPayload: Schema.decodeUnknownOption(Schema.String) }],
+          ['Unannotated', { requestPayload: Schema.decodeUnknownOption(Schema.String) }],
+        ]),
+      })
+      yield* protocol.send(1, {
+        _tag: 'Request',
+        id: 1,
+        tag: 'HostOverride',
+        payload: 'secret-host',
+        headers: [],
+      })
+      yield* protocol.send(1, {
+        _tag: 'Request',
+        id: 2,
+        tag: 'Unannotated',
+        payload: 'visible-host',
+        headers: [],
+      })
+      for (const [index, rpc] of [hostOverride, rpcFallback, unannotated].entries()) {
+        yield* explorer
+          .middleware(Effect.die(`reply-${rpc._tag}`), {
+            client: new Rpc.ServerClient(7),
+            requestId: RpcMessage.RequestId(`middleware-${index}`),
+            rpc,
+            payload: `payload-${rpc._tag}`,
+            headers: Headers.empty,
+          })
+          .pipe(Effect.exit)
+      }
+      return explorer.store.snapshot()
+    }).pipe(
+      Effect.scoped,
+      Effect.provideService(Metric.MetricRegistry, new Map()),
+      Effect.runPromise,
+    )
+
+    const request = (tag: string, side: 'client' | 'server') =>
+      result.events.find(
+        (event) =>
+          event._tag === 'RequestObserved' &&
+          event.descriptorId.endsWith(`/Rpc/${tag}`) &&
+          event.request.observerSide === side,
+      )
+    const terminal = (index: number) =>
+      result.events.find(
+        (event) =>
+          event._tag === 'TerminalObserved' &&
+          event.request.requestId.value === `middleware-${index}`,
+      )
+    expect(request('HostOverride', 'client')).toMatchObject({
+      observations: expect.arrayContaining([
+        { channel: 'requestPayload', outcome: { _tag: 'Omitted', source: 'host' } },
+      ]),
+    })
+    expect(request('Unannotated', 'client')).toMatchObject({
+      observations: expect.arrayContaining([
+        {
+          channel: 'requestPayload',
+          outcome: { _tag: 'Captured', mode: 'reveal', source: 'host' },
+          captured: { _tag: 'String', value: 'visible-host' },
+        },
+      ]),
+    })
+    expect(request('HostOverride', 'server')).toMatchObject({
+      observations: expect.arrayContaining([
+        { channel: 'requestPayload', outcome: { _tag: 'Omitted', source: 'host' } },
+      ]),
+    })
+    expect(terminal(0)).toMatchObject({
+      observations: expect.arrayContaining([
+        { channel: 'defect', outcome: { _tag: 'Omitted', source: 'host' } },
+      ]),
+    })
+    expect(terminal(1)).toMatchObject({
+      observations: expect.arrayContaining([
+        {
+          channel: 'defect',
+          outcome: { _tag: 'Captured', mode: 'reveal', source: 'rpc' },
+          captured: { _tag: 'String', value: 'reply-RpcFallback' },
+        },
+      ]),
+    })
+    expect(terminal(2)).toMatchObject({
+      observations: expect.arrayContaining([
+        { channel: 'defect', outcome: { _tag: 'Omitted', source: 'default' } },
+      ]),
+    })
+    expect(selected).toEqual([
+      'HostOverride',
+      'RpcFallback',
+      'Unannotated',
+      'RpcExplorer.GetSnapshot',
+      'RpcExplorer.Watch',
+      'RpcExplorer.ClearHistory',
+    ])
+    expect(JSON.stringify(result)).not.toContain('secret-host')
+    expect(JSON.stringify(result)).not.toContain('reply-HostOverride')
   })
 })

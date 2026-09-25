@@ -94,9 +94,14 @@ All notable changes to this project will be documented in this file.
   rejects malformed descriptors that bypass it.
 
 ### Added
+
 - **@overeng/effect-rpc-explorer**: Add a passive Effect RPC observer with
   policy-safe capture, bounded revisioned records, inspector snapshots/deltas,
   schema and OpenAPI descriptors, and schema-backed lifecycle telemetry.
+- **@overeng/effect-rpc-explorer**: Resolve capture independently per RPC
+  with a construction-time host selector and `RpcExplorerCapture` annotation;
+  sparse policies retain host > RPC > root schema > omit precedence across
+  protocol and middleware observation.
 - **@overeng/effect-rpc-explorer-react**: Add the responsive React Aria/StyleX
   inspector for RPC lifecycles, captured fields, schema metadata, and
   accessible filtering, sorting, and keyboard navigation.
@@ -155,6 +160,7 @@ All notable changes to this project will be documented in this file.
   differently.
 
 ### Changed
+
 - **@overeng/otel-contract**: Accept an additive `incremental` counter option
   so OTLP metrics preserve monotonic counter semantics.
 

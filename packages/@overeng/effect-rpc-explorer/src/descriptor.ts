@@ -3,11 +3,18 @@ import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
 import { Rpc, type RpcGroup, RpcSchema } from 'effect/unstable/rpc'
 
 import type { CaptureChannel } from './model.ts'
+import type { CapturePolicies } from './policy.ts'
 
 /** Per-RPC switch used to keep the explorer's own inspector traffic out of observation. */
 export const RpcExplorerObserve = Context.Reference<boolean>(
   '@overeng/effect-rpc-explorer/RpcExplorerObserve',
   { defaultValue: () => true },
+)
+
+/** Per-RPC capture policy; absent channels defer to host and root Schema policies. */
+export const RpcExplorerCapture = Context.Reference<CapturePolicies | undefined>(
+  '@overeng/effect-rpc-explorer/RpcExplorerCapture',
+  { defaultValue: () => undefined },
 )
 
 /** Whether protocol observations for an RPC enter the explorer pipeline. */
@@ -34,6 +41,7 @@ export interface LiveRpcDescriptor {
   readonly defectSchema: Schema.Top
   readonly terminalSchema: Schema.Top
   readonly annotations: Context.Context<never>
+  readonly policies?: CapturePolicies | undefined
   readonly channels: Readonly<Partial<Record<CaptureChannel, LiveDescriptorChannel>>>
 }
 
@@ -131,6 +139,7 @@ export const makeRpcDescriptors = (group: RpcGroup.Any): ReadonlyArray<RpcDescri
     const summary = Context.getOrUndefined(annotations, OpenApi.Summary)
     const description = Context.getOrUndefined(annotations, OpenApi.Description)
     const deprecated = Context.getOrUndefined(annotations, OpenApi.Deprecated)
+    const policies = Context.getOrUndefined(rpc.annotations, RpcExplorerCapture)
 
     descriptors.push({
       descriptorId,
@@ -158,6 +167,7 @@ export const makeRpcDescriptors = (group: RpcGroup.Any): ReadonlyArray<RpcDescri
         errorSchema: rpc.errorSchema,
         defectSchema: rpc.defectSchema,
         terminalSchema,
+        ...(policies === undefined ? {} : { policies }),
         annotations: rpc.annotations,
         channels: {
           requestPayload: payload.live,

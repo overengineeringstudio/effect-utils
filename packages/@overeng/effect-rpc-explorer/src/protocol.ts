@@ -29,6 +29,7 @@ export interface ProtocolCaptureDescriptor {
     | Partial<Record<Exclude<CaptureChannel, 'headers'>, EncodedValueDecoder>>
     | undefined
   readonly policies?: CapturePolicies | undefined
+  readonly hostPolicies?: CapturePolicies | undefined
 }
 
 /** Dependencies and policy inputs shared by protocol observation seams. */
@@ -357,7 +358,7 @@ export const makeProtocolObserver = (
       encoded,
       decodeEncoded: encoded === true ? decoderForChannel({ descriptor, channel }) : undefined,
       bounds: options.normalizationBounds ?? defaultNormalizationBounds,
-      host: options.hostPolicies,
+      host: descriptor.hostPolicies ?? options.hostPolicies,
       rpc: descriptor.policies,
       schema: schemaForChannel(descriptor, channel),
     })

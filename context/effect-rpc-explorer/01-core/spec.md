@@ -44,7 +44,8 @@ The host constructs one scoped explorer from its application RPC group:
 type ExplorerConfig = {
   readonly instanceId: string
   readonly bounds: ExplorerBounds
-  readonly capture?: CapturePolicies
+  readonly capture?:
+    CapturePolicies | ((descriptor: ExplorerCaptureDescriptor) => CapturePolicies | undefined)
   readonly clock?: ExplorerClock
   readonly connectionId?: (identity: ExplorerConnectionIdentity) => string
   readonly telemetry: Omit<ExplorerTelemetryOptions, 'readRetainedCounts'>
@@ -297,12 +298,20 @@ type CapturePolicy<T = unknown> =
 type CapturePolicies = Readonly<Partial<Record<CaptureChannel, CapturePolicy>>>
 ```
 
-Package helpers attach a namespaced `Context.Reference<CapturePolicies>` to an
-`Rpc` and a custom `rpcExplorerCapture` Schema annotation to a root channel
-Schema. Internally, the resolver uses `Context.getOrUndefined` so the absence
-of a Rpc annotation stays distinguishable from an explicit policy. Helpers that
-combine policy maps merge individual channel fields before attaching a Context
-value; raw Context merge is not assumed to deep-merge maps.
+`RpcExplorerCapture` is a namespaced `Context.Reference<CapturePolicies |
+undefined>` attached with `Rpc.annotate(RpcExplorerCapture, policies)`; a
+custom `rpcExplorerCapture` Schema annotation attaches policies to a root
+channel Schema. The descriptor builder reads the RPC annotation with
+`Context.getOrUndefined`, keeping absence distinct from an explicit policy
+map. Combining policies merges individual channel fields before attaching a
+Context value; raw Context merge does not deep-merge maps.
+
+The host's `capture` may be one static map or a function receiving only
+`ExplorerCaptureDescriptor` identity (`descriptorId`, `key`, `tag`, `kind`).
+The function returns a sparse map or `undefined` and runs exactly once for
+each RPC descriptor when constructing the explorer, never per request and
+never with captured values. Both protocol decorators and decoded middleware
+use the resolved per-descriptor host map.
 
 For every channel, host config has first priority, then an RPC policy, then a
 policy on that channel's root schema, then `{ _tag: "omit" }`. Headers lack a

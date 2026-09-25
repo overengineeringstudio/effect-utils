@@ -3,7 +3,7 @@ import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
 import { Rpc, RpcGroup, RpcMiddleware } from 'effect/unstable/rpc'
 import { describe, expect, it } from 'vitest'
 
-import { makeRpcDescriptors, RpcExplorerObserve } from './descriptor.ts'
+import { makeRpcDescriptors, RpcExplorerCapture, RpcExplorerObserve } from './descriptor.ts'
 import { RpcDescriptorWire } from './inspector.ts'
 
 const unaryPayload = Schema.Struct({ id: Schema.String })
@@ -104,6 +104,19 @@ describe('RPC descriptors', () => {
 
     expect(applicationDescriptor!.observe).toBe('include')
     expect(inspectorDescriptor!.observe).toBe('exclude')
+  })
+
+  it('retains RPC capture annotations only on live descriptors', () => {
+    const annotated = Rpc.make('Annotated').annotate(RpcExplorerCapture, {
+      success: { _tag: 'reveal' },
+    })
+    const [withPolicy, withoutPolicy] = makeRpcDescriptors(
+      RpcGroup.make(annotated, Rpc.make('Unannotated')),
+    )
+
+    expect(withPolicy?.live?.policies).toEqual({ success: { _tag: 'reveal' } })
+    expect(withoutPolicy?.live?.policies).toBeUndefined()
+    expect(Schema.decodeUnknownSync(RpcDescriptorWire)(withPolicy!)).not.toHaveProperty('policies')
   })
 
   it('projects only explicitly set RPC documentation, including false deprecation', () => {

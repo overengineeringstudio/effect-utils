@@ -42,11 +42,18 @@ export interface ExplorerConnectionIdentity {
   readonly clientId: number
 }
 
+/** Stable identity supplied to the host capture selector; never includes request values. */
+export type ExplorerCaptureDescriptor = Pick<RpcDescriptor, 'descriptorId' | 'key' | 'tag' | 'kind'>
+
+/** Host-wide policy map or a once-per-descriptor selector evaluated at construction. */
+export type ExplorerCaptureConfig =
+  | CapturePolicies
+  | ((descriptor: ExplorerCaptureDescriptor) => CapturePolicies | undefined)
 /** Host-owned inputs for one scoped explorer instance. */
 export interface ExplorerConfig {
   readonly instanceId: string
   readonly bounds: ExplorerBounds
-  readonly capture?: CapturePolicies | undefined
+  readonly capture?: ExplorerCaptureConfig | undefined
   readonly clock?: ExplorerClock | undefined
   readonly connectionId?: ((identity: ExplorerConnectionIdentity) => string) | undefined
   readonly telemetry: Omit<ExplorerTelemetryOptions, 'readRetainedCounts'>
@@ -128,13 +135,21 @@ const requestForEvent = ({
   return before.find((record) => record.key.connectionId === event.connectionId)?.key
 }
 
-const captureDescriptor = (descriptor: RpcDescriptor): ProtocolCaptureDescriptor => {
+const captureDescriptor = ({
+  descriptor,
+  hostPolicies,
+}: {
+  readonly descriptor: RpcDescriptor
+  readonly hostPolicies?: CapturePolicies | undefined
+}): ProtocolCaptureDescriptor => {
   const live = descriptor.live
   return live === undefined
-    ? { descriptorId: descriptor.descriptorId, observe: descriptor.observe }
+    ? { descriptorId: descriptor.descriptorId, observe: descriptor.observe, hostPolicies }
     : {
         descriptorId: descriptor.descriptorId,
         observe: descriptor.observe,
+        hostPolicies,
+        policies: live.policies,
         payloadSchema: live.payloadSchema,
         successSchema: live.successSchema,
         errorSchema: live.errorSchema,
@@ -271,10 +286,14 @@ export const makeExplorer = ({
     const applicationDescriptors = makeRpcDescriptors(group)
     const inspectorDescriptors = makeRpcDescriptors(InspectorRpcGroup)
     const descriptorsByTag = new Map(
-      [...applicationDescriptors, ...inspectorDescriptors].map((descriptor) => [
-        descriptor.tag,
-        captureDescriptor(descriptor),
-      ]),
+      [...applicationDescriptors, ...inspectorDescriptors].map((descriptor) => {
+        const { descriptorId, key, tag, kind } = descriptor
+        const hostPolicies =
+          typeof config.capture === 'function'
+            ? config.capture({ descriptorId, key, tag, kind })
+            : config.capture
+        return [tag, captureDescriptor({ descriptor, hostPolicies })] as const
+      }),
     )
     let reportDeltaEvicted: ((count: number) => void) | undefined
     const rawStore = makeExplorerStore({
@@ -318,7 +337,6 @@ export const makeExplorer = ({
           ? descriptor
           : { ...descriptor, encodedDecoders }
       },
-      hostPolicies: config.capture,
       normalizationBounds: config.bounds.normalized,
       onNormalization: ({ channel, outcome, durationSeconds }) =>
         runTelemetry(
