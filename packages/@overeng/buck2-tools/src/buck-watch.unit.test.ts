@@ -1,18 +1,53 @@
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 
 import { describe, expect, it } from 'vitest'
 
 import {
   affectedPackagePaths,
   buildTargetsFor,
+  CommandFailure,
+  exitCodeOf,
   reconcileBuckViews,
+  runCommand,
   runBuckWatchLoop,
   type BuckWatchPlan,
   type WatchChangeSource,
   type WatchLoopStatus,
 } from './buck-watch.ts'
+
+/** Every gate input the OTEL helpers read; tests pin each one explicitly. */
+type OtelGateEnvironment = Record<
+  | 'OTEL_TASK_TRACEPARENT'
+  | 'OTEL_SPAN_BIN'
+  | 'OTELITE_HTTP_ENDPOINT'
+  | 'OTEL_EXPORTER_OTLP_ENDPOINT',
+  string | undefined
+>
+
+/** Clears inherited gate inputs, keeps PATH/spool/traceparent from the test itself. */
+const hermeticOtelGate = (): OtelGateEnvironment => {
+  const saved: OtelGateEnvironment = {
+    OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
+    OTEL_SPAN_BIN: process.env.OTEL_SPAN_BIN,
+    OTELITE_HTTP_ENDPOINT: process.env.OTELITE_HTTP_ENDPOINT,
+    OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+  }
+  delete process.env.OTEL_TASK_TRACEPARENT
+  delete process.env.OTEL_SPAN_BIN
+  delete process.env.OTELITE_HTTP_ENDPOINT
+  delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+  return saved
+}
+
+const restoreOtelGate = (saved: OtelGateEnvironment): void => {
+  for (const [key, value] of Object.entries(saved))
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+}
 
 const plan: BuckWatchPlan = {
   reloadPaths: ['genie/buck2'],
@@ -334,6 +369,170 @@ describe('Buck watch reconciliation', () => {
     } finally {
       await rm(root, { recursive: true })
     }
+  })
+
+  it('emits command spans for the build and each publication without wrapping commands', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
+    const otelSpan = join(otelDirectory, 'otel-span')
+    const capture = join(otelDirectory, 'captured.txt')
+    writeFileSync(otelSpan, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(capture)}\n`)
+    chmodSync(otelSpan, 0o755)
+    const savedPath = process.env.PATH
+    const savedTraceparent = process.env.TRACEPARENT
+    const savedSpool = process.env.OTEL_SPAN_SPOOL_DIR
+    process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
+    process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
+    process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
+    const savedEnvironment = hermeticOtelGate()
+    try {
+      const manifest = join(root, 'editor-inputs.json')
+      await writeFile(
+        manifest,
+        `${JSON.stringify({
+          schema: 'effect-utils/editor-view-inputs/v1',
+          editorInputs: 'buck-out/app/node_modules',
+          packageTree: 'buck-out/app/package_tree',
+          readRoots: [],
+        })}\n`,
+      )
+      const invocations: { command: string; args: readonly string[] }[] = []
+      await reconcileBuckViews({
+        request: {
+          packagePaths: ['packages/app'],
+          changedPaths: [],
+          buildTargets: ['//packages/app:editor_view_inputs'],
+        },
+        options: {
+          plan,
+          mode: 'publish',
+          repoRoot: root,
+          workspaceRoot: root,
+          buck2: '/tools/buck2',
+          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
+          workspaceAuthority: '/repo/authority.json',
+          cp: '/tools/cp',
+          mv: '/tools/mv',
+          snapshotRetention: 3,
+          run: async ({ command, args }) => {
+            invocations.push({ command, args })
+            return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+          },
+        },
+      })
+      // The real commands run unwrapped; spans are emitted afterwards.
+      expect(invocations[0]?.command).toBe('/tools/buck2')
+      expect(invocations[0]?.args[0]).toBe('build')
+      expect(invocations[1]?.command).toBe('/tools/bun')
+      expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
+      const captured = readFileSync(capture, 'utf8')
+      expect(captured).toContain('emit-span effect-utils-devenv buck2.build')
+      expect(captured).toContain('--attr-int buck2.targets=1')
+      expect(captured).toContain('emit-span effect-utils-devenv editor-view.publish')
+      expect(captured).toContain('--attr-string package.path=packages/app')
+      expect(captured).toContain('--attr-int exit.code=0')
+      expect(captured).toContain('--status-code ok')
+    } finally {
+      process.env.PATH = savedPath
+      if (savedTraceparent === undefined) delete process.env.TRACEPARENT
+      else process.env.TRACEPARENT = savedTraceparent
+      if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
+      else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
+      restoreOtelGate(savedEnvironment)
+      rmSync(otelDirectory, { recursive: true, force: true })
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('keeps the build and every publication green when the telemetry CLI fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
+    const otelSpan = join(otelDirectory, 'otel-span')
+    writeFileSync(otelSpan, '#!/bin/sh\nexit 3\n')
+    chmodSync(otelSpan, 0o755)
+    const savedPath = process.env.PATH
+    const savedTraceparent = process.env.TRACEPARENT
+    const savedSpool = process.env.OTEL_SPAN_SPOOL_DIR
+    process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
+    process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
+    process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
+    const savedEnvironment = hermeticOtelGate()
+    try {
+      const manifest = join(root, 'editor-inputs.json')
+      await writeFile(
+        manifest,
+        `${JSON.stringify({
+          schema: 'effect-utils/editor-view-inputs/v1',
+          editorInputs: 'buck-out/app/node_modules',
+          packageTree: 'buck-out/app/package_tree',
+          readRoots: [],
+        })}\n`,
+      )
+      const commands: string[] = []
+      await reconcileBuckViews({
+        request: {
+          packagePaths: ['packages/app'],
+          changedPaths: [],
+          buildTargets: ['//packages/app:editor_view_inputs'],
+        },
+        options: {
+          plan,
+          mode: 'publish',
+          repoRoot: root,
+          workspaceRoot: root,
+          buck2: '/tools/buck2',
+          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
+          workspaceAuthority: '/repo/authority.json',
+          cp: '/tools/cp',
+          mv: '/tools/mv',
+          snapshotRetention: 3,
+          run: async ({ command }) => {
+            commands.push(command)
+            return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+          },
+        },
+      })
+      expect(commands).toEqual(['/tools/buck2', '/tools/bun'])
+    } finally {
+      process.env.PATH = savedPath
+      if (savedTraceparent === undefined) delete process.env.TRACEPARENT
+      else process.env.TRACEPARENT = savedTraceparent
+      if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
+      else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
+      restoreOtelGate(savedEnvironment)
+      rmSync(otelDirectory, { recursive: true, force: true })
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('records signaled command termination as a failed nonzero exit', async () => {
+    const error = await runCommand({
+      command: process.execPath,
+      args: ['-e', 'console.error("exited 0"); process.kill(process.pid, "SIGTERM")'],
+      cwd: tmpdir(),
+    }).then(
+      () => undefined,
+      (rejection: unknown) => rejection,
+    )
+    expect(error).toBeInstanceOf(CommandFailure)
+    expect((error as CommandFailure).exitCode).toBeUndefined()
+    expect((error as CommandFailure).signal).toBe('SIGTERM')
+    // The signal kill must not be marked ok even though stderr contains "exited 0".
+    expect(exitCodeOf(error)).toBe(1)
+  })
+
+  it('keeps embedded command output from forging an exit status', async () => {
+    const error = await runCommand({
+      command: process.execPath,
+      args: ['-e', 'console.error("nested tool exited 0"); process.exit(5)'],
+      cwd: tmpdir(),
+    }).then(
+      () => undefined,
+      (rejection: unknown) => rejection,
+    )
+    expect((error as CommandFailure).exitCode).toBe(5)
+    expect(exitCodeOf(error)).toBe(5)
+    expect(exitCodeOf(new Error('unrelated failure'))).toBe(1)
   })
 
   it('closes the subscription and publishes stopped status on shutdown', async () => {

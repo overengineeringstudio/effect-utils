@@ -455,6 +455,126 @@ describe('editor view publisher', () => {
     }
   })
 
+  it('fails closed when a declared backing root changes while materializing', async () => {
+    const fixture = makeFixture()
+    try {
+      const backingRoot = join(fixture.root, 'inputs', 'store-entry')
+      mkdirSync(join(backingRoot, 'dep'), { recursive: true })
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "first"\n')
+      const linkedView = join(fixture.root, 'inputs', 'node_modules-linked')
+      mkdirSync(linkedView)
+      symlinkSync(join(backingRoot, 'dep'), join(linkedView, 'dep'))
+      const options = { ...fixture.options, nodeModules: linkedView, backingRoots: [backingRoot] }
+
+      await expect(
+        publishEditorView({
+          ...options,
+          beforeMaterialize: () => {
+            makeWritable(backingRoot)
+            writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "swapped"\n')
+          },
+        }),
+      ).rejects.toThrow('declared backing roots changed while materializing')
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(
+        readdirSync(join(fixture.editorRoot, '.store')).some((name) =>
+          name.startsWith('.candidate-'),
+        ),
+      ).toBe(false)
+
+      // The unmodified roots still publish the exact record a clean run produces.
+      makeWritable(backingRoot)
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "first"\n')
+      const record = await publishEditorView(options)
+      await expect(checkEditorView(options)).resolves.toEqual(record)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('fails closed when a declared root link is retargeted while materializing', async () => {
+    const fixture = makeFixture()
+    try {
+      const backingRoot = join(fixture.root, 'inputs', 'store-entry')
+      mkdirSync(join(backingRoot, 'dep'), { recursive: true })
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "first"\n')
+      const linkedView = join(fixture.root, 'inputs', 'node_modules-linked')
+      mkdirSync(linkedView)
+      const depLink = join(linkedView, 'dep')
+      symlinkSync(join(backingRoot, 'dep'), depLink)
+      const options = { ...fixture.options, nodeModules: linkedView, backingRoots: [backingRoot] }
+
+      await expect(
+        publishEditorView({
+          ...options,
+          beforeMaterialize: () => {
+            rmSync(depLink)
+            // A different spelling of the same resolved path: the owner-resolved
+            // digest alone accepts it, the copied link inventory must not.
+            symlinkSync(`${backingRoot}/./dep`, depLink)
+          },
+        }),
+      ).rejects.toThrow('declared backing roots changed while materializing')
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(
+        readdirSync(join(fixture.editorRoot, '.store')).some((name) =>
+          name.startsWith('.candidate-'),
+        ),
+      ).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('emits one completed editor-view.phases span per publication when tracing is active', async () => {
+    const otelDirectory = mkdtempSync(join(tmpdir(), 'editor-view-otel-'))
+    const otelSpan = join(otelDirectory, 'otel-span')
+    const capture = join(otelDirectory, 'captured.txt')
+    writeFileSync(otelSpan, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(capture)}\n`)
+    chmodSync(otelSpan, 0o755)
+    const savedPath = process.env.PATH
+    const savedTraceparent = process.env.TRACEPARENT
+    const savedSpool = process.env.OTEL_SPAN_SPOOL_DIR
+    const savedSpanBin = process.env.OTEL_SPAN_BIN
+    const savedTaskTraceparent = process.env.OTEL_TASK_TRACEPARENT
+    const savedHttpEndpoint = process.env.OTELITE_HTTP_ENDPOINT
+    const savedOtlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+    process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
+    process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
+    process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
+    delete process.env.OTEL_SPAN_BIN
+    delete process.env.OTEL_TASK_TRACEPARENT
+    delete process.env.OTELITE_HTTP_ENDPOINT
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      const captured = readFileSync(capture, 'utf8')
+      expect(captured).toContain('emit-span effect-utils-devenv editor-view.phases')
+      expect(captured).toContain('--attr-bool snapshot.created=true')
+      expect(captured).toContain('--attr-int phase.fingerprint.ms=')
+      expect(captured).toContain('--attr-int phase.pointers.ms=')
+      expect(captured).toContain('--attr-string package.path=packages/@overeng/tui-core')
+      expect(captured).toContain('--attr-string span.label=phases tui-core')
+    } finally {
+      cleanup(fixture)
+      process.env.PATH = savedPath
+      if (savedTraceparent === undefined) delete process.env.TRACEPARENT
+      else process.env.TRACEPARENT = savedTraceparent
+      if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
+      else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
+      if (savedSpanBin === undefined) delete process.env.OTEL_SPAN_BIN
+      else process.env.OTEL_SPAN_BIN = savedSpanBin
+      if (savedTaskTraceparent === undefined) delete process.env.OTEL_TASK_TRACEPARENT
+      else process.env.OTEL_TASK_TRACEPARENT = savedTaskTraceparent
+      if (savedHttpEndpoint === undefined) delete process.env.OTELITE_HTTP_ENDPOINT
+      else process.env.OTELITE_HTTP_ENDPOINT = savedHttpEndpoint
+      if (savedOtlpEndpoint === undefined) delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+      else process.env.OTEL_EXPORTER_OTLP_ENDPOINT = savedOtlpEndpoint
+      rmSync(otelDirectory, { recursive: true, force: true })
+    }
+  })
+
   it('republishes a distinct snapshot when only declared backing-root bytes change', async () => {
     const fixture = makeFixture()
     try {

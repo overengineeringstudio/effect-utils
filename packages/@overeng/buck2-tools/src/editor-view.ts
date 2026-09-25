@@ -20,6 +20,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
+import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath } from './real-path.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
@@ -97,6 +98,12 @@ export type EditorViewOptions = {
    */
   readonly backingRoots?: readonly string[]
   readonly nodeModules: string
+  /**
+   * Synchronization hook invoked after the admitted roots are fingerprinted and
+   * before the snapshot candidate is materialized; lets tests prove that roots
+   * changed inside that window are caught by the publication stability check.
+   */
+  readonly beforeMaterialize?: () => void | Promise<void>
   readonly cp: string
   readonly mv: string
   readonly workspaceAuthority: string
@@ -205,12 +212,12 @@ const ensureRealDirectory = ({ path, field }: { path: string; field: string }): 
 
 const streamFileIntoHash = async ({
   path,
-  hash,
+  hashes,
 }: {
   path: string
-  hash: ReturnType<typeof createHash>
+  hashes: readonly ReturnType<typeof createHash>[]
 }) => {
-  for await (const chunk of createReadStream(path)) hash.update(chunk)
+  for await (const chunk of createReadStream(path)) for (const hash of hashes) hash.update(chunk)
 }
 
 /** Inputs of {@link canonicalTreeFingerprint}: the tree to hash and its dereferencing mode. */
@@ -227,6 +234,44 @@ export type CanonicalTreeFingerprintOptions = {
   readonly backingRoots?: readonly string[]
 }
 
+/** Stable per-root identities framing link targets in owner-resolved form. */
+export type TreeLinkOwners = readonly { readonly source: string; readonly identity: string }[]
+
+/**
+ * Both canonical forms of one tree. `digest` frames every symbolic link by its
+ * literal target; `resolvedLinksDigest` instead frames each link by the declared
+ * root that owns its resolution, so a source tree and its materialized snapshot
+ * — whose links are relocated into the snapshot — hash equally when the copy is
+ * faithful.
+ */
+export type CanonicalTreeFingerprints = {
+  readonly digest: string
+  readonly resolvedLinksDigest: string | undefined
+  /**
+   * Digest over every symlink's (path, literal target) pair, order-insensitive.
+   * The owner-resolved form deliberately ignores how a link is spelled; this
+   * companion digest proves the spelling itself did not change across the copy.
+   */
+  readonly literalLinksDigest: string | undefined
+}
+
+/** Frames a byte-sorted (path, literal target) link inventory into one digest. */
+const frameLinkInventory = (
+  links: readonly (readonly [path: string, target: string])[],
+): string => {
+  const hash = createHash('sha256')
+  hash.update('effect-utils/editor-view-link-inventory/v1')
+  for (const [linkPath, target] of links.toSorted((left, right) =>
+    compareBytes({ left: left[0] ?? '', right: right[0] ?? '' }),
+  ))
+    for (const value of [linkPath, target]) {
+      const [length, bytes] = frame(value)
+      hash.update(length)
+      hash.update(bytes)
+    }
+  return hash.digest('hex')
+}
+
 /**
  * Hash a tree with byte-sorted portable paths and length-framed entry data.
  * Directory, regular-file, and symlink kinds are distinct; special files fail closed.
@@ -235,7 +280,49 @@ export const canonicalTreeFingerprint = async ({
   tree,
   dereference = false,
   backingRoots = [],
-}: CanonicalTreeFingerprintOptions): Promise<string> => {
+}: CanonicalTreeFingerprintOptions): Promise<string> =>
+  (
+    await canonicalTreeFingerprints({
+      tree,
+      ...(dereference === true ? { dereference } : {}),
+      ...(backingRoots.length === 0 ? {} : { backingRoots }),
+    })
+  ).digest
+
+/**
+ * Hash a tree in both canonical forms at once: the literal-link digest used for
+ * record identity, and the owner-resolved-link digest used to compare an
+ * admitted source tree against its materialized snapshot copy.
+ */
+export const canonicalTreeFingerprintWithResolvedLinks = async ({
+  tree,
+  linkOwners,
+}: {
+  readonly tree: string
+  readonly linkOwners: TreeLinkOwners
+}): Promise<{
+  readonly digest: string
+  readonly resolvedLinksDigest: string
+  readonly literalLinksDigest: string
+}> => {
+  const fingerprints = await canonicalTreeFingerprints({ tree, linkOwners })
+  return {
+    digest: fingerprints.digest,
+    resolvedLinksDigest:
+      fingerprints.resolvedLinksDigest ?? fail('tree link owners were not admitted for hashing'),
+    literalLinksDigest:
+      fingerprints.literalLinksDigest ?? fail('tree link owners were not admitted for hashing'),
+  }
+}
+
+const canonicalTreeFingerprints = async ({
+  tree,
+  dereference = false,
+  backingRoots = [],
+  linkOwners = [],
+}: CanonicalTreeFingerprintOptions & {
+  readonly linkOwners?: TreeLinkOwners
+}): Promise<CanonicalTreeFingerprints> => {
   const absoluteTree = resolve(tree)
   requireDirectory({ path: absoluteTree, field: 'tree input' })
   const treeRoot = realpathSync(absoluteTree)
@@ -244,9 +331,36 @@ export const canonicalTreeFingerprint = async ({
     requireDirectory({ path: absoluteRoot, field: 'declared backing root' })
     return realpathSync(absoluteRoot)
   })
+  const canonicalLinkOwners = linkOwners.map((owner) => ({
+    identity: owner.identity,
+    source: realpathSync(owner.source),
+  }))
+  const resolvedLinks = canonicalLinkOwners.length > 0 && dereference !== true
   const hash = createHash('sha256')
   hash.update(treeDigestSchema)
   hash.update(Buffer.from([0]))
+  const resolvedHash = resolvedLinks === true ? createHash('sha256') : undefined
+  resolvedHash?.update(treeDigestSchema)
+  resolvedHash?.update(Buffer.from([0]))
+  const literalLinks: (readonly [path: string, target: string])[] = []
+
+  /** Frames one link's owner resolution as (owner identity, path within the owner). */
+  const frameLinkOwner = ({
+    absolutePath,
+    resolved,
+  }: {
+    readonly absolutePath: string
+    readonly resolved: string
+  }): readonly [Buffer, Buffer] => {
+    const owner = canonicalLinkOwners.find((declaredOwner) =>
+      isWithin({ root: declaredOwner.source, candidate: resolved }),
+    )
+    if (owner === undefined)
+      fail(`tree symbolic link resolves outside declared roots: ${absolutePath} -> ${resolved}`)
+    // A link may resolve to the owner root itself (pnpm-style package links);
+    // the empty path-within-owner frames that case unambiguously.
+    return [Buffer.from(owner.identity), Buffer.from(relative(owner.source, resolved))]
+  }
 
   const visit = async ({
     relativePath,
@@ -296,6 +410,9 @@ export const canonicalTreeFingerprint = async ({
       hash.update(Buffer.from('D'))
       hash.update(pathLength)
       hash.update(pathBytes)
+      resolvedHash?.update(Buffer.from('D'))
+      resolvedHash?.update(pathLength)
+      resolvedHash?.update(pathBytes)
       const names = readdirSync(absolutePath).toSorted((left, right) =>
         compareBytes({ left, right }),
       )
@@ -324,6 +441,22 @@ export const canonicalTreeFingerprint = async ({
       hash.update(pathBytes)
       hash.update(targetLength)
       hash.update(targetBytes)
+      if (resolvedHash !== undefined) {
+        literalLinks.push([relativePath, readlinkSync(absolutePath)])
+        const [ownerIdentity, ownerTarget] = frameLinkOwner({
+          absolutePath,
+          resolved: realpathSync(absolutePath),
+        })
+        const [identityLength, identityBytes] = frame(ownerIdentity.toString())
+        const [ownerTargetLength, ownerTargetBytes] = frame(ownerTarget.toString())
+        resolvedHash.update(Buffer.from('L'))
+        resolvedHash.update(pathLength)
+        resolvedHash.update(pathBytes)
+        resolvedHash.update(identityLength)
+        resolvedHash.update(identityBytes)
+        resolvedHash.update(ownerTargetLength)
+        resolvedHash.update(ownerTargetBytes)
+      }
       const after = lstatSync(absolutePath, { bigint: true })
       if (
         after.isSymbolicLink() === false ||
@@ -341,7 +474,14 @@ export const canonicalTreeFingerprint = async ({
     hash.update(pathLength)
     hash.update(pathBytes)
     hash.update(u64(before.size))
-    await streamFileIntoHash({ path: absolutePath, hash })
+    resolvedHash?.update(Buffer.from('F'))
+    resolvedHash?.update(pathLength)
+    resolvedHash?.update(pathBytes)
+    resolvedHash?.update(u64(before.size))
+    await streamFileIntoHash({
+      path: absolutePath,
+      hashes: resolvedHash === undefined ? [hash] : [hash, resolvedHash],
+    })
     const after = lstatSync(absolutePath, { bigint: true })
     if (
       after.isFile() === false ||
@@ -394,7 +534,11 @@ export const canonicalTreeFingerprint = async ({
     rootAfter.ctimeNs !== rootBefore.ctimeNs
   )
     fail(`tree changed while hashing: ${absoluteTree}`)
-  return hash.digest('hex')
+  return {
+    digest: hash.digest('hex'),
+    resolvedLinksDigest: resolvedHash?.digest('hex'),
+    literalLinksDigest: resolvedLinks === true ? frameLinkInventory(literalLinks) : undefined,
+  }
 }
 
 const isRecord = (value: unknown): value is JsonRecord =>
@@ -860,29 +1004,10 @@ const declaredSnapshotRoots = ({
   ]
 }
 
-const fingerprintDeclaredRoots = async ({
-  roots,
-  knownRoot,
-}: {
-  readonly roots: readonly DeclaredSnapshotRoot[]
-  readonly knownRoot?: { readonly source: string; readonly digest: string }
-}): Promise<string> => {
-  // Declared roots are proven disjoint read-only trees, so their fingerprints are
-  // computed concurrently. Settling first and rethrowing in declared order keeps both
-  // the reported failure and the hashed sequence deterministic.
-  const settled = await Promise.allSettled(
-    roots.map(async (root) => ({
-      identity: root.identity,
-      digest:
-        root.source === knownRoot?.source
-          ? knownRoot.digest
-          : await canonicalTreeFingerprint({ tree: root.source }),
-    })),
-  )
-  const entries = settled.map((result) => {
-    if (result.status === 'rejected') throw result.reason
-    return result.value
-  })
+/** Frames an ordered (identity, digest) list into the declared-roots digest. */
+const frameDeclaredRootDigests = (
+  entries: readonly { readonly identity: string; readonly digest: string }[],
+): string => {
   const hash = createHash('sha256')
   hash.update('effect-utils/editor-view-declared-roots/v1')
   for (const entry of entries)
@@ -894,16 +1019,137 @@ const fingerprintDeclaredRoots = async ({
   return hash.digest('hex')
 }
 
-const fingerprintSnapshotPayload = async (snapshotDir: string): Promise<string> => {
+type DeclaredRootFingerprints = {
+  /** Combined literal-link digest recorded as the normalized store digest. */
+  readonly digest: string
+  /**
+   * Combined owner-resolved-link digest over the same roots; comparable with a
+   * materialized snapshot copy whose links were relocated into the snapshot.
+   */
+  readonly resolvedLinksDigest: string | undefined
+  /**
+   * Per-root literal link-inventory digests in declared-root order; compared
+   * against the link texts the materializer actually copied, so a symlink
+   * retargeted to a different spelling of the same resolution still fails.
+   */
+  readonly literalLinksDigests: readonly (string | undefined)[]
+}
+
+const fingerprintDeclaredRoots = async ({
+  roots,
+  knownRoot,
+}: {
+  readonly roots: readonly DeclaredSnapshotRoot[]
+  readonly knownRoot?: {
+    readonly source: string
+    readonly digest: string
+    readonly resolvedLinksDigest?: string
+    readonly literalLinksDigest?: string
+  }
+}): Promise<DeclaredRootFingerprints> => {
+  // Declared roots are proven disjoint read-only trees, so their fingerprints are
+  // computed concurrently. Settling first and rethrowing in declared order keeps both
+  // the reported failure and the hashed sequence deterministic.
+  const linkOwners: TreeLinkOwners = roots
+  const settled = await Promise.allSettled(
+    roots.map(async (root) => {
+      if (root.source === knownRoot?.source)
+        return {
+          identity: root.identity,
+          digest: knownRoot.digest,
+          resolvedLinksDigest: knownRoot.resolvedLinksDigest,
+          literalLinksDigest: knownRoot.literalLinksDigest,
+        }
+      const fingerprints = await canonicalTreeFingerprintWithResolvedLinks({
+        tree: root.source,
+        linkOwners,
+      })
+      return {
+        identity: root.identity,
+        digest: fingerprints.digest,
+        resolvedLinksDigest: fingerprints.resolvedLinksDigest,
+        literalLinksDigest: fingerprints.literalLinksDigest,
+      }
+    }),
+  )
+  const entries = settled.map((result) => {
+    if (result.status === 'rejected') throw result.reason
+    return result.value
+  })
+  return {
+    digest: frameDeclaredRootDigests(entries),
+    resolvedLinksDigest:
+      entries.every((entry) => entry.resolvedLinksDigest !== undefined) === true
+        ? frameDeclaredRootDigests(
+            entries.map((entry) => ({
+              digest: entry.resolvedLinksDigest ?? fail('declared root digest is absent'),
+              identity: entry.identity,
+            })),
+          )
+        : undefined,
+    literalLinksDigests: entries.map((entry) => entry.literalLinksDigest),
+  }
+}
+
+type SnapshotPayloadFingerprints = {
+  /** Digest of the snapshot payload exactly as recorded in `byteSnapshotDigest`. */
+  readonly digest: string
+  /**
+   * Owner-resolved per-root digest over the same materialized payload, framed like
+   * {@link fingerprintDeclaredRoots}; present only for finite snapshots whose
+   * declared roots were admitted for the copy-stability comparison.
+   */
+  readonly resolvedRootsDigest: string | undefined
+}
+
+const fingerprintSnapshotPayload = async ({
+  snapshotDir,
+  roots = [],
+}: {
+  readonly snapshotDir: string
+  readonly roots?: readonly DeclaredSnapshotRoot[]
+}): Promise<SnapshotPayloadFingerprints> => {
   const backing = join(snapshotDir, '.backing')
   const nodeModules = join(snapshotDir, 'node_modules')
-  if (pathExists(backing) === false) return canonicalTreeFingerprint({ tree: nodeModules })
+  if (pathExists(backing) === false)
+    return {
+      digest: await canonicalTreeFingerprint({ tree: nodeModules }),
+      resolvedRootsDigest: undefined,
+    }
+  const extraRoots = roots.filter((root) => root.identity !== 'node_modules')
+  // Every link inside a materialized snapshot resolves within the snapshot itself,
+  // so the candidate's own roots act as the owner table for resolved-link hashing.
+  const candidateOwners: TreeLinkOwners = [
+    { identity: 'node_modules', source: nodeModules },
+    ...extraRoots.map((root) => ({
+      identity: root.identity,
+      source: join(snapshotDir, root.destination),
+    })),
+  ]
   // These disjoint immutable roots can be fingerprinted concurrently. Preserve their fixed order
   // when framing the resulting payload digest so scheduling cannot affect the record identity.
-  const [backingDigest, nodeModulesDigest] = await Promise.all([
+  const [backingDigest, extraResolved, nodeModulesFingerprints] = await Promise.all([
     canonicalTreeFingerprint({ tree: backing }),
-    canonicalTreeFingerprint({ tree: nodeModules }),
+    Promise.all(
+      extraRoots.map(async (root) => ({
+        digest: (
+          await canonicalTreeFingerprintWithResolvedLinks({
+            tree: join(snapshotDir, root.destination),
+            linkOwners: candidateOwners,
+          })
+        ).resolvedLinksDigest,
+        identity: root.identity,
+      })),
+    ),
+    roots.length === 0
+      ? Promise.resolve(undefined)
+      : canonicalTreeFingerprintWithResolvedLinks({
+          tree: nodeModules,
+          linkOwners: candidateOwners,
+        }),
   ])
+  const nodeModulesDigest =
+    nodeModulesFingerprints?.digest ?? (await canonicalTreeFingerprint({ tree: nodeModules }))
   const entries = [
     ['.backing', backingDigest],
     ['node_modules', nodeModulesDigest],
@@ -916,30 +1162,62 @@ const fingerprintSnapshotPayload = async (snapshotDir: string): Promise<string> 
       hash.update(length)
       hash.update(bytes)
     }
-  return hash.digest('hex')
+  return {
+    digest: hash.digest('hex'),
+    resolvedRootsDigest:
+      nodeModulesFingerprints === undefined
+        ? undefined
+        : frameDeclaredRootDigests([
+            {
+              digest: nodeModulesFingerprints.resolvedLinksDigest,
+              identity: 'node_modules',
+            },
+            ...extraResolved,
+          ]),
+  }
 }
 
+/**
+ * Relocates every copied link into the candidate and records, per declared
+ * root, the literal link texts the copy actually holds before relocation.
+ */
 const rewriteSnapshotLinks = ({
   candidate,
   roots,
 }: {
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
-}): void => {
+}): Map<string, (readonly [path: string, target: string])[]> => {
+  const inventories = new Map<string, (readonly [path: string, target: string])[]>()
   const owners = roots
     .map((root) => ({ ...root, source: canonicalizePath(root.source) }))
     .toSorted((left, right) => right.source.length - left.source.length)
-  const visit = ({ source, destination }: { source: string; destination: string }): void => {
+  const visit = ({
+    source,
+    destination,
+    rootDestination,
+    identity,
+  }: {
+    source: string
+    destination: string
+    rootDestination: string
+    identity: string
+  }): void => {
     for (const name of readdirSync(source)) {
       const sourcePath = join(source, name)
       const destinationPath = join(destination, name)
       const before = lstatSync(sourcePath, { bigint: true })
       if (before.isDirectory() === true) {
-        visit({ source: sourcePath, destination: destinationPath })
+        visit({ source: sourcePath, destination: destinationPath, rootDestination, identity })
         continue
       }
       if (before.isSymbolicLink() === false) continue
       const target = readlinkSync(sourcePath)
+      // The copied link, not the source, is what the snapshot ships: record its
+      // literal text before relocation so the stability proof can compare it.
+      const inventory = inventories.get(identity) ?? []
+      inventory.push([relative(rootDestination, destinationPath), readlinkSync(destinationPath)])
+      inventories.set(identity, inventory)
       let liveTarget: string
       try {
         liveTarget = realpathSync(sourcePath)
@@ -979,7 +1257,13 @@ const rewriteSnapshotLinks = ({
     }
   }
   for (const root of owners)
-    visit({ source: root.source, destination: join(candidate, root.destination) })
+    visit({
+      source: root.source,
+      destination: join(candidate, root.destination),
+      rootDestination: join(candidate, root.destination),
+      identity: root.identity,
+    })
+  return inventories
 }
 
 const materializeDeclaredRoots = ({
@@ -990,7 +1274,7 @@ const materializeDeclaredRoots = ({
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
   cp: string
-}): void => {
+}): Map<string, (readonly [path: string, target: string])[]> => {
   mkdirSync(join(candidate, '.backing'))
   for (const root of roots) {
     const destination = join(candidate, root.destination)
@@ -1008,7 +1292,7 @@ const materializeDeclaredRoots = ({
       label: finiteCopyLabel,
     })
   }
-  rewriteSnapshotLinks({ candidate, roots })
+  return rewriteSnapshotLinks({ candidate, roots })
 }
 
 const assertByteOwnedFiniteSnapshot = ({
@@ -1406,7 +1690,7 @@ const validateSnapshotContents = async (snapshotDir: string): Promise<EditorView
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
   requireDirectory({ path: snapshotNodeModules, field: 'snapshot node_modules' })
   requireReadOnlySnapshot(snapshotDir)
-  const digest = await fingerprintSnapshotPayload(snapshotDir)
+  const digest = (await fingerprintSnapshotPayload({ snapshotDir })).digest
   if (digest !== record.byteSnapshotDigest)
     fail(
       `existing snapshot byte digest mismatch: recorded=${record.byteSnapshotDigest} actual=${digest}`,
@@ -1523,6 +1807,30 @@ const signalEditorResolution = ({ paths, token }: { paths: ViewPaths; token: str
 
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
 export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
+  const startedAtMs = performance.timeOrigin + performance.now()
+  const phaseTimings: (readonly [name: string, durationMs: number])[] = []
+  let phaseName = 'admission'
+  let phaseStartedAt = performance.now()
+  const enterPhase = (name: string): void => {
+    phaseTimings.push([phaseName, performance.now() - phaseStartedAt])
+    phaseName = name
+    phaseStartedAt = performance.now()
+  }
+  const emitPhaseSpan = ({ created }: { readonly created: boolean }): void =>
+    emitCompletedSpan({
+      name: 'editor-view.phases',
+      label: `phases ${options.viewName}`,
+      attributes: [
+        ['package.path', options.package],
+        ['view.name', options.viewName],
+        ['snapshot.created', created],
+        ...phaseTimings.map(
+          ([name, durationMs]): OtelSpanAttribute => [`phase.${name}.ms`, Math.round(durationMs)],
+        ),
+      ],
+      endedAtMs: performance.timeOrigin + performance.now(),
+      startedAtMs,
+    })
   requireRecordIdentity(options)
   const paths = makePaths(options)
   validateWorkspaceDependencyAuthority({
@@ -1544,13 +1852,33 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
   const token = tokenSafe(lock.token)
   let candidate: string | undefined
   try {
+    enterPhase('fingerprint')
     const editorInputsPath = realpathSync(resolve(options.editorInputs))
     const selectedPath = realpathSync(resolve(options.nodeModules))
-    const fingerprint = await canonicalTreeFingerprint({ tree: editorInputsPath })
+    const finite = (options.backingRoots?.length ?? 0) > 0
+    const roots =
+      finite === true
+        ? declaredSnapshotRoots({
+            nodeModules: options.nodeModules,
+            backingRoots: options.backingRoots ?? [],
+          })
+        : []
+    // The owner-resolved form of the selected view is computed by the same walk as
+    // its literal digest, so admitting it for the copy-stability comparison adds no
+    // extra tree traversal.
+    const selectedFingerprints =
+      finite === true
+        ? await canonicalTreeFingerprintWithResolvedLinks({ tree: selectedPath, linkOwners: roots })
+        : undefined
+    const fingerprint =
+      selectedFingerprints !== undefined && selectedPath === editorInputsPath
+        ? selectedFingerprints.digest
+        : await canonicalTreeFingerprint({ tree: editorInputsPath })
     const selectedViewDigest =
-      selectedPath === editorInputsPath
+      selectedFingerprints?.digest ??
+      (selectedPath === editorInputsPath
         ? fingerprint
-        : await canonicalTreeFingerprint({ tree: selectedPath })
+        : await canonicalTreeFingerprint({ tree: selectedPath }))
     // A warm publication must prove both the admitted roots and the immutable snapshot.
     // Begin validating the current snapshot before traversing the roots so those independent
     // integrity checks overlap without weakening either one.
@@ -1586,24 +1914,26 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         ),
       }
     })()
-    const finite = (options.backingRoots?.length ?? 0) > 0
-    const roots =
-      finite === true
-        ? declaredSnapshotRoots({
-            nodeModules: options.nodeModules,
-            backingRoots: options.backingRoots ?? [],
-          })
-        : []
-    const normalizedStoreDigest =
+    enterPhase('verify')
+    const declaredRoots =
       finite === true
         ? await fingerprintDeclaredRoots({
             roots,
             knownRoot: {
               source: selectedPath,
               digest: selectedViewDigest,
+              resolvedLinksDigest:
+                selectedFingerprints?.resolvedLinksDigest ??
+                fail('selected view link owners were not admitted for hashing'),
+              literalLinksDigest:
+                selectedFingerprints?.literalLinksDigest ??
+                fail('selected view link owners were not admitted for hashing'),
             },
           })
-        : await canonicalTreeFingerprint({ tree: selectedPath, dereference: true })
+        : undefined
+    const normalizedStoreDigest =
+      declaredRoots?.digest ??
+      (await canonicalTreeFingerprint({ tree: selectedPath, dereference: true }))
     const identity = snapshotIdentity({
       editorInputsFingerprint: fingerprint,
       normalizedStoreDigest,
@@ -1613,6 +1943,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     let record: EditorViewRecord
     let created = false
     if (existsSync(snapshotDir) === true) {
+      enterPhase('validate')
       let existing: EditorViewRecord
       if (currentSnapshotValidation?.snapshotDir === snapshotDir) {
         const validation = await currentSnapshotValidation.validation
@@ -1635,17 +1966,17 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       if (currentSnapshotValidation !== undefined) await currentSnapshotValidation.validation
       candidate = join(paths.storeDir, `.candidate-${token}`)
       mkdirSync(candidate)
+      enterPhase('materialize')
+      let materialized = false
+      let materializedLinks: Map<string, (readonly [path: string, target: string])[]> | undefined
       if (finite === true) {
-        materializeDeclaredRoots({ candidate, roots, cp: options.cp })
+        await options.beforeMaterialize?.()
+        materializedLinks = materializeDeclaredRoots({ candidate, roots, cp: options.cp })
         assertByteOwnedFiniteSnapshot({
           sources: roots.map((root) => root.source),
           snapshot: candidate,
         })
-        const after = await fingerprintDeclaredRoots({ roots })
-        if (after !== normalizedStoreDigest)
-          fail(
-            `declared backing roots changed while materializing: before=${normalizedStoreDigest} after=${after}`,
-          )
+        materialized = true
       } else {
         const candidateNodeModules = join(candidate, 'node_modules')
         mkdirSync(candidateNodeModules)
@@ -1666,7 +1997,37 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
           snapshot: candidateNodeModules,
         })
       }
-      const candidateDigest = await fingerprintSnapshotPayload(candidate)
+      enterPhase('payload')
+      const payload = await fingerprintSnapshotPayload({
+        snapshotDir: candidate,
+        ...(finite === true ? { roots } : {}),
+      })
+      if (materialized === true && declaredRoots !== undefined) {
+        // The materialized copy is compared against the state admitted before the
+        // copy in owner-resolved link form, so a faithful copy of unmodified roots
+        // passes without re-reading the declared-root sources. The link
+        // inventories the materializer recorded additionally prove every copied
+        // link kept its admitted literal spelling, so a retarget to another
+        // spelling of the same resolution still fails closed.
+        const before = declaredRoots.resolvedLinksDigest
+        if (before !== undefined && payload.resolvedRootsDigest !== before)
+          fail(
+            `declared backing roots changed while materializing: before=${before} after=${payload.resolvedRootsDigest ?? 'absent'}`,
+          )
+        for (const [index, root] of roots.entries()) {
+          const admittedInventory =
+            declaredRoots.literalLinksDigests[index] ??
+            fail('declared root link inventory is absent')
+          const materializedInventory = frameLinkInventory(
+            materializedLinks?.get(root.identity) ?? [],
+          )
+          if (materializedInventory !== admittedInventory)
+            fail(
+              `declared backing roots changed while materializing: before=${admittedInventory} after=${materializedInventory}`,
+            )
+        }
+      }
+      const candidateDigest = payload.digest
       record = expectedRecord({
         options,
         fingerprint,
@@ -1680,9 +2041,11 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       created = true
     }
     if (created === true) {
+      enterPhase('harden')
       hardenSnapshot(snapshotDir)
       requireReadOnlySnapshot(snapshotDir)
     }
+    enterPhase('retention')
     // `snapshotName` is derived above from the same identity the record carries.
     const retention = prepareSnapshotRetention({
       paths,
@@ -1690,12 +2053,14 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       current: snapshotName,
       token,
     })
+    enterPhase('pointers')
     publishCurrentPointer({ paths, identity, token })
     adoptFirstHop({ paths, mv: options.mv, token })
     signalEditorResolution({ paths, token })
     // Publication computed every admitted digest and validated (or created) the snapshot while
     // holding the view lock. The pointer helpers verify their own exact writes, so rerunning the
     // full external-input and snapshot traversal here would add no freshness evidence.
+    enterPhase('gc')
     garbageCollectSnapshots({
       paths,
       options,
@@ -1703,6 +2068,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       current: snapshotName,
       token,
     })
+    emitPhaseSpan({ created })
     return record
   } finally {
     if (candidate !== undefined && pathExists(candidate) === true) {
@@ -1816,7 +2182,7 @@ const validatePublishedView = async ({
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
   let snapshotDigest: string
   try {
-    snapshotDigest = await fingerprintSnapshotPayload(snapshotDir)
+    snapshotDigest = (await fingerprintSnapshotPayload({ snapshotDir })).digest
   } catch (error) {
     return failCheck({
       message: `snapshot is incomplete: ${error instanceof Error ? error.message : String(error)}`,
@@ -1902,12 +2268,14 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
     })
   const normalizedStoreDigest =
     (options.backingRoots?.length ?? 0) > 0
-      ? await fingerprintDeclaredRoots({
-          roots: declaredSnapshotRoots({
-            nodeModules: options.nodeModules,
-            backingRoots: options.backingRoots ?? [],
-          }),
-        })
+      ? (
+          await fingerprintDeclaredRoots({
+            roots: declaredSnapshotRoots({
+              nodeModules: options.nodeModules,
+              backingRoots: options.backingRoots ?? [],
+            }),
+          })
+        ).digest
       : await canonicalTreeFingerprint({ tree: options.nodeModules, dereference: true })
   if (normalizedStoreDigest !== record.normalizedStoreDigest)
     return failCheck({
