@@ -1,4 +1,7 @@
-import { type BinaryCacheDescriptor, decodeBinaryCacheDescriptor } from './binary-cache-descriptor.ts'
+import {
+  type BinaryCacheDescriptor,
+  decodeBinaryCacheDescriptor,
+} from './binary-cache-descriptor.ts'
 import type { GitHubWorkflowArgs } from './mod.ts'
 
 /** Symbol metadata survives step spreading but is not serialized into workflow YAML. */

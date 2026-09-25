@@ -18,6 +18,7 @@ export type BinaryCacheDescriptor = {
     }
 )
 
+/** Nix substituter descriptor, the only kind rendered into Nix configuration. */
 export type NixBinaryCacheDescriptor = Extract<BinaryCacheDescriptor, { kind: 'nix-binary' }>
 
 /** Producer descriptor that does not match the tagged cache contract. */
@@ -54,11 +55,13 @@ const objectFields = (value: unknown): Readonly<Record<string, unknown>> | undef
     ? (value as Readonly<Record<string, unknown>>)
     : undefined
 
-/** Decode one descriptor exactly: known kind, every field present and well-formed, no extras. */
-export const decodeBinaryCacheDescriptor = (
-  value: unknown,
-  registryKey?: string,
-): BinaryCacheDescriptor => {
+const decodeDescriptor = ({
+  value,
+  registryKey,
+}: {
+  readonly value: unknown
+  readonly registryKey?: string
+}): BinaryCacheDescriptor => {
   const fields = objectFields(value)
   const cacheName =
     registryKey ?? (typeof fields?.name === 'string' ? fields.name : '<unnamed descriptor>')
@@ -72,7 +75,7 @@ export const decodeBinaryCacheDescriptor = (
   }
   const patterns = fieldPatterns[kind]
   for (const key of Object.keys(fields)) {
-    if (key !== 'kind' && patterns[key] === undefined) {
+    if (key !== 'kind' && Object.hasOwn(patterns, key) === false) {
       fail(`unexpected field ${JSON.stringify(key)} for ${kind}`)
     }
   }
@@ -85,6 +88,10 @@ export const decodeBinaryCacheDescriptor = (
   }
   return fields as BinaryCacheDescriptor
 }
+
+/** Decode one descriptor exactly: known kind, every field present and well-formed, no extras. */
+export const decodeBinaryCacheDescriptor = (value: unknown): BinaryCacheDescriptor =>
+  decodeDescriptor({ value })
 
 /** Decode a producer registry keyed by descriptor name. */
 export const decodeBinaryCacheDescriptors = (
@@ -99,7 +106,7 @@ export const decodeBinaryCacheDescriptors = (
   }
   const descriptors: Record<string, BinaryCacheDescriptor> = {}
   for (const [name, entry] of Object.entries(registry)) {
-    const descriptor = decodeBinaryCacheDescriptor(entry, name)
+    const descriptor = decodeDescriptor({ value: entry, registryKey: name })
     if (descriptor.name !== name) {
       throw new BinaryCacheDescriptorError({
         cacheName: name,

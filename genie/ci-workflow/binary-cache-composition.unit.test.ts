@@ -173,8 +173,12 @@ describe('build cache composition', () => {
       [{ ...reapi, visibility: 'internal' }, /invalid visibility/],
       [{ ...publicCache, visibility: 'internal' }, /invalid visibility/],
       [nixWithoutKey, /missing publicKey/],
-      [{ ...reapi, publicKey: 'remote.example.test-1:key' }, /unexpected field "publicKey" for reapi/],
+      [
+        { ...reapi, publicKey: 'remote.example.test-1:key' },
+        /unexpected field "publicKey" for reapi/,
+      ],
       [{ ...reapi, kind: 'http' }, /kind must be/],
+      [{ ...reapi, constructor: 'inherited' }, /unexpected field "constructor"/],
       [{ ...reapi, name: 'other' }, /registry key differs/],
     ] as const) {
       expect(() => readRegistry({ remote: invalid })).toThrow(BinaryCacheDescriptorError)
