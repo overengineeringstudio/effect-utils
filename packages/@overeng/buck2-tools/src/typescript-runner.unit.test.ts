@@ -94,35 +94,32 @@ describe('TypeScript emit declaration command', () => {
     ).toEqual(['/a-dependency', '/z-dependency'])
   })
 
-  it(
-    'hashes every canonical declared input root and does not follow symlink cycles',
-    async () => {
-      const { root } = createFixture()
-      const first = join(root, 'first')
-      const second = join(root, 'second')
-      mkdirSync(first)
-      mkdirSync(second)
-      writeFileSync(join(first, 'source.ts'), 'export const value = 1\n')
-      writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 1\n')
-      symlinkSync(first, join(second, 'cycle'))
+  it('hashes every canonical declared input root and does not follow symlink cycles', async () => {
+    const { root } = createFixture()
+    const first = join(root, 'first')
+    const second = join(root, 'second')
+    mkdirSync(first)
+    mkdirSync(second)
+    writeFileSync(join(first, 'source.ts'), 'export const value = 1\n')
+    writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 1\n')
+    symlinkSync(first, join(second, 'cycle'))
 
-      const tool = process.env['FINGERPRINT_BIN'] ?? ''
-      if (tool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
-      const before = await hashDeclaredInputRoots({
-        roots: [second, first, second],
-        fingerprintTool: tool,
-      })
-      writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 2\n')
-      const after = await hashDeclaredInputRoots({ roots: [first, second], fingerprintTool: tool })
+    const tool = process.env['FINGERPRINT_BIN'] ?? ''
+    if (tool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
+    const before = await hashDeclaredInputRoots({
+      roots: [second, first, second],
+      fingerprintTool: tool,
+    })
+    writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 2\n')
+    const after = await hashDeclaredInputRoots({ roots: [first, second], fingerprintTool: tool })
 
-      expect(after).not.toBe(before)
-      const file = join(first, 'source.ts')
-      const beforeMode = await hashDeclaredInputRoots({ roots: [file], fingerprintTool: tool })
-      chmodSync(file, 0o755)
-      const afterMode = await hashDeclaredInputRoots({ roots: [file], fingerprintTool: tool })
-      expect(afterMode).not.toBe(beforeMode)
-    },
-  )
+    expect(after).not.toBe(before)
+    const file = join(first, 'source.ts')
+    const beforeMode = await hashDeclaredInputRoots({ roots: [file], fingerprintTool: tool })
+    chmodSync(file, 0o755)
+    const afterMode = await hashDeclaredInputRoots({ roots: [file], fingerprintTool: tool })
+    expect(afterMode).not.toBe(beforeMode)
+  })
 
   it('rejects missing or mutable fingerprint executables', () => {
     const args = ['/nix/store/toolchain/bin/tsgo', '/package-tree', 'tsconfig.json', '/output']

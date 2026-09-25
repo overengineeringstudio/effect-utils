@@ -10,7 +10,8 @@ const bun = realpathSync(process.execPath)
 const runner = fileURLToPath(new URL('./package-command-runner.ts', import.meta.url))
 const fingerprintTool = ((): string => {
   const tool = process.env['FINGERPRINT_BIN']
-  if (tool === undefined || tool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
+  if (tool === undefined || tool === '')
+    throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
   return tool
 })()
 

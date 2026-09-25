@@ -268,8 +268,10 @@ export const hashDeclaredInputRoots = async ({
   const digests = await Promise.all(
     orderedRoots.map(async (root) => {
       const result = await runFingerprintTool({ tool: executable, args: [root, '--input-roots'] })
-      return /^digest ([a-f0-9]{64})\n$/u.exec(result)?.[1] ??
+      return (
+        /^digest ([a-f0-9]{64})\n$/u.exec(result)?.[1] ??
         fail(`invalid fingerprint tool output for ${root}: ${result}`)
+      )
     }),
   )
   const hash = createHash('sha256')
