@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { githubWorkflow } from '../../packages/@overeng/genie/src/runtime/mod.ts'
@@ -13,10 +12,11 @@ import {
   PrivateBinaryCacheRunnerError,
 } from './binary-cache-composition.ts'
 import {
+  BinaryCacheDescriptorError,
   effectUtilsBinaryCaches,
+  readBinaryCacheDescriptors,
   type BinaryCacheDescriptor as Cache,
 } from './binary-cache-descriptors.ts'
-import { BinaryCacheDescriptorSchema, readBinaryCacheDescriptors } from './binary-cache-schema.ts'
 import { validateWorkflowCachePolicy } from './cache-policy.ts'
 import {
   cachixPublisherStep,
@@ -28,6 +28,18 @@ import {
 import { ciWorkflow } from './shared.ts'
 
 const publicCache = effectUtilsBinaryCaches['overeng-effect-utils']!
+
+/** Exercise the bootstrap-safe reader against an on-disk producer registry. */
+const readRegistry = (registry: unknown) => {
+  const dir = mkdtempSync(join(tmpdir(), 'binary-caches-'))
+  try {
+    const file = join(dir, 'binary-caches.json')
+    writeFileSync(file, JSON.stringify(registry))
+    return readBinaryCacheDescriptors(pathToFileURL(file))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
 const privateCache: Cache = {
   kind: 'nix-binary',
   name: 'private',
@@ -139,26 +151,36 @@ describe('build cache composition', () => {
   })
 
   it('validates tagged protocol shape and excludes REAPI from Nix settings', () => {
-    const reapi = Schema.decodeUnknownSync(BinaryCacheDescriptorSchema)({
+    const reapi: Cache = {
       kind: 'reapi',
       name: 'remote',
       visibility: 'public',
       endpoint: 'grpcs://example.test:443',
       instanceName: 'effect-utils',
       digest: 'SHA256',
-    })
+    }
+    expect(readRegistry({ remote: reapi })).toEqual({ remote: reapi })
     expect(binaryCachesExtraConfForJob({ runner: 'ubuntu-latest', caches: [reapi] })).toBe(
       'extra-substituters = \nextra-trusted-public-keys = ',
     )
-    expect(() =>
-      Schema.decodeUnknownSync(BinaryCacheDescriptorSchema)({ ...reapi, digest: 'SHA1' }),
-    ).toThrow()
-    expect(() =>
-      Schema.decodeUnknownSync(BinaryCacheDescriptorSchema, { onExcessProperty: 'error' })({
-        ...reapi,
-        authToken: 'secret',
-      }),
-    ).toThrow()
+    const { publicKey: _publicKey, ...nixWithoutKey } = publicCache as Extract<
+      Cache,
+      { kind: 'nix-binary' }
+    >
+    for (const [invalid, reason] of [
+      [{ ...reapi, digest: 'SHA1' }, /invalid digest/],
+      [{ ...reapi, authToken: 'secret' }, /unexpected field "authToken"/],
+      [{ ...reapi, visibility: 'internal' }, /invalid visibility/],
+      [{ ...publicCache, visibility: 'internal' }, /invalid visibility/],
+      [nixWithoutKey, /missing publicKey/],
+      [{ ...reapi, publicKey: 'remote.example.test-1:key' }, /unexpected field "publicKey" for reapi/],
+      [{ ...reapi, kind: 'http' }, /kind must be/],
+      [{ ...reapi, name: 'other' }, /registry key differs/],
+    ] as const) {
+      expect(() => readRegistry({ remote: invalid })).toThrow(BinaryCacheDescriptorError)
+      expect(() => readRegistry({ remote: invalid })).toThrow(reason)
+    }
+    expect(() => readRegistry([reapi])).toThrow(BinaryCacheDescriptorError)
     expect(
       readBinaryCacheDescriptors(new URL('../../nix/binary-caches.json', import.meta.url)),
     ).toEqual(effectUtilsBinaryCaches)
@@ -173,21 +195,24 @@ describe('build cache composition', () => {
       instanceName: 'effect-utils',
       digest: 'SHA256',
     }
-    const dir = mkdtempSync(join(tmpdir(), 'binary-caches-'))
-    try {
-      const file = join(dir, 'binary-caches.json')
-      writeFileSync(
-        file,
-        JSON.stringify({ [privateCache.name]: privateCache, [privateReapi.name]: privateReapi }),
-      )
-      expect(readBinaryCacheDescriptors(pathToFileURL(file))).toEqual({
-        [privateCache.name]: privateCache,
-        [privateReapi.name]: privateReapi,
-      })
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+    const registry = { [privateCache.name]: privateCache, [privateReapi.name]: privateReapi }
+    expect(readRegistry(registry)).toEqual(registry)
   })
+})
+
+it('rejects descriptors that bypass the reader at githubWorkflow output', () => {
+  const unchecked = { ...publicCache, visibility: 'internal' } as unknown as Cache
+  expect(() =>
+    githubWorkflow({
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [installNixStep({ binaryCaches: [unchecked] })],
+        },
+      },
+    }),
+  ).toThrow(BinaryCacheDescriptorError)
 })
 
 it('guards private descriptors through direct githubWorkflow output', () => {

@@ -7,8 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Breaking changes
 - **Genie build cache configuration** (dotfiles#3164): Replace
   `NixBinaryCache` and `cachixBinaryCache` with producer-authored, tagged
-  descriptors in JSON, validated with `binaryCacheDescriptorSchema` when read
-  from TypeScript. Replace `nixBinaryCachesExtraConf` with
+  descriptors in JSON, validated by `readBinaryCacheDescriptors` when read
+  from TypeScript and again for every descriptor at the `githubWorkflow`
+  output boundary. Replace `nixBinaryCachesExtraConf` with
   `binaryCachesExtraConfForJob({ runner, caches })` for standalone composition,
   or pass `binaryCaches` to `installNixStep` in a workflow; the shared
   `githubWorkflow` output boundary checks the final job runner. Remove
@@ -20,6 +21,16 @@ All notable changes to this project will be documented in this file.
   advertise private caches in `nixConfig`, which bypasses workflow policy.
   Generation-time validation cannot cover raw workflow YAML outside Genie or
   inherited secrets passed to reusable workflows via `secrets: inherit`.
+
+### Fixed
+- **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
+  bootstrap-safe. It validates producer JSON with a dependency-free reader
+  instead of the runtime Effect Schema, so consumer generators can import it
+  from `genie/ci-workflow.ts` or `genie/external.ts` while the effect-utils
+  member has no `node_modules`. It throws `BinaryCacheDescriptorError`.
+  Consumers that cast raw JSON to `BinaryCacheDescriptor` as a workaround
+  should switch to the reader. The `githubWorkflow` output validator also
+  rejects malformed descriptors that bypass it.
 
 ### Added
 - **Genie build caches**: Producer-authored, credential-free Nix/REAPI cache
