@@ -25,7 +25,7 @@ inputs="$(nix eval --impure --json --expr "
 ")"
 
 jq -e '
-  (keys | sort) == ["archive-tool", "events", "product"]
+  (keys | sort) == ["archive-tool", "events", "fingerprint", "product"]
 ' <<<"$inputs" >/dev/null || {
   echo "FAIL: support-tool source inventory is incomplete or has unknown tools" >&2
   exit 1
@@ -46,12 +46,20 @@ assert_excludes() {
   fi
 }
 
-for tool in archive-tool events product; do
+# Each support tool maps to its Cargo package directory; the fingerprint tool is the shared core.
+tool_dir() {
+  case "$1" in
+    fingerprint) echo core ;;
+    *) echo "$1" ;;
+  esac
+}
+
+for tool in archive-tool events fingerprint product; do
   assert_contains "$tool" rust/Cargo.toml
   assert_contains "$tool" rust/Cargo.lock
   assert_contains "$tool" rust-toolchain.toml
   assert_contains "$tool" rust/buck2-tools/core/Cargo.toml
-  assert_contains "$tool" "rust/buck2-tools/$tool/Cargo.toml"
+  assert_contains "$tool" "rust/buck2-tools/$(tool_dir "$tool")/Cargo.toml"
   assert_excludes "$tool" packages/@overeng/otelite
   assert_excludes "$tool" packages/@overeng/otel-scrape
   for sibling in archive-tool events product; do

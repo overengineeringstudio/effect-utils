@@ -10,8 +10,15 @@ publish = false
 name = "buck2_tool_core"
 path = "src/lib.rs"
 
+[[bin]]
+name = "buck2-fingerprint"
+path = "src/bin/buck2-fingerprint.rs"
+
 [dependencies]
 base64 = "0.22"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

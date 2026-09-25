@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   canonicalTreeFingerprint,
+  canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
   publishEditorView,
   recoverEditorViewLock,
@@ -37,6 +38,7 @@ const requireTool = (name: string): string => {
 const cp = requireTool('CP_BIN')
 const mv = requireTool('MV_BIN')
 const falseTool = requireTool('FALSE_BIN')
+const fingerprintTool = requireTool('FINGERPRINT_BIN')
 
 type Fixture = {
   readonly root: string
@@ -87,6 +89,7 @@ const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}
     editorInputs,
     nodeModules,
     cp,
+    fingerprintTool,
     workspaceAuthority,
     consumerCache,
     snapshotRetention: 2,
@@ -153,6 +156,7 @@ describe('editor view publisher', () => {
 
       const fingerprint = await canonicalTreeFingerprint({ tree: first })
       expect(await canonicalTreeFingerprint({ tree: second })).toBe(fingerprint)
+      expect(await canonicalTreeFingerprint({ tree: first, fingerprintTool })).toBe(fingerprint)
       expect(await canonicalTreeFingerprint({ tree: collisionShape })).not.toBe(fingerprint)
 
       // A dereferenced view digest equals the plain digest of the same bytes
@@ -169,9 +173,44 @@ describe('editor view publisher', () => {
       expect(await canonicalTreeFingerprint({ tree: linked, dereference: true })).toBe(
         await canonicalTreeFingerprint({ tree: materialized }),
       )
+      expect(
+        await canonicalTreeFingerprint({ tree: linked, dereference: true, fingerprintTool }),
+      ).toBe(await canonicalTreeFingerprint({ tree: materialized }))
       expect(await canonicalTreeFingerprint({ tree: linked })).not.toBe(
         await canonicalTreeFingerprint({ tree: linked, dereference: true }),
       )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('matches Rust and TypeScript inventories for in-root, cross-root and owner-root links', async () => {
+    const fixture = makeFixture()
+    try {
+      const tree = join(fixture.root, 'parity-tree')
+      const backing = join(fixture.root, 'parity-backing')
+      mkdirSync(join(tree, 'dir'), { recursive: true })
+      mkdirSync(backing)
+      writeFileSync(join(tree, 'dir', 'first.txt'), 'first\n')
+      writeFileSync(join(backing, 'external.txt'), 'external\n')
+      symlinkSync('dir/first.txt', join(tree, 'in-root'))
+      symlinkSync('../parity-backing', join(tree, 'owner-root'))
+      symlinkSync('../parity-backing/external.txt', join(tree, 'cross-root'))
+      const linkOwners = [
+        { source: tree, identity: 'source' },
+        { source: backing, identity: 'backing' },
+      ]
+      expect(
+        await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners, fingerprintTool }),
+      ).toEqual(await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners }))
+      expect(
+        await canonicalTreeFingerprint({
+          tree,
+          dereference: true,
+          backingRoots: [backing],
+          fingerprintTool,
+        }),
+      ).toBe(await canonicalTreeFingerprint({ tree, dereference: true, backingRoots: [backing] }))
     } finally {
       cleanup(fixture)
     }

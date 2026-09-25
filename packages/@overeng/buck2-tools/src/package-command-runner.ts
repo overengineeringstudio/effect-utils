@@ -16,7 +16,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import type { BunPlugin } from 'bun'
 
 import { canonicalizePath } from './real-path.ts'
-import { hashDeclaredInputRoots } from './typescript-runner.ts'
+import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
 
 // This module is a pipeline: each stage's public entry point sits next to the
 // private helpers it drives, so the file reads in execution order rather than
@@ -61,6 +61,7 @@ export type PackageCommand = {
   readonly mode: 'exec' | 'check' | 'native-check' | 'build-dir' | 'bundle'
   readonly runtime: string
   readonly packageTree: string
+  readonly fingerprintTool: string
   readonly readRoots: readonly string[]
   readonly entrypoint: string
   readonly output: string | undefined
@@ -166,6 +167,7 @@ export const parsePackageCommand = (argv: readonly string[]): PackageCommand => 
   const externalCapabilities: string[] = []
   const closureRoots: ClosureRoot[] = []
   const readRoots: string[] = []
+  let fingerprintTool: string | undefined
   let descriptor: string | undefined
   let platformGatedManifest: string | undefined
   let targetIdentity: string | undefined
@@ -193,6 +195,9 @@ export const parsePackageCommand = (argv: readonly string[]): PackageCommand => 
       const root = resolve(value)
       if (value.length === 0 || root === sep) fail(`invalid declared read root: ${value}`)
       readRoots.push(root)
+    } else if (flag === '--fingerprint-tool') {
+      if (fingerprintTool !== undefined) fail('duplicate --fingerprint-tool')
+      fingerprintTool = requireFingerprintTool(value)
     } else if (flag === '--env') {
       const separator = value.indexOf('=')
       if (separator <= 0) fail(`environment entry must be NAME=value: ${value}`)
@@ -230,6 +235,7 @@ export const parsePackageCommand = (argv: readonly string[]): PackageCommand => 
     mode: rawMode,
     runtime,
     packageTree,
+    fingerprintTool: fingerprintTool ?? fail('missing --fingerprint-tool'),
     readRoots: [...new Set(readRoots)].toSorted(),
     entrypoint,
     output,
@@ -1078,7 +1084,10 @@ const run = async (command: PackageCommand): Promise<void> => {
   if (command.mode === 'bundle') return runBundle(command)
 
   const inputRoots = [command.packageTree, ...command.readRoots]
-  const before = await hashDeclaredInputRoots(inputRoots)
+  const before = await hashDeclaredInputRoots({
+    roots: inputRoots,
+    fingerprintTool: command.fingerprintTool,
+  })
   const plan = planPackageLaunch({ command })
   if (command.mode === 'build-dir')
     await mkdir(plan.output ?? fail('build output is missing'), { recursive: true })
@@ -1092,7 +1101,10 @@ const run = async (command: PackageCommand): Promise<void> => {
   })
   const exitCode = await child.exited
   child = undefined
-  const after = await hashDeclaredInputRoots(inputRoots)
+  const after = await hashDeclaredInputRoots({
+    roots: inputRoots,
+    fingerprintTool: command.fingerprintTool,
+  })
   if (after !== before) {
     fail(`declared inputs changed while ${command.entrypoint} was running`)
   }

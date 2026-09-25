@@ -175,6 +175,12 @@
       "executable": "bin/buck2-archive-tool"
     },
     {
+      "toolId": "buck2-fingerprint",
+      "protocol": "effect-utils/buck2-fingerprint/v1",
+      "flakePackage": "buck2-fingerprint",
+      "executable": "bin/buck2-fingerprint"
+    },
+    {
       "toolId": "buck2",
       "protocol": "facebook/buck2-cli/2026-09-01",
       "flakePackage": "buck2",

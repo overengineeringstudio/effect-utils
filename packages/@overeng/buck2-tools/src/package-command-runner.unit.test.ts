@@ -22,7 +22,7 @@ import {
   assertPortableModuleComments,
   bareSpecifierPackage,
   createEntryOverridePlugin,
-  parsePackageCommand,
+  parsePackageCommand as parsePackage,
   planPackageLaunch,
   normalizePortableCommonJsGlobals,
   projectProductDescriptor,
@@ -31,6 +31,18 @@ import {
 } from './package-command-runner.ts'
 
 const scratchDirectories: string[] = []
+const fingerprintTool =
+  '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
+const parsePackageCommand = (args: readonly string[]) => {
+  const delimiter = args.indexOf('--')
+  const at = delimiter < 0 ? args.length : delimiter
+  return parsePackage([
+    ...args.slice(0, at),
+    '--fingerprint-tool',
+    fingerprintTool,
+    ...args.slice(at),
+  ])
+}
 
 const scratch = (prefix: string): string => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
@@ -248,6 +260,8 @@ const bundleProduct = (prefix: string): { readonly bytes: string; readonly descr
       'fixture//p:cli-module',
       '--platform-gated-manifest',
       manifest,
+      '--fingerprint-tool',
+      process.env['FINGERPRINT_BIN'] ?? 'missing FINGERPRINT_BIN',
       ...closureRoots.flatMap((closureRoot) => [
         '--closure-root',
         `${closureRoot.name}\t${closureRoot.path}`,
@@ -699,6 +713,20 @@ describe('package command runner', () => {
     ).toThrow('entrypoint must be a normalized portable relative path')
   })
 
+  it('requires the immutable fingerprint tool for every launch mode', () => {
+    const args = [
+      'check',
+      '/nix/store/runtime/bin/bun',
+      '/buck/tree',
+      'src/mod.ts',
+      '/buck/verdict',
+    ]
+    expect(() => parsePackage(args)).toThrow('missing --fingerprint-tool')
+    expect(() => parsePackage([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint'])).toThrow(
+      'immutable /nix/store executable',
+    )
+  })
+
   it('preserves repeated arguments and explicit environment entries', () => {
     expect(
       parsePackageCommand([
@@ -716,7 +744,7 @@ describe('package command runner', () => {
         '--env',
         'CI=1',
       ]),
-    ).toMatchObject({ args: ['dev', '-p', '6009'], env: { CI: '1' } })
+    ).toMatchObject({ args: ['dev', '-p', '6009'], env: { CI: '1' }, fingerprintTool })
   })
 
   it('normalizes and deduplicates declared read roots', () => {

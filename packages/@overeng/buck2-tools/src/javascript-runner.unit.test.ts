@@ -8,13 +8,25 @@ import { describe, expect, it } from 'vitest'
 import {
   acquireScratch,
   normalizeVitestCollection,
-  parseJavaScriptRunOptions,
+  parseJavaScriptRunOptions as parseJavaScript,
   planScratch,
   vitestArgv,
   vitestCollectArgv,
 } from './javascript-runner.ts'
 
 const bun = '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bun/bin/bun'
+const fingerprintTool =
+  '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
+const parseJavaScriptRunOptions = (args: readonly string[]) => {
+  const delimiter = args.indexOf('--')
+  const at = delimiter < 0 ? args.length : delimiter
+  return parseJavaScript([
+    ...args.slice(0, at),
+    '--fingerprint-tool',
+    fingerprintTool,
+    ...args.slice(at),
+  ])
+}
 
 describe('parseJavaScriptRunOptions', () => {
   it('preserves deterministic Vitest selection, timeouts, environment, and declared inputs', () => {
@@ -44,6 +56,7 @@ describe('parseJavaScriptRunOptions', () => {
     ).toMatchObject({
       command: 'vitest',
       bun,
+      fingerprintTool,
       packageTree: '/buck/package-tree',
       config: 'vitest.config.ts',
       timeoutMs: 30_000,
@@ -97,6 +110,14 @@ describe('parseJavaScriptRunOptions', () => {
     expect(() =>
       parseJavaScriptRunOptions(['exec', bun, '/tree', 'src/mod.ts', '--wat', 'none']),
     ).toThrow('unexpected argument: --wat')
+  })
+
+  it('requires an immutable declared fingerprint executable', () => {
+    const args = ['exec', bun, '/tree', 'src/mod.ts']
+    expect(() => parseJavaScript(args)).toThrow('missing --fingerprint-tool')
+    expect(() =>
+      parseJavaScript([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint']),
+    ).toThrow('immutable /nix/store executable')
   })
 
   it('parses collection output only for collection actions', () => {

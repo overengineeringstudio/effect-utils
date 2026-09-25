@@ -42,6 +42,9 @@ def _configured_args(ctx, command, positional):
         package_tree.tree,
         positional,
     ])
+    fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
+    args.add("--fingerprint-tool", fingerprint.store_path)
+    args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     for test in ctx.attrs.test_files:
         _require_relative_path(test, "test")
         args.add("--test", test)
@@ -75,8 +78,9 @@ def _bun_executable_impl(ctx):
     args, package_tree, toolchain = _configured_args(
         ctx,
         "exec",
-        [ctx.attrs.entrypoint, "--"] + ctx.attrs.args,
+        [ctx.attrs.entrypoint],
     )
+    args.add("--", ctx.attrs.args)
     return [
         DefaultInfo(),
         RunInfo(args = args),
@@ -112,6 +116,10 @@ bun_executable = rule(
         "_javascript": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:effect_tsgo",
             providers = [EffectTsgoToolchainInfo],
+        )),
+        "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:fingerprint_tool",
+            providers = [BuckSupportToolInfo],
         )),
     },
 )
@@ -180,6 +188,10 @@ _TEST_ATTRS = {
     "_javascript": attrs.default_only(attrs.exec_dep(
         default = "//buck2/toolchains:effect_tsgo",
         providers = [EffectTsgoToolchainInfo],
+    )),
+    "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
+        default = "//buck2/toolchains:fingerprint_tool",
+        providers = [BuckSupportToolInfo],
     )),
 }
 

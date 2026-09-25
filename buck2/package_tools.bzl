@@ -56,6 +56,9 @@ def _runner_args(ctx, mode, output = None):
         ctx.attrs.entrypoint,
         output.as_output() if output else "-",
     ])
+    fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
+    args.add("--fingerprint-tool", fingerprint.store_path)
+    args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
     for value in ctx.attrs.args:
@@ -110,6 +113,10 @@ package_bin_check = rule(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
         )),
+        "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:fingerprint_tool",
+            providers = [BuckSupportToolInfo],
+        )),
     },
 )
 
@@ -142,6 +149,10 @@ package_bin_build = rule(
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
+        )),
+        "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:fingerprint_tool",
+            providers = [BuckSupportToolInfo],
         )),
     },
 )
@@ -200,6 +211,10 @@ package_bin = rule(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
         )),
+        "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:fingerprint_tool",
+            providers = [BuckSupportToolInfo],
+        )),
     },
 )
 
@@ -248,6 +263,9 @@ def _package_bundle_impl(ctx):
         "--platform-gated-manifest",
         gated.manifest,
     ])
+    fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
+    args.add("--fingerprint-tool", fingerprint.store_path)
+    args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     args.add("--tree-shaking")
     args.add("true" if ctx.attrs.tree_shaking else "false")
     for external in ctx.attrs.external:
@@ -304,6 +322,10 @@ _package_bin_artifact = rule(
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
+        )),
+        "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:fingerprint_tool",
+            providers = [BuckSupportToolInfo],
         )),
     },
 )

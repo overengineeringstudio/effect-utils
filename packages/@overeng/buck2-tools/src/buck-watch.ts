@@ -542,6 +542,7 @@ export type BuckReconcilerOptions = {
   readonly workspaceAuthority: string
   readonly cp: string
   readonly mv: string
+  readonly fingerprintTool: string
   readonly snapshotRetention: number
   readonly run?: RunCommand
   readonly signal?: AbortSignal
@@ -641,6 +642,8 @@ export const reconcileBuckViews = async ({
           options.cp,
           '--mv',
           options.mv,
+          '--fingerprint-tool',
+          options.fingerprintTool,
           '--workspace-authority',
           options.workspaceAuthority,
           '--consumer-cache',

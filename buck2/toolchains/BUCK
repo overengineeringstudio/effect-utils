@@ -13,6 +13,13 @@ support_tool(
 )
 
 support_tool(
+    name = "fingerprint_tool",
+    protocol = "effect-utils/buck2-fingerprint/v1",
+    tool_id = "buck2-fingerprint",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
     name = "product_tool",
     protocol = "effect-utils/buck2-product/v1",
     tool_id = "product",

@@ -310,6 +310,7 @@ describe('Buck watch reconciliation', () => {
           workspaceAuthority: '/repo/authority.json',
           cp: '/tools/cp',
           mv: '/tools/mv',
+          fingerprintTool: '/tools/buck2-fingerprint',
           snapshotRetention: 3,
           signal: shutdown.signal,
           run: async ({ command, args, detached, signal }) => {
@@ -356,6 +357,7 @@ describe('Buck watch reconciliation', () => {
             editorViewCommand: ['/tools/bun', '/tools/editor-view'],
             workspaceAuthority: '/repo/authority.json',
             cp: '/tools/cp',
+            fingerprintTool: '/tools/buck2-fingerprint',
             mv: '/tools/mv',
             snapshotRetention: 3,
             run: async ({ command }) => {
@@ -412,6 +414,7 @@ describe('Buck watch reconciliation', () => {
           editorViewCommand: ['/tools/bun', '/tools/editor-view'],
           workspaceAuthority: '/repo/authority.json',
           cp: '/tools/cp',
+          fingerprintTool: '/tools/buck2-fingerprint',
           mv: '/tools/mv',
           snapshotRetention: 3,
           run: async ({ command, args }) => {
@@ -484,6 +487,7 @@ describe('Buck watch reconciliation', () => {
           editorViewCommand: ['/tools/bun', '/tools/editor-view'],
           workspaceAuthority: '/repo/authority.json',
           cp: '/tools/cp',
+          fingerprintTool: '/tools/buck2-fingerprint',
           mv: '/tools/mv',
           snapshotRetention: 3,
           run: async ({ command }) => {

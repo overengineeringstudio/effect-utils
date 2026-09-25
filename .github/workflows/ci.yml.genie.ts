@@ -653,6 +653,8 @@ const extraJobs: Record<string, any> = {
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
+            'FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"',
+            'export FINGERPRINT_BIN',
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \\',
             '  genie/buck2/typescript-package-projection.unit.test.ts \\',
             '  genie/buck2/javascript-candidates.unit.test.ts \\',
