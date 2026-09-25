@@ -12,11 +12,18 @@ fn run() -> Result<(), String> {
         match flag.as_str() {
             "--dereference" => dereference = true,
             "--input-roots" => input_roots = true,
-            "--backing-root" => backing.push(PathBuf::from(args.next().ok_or("missing --backing-root value")?)),
+            "--backing-root" => backing.push(PathBuf::from(
+                args.next().ok_or("missing --backing-root value")?,
+            )),
             "--link-owner" => {
                 let value = args.next().ok_or("missing --link-owner value")?;
-                let (source, identity) = value.rsplit_once('=').ok_or("expected --link-owner SOURCE=IDENTITY")?;
-                owners.push(LinkOwner { source: PathBuf::from(source), identity: identity.to_owned() });
+                let (source, identity) = value
+                    .rsplit_once('=')
+                    .ok_or("expected --link-owner SOURCE=IDENTITY")?;
+                owners.push(LinkOwner {
+                    source: PathBuf::from(source),
+                    identity: identity.to_owned(),
+                });
             }
             _ => return Err(format!("unexpected fingerprint argument: {flag}")),
         }
@@ -25,13 +32,20 @@ fn run() -> Result<(), String> {
         if dereference || !backing.is_empty() || !owners.is_empty() {
             return Err("--input-roots cannot be combined with editor-view modes".into());
         }
-        println!("digest {}", fingerprint_input_root(&tree).map_err(|e| e.to_string())?);
+        println!(
+            "digest {}",
+            fingerprint_input_root(&tree).map_err(|e| e.to_string())?
+        );
         return Ok(());
     }
     let result = fingerprint(&tree, dereference, &backing, &owners).map_err(|e| e.to_string())?;
     println!("digest {}", result.digest);
-    if let Some(value) = result.resolved_links_digest { println!("resolved {value}"); }
-    if let Some(value) = result.literal_links_digest { println!("literal {value}"); }
+    if let Some(value) = result.resolved_links_digest {
+        println!("resolved {value}");
+    }
+    if let Some(value) = result.literal_links_digest {
+        println!("literal {value}");
+    }
     Ok(())
 }
 

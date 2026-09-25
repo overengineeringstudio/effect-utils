@@ -4,7 +4,7 @@
 # Projection source: rust/buck2-tools/core/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:bd3485c5164d1811744f3258f3e2c995708c36b33bc239fbba6df6525d3f8886
+# Semantic fingerprint: sha256:515b0348e0ccf6d3533b783c90a249034fdb5e1f8054ef31c36e015c75c994f6
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/BUCK.genie.ts, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/core/src/**/*.rs, rust/buck2-tools/core/tests/**/*.rs, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -17,7 +17,10 @@ static_source_set(
         "BUCK",
         "BUCK.genie.ts",
         "Cargo.toml",
+        "src/bin/buck2-fingerprint.rs",
+        "src/fingerprint.rs",
         "src/lib.rs",
+        "tests/fingerprint.rs",
     ] + glob(["rust-toolchain.toml"]),
     visibility = ["PUBLIC"],
 )
@@ -27,6 +30,7 @@ native.rust_library(
     crate = "buck2_tool_core",
     crate_root = "src/lib.rs",
     srcs = [
+        "src/fingerprint.rs",
         "src/lib.rs",
     ],
     deps = [
@@ -34,6 +38,30 @@ native.rust_library(
         "//rust/third-party:serde",
         "//rust/third-party:serde_json",
         "//rust/third-party:sha2",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "buck2-tool-core",
+        "CARGO_PKG_VERSION": "0.0.0",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "buck2-fingerprint",
+    crate = "buck2_fingerprint",
+    crate_root = "src/bin/buck2-fingerprint.rs",
+    srcs = [
+        "src/bin/buck2-fingerprint.rs",
+    ],
+    deps = [
+        "//rust/third-party:base64",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        ":lib",
     ],
     edition = "2021",
     env = {

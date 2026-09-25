@@ -16,8 +16,14 @@ fn canonical_tree_modes_and_owner_root_links() {
     symlink("../parity-backing", source.join("owner-root")).unwrap();
     symlink("../parity-backing/external.txt", source.join("cross-root")).unwrap();
     let owners = [
-        LinkOwner { source: source.clone(), identity: "source".into() },
-        LinkOwner { source: backing.clone(), identity: "backing".into() },
+        LinkOwner {
+            source: source.clone(),
+            identity: "source".into(),
+        },
+        LinkOwner {
+            source: backing.clone(),
+            identity: "backing".into(),
+        },
     ];
     let plain = fingerprint(&source, false, &[], &owners).unwrap();
     let repeat = fingerprint(&source, false, &[], &owners).unwrap();
@@ -33,9 +39,26 @@ fn canonical_tree_modes_and_owner_root_links() {
     fs::write(relocated.join("dir/first.txt"), b"first\n").unwrap();
     symlink("dir/first.txt", relocated.join("in-root")).unwrap();
     symlink("../parity-backing", relocated.join("owner-root")).unwrap();
-    symlink("../parity-backing/external.txt", relocated.join("cross-root")).unwrap();
-    assert_eq!(plain.digest, fingerprint(&relocated, false, &[], &[
-        LinkOwner { source: PathBuf::from(&relocated), identity: "source".into() },
-        owners[1].clone(),
-    ]).unwrap().digest);
+    symlink(
+        "../parity-backing/external.txt",
+        relocated.join("cross-root"),
+    )
+    .unwrap();
+    assert_eq!(
+        plain.digest,
+        fingerprint(
+            &relocated,
+            false,
+            &[],
+            &[
+                LinkOwner {
+                    source: PathBuf::from(&relocated),
+                    identity: "source".into()
+                },
+                owners[1].clone(),
+            ]
+        )
+        .unwrap()
+        .digest
+    );
 }

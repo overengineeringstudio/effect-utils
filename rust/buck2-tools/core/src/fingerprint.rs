@@ -34,7 +34,10 @@ fn frame(hash: &mut Sha256, value: &[u8]) {
 }
 
 fn hex(hash: Sha256) -> String {
-    hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+    hash.finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn relative(root: &Path, path: &Path) -> Vec<u8> {
@@ -42,7 +45,11 @@ fn relative(root: &Path, path: &Path) -> Vec<u8> {
     let path = path.components().collect::<Vec<_>>();
     let shared = root.iter().zip(&path).take_while(|(a, b)| a == b).count();
     let mut parts = vec![b"..".to_vec(); root.len() - shared];
-    parts.extend(path[shared..].iter().map(|part| part.as_os_str().as_bytes().to_vec()));
+    parts.extend(
+        path[shared..]
+            .iter()
+            .map(|part| part.as_os_str().as_bytes().to_vec()),
+    );
     parts.join(&b"/"[..])
 }
 
@@ -86,22 +93,38 @@ impl Walker {
         let before = fs::symlink_metadata(path)?;
         if before.file_type().is_symlink() && self.dereference {
             let target = fs::read_link(path)?;
-            let resolved = fs::canonicalize(path).map_err(|error| fail(format!(
-                "tree contains an unresolvable symbolic link: {} ({error})", path.display()
-            )))?;
-            if !inside(&self.root, &resolved) && !self.backing.iter().any(|root| inside(root, &resolved)) {
-                return Err(fail(format!("tree symbolic link resolves outside declared backing roots: {} -> {}", path.display(), resolved.display())));
+            let resolved = fs::canonicalize(path).map_err(|error| {
+                fail(format!(
+                    "tree contains an unresolvable symbolic link: {} ({error})",
+                    path.display()
+                ))
+            })?;
+            if !inside(&self.root, &resolved)
+                && !self.backing.iter().any(|root| inside(root, &resolved))
+            {
+                return Err(fail(format!(
+                    "tree symbolic link resolves outside declared backing roots: {} -> {}",
+                    path.display(),
+                    resolved.display()
+                )));
             }
             self.visit(&resolved, name)?;
-            if !same(&before, &fs::symlink_metadata(path)?, false) || fs::read_link(path)? != target {
-                return Err(fail(format!("tree changed while hashing: {}", path.display())));
+            if !same(&before, &fs::symlink_metadata(path)?, false) || fs::read_link(path)? != target
+            {
+                return Err(fail(format!(
+                    "tree changed while hashing: {}",
+                    path.display()
+                )));
             }
             return Ok(());
         }
         if before.is_dir() {
             let id = (before.dev(), before.ino());
             if !self.ancestors.insert(id) {
-                return Err(fail(format!("tree contains a dereference cycle: {}", path.display())));
+                return Err(fail(format!(
+                    "tree contains a dereference cycle: {}",
+                    path.display()
+                )));
             }
             self.hash.update(b"D");
             frame(&mut self.hash, name);
@@ -110,7 +133,9 @@ impl Walker {
                 frame(hash, name);
             }
             for child in sorted_names(path)? {
-                let child_name = if name.is_empty() { child.as_bytes().to_vec() } else {
+                let child_name = if name.is_empty() {
+                    child.as_bytes().to_vec()
+                } else {
                     let mut value = Vec::with_capacity(name.len() + 1 + child.len());
                     value.extend_from_slice(name);
                     value.push(b'/');
@@ -129,15 +154,27 @@ impl Walker {
             if let Some(hash) = &mut self.resolved {
                 self.links.push((name.to_vec(), target_bytes.to_vec()));
                 let resolved = fs::canonicalize(path)?;
-                let owner = self.owners.iter().find(|owner| inside(&owner.source, &resolved))
-                    .ok_or_else(|| fail(format!("tree symbolic link resolves outside declared roots: {} -> {}", path.display(), resolved.display())))?;
+                let owner = self
+                    .owners
+                    .iter()
+                    .find(|owner| inside(&owner.source, &resolved))
+                    .ok_or_else(|| {
+                        fail(format!(
+                            "tree symbolic link resolves outside declared roots: {} -> {}",
+                            path.display(),
+                            resolved.display()
+                        ))
+                    })?;
                 hash.update(b"L");
                 frame(hash, name);
                 frame(hash, owner.identity.as_bytes());
                 frame(hash, &relative(&owner.source, &resolved));
             }
             if fs::read_link(path)? != target {
-                return Err(fail(format!("tree changed while hashing: {}", path.display())));
+                return Err(fail(format!(
+                    "tree changed while hashing: {}",
+                    path.display()
+                )));
             }
         } else if before.is_file() {
             self.hash.update(b"F");
@@ -151,15 +188,25 @@ impl Walker {
             let mut file = File::open(path)?;
             loop {
                 let size = file.read(&mut *self.buffer)?;
-                if size == 0 { break; }
+                if size == 0 {
+                    break;
+                }
                 self.hash.update(&self.buffer[..size]);
-                if let Some(hash) = &mut self.resolved { hash.update(&self.buffer[..size]); }
+                if let Some(hash) = &mut self.resolved {
+                    hash.update(&self.buffer[..size]);
+                }
             }
         } else {
-            return Err(fail(format!("tree contains unsupported special file: {}", path.display())));
+            return Err(fail(format!(
+                "tree contains unsupported special file: {}",
+                path.display()
+            )));
         }
         if !same(&before, &fs::symlink_metadata(path)?, before.is_file()) {
-            return Err(fail(format!("tree changed while hashing: {}", path.display())));
+            return Err(fail(format!(
+                "tree changed while hashing: {}",
+                path.display()
+            )));
         }
         Ok(())
     }
@@ -168,38 +215,72 @@ impl Walker {
 fn real_directory(path: &Path, label: &str) -> io::Result<PathBuf> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
-        return Err(fail(format!("{label} must be a real directory: {}", path.display())));
+        return Err(fail(format!(
+            "{label} must be a real directory: {}",
+            path.display()
+        )));
     }
     fs::canonicalize(path)
 }
 
-pub fn fingerprint(tree: &Path, dereference: bool, backing_roots: &[PathBuf], link_owners: &[LinkOwner]) -> io::Result<Fingerprints> {
+pub fn fingerprint(
+    tree: &Path,
+    dereference: bool,
+    backing_roots: &[PathBuf],
+    link_owners: &[LinkOwner],
+) -> io::Result<Fingerprints> {
     let root = real_directory(tree, "tree input")?;
-    let backing = backing_roots.iter().map(|root| real_directory(root, "declared backing root"))
+    let backing = backing_roots
+        .iter()
+        .map(|root| real_directory(root, "declared backing root"))
         .collect::<io::Result<Vec<_>>>()?;
-    let owners = link_owners.iter().map(|owner| Ok(LinkOwner {
-        source: fs::canonicalize(&owner.source)?, identity: owner.identity.clone(),
-    })).collect::<io::Result<Vec<_>>>()?;
+    let owners = link_owners
+        .iter()
+        .map(|owner| {
+            Ok(LinkOwner {
+                source: fs::canonicalize(&owner.source)?,
+                identity: owner.identity.clone(),
+            })
+        })
+        .collect::<io::Result<Vec<_>>>()?;
     let mut hash = Sha256::new();
     hash.update(SCHEMA);
-    let resolved = if owners.is_empty() || dereference { None } else {
-        let mut hash = Sha256::new(); hash.update(SCHEMA); Some(hash)
+    let resolved = if owners.is_empty() || dereference {
+        None
+    } else {
+        let mut hash = Sha256::new();
+        hash.update(SCHEMA);
+        Some(hash)
     };
     let before = fs::symlink_metadata(tree)?;
     let mut walker = Walker {
-        root, backing, owners, dereference, hash, resolved, links: Vec::new(),
-        ancestors: HashSet::from([(before.dev(), before.ino())]), buffer: Box::new([0; 131072]),
+        root,
+        backing,
+        owners,
+        dereference,
+        hash,
+        resolved,
+        links: Vec::new(),
+        ancestors: HashSet::from([(before.dev(), before.ino())]),
+        buffer: Box::new([0; 131072]),
     };
     for name in sorted_names(tree)? {
         walker.visit(&tree.join(&name), name.as_bytes())?;
     }
     if !same(&before, &fs::symlink_metadata(tree)?, false) {
-        return Err(fail(format!("tree changed while hashing: {}", tree.display())));
+        return Err(fail(format!(
+            "tree changed while hashing: {}",
+            tree.display()
+        )));
     }
     let literal_links_digest = walker.resolved.as_ref().map(|_| {
         walker.links.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-        let mut hash = Sha256::new(); hash.update(LINKS_SCHEMA);
-        for (path, target) in &walker.links { frame(&mut hash, path); frame(&mut hash, target); }
+        let mut hash = Sha256::new();
+        hash.update(LINKS_SCHEMA);
+        for (path, target) in &walker.links {
+            frame(&mut hash, path);
+            frame(&mut hash, target);
+        }
         hex(hash)
     });
     Ok(Fingerprints {
@@ -223,15 +304,23 @@ fn sorted_input_names(directory: &Path) -> io::Result<Vec<OsString>> {
         .collect::<io::Result<Vec<_>>>()?;
     // `readdir(path).toSorted()` uses JavaScript's UTF-16 code-unit order,
     // unlike the editor-view protocol's UTF-8 byte order.
-    names.sort_unstable_by(|a, b| a.to_string_lossy().encode_utf16().cmp(b.to_string_lossy().encode_utf16()));
+    names.sort_unstable_by(|a, b| {
+        a.to_string_lossy()
+            .encode_utf16()
+            .cmp(b.to_string_lossy().encode_utf16())
+    });
     Ok(names)
 }
 
 fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -> io::Result<()> {
     let before = fs::symlink_metadata(path)?;
     let relative = path.strip_prefix(root).map_err(fail)?;
-    let entry = if relative.as_os_str().is_empty() { "." } else {
-        relative.to_str().ok_or_else(|| fail("input path must be UTF-8"))?
+    let entry = if relative.as_os_str().is_empty() {
+        "."
+    } else {
+        relative
+            .to_str()
+            .ok_or_else(|| fail("input path must be UTF-8"))?
     };
     frame_input_text(hash, entry);
     frame_input_text(hash, &(before.mode() & 0o7777).to_string());
@@ -243,17 +332,27 @@ fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -
     } else if before.file_type().is_symlink() {
         frame_input_text(hash, "symlink");
         let target = fs::read_link(path)?;
-        frame_input_text(hash, target.to_str().ok_or_else(|| fail("link target must be UTF-8"))?);
+        frame_input_text(
+            hash,
+            target
+                .to_str()
+                .ok_or_else(|| fail("link target must be UTF-8"))?,
+        );
     } else if before.is_file() {
         frame_input_text(hash, "file");
         let mut file = File::open(path)?;
         loop {
             let size = file.read(buffer)?;
-            if size == 0 { break; }
+            if size == 0 {
+                break;
+            }
             hash.update(&buffer[..size]);
         }
     } else {
-        return Err(fail(format!("unsupported filesystem entry while hashing: {}", path.display())));
+        return Err(fail(format!(
+            "unsupported filesystem entry while hashing: {}",
+            path.display()
+        )));
     }
     Ok(())
 }
