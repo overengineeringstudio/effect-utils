@@ -29,19 +29,19 @@
     }
   },
   "devDependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.112",
-    "@effect/platform-node": "4.0.0-rc.112",
-    "@effect/vitest": "4.0.0-rc.112",
+    "@effect/opentelemetry": "4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.113",
+    "@effect/vitest": "4.0.0-rc.113",
     "@types/node": "26.5.0",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.113",
     "typescript": "7.0.2",
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "^4.0.0-rc.112",
-    "@effect/platform-node": "^4.0.0-rc.112",
-    "@effect/vitest": "^4.0.0-rc.112",
-    "effect": "^4.0.0-rc.112",
+    "@effect/opentelemetry": "^4.0.0-rc.113",
+    "@effect/platform-node": "^4.0.0-rc.113",
+    "@effect/vitest": "^4.0.0-rc.113",
+    "effect": "^4.0.0-rc.113",
     "vitest": "^4.1.9"
   },
   "publishConfig": {
