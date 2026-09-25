@@ -83,3 +83,29 @@ net must be lower than at the previous snapshot, otherwise admissions pause
 until a contraction slice lands. Reconciliations happen per phase or after ten
 rows change status, whichever is first. The check gains the snapshot list and
 the comparison; the per-close fold is unchanged.
+
+## Amendment 2 (2026-09-25)
+
+The cumulative-negative fold cannot pass at the first consumer close. At ledger
+revision `570cf03` (megarepo-all) the cumulative net stood at +35,411
+build-machinery lines, of which the Megarepo composition layer accounts for
++16,902; after every planned deletion (workspace tools, composition, consumer
+producers) the projection is still about +20.6k. The hub (effect-utils) builds
+foundation that every consumer reuses, so charging it in full against the
+first consumer's close would block adoption for reasons unrelated to that
+consumer's own contraction. Johannes (q1, 2026-09-25; protected-layer edit
+confirmed) amended the gate:
+
+1. At each consumer's adoption close, that consumer's own ledger sum must be
+   negative. This is the only sign test.
+2. The cumulative sum across repositories need not be negative. It keeps the
+   falling trajectory of Amendment 1: every reconciliation is lower than the
+   previous one, or admissions pause until a contraction slice lands.
+3. The hub's foundation cost is amortized across its consumers. When the hub's
+   residual list reaches zero it records a hub-ready milestone, not a
+   negative-sum close; the hub no longer closes jointly with its first
+   consumer.
+
+BUCK-R15 still wins over BUCK-R01 and BUCK-R07. The ledger check drops the
+cumulative sign test at close, keeps the per-consumer test, and stores the
+reconciliation snapshots as data it compares.
