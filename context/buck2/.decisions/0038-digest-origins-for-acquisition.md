@@ -56,13 +56,19 @@ action, with no synthetic root or prepared `node_modules` adapter.
    public/private classification. Generation verifies SHA-512 before deriving
    SHA-256 and size; freshness binds every field to the lock projection.
 2. Each Buck `pnpm_package` declares the canonical URL, SHA-256, and byte size.
-   `archive_origin.url_prefix`, when configured, replaces only the origin with
-   `<prefix><sha256>`; otherwise the canonical registry URL is used. The origin
-   URL, digest, and size enter the fetch action identity. Downstream command
-   actions consume the verified content artifact, so equal archive bytes from
-   different origins converge after acquisition rather than pretending the
-   acquisition actions have equal keys.
-3. `download_file` is client-side acquisition, not a remotely executed command.
+   Without an archive origin, client-side `download_file` fetches the canonical
+   registry URL. With `archive_origin.url_prefix` configured, a local acquisition
+   action first requests `<prefix><sha256>` and falls back to the canonical
+   registry URL **only** on a direct CAS HTTP 404. CAS redirects are errors;
+   registry redirects are followed manually only while every hop passes the
+   same approved public HTTPS origin policy as the manifest. Response-header
+   and overall transfer deadlines bound acquisition. The action aborts oversized
+   streams immediately and publishes an atomic rename only after SHA-256 and
+   byte-size verification; other CAS errors and mismatched bytes fail closed.
+   Buck's `download_file` accepts only one URL, so it cannot implement this
+   fallback itself. Downstream actions consume the verified content artifact,
+   converging on the same digest regardless of the supplying origin.
+3. Archive acquisition is local rather than a remotely executed command.
    Result-producing consumers remain eligible for REAPI and receive the same
    immutable content digest. BUCK-R17 applies to those command actions.
 4. A protected-main seeder verifies the canonical registry response against the

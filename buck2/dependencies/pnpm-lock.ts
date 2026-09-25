@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import { buck2SemanticFingerprint } from '../../genie/buck2/mod.ts'
 import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
+import { publicArchiveRedirectUrl, publicArchiveUrl } from './public-archive-origin.ts'
 
 const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
 
@@ -238,31 +239,6 @@ const archiveUrl = ({ name, version }: { name: string; version: string }): strin
   }
   const tarballName = name.startsWith('@') === true ? name.slice(name.indexOf('/') + 1) : name
   return `https://registry.npmjs.org/${name}/-/${tarballName}-${version}.tgz`
-}
-
-/** A locked archive must not turn the public CAS seeder into an arbitrary URL fetcher. */
-const publicArchiveUrl = ({ url, location }: { url: string; location: string }): string => {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return fail(`${location} must use an approved public HTTPS archive origin`)
-  }
-  const approved =
-    (parsed.hostname === 'registry.npmjs.org' &&
-      url.startsWith('https://registry.npmjs.org/')) ||
-    (parsed.hostname === 'overeng-effect-utils.cachix.org' &&
-      url.startsWith('https://overeng-effect-utils.cachix.org/serve/'))
-  if (
-    approved === false ||
-    parsed.protocol !== 'https:' ||
-    parsed.port !== '' ||
-    parsed.username !== '' ||
-    parsed.password !== '' ||
-    parsed.hash !== ''
-  )
-    return fail(`${location} must use an approved public HTTPS archive origin`)
-  return url
 }
 
 /** Deterministic, collision-resistant Buck target name for one generated identity. */
@@ -1092,11 +1068,9 @@ export const generatePnpmSha256Sidecar = async ({
       publicArchiveUrl({ url: current, location: 'archive download URL' })
       const response = await fetchResponse(current, { redirect: 'manual' })
       if ([301, 302, 303, 307, 308].includes(response.status)) {
-        const location = response.headers.get('location')
-        if (location === null) return fail(`archive redirect from ${current} has no Location`)
-        current = publicArchiveUrl({
-          url: new URL(location, current).href,
-          location: 'archive redirect URL',
+        current = publicArchiveRedirectUrl({
+          from: current,
+          redirect: response.headers.get('location'),
         })
         continue
       }
