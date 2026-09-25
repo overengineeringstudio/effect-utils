@@ -469,7 +469,7 @@ const RpcRecordDetail = ({
           )}
           onPress={onBack}
         >
-          ← Back to records
+          <span aria-hidden="true">← </span>Back to records
         </Button>
         <div {...stylex.props(styles.detailIdentity)}>
           <Heading id="rpc-explorer-detail-title" level={2} {...stylex.props(styles.detailTitle)}>

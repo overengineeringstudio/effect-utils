@@ -341,7 +341,7 @@ export const StaleResetReconnect: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await expect(
-      canvas.findByText('Inspector recovering: instanceChanged', { selector: 'header span' }),
+      canvas.findByRole('img', { name: 'Inspector recovering: instanceChanged' }),
     ).resolves.toBeVisible()
   },
 }
@@ -394,11 +394,17 @@ export const LiveCoreProtocol: Story = {
     await openClearHistory(canvasElement)
     const body = within(document.body)
     await userEvent.click(await body.findByRole('button', { name: 'Clear diagnostic history' }))
-    await expect(canvas.findByText(/1 active · 0 completed/)).resolves.toBeVisible()
-    await expect(canvas.findByText('Last reset: cleared')).resolves.toBeVisible()
-    await expect(canvas.findByRole('option', { selected: true })).resolves.toHaveTextContent(
-      'Fixture.ApplicationRpc',
+    await expect(canvas.findByText(/1 active · 0 done/)).resolves.toBeVisible()
+    await expect(canvas.findByRole('status')).resolves.toHaveTextContent(
+      '1 active and 0 completed records. Inspector connected. Reset reason: cleared',
     )
+    await expect(canvas.findByTitle('Last reset: cleared')).resolves.toBeVisible()
+    // Compact widths drill into the detail and unmount the list, so the preserved
+    // selection is asserted on whichever surface shows it.
+    const selected = canvas.queryByRole('option', { selected: true })
+    await expect(
+      selected ?? (await canvas.findByRole('article', { name: /Fixture\.ApplicationRpc/ })),
+    ).toHaveTextContent('Fixture.ApplicationRpc')
   },
 }
 
