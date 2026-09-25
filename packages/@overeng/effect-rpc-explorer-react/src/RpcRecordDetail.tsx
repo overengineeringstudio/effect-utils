@@ -97,7 +97,11 @@ const styles = stylex.create({
     borderColor: explorerTokens.warning,
     fontWeight: 600,
   },
-  back: { display: { default: 'none', '@media (max-width: 63.99rem)': 'inline-flex' } },
+  back: {
+    display: { default: 'none', '@media (max-width: 63.99rem)': 'inline-flex' },
+    alignItems: 'center',
+    columnGap: explorerTokens['density-block'],
+  },
   hidden: { display: 'none' },
   visible: { display: 'inline-flex' },
   status: {
@@ -503,7 +507,7 @@ const RpcRecordDetail = ({
           )}
           onPress={onBack}
         >
-          <span aria-hidden="true">← </span>Back to records
+          <span aria-hidden="true">←</span>Back to records
         </Button>
         <div {...stylex.props(styles.detailIdentity)}>
           <Heading id="rpc-explorer-detail-title" level={2} {...stylex.props(styles.detailTitle)}>
