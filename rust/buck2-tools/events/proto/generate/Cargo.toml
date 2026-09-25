@@ -1,0 +1,14 @@
+# Regenerates ../../src/gen from the vendored Buck2 protos without protoc:
+#   cargo run --manifest-path rust/buck2-tools/events/proto/generate/Cargo.toml
+# Kept outside the workspace so the adapter itself has no build script.
+[package]
+name = "buck2-events-proto-generate"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+prost-build = "0.14"
+protox = "0.9"

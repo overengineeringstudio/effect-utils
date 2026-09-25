@@ -43,6 +43,11 @@ let
       packageRoot = workspaceRoot + "/buck2-tools/archive-tool";
       workspaceMember = "buck2-tools/archive-tool";
     };
+    events = {
+      package = "buck2-events";
+      packageRoot = workspaceRoot + "/buck2-tools/events";
+      workspaceMember = "buck2-tools/events";
+    };
     product = {
       package = "buck2-product";
       packageRoot = workspaceRoot + "/buck2-tools/product";
@@ -90,6 +95,7 @@ let
 in
 {
   archive-tool = mkTool toolDefinitions.archive-tool;
+  events = mkTool toolDefinitions.events;
   source-inputs = lib.mapAttrs (_: definition: mkSourceInputs definition.packageRoot) toolDefinitions;
   product = mkTool toolDefinitions.product;
 }

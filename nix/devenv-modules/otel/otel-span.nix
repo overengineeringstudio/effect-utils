@@ -5,7 +5,7 @@
 # Subcommands:
 #   run       — wrap a command in an OTLP trace span
 #   emit-span — emit one OTLP span with typed attributes
-#   emit      — deliver a raw OTLP JSON payload from stdin
+#   buck2     — prepare Buck command identity and sidecar (never runs Buck)
 #
 # Usage:
 #   packages = [ effectUtils.lib.mkOtelSpan { inherit pkgs; } ];
@@ -258,6 +258,71 @@ pkgs.writeShellScriptBin "otel-span" ''
         fi
       }
 
+      _buck2_usage() {
+        cat <<'USAGE'
+    Usage: otel-span buck2 --sidecar <path>
+
+    Prints shell-safe exports for a Buck command span. Evaluate the output in
+    the caller's shell before invoking Buck directly; after Buck exits, emit
+    the completed span with otel-span emit-span and BUCK_COMMAND_SPAN_ID.
+    Invalid or absent trace context leaves BUCK_WRAPPER_UUID unset.
+  USAGE
+      }
+
+      _cmd_buck2() {
+        local sidecar=""
+        while [[ $# -gt 0 ]]; do
+          case "$1" in
+            --help) _buck2_usage; return 0 ;;
+            --sidecar)
+              if [[ $# -lt 2 || -z "$2" ]]; then
+                echo "otel-span buck2: --sidecar requires a path" >&2
+                return 1
+              fi
+              sidecar="$2"
+              shift 2
+              ;;
+            *)
+              echo "otel-span buck2: unexpected argument: $1" >&2
+              return 1
+              ;;
+          esac
+        done
+        if [[ -z "$sidecar" ]]; then
+          echo "otel-span buck2: --sidecar is required" >&2
+          return 1
+        fi
+
+        local span_id start_ns tp trace_id parent_id flags digest uuid command_tp
+        span_id="$(_gen_hex 8)"
+        start_ns="$(${pkgs.coreutils}/bin/date +%s%N)"
+        printf 'export BUCK_COMMAND_SPAN_ID=%s BUCK_COMMAND_START_NS=%s\n' "$span_id" "$start_ns"
+
+        tp="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}"
+        # W3C version 00 requires a 32-hex trace id, 16-hex parent id, and
+        # two hex flags. Neither id may be all zero. Never trust a partially
+        # parsed context: Buck rejects malformed BUCK_WRAPPER_UUID at startup.
+        if [[ "$tp" =~ ^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$ ]]; then
+          trace_id="''${BASH_REMATCH[1]}"
+          parent_id="''${BASH_REMATCH[2]}"
+          flags="''${BASH_REMATCH[3]}"
+          if [[ "$trace_id" != 00000000000000000000000000000000 && "$parent_id" != 0000000000000000 ]]; then
+            digest="$(printf '%s' "$trace_id:$span_id" | ${pkgs.coreutils}/bin/sha256sum)"
+            digest="''${digest%% *}"
+            digest="''${digest:0:32}"
+            uuid="''${digest:0:8}-''${digest:8:4}-''${digest:12:4}-''${digest:16:4}-''${digest:20:12}"
+            command_tp="00-$trace_id-$span_id-$flags"
+            if ! printf '%s %s\n' "$uuid" "$command_tp" >> "$sidecar"; then
+              echo "otel-span buck2: cannot append sidecar: $sidecar" >&2
+            fi
+            printf 'export BUCK_COMMAND_TRACE_ID=%s BUCK_COMMAND_PARENT_SPAN_ID=%s BUCK_WRAPPER_UUID=%s\n' \
+              "$trace_id" "$parent_id" "$uuid"
+            return 0
+          fi
+        fi
+        printf 'unset BUCK_COMMAND_TRACE_ID BUCK_COMMAND_PARENT_SPAN_ID BUCK_WRAPPER_UUID\n'
+      }
+
       _cmd_emit() {
         local payload
         payload=$(cat)
@@ -487,6 +552,7 @@ pkgs.writeShellScriptBin "otel-span" ''
 
     Subcommands:
       run        Wrap a command in an OTLP trace span
+      buck2      Prepare Buck command identity without wrapping Buck
       emit-span  Emit one typed OTLP span without wrapping a command
       emit       Deliver a raw OTLP JSON payload from stdin
 
@@ -497,6 +563,7 @@ pkgs.writeShellScriptBin "otel-span" ''
       case "''${1:-}" in
         run) shift; _cmd_run "$@" ;;
         emit-span) shift; _cmd_emit_span "$@" ;;
+        buck2) shift; _cmd_buck2 "$@" ;;
         emit) shift; _cmd_emit ;;
         --help|-h) _top_help; exit 0 ;;
         "")

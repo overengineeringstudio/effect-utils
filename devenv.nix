@@ -583,7 +583,49 @@ let
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}
       cd "$root"
       ${standaloneBuckCachePosture}
-      exec "$BUCK2_BIN" build ${lib.escapeShellArg target}
+
+      # Keep native evidence per invocation, including failed builds. Capture setup and
+      # telemetry must not prevent the direct Buck invocation or change its exit code.
+      spool=""
+      if ${pkgs.coreutils}/bin/mkdir -p "$root/.devenv/otel/buck2-events"; then
+        spool="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/otel/buck2-events/${taskName}.XXXXXXXX")" || spool=""
+      fi
+      buck_args=(build ${lib.escapeShellArg target})
+      unset BUCK_WRAPPER_UUID BUCK_COMMAND_SPAN_ID BUCK_COMMAND_START_NS \
+        BUCK_COMMAND_TRACE_ID BUCK_COMMAND_PARENT_SPAN_ID
+      if [ -n "$spool" ]; then
+        event_log="$spool/command_events.pb.zst"
+        sidecar="$spool/traceparent.sidecar"
+        buck_args+=(--event-log "$event_log" --write-build-id "$spool/buck-trace-id")
+        if prepared="$("''${OTEL_SPAN_BIN:-otel-span}" buck2 --sidecar "$sidecar")"; then
+          eval "$prepared"
+        fi
+      fi
+
+      if "$BUCK2_BIN" "''${buck_args[@]}"; then
+        buck_exit=0
+      else
+        buck_exit=$?
+      fi
+      command_end_ns="$(${pkgs.coreutils}/bin/date +%s%N)" || command_end_ns=""
+      if [ -n "''${BUCK_COMMAND_TRACE_ID:-}" ] && [ -n "$command_end_ns" ]; then
+        command_status=ok
+        if [ "$buck_exit" -ne 0 ]; then command_status=error; fi
+        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+          "''${OTEL_SPAN_BIN:-otel-span}" emit-span "effect-utils-devenv" "buck2.command build" \
+          --trace-id "$BUCK_COMMAND_TRACE_ID" \
+          --parent-span-id "$BUCK_COMMAND_PARENT_SPAN_ID" \
+          --span-id "$BUCK_COMMAND_SPAN_ID" \
+          --start-time-ns "$BUCK_COMMAND_START_NS" \
+          --end-time-ns "$command_end_ns" \
+          --status-code "$command_status" \
+          --attr-int "exit.code=$buck_exit" || true
+      fi
+      if [ -n "$spool" ] && [ -s "$event_log" ]; then
+        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+          ${repoPackages.buck2-events}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" || true
+      fi
+      exit "$buck_exit"
     '';
   editorViewExec =
     {
@@ -898,6 +940,7 @@ in
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
     repoPackages.otelite
     repoPackages.otel-scrape
+    repoPackages.buck2-events
     # Nix-distributed Buck binary used by direct repository tasks.
     buck2Machine
     buck2Stage0Definition.product
