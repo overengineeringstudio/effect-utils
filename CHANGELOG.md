@@ -194,6 +194,9 @@ All notable changes to this project will be documented in this file.
   require the explicit `--compose` flag for the paused cross-repository shape,
   fail closed when a member still carries standalone Buck root authority, and
   retain structured composition failure causes at the command boundary.
+- **@overeng/effect-rpc-explorer / otel-contract**: Route fault spans and lifecycle
+  counters through schema-backed telemetry contracts while preserving monotonic
+  counter temporality and the explorer's bounded labels and host-only instruments.
 - **devenv**: Load tracked Buck products through the flake's
   `buckProducts`, which wires the source recipes cache-native manifest rows
   require. The loader now requires `fromSourceProducts`, so a caller that

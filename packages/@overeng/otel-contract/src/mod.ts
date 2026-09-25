@@ -407,6 +407,7 @@ export interface OtelMetricMetadata {
   readonly name: string
   readonly description?: string
   readonly unit?: string
+  readonly incremental?: boolean
   readonly labels: ReadonlyArray<OtelAttrFieldMetadata>
   readonly labelKeys: ReadonlyArray<string>
   readonly boundaries?: ReadonlyArray<number>
@@ -418,6 +419,7 @@ export interface OtelMetricDefinition<S extends Schema.Codec<any>> {
   readonly name: string
   readonly description?: string
   readonly unit?: string
+  readonly incremental?: boolean
   readonly labels: OtelMetricLabels<S>
   readonly metadata: OtelMetricMetadata
   readonly encodeLabels: (
@@ -1186,6 +1188,7 @@ const metricMetadata = <S extends Schema.Codec<any>>(options: {
   readonly name: string
   readonly description?: string
   readonly unit?: string
+  readonly incremental?: boolean
   readonly labels: OtelMetricLabels<S>
   readonly boundaries?: ReadonlyArray<number>
 }): OtelMetricMetadata => ({
@@ -1194,6 +1197,7 @@ const metricMetadata = <S extends Schema.Codec<any>>(options: {
   name: decodeMetricNameSync(options.name),
   ...(options.description === undefined ? {} : { description: options.description }),
   ...(options.unit === undefined ? {} : { unit: options.unit }),
+  ...(options.incremental === undefined ? {} : { incremental: options.incremental }),
   labels: options.labels.metadata.labels,
   labelKeys: options.labels.metadata.labelKeys,
   ...(options.boundaries === undefined ? {} : { boundaries: options.boundaries }),
@@ -1418,6 +1422,7 @@ const defineCounter = <S extends Schema.Codec<any>>(options: {
   readonly name: string
   readonly description?: string
   readonly unit?: string
+  readonly incremental?: boolean
   readonly labels: S | OtelMetricLabels<S>
 }): OtelMetricDefinition<S> => {
   const name = decodeMetricNameSync(options.name)
@@ -1427,12 +1432,14 @@ const defineCounter = <S extends Schema.Codec<any>>(options: {
     instrument: 'counter',
     name,
     ...(options.description === undefined ? {} : { description: options.description }),
+    ...(options.incremental === undefined ? {} : { incremental: options.incremental }),
     ...(options.unit === undefined ? {} : { unit: options.unit }),
     labels,
     metadata: metricMetadata({
       instrument: 'counter',
       name,
       ...(options.description === undefined ? {} : { description: options.description }),
+      ...(options.incremental === undefined ? {} : { incremental: options.incremental }),
       ...(options.unit === undefined ? {} : { unit: options.unit }),
       labels,
     }),
@@ -1535,9 +1542,12 @@ const effectCounter = <S extends Schema.Codec<any>>(
     })
   }
   const metric =
-    definition.description === undefined
+    definition.description === undefined && definition.incremental === undefined
       ? Metric.counter(definition.name)
-      : Metric.counter(definition.name, { description: definition.description })
+      : Metric.counter(definition.name, {
+          ...(definition.description === undefined ? {} : { description: definition.description }),
+          ...(definition.incremental === undefined ? {} : { incremental: definition.incremental }),
+        })
   const incrementBy = ({ labels, amount }: { labels: Schema.Schema.Type<S>; amount: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)

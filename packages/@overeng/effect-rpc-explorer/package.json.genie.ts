@@ -7,11 +7,15 @@ import {
   workspaceMember,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
 
 const peerDepNames = ['effect'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-rpc-explorer' }),
+  dependencies: {
+    workspace: [otelContractPkg],
+  },
   devDependencies: {
     external: catalog.pick(...peerDepNames, 'typescript', 'vitest'),
   },

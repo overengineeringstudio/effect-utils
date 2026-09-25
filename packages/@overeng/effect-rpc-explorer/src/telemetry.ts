@@ -1,6 +1,7 @@
-/* oxlint-disable overeng/no-raw-otel-primitives -- This package intentionally depends only on Effect; closed validators and host capability ports form its schema-first boundary. */
-import { Effect, Metric, Schema, Tracer } from 'effect'
+import { Effect, Schema, Tracer } from 'effect'
 import type { Scope } from 'effect'
+
+import { OtelAttr, OtelMetric, OtelSpan } from '@overeng/otel-contract'
 
 import { CaptureChannels } from './model.ts'
 import type { CaptureChannel, Direction, ObserverSide, TraceContext } from './model.ts'
@@ -172,20 +173,66 @@ export interface ExplorerTelemetry {
   readonly invariantFault: (fault: ExplorerInvariantFault) => Effect.Effect<void>
 }
 
-const eventsMetric = Metric.counter('rpc.explorer.events', {
-  description: 'Explorer lifecycle events admitted to the ordered model.',
-  incremental: true,
+const eventLabels = Schema.Struct({
+  'rpc.explorer.event.kind': Schema.Literals(ExplorerTelemetryEventKinds),
+  'rpc.explorer.observer.side': Schema.Literals(observerSides),
+  'rpc.explorer.direction': Schema.Literals(directions),
 })
-const droppedMetric = Metric.counter('rpc.explorer.dropped', {
-  description: 'Explorer observations or retained data discarded by a bounded rule.',
-  incremental: true,
+const dropLabels = Schema.Struct({
+  'rpc.explorer.drop.reason': Schema.Literals(ExplorerTelemetryDropReasons),
+  'rpc.explorer.capture.channel': Schema.optional(Schema.Literals(CaptureChannels)).pipe(
+    OtelAttr.cardinality('bounded'),
+  ),
 })
-const activeMetric = Metric.counter('rpc.explorer.active', {
-  description: 'Change in currently active explorer records.',
+const activeLabels = Schema.Struct({
+  'rpc.explorer.observer.side': Schema.Literals(observerSides),
+  'rpc.explorer.direction': Schema.Literals(directions),
 })
-const subscriberResetsMetric = Metric.counter('rpc.explorer.subscriber.resets', {
-  description: 'Explorer subscriber resets by bounded reason.',
-  incremental: true,
+const resetLabels = Schema.Struct({
+  'rpc.explorer.reset.reason': Schema.Literals(ExplorerTelemetryResetReasons),
+})
+
+const eventsMetric = OtelMetric.effect.counter(
+  OtelMetric.counter({
+    name: 'rpc.explorer.events',
+    incremental: true,
+    description: 'Explorer lifecycle events admitted to the ordered model.',
+    labels: eventLabels,
+  }),
+)
+const droppedMetric = OtelMetric.effect.counter(
+  OtelMetric.counter({
+    name: 'rpc.explorer.dropped',
+    incremental: true,
+    description: 'Explorer observations or retained data discarded by a bounded rule.',
+    labels: dropLabels,
+  }),
+)
+const activeMetric = OtelMetric.effect.counter(
+  OtelMetric.counter({
+    name: 'rpc.explorer.active',
+    description: 'Change in currently active explorer records.',
+    labels: activeLabels,
+  }),
+)
+const subscriberResetsMetric = OtelMetric.effect.counter(
+  OtelMetric.counter({
+    name: 'rpc.explorer.subscriber.resets',
+    description: 'Explorer subscriber resets by bounded reason.',
+    labels: resetLabels,
+    incremental: true,
+  }),
+)
+
+const faultSpan = OtelSpan.defineSync({
+  name: 'rpc.explorer.pipeline.fault',
+  root: true,
+  schema: Schema.Struct({
+    'span.label': Schema.Literal('rpc explorer fault').pipe(OtelAttr.spanLabel()),
+    'rpc.explorer.fault.kind': Schema.Literals(ExplorerTelemetryFaultKinds),
+    'rpc.explorer.observer.side': Schema.Literals(observerSides),
+    'rpc.explorer.event.kind': Schema.Literals(ExplorerTelemetryEventKinds),
+  }),
 })
 const normalizationHistogramRegistration: ExplorerNormalizationHistogramRegistration = {
   name: 'rpc.explorer.normalization.duration',
@@ -230,18 +277,10 @@ const exactRecord = ({
   return value as Readonly<Record<string, unknown>>
 }
 
-const bestEffort = (make: () => Effect.Effect<void>): Effect.Effect<void> =>
+const bestEffort = <TError>(make: () => Effect.Effect<void, TError>): Effect.Effect<void> =>
   Effect.suspend(make).pipe(Effect.ignoreCause)
 
-const withMetricAttributes = <TInput, TState>({
-  metric,
-  attributes,
-}: {
-  readonly metric: Metric.Metric<TInput, TState>
-  readonly attributes: Readonly<Record<string, string>>
-}): Metric.Metric<TInput, TState> => Metric.withAttributes(metric, attributes)
-
-const eventAttributes = (value: unknown): Readonly<Record<string, string>> | undefined => {
+const eventAttributes = (value: unknown): typeof eventLabels.Type | undefined => {
   const input = exactRecord({ value, required: ['eventKind', 'observerSide', 'direction'] })
   if (input === undefined) return undefined
   const eventKind = memberValue({
@@ -260,7 +299,7 @@ const eventAttributes = (value: unknown): Readonly<Record<string, string>> | und
   }
 }
 
-const dropAttributes = (value: unknown): Readonly<Record<string, string>> | undefined => {
+const dropAttributes = (value: unknown): typeof dropLabels.Type | undefined => {
   const input = exactRecord({ value, required: ['reason'], optional: ['captureChannel'] })
   if (input === undefined) return undefined
   const reason = memberValue({ values: ExplorerTelemetryDropReasons, value: input.reason })
@@ -281,9 +320,7 @@ const dropAttributes = (value: unknown): Readonly<Record<string, string>> | unde
 
 const activeUpdate = (
   value: unknown,
-):
-  | { readonly attributes: Readonly<Record<string, string>>; readonly delta: number }
-  | undefined => {
+): { readonly attributes: typeof activeLabels.Type; readonly delta: number } | undefined => {
   const input = exactRecord({ value, required: ['observerSide', 'direction', 'delta'] })
   if (input === undefined) return undefined
   const observerSide = memberValue({ values: observerSides, value: input.observerSide })
@@ -341,7 +378,7 @@ const normalizationRecord = (
   }
 }
 
-const resetAttributes = (value: unknown): Readonly<Record<string, string>> | undefined => {
+const resetAttributes = (value: unknown): typeof resetLabels.Type | undefined => {
   const input = exactRecord({ value, required: ['reason'] })
   if (input === undefined) return undefined
   const reason = memberValue({ values: ExplorerTelemetryResetReasons, value: input.reason })
@@ -376,7 +413,7 @@ const faultOptions = (
   value: unknown,
 ):
   | {
-      readonly attributes: Readonly<Record<string, string>>
+      readonly attributes: typeof faultSpan.attributes.schema.Type
       readonly links: ReadonlyArray<Tracer.SpanLink>
     }
   | undefined => {
@@ -456,26 +493,19 @@ const makeTelemetry = (
   event: (input) =>
     bestEffort(() => {
       const attributes = eventAttributes(input)
-      return attributes === undefined
-        ? Effect.void
-        : Metric.update(withMetricAttributes({ metric: eventsMetric, attributes }), 1)
+      return attributes === undefined ? Effect.void : eventsMetric.increment(attributes)
     }),
   drop: (input) =>
     bestEffort(() => {
       const attributes = dropAttributes(input)
-      return attributes === undefined
-        ? Effect.void
-        : Metric.update(withMetricAttributes({ metric: droppedMetric, attributes }), 1)
+      return attributes === undefined ? Effect.void : droppedMetric.increment(attributes)
     }),
   activeDelta: (input) =>
     bestEffort(() => {
       const update = activeUpdate(input)
       return update === undefined
         ? Effect.void
-        : Metric.update(
-            withMetricAttributes({ metric: activeMetric, attributes: update.attributes }),
-            update.delta,
-          )
+        : activeMetric.incrementBy({ labels: update.attributes, amount: update.delta })
     }),
   normalizationDuration: (input) =>
     bestEffort(() => {
@@ -492,25 +522,22 @@ const makeTelemetry = (
   subscriberReset: (input) =>
     bestEffort(() => {
       const attributes = resetAttributes(input)
-      return attributes === undefined
-        ? Effect.void
-        : Metric.update(withMetricAttributes({ metric: subscriberResetsMetric, attributes }), 1)
+      return attributes === undefined ? Effect.void : subscriberResetsMetric.increment(attributes)
     }),
   invariantFault: (input) =>
     bestEffort(() => {
       const options = faultOptions(input)
-      return options === undefined
-        ? Effect.void
-        : Effect.void.pipe(
-            Effect.withSpan(
-              'rpc.explorer.pipeline.fault',
-              {
-                root: true,
-                attributes: options.attributes,
-                links: options.links,
-              },
-              { captureStackTrace: false },
-            ),
+      if (options === undefined) return Effect.void
+      const span = OtelSpan.with({
+        span: faultSpan,
+        attributes: options.attributes,
+        effect: Effect.void,
+      })
+      return options.links.length === 0
+        ? span
+        : Effect.linkSpans(
+            span,
+            options.links.map((link) => link.span),
           )
     }),
 })
