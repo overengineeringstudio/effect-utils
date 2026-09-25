@@ -26,6 +26,9 @@ All notable changes to this project will be documented in this file.
   descriptors validate in TypeScript and Nix. Private descriptors require a
   static fleet runner, ordinary Cachix steps are read-only, and protected
   publisher steps alone receive write credentials.
+- **Buck2 fingerprinting**: Editor-view publication and Buck action input checks
+  use a Nix-packaged Rust tree fingerprint tool, retaining canonical digest,
+  symlink-owner inventory, dereference, and mode-sensitive action-root contracts.
 
 - **Buck2 event-log adapter**: `buck2-events ingest` decodes pinned protobuf
   event logs directly into linked critical and full OTLP trace views. Logs cut

@@ -8,9 +8,10 @@ import { describe, expect, it } from 'vitest'
 
 const bun = realpathSync(process.execPath)
 const runner = fileURLToPath(new URL('./package-command-runner.ts', import.meta.url))
+const fingerprintTool = process.env['BUCK2_FINGERPRINT_TOOL']
 
 describe('package command input immutability', () => {
-  it.each([
+  it.skipIf(fingerprintTool === undefined).each([
     { name: 'package tree', readRoot: false },
     { name: 'declared read root', readRoot: true },
   ])('rejects a successful command that mutates its $name', async ({ readRoot }) => {
@@ -36,6 +37,8 @@ writeFileSync(process.argv[2]!, 'mutated')
         packageTree,
         'mutate.ts',
         verdict,
+        '--fingerprint-tool',
+        fingerprintTool!,
         '--arg',
         mutationTarget,
         ...(readRoot === true ? ['--read-root', dependency] : []),

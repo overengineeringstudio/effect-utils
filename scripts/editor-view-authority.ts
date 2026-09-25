@@ -146,6 +146,7 @@ const parseCli = (args: readonly string[]) => {
     '--publisher',
     '--cp',
     '--mv',
+    '--fingerprint-tool',
     '--snapshot-retention',
     '--packages',
   ])
@@ -164,6 +165,7 @@ const parseCli = (args: readonly string[]) => {
     publisher: admitting === true ? get('--publisher') : '',
     cp: admitting === true ? get('--cp') : '',
     mv: admitting === true ? get('--mv') : '',
+    fingerprintTool: admitting === true ? get('--fingerprint-tool') : '',
     snapshotRetention: admitting === true ? Number(get('--snapshot-retention')) : 3,
     publicationPackages: values.get('--packages'),
   }
@@ -222,6 +224,7 @@ const main = async (): Promise<void> => {
       workspaceAuthority: options.output,
       cp: options.cp,
       mv: options.mv,
+      fingerprintTool: options.fingerprintTool,
       snapshotRetention: options.snapshotRetention,
       onTiming: reportTiming,
       parallelEditorRoots: options.command === 'bootstrap',

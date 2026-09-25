@@ -6,6 +6,7 @@ before and after execution so TypeScript actions remain write-free.
 """
 
 load("//buck2/materialization.bzl", "PackageTreeInfo")
+load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
 TsgoTypecheckInfo = provider(fields = {
@@ -44,6 +45,9 @@ def _tsgo_typecheck_impl(ctx):
         ctx.attrs.project,
         verdict.as_output(),
     ])
+    fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
+    args.add("--fingerprint-tool", fingerprint.store_path)
+    args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
     ctx.actions.run(
@@ -71,6 +75,10 @@ tsgo_typecheck = rule(
             default = "//buck2/toolchains:effect_tsgo",
             providers = [EffectTsgoToolchainInfo],
         )),
+        "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:fingerprint_tool",
+            providers = [BuckSupportToolInfo],
+        )),
     },
 )
 
@@ -94,6 +102,9 @@ def _tsgo_emit_impl(ctx):
         ctx.attrs.declaration_entrypoint,
         directory.as_output(),
     ])
+    fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
+    args.add("--fingerprint-tool", fingerprint.store_path)
+    args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
     for declaration_path in sorted(ctx.attrs.declaration_sources.keys()):
@@ -131,6 +142,10 @@ tsgo_emit = rule(
         "_tsgo": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:effect_tsgo",
             providers = [EffectTsgoToolchainInfo],
+        )),
+        "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:fingerprint_tool",
+            providers = [BuckSupportToolInfo],
         )),
     },
 )

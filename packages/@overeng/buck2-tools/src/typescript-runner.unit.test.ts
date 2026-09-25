@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -21,12 +22,17 @@ import {
   formatError,
   hashDeclaredInputRoots,
   linkStagedWorkspaceProjects,
-  parseEmitOptions,
-  parseTypecheckOptions,
+  parseEmitOptions as parseEmit,
+  parseTypecheckOptions as parseTypecheck,
   relinkStagedDependencyView,
 } from './typescript-runner.ts'
 
 const scratchDirectories: string[] = []
+const fingerprintTool = '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
+const parseEmitOptions = (args: readonly string[]) =>
+  parseEmit([...args, '--fingerprint-tool', fingerprintTool])
+const parseTypecheckOptions = (args: readonly string[]) =>
+  parseTypecheck([...args, '--fingerprint-tool', fingerprintTool])
 
 const createFixture = () => {
   const root = mkdtempSync(join(tmpdir(), 'typescript-runner-'))
@@ -67,6 +73,7 @@ describe('TypeScript emit declaration command', () => {
     ])
 
     expect(options.declarationSources).toEqual(['src/vite-types.d.ts'])
+    expect(options.fingerprintTool).toBe(fingerprintTool)
   })
 
   it('parses canonical repeatable declared read roots', () => {
@@ -86,21 +93,38 @@ describe('TypeScript emit declaration command', () => {
     ).toEqual(['/a-dependency', '/z-dependency'])
   })
 
-  it('hashes every canonical declared input root and does not follow symlink cycles', async () => {
-    const { root } = createFixture()
-    const first = join(root, 'first')
-    const second = join(root, 'second')
-    mkdirSync(first)
-    mkdirSync(second)
-    writeFileSync(join(first, 'source.ts'), 'export const value = 1\n')
-    writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 1\n')
-    symlinkSync(first, join(second, 'cycle'))
+  it.skipIf(process.env['BUCK2_FINGERPRINT_TOOL'] === undefined)(
+    'hashes every canonical declared input root and does not follow symlink cycles',
+    async () => {
+      const { root } = createFixture()
+      const first = join(root, 'first')
+      const second = join(root, 'second')
+      mkdirSync(first)
+      mkdirSync(second)
+      writeFileSync(join(first, 'source.ts'), 'export const value = 1\n')
+      writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 1\n')
+      symlinkSync(first, join(second, 'cycle'))
 
-    const before = await hashDeclaredInputRoots([second, first, second])
-    writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 2\n')
-    const after = await hashDeclaredInputRoots([first, second])
+      const tool = process.env['BUCK2_FINGERPRINT_TOOL']!
+      const before = await hashDeclaredInputRoots([second, first, second], tool)
+      writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 2\n')
+      const after = await hashDeclaredInputRoots([first, second], tool)
 
-    expect(after).not.toBe(before)
+      expect(after).not.toBe(before)
+      const file = join(first, 'source.ts')
+      const beforeMode = await hashDeclaredInputRoots([file], tool)
+      chmodSync(file, 0o755)
+      const afterMode = await hashDeclaredInputRoots([file], tool)
+      expect(afterMode).not.toBe(beforeMode)
+    },
+  )
+
+  it('rejects missing or mutable fingerprint executables', () => {
+    const args = ['/nix/store/toolchain/bin/tsgo', '/package-tree', 'tsconfig.json', '/output']
+    expect(() => parseTypecheck(args)).toThrow('missing --fingerprint-tool')
+    expect(() => parseTypecheck([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint'])).toThrow(
+      'immutable /nix/store executable',
+    )
   })
 
   it.each(['../outside.d.ts', '/outside.d.ts', 'src\\outside.d.ts', 'src//outside.d.ts'])(

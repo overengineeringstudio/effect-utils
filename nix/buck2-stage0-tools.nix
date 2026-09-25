@@ -38,6 +38,12 @@ let
     '';
 
   toolDefinitions = {
+    fingerprint = {
+      package = "buck2-tool-core";
+      packageRoot = workspaceRoot + "/buck2-tools/core";
+      workspaceMember = "buck2-tools/core";
+      mainProgram = "buck2-fingerprint";
+    };
     archive-tool = {
       package = "buck2-archive-tool";
       packageRoot = workspaceRoot + "/buck2-tools/archive-tool";
@@ -96,6 +102,7 @@ in
 {
   archive-tool = mkTool toolDefinitions.archive-tool;
   events = mkTool toolDefinitions.events;
+  fingerprint = mkTool toolDefinitions.fingerprint;
   source-inputs = lib.mapAttrs (_: definition: mkSourceInputs definition.packageRoot) toolDefinitions;
   product = mkTool toolDefinitions.product;
 }

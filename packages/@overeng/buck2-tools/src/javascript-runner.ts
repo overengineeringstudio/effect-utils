@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { hashDeclaredInputRoots } from './typescript-runner.ts'
+import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
 
 type JavaScriptCommand = 'exec' | 'vitest' | 'vitest-collect' | 'bun-test' | 'shell-tests'
 type VitestRuntime = 'bun' | 'node'
@@ -20,6 +20,7 @@ export type JavaScriptRunOptions = {
   readonly command: JavaScriptCommand
   readonly bun: string
   readonly packageTree: string
+  readonly fingerprintTool: string
   readonly readRoots: readonly string[]
   readonly environment: Readonly<Record<string, string>>
   readonly externalInputs: Readonly<Record<string, string>>
@@ -170,6 +171,7 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
   const forwardedArgs: string[] = []
   let vitestRuntime: VitestRuntime = 'bun'
   let collectOutput: string | undefined
+  let fingerprintTool: string | undefined
   let staticParse: boolean | undefined
   while (index < args.length) {
     const flag = requireArgument({ args, index, name: 'flag' })
@@ -215,6 +217,9 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
       const root = resolve(value)
       if (value.length === 0 || root === '/') fail(`invalid declared read root: ${value}`)
       readRoots.push(root)
+    } else if (flag === '--fingerprint-tool') {
+      if (fingerprintTool !== undefined) fail('duplicate --fingerprint-tool')
+      fingerprintTool = requireFingerprintTool(value)
     } else if (flag === '--inherit-env') inheritedEnv.push(requireEnvironmentName(value))
     else if (flag === '--vitest-runtime') vitestRuntime = requireVitestRuntime(value)
     else if (flag === '--collect-output') collectOutput = resolve(value)
@@ -231,6 +236,7 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
   return {
     command,
     bun,
+    fingerprintTool: fingerprintTool ?? fail('missing --fingerprint-tool'),
     packageTree,
     entrypoint,
     config,
@@ -671,7 +677,7 @@ const runOuter = async (options: JavaScriptRunOptions): Promise<number> => {
     ...options.readRoots,
     ...Object.values(options.externalInputs),
   ]
-  const before = await hashDeclaredInputRoots(inputRoots)
+  const before = await hashDeclaredInputRoots(inputRoots, options.fingerprintTool)
   const lease = await acquireScratch(planScratch({ command: options.command, env: process.env }))
   let status = 1
   let primaryError: unknown
@@ -688,7 +694,7 @@ const runOuter = async (options: JavaScriptRunOptions): Promise<number> => {
   }
   let invariantError: unknown
   try {
-    const after = await hashDeclaredInputRoots(inputRoots)
+    const after = await hashDeclaredInputRoots(inputRoots, options.fingerprintTool)
     if (after !== before)
       invariantError = new Error(
         `javascript runner: declared inputs changed while the command was running (before ${before}, after ${after})`,

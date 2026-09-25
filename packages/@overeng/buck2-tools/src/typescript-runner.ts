@@ -1,6 +1,7 @@
 /* oxlint-disable overeng/exports-first -- Focused tests import narrow seams beside the private helpers they exercise. */
+import { spawn } from 'node:child_process'
 import { createHash, type Hash } from 'node:crypto'
-import { createReadStream, type Stats } from 'node:fs'
+import { type Stats } from 'node:fs'
 import {
   chmod,
   copyFile,
@@ -30,6 +31,7 @@ type ForwardedSignal = keyof typeof signalNumbers
 
 type TypecheckOptions = {
   readonly packageTree: string
+  readonly fingerprintTool: string
   readonly readRoots: readonly string[]
   readonly project: string
   readonly tsgo: string
@@ -42,6 +44,7 @@ type EmitOptions = {
   readonly outDir: string
   readonly output: string
   readonly packageTree: string
+  readonly fingerprintTool: string
   readonly readRoots: readonly string[]
   readonly project: string
   readonly tsgo: string
@@ -108,13 +111,20 @@ const requireTsgo = (value: string): string => {
   return value
 }
 
+/** An immutable, declared capability is required even for direct runner invocations. */
+export const requireFingerprintTool = (value: string): string =>
+  /^\/nix\/store\/[^/]+\/bin\/buck2-fingerprint$/u.test(value) === true
+    ? value
+    : fail(`fingerprint tool must be an immutable /nix/store executable: ${value}`)
+
 const parseReadRoots = (options: {
   readonly args: readonly string[]
   readonly command: string
   readonly from: number
   readonly declarationSources?: string[]
-}): readonly string[] => {
+}): { readonly readRoots: readonly string[]; readonly fingerprintTool: string } => {
   const roots: string[] = []
+  let fingerprintTool: string | undefined
   for (let index = options.from; index < options.args.length; index += 2) {
     const flag = requireArgument({ args: options.args, index, name: 'flag' })
     const value = requireArgument({
@@ -130,18 +140,25 @@ const parseReadRoots = (options: {
       options.declarationSources.push(
         requireNormalizedRelativePath({ name: 'declaration source', value }),
       )
+    } else if (flag === '--fingerprint-tool') {
+      if (fingerprintTool !== undefined) fail(`duplicate --fingerprint-tool for ${options.command}`)
+      fingerprintTool = requireFingerprintTool(value)
     } else fail(`unexpected ${options.command} argument: ${flag}`)
   }
-  return canonicalRoots(roots)
+  return {
+    readRoots: canonicalRoots(roots),
+    fingerprintTool: fingerprintTool ?? fail(`missing --fingerprint-tool for ${options.command}`),
+  }
 }
 
 /** Parses the fail-closed typecheck command contract for focused rule/runner tests. */
 export const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions => {
   requireMinimumArgumentCount({ args, command: 'typecheck', count: 4 })
+  const declared = parseReadRoots({ args, command: 'typecheck', from: 4 })
   return {
     tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
     packageTree: requireArgument({ args, index: 1, name: 'package tree' }),
-    readRoots: parseReadRoots({ args, command: 'typecheck', from: 4 }),
+    ...declared,
     project: requireNormalizedRelativePath({
       name: 'project',
       value: requireArgument({ args, index: 2, name: 'project' }),
@@ -154,7 +171,7 @@ export const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions
 export const parseEmitOptions = (args: readonly string[]): EmitOptions => {
   requireMinimumArgumentCount({ args, command: 'emit', count: 6 })
   const declarationSources: string[] = []
-  const readRoots = parseReadRoots({
+  const declared = parseReadRoots({
     args,
     command: 'emit',
     from: 6,
@@ -163,7 +180,7 @@ export const parseEmitOptions = (args: readonly string[]): EmitOptions => {
   return {
     tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
     packageTree: requireArgument({ args, index: 1, name: 'package tree' }),
-    readRoots,
+    ...declared,
     project: requireNormalizedRelativePath({
       name: 'project',
       value: requireArgument({ args, index: 2, name: 'project' }),
@@ -203,59 +220,48 @@ const forEachSequential = async <T>(options: {
 const canonicalRoots = (roots: readonly string[]): readonly string[] =>
   [...new Set(roots.map((root) => resolve(root)))].toSorted()
 
-const hashTree = async (root: string): Promise<string> => {
-  const hash = createHash('sha256')
-
-  const visit = async (path: string): Promise<void> => {
-    const metadata = await lstat(path)
-    const entry = relative(root, path).split(sep).join('/') || '.'
-    updateFramedText({ hash, value: entry })
-    updateFramedText({ hash, value: String(metadata.mode & 0o7777) })
-
-    if (metadata.isDirectory() === true) {
-      updateFramedText({ hash, value: 'directory' })
-      const children = (await readdir(path)).toSorted()
-      await forEachSequential({
-        iterator: children.values(),
-        visit: async (child) => visit(join(path, child)),
-      })
-      return
-    }
-    if (metadata.isSymbolicLink() === true) {
-      updateFramedText({ hash, value: 'symlink' })
-      updateFramedText({ hash, value: await readlink(path) })
-      return
-    }
-    if (metadata.isFile() === true) {
-      updateFramedText({ hash, value: 'file' })
-      await forEachSequential({
-        iterator: createReadStream(path)[Symbol.asyncIterator](),
-        visit: (chunk) => {
-          hash.update(chunk)
-        },
-      })
-      return
-    }
-    fail(`unsupported filesystem entry while hashing: ${path}`)
-  }
-
-  await visit(root)
-  return hash.digest('hex')
-}
-
 /**
- * Deterministic immutability evidence for the complete declared input boundary. Symlinks are
- * hashed as links rather than followed, so cyclic package views cannot recurse forever.
+ * Hashes each declared root using the pinned Rust CLI. The outer framing preserves the
+ * absolute root identity, while the CLI commits to entry types, modes, links and file bytes.
  */
-export const hashDeclaredInputRoots = async (roots: readonly string[]): Promise<string> => {
+export const hashDeclaredInputRoots = async (
+  roots: readonly string[],
+  fingerprintTool: string,
+): Promise<string> => {
+  const executable = requireFingerprintTool(fingerprintTool)
   const hash = createHash('sha256')
-  await forEachSequential({
-    iterator: canonicalRoots(roots).values(),
-    visit: async (root) => {
-      updateFramedText({ hash, value: root })
-      updateFramedText({ hash, value: await hashTree(root) })
-    },
-  })
+  for (const root of canonicalRoots(roots)) {
+    const digest = await new Promise<string>((resolveDigest, reject) => {
+      const child = spawn(executable, [root, '--input-roots'], {
+        env: { PATH: '' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      const stdout: Buffer[] = []
+      const stderr: Buffer[] = []
+      child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
+      child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+      child.on('error', reject)
+      child.on('close', (code, signal) => {
+        if (code !== 0) {
+          reject(
+            new Error(
+              `typescript runner: fingerprint tool failed for ${root} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
+            ),
+          )
+          return
+        }
+        const result = Buffer.concat(stdout).toString('utf8')
+        const match = /^digest ([a-f0-9]{64})\n$/u.exec(result)
+        if (match === null) {
+          reject(new Error(`typescript runner: invalid fingerprint tool output for ${root}: ${result}`))
+          return
+        }
+        resolveDigest(match[1]!)
+      })
+    })
+    updateFramedText({ hash, value: root })
+    updateFramedText({ hash, value: digest })
+  }
   return hash.digest('hex')
 }
 
@@ -549,7 +555,7 @@ const runTsgo = async (options: {
 const runTypecheck = async (options: TypecheckOptions): Promise<number> => {
   const packageTree = resolve(options.packageTree)
   const readRoots = canonicalRoots([packageTree, ...options.readRoots])
-  const before = await hashDeclaredInputRoots(readRoots)
+  const before = await hashDeclaredInputRoots(readRoots, options.fingerprintTool)
   let status = 1
   let compilerError: unknown
   try {
@@ -574,7 +580,7 @@ const runTypecheck = async (options: TypecheckOptions): Promise<number> => {
 
   let invariantError: unknown
   try {
-    const after = await hashDeclaredInputRoots(readRoots)
+    const after = await hashDeclaredInputRoots(readRoots, options.fingerprintTool)
     if (after !== before) {
       invariantError = new Error(
         `typescript runner: declared input roots changed during typecheck (before ${before}, after ${after})`,
@@ -596,7 +602,7 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
   const packageTree = resolve(options.packageTree)
   const output = resolve(options.output)
   const readRoots = canonicalRoots([packageTree, ...options.readRoots])
-  const before = await hashDeclaredInputRoots(readRoots)
+  const before = await hashDeclaredInputRoots(readRoots, options.fingerprintTool)
   const stagingRoot = await mkdtemp(join(tmpdir(), 'tsgo-emit-'))
   let status = 1
   let primaryError: unknown
@@ -654,7 +660,7 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
 
   let invariantError: unknown
   try {
-    const after = await hashDeclaredInputRoots(readRoots)
+    const after = await hashDeclaredInputRoots(readRoots, options.fingerprintTool)
     if (after !== before) {
       invariantError = new Error(
         `typescript runner: declared input roots changed during emit (before ${before}, after ${after})`,

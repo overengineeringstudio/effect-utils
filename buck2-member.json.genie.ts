@@ -154,6 +154,12 @@ const manifestProjection = {
       executable: 'bin/buck2',
     },
     {
+      toolId: 'buck2-fingerprint',
+      protocol: 'effect-utils/buck2-fingerprint/v1',
+      flakePackage: 'buck2-fingerprint',
+      executable: 'bin/buck2-fingerprint',
+    },
+    {
       toolId: 'coreutils-readlink',
       protocol: 'gnu/coreutils/v9',
       flakePackage: 'buck2-coreutils',

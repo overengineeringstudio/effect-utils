@@ -112,6 +112,7 @@ rec {
           buck2-archive-tool = buck2-stage0-tools.archive-tool;
           buck2-events = buck2-stage0-tools.events;
           buck2-product = buck2-stage0-tools.product;
+          buck2-fingerprint = buck2-stage0-tools.fingerprint;
           buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
             exec ${pkgs.coreutils}/bin/readlink "$@"
           '';

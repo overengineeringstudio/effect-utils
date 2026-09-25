@@ -105,6 +105,7 @@ export type EditorViewOptions = {
    */
   readonly beforeMaterialize?: () => void | Promise<void>
   readonly cp: string
+  readonly fingerprintTool: string
   readonly mv: string
   readonly workspaceAuthority: string
   readonly consumerCache: string
@@ -232,6 +233,8 @@ export type CanonicalTreeFingerprintOptions = {
   readonly dereference?: boolean
   /** Canonical provider-owned roots whose contents a dereferenced tree may reference. */
   readonly backingRoots?: readonly string[]
+  /** Immutable Nix executable used by the publisher; omitted only for TS parity checks. */
+  readonly fingerprintTool?: string
 }
 
 /** Stable per-root identities framing link targets in owner-resolved form. */
@@ -280,12 +283,14 @@ export const canonicalTreeFingerprint = async ({
   tree,
   dereference = false,
   backingRoots = [],
+  fingerprintTool,
 }: CanonicalTreeFingerprintOptions): Promise<string> =>
   (
     await canonicalTreeFingerprints({
       tree,
       ...(dereference === true ? { dereference } : {}),
       ...(backingRoots.length === 0 ? {} : { backingRoots }),
+      ...(fingerprintTool === undefined ? {} : { fingerprintTool }),
     })
   ).digest
 
@@ -297,15 +302,17 @@ export const canonicalTreeFingerprint = async ({
 export const canonicalTreeFingerprintWithResolvedLinks = async ({
   tree,
   linkOwners,
+  fingerprintTool,
 }: {
   readonly tree: string
   readonly linkOwners: TreeLinkOwners
+  readonly fingerprintTool?: string
 }): Promise<{
   readonly digest: string
   readonly resolvedLinksDigest: string
   readonly literalLinksDigest: string
 }> => {
-  const fingerprints = await canonicalTreeFingerprints({ tree, linkOwners })
+  const fingerprints = await canonicalTreeFingerprints({ tree, linkOwners, fingerprintTool })
   return {
     digest: fingerprints.digest,
     resolvedLinksDigest:
@@ -320,9 +327,38 @@ const canonicalTreeFingerprints = async ({
   dereference = false,
   backingRoots = [],
   linkOwners = [],
+  fingerprintTool,
 }: CanonicalTreeFingerprintOptions & {
   readonly linkOwners?: TreeLinkOwners
 }): Promise<CanonicalTreeFingerprints> => {
+  if (fingerprintTool !== undefined) {
+    if (/^\/nix\/store\/[^/]+\/bin\/buck2-fingerprint$/u.test(fingerprintTool) === false)
+      fail(`fingerprint tool must be an immutable /nix/store executable: ${fingerprintTool}`)
+    const args = [
+      resolve(tree),
+      ...(dereference ? ['--dereference'] : []),
+      ...backingRoots.flatMap((root) => ['--backing-root', root]),
+      ...linkOwners.flatMap(({ source, identity }) => ['--link-owner', `${source}=${identity}`]),
+    ]
+    const result = spawnSync(fingerprintTool, args, { encoding: 'utf8', maxBuffer: 1024 * 1024, cwd: '/', env: { PATH: '' } })
+    if (result.error !== undefined || result.status !== 0)
+      fail(`fingerprint tool failed: ${result.error?.message ?? result.stderr}`)
+    const lines = result.stdout.trimEnd().split('\n')
+    const values = new Map(lines.map((line) => line.split(' ', 2) as [string, string]))
+    if (
+      lines.length !== (linkOwners.length > 0 && !dereference ? 3 : 1) ||
+      values.size !== lines.length ||
+      !fingerprintPattern.test(values.get('digest') ?? '') ||
+      (linkOwners.length > 0 && !dereference &&
+        (!fingerprintPattern.test(values.get('resolved') ?? '') ||
+          !fingerprintPattern.test(values.get('literal') ?? '')))
+    ) fail(`fingerprint tool returned invalid output: ${result.stdout}`)
+    return {
+      digest: values.get('digest') ?? fail('fingerprint tool omitted digest'),
+      resolvedLinksDigest: values.get('resolved'),
+      literalLinksDigest: values.get('literal'),
+    }
+  }
   const absoluteTree = resolve(tree)
   requireDirectory({ path: absoluteTree, field: 'tree input' })
   const treeRoot = realpathSync(absoluteTree)
@@ -1038,8 +1074,10 @@ type DeclaredRootFingerprints = {
 const fingerprintDeclaredRoots = async ({
   roots,
   knownRoot,
+  fingerprintTool,
 }: {
   readonly roots: readonly DeclaredSnapshotRoot[]
+  readonly fingerprintTool: string
   readonly knownRoot?: {
     readonly source: string
     readonly digest: string
@@ -1063,6 +1101,7 @@ const fingerprintDeclaredRoots = async ({
       const fingerprints = await canonicalTreeFingerprintWithResolvedLinks({
         tree: root.source,
         linkOwners,
+        fingerprintTool,
       })
       return {
         identity: root.identity,
@@ -1105,15 +1144,17 @@ type SnapshotPayloadFingerprints = {
 const fingerprintSnapshotPayload = async ({
   snapshotDir,
   roots = [],
+  fingerprintTool,
 }: {
   readonly snapshotDir: string
+  readonly fingerprintTool: string
   readonly roots?: readonly DeclaredSnapshotRoot[]
 }): Promise<SnapshotPayloadFingerprints> => {
   const backing = join(snapshotDir, '.backing')
   const nodeModules = join(snapshotDir, 'node_modules')
   if (pathExists(backing) === false)
     return {
-      digest: await canonicalTreeFingerprint({ tree: nodeModules }),
+      digest: await canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool }),
       resolvedRootsDigest: undefined,
     }
   const extraRoots = roots.filter((root) => root.identity !== 'node_modules')
@@ -1129,13 +1170,14 @@ const fingerprintSnapshotPayload = async ({
   // These disjoint immutable roots can be fingerprinted concurrently. Preserve their fixed order
   // when framing the resulting payload digest so scheduling cannot affect the record identity.
   const [backingDigest, extraResolved, nodeModulesFingerprints] = await Promise.all([
-    canonicalTreeFingerprint({ tree: backing }),
+    canonicalTreeFingerprint({ tree: backing, fingerprintTool }),
     Promise.all(
       extraRoots.map(async (root) => ({
         digest: (
           await canonicalTreeFingerprintWithResolvedLinks({
             tree: join(snapshotDir, root.destination),
             linkOwners: candidateOwners,
+            fingerprintTool,
           })
         ).resolvedLinksDigest,
         identity: root.identity,
@@ -1146,10 +1188,11 @@ const fingerprintSnapshotPayload = async ({
       : canonicalTreeFingerprintWithResolvedLinks({
           tree: nodeModules,
           linkOwners: candidateOwners,
+          fingerprintTool,
         }),
   ])
   const nodeModulesDigest =
-    nodeModulesFingerprints?.digest ?? (await canonicalTreeFingerprint({ tree: nodeModules }))
+    nodeModulesFingerprints?.digest ?? (await canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool }))
   const entries = [
     ['.backing', backingDigest],
     ['node_modules', nodeModulesDigest],
@@ -1684,13 +1727,13 @@ type SnapshotValidation =
   | { readonly record: EditorViewRecord; readonly error?: never }
   | { readonly record?: never; readonly error: unknown }
 
-const validateSnapshotContents = async (snapshotDir: string): Promise<EditorViewRecord> => {
+const validateSnapshotContents = async (snapshotDir: string, fingerprintTool: string): Promise<EditorViewRecord> => {
   requireDirectory({ path: snapshotDir, field: 'snapshot' })
   const record = readRecord(join(snapshotDir, 'editor-view.json'))
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
   requireDirectory({ path: snapshotNodeModules, field: 'snapshot node_modules' })
   requireReadOnlySnapshot(snapshotDir)
-  const digest = (await fingerprintSnapshotPayload({ snapshotDir })).digest
+  const digest = (await fingerprintSnapshotPayload({ snapshotDir, fingerprintTool })).digest
   if (digest !== record.byteSnapshotDigest)
     fail(
       `existing snapshot byte digest mismatch: recorded=${record.byteSnapshotDigest} actual=${digest}`,
@@ -1842,6 +1885,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
   requireDirectory({ path: options.nodeModules, field: 'admitted node_modules' })
   requireImmutableTool({ tool: options.cp, label: copyLabel })
   requireImmutableTool({ tool: options.mv, label: 'mv --exchange' })
+  requireImmutableTool({ tool: options.fingerprintTool, label: 'buck2-fingerprint' })
   ensureConsumerCache(paths)
   ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
   ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
@@ -1868,17 +1912,17 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     // extra tree traversal.
     const selectedFingerprints =
       finite === true
-        ? await canonicalTreeFingerprintWithResolvedLinks({ tree: selectedPath, linkOwners: roots })
+        ? await canonicalTreeFingerprintWithResolvedLinks({ tree: selectedPath, linkOwners: roots, fingerprintTool: options.fingerprintTool })
         : undefined
     const fingerprint =
       selectedFingerprints !== undefined && selectedPath === editorInputsPath
         ? selectedFingerprints.digest
-        : await canonicalTreeFingerprint({ tree: editorInputsPath })
+        : await canonicalTreeFingerprint({ tree: editorInputsPath, fingerprintTool: options.fingerprintTool })
     const selectedViewDigest =
       selectedFingerprints?.digest ??
       (selectedPath === editorInputsPath
         ? fingerprint
-        : await canonicalTreeFingerprint({ tree: selectedPath }))
+        : await canonicalTreeFingerprint({ tree: selectedPath, fingerprintTool: options.fingerprintTool }))
     // A warm publication must prove both the admitted roots and the immutable snapshot.
     // Begin validating the current snapshot before traversing the roots so those independent
     // integrity checks overlap without weakening either one.
@@ -1908,7 +1952,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         return undefined
       return {
         snapshotDir,
-        validation: validateSnapshotContents(snapshotDir).then(
+        validation: validateSnapshotContents(snapshotDir, options.fingerprintTool).then(
           (validated): SnapshotValidation => ({ record: validated }),
           (error): SnapshotValidation => ({ error }),
         ),
@@ -1919,6 +1963,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       finite === true
         ? await fingerprintDeclaredRoots({
             roots,
+            fingerprintTool: options.fingerprintTool,
             knownRoot: {
               source: selectedPath,
               digest: selectedViewDigest,
@@ -1933,7 +1978,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         : undefined
     const normalizedStoreDigest =
       declaredRoots?.digest ??
-      (await canonicalTreeFingerprint({ tree: selectedPath, dereference: true }))
+      (await canonicalTreeFingerprint({ tree: selectedPath, dereference: true, fingerprintTool: options.fingerprintTool }))
     const identity = snapshotIdentity({
       editorInputsFingerprint: fingerprint,
       normalizedStoreDigest,
@@ -1950,7 +1995,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         if ('error' in validation) throw validation.error
         existing = validation.record
       } else {
-        existing = await validateSnapshotContents(snapshotDir)
+        existing = await validateSnapshotContents(snapshotDir, options.fingerprintTool)
       }
       record = expectedRecord({
         options,
@@ -2000,6 +2045,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       enterPhase('payload')
       const payload = await fingerprintSnapshotPayload({
         snapshotDir: candidate,
+        fingerprintTool: options.fingerprintTool,
         ...(finite === true ? { roots } : {}),
       })
       if (materialized === true && declaredRoots !== undefined) {
@@ -2182,7 +2228,7 @@ const validatePublishedView = async ({
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
   let snapshotDigest: string
   try {
-    snapshotDigest = (await fingerprintSnapshotPayload({ snapshotDir })).digest
+    snapshotDigest = (await fingerprintSnapshotPayload({ snapshotDir, fingerprintTool: options.fingerprintTool })).digest
   } catch (error) {
     return failCheck({
       message: `snapshot is incomplete: ${error instanceof Error ? error.message : String(error)}`,
@@ -2255,12 +2301,12 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
   })
   requireDirectory({ path: options.editorInputs, field: 'editor_inputs' })
   requireDirectory({ path: options.nodeModules, field: 'admitted node_modules' })
-  const currentFingerprint = await canonicalTreeFingerprint({ tree: options.editorInputs })
+  const currentFingerprint = await canonicalTreeFingerprint({ tree: options.editorInputs, fingerprintTool: options.fingerprintTool })
   const context: CheckContext = { recordedFingerprint: '<missing>', currentFingerprint }
   const record = await validatePublishedView({ options, paths, context })
   if (record.editorInputsFingerprint !== currentFingerprint)
     return failCheck({ message: 'editor_inputs fingerprint mismatch', context })
-  const selectedViewDigest = await canonicalTreeFingerprint({ tree: options.nodeModules })
+  const selectedViewDigest = await canonicalTreeFingerprint({ tree: options.nodeModules, fingerprintTool: options.fingerprintTool })
   if (selectedViewDigest !== record.selectedViewDigest)
     return failCheck({
       message: `admitted node_modules view digest mismatch: recorded=${record.selectedViewDigest} admitted=${selectedViewDigest}`,
@@ -2270,13 +2316,14 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
     (options.backingRoots?.length ?? 0) > 0
       ? (
           await fingerprintDeclaredRoots({
+            fingerprintTool: options.fingerprintTool,
             roots: declaredSnapshotRoots({
               nodeModules: options.nodeModules,
               backingRoots: options.backingRoots ?? [],
             }),
           })
         ).digest
-      : await canonicalTreeFingerprint({ tree: options.nodeModules, dereference: true })
+      : await canonicalTreeFingerprint({ tree: options.nodeModules, dereference: true, fingerprintTool: options.fingerprintTool })
   if (normalizedStoreDigest !== record.normalizedStoreDigest)
     return failCheck({
       message: `admitted normalized store digest mismatch: recorded=${record.normalizedStoreDigest} admitted=${normalizedStoreDigest}`,
@@ -2332,6 +2379,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
             '--backing-root',
             '--cp',
             '--mv',
+            '--fingerprint-tool',
             '--workspace-authority',
             '--consumer-cache',
             '--snapshot-retention',
@@ -2342,6 +2390,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
             '--view-name',
             '--cell',
             '--target',
+            '--fingerprint-tool',
             '--consumer-cache',
             '--snapshot-retention',
           ],
@@ -2371,6 +2420,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
     backingRoots: admitting === true ? backingRoots : [],
     nodeModules: getWhenAdmitting('--node-modules'),
     cp: getWhenAdmitting('--cp'),
+    fingerprintTool: recover === true ? '' : get('--fingerprint-tool'),
     mv: getWhenAdmitting('--mv'),
     workspaceAuthority: getWhenAdmitting('--workspace-authority'),
     consumerCache: recover === true ? `.devenv/vite-cache/${viewName}` : get('--consumer-cache'),
