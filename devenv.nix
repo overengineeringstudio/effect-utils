@@ -656,7 +656,9 @@ let
         --publisher "$root/packages/@overeng/buck2-tools/src/editor-view.ts" \
         --cp ${pkgs.coreutils}/bin/cp \
         --mv ${pkgs.coreutils}/bin/mv \
-        --fingerprint-tool ${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint \
+        --fingerprint-tool ${
+          repoFlake.packages.${currentSystem}.buck2-fingerprint
+        }/bin/buck2-fingerprint \
         --snapshot-retention 3${packageArgument}
     '';
   scopedEditorViewPublisher =
@@ -998,7 +1000,9 @@ in
       export CP_BIN=${pkgs.coreutils}/bin/cp
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
-      export FINGERPRINT_BIN=${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint
+      export FINGERPRINT_BIN=${
+        repoFlake.packages.${currentSystem}.buck2-fingerprint
+      }/bin/buck2-fingerprint
       export BUCK2_FINGERPRINT_TOOL="$FINGERPRINT_BIN"
       cd "$root/packages/@overeng/buck2-tools"
       exec ${pkgs.bun}/bin/bun test src/*.test.ts

@@ -28,7 +28,8 @@ import {
 } from './typescript-runner.ts'
 
 const scratchDirectories: string[] = []
-const fingerprintTool = '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
+const fingerprintTool =
+  '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
 const parseEmitOptions = (args: readonly string[]) =>
   parseEmit([...args, '--fingerprint-tool', fingerprintTool])
 const parseTypecheckOptions = (args: readonly string[]) =>
@@ -106,15 +107,18 @@ describe('TypeScript emit declaration command', () => {
       symlinkSync(first, join(second, 'cycle'))
 
       const tool = process.env['BUCK2_FINGERPRINT_TOOL']!
-      const before = await hashDeclaredInputRoots([second, first, second], tool)
+      const before = await hashDeclaredInputRoots({
+        roots: [second, first, second],
+        fingerprintTool: tool,
+      })
       writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 2\n')
-      const after = await hashDeclaredInputRoots([first, second], tool)
+      const after = await hashDeclaredInputRoots({ roots: [first, second], fingerprintTool: tool })
 
       expect(after).not.toBe(before)
       const file = join(first, 'source.ts')
-      const beforeMode = await hashDeclaredInputRoots([file], tool)
+      const beforeMode = await hashDeclaredInputRoots({ roots: [file], fingerprintTool: tool })
       chmodSync(file, 0o755)
-      const afterMode = await hashDeclaredInputRoots([file], tool)
+      const afterMode = await hashDeclaredInputRoots({ roots: [file], fingerprintTool: tool })
       expect(afterMode).not.toBe(beforeMode)
     },
   )

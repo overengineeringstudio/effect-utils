@@ -244,9 +244,6 @@ fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -
         frame_input_text(hash, "symlink");
         let target = fs::read_link(path)?;
         frame_input_text(hash, target.to_str().ok_or_else(|| fail("link target must be UTF-8"))?);
-        if target != fs::read_link(path)? {
-            return Err(fail(format!("input changed while hashing: {}", path.display())));
-        }
     } else if before.is_file() {
         frame_input_text(hash, "file");
         let mut file = File::open(path)?;
@@ -257,9 +254,6 @@ fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -
         }
     } else {
         return Err(fail(format!("unsupported filesystem entry while hashing: {}", path.display())));
-    }
-    if !same(&before, &fs::symlink_metadata(path)?, before.is_file()) {
-        return Err(fail(format!("input changed while hashing: {}", path.display())));
     }
     Ok(())
 }

@@ -10,7 +10,6 @@ import {
   mkdir,
   mkdtemp,
   readdir,
-  readlink,
   readFile,
   realpath,
   rm,
@@ -224,44 +223,57 @@ const canonicalRoots = (roots: readonly string[]): readonly string[] =>
  * Hashes each declared root using the pinned Rust CLI. The outer framing preserves the
  * absolute root identity, while the CLI commits to entry types, modes, links and file bytes.
  */
-export const hashDeclaredInputRoots = async (
-  roots: readonly string[],
-  fingerprintTool: string,
-): Promise<string> => {
+export const hashDeclaredInputRoots = async ({
+  roots,
+  fingerprintTool,
+}: {
+  readonly roots: readonly string[]
+  readonly fingerprintTool: string
+}): Promise<string> => {
   const executable = requireFingerprintTool(fingerprintTool)
+  const orderedRoots = canonicalRoots(roots)
+  const digests = await Promise.all(
+    orderedRoots.map(
+      (root) =>
+        new Promise<string>((resolveDigest, reject) => {
+          const child = spawn(executable, [root, '--input-roots'], {
+            env: { PATH: '' },
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+          const stdout: Buffer[] = []
+          const stderr: Buffer[] = []
+          child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
+          child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+          child.on('error', reject)
+          child.on('close', (code, signal) => {
+            if (code !== 0) {
+              reject(
+                new Error(
+                  `typescript runner: fingerprint tool failed for ${root} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
+                ),
+              )
+              return
+            }
+            const result = Buffer.concat(stdout).toString('utf8')
+            const match = /^digest ([a-f0-9]{64})\n$/u.exec(result)
+            if (match === null) {
+              reject(
+                new Error(
+                  `typescript runner: invalid fingerprint tool output for ${root}: ${result}`,
+                ),
+              )
+              return
+            }
+            resolveDigest(match[1]!)
+          })
+        }),
+    ),
+  )
   const hash = createHash('sha256')
-  for (const root of canonicalRoots(roots)) {
-    const digest = await new Promise<string>((resolveDigest, reject) => {
-      const child = spawn(executable, [root, '--input-roots'], {
-        env: { PATH: '' },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-      const stdout: Buffer[] = []
-      const stderr: Buffer[] = []
-      child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
-      child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-      child.on('error', reject)
-      child.on('close', (code, signal) => {
-        if (code !== 0) {
-          reject(
-            new Error(
-              `typescript runner: fingerprint tool failed for ${root} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
-            ),
-          )
-          return
-        }
-        const result = Buffer.concat(stdout).toString('utf8')
-        const match = /^digest ([a-f0-9]{64})\n$/u.exec(result)
-        if (match === null) {
-          reject(new Error(`typescript runner: invalid fingerprint tool output for ${root}: ${result}`))
-          return
-        }
-        resolveDigest(match[1]!)
-      })
-    })
+  orderedRoots.forEach((root, index) => {
     updateFramedText({ hash, value: root })
-    updateFramedText({ hash, value: digest })
-  }
+    updateFramedText({ hash, value: digests[index] ?? fail(`missing digest for ${root}`) })
+  })
   return hash.digest('hex')
 }
 
@@ -555,7 +567,10 @@ const runTsgo = async (options: {
 const runTypecheck = async (options: TypecheckOptions): Promise<number> => {
   const packageTree = resolve(options.packageTree)
   const readRoots = canonicalRoots([packageTree, ...options.readRoots])
-  const before = await hashDeclaredInputRoots(readRoots, options.fingerprintTool)
+  const before = await hashDeclaredInputRoots({
+    roots: readRoots,
+    fingerprintTool: options.fingerprintTool,
+  })
   let status = 1
   let compilerError: unknown
   try {
@@ -580,7 +595,10 @@ const runTypecheck = async (options: TypecheckOptions): Promise<number> => {
 
   let invariantError: unknown
   try {
-    const after = await hashDeclaredInputRoots(readRoots, options.fingerprintTool)
+    const after = await hashDeclaredInputRoots({
+      roots: readRoots,
+      fingerprintTool: options.fingerprintTool,
+    })
     if (after !== before) {
       invariantError = new Error(
         `typescript runner: declared input roots changed during typecheck (before ${before}, after ${after})`,
@@ -602,7 +620,10 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
   const packageTree = resolve(options.packageTree)
   const output = resolve(options.output)
   const readRoots = canonicalRoots([packageTree, ...options.readRoots])
-  const before = await hashDeclaredInputRoots(readRoots, options.fingerprintTool)
+  const before = await hashDeclaredInputRoots({
+    roots: readRoots,
+    fingerprintTool: options.fingerprintTool,
+  })
   const stagingRoot = await mkdtemp(join(tmpdir(), 'tsgo-emit-'))
   let status = 1
   let primaryError: unknown
@@ -660,7 +681,10 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
 
   let invariantError: unknown
   try {
-    const after = await hashDeclaredInputRoots(readRoots, options.fingerprintTool)
+    const after = await hashDeclaredInputRoots({
+      roots: readRoots,
+      fingerprintTool: options.fingerprintTool,
+    })
     if (after !== before) {
       invariantError = new Error(
         `typescript runner: declared input roots changed during emit (before ${before}, after ${after})`,

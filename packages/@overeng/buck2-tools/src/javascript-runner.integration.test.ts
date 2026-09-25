@@ -16,46 +16,49 @@ const runner = fileURLToPath(new URL('./javascript-runner.ts', import.meta.url))
 const fingerprintTool = process.env['BUCK2_FINGERPRINT_TOOL']
 
 describe('JavaScript runner', () => {
-  it.skipIf(fingerprintTool === undefined)('creates a declared nested writable directory before launching the command', async () => {
-    const root = await mkdtemp(
-      join(realpathSync(tmpdir()), 'javascript-runner-writable-directory-'),
-    )
-    const packageTree = join(root, 'package-tree')
-    const scratch = join(root, 'scratch')
-    try {
-      await mkdir(packageTree)
-      await writeFile(
-        join(packageTree, 'assert-writable.ts'),
-        `import { statSync } from 'node:fs'
+  it.skipIf(fingerprintTool === undefined)(
+    'creates a declared nested writable directory before launching the command',
+    async () => {
+      const root = await mkdtemp(
+        join(realpathSync(tmpdir()), 'javascript-runner-writable-directory-'),
+      )
+      const packageTree = join(root, 'package-tree')
+      const scratch = join(root, 'scratch')
+      try {
+        await mkdir(packageTree)
+        await writeFile(
+          join(packageTree, 'assert-writable.ts'),
+          `import { statSync } from 'node:fs'
 const path = process.env.CACHE_PATH
 if (path === undefined || statSync(path).isDirectory() === false) process.exit(73)
 `,
-      )
+        )
 
-      const child = Bun.spawn(
-        [
-          bun,
-          runner,
-          'exec',
-          bun,
-          packageTree,
-          'assert-writable.ts',
-          '--fingerprint-tool',
-          fingerprintTool!,
-          '--writable-directory',
-          'CACHE_PATH',
-          'cache/vitest',
-        ],
-        {
-          env: { ...process.env, BUCK_SCRATCH_PATH: scratch },
-          stdin: 'ignore',
-          stdout: 'inherit',
-          stderr: 'inherit',
-        },
-      )
-      expect(await child.exited).toBe(0)
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
+        const child = Bun.spawn(
+          [
+            bun,
+            runner,
+            'exec',
+            bun,
+            packageTree,
+            'assert-writable.ts',
+            '--fingerprint-tool',
+            fingerprintTool!,
+            '--writable-directory',
+            'CACHE_PATH',
+            'cache/vitest',
+          ],
+          {
+            env: { ...process.env, BUCK_SCRATCH_PATH: scratch },
+            stdin: 'ignore',
+            stdout: 'inherit',
+            stderr: 'inherit',
+          },
+        )
+        expect(await child.exited).toBe(0)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
 })

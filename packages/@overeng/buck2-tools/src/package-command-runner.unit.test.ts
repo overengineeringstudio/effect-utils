@@ -31,11 +31,17 @@ import {
 } from './package-command-runner.ts'
 
 const scratchDirectories: string[] = []
-const fingerprintTool = '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
+const fingerprintTool =
+  '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
 const parsePackageCommand = (args: readonly string[]) => {
   const delimiter = args.indexOf('--')
   const at = delimiter < 0 ? args.length : delimiter
-  return parsePackage([...args.slice(0, at), '--fingerprint-tool', fingerprintTool, ...args.slice(at)])
+  return parsePackage([
+    ...args.slice(0, at),
+    '--fingerprint-tool',
+    fingerprintTool,
+    ...args.slice(at),
+  ])
 }
 
 const scratch = (prefix: string): string => {
@@ -708,7 +714,13 @@ describe('package command runner', () => {
   })
 
   it('requires the immutable fingerprint tool for every launch mode', () => {
-    const args = ['check', '/nix/store/runtime/bin/bun', '/buck/tree', 'src/mod.ts', '/buck/verdict']
+    const args = [
+      'check',
+      '/nix/store/runtime/bin/bun',
+      '/buck/tree',
+      'src/mod.ts',
+      '/buck/verdict',
+    ]
     expect(() => parsePackage(args)).toThrow('missing --fingerprint-tool')
     expect(() => parsePackage([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint'])).toThrow(
       'immutable /nix/store executable',

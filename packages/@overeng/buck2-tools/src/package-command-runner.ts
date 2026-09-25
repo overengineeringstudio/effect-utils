@@ -1084,7 +1084,10 @@ const run = async (command: PackageCommand): Promise<void> => {
   if (command.mode === 'bundle') return runBundle(command)
 
   const inputRoots = [command.packageTree, ...command.readRoots]
-  const before = await hashDeclaredInputRoots(inputRoots, command.fingerprintTool)
+  const before = await hashDeclaredInputRoots({
+    roots: inputRoots,
+    fingerprintTool: command.fingerprintTool,
+  })
   const plan = planPackageLaunch({ command })
   if (command.mode === 'build-dir')
     await mkdir(plan.output ?? fail('build output is missing'), { recursive: true })
@@ -1098,7 +1101,10 @@ const run = async (command: PackageCommand): Promise<void> => {
   })
   const exitCode = await child.exited
   child = undefined
-  const after = await hashDeclaredInputRoots(inputRoots, command.fingerprintTool)
+  const after = await hashDeclaredInputRoots({
+    roots: inputRoots,
+    fingerprintTool: command.fingerprintTool,
+  })
   if (after !== before) {
     fail(`declared inputs changed while ${command.entrypoint} was running`)
   }

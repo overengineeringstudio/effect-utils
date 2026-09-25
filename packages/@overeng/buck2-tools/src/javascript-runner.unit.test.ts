@@ -15,11 +15,17 @@ import {
 } from './javascript-runner.ts'
 
 const bun = '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bun/bin/bun'
-const fingerprintTool = '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
+const fingerprintTool =
+  '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
 const parseJavaScriptRunOptions = (args: readonly string[]) => {
   const delimiter = args.indexOf('--')
   const at = delimiter < 0 ? args.length : delimiter
-  return parseJavaScript([...args.slice(0, at), '--fingerprint-tool', fingerprintTool, ...args.slice(at)])
+  return parseJavaScript([
+    ...args.slice(0, at),
+    '--fingerprint-tool',
+    fingerprintTool,
+    ...args.slice(at),
+  ])
 }
 
 describe('parseJavaScriptRunOptions', () => {
@@ -109,9 +115,9 @@ describe('parseJavaScriptRunOptions', () => {
   it('requires an immutable declared fingerprint executable', () => {
     const args = ['exec', bun, '/tree', 'src/mod.ts']
     expect(() => parseJavaScript(args)).toThrow('missing --fingerprint-tool')
-    expect(() => parseJavaScript([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint'])).toThrow(
-      'immutable /nix/store executable',
-    )
+    expect(() =>
+      parseJavaScript([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint']),
+    ).toThrow('immutable /nix/store executable')
   })
 
   it('parses collection output only for collection actions', () => {

@@ -173,9 +173,9 @@ describe('editor view publisher', () => {
       expect(await canonicalTreeFingerprint({ tree: linked, dereference: true })).toBe(
         await canonicalTreeFingerprint({ tree: materialized }),
       )
-      expect(await canonicalTreeFingerprint({ tree: linked, dereference: true, fingerprintTool })).toBe(
-        await canonicalTreeFingerprint({ tree: materialized }),
-      )
+      expect(
+        await canonicalTreeFingerprint({ tree: linked, dereference: true, fingerprintTool }),
+      ).toBe(await canonicalTreeFingerprint({ tree: materialized }))
       expect(await canonicalTreeFingerprint({ tree: linked })).not.toBe(
         await canonicalTreeFingerprint({ tree: linked, dereference: true }),
       )
@@ -204,7 +204,12 @@ describe('editor view publisher', () => {
         await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners, fingerprintTool }),
       ).toEqual(await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners }))
       expect(
-        await canonicalTreeFingerprint({ tree, dereference: true, backingRoots: [backing], fingerprintTool }),
+        await canonicalTreeFingerprint({
+          tree,
+          dereference: true,
+          backingRoots: [backing],
+          fingerprintTool,
+        }),
       ).toBe(await canonicalTreeFingerprint({ tree, dereference: true, backingRoots: [backing] }))
     } finally {
       cleanup(fixture)

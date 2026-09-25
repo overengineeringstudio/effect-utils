@@ -677,7 +677,10 @@ const runOuter = async (options: JavaScriptRunOptions): Promise<number> => {
     ...options.readRoots,
     ...Object.values(options.externalInputs),
   ]
-  const before = await hashDeclaredInputRoots(inputRoots, options.fingerprintTool)
+  const before = await hashDeclaredInputRoots({
+    roots: inputRoots,
+    fingerprintTool: options.fingerprintTool,
+  })
   const lease = await acquireScratch(planScratch({ command: options.command, env: process.env }))
   let status = 1
   let primaryError: unknown
@@ -694,7 +697,10 @@ const runOuter = async (options: JavaScriptRunOptions): Promise<number> => {
   }
   let invariantError: unknown
   try {
-    const after = await hashDeclaredInputRoots(inputRoots, options.fingerprintTool)
+    const after = await hashDeclaredInputRoots({
+      roots: inputRoots,
+      fingerprintTool: options.fingerprintTool,
+    })
     if (after !== before)
       invariantError = new Error(
         `javascript runner: declared inputs changed while the command was running (before ${before}, after ${after})`,
