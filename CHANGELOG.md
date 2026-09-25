@@ -27,6 +27,14 @@ All notable changes to this project will be documented in this file.
   static fleet runner, ordinary Cachix steps are read-only, and protected
   publisher steps alone receive write credentials.
 
+- **Buck2 event-log adapter**: `buck2-events ingest` decodes pinned protobuf
+  event logs directly into linked critical and full OTLP trace views. Logs cut
+  mid-write keep their decoded prefix; decoding is bounded (compressed and
+  decompressed bytes, records, spans) and export is time-bounded, with any
+  stop reason stamped on the view roots. `buck2:quick` and `buck2:all` capture
+  logs and export traces without changing Buck's exit status; `otel-span buck2`
+  prepares a validated caller context without interposing on Buck.
+
 - **Buck2 package products**: Register public-repository package archives for
   `@overeng/agent-session-ingest`, `@overeng/effect-ai-claude-cli`,
   `@overeng/effect-react`, `@overeng/genie`, `@overeng/notion-md`, and

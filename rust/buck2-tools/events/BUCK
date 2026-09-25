@@ -1,0 +1,89 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/buck2-tools/events/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:8048dae2595a380ae64c8e632dbfc12d9f6e6b3df52547cccea53e46a7bf602f
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/BUCK.genie.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/events/src/**/*.rs, rust/buck2-tools/events/tests/**/*.rs, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/buck2-tools/events",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/gen/buck.daemon.rs",
+        "src/gen/buck.data.error.rs",
+        "src/gen/buck.data.rs",
+        "src/gen/buck.host_sharing.rs",
+        "src/gen/buck.subscription.rs",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/tests.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "buck2_events",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/gen/buck.daemon.rs",
+        "src/gen/buck.data.error.rs",
+        "src/gen/buck.data.rs",
+        "src/gen/buck.host_sharing.rs",
+        "src/gen/buck.subscription.rs",
+        "src/lib.rs",
+        "src/tests.rs",
+    ],
+    deps = [
+        "//rust/third-party:clap",
+        "//rust/third-party:prost",
+        "//rust/third-party:prost-types",
+        "//rust/third-party:ruzstd",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        "//rust/third-party:ureq",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "buck2-events",
+        "CARGO_PKG_VERSION": "0.0.0",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "buck2-events",
+    crate = "buck2_events",
+    crate_root = "src/main.rs",
+    srcs = [
+        "src/main.rs",
+    ],
+    deps = [
+        "//rust/third-party:clap",
+        "//rust/third-party:prost",
+        "//rust/third-party:prost-types",
+        "//rust/third-party:ruzstd",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        "//rust/third-party:ureq",
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "buck2-events",
+        "CARGO_PKG_VERSION": "0.0.0",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)

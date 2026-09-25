@@ -1,0 +1,29 @@
+[package]
+name = "buck2-events"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "buck2_events"
+path = "src/lib.rs"
+
+[[bin]]
+name = "buck2-events"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+prost = "0.14"
+prost-types = "0.14"
+# Pure-Rust zstd keeps the Buck projection free of C build scripts.
+ruzstd = "0.8"
+serde_json.workspace = true
+sha2.workspace = true
+# Local OTLP/HTTP only: no TLS stack.
+ureq = { version = "3", default-features = false }
+
+[dev-dependencies]
+tempfile.workspace = true

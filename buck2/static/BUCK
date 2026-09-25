@@ -187,6 +187,7 @@ repository_static_checks(
     "//packages/@overeng/utils:repository_validation_sources",
     "//rust/buck2-tools/archive-tool:static_sources",
     "//rust/buck2-tools/core:static_sources",
+    "//rust/buck2-tools/events:static_sources",
     "//rust/buck2-tools/product:static_sources"
 ],
     visibility = ["PUBLIC"],

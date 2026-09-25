@@ -342,6 +342,27 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "base64-0.23.1.crate",
+    sha256 = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5",
+    strip_prefix = "base64-0.23.1",
+    urls = ["https://static.crates.io/crates/base64/0.23.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "base64-0.23",
+    srcs = [":base64-0.23.1.crate"],
+    crate = "base64",
+    crate_root = "base64-0.23.1.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "alloc",
+        "std",
+    ],
+    visibility = [],
+)
+
+http_archive(
     name = "block-buffer-0.12.1.crate",
     sha256 = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa",
     strip_prefix = "block-buffer-0.12.1",
@@ -1981,6 +2002,38 @@ cargo.rust_library(
     ],
 )
 
+alias(
+    name = "prost",
+    actual = ":prost-0.14",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "prost-0.14.4.crate",
+    sha256 = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1",
+    strip_prefix = "prost-0.14.4",
+    urls = ["https://static.crates.io/crates/prost/0.14.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "prost-0.14",
+    srcs = [":prost-0.14.4.crate"],
+    crate = "prost",
+    crate_root = "prost-0.14.4.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "default",
+        "derive",
+        "std",
+    ],
+    visibility = [],
+    deps = [
+        ":bytes-1",
+        ":prost-derive-0.14",
+    ],
+)
+
 http_archive(
     name = "prost-derive-0.13.5.crate",
     sha256 = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d",
@@ -2004,6 +2057,59 @@ cargo.rust_library(
         ":quote-1",
         ":syn-2",
     ],
+)
+
+http_archive(
+    name = "prost-derive-0.14.4.crate",
+    sha256 = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf",
+    strip_prefix = "prost-derive-0.14.4",
+    urls = ["https://static.crates.io/crates/prost-derive/0.14.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "prost-derive-0.14",
+    srcs = [":prost-derive-0.14.4.crate"],
+    crate = "prost_derive",
+    crate_root = "prost-derive-0.14.4.crate/src/lib.rs",
+    edition = "2021",
+    proc_macro = True,
+    visibility = [],
+    deps = [
+        ":anyhow-1",
+        ":itertools-0.14",
+        ":proc-macro2-1",
+        ":quote-1",
+        ":syn-2",
+    ],
+)
+
+alias(
+    name = "prost-types",
+    actual = ":prost-types-0.14",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "prost-types-0.14.4.crate",
+    sha256 = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a",
+    strip_prefix = "prost-types-0.14.4",
+    urls = ["https://static.crates.io/crates/prost-types/0.14.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "prost-types-0.14",
+    srcs = [":prost-types-0.14.4.crate"],
+    crate = "prost_types",
+    crate_root = "prost-types-0.14.4.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "default",
+        "std",
+    ],
+    visibility = [],
+    deps = [":prost-0.14"],
 )
 
 http_archive(
@@ -2141,6 +2247,35 @@ buildscript_run(
     package_name = "rustversion",
     buildscript_rule = ":rustversion-1-build-script-build",
     version = "1.0.23",
+)
+
+alias(
+    name = "ruzstd",
+    actual = ":ruzstd-0.8",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "ruzstd-0.8.3.crate",
+    sha256 = "a7c1c839d570d835527c9a5e4db7cb2198683a988cb9d7293fc8674e6bd58fc8",
+    strip_prefix = "ruzstd-0.8.3",
+    urls = ["https://static.crates.io/crates/ruzstd/0.8.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ruzstd-0.8",
+    srcs = [":ruzstd-0.8.3.crate"],
+    crate = "ruzstd",
+    crate_root = "ruzstd-0.8.3.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "default",
+        "hash",
+        "std",
+    ],
+    visibility = [],
+    deps = [":twox-hash-2"],
 )
 
 http_archive(
@@ -3174,6 +3309,24 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "twox-hash-2.1.4.crate",
+    sha256 = "5283634e518fe9e82c7b20520bb4bc209009fd16c82077c802f8111ecbb0117a",
+    strip_prefix = "twox-hash-2.1.4",
+    urls = ["https://static.crates.io/crates/twox-hash/2.1.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "twox-hash-2",
+    srcs = [":twox-hash-2.1.4.crate"],
+    crate = "twox_hash",
+    crate_root = "twox-hash-2.1.4.crate/src/lib.rs",
+    edition = "2021",
+    features = ["xxhash64"],
+    visibility = [],
+)
+
+http_archive(
     name = "typenum-1.20.1.crate",
     sha256 = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20",
     strip_prefix = "typenum-1.20.1",
@@ -3205,6 +3358,81 @@ cargo.rust_library(
     crate = "unicode_ident",
     crate_root = "unicode-ident-1.0.24.crate/src/lib.rs",
     edition = "2021",
+    visibility = [],
+)
+
+alias(
+    name = "ureq",
+    actual = ":ureq-3",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "ureq-3.4.2.crate",
+    sha256 = "9a7ac20be9b7726e0bbdbf974c059676d9acb1cd414961f570a4e8231cacd7fc",
+    strip_prefix = "ureq-3.4.2",
+    urls = ["https://static.crates.io/crates/ureq/3.4.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ureq-3",
+    srcs = [":ureq-3.4.2.crate"],
+    crate = "ureq",
+    crate_root = "ureq-3.4.2.crate/src/lib.rs",
+    edition = "2024",
+    visibility = [],
+    deps = [
+        ":base64-0.23",
+        ":log-0.4",
+        ":percent-encoding-2",
+        ":ureq-proto-0.6",
+        ":utf8-zero-0.8",
+    ],
+)
+
+http_archive(
+    name = "ureq-proto-0.6.4.crate",
+    sha256 = "f86fd172ccca569e458f61b6bdd6220965a9ef36e672a6852953b51a0e1583be",
+    strip_prefix = "ureq-proto-0.6.4",
+    urls = ["https://static.crates.io/crates/ureq-proto/0.6.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ureq-proto-0.6",
+    srcs = [":ureq-proto-0.6.4.crate"],
+    crate = "ureq_proto",
+    crate_root = "ureq-proto-0.6.4.crate/src/lib.rs",
+    edition = "2024",
+    features = ["client"],
+    visibility = [],
+    deps = [
+        ":base64-0.23",
+        ":http-1",
+        ":httparse-1",
+        ":log-0.4",
+    ],
+)
+
+http_archive(
+    name = "utf8-zero-0.8.1.crate",
+    sha256 = "b8c0a043c9540bae7c578c88f91dda8bd82e59ae27c21baca69c8b191aaf5a6e",
+    strip_prefix = "utf8-zero-0.8.1",
+    urls = ["https://static.crates.io/crates/utf8-zero/0.8.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "utf8-zero-0.8",
+    srcs = [":utf8-zero-0.8.1.crate"],
+    crate = "utf8_zero",
+    crate_root = "utf8-zero-0.8.1.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "default",
+        "std",
+    ],
     visibility = [],
 )
 

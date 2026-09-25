@@ -1,0 +1,115 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is dual-licensed under either the MIT license found in the
+ * LICENSE-MIT file in the root directory of this source tree or the Apache
+ * License, Version 2.0 found in the LICENSE-APACHE file in the root directory
+ * of this source tree. You may select, at your option, one of the
+ * above-listed licenses.
+ */
+
+syntax = "proto3";
+
+package buck.subscription;
+
+// Client-to-daemon interaction in a subscription. This is what the client
+// writes to `stdin` of the `subscribe` command.
+message SubscriptionRequest {
+  // The actual request. See documentation of the underlying types for details.
+  oneof request {
+    Disconnect disconnect = 1;
+    SubscribeToPaths subscribe_to_paths = 2;
+    UnsubscribeFromPaths unsubscribe_from_paths = 3;
+    SubscribeToActiveCommands subscribe_to_active_commands = 4;
+  }
+}
+
+// The client would like to gracefully disconnect. This will result in the
+// command exiting.
+message Disconnect {
+  string reason = 1;
+  // Indicate whether this disconnect sould be considered a success or not.
+  bool ok = 2;
+}
+
+// Request eager materialization of specific paths AND notifications when they
+// get materialized. If the paths have already been materialized, a
+// `Materialized` notification will be sent immediately.
+message SubscribeToPaths {
+  // The paths to subscribe to. Those paths must be ProjectRelativePaths, which
+  // are fully-normalized paths relative to the project root. It is expected
+  // that the client may obtain those paths via a separate mechanism such as a
+  // BXL script.
+  //
+  // Regardless of platform, those paths use forward slashes as delimiters.
+  //
+  // Note that while requesting notifications for source paths (i.e. paths not
+  // under buck-out) is not an error, it will not produce notifications, since
+  // those paths are never materialized by Buck itself.
+  repeated string paths = 1;
+}
+
+// Undo the effects of SubscribeToPaths. In-flight notifications for the paths
+// that are being unsubscribed from are not cancelled: the caller should expect
+// the possibility of receiving notifications for paths after having
+// unsubscribed from them.
+//
+// It is not considered an error to unsubscribe from paths the client never
+// subscribed to.
+message UnsubscribeFromPaths {
+  // The paths to unsubscribe from. The format expected is the same as in
+  // SubscribeToPaths.
+  repeated string paths = 1;
+}
+
+message SubscribeToActiveCommands {}
+
+// Daemon to client interaction in a subscription. This is what the client will
+// receive via the `stdout` of the `subscribe` command.
+message SubscriptionResponse {
+  // The actual response. See documentation of the underlying types for details.
+  oneof response {
+    Materialized materialized = 1;
+    ActiveCommandsSnapshot active_commands_snapshot = 2;
+    Goodbye goodbye = 3;
+  }
+}
+
+// This notification is sent by the daemon when a path that was previously
+// passed in `SubscribeToPaths` is materialized.
+message Materialized {
+  // The path that was materialized. This is a ProjectRelativePath, i.e. a
+  // fully-normalized path relative to the project root.
+  //
+  // Regardless of platform, those paths use forward slashes as delimiters.
+  string path = 1;
+}
+
+message ActiveCommandsSnapshot {
+  repeated ActiveCommand active_commands = 1;
+}
+
+message ActiveCommand {
+  string trace_id = 1;
+  repeated string argv = 2;
+  ActiveCommandStats stats = 3;
+}
+
+message ActiveCommandStats {
+  /// Spans currently executing.
+  uint64 open_spans = 1;
+  /// Spans that have finished executing.
+  uint64 closed_spans = 2;
+  /// Spans that are expected to have to open (then close) before the command
+  /// finishes.
+  uint64 pending_spans = 3;
+}
+
+/// This notification is sent by the daemon when closing the connection.
+message Goodbye {
+  string reason = 1;
+
+  // Indicates whether the daemon thinks this command was successful or not.
+  // This is largely just echoing what Disconnect requested.
+  bool ok = 2;
+}
