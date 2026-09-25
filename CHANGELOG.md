@@ -90,6 +90,18 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- **@overeng/megarepo** (breaking): Retire the composed Buck shape (principal
+  q5). Remove `mr store worktree new --compose`, the composition root and
+  publisher, dist overlays, the per-workspace capability resolver, `cp -a`/R6
+  member mounts, owned-worktree acquisition, the composition apply state
+  machine, and the `generators.composition` config field; `mr apply`, `pin`,
+  `status`, `check`, and `store gc` no longer recognize composed workspaces
+  (recreate any as standalone worktrees). The packaged `mr` no longer carries
+  `MR_COMPOSITION_*`/`MR_CAPABILITY_*` wiring or buck2/watchman capabilities.
+  `buck2-member.json` is now a schema-version-2 capability manifest
+  (`capabilities` only); `capability-projection.ts` moves to
+  `src/buck2-capabilities/`. effect-utils drops its own composition
+  declaration.
 - **Buck2 product import**: Remove the obsolete GitHub-release JavaScript
   product loader and mixed manifest schema now that every published product is
   Cachix-backed. Keep the Cachix publisher and the native Rust release importer.
