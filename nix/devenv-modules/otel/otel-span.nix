@@ -48,7 +48,7 @@ pkgs.writeShellScriptBin "otel-span" ''
 
       _gen_hex() {
         local len=$1
-        ${pkgs.coreutils}/bin/od -An -tx1 -N"$len" /dev/urandom | tr -d ' \n'
+        ${pkgs.coreutils}/bin/od -An -tx1 -N"$len" /dev/urandom | ${pkgs.coreutils}/bin/tr -d ' \n'
       }
 
       _is_hex_len() {

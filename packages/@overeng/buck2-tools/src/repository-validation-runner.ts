@@ -340,6 +340,7 @@ const checkWorkspaceContract = ({
   })
   const expectedCargoPackages = [
     'buck2-archive-tool',
+    'buck2-events',
     'buck2-product',
     'buck2-tool-core',
     'otel-scrape',
@@ -421,6 +422,7 @@ const checkWorkspaceContract = ({
   for (const memberPath of [
     'rust/buck2-tools/archive-tool',
     'rust/buck2-tools/core',
+    'rust/buck2-tools/events',
     'rust/buck2-tools/product',
   ]) {
     const buck = readFileSync(path.join(sourceRoot, memberPath, 'BUCK'), 'utf8')
