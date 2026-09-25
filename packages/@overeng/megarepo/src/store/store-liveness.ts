@@ -186,39 +186,6 @@ export const collectWorkspaceLivePaths = ({
       }
     }
 
-    if (config.generators?.composition?.enabled === true) {
-      // P and its Git-authoritative W are both live. Generated metadata remains descriptive.
-      for (const path of [
-        workspaceRoot,
-        configOwner,
-        NodePath.join(workspaceRoot, '.megarepo'),
-        NodePath.join(workspaceRoot, 'repos', '.mr'),
-      ]) {
-        paths.add(normalizePath(path))
-      }
-
-      // Durable mount/overlay metadata and in-flight transactions are liveness roots too: losing
-      // the commit worktrees they describe would make forward recovery impossible.
-      for (const relativeDir of [
-        'repos/.mr/mounts',
-        'repos/.mr/transactions',
-        'repos/.mr/overlay-transactions',
-        '.megarepo/composition-publication',
-        '.megarepo/overlay-scratch',
-      ]) {
-        const directory = EffectPath.unsafe.absoluteDir(
-          `${NodePath.join(workspaceRoot, relativeDir)}/`,
-        )
-        if ((yield* fs.exists(directory)) === true) {
-          paths.add(normalizePath(directory))
-          const entries = yield* fs
-            .readDirectory(directory)
-            .pipe(strict === true ? (effect) => effect : Effect.orElseSucceed(() => [] as string[]))
-          for (const entry of entries) paths.add(normalizePath(NodePath.join(directory, entry)))
-        }
-      }
-    }
-
     return paths
   }).pipe(
     Observability.withWorkspaceSpan({

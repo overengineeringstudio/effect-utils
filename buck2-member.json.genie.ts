@@ -1,38 +1,15 @@
-import { buck2TypeScriptDistOverlays } from './genie/buck2/typescript-admissions.ts'
 import { projectionArtifact } from './packages/@overeng/genie/src/runtime/mod.ts'
 import {
-  COMPOSITION_ROOT_SCHEMA_VERSION,
+  BUCK_MEMBER_MANIFEST_SCHEMA_VERSION,
   decodeBuckMemberManifest,
   decodeBuckMemberManifestJson,
   encodeBuckMemberManifestJson,
   type BuckMemberManifest,
 } from './packages/@overeng/megarepo/src/buck2-manifest.ts'
 
-const buckMemberSchemaVersion = COMPOSITION_ROOT_SCHEMA_VERSION
+const buckMemberSchemaVersion = BUCK_MEMBER_MANIFEST_SCHEMA_VERSION
 
 const manifestProjection = {
-  cell: 'effect_utils',
-  mount: 'repos/effect-utils',
-  remoteCache: {
-    endpoint: 'grpc://dev3:41045',
-    instanceName: 'effect-utils',
-  },
-  projectIgnore: [
-    '**/__pycache__',
-    '**/dist',
-    '**/node_modules',
-    '**/node_modules/**',
-    '**/target',
-    '**/target/**',
-    '.devenv',
-    '.git',
-    'buck-out',
-    'node_modules',
-    'packages/.editor-view',
-    'target',
-    'tmp',
-  ],
-  distOverlays: buck2TypeScriptDistOverlays,
   capabilities: [
     {
       _tag: 'ToolchainAuthority',

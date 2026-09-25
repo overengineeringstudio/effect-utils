@@ -12,12 +12,10 @@ import React from 'react'
 import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { resolveComposedStoreWorktree } from '../../composition/acquisition/owned-worktree-acquisition.ts'
-import { teardownCpAMemberMount } from '../../composition/mounts/member-mount-cp-a.ts'
 import {
   foreignMemberMountMessage,
   inspectMemberMount,
-} from '../../composition/mounts/member-mount.ts'
+} from '../../sync/member-mount.ts'
 import {
   buildSourceStringWithRef,
   MegarepoConfig,
@@ -41,6 +39,7 @@ import {
   writeLockFile,
 } from '../../core/lock.ts'
 import { classifyRef } from '../../core/ref.ts'
+import { resolveStoreBranchWorktree } from '../../store/store-branch-worktree.ts'
 import { runPreflightChecks } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
@@ -63,7 +62,6 @@ import {
 } from '../errors.ts'
 import * as Observability from '../observability.ts'
 import { PinApp, PinView } from '../renderers/PinOutput/mod.ts'
-import { preflightCompositionCommand, runCompositionApply } from './composition.ts'
 
 /**
  * Pin a member to a specific ref.
@@ -110,11 +108,6 @@ export const pinCommand = Cli.Command.make(
             // Load config to verify member exists
             const { config: configRead, path: configPath } = yield* readMegarepoConfig(root.value)
             let config = configRead
-            const compositionEnabled = config.generators?.composition?.enabled === true
-            const compositionIdentity = yield* preflightCompositionCommand({
-              workspaceRoot: root.value,
-              compositionEnabled,
-            })
 
             if (!(member in config.members)) {
               tui.dispatch({
@@ -129,25 +122,17 @@ export const pinCommand = Cli.Command.make(
             const memberPathNormalized = memberPath.replace(/\/$/, '')
             const memberMount = yield* inspectMemberMount(memberPathNormalized)
             if (memberMount._tag === 'Foreign') {
-              const verifiedOwnedMount =
-                compositionEnabled === true
-                  ? yield* teardownCpAMemberMount({
-                      request: { workspaceRoot: root.value, member, dryRun: true },
-                    }).pipe(Effect.result)
-                  : undefined
-              if (verifiedOwnedMount?._tag !== 'Success') {
-                const message = foreignMemberMountMessage({
-                  name: member,
-                  path: memberPathNormalized,
-                  operation: 'pin',
-                })
-                tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
-                return yield* new ForeignMemberMountError({
-                  message,
-                  member,
-                  path: memberPathNormalized,
-                })
-              }
+              const message = foreignMemberMountMessage({
+                name: member,
+                path: memberPathNormalized,
+                operation: 'pin',
+              })
+              tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
+              return yield* new ForeignMemberMountError({
+                message,
+                member,
+                path: memberPathNormalized,
+              })
             }
 
             // Check if it's a local path (can't pin local paths)
@@ -178,7 +163,6 @@ export const pinCommand = Cli.Command.make(
 
             // Load or create lock file
             const configOwner =
-              compositionIdentity?.ownedSourcePath ??
               EffectPath.ops.parent(
                 EffectPath.unsafe.absoluteFile(yield* fs.realPath(configPath)),
               ) ??
@@ -215,17 +199,17 @@ export const pinCommand = Cli.Command.make(
               const bareExists = yield* store.hasBareRepo(newSource)
               const refType = classifyRef(newRef)
 
-              // Resolve P/W from Git registration; composed roots never carry a second identity file.
+              // Git's branch registration must agree with the canonical store path.
               const worktreeRoot = store.getWorktreePath({
                 source: newSource,
                 ref: newRef,
                 refType,
               })
-              const composedWorktreePath =
+              const worktreePath =
                 bareExists === true && refType === 'branch'
-                  ? yield* resolveComposedStoreWorktree({
+                  ? yield* resolveStoreBranchWorktree({
                       bareRepo: bareRepoPath,
-                      workspaceRoot: worktreeRoot,
+                      worktreePath: worktreeRoot,
                       branch: newRef,
                     }).pipe(
                       Effect.mapError(
@@ -236,33 +220,18 @@ export const pinCommand = Cli.Command.make(
                           }),
                       ),
                     )
-                  : undefined
-              const worktreePath = composedWorktreePath ?? worktreeRoot
+                  : worktreeRoot
 
               // Get current symlink target
               const currentLink = yield* fs
                 .readLink(memberPathNormalized)
                 .pipe(Effect.orElseSucceed(() => null))
 
-              const worktreeExists =
-                composedWorktreePath === undefined
-                  ? yield* store.hasWorktree({
-                      source: newSource,
-                      ref: newRef,
-                      refType,
-                    })
-                  : yield* fs.exists(
-                      EffectPath.ops.join(
-                        composedWorktreePath,
-                        EffectPath.unsafe.relativeFile('.git'),
-                      ),
-                    )
-              if (composedWorktreePath !== undefined && worktreeExists === false) {
-                return yield* new InvalidSourceError({
-                  source: newSourceString,
-                  message: `Composed workspace is missing its owned Git checkout at ${composedWorktreePath}; recreate the workspace before pinning`,
-                })
-              }
+              const worktreeExists = yield* store.hasWorktree({
+                source: newSource,
+                ref: newRef,
+                refType,
+              })
 
               // Get current lock info
               const currentLockEntry = Option.getOrUndefined(
@@ -379,14 +348,12 @@ export const pinCommand = Cli.Command.make(
                   )
                 }
               }
-              if (compositionEnabled === false) {
-                const reposDir = EffectPath.ops.parent(memberPath)
-                if (reposDir !== undefined) {
-                  yield* fs.makeDirectory(reposDir, { recursive: true })
-                }
-                if (currentLink !== null) yield* fs.remove(memberPathNormalized)
-                yield* fs.symlink(worktreePath.replace(/\/$/, ''), memberPathNormalized)
+              const reposDir = EffectPath.ops.parent(memberPath)
+              if (reposDir !== undefined) {
+                yield* fs.makeDirectory(reposDir, { recursive: true })
               }
+              if (currentLink !== null) yield* fs.remove(memberPathNormalized)
+              yield* fs.symlink(worktreePath.replace(/\/$/, ''), memberPathNormalized)
 
               // Update lock file with new ref
               const url = getSourceUrl(source)
@@ -402,10 +369,6 @@ export const pinCommand = Cli.Command.make(
                   }),
                 })
                 yield* writeLockFile({ lockPath, lockFile })
-              }
-
-              if (compositionEnabled === true) {
-                yield* runCompositionApply({ workspaceRoot: root.value, dryRun: false })
               }
 
               // Keep the store liveness record fresh after repinning so a
@@ -529,7 +492,7 @@ export const pinCommand = Cli.Command.make(
               refType: 'commit',
             })
 
-            if (worktreeReady === true && compositionEnabled === false) {
+            if (worktreeReady === true) {
               // Update the symlink
               if (
                 currentLink !== null &&
@@ -538,10 +501,6 @@ export const pinCommand = Cli.Command.make(
                 yield* fs.remove(memberPathNormalized)
                 yield* fs.symlink(commitWorktreePath.replace(/\/$/, ''), memberPathNormalized)
               }
-            }
-
-            if (compositionEnabled === true) {
-              yield* runCompositionApply({ workspaceRoot: root.value, dryRun: false })
             }
 
             // Keep the store liveness record fresh after pinning (the symlink may
@@ -639,11 +598,6 @@ export const unpinCommand = Cli.Command.make(
 
             // Load config to verify member exists
             const { config, path: configPath } = yield* readMegarepoConfig(root.value)
-            const compositionEnabled = config.generators?.composition?.enabled === true
-            const compositionIdentity = yield* preflightCompositionCommand({
-              workspaceRoot: root.value,
-              compositionEnabled,
-            })
 
             if (!(member in config.members)) {
               tui.dispatch({
@@ -658,30 +612,21 @@ export const unpinCommand = Cli.Command.make(
             const memberPathNormalized = memberPath.replace(/\/$/, '')
             const memberMount = yield* inspectMemberMount(memberPathNormalized)
             if (memberMount._tag === 'Foreign') {
-              const verifiedOwnedMount =
-                compositionEnabled === true
-                  ? yield* teardownCpAMemberMount({
-                      request: { workspaceRoot: root.value, member, dryRun: true },
-                    }).pipe(Effect.result)
-                  : undefined
-              if (verifiedOwnedMount?._tag !== 'Success') {
-                const message = foreignMemberMountMessage({
-                  name: member,
-                  path: memberPathNormalized,
-                  operation: 'unpin',
-                })
-                tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
-                return yield* new ForeignMemberMountError({
-                  message,
-                  member,
-                  path: memberPathNormalized,
-                })
-              }
+              const message = foreignMemberMountMessage({
+                name: member,
+                path: memberPathNormalized,
+                operation: 'unpin',
+              })
+              tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
+              return yield* new ForeignMemberMountError({
+                message,
+                member,
+                path: memberPathNormalized,
+              })
             }
 
             // Load lock file
             const configOwner =
-              compositionIdentity?.ownedSourcePath ??
               EffectPath.ops.parent(
                 EffectPath.unsafe.absoluteFile(yield* fs.realPath(configPath)),
               ) ??
@@ -728,7 +673,6 @@ export const unpinCommand = Cli.Command.make(
             lockFile = unpinMember({ lockFile, memberName: member })
             yield* writeLockFile({ lockPath, lockFile })
 
-            // cp-a mounts advance only through the typed composition apply service.
             const sourceString = config.members[member]
             if (sourceString === undefined) {
               // Member was removed from config but still in lock file - warn user
@@ -739,11 +683,7 @@ export const unpinCommand = Cli.Command.make(
               })
             } else {
               const source = parseSourceString(sourceString)
-              if (
-                compositionEnabled === false &&
-                source !== undefined &&
-                isRemoteSource(source) === true
-              ) {
+              if (source !== undefined && isRemoteSource(source) === true) {
                 const store = yield* Store
                 // Get the ref-based worktree path (use the locked ref)
                 const refWorktreePath = store.getWorktreePath({
@@ -772,10 +712,6 @@ export const unpinCommand = Cli.Command.make(
                   }
                 }
               }
-            }
-
-            if (compositionEnabled === true) {
-              yield* runCompositionApply({ workspaceRoot: root.value, dryRun: false })
             }
 
             tui.dispatch({

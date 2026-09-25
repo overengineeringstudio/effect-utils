@@ -12,11 +12,11 @@ import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { resolveStoreBranchWorktree } from '../composition/acquisition/owned-worktree-acquisition.ts'
+import { resolveStoreBranchWorktree } from '../store/store-branch-worktree.ts'
 import {
   foreignMemberMountMessage,
   inspectMemberMount,
-} from '../composition/mounts/member-mount.ts'
+} from './member-mount.ts'
 import {
   getMemberPath,
   getSourceRef,
@@ -579,14 +579,10 @@ export const syncMember = <R = never>({
       readonly ref: string
       readonly refType: RefType
     }) => {
-      const workspaceRoot = store.getWorktreePath({ source, ref, refType })
+      const worktreePath = store.getWorktreePath({ source, ref, refType })
       return refType === 'branch' && bareExists === true
-        ? resolveStoreBranchWorktree({
-            bareRepo: bareRepoPath,
-            workspaceRoot,
-            branch: ref,
-          })
-        : Effect.succeed(workspaceRoot)
+        ? resolveStoreBranchWorktree({ bareRepo: bareRepoPath, worktreePath, branch: ref })
+        : Effect.succeed(worktreePath)
     }
     const worktreePathExists = (worktreePath: string) =>
       fs

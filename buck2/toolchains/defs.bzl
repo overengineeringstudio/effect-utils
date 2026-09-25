@@ -28,9 +28,9 @@ ConfiguredRustToolchainInfo = provider(fields = {
 def host_capability_platform():
     """Returns the projection platform key for the admitted native host.
 
-    This is the same spelling the composition capability resolver keys its
-    projection by (`composition-capability-resolver.ts` `executionPlatform`), so
-    it indexes `CAPABILITIES` directly. Every capability consumer must use this
+    This is the same spelling the capability projection keys its manifests by
+    (`capability-projection.ts` `executionPlatform`), so it indexes
+    `CAPABILITIES` directly. Every capability consumer must use this
     one helper: a second spelling of the macOS key is how a toolchain silently
     misses its realization.
     """

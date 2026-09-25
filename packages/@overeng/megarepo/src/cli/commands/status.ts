@@ -14,11 +14,6 @@ import React from 'react'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { teardownCpAMemberMount } from '../../composition/mounts/member-mount-cp-a.ts'
-import {
-  readOwnedCpAMountMetadata,
-  type OwnedCpAMountMetadataError,
-} from '../../composition/mounts/member-mount-r6.ts'
 import {
   ConfigNotFoundError,
   findConfigPath,
@@ -52,7 +47,6 @@ import type {
   StaleLock,
   SymlinkDrift,
 } from '../renderers/StatusOutput/mod.ts'
-import { preflightCompositionCommand, type CompositionCommandError } from './composition.ts'
 
 /**
  * Recursively scan members and build status tree.
@@ -74,9 +68,7 @@ const scanMembersRecursive = ({
   MemberStatus[],
   | PlatformError
   | Schema.SchemaError
-  | Git.GitCommandError
-  | OwnedCpAMountMetadataError
-  | CompositionCommandError,
+  | Git.GitCommandError,
   FileSystem.FileSystem | ChildProcessSpawner | Store
 > =>
   Effect.gen(function* () {
@@ -98,17 +90,9 @@ const scanMembersRecursive = ({
       return []
     }
     const { config, path: configPath } = configResult
-    const compositionEnabled = config.generators?.composition?.enabled === true
-    const ignoredMembers = new Set(config.generators?.composition?.ignoredMembers ?? [])
-    const compositionIdentity = yield* preflightCompositionCommand({
-      workspaceRoot: megarepoRoot,
-      compositionEnabled,
-    })
-    const ownedMemberKey = compositionIdentity?.ownedMemberKey
 
     // Load lock file (optional)
     const configOwner =
-      compositionIdentity?.ownedSourcePath ??
       EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(yield* fs.realPath(configPath))) ??
       megarepoRoot
     const lockPath = EffectPath.ops.join(
@@ -120,48 +104,23 @@ const scanMembersRecursive = ({
 
     // Build member status list
     const members: MemberStatus[] = []
-    const effectiveMembers: ReadonlyArray<readonly [string, string]> = [
-      ...(ownedMemberKey === undefined ? [] : [[ownedMemberKey, 'owned:branch'] as const]),
-      ...Object.entries(config.members),
-    ]
-    for (const [memberName, sourceString] of effectiveMembers) {
-      const isOwned = memberName === ownedMemberKey
-      const compositionManaged =
-        compositionEnabled === true && ignoredMembers.has(memberName) === false
+    for (const [memberName, sourceString] of Object.entries(config.members)) {
       const memberPath = getMemberPath({ megarepoRoot, name: memberName })
-      const source = isOwned === true ? undefined : parseSourceString(sourceString)
+      const source = parseSourceString(sourceString)
       const isLocal = source?.type === 'path'
       const lockedMember = lockFile?.members[memberName]
 
       const symlinkPath = memberPath.replace(/\/$/, '')
       const pathExists = yield* fs.exists(symlinkPath)
-      let symlinkExists = compositionManaged === false ? pathExists : isOwned === true && pathExists
+      let symlinkExists = pathExists
       let memberExists = pathExists
-      let mountKind: MemberStatus['mountKind'] = isOwned === true ? 'owned' : undefined
-      let mountedCommit: string | undefined
-      if (compositionManaged === true && isOwned === false && pathExists === true) {
-        const verification = yield* teardownCpAMemberMount({
-          request: { workspaceRoot: megarepoRoot, member: memberName, dryRun: true },
-        }).pipe(Effect.result)
-        if (verification._tag === 'Success') {
-          symlinkExists = true
-          mountKind = 'cp-a'
-          mountedCommit = (yield* readOwnedCpAMountMetadata({
-            workspaceRoot: megarepoRoot,
-            member: memberName,
-            publishedPath: symlinkPath,
-          })).lockedCommit
-        } else {
-          mountKind = 'foreign'
-        }
-      } else if (compositionManaged === false && pathExists === true && isLocal === false) {
+      if (pathExists === true && isLocal === false) {
         const targetExists = yield* fs.readLink(symlinkPath).pipe(
           Effect.flatMap((target) => fs.exists(target)),
           Effect.orElseSucceed(() => false),
         )
         symlinkExists = targetExists
         memberExists = targetExists
-        mountKind = 'symlink'
       }
 
       // Check if this member is itself a megarepo
@@ -189,7 +148,7 @@ const scanMembersRecursive = ({
       let gitStatus: GitStatus | undefined = undefined
       let currentBranch: string | undefined = undefined
       let fullCommit: string | undefined = undefined
-      if (memberExists === true && (isOwned === true || compositionManaged === false)) {
+      if (memberExists === true) {
         // Check if it's a git repo first
         const isGit = yield* Git.isGitRepo(memberPath)
         if (isGit === true) {
@@ -224,11 +183,9 @@ const scanMembersRecursive = ({
         }
       }
 
-      if (mountedCommit !== undefined) fullCommit = mountedCommit
-
       // Read symlink target for drift detection
       const symlinkTarget =
-        compositionManaged === false && memberExists === true && isLocal === false
+        memberExists === true && isLocal === false
           ? yield* fs.readLink(memberPath.replace(/\/$/, '')).pipe(Effect.orElseSucceed(() => null))
           : null
 
@@ -306,7 +263,6 @@ const scanMembersRecursive = ({
         symlinkExists,
         source: sourceString,
         isLocal,
-        mountKind,
         writable: isOwned === true,
         lockInfo:
           lockedMember !== undefined

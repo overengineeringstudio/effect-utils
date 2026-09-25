@@ -159,14 +159,6 @@ export const authoritativeBuck2TypeScriptDeclarations: readonly AuthoritativeBuc
         ],
   )
 
-/** Dist overlays derived from the declaration-producing project subset. */
-export const buck2TypeScriptDistOverlays = authoritativeBuck2TypeScriptDeclarations
-  .map(({ distTarget, packagePath }) => ({
-    target: distTarget,
-    destination: `${packagePath}/dist`,
-  }))
-  .toSorted((left, right) => compareAuthorityStrings(left.destination, right.destination))
-
 /** Cell every generated bridge label is qualified with; Buck resolves nothing relative. */
 const buck2Cell = 'effect_utils'
 /** Target name of a package's default lane; it carries the unsuffixed task name. */

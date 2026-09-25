@@ -260,7 +260,7 @@ ok({
   name: 'test:run executes the source-owned complement partition',
 })
 // `genie:check` prevents a stale graph from proving itself. It is the freshness barrier for
-// repository-root Buck tasks. `mr:apply` remains an explicit composition operation.
+// repository-root Buck tasks. `mr:apply` stays outside the check aggregates.
 const buck2TestAuthority = JSON.parse(readFileSync(`${root}/buck2-test-authority.json`, 'utf8'))
 if (buck2TestAuthority.schemaVersion !== 2 || Array.isArray(buck2TestAuthority.lanes) === false) {
   throw new Error('buck2-test-authority.json does not match schemaVersion 2')
@@ -477,12 +477,12 @@ ok({
     source.includes('typescriptPublicationRootPredicate =') === true &&
     source.includes('--workspace-root "$root"') === true &&
     source.includes('--buck2 "$BUCK2_BIN"') === true &&
-    materializerSource.includes('requires a composed megarepo workspace') === false &&
+    materializerSource.includes('requires a standalone Buck root') === true &&
     materializerSource.includes('WORKSPACE_ROOT="$root"') === true &&
-    materializerSource.includes('BUCK2_BIN="$workspace_root/.megarepo/bin/"buck2') === true &&
+    materializerSource.includes('.megarepo/bin/') === false &&
     materializerSource.includes('TYPESCRIPT_DIST_MODE=') === false &&
     materializerSource.includes('TSGO_BIN=') === false,
-  name: 'materializer defaults to the standalone root and preserves explicit composed publication',
+  name: 'materializer publishes only from the standalone root',
 })
 
 const editorViewHelper = source.slice(
@@ -536,17 +536,11 @@ ok({
   name: 'capability Starlark loads use external-cell import syntax',
 })
 const standaloneBuckConfig = readFileSync(`${root}/.buckconfig`, 'utf8')
-const compositionRootSource = readFileSync(
-  `${root}/packages/@overeng/megarepo/src/composition/root/composition-root.ts`,
-  'utf8',
-)
 ok({
   condition:
     standaloneBuckConfig.includes('file_watcher = notify') === true &&
-    standaloneBuckConfig.includes('file_watcher = watchman') === false &&
-    compositionRootSource.includes("lines.push('', '[buck2]', '  file_watcher = watchman')") ===
-      true,
-  name: 'standalone roots use notify while composed roots retain Watchman',
+    standaloneBuckConfig.includes('file_watcher = watchman') === false,
+  name: 'standalone roots use the notify file watcher',
 })
 ok({
   condition: existsSync(`${root}/toolchains`) === false,

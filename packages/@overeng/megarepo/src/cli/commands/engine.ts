@@ -19,7 +19,7 @@ import { run } from '@overeng/tui-react'
 import {
   foreignMemberMountMessage,
   inspectMemberMount,
-} from '../../composition/mounts/member-mount.ts'
+} from '../../sync/member-mount.ts'
 import {
   type ConfigNotFoundError,
   findConfigPath,
@@ -78,11 +78,6 @@ import type {
   LockSharedSourceUpdate,
   SyncAction,
 } from '../renderers/SyncOutput/schema.ts'
-import {
-  preflightCompositionCommand,
-  readCompositionLockFile,
-  runCompositionApply,
-} from './composition.ts'
 
 /** Policy for apply-time lock-file rewrites. */
 export type LockSyncMode = 'auto' | 'off' | 'direct' | 'recursive'
@@ -645,7 +640,7 @@ export const runCommand = ({
   verbose: boolean
   /** When true, runs fetch first (silently), then apply with output rendering. Used by `mr fetch --apply`. */
   applyAfterFetch?: boolean
-  /** Worktree strategy for apply mode. Auto selects tracking locally or for composition, commit otherwise in CI. */
+  /** Worktree strategy for apply mode. Auto selects tracking locally, commit in CI. */
   worktreeMode?: 'commit' | 'tracking' | 'auto'
   /** Controls whether apply also rewrites Nix/nested megarepo lock files. */
   lockSyncMode?: LockSyncMode
@@ -675,32 +670,9 @@ export const runCommand = ({
     const workspaceName = yield* Git.deriveMegarepoName(root.value)
     const { config } = yield* readMegarepoConfig(root.value)
     const memberNames = Object.keys(config.members)
-    const compositionEnabled = config.generators?.composition?.enabled === true
     const commitMode =
       resolvedWorktreeMode === 'commit' ||
-      (resolvedWorktreeMode === 'auto' && process.env.CI === 'true' && compositionEnabled === false)
-
-    if (compositionEnabled === true && appliesWorkspace === true) {
-      if (onlyMembers !== undefined || skipMembers !== undefined) {
-        return yield* new InvalidOptionsError({
-          message:
-            'Composition apply owns the complete member set; --only and --skip are unavailable',
-        })
-      }
-      if (commitMode === true) {
-        return yield* new InvalidOptionsError({
-          message:
-            'Composition apply requires the owned branch worktree; --worktree-mode commit is unavailable',
-        })
-      }
-    }
-    const compositionIdentity =
-      appliesWorkspace === true
-        ? yield* preflightCompositionCommand({
-            workspaceRoot: root.value,
-            compositionEnabled,
-          })
-        : undefined
+      (resolvedWorktreeMode === 'auto' && process.env.CI === 'true')
 
     const skippedMembers = memberNames.filter((memberName) => {
       if (onlyMembers !== undefined && onlyMembers.length > 0) {
@@ -751,55 +723,7 @@ export const runCommand = ({
     const effectiveMode = applyAfterFetch === true ? 'apply' : mode
 
     const doSync = (progressHandle?: SyncUIHandle) =>
-      compositionIdentity !== undefined
-        ? Effect.gen(function* () {
-            const composition = yield* runCompositionApply({
-              workspaceRoot: compositionIdentity.workspaceRoot,
-              dryRun,
-            })
-            const ignoredMembers = config.generators?.composition?.ignoredMembers ?? []
-            const ignoredLock = yield* readCompositionLockFile({
-              workspaceRoot: compositionIdentity.workspaceRoot,
-              ownedMemberPath: compositionIdentity.ownedSourcePath,
-            })
-            const legacyResults = yield* Effect.forEach(ignoredMembers, (name) =>
-              syncMember({
-                name,
-                sourceString: config.members[name]!,
-                megarepoRoot: root.value,
-                lockFile: Option.getOrUndefined(ignoredLock),
-                mode: 'apply',
-                dryRun,
-                force,
-                gitProtocol,
-                createBranches,
-                commitMode: true,
-              }),
-            )
-            const appliedMembers =
-              composition.composition._tag === 'Applied'
-                ? composition.composition.members.map((member) => member.memberKey)
-                : composition.composition.steps
-                    .filter((step) => step._tag === 'Capability')
-                    .map((step) => step.memberKey)
-            return {
-              root: root.value,
-              results: [
-                ...legacyResults,
-                ...[...new Set(appliedMembers)].map((name) => ({
-                  name,
-                  status: 'applied' as const,
-                  message: dryRun === true ? 'planned composition update' : undefined,
-                })),
-              ],
-              nestedMegarepos: [],
-              nestedResults: [],
-              lockSyncResults: undefined,
-              defaultCwd: composition.defaultCwd,
-              composition,
-            } satisfies MegarepoSyncResult
-          })
-        : syncMegarepo({
+      syncMegarepo({
             megarepoRoot: root.value,
             options: {
               mode: effectiveMode,
@@ -930,7 +854,6 @@ export const runCommand = ({
           workspace: {
             name: workspaceName,
             root: root.value,
-            ...(syncResult.defaultCwd === undefined ? {} : { defaultCwd: syncResult.defaultCwd }),
           },
           options: syncDisplayOptions,
           members: memberNames,
@@ -946,7 +869,6 @@ export const runCommand = ({
           syncErrors: syncErrorItems,
           syncErrorCount: syncErrorItems.length,
           preflightIssues: [],
-          ...(syncResult.composition === undefined ? {} : { composition: syncResult.composition }),
         },
       })
     }

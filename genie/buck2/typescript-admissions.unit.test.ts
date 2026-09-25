@@ -3,16 +3,12 @@ import process from 'node:process'
 
 import { describe, expect, it } from 'vitest'
 
-import buckMemberManifest from '../../buck2-member.json.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json.genie.ts'
-import { decodeBuckMemberManifestJson } from '../../packages/@overeng/megarepo/src/buck2-manifest.ts'
 import { rootTsconfigProjects } from '../tsconfig-projects.ts'
 import {
-  authoritativeBuck2TypeScriptDeclarations,
   authoritativeBuck2TypeScriptProjects,
   buck2TestLanes,
   buck2TypeScriptAdmissions,
-  buck2TypeScriptDistOverlays,
   buck2TypeScriptTestCollectionTargets,
   buck2TypeScriptTestTargets,
   deriveBuck2TestLane,
@@ -48,23 +44,7 @@ describe('Buck2 TypeScript authority derivation', () => {
     expect(authoritativeProjectPaths).toEqual(rootProjectPaths)
   })
 
-  it('derives declaration overlays and project authorities from the same entries', () => {
-    expect(buck2TypeScriptDistOverlays).toEqual(
-      authoritativeBuck2TypeScriptDeclarations
-        .map(({ distTarget, packagePath }) => ({
-          destination: `${packagePath}/dist`,
-          target: distTarget,
-        }))
-        .toSorted((left, right) =>
-          Buffer.from(left.destination).compare(Buffer.from(right.destination)),
-        ),
-    )
-
-    const projectedManifest = decodeBuckMemberManifestJson(
-      buckMemberManifest.stringify({ cwd: process.cwd(), location: '' }),
-    )
-    expect(projectedManifest.distOverlays).toEqual(buck2TypeScriptDistOverlays)
-
+  it('derives root tsconfig authorities from the admitted projects', () => {
     expect(
       rootTsconfigProjects
         .map(({ buck2Authority, path }) => ({ buck2Authority, path }))

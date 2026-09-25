@@ -10,7 +10,7 @@ import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
-import { resolveStoreBranchWorktree } from '../composition/acquisition/owned-worktree-acquisition.ts'
+import { resolveStoreBranchWorktree } from './store-branch-worktree.ts'
 import {
   type MegarepoConfig,
   type MemberSource,
@@ -156,7 +156,7 @@ export const validateStoreMembers = ({
       if (classifyRef(lockedMember.ref) === 'branch') {
         const resolution = yield* resolveStoreBranchWorktree({
           bareRepo: bareRepoPath,
-          workspaceRoot: branchWorktreePath,
+          worktreePath: branchWorktreePath,
           branch: lockedMember.ref,
         }).pipe(Effect.result)
         if (resolution._tag === 'Failure') {
