@@ -36,8 +36,14 @@
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js",
-      "./cli": "./dist/cli.js"
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./cli": {
+        "types": "./dist/src/cli.d.ts",
+        "default": "./dist/src/cli.js"
+      }
     }
   }
 }

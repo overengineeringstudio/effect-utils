@@ -74,6 +74,11 @@ All notable changes to this project will be documented in this file.
   `types` conditions (the previous `./dist/*.js` targets did not exist).
   Consumers that import published tarballs from Node (e.g. Playwright configs)
   no longer hit `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`.
+  Every Buck-generated package archive target, including non-registry packages
+  and private examples, now builds: source manifests map runtime exports to
+  emitted files, and packages without declaration publishers no longer require
+  an invented `src/mod.d.ts`. Buck package dependency manifests derive from
+  Genie package inputs rather than racing concurrently generated JSON.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it

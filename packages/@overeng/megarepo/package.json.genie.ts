@@ -4,6 +4,7 @@ import {
   workspaceMember,
   exportEntry,
   packageJson,
+  publishedSourceExport,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
@@ -84,9 +85,9 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
-        './buck2-manifest': './dist/buck2-manifest.js',
-        './cli': './dist/cli.js',
+        '.': publishedSourceExport('mod'),
+        './buck2-manifest': publishedSourceExport('buck2-manifest'),
+        './cli': publishedSourceExport('cli/mod'),
       },
     },
     dependenciesMeta: {

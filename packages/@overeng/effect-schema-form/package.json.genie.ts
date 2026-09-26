@@ -4,6 +4,7 @@ import {
   workspaceMember,
   exportEntry,
   packageJson,
+  publishedSourceExport,
   privatePackageDefaults,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
@@ -41,7 +42,7 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
+        '.': publishedSourceExport('mod'),
       },
     },
   } satisfies PackageJsonInputData,

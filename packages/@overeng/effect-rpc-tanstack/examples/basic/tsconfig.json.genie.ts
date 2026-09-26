@@ -8,6 +8,7 @@ export default tsconfigJson({
     module: 'ESNext',
     moduleResolution: 'bundler',
     allowImportingTsExtensions: true,
+    rewriteRelativeImportExtensions: true,
     ...nodeTypes,
     ...reactJsx,
     strict: true,

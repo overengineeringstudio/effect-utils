@@ -3,6 +3,7 @@ import {
   catalog,
   exportEntry,
   packageJson,
+  publishedSourceExport,
   privatePackageDefaults,
   type PackageJsonInputData,
   workspaceMember,
@@ -44,8 +45,8 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
-        './cli': './dist/cli.js',
+        '.': publishedSourceExport('mod'),
+        './cli': publishedSourceExport('cli'),
       },
     },
   } satisfies PackageJsonInputData,

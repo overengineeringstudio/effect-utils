@@ -79,6 +79,14 @@ export const packageJson = definePackageJson({
   },
 })
 
+/** The Buck TypeScript emit preserves `src/` inside `dist/`. */
+export const publishedSourceExport = (
+  sourceStem: string,
+): { readonly types: string; readonly default: string } => ({
+  types: `./dist/src/${sourceStem}.d.ts`,
+  default: `./dist/src/${sourceStem}.js`,
+})
+
 /**
  * Extended catalog with internal @overeng/* packages for effect-utils use.
  *
@@ -108,7 +116,6 @@ export const workspaceMember = ({
     memberPath,
     pnpmPackageClosure,
   }) as const
-
 
 /**
  * Common pnpm workspace data for effect-utils workspaces.

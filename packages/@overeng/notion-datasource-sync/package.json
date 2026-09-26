@@ -95,9 +95,29 @@
       "types": "./dist/src/sync/observation.d.ts",
       "default": "./src/sync/observation.ts"
     },
-    "./testing/*": {
-      "types": "./dist/src/testing/*.d.ts",
-      "default": "./src/testing/*.ts"
+    "./testing/bidi-safety": {
+      "types": "./dist/src/testing/bidi-safety.d.ts",
+      "default": "./src/testing/bidi-safety.ts"
+    },
+    "./testing/dry-run-workspace": {
+      "types": "./dist/src/testing/dry-run-workspace.d.ts",
+      "default": "./src/testing/dry-run-workspace.ts"
+    },
+    "./testing/filesystem": {
+      "types": "./dist/src/testing/filesystem.d.ts",
+      "default": "./src/testing/filesystem.ts"
+    },
+    "./testing/harness": {
+      "types": "./dist/src/testing/harness.d.ts",
+      "default": "./src/testing/harness.ts"
+    },
+    "./testing/live-notion": {
+      "types": "./dist/src/testing/live-notion.d.ts",
+      "default": "./src/testing/live-notion.ts"
+    },
+    "./testing/scenarios": {
+      "types": "./dist/src/testing/scenarios.d.ts",
+      "default": "./src/testing/scenarios.ts"
     },
     "./webhook": {
       "types": "./dist/src/webhook/mod.d.ts",
@@ -177,7 +197,30 @@
       "./sync": "./dist/src/sync/sync.js",
       "./sync/executor": "./dist/src/sync/executor.js",
       "./sync/observation": "./dist/src/sync/observation.js",
-      "./testing/*": "./dist/src/testing/*.js",
+      "./testing/bidi-safety": {
+        "types": "./dist/src/testing/bidi-safety.d.ts",
+        "default": "./dist/src/testing/bidi-safety.js"
+      },
+      "./testing/dry-run-workspace": {
+        "types": "./dist/src/testing/dry-run-workspace.d.ts",
+        "default": "./dist/src/testing/dry-run-workspace.js"
+      },
+      "./testing/filesystem": {
+        "types": "./dist/src/testing/filesystem.d.ts",
+        "default": "./dist/src/testing/filesystem.js"
+      },
+      "./testing/harness": {
+        "types": "./dist/src/testing/harness.d.ts",
+        "default": "./dist/src/testing/harness.js"
+      },
+      "./testing/live-notion": {
+        "types": "./dist/src/testing/live-notion.d.ts",
+        "default": "./dist/src/testing/live-notion.js"
+      },
+      "./testing/scenarios": {
+        "types": "./dist/src/testing/scenarios.d.ts",
+        "default": "./dist/src/testing/scenarios.js"
+      },
       "./webhook": "./dist/src/webhook/mod.js"
     }
   }

@@ -4,6 +4,7 @@ import {
   exportEntry,
   packageJson,
   privatePackageDefaults,
+  publishedSourceExport,
   workspaceMember,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
@@ -22,6 +23,15 @@ const peerDepNames = [
   '@effect/platform-node',
   '@playwright/test',
   'effect',
+] as const
+
+const publishedTestingModules = [
+  'bidi-safety',
+  'dry-run-workspace',
+  'filesystem',
+  'harness',
+  'live-notion',
+  'scenarios',
 ] as const
 
 const workspaceDeps = catalog.compose({
@@ -149,9 +159,14 @@ export default packageJson(
         { types: './dist/src/sync/observation.d.ts', default: './src/sync/observation.ts' },
         { environment: 'node' },
       ),
-      './testing/*': exportEntry(
-        { types: './dist/src/testing/*.d.ts', default: './src/testing/*.ts' },
-        { environment: 'node' },
+      ...Object.fromEntries(
+        publishedTestingModules.map((module) => [
+          `./testing/${module}`,
+          exportEntry(
+            { types: `./dist/src/testing/${module}.d.ts`, default: `./src/testing/${module}.ts` },
+            { environment: 'node' },
+          ),
+        ]),
       ),
       './webhook': exportEntry(
         { types: './dist/src/webhook/mod.d.ts', default: './src/webhook/mod.ts' },
@@ -190,7 +205,12 @@ export default packageJson(
         './sync': './dist/src/sync/sync.js',
         './sync/executor': './dist/src/sync/executor.js',
         './sync/observation': './dist/src/sync/observation.js',
-        './testing/*': './dist/src/testing/*.js',
+        ...Object.fromEntries(
+          publishedTestingModules.map((module) => [
+            `./testing/${module}`,
+            publishedSourceExport(`testing/${module}`),
+          ]),
+        ),
         './webhook': './dist/src/webhook/mod.js',
       },
     },
