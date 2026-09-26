@@ -43,6 +43,8 @@ import {
   prReviewsResolvedJob,
   prReviewsResolvedJobId,
   githubTokenEnv,
+  githubAppInstallationTokenStep,
+  githubAccessTokenEnv,
   readBinaryCacheDescriptors,
 } from '../../genie/ci-workflow.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
@@ -762,6 +764,7 @@ const extraJobs: Record<string, any> = {
     'timeout-minutes': 120,
     permissions: { contents: 'read' },
     defaults: bashShellDefaults,
+    env: githubTokenEnv(),
     steps: [
       checkoutStep(),
       {
@@ -837,24 +840,20 @@ const extraJobs: Record<string, any> = {
         ].join('\n'),
       },
       {
-        id: 'publisher-app-token',
-        name: 'Mint publisher GitHub App token',
-        if: "steps.publisher-app-config.outputs.enabled == 'true'",
-        uses: 'actions/create-github-app-token@v3',
-        with: {
-          'app-id': '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
-          'private-key': '${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}',
+        ...githubAppInstallationTokenStep({
+          id: 'publisher-app-token',
+          name: 'Mint publisher GitHub App token',
+          appId: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
+          privateKey: '${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}',
           owner: 'overengineeringstudio',
-          repositories: 'effect-utils',
-        },
+          repositories: ['effect-utils'],
+        }),
+        if: "steps.publisher-app-config.outputs.enabled == 'true'",
       },
       {
         name: 'Propose published product manifest',
         if: "steps.publisher-app-config.outputs.enabled == 'true'",
-        env: {
-          GH_TOKEN: '${{ steps.publisher-app-token.outputs.token }}',
-          GITHUB_TOKEN: '${{ steps.publisher-app-token.outputs.token }}',
-        },
+        env: githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
