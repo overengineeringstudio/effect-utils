@@ -34,8 +34,8 @@ let
               throw "buck2-cargo-archives: ${toString file} crate_archive needs exactly one ${name}";
         in
         {
-          sha256 = field "sha256" ''sha256 = "([0-9a-f]{64})",'';
-          url = field "url" ''urls = \["(https://[^"]+)"],'';
+          sha256 = field "sha256" ''[[:space:]]*sha256 = "([0-9a-f]{64})",[[:space:]]*'';
+          url = field "url" ''[[:space:]]*urls = \["(https://[^"]+)"],[[:space:]]*'';
         };
       archives = map parseBlock blocks;
     in
