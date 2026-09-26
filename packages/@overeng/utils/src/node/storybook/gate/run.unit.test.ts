@@ -747,6 +747,9 @@ describe('prepareBaselineNodeModules', () => {
     try {
       mkdirSync(join(repoRoot, 'node_modules'), { recursive: true })
       mkdirSync(join(worktreeDir, 'node_modules'), { recursive: true })
+      mkdirSync(join(repoRoot, 'packages', 'widget', 'node_modules'), { recursive: true })
+      mkdirSync(join(worktreeDir, 'packages', 'widget'), { recursive: true })
+      writeFileSync(join(worktreeDir, 'packages', 'widget', 'package.json'), '{}')
       writeFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'head')
       writeFileSync(join(worktreeDir, 'pnpm-lock.yaml'), 'baseline')
       writeFileSync(join(worktreeDir, 'node_modules', 'sentinel'), 'baseline install')
@@ -756,6 +759,7 @@ describe('prepareBaselineNodeModules', () => {
       expect(readFileSync(join(worktreeDir, 'node_modules', 'sentinel'), 'utf8')).toBe(
         'baseline install',
       )
+      expect(existsSync(join(worktreeDir, 'packages', 'widget', 'node_modules'))).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
