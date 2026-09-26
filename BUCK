@@ -13,15 +13,12 @@ load("//buck2:editor_view.bzl", "editor_view_inputs")
 load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
 
-# Conventional prelude toolchain targets, owned by the platform hub.
+# Conventional prelude toolchain targets.
 #
-# The composition root sets `[cell_aliases] toolchains = <platformHubCell>`
-# (`composition/root/composition-root.ts`), so prelude's conventional
-# `toolchains//:<lang>` spelling resolves into *this* package for every member cell in the
-# composed workspace. Prelude rules used by any member therefore find exactly one instance
-# of each conventional toolchain, and it is the hub's capability-backed one. Keeping them
-# here preserves `05-composition/spec.md:51-56` ("the root carries no synthetic toolchains
-# or `none` cell").
+# The standalone root sets `[cell_aliases] toolchains = effect_utils`, so prelude's
+# conventional `toolchains//:<lang>` spelling resolves into *this* package. Prelude rules
+# therefore find exactly one instance of each conventional toolchain, and it is the
+# capability-backed one.
 toolchain_alias(
     name = "rust",
     actual = "//buck2/toolchains:rust",

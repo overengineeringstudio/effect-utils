@@ -61,61 +61,6 @@
       },
       "additionalProperties": false
     },
-    "CompositionGeneratorConfigEncoded": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "platformHub": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-        },
-        "ignoredMembers": {
-          "anyOf": [
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "isolationDir": {
-          "anyOf": [
-            {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "allowVerifiedDarwinAdvance": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": ["platformHub"],
-      "additionalProperties": false
-    },
     "GeneratorsConfigEncoded": {
       "type": "object",
       "properties": {
@@ -131,9 +76,7 @@
         },
         "composition": {
           "anyOf": [
-            {
-              "$ref": "#/$defs/CompositionGeneratorConfigEncoded"
-            },
+            {},
             {
               "type": "null"
             }
