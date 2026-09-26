@@ -888,7 +888,8 @@ const extraJobs: Record<string, any> = {
   },
   /**
    * Trusted-only proof that a second plain checkout can consume an action
-   * uploaded by an independent standalone root through the tailnet cache.
+   * uploaded by an independent standalone root through the public cache tier.
+   * Protected main is the tier's only writer (decision 0033).
    */
   'trusted-buck2-remote-cache-proof': {
     if: trustedSecretCiIf,
@@ -912,20 +913,28 @@ const extraJobs: Record<string, any> = {
         name: 'Prove fresh-root remote action and test-cache hits',
         env: {
           ...githubTokenEnv(),
-          BUCK2_REMOTE_CACHE_BASIC_AUTH: '${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}',
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: '${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}',
         },
         run: [
           'set -euo pipefail',
+          'if [ -z "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then',
+          '  echo "::error::BUCK2_PUBLIC_CACHE_WRITE_AUTH is required for the trusted remote-cache proof"',
+          '  exit 1',
+          'fi',
+          '# Buck sends the header verbatim; only the Base64 form reaches the daemon.',
+          'BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf \'%s\' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d \'\\n\')"',
+          'echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"',
+          'export BUCK2_CACHE_WRITE_BASIC_AUTH',
+          'unset BUCK2_PUBLIC_CACHE_WRITE_AUTH',
           'proof_script="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof.sh"',
           `trap 'rm -f "$proof_script"' EXIT`,
           `cat > "$proof_script" <<'BUCK2_REMOTE_CACHE_PROOF'`,
           'set -euo pipefail',
-          'if [ -z "${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}" ]; then',
-          '  echo "::error::BUCK2_REMOTE_CACHE_BASIC_AUTH is required for the trusted remote-cache proof"',
-          '  exit 1',
-          'fi',
           'source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"',
           'cd "$source_root"',
+          '# The writer credential selects the publisher posture in the untracked .buckconfig.local.',
+          'bun scripts/buck2-cache-posture.ts "$source_root"',
+          `grep -Fq 'allow_cache_uploads = true' .buckconfig.local || { echo "::error::publisher cache posture was not selected"; exit 1; }`,
           'buck="${BUCK2_BIN:?BUCK2_BIN not set}"',
           'context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"',
           'target="effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"',
@@ -959,9 +968,11 @@ const extraJobs: Record<string, any> = {
           '',
           '# Context B is a second standalone root with a fresh daemon and materializer over identical inputs.',
           '"$buck" kill',
+          'unset BUCK2_CACHE_WRITE_BASIC_AUTH',
           'rm -rf buck-out "$context_b"',
           'mkdir -p "$context_b"',
           'tar -C "$source_root" \\',
+          `  --exclude='./.buckconfig.local' \\`,
           `  --exclude='./.devenv' \\`,
           `  --exclude='./.git' \\`,
           `  --exclude='./buck-out' \\`,
@@ -975,6 +986,11 @@ const extraJobs: Record<string, any> = {
           `  --exclude='*/target' \\`,
           '  -cf - . | tar -C "$context_b" -xf -',
           'cd "$context_b"',
+          'export BUCK2_PUBLIC_CACHE_READ_ONLY=1',
+          'bun scripts/buck2-cache-posture.ts "$context_b"',
+          `grep -Fq 'remote_cache_enabled = true' .buckconfig.local || { echo "::error::reader cache posture was not selected"; exit 1; }`,
+          `grep -Fq 'allow_cache_uploads = false' .buckconfig.local || { echo "::error::reader cache uploads were not disabled"; exit 1; }`,
+          `if grep -Fq 'http_headers' .buckconfig.local; then echo "::error::reader cache inherited publisher auth"; exit 1; fi`,
           '',
           '# Buck event data must classify the independent build as a remote action-cache hit.',
           '"$buck" build --local-only "$target"',

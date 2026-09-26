@@ -1020,7 +1020,7 @@ describe('ci workflow standard job helpers', () => {
     ['public', '1'],
   ] as const)(
     'renders the %s repository cache trust tier without an ambient GitHub token',
-    (trustTier, noRemoteCache) => {
+    (trustTier, publicReadOnly) => {
       const fixture = spawnSync(
         'bun',
         [
@@ -1201,7 +1201,8 @@ describe('ci workflow standard job helpers', () => {
       const expectedEnv = {
         FORCE_SETUP: '1',
         CI: 'true',
-        BUCK2_NO_REMOTE_CACHE: noRemoteCache,
+        BUCK2_NO_REMOTE_CACHE: '0',
+        BUCK2_PUBLIC_CACHE_READ_ONLY: publicReadOnly,
       }
       const expectedTokenEnv = {
         GITHUB_TOKEN: '${{ github.token }}',

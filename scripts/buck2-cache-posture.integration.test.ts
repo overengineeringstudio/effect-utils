@@ -7,6 +7,7 @@ import {
   reconcileStandaloneCachePosture,
   standaloneCachePostureConfig,
 } from './buck2-cache-posture.ts'
+import { standardCIEnv } from '../genie/ci-workflow/shared.ts'
 
 const trustedOrigin = {
   tier: 'private',
@@ -63,6 +64,93 @@ describe('standalone Buck cache posture', () => {
   tier = private
 # effect-utils standalone cache posture: end
 `)
+  })
+
+  it('reads the public TLS tier anonymously in a PR lane, without upload rights', () => {
+    const tracked = readFileSync(join(import.meta.dir, '..', '.buckconfig'), 'utf8')
+    const prLane = standaloneCachePostureConfig({
+      current: '',
+      env: standardCIEnv({ trustTier: 'public' }),
+      trustedOrigin,
+    })
+    const effective = `${tracked}\n${prLane}`
+
+    expect(prLane).toContain('remote_cache_enabled = true')
+    expect(prLane).toContain('allow_cache_uploads = false')
+    expect(prLane).toContain('url_prefix =\n  tier = public')
+    expect(effective).toContain('action_cache_address = grpc://dev3.tail8108.ts.net:8443')
+    expect(effective).toContain('cas_address = grpc://dev3.tail8108.ts.net:8443')
+    expect(effective).toContain('tls = true')
+    expect(effective).not.toContain('http_headers')
+    expect(effective).not.toContain('trusted-cache.example')
+
+    const escapeHatch = standaloneCachePostureConfig({
+      current: prLane,
+      env: { ...standardCIEnv({ trustTier: 'public' }), BUCK2_NO_REMOTE_CACHE: '1' },
+      trustedOrigin,
+    })
+    expect(escapeHatch).toContain('remote_cache_enabled = false')
+    expect(escapeHatch).toContain('allow_cache_uploads = false')
+    expect(escapeHatch).not.toContain('remote_cache_enabled = true')
+    expect(escapeHatch).not.toContain('http_headers')
+  })
+
+  it('selects the publisher posture only with a writer credential and never writes the credential', () => {
+    const credential = 'd3JpdGVyOnNlY3JldA=='
+    const publisher = standaloneCachePostureConfig({
+      current: '',
+      env: { BUCK2_NO_REMOTE_CACHE: '0', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
+      trustedOrigin,
+    })
+    expect(publisher).toBe(`# effect-utils standalone cache posture: begin
+[buck2]
+  allow_cache_uploads = true
+  default_allow_cache_upload = true
+[buck2_re_client]
+  http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH
+[archive_origin]
+  url_prefix =
+  tier = public
+# effect-utils standalone cache posture: end
+`)
+    expect(publisher).not.toContain(credential)
+
+    for (const value of [undefined, ''])
+      expect(
+        standaloneCachePostureConfig({
+          current: '',
+          env: { BUCK2_CACHE_WRITE_BASIC_AUTH: value },
+          trustedOrigin,
+        }),
+      ).not.toContain('allow_cache_uploads = true')
+
+    // The exact public-lane opt-out wins over a leaked credential.
+    expect(
+      standaloneCachePostureConfig({
+        current: '',
+        env: { BUCK2_NO_REMOTE_CACHE: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
+        trustedOrigin,
+      }),
+    ).not.toContain('allow_cache_uploads = true')
+  })
+
+  it('replaces a publisher overlay with anonymous read-only posture in a reader root', () => {
+    const publisher = standaloneCachePostureConfig({
+      current: '',
+      env: { BUCK2_CACHE_WRITE_BASIC_AUTH: 'd3JpdGVyOnNlY3JldA==' },
+      trustedOrigin,
+    })
+    const reader = standaloneCachePostureConfig({
+      current: publisher,
+      env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
+      trustedOrigin,
+    })
+
+    expect(reader).toContain('remote_cache_enabled = true')
+    expect(reader).toContain('allow_cache_uploads = false')
+    expect(reader).not.toContain('default_allow_cache_upload = true')
+    expect(reader).not.toContain('http_headers')
+    expect(reader).not.toContain('BUCK2_CACHE_WRITE_BASIC_AUTH')
   })
 
   it('preserves local overrides while adding and removing the managed posture atomically', () => {
