@@ -84,8 +84,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = 
+            extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Check first-party default refs
@@ -494,8 +494,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -533,8 +533,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -741,8 +740,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -780,8 +779,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -974,8 +972,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1013,8 +1011,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1204,8 +1201,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1243,8 +1240,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1434,8 +1430,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1473,8 +1469,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1664,8 +1659,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1703,8 +1698,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1894,8 +1888,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1933,8 +1927,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2174,8 +2167,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -2213,8 +2206,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2405,8 +2397,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -2444,8 +2436,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2635,8 +2626,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -2674,8 +2665,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2865,8 +2855,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -2904,8 +2894,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -3121,8 +3110,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = 
+            extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Provide cachix CLI from nixpkgs
@@ -3137,6 +3126,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -3187,11 +3177,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"
+          export FINGERPRINT_BIN
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \
             genie/buck2/typescript-package-projection.unit.test.ts \
             genie/buck2/javascript-candidates.unit.test.ts \
             packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
             packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
+      - name: Check published package runtime imports
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test scripts/runtime-package-imports.integration.test.ts'
       - name: Check product publisher, manifest import, and from-source contracts
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -3272,8 +3268,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = 
+            extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Use pinned devenv from lock
@@ -3341,8 +3337,7 @@ jobs:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 120
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       id-token: write
     defaults:
       run:
@@ -3351,7 +3346,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -3402,8 +3396,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = 
+            extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
           summarize: true
         if: steps.publication-scope.outputs.publish == 'true'
@@ -3416,14 +3410,15 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         if: steps.publication-scope.outputs.publish == 'true'
-      - name: Enable Cachix cache
+      - name: Publish to Cachix
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.publication-scope.outputs.publish == 'true'
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: steps.publication-scope.outputs.publish == 'true'
-      - name: Publish products and propose manifest
-        if: steps.publication-scope.outputs.publish == 'true'
+      - id: product-publication
+        name: Publish products
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (steps.publication-scope.outputs.publish == 'true')
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -3433,16 +3428,47 @@ jobs:
           nix/buck2-products/publish.sh --proposal "$proposal"
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
-            exit 0
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-
+      - id: publisher-app-config
+        name: Check publisher GitHub App configuration
+        if: steps.product-publication.outputs.changed == 'true'
+        env:
+          APP_ID: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
+          APP_PRIVATE_KEY_PRESENT: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [ -n "$APP_ID" ] && [ "$APP_PRIVATE_KEY_PRESENT" = true ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+      - id: publisher-app-token
+        name: Mint publisher GitHub App token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
+          private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
+          owner: overengineeringstudio
+          repositories: effect-utils
+        if: steps.publisher-app-config.outputs.enabled == 'true'
+      - name: Propose published product manifest
+        if: steps.publisher-app-config.outputs.enabled == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
           branch=automation/buck2-products-manifest
           git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true
           git switch -C "$branch"
           cp "$proposal" nix/buck2-products/manifest.json
           git add nix/buck2-products/manifest.json
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'overeng-nix-publisher[bot]'
+          git config user.email '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'
           git commit -m 'chore(buck2): update product cache manifest'
           gh auth setup-git
           git push --force-with-lease origin "HEAD:refs/heads/$branch"
@@ -3508,8 +3534,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = 
+            extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Prepare CI helper scripts
@@ -3678,8 +3704,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -3717,8 +3743,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -3879,8 +3904,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -3918,8 +3943,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -4766,8 +4790,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -4805,8 +4829,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -5733,8 +5756,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = 
+            extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Provide CI measurement report tools
@@ -8272,8 +8295,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -8311,8 +8334,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -8461,8 +8483,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -8500,8 +8522,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -8642,8 +8663,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -8681,8 +8702,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -8875,8 +8895,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://devenv.cachix.org
-            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -8914,8 +8934,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -8977,7 +8996,7 @@ jobs:
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             deploy_ran=1
             __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
+          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
           fi
           if [ "$deploy_ran" = "1" ] && [ ! -s "$workflow_report_path" ]; then
             echo "Error: ci-tools did not emit a Netlify workflow report record." >&2
@@ -9129,7 +9148,7 @@ jobs:
           marker="<!-- workflow-report:pipeline-evidence -->"
           body=$(mktemp)
           printf "%s\n### Pipeline evidence\n\n[Browse this PR’s pipeline evidence](https://buck2-evidence-resolver-dev3.tail8108.ts.net/pr/%s/%s)\n" "$marker" "$GH_REPO" "$PR_NUMBER" > "$body"
-          comment_id=$(gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[] | select(.body | contains("<!-- workflow-report:pipeline-evidence -->")) | .id' | sed -n '1p')
+          comment_id=$(gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- workflow-report:pipeline-evidence -->"))) | .id' | sed -n '1p')
           if [ -n "$comment_id" ]; then gh api --method PATCH "repos/$GH_REPO/issues/comments/$comment_id" --field body=@"$body" >/dev/null;
           else gh pr comment "$PR_NUMBER" --body-file "$body"; fi
     concurrency:

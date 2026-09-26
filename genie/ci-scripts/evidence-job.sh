@@ -23,6 +23,7 @@ case "${1:?mode required}" in
     cd "${GITHUB_WORKSPACE:-$PWD}"
     if [ -z "${PIPELINE_RUN_ID:-}" ] || [ -z "${PIPELINE_TASK_KEY:-}" ] || [ -z "${DEVENV_BIN:-}" ]; then echo 'Evidence: no task setup; skipping'; exit 0; fi
     "$DEVENV_BIN" shell -- bash -c '
+      set -euo pipefail
       read -r trace_assignment _ job_assignment <<< "$(otel-span pipeline-derive "$PIPELINE_RUN_ID" "$PIPELINE_TASK_KEY")"
       spool="$PWD/.devenv/otel/run-records/${trace_assignment#trace=}-${job_assignment#job=}"
       digest=$(buck2-evidence seal --spool "$spool" --run-id "$PIPELINE_RUN_ID" --task-key "$PIPELINE_TASK_KEY") || exit 0
