@@ -1023,6 +1023,12 @@ export const runVitest = async ({
       'run',
       '--config',
       configFile,
+      // The default `bundle` loader externalizes node_modules imports and hands
+      // them to Node, which refuses to strip types under node_modules. A consumer
+      // that installs this package (rather than linking it) would then fail to
+      // load its gate config, because the gate entry ships as TypeScript source.
+      '--configLoader',
+      'runner',
       '--reporter',
       'default',
       '--reporter',

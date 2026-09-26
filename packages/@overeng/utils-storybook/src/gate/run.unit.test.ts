@@ -389,13 +389,11 @@ describe('runVitest completion protocol', () => {
         updateMode: 'none',
         label: 'fake comparison',
       })
-      expect({
-        assertions: result.assertions.length,
-        updateArgs: JSON.parse(readFileSync(fixture.argsFile, 'utf8')),
-      }).toEqual({
-        assertions: 1,
-        updateArgs: expect.arrayContaining(['--update=none']),
-      })
+      const args: string[] = JSON.parse(readFileSync(fixture.argsFile, 'utf8'))
+      expect(result.assertions).toHaveLength(1)
+      expect(args).toContain('--update=none')
+      const loaderArg = args.indexOf('--configLoader')
+      expect(args.slice(loaderArg, loaderArg + 2)).toEqual(['--configLoader', 'runner'])
     } finally {
       rmSync(fixture.cwd, { recursive: true, force: true })
     }
