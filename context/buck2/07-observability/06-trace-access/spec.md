@@ -147,6 +147,14 @@ configuration/environment, never a hard-coded fleet hostname; off-tailnet
 failure states that tailnet access is required. An agent skill points to
 this command, not a second bespoke trace CLI.
 
+## Open Design Questions
+
+- **DQ1 — Vista freeze authority:** Which authorized actor and trigger create
+  the on-demand frozen review snapshot without granting the read-only resolver
+  mutation rights? Resolve with a reviewed Vista publication contract and
+  access boundary; the accepted decision fixes the on-demand role, not its
+  authorization mechanism.
+
 ## Conformance
 
 - An indexed but not yet ingested ID serves pending; complete readback serves
