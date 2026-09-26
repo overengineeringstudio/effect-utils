@@ -320,6 +320,12 @@ rec {
       lib.mkBuck2ArtifactImport =
         { pkgs }: import ./nix/workspace-tools/lib/buck2-artifact-import.nix { inherit pkgs; };
 
+      # Verify and import a native build_product rebuilt by mkBuckProductFromSource
+      # (`product.kind = "native"`) through the same realization as published
+      # artifacts; the descriptor is validated at build time, not evaluation.
+      lib.mkBuck2NativeSourceProductImport =
+        { pkgs }: import ./nix/buck2-products/native-import.nix { inherit pkgs; };
+
       # Verify and import one tracked Buck JavaScript product (descriptor plus
       # content-addressed module bytes) into a wrappable Nix output.
       lib.mkBuck2JavaScriptProductImport =

@@ -51,12 +51,20 @@ let
   productName = product.name;
   outputName = product.outputName;
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
+  # Descriptor-bearing products: JavaScript product-v2 and native build_product.
+  hasDescriptor = builtins.elem product.kind [
+    "javascript"
+    "native"
+  ];
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives} --local-only --no-remote-cache --console simple --show-simple-output";
 in
 assert lib.assertMsg (
   builtins.match "[0-9a-f]{40}" producerCommit != null
 ) "buck2-products: producerCommit must be a full lowercase Git commit";
+assert lib.assertMsg (
+  product.kind != "native" || outputName == "artifact.tar"
+) "buck2-products: native products must name the build_product payload artifact.tar";
 pkgs.stdenv.mkDerivation {
   pname = "${safeName}-buck2-from-source";
   version = product.version or "0.0.0";
@@ -83,7 +91,7 @@ pkgs.stdenv.mkDerivation {
     artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg target})"
     test -f "$artifact"
     cp "$artifact" ${lib.escapeShellArg outputName}
-    ${lib.optionalString (product.kind == "javascript") ''
+    ${lib.optionalString hasDescriptor ''
       descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg "${target}[descriptor]"})"
       test -f "$descriptor"
       jq -cS . "$descriptor" > descriptor.json
@@ -107,7 +115,7 @@ pkgs.stdenv.mkDerivation {
     mkdir -p "$out"
     cp ${lib.escapeShellArg outputName} "$out/${outputName}"
     cp provenance.json "$out/provenance.json"
-    ${lib.optionalString (product.kind == "javascript") ''
+    ${lib.optionalString hasDescriptor ''
       cp descriptor.json "$out/descriptor.json"
     ''}
     runHook postInstall
@@ -123,6 +131,7 @@ pkgs.stdenv.mkDerivation {
       target
       ;
     artifactName = outputName;
+    inherit productName;
     productKind = product.kind;
     expectedProductSha256 = expectedSha256;
   };

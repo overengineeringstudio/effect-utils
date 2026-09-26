@@ -1,7 +1,9 @@
 # Verify and import a published Buck2 build product into the Nix store.
 #
-# Shape validation is not runtime proof. Each accepted tagged runtime dispatches
-# to an exact inspector; all other runtime kinds remain fail closed.
+# The descriptor is known at evaluation, so its digest pins the fetched payload.
+# Realization (build-time descriptor contract, payload digest, archive scan,
+# runtime inspection) is the shared `buck2-artifact-realize.nix` path, the same
+# one source-built products use.
 {
   pkgs,
   inspectElfDynamic ? import ./buck2-runtime-inspect-elf-dynamic.nix { inherit pkgs; },
@@ -19,7 +21,14 @@
 let
   lib = pkgs.lib;
   contract = import ./buck2-build-product-contract.nix;
-  scan = import ./buck2-artifact-scan.nix { inherit pkgs; };
+  realize = import ./buck2-artifact-realize.nix {
+    inherit
+      pkgs
+      inspectElfDynamic
+      inspectElfStatic
+      inspectMachODynamic
+      ;
+  };
 in
 {
   descriptor,
@@ -33,8 +42,6 @@ let
   checkedDescriptor = contract.verifyDescriptor {
     inherit descriptor expectedDescriptorDigest;
   };
-  checkedPlatform = checkedDescriptor.platform;
-  runtimeKind = checkedDescriptor.runtime.kind;
   payload = checkedDescriptor.payload;
   fetchedArtifact =
     if url == null then
@@ -47,100 +54,26 @@ let
   descriptorFile = pkgs.writeText "${checkedDescriptor.name}-buck-build-product.json" (
     contract.canonicalDescriptorJson checkedDescriptor
   );
-  # The descriptor proves the published FHS-linked artifact. After inspection,
-  # adapt that artifact to the explicit Nix runtime closure admitted here.
-  dynamicElfRuntimeInputs = lib.optionals (runtimeKind == "elf-dynamic") [
-    pkgs.glibc
-    pkgs.libgcc
-  ];
 in
 assert lib.assertMsg (builtins.isAttrs expectedPlatform)
   "buck2-artifact-import: expectedPlatform must be an exact platform attribute set";
 assert lib.assertMsg (
-  checkedPlatform == expectedPlatform
+  checkedDescriptor.platform == expectedPlatform
 ) "buck2-artifact-import: platform mismatch";
-assert lib.assertMsg (
-  runtimeKind != "elf-dynamic"
-  || (
-    pkgs.stdenv.hostPlatform.system == "${checkedPlatform.architecture}-${checkedPlatform.os}"
-    && pkgs.stdenv.hostPlatform.libc == checkedPlatform.abi
-  )
-) "buck2-artifact-import: elf-dynamic platform must match pkgs.stdenv.hostPlatform";
 assert lib.assertMsg (
   !(url != null && artifact != null)
 ) "buck2-artifact-import: choose either a published URL or a declared artifact path";
 assert lib.assertMsg (
   url != null || artifact != null
 ) "buck2-artifact-import: a published URL or declared artifact path is required";
-if
-  !(builtins.elem runtimeKind [
-    "elf-dynamic"
-    "elf-static"
-    "mach-o-dynamic"
-  ])
-then
-  throw "buck2-artifact-import: runtime inspector is not available for ${runtimeKind}"
-else if runtimeKind == "mach-o-dynamic" && inspectMachODynamic == null then
-  throw "buck2-artifact-import: mach-o-dynamic inspection requires a Darwin Nix tool realization"
-else
-  pkgs.runCommand "${checkedDescriptor.name}-buck2-import"
-    {
-      nativeBuildInputs = [
-        pkgs.openssl
-      ]
-      ++ lib.optional (runtimeKind == "elf-dynamic") pkgs.autoPatchelfHook;
-      buildInputs = dynamicElfRuntimeInputs;
-      allowedReferences = lib.optionals (runtimeKind == "elf-dynamic") (
-        [ "out" ] ++ dynamicElfRuntimeInputs
-      );
-      passthru = {
-        descriptorDigest = expectedDescriptorDigest;
-        inherit checkedDescriptor;
-      };
-    }
-    ''
-      set -euo pipefail
-      archive=${lib.escapeShellArg (toString fetchedArtifact)}
-      actual_size="$(${pkgs.coreutils}/bin/stat --format=%s "$archive")"
-      [ "$actual_size" = ${lib.escapeShellArg (toString payload.sizeBytes)} ] || {
-        echo "buck2-artifact-import: payload size mismatch: expected ${toString payload.sizeBytes}, got $actual_size" >&2
-        exit 1
-      }
-      actual_digest="sha256-$(${pkgs.openssl}/bin/openssl dgst -sha256 -binary "$archive" \
-        | ${pkgs.openssl}/bin/openssl base64 -A)"
-      [ "$actual_digest" = ${lib.escapeShellArg payload.digest.sri} ] || {
-        echo "buck2-artifact-import: payload digest mismatch" >&2
-        exit 1
-      }
-
-      ${scan} archive "$archive"
-      mkdir -p "$out"
-      ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
-        --no-same-owner --no-same-permissions
-      ${scan} tree "$out"
-      ${
-        if runtimeKind == "elf-dynamic" then
-          inspectElfDynamic
-        else if runtimeKind == "elf-static" then
-          inspectElfStatic
-        else
-          inspectMachODynamic
-      } ${descriptorFile} "$out"
-      ${lib.optionalString (runtimeKind == "elf-dynamic") ''
-        ${pkgs.findutils}/bin/find "$out" -type f -exec chmod u+w {} +
-        autoPatchelf "$out"
-        while IFS= read -r entrypoint; do
-          if ! load_error="$(${pkgs.stdenv.cc.bintools.dynamicLinker} --list "$out/$entrypoint" 2>&1 >/dev/null)" \
-            || [ -n "$load_error" ]; then
-            printf '%s\n' "$load_error" >&2
-            echo "buck2-artifact-import: dynamic ELF runtime is incompatible: $entrypoint" >&2
-            exit 1
-          fi
-        done < <(${pkgs.jq}/bin/jq -r '.entrypoints[]' ${descriptorFile})
-      ''}
-
-      ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
-      while IFS= read -r -d "" file; do
-        if [ -x "$file" ]; then chmod 0555 "$file"; else chmod 0444 "$file"; fi
-      done < <(${pkgs.findutils}/bin/find "$out" -type f -print0)
-    ''
+realize {
+  inherit (checkedDescriptor) name;
+  inherit expectedPlatform expectedDescriptorDigest;
+  runtimeKind = checkedDescriptor.runtime.kind;
+  descriptorPath = lib.escapeShellArg "${descriptorFile}";
+  archivePath = lib.escapeShellArg (toString fetchedArtifact);
+  passthru = {
+    descriptorDigest = expectedDescriptorDigest;
+    inherit checkedDescriptor;
+  };
+}
