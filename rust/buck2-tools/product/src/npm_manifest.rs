@@ -199,7 +199,7 @@ fn resolve_workspace_dependencies(
     Ok(())
 }
 
-/// Applies `publishConfig` with `pnpm pack` semantics and returns the packed manifest bytes.
+/// Applies publishable `publishConfig` overrides while retaining registry settings.
 pub fn published_manifest(
     source: &[u8],
     versions: &BTreeMap<String, String>,
@@ -214,14 +214,19 @@ pub fn published_manifest(
         let Json::Object(overrides) = publish_config else {
             return Err(fail("publishConfig must be a JSON object"));
         };
+        let mut publish_only = Vec::new();
         for (key, value) in overrides {
             if PUBLISH_ONLY_FIELDS.contains(&key.as_str()) {
+                publish_only.push((key, value));
                 continue;
             }
             match fields.iter_mut().find(|(existing, _)| *existing == key) {
                 Some((_, existing)) => *existing = value,
                 None => fields.push((key, value)),
             }
+        }
+        if !publish_only.is_empty() {
+            fields.insert(index, ("publishConfig".to_owned(), Json::Object(publish_only)));
         }
     }
     resolve_workspace_dependencies(&mut fields, versions)?;
@@ -306,12 +311,14 @@ mod tests {
     }
 
     #[test]
-    fn publish_config_replaces_fields_in_order_and_is_removed() {
-        let source = br#"{"name":"x","exports":{".":{"types":"./dist/src/mod.d.ts","default":"./src/mod.ts"}},"publishConfig":{"access":"public","exports":{".":{"types":"./dist/src/mod.d.ts","default":"./dist/src/mod.js"}},"bin":{"x":"./dist/src/cli.js"}}}"#;
+    fn publish_config_replaces_fields_in_order_and_preserves_registry_settings() {
+        let source = br#"{"name":"x","exports":{".":{"types":"./dist/src/mod.d.ts","default":"./src/mod.ts"}},"publishConfig":{"access":"public","registry":"https://registry.example.test","exports":{".":{"types":"./dist/src/mod.d.ts","default":"./dist/src/mod.js"}},"bin":{"x":"./dist/src/cli.js"}}}"#;
         let packed = published_manifest(source, &BTreeMap::new()).unwrap();
         let text = String::from_utf8(packed.clone()).unwrap();
-        assert!(!text.contains("publishConfig"));
-        assert!(!text.contains("access"));
+        assert!(text.contains(r#""publishConfig": {"#));
+        assert!(text.contains(r#""access": "public""#));
+        assert!(text.contains(r#""registry": "https://registry.example.test""#));
+        assert!(!text.contains(r#""publishConfig": {"exports""#));
         assert!(text.find("\"types\"").unwrap() < text.find("\"default\"").unwrap());
         validate_targets(
             &packed,

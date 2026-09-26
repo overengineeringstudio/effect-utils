@@ -65,9 +65,10 @@ All notable changes to this project will be documented in this file.
   Canonical `@cell//` targets match their descriptor labels, and
   `host_platform_label(cell = ...)` emits `@cell//` labels.
 - **Buck package products**: `:dist-package` archives are now Node-consumable.
-  `tsgo_emit` emits JavaScript next to declarations, the npm packer applies
-  `publishConfig` and resolves `workspace:` dependencies from Buck-declared
-  package manifests with `pnpm pack` semantics. Packing fails when any
+  `tsgo_emit` emits JavaScript next to declarations, the npm packer projects
+  `publishConfig` exports, retains publish-only settings such as `access`, and
+  resolves `workspace:` dependencies from Buck-declared manifests with `pnpm pack`
+  semantics. Packing fails when any
   `exports`/`main`/`module`/`types`/`bin` target is a runtime `.ts` source or
   is not shipped. All 18 published packages now declare
   `publishConfig.exports` against the emitted `dist/src/*.js` layout with
@@ -79,6 +80,8 @@ All notable changes to this project will be documented in this file.
   emitted files, and packages without declaration publishers no longer require
   an invented `src/mod.d.ts`. Buck package dependency manifests derive from
   Genie package inputs rather than racing concurrently generated JSON.
+  Published Storybook aliases resolve the emitted OpenTUI stub, and the
+  published Notion schema CLI reads its version from the shipped manifest.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
