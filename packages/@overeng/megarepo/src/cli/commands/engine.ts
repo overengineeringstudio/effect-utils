@@ -25,6 +25,7 @@ import {
   isRemoteSource,
   parseSourceString,
   readMegarepoConfig,
+  rejectRetiredRootConfig,
 } from '../../core/config.ts'
 import * as Git from '../../core/git.ts'
 import {
@@ -665,6 +666,7 @@ export const runCommand = ({
 
     const workspaceName = yield* Git.deriveMegarepoName(root.value)
     const { config } = yield* readMegarepoConfig(root.value)
+    yield* rejectRetiredRootConfig({ megarepoRoot: root.value, config })
     const memberNames = Object.keys(config.members)
     const commitMode =
       resolvedWorktreeMode === 'commit' ||

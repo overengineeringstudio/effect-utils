@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit, Option, Schema } from 'effect'
+import { Cause, Effect, Exit, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
@@ -1150,6 +1150,87 @@ describe('--all nested error reporting', () => {
           const nestedResults = firstNested.results
           expect(nestedResults.some((r) => r.name === 'bad' && r.status === 'error')).toBe(true)
         }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'applies a nested member whose pinned config still carries generators.composition, and rejects it at the root',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+        const leafPath = yield* createRepo({
+          basePath: tmpDir,
+          fixture: { name: 'leaf-lib', files: { 'package.json': '{"name": "leaf-lib"}' } },
+        })
+
+        // A member pinned to history that predates the composed-shape retirement.
+        const childPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('child-megarepo/'),
+        )
+        yield* fs.makeDirectory(childPath, { recursive: true })
+        yield* initGitRepo(childPath)
+        const retiredConfig = JSON.stringify(
+          {
+            members: { 'leaf-lib': leafPath },
+            generators: { composition: { enabled: true, platformHub: 'leaf-lib' } },
+          },
+          null,
+          2,
+        )
+        yield* fs.writeFileString(
+          EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
+          retiredConfig + '\n',
+        )
+        yield* addCommit({ repoPath: childPath, message: 'Initialize child megarepo' })
+
+        const parentPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('parent-megarepo/'),
+        )
+        yield* fs.makeDirectory(parentPath, { recursive: true })
+        yield* initGitRepo(parentPath)
+        yield* fs.writeFileString(
+          EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            new MegarepoConfig({ members: { child: childPath } }),
+          )) + '\n',
+        )
+        yield* addCommit({ repoPath: parentPath, message: 'Initialize parent megarepo' })
+
+        const nested = yield* runFetchApplyCommand({
+          cwd: parentPath,
+          args: ['--output', 'json', '--all'],
+        })
+        const NestedOutput = Schema.TaggedStruct('Success', {
+          syncErrorCount: Schema.Finite,
+          syncTree: MegarepoSyncTree,
+        })
+        const nestedOut = yield* Schema.decodeEffect(Schema.fromJsonString(NestedOutput))(
+          nested.stdout.trim(),
+        )
+        expect(nestedOut.syncErrorCount).toBe(0)
+        expect(nestedOut.syncTree.nestedResults).toHaveLength(1)
+        expect(
+          nestedOut.syncTree.nestedResults[0]?.results.some(
+            (r) => r.name === 'leaf-lib' && r.status !== 'error',
+          ),
+        ).toBe(true)
+
+        // The same config as the root megarepo is rejected with the migration message.
+        const rootAttempt = yield* runFetchApplyCommand({
+          cwd: childPath,
+          args: ['--output', 'json'],
+        })
+        if (Exit.isSuccess(rootAttempt.exit) === true) {
+          expect.fail('root megarepo with generators.composition was applied')
+        }
+        expect(Cause.pretty(rootAttempt.exit.cause)).toContain('generators.composition was removed')
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Breaking changes
+
 - **Genie build cache configuration** (dotfiles#3164): Replace
   `NixBinaryCache` and `cachixBinaryCache` with producer-authored, tagged
   descriptors in JSON, validated by `readBinaryCacheDescriptors` when read
@@ -23,6 +24,7 @@ All notable changes to this project will be documented in this file.
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
 ### Fixed
+
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
@@ -33,6 +35,7 @@ All notable changes to this project will be documented in this file.
   rejects malformed descriptors that bypass it.
 
 ### Added
+
 - **Genie build caches**: Producer-authored, credential-free Nix/REAPI cache
   descriptors validate in TypeScript and Nix. Private descriptors require a
   static fleet runner, ordinary Cachix steps are read-only, and protected
@@ -94,8 +97,10 @@ All notable changes to this project will be documented in this file.
   q5). Remove `mr store worktree new --compose`, the composition root and
   publisher, dist overlays, the per-workspace capability resolver, `cp -a`/R6
   member mounts, owned-worktree acquisition, the composition apply state
-  machine, and the `generators.composition` config field (a config that still
-  sets it now fails to load with a migration message); `mr apply`, `pin`,
+  machine, and the `generators.composition` config field (the root megarepo
+  of `mr fetch`/`apply`/`lock`/`status`/`check` rejects it with a migration
+  message; nested members pinned to older history still decode and ignore
+  it); `mr apply`, `pin`,
   `status`, `check`, and `store gc` no longer recognize composed workspaces
   (recreate any as standalone worktrees). The packaged `mr` keeps its
   `MR_COMPOSITION_*`/`MR_CAPABILITY_*` wrapper wiring until the megarepo

@@ -80,6 +80,11 @@
             {
               "type": "null"
             }
+          ],
+          "allOf": [
+            {
+              "description": "Retired: generators.composition was removed with the composed Buck shape; delete it from megarepo.kdl (each member is its own standalone Buck root). Ignored in nested megarepos; rejected in the root megarepo."
+            }
           ]
         }
       },

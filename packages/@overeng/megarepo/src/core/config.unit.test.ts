@@ -1,6 +1,8 @@
 import { Cause, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { EffectPath } from '@overeng/effect-path'
+
 import {
   buildSourceStringWithRef,
   CONFIG_FILE_NAME_JSON,
@@ -16,6 +18,7 @@ import {
   isValidMemberName,
   MegarepoConfig,
   parseSourceString,
+  rejectRetiredRootConfig,
   validateMemberName,
 } from './config.ts'
 
@@ -450,8 +453,8 @@ describe('config', () => {
       expect(result.generators?.vscode?.exclude).toEqual(['docs'])
     })
 
-    it('rejects the retired generators.composition block with a migration message', () => {
-      const exit = Effect.runSyncExit(
+    it('ignores a retired generators.composition block when decoding, but rejects it for the root', () => {
+      const config = Effect.runSync(
         decodeMegarepoConfigContent({
           format: 'kdl',
           content: [
@@ -467,10 +470,27 @@ describe('config', () => {
           ].join('\n'),
         }),
       )
-      if (Exit.isSuccess(exit) === true) expect.fail('retired generators.composition decoded')
+      expect(config.members.effect).toBe('effect-ts/effect')
+
+      const megarepoRoot = EffectPath.unsafe.absoluteDir('/tmp/root/')
+      const exit = Effect.runSyncExit(rejectRetiredRootConfig({ megarepoRoot, config }))
+      if (Exit.isSuccess(exit) === true) expect.fail('root with generators.composition accepted')
       expect(Cause.pretty(exit.cause)).toContain(
         'generators.composition was removed with the composed Buck shape',
       )
+      expect(
+        Exit.isSuccess(
+          Effect.runSyncExit(
+            rejectRetiredRootConfig({
+              megarepoRoot,
+              config: new MegarepoConfig({
+                members: {},
+                generators: { vscode: { enabled: true } },
+              }),
+            }),
+          ),
+        ),
+      ).toBe(true)
     })
 
     it('should decode config with $schema field', () => {

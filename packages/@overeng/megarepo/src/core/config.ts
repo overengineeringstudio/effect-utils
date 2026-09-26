@@ -128,25 +128,23 @@ export class LockSyncConfig extends Schema.Class<LockSyncConfig>('LockSyncConfig
   sharedInputSource: Schema.optional(Schema.String),
 }) {}
 
+const RETIRED_COMPOSITION_MESSAGE =
+  'generators.composition was removed with the composed Buck shape; delete it from megarepo.kdl (each member is its own standalone Buck root)'
+
 /**
- * `generators.composition` configured the retired composed Buck shape. The key stays
- * declared only so a config that still sets it fails with this message instead of the
- * decoder silently dropping it as an unknown property.
+ * `generators.composition` configured the retired composed Buck shape. Nested members pinned
+ * to older commits still carry it and their history is immutable, so decoding accepts and
+ * ignores it everywhere; only the root megarepo a command operates on rejects it
+ * (`rejectRetiredRootConfig`).
  */
-const RetiredCompositionGeneratorConfig = Schema.Unknown.pipe(
-  Schema.check(
-    Schema.makeFilter(
-      () =>
-        'generators.composition was removed with the composed Buck shape; delete it from the megarepo config (each member is its own standalone Buck root)',
-    ),
-  ),
-  Schema.annotate({ description: 'Retired. Any value is rejected.' }),
-)
+const RetiredCompositionGeneratorConfig = Schema.optional(Schema.Unknown).annotateKey({
+  description: `Retired: ${RETIRED_COMPOSITION_MESSAGE}. Ignored in nested megarepos; rejected in the root megarepo.`,
+})
 
 /** All generator configurations */
 export class GeneratorsConfig extends Schema.Class<GeneratorsConfig>('GeneratorsConfig')({
   vscode: Schema.optional(VscodeGeneratorConfig),
-  composition: Schema.optional(RetiredCompositionGeneratorConfig),
+  composition: RetiredCompositionGeneratorConfig,
 }) {}
 
 // =============================================================================
@@ -248,6 +246,32 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
     ),
   },
 ) {}
+
+/** Error when the root megarepo still declares the retired `generators.composition` */
+export class RetiredCompositionConfigError extends Schema.TaggedError<RetiredCompositionConfigError>()(
+  'RetiredCompositionConfigError',
+  {
+    megarepoRoot: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Reject the retired `generators.composition` in the root megarepo a command operates on.
+ * Never call this for nested members: their configs come from pinned, immutable history.
+ */
+export const rejectRetiredRootConfig = ({
+  megarepoRoot,
+  config,
+}: {
+  readonly megarepoRoot: AbsoluteDirPath
+  readonly config: MegarepoConfig
+}) =>
+  config.generators?.composition === undefined
+    ? Effect.void
+    : Effect.fail(
+        new RetiredCompositionConfigError({ megarepoRoot, message: RETIRED_COMPOSITION_MESSAGE }),
+      )
 
 /** Find the config file path in a directory (prefers .kdl over .json) */
 export const findConfigPath = (dir: AbsoluteDirPath) =>

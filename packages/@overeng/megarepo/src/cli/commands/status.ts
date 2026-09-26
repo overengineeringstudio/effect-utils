@@ -21,6 +21,7 @@ import {
   isRemoteSource,
   parseSourceString,
   readMegarepoConfig,
+  rejectRetiredRootConfig,
 } from '../../core/config.ts'
 import * as Git from '../../core/git.ts'
 import { detectRefMismatch, type RefMismatch } from '../../core/issues.ts'
@@ -308,6 +309,7 @@ export const statusCommand = Cli.Command.make(
 
         // Load config
         const { config, path: configPath } = yield* readMegarepoConfig(root.value)
+        yield* rejectRetiredRootConfig({ megarepoRoot: root.value, config })
 
         // Scan members (recursively if --all)
         const members = yield* withMegarepoTraversal({
