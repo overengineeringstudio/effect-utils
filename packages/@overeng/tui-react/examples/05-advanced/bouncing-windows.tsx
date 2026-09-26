@@ -32,13 +32,13 @@ import { BouncingWindowsView } from './view.tsx'
 // CLI Options
 // =============================================================================
 
-const countOption = Options.integer('count').pipe(
+const countOption = Options.Int('count').pipe(
   Options.withAlias('c'),
   Options.withDescription('Number of bouncing windows (1-6)'),
   Options.withDefault(1),
 )
 
-const durationOption = Options.integer('duration').pipe(
+const durationOption = Options.Int('duration').pipe(
   Options.withAlias('d'),
   Options.withDescription('Duration in seconds'),
   Options.withDefault(60),

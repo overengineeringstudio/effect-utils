@@ -135,7 +135,7 @@ describe('Notion webhook receiver helpers', () => {
 
   it('accepts future event types without keeping the raw payload in the normalized signal', () => {
     // Route through parseNotionWebhookRequest so the extra unknown field passes the
-    // schema decoder (onExcessProperty:'preserve'), while the normalized signal must
+    // schema decoder (onExcessProperty:'ignore'), while the normalized signal must
     // not carry any raw payload material.
     const result = parseNotionWebhookRequest({
       rawBody: JSON.stringify({

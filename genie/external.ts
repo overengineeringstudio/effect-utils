@@ -290,11 +290,11 @@ export const catalog = defineCatalog({
   // socket/process/ai/cluster/workflow/sql and Atom reactivity are merged into
   // the `effect` core package (mostly under `effect/unstable/*`); only these
   // packages remain separate.
-  effect: '4.0.0-rc.112',
-  '@effect/platform-node': '4.0.0-rc.112',
-  '@effect/vitest': '4.0.0-rc.112',
-  '@effect/opentelemetry': '4.0.0-rc.112',
-  '@effect/atom-react': '4.0.0-rc.112',
+  effect: '4.0.0-rc.113',
+  '@effect/platform-node': '4.0.0-rc.113',
+  '@effect/vitest': '4.0.0-rc.113',
+  '@effect/opentelemetry': '4.0.0-rc.113',
+  '@effect/atom-react': '4.0.0-rc.113',
 
   // React ecosystem
   react: '19.2.8',

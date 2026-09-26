@@ -279,7 +279,7 @@ export class RestateAdmin extends Context.Service<RestateAdmin, RestateAdminServ
   /**
    * Build a `RestateAdmin` layer from `Config` (env-driven): the admin URL from
    * `RESTATE_ADMIN_URL` and an OPTIONAL bearer key from `RESTATE_ADMIN_KEY` (read
-   * as a `Config.redacted`, so the secret stays a `Redacted`). A thin
+   * as a `Config.Redacted`, so the secret stays a `Redacted`). A thin
    * `Config`-then-literal wrapper over {@link RestateAdmin.layer}. Fails the layer
    * with a `ConfigError` if `RESTATE_ADMIN_URL` is unset.
    */
@@ -287,8 +287,8 @@ export class RestateAdmin extends Context.Service<RestateAdmin, RestateAdminServ
     Layer.effect(
       RestateAdmin,
       Effect.gen(function* () {
-        const url = yield* Config.url('RESTATE_ADMIN_URL')
-        const apiKey = yield* Config.option(Config.redacted('RESTATE_ADMIN_KEY'))
+        const url = yield* Config.URL('RESTATE_ADMIN_URL')
+        const apiKey = yield* Config.option(Config.Redacted('RESTATE_ADMIN_KEY'))
         return makeAdmin(
           toClientConfig({
             adminUrl: url.toString().replace(/\/$/, ''),

@@ -69,7 +69,7 @@ export const otelEndpointFromConfig = (
   // `Config.option` already maps missing data to `None`; any other config error
   // (malformed value) at the composition root is a defect, so die rather than
   // widen every binary's error channel with `ConfigError`.
-  Config.option(Config.string(envVar)).pipe(Effect.orDie)
+  Config.option(Config.String(envVar)).pipe(Effect.orDie)
 
 /**
  * Parses a W3C Trace Context TRACEPARENT header/env var.

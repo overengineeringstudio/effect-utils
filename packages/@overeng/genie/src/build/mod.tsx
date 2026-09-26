@@ -167,39 +167,39 @@ export const runWatchCycle = (opts: {
 export const genieCommand = Cli.Command.make(
   'genie',
   {
-    cwd: Cli.Flag.string('cwd').pipe(
+    cwd: Cli.Flag.String('cwd').pipe(
       Cli.Flag.withDescription('Working directory to search for .genie.ts files'),
       Cli.Flag.withDefault('.'),
     ),
-    watch: Cli.Flag.boolean('watch').pipe(
+    watch: Cli.Flag.Boolean('watch').pipe(
       Cli.Flag.withDescription('Watch for changes and regenerate automatically'),
       Cli.Flag.withDefault(false),
     ),
-    writeable: Cli.Flag.boolean('writeable').pipe(
+    writeable: Cli.Flag.Boolean('writeable').pipe(
       Cli.Flag.withDescription('Generate files as writable (default: read-only)'),
       Cli.Flag.withDefault(false),
     ),
-    check: Cli.Flag.boolean('check').pipe(
+    check: Cli.Flag.Boolean('check').pipe(
       Cli.Flag.withDescription('Check if generated files are up to date (for CI)'),
       Cli.Flag.withDefault(false),
     ),
-    dryRun: Cli.Flag.boolean('dry-run').pipe(
+    dryRun: Cli.Flag.Boolean('dry-run').pipe(
       Cli.Flag.withDescription('Preview changes without writing files'),
       Cli.Flag.withDefault(false),
     ),
-    deferValidation: Cli.Flag.boolean('defer-validation').pipe(
+    deferValidation: Cli.Flag.Boolean('defer-validation').pipe(
       Cli.Flag.withDescription(
         'Generate projections before a repair step; the caller must finish with genie --check',
       ),
       Cli.Flag.withDefault(false),
     ),
-    phase: Cli.Flag.choice('phase', GENERATOR_PHASES).pipe(
+    phase: Cli.Flag.Literals('phase', GENERATOR_PHASES).pipe(
       Cli.Flag.withDescription(
         'Only run generators declaring this phase (bootstrap runs before install; default: all phases)',
       ),
       Cli.Flag.optional,
     ),
-    oxfmtConfig: Cli.Flag.file('oxfmt-config').pipe(
+    oxfmtConfig: Cli.Flag.File('oxfmt-config').pipe(
       Cli.Flag.withDescription(
         `Path to oxfmt config file (default: ${OXFMT_CONFIG_CONVENTION_PATHS.join(' or ')})`,
       ),

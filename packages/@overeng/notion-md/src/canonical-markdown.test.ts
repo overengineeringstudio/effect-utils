@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from '@effect/vitest'
-import * as fc from 'effect/testing/FastCheck'
+import { Schema } from 'effect'
+import * as Arbitrary from 'effect/unstable/arbitrary/Arbitrary'
 
 import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markdown.ts'
 import { sha256Digest } from './hash.ts'
@@ -143,25 +144,31 @@ describe('two-oracle agreement on canonical inputs (decision 0019)', () => {
   // Property: for arbitrary bodies, canonicalizing both ALWAYS makes the two
   // oracles agree with the referee. Broadens the seeds; the seeds guarantee the
   // convergent (referee-true) branch is exercised, this covers the long tail.
+  // Bodies are UTF-8 `.nmd` text, so lone UTF-16 surrogates (`\p{Cs}`) are out
+  // of domain: UTF-8 encoding maps them to U+FFFD, which makes the byte hash
+  // collide for strings the referee still tells apart.
+  const canonicalBodyText = Arbitrary.schema(Schema.String.check(Schema.isMaxLength(120))).pipe(
+    Arbitrary.filter((text) => !/\p{Cs}/u.test(text)),
+  )
   it.prop(
     'oracles agree with the referee for arbitrary canonical bodies',
-    [fc.string({ maxLength: 120 }), fc.string({ maxLength: 120 })],
+    [canonicalBodyText, canonicalBodyText],
     ([a, b]) => {
       assertOraclesAgree(a, b)
     },
-    { fastCheck: { numRuns: 200 } },
+    { arbitrary: { runs: 200 } },
   )
 
   // Premise standalone: canonicalization is idempotent (the pull form is a
   // fixpoint), so "already canonical" is a meaningful, achievable state.
   it.prop(
     'canonicalizeBlockMarkdown is idempotent',
-    [fc.string({ maxLength: 160 })],
+    [Schema.String.check(Schema.isMaxLength(160))],
     ([raw]) => {
       const once = canonicalizeBlockMarkdown(raw)
       expect(canonicalizeBlockMarkdown(once)).toBe(once)
     },
-    { fastCheck: { numRuns: 200 } },
+    { arbitrary: { runs: 200 } },
   )
 })
 

@@ -47,7 +47,7 @@ export const Corpus = Schema.Struct({
 export type Corpus = typeof Corpus.Type
 
 const decodeCorpus = Schema.decodeUnknownSync(Corpus, {
-  onExcessProperty: 'preserve',
+  onExcessProperty: 'ignore',
 })
 
 /** The decoded golden corpus, ready for offline replay. */

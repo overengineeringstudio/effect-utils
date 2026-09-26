@@ -1,4 +1,5 @@
 // Secondary members
 members {
-  effect "effect-ts/effect"
+  // Reference source at the tag effect@4.0.0-rc.113, the npm cohort in genie/external.ts.
+  effect "effect-ts/effect#d3b837aee836f35d625d55205f7d6e61305fc198"
 }

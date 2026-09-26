@@ -22,16 +22,16 @@ import { GitHubClient } from '../GitHubClient.ts'
 import { collectApiMeta } from '../lib/apiMeta.ts'
 import { observeNamespaceJob } from '../NamespaceClient.ts'
 
-const jobOption = Cli.Flag.integer('job').pipe(
+const jobOption = Cli.Flag.Int('job').pipe(
   Cli.Flag.withDescription('Numeric GitHub Actions job id to inspect'),
 )
 
-const repoOption = Cli.Flag.string('repo').pipe(
+const repoOption = Cli.Flag.String('repo').pipe(
   Cli.Flag.optional,
   Cli.Flag.withDescription('owner/name (default: repo detected from the git remote)'),
 )
 
-const withUsageOption = Cli.Flag.boolean('with-usage').pipe(
+const withUsageOption = Cli.Flag.Boolean('with-usage').pipe(
   Cli.Flag.withDefault(false),
   Cli.Flag.withDescription(
     'Also sample `nsc instance report` for observed CPU/RAM usage (extra Namespace query)',

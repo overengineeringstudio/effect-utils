@@ -27,29 +27,29 @@ import { DeployError, runDeploy } from './deploy.tsx'
 // Command Options
 // =============================================================================
 
-const services = Options.string('services').pipe(
+const services = Options.String('services').pipe(
   Options.withAlias('s'),
   Options.withDescription('Comma-separated list of services to deploy'),
 )
 
-const env = Options.string('env').pipe(
+const env = Options.String('env').pipe(
   Options.withAlias('e'),
   Options.withDefault('production'),
   Options.withDescription('Environment to deploy to'),
 )
 
-const dryRun = Options.boolean('dry-run').pipe(
+const dryRun = Options.Boolean('dry-run').pipe(
   Options.withDefault(false),
   Options.withDescription('Validate without deploying'),
 )
 
-const timeout = Options.integer('timeout').pipe(
+const timeout = Options.Int('timeout').pipe(
   Options.withAlias('t'),
   Options.withDefault(30000),
   Options.withDescription('Deployment timeout in milliseconds'),
 )
 
-const force = Options.boolean('force').pipe(
+const force = Options.Boolean('force').pipe(
   Options.withAlias('f'),
   Options.withDefault(false),
   Options.withDescription('Force deployment even with warnings'),

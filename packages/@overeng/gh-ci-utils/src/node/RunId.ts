@@ -595,7 +595,7 @@ export const resolveActiveTargetOrCurrentBranch = Effect.fn(
 // =============================================================================
 
 /** CLI positional argument for the CI run target */
-export const targetArg = Cli.Argument.string('target').pipe(
+export const targetArg = Cli.Argument.String('target').pipe(
   Cli.Argument.withDescription(
     'Run ID, #PR, branch, @branch, owner/repo, owner/repo#N, owner/repo@branch, or URL',
   ),
@@ -603,13 +603,13 @@ export const targetArg = Cli.Argument.string('target').pipe(
 )
 
 /** CLI option to filter by workflow name */
-export const workflowOption = Cli.Flag.string('workflow').pipe(
+export const workflowOption = Cli.Flag.String('workflow').pipe(
   Cli.Flag.optional,
   Cli.Flag.withDescription('Prefer this workflow file (default: ci.yml)'),
 )
 
 /** CLI option to enable watch/poll mode */
-export const watchOption = Cli.Flag.boolean('watch').pipe(
+export const watchOption = Cli.Flag.Boolean('watch').pipe(
   Cli.Flag.withAlias('w'),
   Cli.Flag.withDefault(false),
   Cli.Flag.withDescription(
@@ -628,7 +628,7 @@ export type WatchMode = 'first-failure' | 'until-done'
  * See: https://github.com/Effect-TS/effect/issues/6182
  * See: https://github.com/Effect-TS/effect-smol/issues/2041
  */
-export const watchModeOption = Cli.Flag.choice('watch-mode', [
+export const watchModeOption = Cli.Flag.Literals('watch-mode', [
   'first-failure',
   'until-done',
 ] as const).pipe(
@@ -639,7 +639,7 @@ export const watchModeOption = Cli.Flag.choice('watch-mode', [
 )
 
 /** CLI option for watch-mode timeout in seconds */
-export const timeoutOption = Cli.Flag.integer('timeout').pipe(
+export const timeoutOption = Cli.Flag.Int('timeout').pipe(
   Cli.Flag.withDefault(1800),
   Cli.Flag.withDescription('Max seconds to watch (default: 1800)'),
 )

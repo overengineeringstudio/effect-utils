@@ -69,15 +69,15 @@ const parseRepoRef = (ref: string): { sourceString: string; suggestedName: strin
 export const addCommand = Cli.Command.make(
   'add',
   {
-    repo: Cli.Argument.string('repo').pipe(
+    repo: Cli.Argument.String('repo').pipe(
       Cli.Argument.withDescription('Repository reference (github shorthand, URL, or path)'),
     ),
-    name: Cli.Flag.string('name').pipe(
+    name: Cli.Flag.String('name').pipe(
       Cli.Flag.withAlias('n'),
       Cli.Flag.withDescription('Override the member name (defaults to repo name)'),
       Cli.Flag.optional,
     ),
-    sync: Cli.Flag.boolean('sync').pipe(
+    sync: Cli.Flag.Boolean('sync').pipe(
       Cli.Flag.withAlias('s'),
       Cli.Flag.withDescription('Sync the added repo immediately'),
       Cli.Flag.withDefault(true),

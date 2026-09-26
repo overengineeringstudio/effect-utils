@@ -82,11 +82,11 @@ const getGeneratorVersion = Effect.gen(function* () {
 // Generate Command
 // -----------------------------------------------------------------------------
 
-const generateDatabaseIdArg = Args.string('database-id').pipe(
+const generateDatabaseIdArg = Args.String('database-id').pipe(
   Args.withDescription('The Notion database ID to generate schema from'),
 )
 
-const outputOption = Options.file('output').pipe(
+const outputOption = Options.File('output').pipe(
   Options.withAlias('o'),
   Options.withDescription(
     'Output file path for generated schema (recommend using .gen.ts suffix, e.g., schema.gen.ts)',
@@ -98,65 +98,65 @@ const outputOption = Options.file('output').pipe(
  * its file path. Keep the render mode on `--output-mode`, while exposing the
  * shared `--json` shorthand and conflict behavior.
  */
-const tuiOutputModeOption = Options.choice('output-mode', OUTPUT_MODE_VALUES).pipe(
+const tuiOutputModeOption = Options.Literals('output-mode', OUTPUT_MODE_VALUES).pipe(
   Options.withDescription('TUI render mode (auto, pretty, ci-plain, json, ...)'),
   Options.optional,
 )
 
-const jsonOutputOption = Options.boolean('json').pipe(
+const jsonOutputOption = Options.Boolean('json').pipe(
   Options.withDescription('Emit a single JSON document (alias for --output-mode json)'),
   Options.optional,
 )
 
-const nameOption = Options.string('name').pipe(
+const nameOption = Options.String('name').pipe(
   Options.withAlias('n'),
   Options.withDescription('Name for the generated schema (defaults to database title)'),
   Options.optional,
 )
 
-const transformOption = Options.keyValuePair('transform').pipe(
+const transformOption = Options.KeyValuePair('transform').pipe(
   Options.withDescription(
     'Property transform config: property=transform (e.g., Status=asName, Title=asString)',
   ),
   Options.optional,
 )
 
-const dryRunOption = Options.boolean('dry-run').pipe(
+const dryRunOption = Options.Boolean('dry-run').pipe(
   Options.withAlias('d'),
   Options.withDescription('Preview generated code without writing to file'),
   Options.withDefault(false),
 )
 
-const includeWriteOption = Options.boolean('include-write').pipe(
+const includeWriteOption = Options.Boolean('include-write').pipe(
   Options.withAlias('w'),
   Options.withDescription('Include Write schemas for creating/updating pages'),
   Options.withDefault(false),
 )
 
-const typedOptionsOption = Options.boolean('typed-options').pipe(
+const typedOptionsOption = Options.Boolean('typed-options').pipe(
   Options.withDescription(
     'Generate typed literal unions for select/status/multi_select options and use typed property transforms by default',
   ),
   Options.withDefault(false),
 )
 
-const schemaMetaOption = Options.boolean('schema-meta').pipe(
+const schemaMetaOption = Options.Boolean('schema-meta').pipe(
   Options.withDescription('Include Notion property metadata annotations in the generated schema'),
   Options.withDefault(true),
 )
 
-const noSchemaMetaOption = Options.boolean('no-schema-meta').pipe(
+const noSchemaMetaOption = Options.Boolean('no-schema-meta').pipe(
   Options.withDescription('Disable Notion property metadata annotations'),
   Options.withDefault(false),
 )
 
-const includeApiOption = Options.boolean('include-api').pipe(
+const includeApiOption = Options.Boolean('include-api').pipe(
   Options.withAlias('a'),
   Options.withDescription('Generate a typed database API wrapper alongside the schema'),
   Options.withDefault(false),
 )
 
-const writableOption = Options.boolean('writable').pipe(
+const writableOption = Options.Boolean('writable').pipe(
   Options.withDescription(
     'Keep generated files writable (default: false, files are made read-only to discourage manual edits)',
   ),
@@ -333,7 +333,7 @@ export const generateCommand = Command.make(
 // Introspect Command
 // -----------------------------------------------------------------------------
 
-const introspectDatabaseIdArg = Args.string('database-id').pipe(
+const introspectDatabaseIdArg = Args.String('database-id').pipe(
   Args.withDescription('The Notion database ID to introspect'),
 )
 
@@ -431,7 +431,7 @@ const introspectCommand = Command.make(
 // Generate From Config Command
 // -----------------------------------------------------------------------------
 
-const configOption = Options.file('config').pipe(
+const configOption = Options.File('config').pipe(
   Options.withAlias('c'),
   Options.withDescription(
     'Path to config file (defaults to searching for notion-schema-gen.config.ts in current/parent dirs)',
@@ -564,16 +564,16 @@ const generateFromConfigCommand = Command.make(
 // Diff Command
 // -----------------------------------------------------------------------------
 
-const diffDatabaseIdArg = Args.string('database-id').pipe(
+const diffDatabaseIdArg = Args.String('database-id').pipe(
   Args.withDescription('The Notion database ID to compare against'),
 )
 
-const diffFileOption = Options.file('file').pipe(
+const diffFileOption = Options.File('file').pipe(
   Options.withAlias('f'),
   Options.withDescription('Path to the existing generated schema file'),
 )
 
-const exitCodeOption = Options.boolean('exit-code').pipe(
+const exitCodeOption = Options.Boolean('exit-code').pipe(
   Options.withDescription('Exit with code 1 if differences are found (for CI)'),
   Options.withDefault(false),
 )

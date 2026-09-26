@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:4590663906d2b21fa40ef235b1c514d04625ff333429f932d01f11b430bfb335",
+  "lockfileFingerprint": "sha256:473b8b3d1547005d0951fb53b84c97113ec814483ed66290b5ccd85f22d79685",
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
@@ -259,50 +259,50 @@
       "sha256": "49b42379de2656cbe21fa32c6c054686a7d48813be33b981b125731fa6dd9226",
       "sizeBytes": 31402
     },
-    "@effect/atom-react@4.0.0-rc.112": {
+    "@effect/atom-react@4.0.0-rc.113": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-Ksf90KQa6D4UDnMj4M84arlVKNIuwxxF2GvgXBzuaYi2LsgririsUhKQ5SYaK1euf8oIYeamEuthoZSbUQmIhw==",
-      "packageIdentity": "@effect/atom-react@4.0.0-rc.112",
-      "registryUrl": "https://registry.npmjs.org/@effect/atom-react/-/atom-react-4.0.0-rc.112.tgz",
-      "sha256": "6afda847413eb07982a406c6e8a87d1b9b30604a110663939c7219a62cd24bfd",
-      "sizeBytes": 69211
+      "integrity": "sha512-P5MA9czW1Lgl6IC0xkCKZop/h6Rh0yxTOu/9ZEX2dzJ01Ff6PklTkx2/70TqQcVRhj6yvJu9cqDz4Xde/FyijA==",
+      "packageIdentity": "@effect/atom-react@4.0.0-rc.113",
+      "registryUrl": "https://registry.npmjs.org/@effect/atom-react/-/atom-react-4.0.0-rc.113.tgz",
+      "sha256": "51d3785547f1faaef56255e6f71809ed3593daa5fa0d9ad52bb4693c17f405d6",
+      "sizeBytes": 69725
     },
-    "@effect/opentelemetry@4.0.0-rc.112": {
+    "@effect/opentelemetry@4.0.0-rc.113": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-OTRv1DxTHUmnakgJ6XVM8wVgF1KgZH4UXnOemwSLUwUjXO+RCikzF8oR/rlVmOGq81KtQzj1URM4M4nchlQOuQ==",
-      "packageIdentity": "@effect/opentelemetry@4.0.0-rc.112",
-      "registryUrl": "https://registry.npmjs.org/@effect/opentelemetry/-/opentelemetry-4.0.0-rc.112.tgz",
-      "sha256": "9133c4195230ee012fef3bd9d30d3ae9b0e2113ce1fb3e53ba9414173b93b562",
-      "sizeBytes": 91071
+      "integrity": "sha512-3EzIDgWFFV8WiTDXROeyRhuO3Qq+84++ts+T45YUZHPpqY0thFCSY0pjGsxz5UNPPN/M3phYGV8E7qwRHAYR+g==",
+      "packageIdentity": "@effect/opentelemetry@4.0.0-rc.113",
+      "registryUrl": "https://registry.npmjs.org/@effect/opentelemetry/-/opentelemetry-4.0.0-rc.113.tgz",
+      "sha256": "a8bf97f89c2d74141634cf54ff0f511237107282d463953cd65d2ec06e527a49",
+      "sizeBytes": 91632
     },
-    "@effect/platform-node-shared@4.0.0-rc.112": {
+    "@effect/platform-node-shared@4.0.0-rc.113": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-ttjz0xKamFN7vL8pNDYVwddJLjZvqKePc05djlz2VcdaKbLsnYbtMnL1rbOfHgEnIUSHGh7FkjaN4DM1Ov81sQ==",
-      "packageIdentity": "@effect/platform-node-shared@4.0.0-rc.112",
-      "registryUrl": "https://registry.npmjs.org/@effect/platform-node-shared/-/platform-node-shared-4.0.0-rc.112.tgz",
-      "sha256": "723e9184a24adc29ecc6e0a2306192af5aeea57a6a73bf4243dde9af7d215295",
-      "sizeBytes": 115178
+      "integrity": "sha512-EPCfjvKlHmNDgqIlT85P1OcgNUNvRxNtBpTFOz1UGHwNJe6Ap7rP93Rue7kzFUeplQMy6EfoZEH4CJR4N0nJ1g==",
+      "packageIdentity": "@effect/platform-node-shared@4.0.0-rc.113",
+      "registryUrl": "https://registry.npmjs.org/@effect/platform-node-shared/-/platform-node-shared-4.0.0-rc.113.tgz",
+      "sha256": "c7b84443329d54b5f4cc2b17d9bc6e3129c122a39589de41df7e6b6d654e09a1",
+      "sizeBytes": 124746
     },
-    "@effect/platform-node@4.0.0-rc.112": {
+    "@effect/platform-node@4.0.0-rc.113": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-/BMAcdNGQQskLmI0Zoa95KfTZkr9HV9N4NSxaSrusG6GeW6Ulp9KvZ+Rlaiw8lnOt43CXjFLdfll5/k5rxL4hQ==",
-      "packageIdentity": "@effect/platform-node@4.0.0-rc.112",
-      "registryUrl": "https://registry.npmjs.org/@effect/platform-node/-/platform-node-4.0.0-rc.112.tgz",
-      "sha256": "ea001615c52be24a3c0ff7490cf16ed64bee2865a5eb0799c44463afee65be2c",
-      "sizeBytes": 114319
+      "integrity": "sha512-8luSE2JcGVsALQ6cZOWh5jdZu+VgcUKIKPfhN/MjX+ZzIuK/krm3jZBHYZdhqkXjM9s8aYGBxNMHGF0WzF+Gpg==",
+      "packageIdentity": "@effect/platform-node@4.0.0-rc.113",
+      "registryUrl": "https://registry.npmjs.org/@effect/platform-node/-/platform-node-4.0.0-rc.113.tgz",
+      "sha256": "cfbbbd9ddd057b3545123f6fa72c3ba274bba345ad967417a885b9503afd64e4",
+      "sizeBytes": 115130
     },
-    "@effect/vitest@4.0.0-rc.112": {
+    "@effect/vitest@4.0.0-rc.113": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-mEKh/FI64mt8JK1/v9mpOrJYdnp+UFZdRUBMEdZMiKz7klg6NPqVgg/oeAGH6wOOQc2iAPcfc2H9BbAv1KyzMQ==",
-      "packageIdentity": "@effect/vitest@4.0.0-rc.112",
-      "registryUrl": "https://registry.npmjs.org/@effect/vitest/-/vitest-4.0.0-rc.112.tgz",
-      "sha256": "a88faf61817789273c5caebfd2c28ca21a0d241cd209bf845787e1a4ec2c843e",
-      "sizeBytes": 69811
+      "integrity": "sha512-ebuPhtZmumq1967n0vgF0sgAx/8tRHMmNGOdH1Oya1jKzV2Yoqhlv8WCGT0N//PuaV/Pc/zky3mmDvxmW81FiQ==",
+      "packageIdentity": "@effect/vitest@4.0.0-rc.113",
+      "registryUrl": "https://registry.npmjs.org/@effect/vitest/-/vitest-4.0.0-rc.113.tgz",
+      "sha256": "52b20c1a5962b479d2551170fd40aa0bc361188832a33463a14c63501432e433",
+      "sizeBytes": 73277
     },
     "@emnapi/core@1.11.0": {
       "bins": {},
@@ -1023,60 +1023,6 @@
       "registryUrl": "https://registry.npmjs.org/@keyv/serialize/-/serialize-1.1.1.tgz",
       "sha256": "5730adf7d1edef7c84a7ce658c3a2915386529b4d795523265c30a2e94f91366",
       "sizeBytes": 2937
-    },
-    "@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-LCkGo6JDfaBhgST7UpPWgNgLINpcpabaHfyz5OBx75nUYxBsaEPxjnyNjWpeb/xBup/682QnBfRBy2/LvPutZQ==",
-      "packageIdentity": "@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4",
-      "registryUrl": "https://registry.npmjs.org/@msgpackr-extract/msgpackr-extract-darwin-arm64/-/msgpackr-extract-darwin-arm64-3.0.4.tgz",
-      "sha256": "9a024b7e68145cf5f5387f32933d9261a55fda96b86b035da4cbcf22f499ce71",
-      "sizeBytes": 4401
-    },
-    "@msgpackr-extract/msgpackr-extract-darwin-x64@3.0.4": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-zExlW9zUJKZH/tOtVMttwjKa4Xm/3KcNjnE3dPN92uCktwavMxpgCA3MoJK/DOnTWsQgo224OaST27/mPNAf+w==",
-      "packageIdentity": "@msgpackr-extract/msgpackr-extract-darwin-x64@3.0.4",
-      "registryUrl": "https://registry.npmjs.org/@msgpackr-extract/msgpackr-extract-darwin-x64/-/msgpackr-extract-darwin-x64-3.0.4.tgz",
-      "sha256": "ee12ff81854035b969c43bac93822add3f57b321e8f7d32b53b63a0599f5732b",
-      "sizeBytes": 3941
-    },
-    "@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-dgX0P/9wGPJeHFBG+ZmhgE6bmtMt7NP5CRBGyyktpopdk/mW4POnrpQsSLtKI1dwpc+pPLuXHDh6vvskyQE/sw==",
-      "packageIdentity": "@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4",
-      "registryUrl": "https://registry.npmjs.org/@msgpackr-extract/msgpackr-extract-linux-arm64/-/msgpackr-extract-linux-arm64-3.0.4.tgz",
-      "sha256": "f06a803a1d4db5c2baf6c4280c8e4756744f0b9eb5edea025c5d3fd976d51c7a",
-      "sizeBytes": 6875
-    },
-    "@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-Tg3yX65f5GbtXLkrYEHE5oibZG9epyYWas7FogTTEJeDEF9JlXJzKgXaNhT3UXlTOeA+AfZpYZYZ0uPj7Cfquw==",
-      "packageIdentity": "@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4",
-      "registryUrl": "https://registry.npmjs.org/@msgpackr-extract/msgpackr-extract-linux-arm/-/msgpackr-extract-linux-arm-3.0.4.tgz",
-      "sha256": "16a5a48abb42e3e7c58f390a929796ec2f283cc56dbf62376ccb54f22612027e",
-      "sizeBytes": 6564
-    },
-    "@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-8TNXMEjJc3QEy7R/x1INhgiU+XakDAFUzBhaz7+Rbrs8NH5UQeHQxxmzsSBJGyV6I1jW79undiQm8tOI+D+8FQ==",
-      "packageIdentity": "@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4",
-      "registryUrl": "https://registry.npmjs.org/@msgpackr-extract/msgpackr-extract-linux-x64/-/msgpackr-extract-linux-x64-3.0.4.tgz",
-      "sha256": "f37705c0b60e61086acfa00e6ad37b27ba0cc6fcea88a6015970a18ea123cbe3",
-      "sizeBytes": 11525
-    },
-    "@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-CmCXPQrkbwExx3j946/PtHWHbYJiCRBRDl4BlkRQcJB/YOwQxJRTpoo7aTsortjgoJ1x7opzTSxn7C+ASSLVjQ==",
-      "packageIdentity": "@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4",
-      "registryUrl": "https://registry.npmjs.org/@msgpackr-extract/msgpackr-extract-win32-x64/-/msgpackr-extract-win32-x64-3.0.4.tgz",
-      "sha256": "04b0b227cbf6a1dfe9f9e230f383cfae444455f49ad1ff64250927638b200231",
-      "sizeBytes": 116288
     },
     "@myobie/pty@0.10.0": {
       "bins": {
@@ -3995,14 +3941,14 @@
       "sha256": "90bce27325f3cfedad2acd0dc83b39b69989d437d2342d7b5419b49768a99031",
       "sizeBytes": 62368
     },
-    "effect@4.0.0-rc.112": {
+    "effect@4.0.0-rc.113": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-wXxwuh1Ywnv4cPRM3Wfa0vDwuOHnZ1TsTgHJkG9XgzND6inhBH9n1vBxhg3iIXOia/OrpmvVmd3lrD4vq6bF3A==",
-      "packageIdentity": "effect@4.0.0-rc.112",
-      "registryUrl": "https://registry.npmjs.org/effect/-/effect-4.0.0-rc.112.tgz",
-      "sha256": "8ce8e4a5f65987c11f1efa094bc7a36730d989437946932314c9e8321fcc073f",
-      "sizeBytes": 8459622
+      "integrity": "sha512-uZ4Bh7KSlw2sdVdNDHPLSNjLGH+MWap7cheIHZoB/1T/ZJ3pvI4KiN3kUp50MpFKXhygOMmReJJOwWMQPwpPAg==",
+      "packageIdentity": "effect@4.0.0-rc.113",
+      "registryUrl": "https://registry.npmjs.org/effect/-/effect-4.0.0-rc.113.tgz",
+      "sha256": "09929240543d6e800ba6bedf99a4046dec8e7e1959e27cb5734eb1a156c9e123",
+      "sizeBytes": 8685235
     },
     "electron-to-chromium@1.5.418": {
       "bins": {},
@@ -4226,15 +4172,6 @@
       "registryUrl": "https://registry.npmjs.org/extend/-/extend-3.0.2.tgz",
       "sha256": "1d91d0b0faa50cba223fa937c7b5a4a662968b1d78b3e59dca5c917dd5cf72b2",
       "sizeBytes": 7258
-    },
-    "fast-check@4.9.0": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-7ms6T7SybUev/PQITciI0yLM2pOSFy5zpG8Ty7tQofcVaQUvrMXp6CBwqF6fThLCLOrfBtuHAtwq6Yu4XPCllg==",
-      "packageIdentity": "fast-check@4.9.0",
-      "registryUrl": "https://registry.npmjs.org/fast-check/-/fast-check-4.9.0.tgz",
-      "sha256": "1f489d24fa2955e65118eccb9d3cb638c1f17cd646cb7dd0e0ba9645daaf35ad",
-      "sizeBytes": 316013
     },
     "fast-deep-equal@3.1.3": {
       "bins": {},
@@ -5293,17 +5230,6 @@
       "sha256": "c78d05f20aff3bc95f024b19e53f72998cfc5f69c42b126c49dff8b1b271bc46",
       "sizeBytes": 14663
     },
-    "mime@4.1.0": {
-      "bins": {
-        "mime": "bin/cli.js"
-      },
-      "classification": "public",
-      "integrity": "sha512-X5ju04+cAzsojXKes0B/S4tcYtFAJ6tTMuSPBEn9CPGlrWr8Fiw7qYeLT0XyH80HSoAoqWCaz+MWKh22P7G1cw==",
-      "packageIdentity": "mime@4.1.0",
-      "registryUrl": "https://registry.npmjs.org/mime/-/mime-4.1.0.tgz",
-      "sha256": "7686ba9bdce35ec11afbb9d9a37168915aeab92304ada81fc057cd4b9f151f42",
-      "sizeBytes": 38668
-    },
     "min-indent@1.0.1": {
       "bins": {},
       "classification": "public",
@@ -5358,26 +5284,6 @@
       "sha256": "f6616e15e530ed552f9daa2d3ce71963947c6bc7c98c9b64fd3e673fd02622c6",
       "sizeBytes": 2967
     },
-    "msgpackr-extract@3.0.4": {
-      "bins": {
-        "download-msgpackr-prebuilds": "bin/download-prebuilds.js"
-      },
-      "classification": "public",
-      "integrity": "sha512-4kmO/MdyUIkLIvTPr8VHLil4AtoKIoniWPIEk5+CDy0xnWC84azhSFmuJ7PxZdsYtiP5kEeQsORAVIeMgxT+Hw==",
-      "packageIdentity": "msgpackr-extract@3.0.4",
-      "registryUrl": "https://registry.npmjs.org/msgpackr-extract/-/msgpackr-extract-3.0.4.tgz",
-      "sha256": "9ff0ecee067891669e77a79ba8fef390a8374a6690c09816bb3ca66dd976b028",
-      "sizeBytes": 5073
-    },
-    "msgpackr@2.1.0": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-p/pBCVO63CsvvpkomUnNNag6+n38rULuDA6HHe70o2gtC8ODI52foF/4ko2qQcp6OiErJXTmrZeXmsGGHsIQNQ==",
-      "packageIdentity": "msgpackr@2.1.0",
-      "registryUrl": "https://registry.npmjs.org/msgpackr/-/msgpackr-2.1.0.tgz",
-      "sha256": "58a5558a1c7f79495872c08d85088c1a8be44d777772a0039288cb22a5a86bb8",
-      "sizeBytes": 413274
-    },
     "nanoid@3.3.18": {
       "bins": {
         "nanoid": "bin/nanoid.cjs"
@@ -5417,19 +5323,6 @@
       "registryUrl": "https://registry.npmjs.org/node-addon-api/-/node-addon-api-7.1.1.tgz",
       "sha256": "b10455d15a977c0cd17a1cb0eb679e03d939f8ef8d4302eb33e1f78dacc71f82",
       "sizeBytes": 60031
-    },
-    "node-gyp-build-optional-packages@5.2.2": {
-      "bins": {
-        "node-gyp-build-optional-packages": "bin.js",
-        "node-gyp-build-optional-packages-optional": "optional.js",
-        "node-gyp-build-optional-packages-test": "build-test.js"
-      },
-      "classification": "public",
-      "integrity": "sha512-s+w+rBWnpTMwSFbaE0UXsRlg7hU4FjekKU4eyAih5T8nJuNZT1nNsskXpxmeqSK9UzkBl6UgRlnKc8hz8IEqOw==",
-      "packageIdentity": "node-gyp-build-optional-packages@5.2.2",
-      "registryUrl": "https://registry.npmjs.org/node-gyp-build-optional-packages/-/node-gyp-build-optional-packages-5.2.2.tgz",
-      "sha256": "9b2efd3e30cc4c8742d547ba53d526332f66e4c49e2d4e5c0a4abfff7bf9721f",
-      "sizeBytes": 5710
     },
     "node-pty@1.1.0": {
       "bins": {},
@@ -5737,15 +5630,6 @@
       "registryUrl": "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz",
       "sha256": "e4ce59f9fbac44349abab87279ab658f6b4614916bec5e088ae3be9323e193bb",
       "sizeBytes": 7603
-    },
-    "pure-rand@8.4.2": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng==",
-      "packageIdentity": "pure-rand@8.4.2",
-      "registryUrl": "https://registry.npmjs.org/pure-rand/-/pure-rand-8.4.2.tgz",
-      "sha256": "3ce449c758cb2ea0db7ff30a1b378d381d9e74681acec74e1e2591ea6aa381ca",
-      "sizeBytes": 15060
     },
     "qified@0.10.1": {
       "bins": {},
@@ -6484,14 +6368,14 @@
       "sha256": "3a587851ccbf1021b20eac8a38eb819d7e2a1ab77aa477cb24cae5473a3e78c6",
       "sizeBytes": 29764
     },
-    "undici@8.10.1": {
+    "undici@8.11.2": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-YQ3WlbqjYMmNpdvDH64jAgLjxuAR9+649calDWhbshYaeQGO2bR4nI94ORJmwI3J9YhoKQnpyGOK+0zlWS5N5Q==",
-      "packageIdentity": "undici@8.10.1",
-      "registryUrl": "https://registry.npmjs.org/undici/-/undici-8.10.1.tgz",
-      "sha256": "90e823f192d03af6a6ec64dc7139286519896416694550d6513f79fc51377660",
-      "sizeBytes": 460770
+      "integrity": "sha512-u4UB2/IrKdU6lFxumHmmo1a3fCQO5tzQllRorfoRS63txhrB7xTpSn1PftwC4qEHkOaqP95fCWW4lJzwErwzhQ==",
+      "packageIdentity": "undici@8.11.2",
+      "registryUrl": "https://registry.npmjs.org/undici/-/undici-8.11.2.tgz",
+      "sha256": "c69bf79440dfb262c7a43e35803731b2cfd7e6d264cfda6c54410d60f59bb8d7",
+      "sizeBytes": 468958
     },
     "unified@11.0.5": {
       "bins": {},
@@ -6774,5 +6658,5 @@
       "sizeBytes": 4529
     }
   },
-  "fingerprint": "sha256:d67f7bd5196f887eb8b41596b1ee27765ff8c00fae03c34e6dbf409741b0ea4c"
+  "fingerprint": "sha256:33d8516632c82dd20d7e0b1d931e9b1028be6a6aede859482690d7a4ea168096"
 }

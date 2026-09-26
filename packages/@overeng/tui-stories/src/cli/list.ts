@@ -8,7 +8,7 @@ import { outputOption, outputModeLayer, resolveOutputOption } from '@overeng/tui
 import { discoverStories } from '../StoryDiscovery.ts'
 import { ListApp, ListView } from './renderers/ListOutput/mod.ts'
 
-const pathOption = Options.string('path').pipe(
+const pathOption = Options.String('path').pipe(
   Options.withDescription('Package directory to search for stories'),
 )
 

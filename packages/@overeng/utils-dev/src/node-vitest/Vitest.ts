@@ -14,7 +14,7 @@ import * as inspector from 'node:inspector'
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
 import { type Cause, Effect, identity, Layer, type Schema, type Scope } from 'effect'
-import type * as FC from 'effect/testing/FastCheck'
+import type * as Arbitrary from 'effect/unstable/arbitrary/Arbitrary'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 
@@ -213,8 +213,8 @@ export interface EnhancedTestContextBase {
 /**
  * Enhanced context for property-based tests that includes shrinking phase information.
  *
- * This solves the confusion where tests show "Run 26/6" when FastCheck's shrinking
- * algorithm is active by clearly distinguishing between initial runs and shrinking.
+ * This solves the confusion where tests show "Run 26/6" while the property checker is
+ * shrinking by clearly distinguishing between initial runs and shrinking.
  */
 export type EnhancedTestContext =
   | (EnhancedTestContextBase & {
@@ -228,56 +228,37 @@ export type EnhancedTestContext =
 
 /**
  * The decoded value produced for each property by `@effect/vitest`'s `prop`:
- * a FastCheck arbitrary yields its generated `T`, a `Schema` decodes to its `Type`.
+ * a `Schema` decodes to its `Type`, an `Arbitrary` yields its generated `T`.
  * (Mirrors the conditional mapping inside `@effect/vitest`'s `prop` signature.)
  */
 type PropertyValue<Arb> =
-  Arb extends FC.Arbitrary<infer T> ? T : Arb extends Schema.Schema<infer T> ? T : never
+  Arb extends Schema.Schema<infer T> ? T : Arb extends Arbitrary.Arbitrary<infer T> ? T : never
 
 /** The properties object handed to a `prop` test body, keyed by arbitrary name. */
 type PropertyValues<Arbs extends Vitest.Vitest.Arbitraries> = {
   [K in keyof Arbs]: PropertyValue<Arbs[K]>
 }
 
-/** vitest test options plus the FastCheck parameters accepted by `prop`. */
-type FastCheckOptions<Arbs extends Vitest.Vitest.Arbitraries> = Vitest.TestOptions & {
-  fastCheck?: FC.Parameters<PropertyValues<Arbs>>
+/** vitest test options plus the Arbitrary check options accepted by `prop`. */
+type PropOptions = Vitest.TestOptions & {
+  arbitrary?: Arbitrary.CheckOptions
 }
 
+const DEFAULT_RUNS = 100
+
 /**
- * Normalizes propOptions to ensure @effect/vitest receives correct fastCheck structure.
+ * Normalizes propOptions so @effect/vitest always receives an explicit run count.
  */
-const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
-  propOptions: number | FastCheckOptions<Arbs>,
-): FastCheckOptions<Arbs> => {
-  // If it's a number, treat as timeout and add our default fastCheck
+const normalizePropOptions = (propOptions: number | PropOptions): PropOptions => {
+  // A number is a timeout; add the default run count.
   if (typeof propOptions === 'number') {
-    return {
-      timeout: propOptions,
-      fastCheck: { numRuns: 100 },
-    }
+    return { timeout: propOptions, arbitrary: { runs: DEFAULT_RUNS } }
   }
 
-  // If no fastCheck property, add it with our default numRuns
-  if (propOptions.fastCheck === undefined) {
-    return {
-      ...propOptions,
-      fastCheck: { numRuns: 100 },
-    }
+  if (propOptions.arbitrary?.runs == null) {
+    return { ...propOptions, arbitrary: { ...propOptions.arbitrary, runs: DEFAULT_RUNS } }
   }
 
-  // If fastCheck exists but no numRuns, add our default
-  if (propOptions.fastCheck.numRuns == null) {
-    return {
-      ...propOptions,
-      fastCheck: {
-        ...propOptions.fastCheck,
-        numRuns: 100,
-      },
-    }
-  }
-
-  // If everything is properly structured, pass through
   return propOptions
 }
 
@@ -285,13 +266,13 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
  * Enhanced property-based testing with shrinking progress visibility.
  *
  * This function enhances the standard property-based testing by providing clear information about
- * whether FastCheck is in the initial testing phase or the shrinking phase, solving the confusion
- * where tests show "Run 26/6" when FastCheck's shrinking algorithm is active.
+ * whether the property checker is in the initial testing phase or the shrinking phase, solving the
+ * confusion where tests show "Run 26/6" while shrinking is active.
  *
  * @example
  * ```typescript
- * const StorageType = Schema.Literal('memory', 'fs')
- * const Count = Schema.Int.pipe(Schema.between(1, 100))
+ * const StorageType = Schema.Literals(['memory', 'fs'])
+ * const Count = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))
  *
  * Vitest.asProp(
  *   Vitest.scopedLive,
@@ -306,7 +287,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
  *       )
  *       // test body
  *     }).pipe(withTestCtx()(test)),
- *   { fastCheck: { numRuns: 10 } }
+ *   { arbitrary: { runs: 10 } }
  * )
  * ```
  */
@@ -321,10 +302,10 @@ export const asProp = <Arbs extends Vitest.Vitest.Arbitraries, A, E, R>(
     R,
     [PropertyValues<Arbs>, Vitest.TestContext, EnhancedTestContext]
   >,
-  propOptions: number | FastCheckOptions<Arbs>,
+  propOptions: number | PropOptions,
 ) => {
   const normalizedPropOptions = normalizePropOptions(propOptions)
-  const numRuns = normalizedPropOptions.fastCheck?.numRuns ?? 100
+  const numRuns = normalizedPropOptions.arbitrary?.runs ?? DEFAULT_RUNS
   let runIndex = 0
   let shrinkAttempts = 0
   let totalExecutions = 0

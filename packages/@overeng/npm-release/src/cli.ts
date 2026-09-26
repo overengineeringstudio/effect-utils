@@ -15,21 +15,21 @@ import { Command as Cli, Flag } from 'effect/unstable/cli'
 
 import { readPlan, verifyPlan, type VerifyFailure } from './verify.ts'
 
-const planOption = Flag.file('plan').pipe(
+const planOption = Flag.File('plan').pipe(
   Flag.withDescription('Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }'),
 )
 
-const registryOption = Flag.string('registry').pipe(
+const registryOption = Flag.String('registry').pipe(
   Flag.withDefault('https://registry.npmjs.org'),
   Flag.withDescription('Registry to query'),
 )
 
-const attemptsOption = Flag.integer('attempts').pipe(
+const attemptsOption = Flag.Int('attempts').pipe(
   Flag.withDefault(60),
   Flag.withDescription('How many times to re-check a package that has not converged'),
 )
 
-const delaySecondsOption = Flag.integer('delay-seconds').pipe(
+const delaySecondsOption = Flag.Int('delay-seconds').pipe(
   Flag.withDefault(5),
   Flag.withDescription('Seconds to wait between convergence checks'),
 )

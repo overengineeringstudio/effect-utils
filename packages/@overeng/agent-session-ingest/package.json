@@ -38,28 +38,28 @@
     }
   },
   "dependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.112",
-    "@effect/platform-node": "4.0.0-rc.112",
-    "@effect/vitest": "4.0.0-rc.112",
+    "@effect/opentelemetry": "4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.113",
+    "@effect/vitest": "4.0.0-rc.113",
     "@overeng/utils": "workspace:^",
     "@playwright/test": "1.63.0",
     "@storybook/react-vite": "10.6.0",
     "@vitest/browser-playwright": "4.1.9",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.113",
     "storybook": "10.6.0",
     "vitest": "4.1.9"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.0-rc.112",
-    "@effect/vitest": "4.0.0-rc.112",
+    "@effect/platform-node": "4.0.0-rc.113",
+    "@effect/vitest": "4.0.0-rc.113",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.113",
     "typescript": "7.0.2",
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "^4.0.0-rc.112"
+    "effect": "^4.0.0-rc.113"
   },
   "publishConfig": {
     "access": "public",

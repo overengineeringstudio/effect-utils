@@ -1,5 +1,5 @@
-import * as fc from 'effect/testing/FastCheck'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from '@effect/vitest'
+import { Schema } from 'effect'
 
 import { canonicalize, canonicalHash, semanticEqual } from './canonicalizer.ts'
 
@@ -60,23 +60,20 @@ describe('canonicalize — normal form', () => {
     expect(canonicalize(once)).toBe(once)
   })
 
-  it('is idempotent under property generation', () => {
-    fc.assert(
-      fc.property(fc.string(), (s) => {
-        const once = canonicalize(s)
-        return canonicalize(once) === once
-      }),
-      { numRuns: 200 },
-    )
-  })
+  it.prop(
+    'is idempotent under property generation',
+    [Schema.String],
+    ([s]) => {
+      const once = canonicalize(s)
+      return canonicalize(once) === once
+    },
+    { arbitrary: { runs: 200 } },
+  )
 })
 
 describe('semanticEqual — equivalence relation laws', () => {
-  it('is reflexive', () => {
-    fc.assert(
-      fc.property(fc.string(), (s) => semanticEqual({ a: s, b: s })),
-      { numRuns: 200 },
-    )
+  it.prop('is reflexive', [Schema.String], ([s]) => semanticEqual({ a: s, b: s }), {
+    arbitrary: { runs: 200 },
   })
 
   it('is symmetric', () => {

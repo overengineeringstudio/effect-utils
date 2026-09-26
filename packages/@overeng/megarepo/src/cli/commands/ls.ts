@@ -120,7 +120,7 @@ export const lsCommand = Cli.Command.make(
   'ls',
   {
     output: outputOption,
-    all: Cli.Flag.boolean('all').pipe(
+    all: Cli.Flag.Boolean('all').pipe(
       Cli.Flag.withDescription('Recursively list members from nested megarepos'),
       Cli.Flag.withDefault(false),
     ),

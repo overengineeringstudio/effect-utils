@@ -37,13 +37,6 @@ export default packageJson(
         { types: './dist/src/node-vitest/mod.d.ts', default: './src/node-vitest/mod.ts' },
         { environment: 'node' },
       ),
-      './node-vitest/setup-fast-check': exportEntry(
-        {
-          types: './dist/src/node-vitest/setup-fast-check.d.ts',
-          default: './src/node-vitest/setup-fast-check.ts',
-        },
-        { environment: 'node' },
-      ),
       './otelite': exportEntry(
         { types: './dist/src/otelite/mod.d.ts', default: './src/otelite/mod.ts' },
         { environment: 'node' },
@@ -57,7 +50,6 @@ export default packageJson(
       access: 'public',
       exports: {
         './node-vitest': './dist/node-vitest/mod.js',
-        './node-vitest/setup-fast-check': './dist/node-vitest/setup-fast-check.js',
         './otelite': './dist/otelite/mod.js',
         './cli-contract': './dist/cli-contract.js',
       },

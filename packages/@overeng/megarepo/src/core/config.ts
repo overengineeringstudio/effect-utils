@@ -356,7 +356,8 @@ export const writeMegarepoConfig = ({
 
 /** Generate JSON Schema (draft 2020-12) from the Effect Schema, for editor support */
 export const generateJsonSchema = (): Record<string, unknown> => {
-  const doc = Schema.toJsonSchemaDocument(MegarepoConfig)
+  // Closed objects (`additionalProperties: false`) so editors flag unknown keys.
+  const doc = Schema.toJsonSchemaDocument(MegarepoConfig, { onExcessProperty: 'error' })
   return {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     ...doc.schema,

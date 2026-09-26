@@ -95,8 +95,8 @@ export class Cwd extends Context.Service<Cwd, AbsoluteDirPath>()('megarepo/Cwd')
  * The runner provides the parsed value into the handler context, where
  * `CwdFromGlobalFlag` picks it up.
  */
-export const cwdGlobalFlag = Cli.GlobalFlag.setting('megarepo/cwd')({
-  flag: Cli.Flag.string('cwd').pipe(
+export const cwdGlobalFlag = Cli.GlobalFlag.Setting('megarepo/cwd')({
+  flag: Cli.Flag.String('cwd').pipe(
     Cli.Flag.withDescription('Override the working directory'),
     Cli.Flag.optional,
   ),
@@ -120,19 +120,19 @@ export const CwdFromGlobalFlag = Layer.effect(
 )
 
 /** JSON output format option */
-export const jsonOption = Cli.Flag.boolean('json').pipe(
+export const jsonOption = Cli.Flag.Boolean('json').pipe(
   Cli.Flag.withDescription('Output in JSON format'),
   Cli.Flag.withDefault(false),
 )
 
 /** Stream JSON output as NDJSON (newline-delimited JSON) */
-export const streamOption = Cli.Flag.boolean('stream').pipe(
+export const streamOption = Cli.Flag.Boolean('stream').pipe(
   Cli.Flag.withDescription('Stream JSON output as NDJSON (requires --json)'),
   Cli.Flag.withDefault(false),
 )
 
 /** Verbose output option */
-export const verboseOption = Cli.Flag.boolean('verbose').pipe(
+export const verboseOption = Cli.Flag.Boolean('verbose').pipe(
   Cli.Flag.withAlias('v'),
   Cli.Flag.withDescription('Show detailed output'),
   Cli.Flag.withDefault(false),

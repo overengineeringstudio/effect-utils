@@ -118,7 +118,7 @@ export type ServiceNameParts = typeof ServiceNameParts.Type
  */
 export const ServiceNameFromParts = ServiceNameParts.pipe(
   Schema.decodeTo(OtelServiceName, {
-    decode: SchemaGetter.transformOrFail((parts: ServiceNameParts) =>
+    decode: SchemaGetter.transformEffect((parts: ServiceNameParts) =>
       SchemaParser.decodeEffect(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
         Effect.mapError((issue) => new SchemaIssue.InvalidValue({ message: formatIssue(issue) })),
       ),

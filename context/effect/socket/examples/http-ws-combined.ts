@@ -3,12 +3,12 @@ import { createServer } from 'node:http'
 import { NodeRuntime } from '@effect/platform-node'
 import { layer as nodeHttpLayer } from '@effect/platform-node/NodeHttpServer'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
-import { Effect, Layer, Stream } from 'effect'
+import { Effect, Layer } from 'effect'
 import * as HttpRouter from 'effect/unstable/http/HttpRouter'
 import { text } from 'effect/unstable/http/HttpServerResponse'
-import type { CloseEvent, Socket as SocketType } from 'effect/unstable/socket/Socket'
-import { toChannelString } from 'effect/unstable/socket/Socket'
-import type { Address } from 'effect/unstable/socket/SocketServer'
+import { formatSocketAddress } from 'effect/unstable/net/NetAddress'
+import type { Socket as SocketType, SocketError } from 'effect/unstable/socket/Socket'
+import { readerString } from 'effect/unstable/socket/Socket'
 import { SocketServer } from 'effect/unstable/socket/SocketServer'
 
 /**
@@ -16,15 +16,16 @@ import { SocketServer } from 'effect/unstable/socket/SocketServer'
  *
  * Demonstrates:
  * - `HttpRouter` HTTP routes
- * - `Socket.toChannelString` for WS echo
+ * - `Socket.readerString` pull loop for WS echo
  * - shared runtime via layer composition
  */
 const httpPort = 8788
 const wsPort = 8790
 
-/** Normalize socket address for logs. */
-const formatAddress = (address: Address) =>
-  address._tag === 'TcpAddress' ? `${address.hostname}:${address.port}` : address.path
+/** Every close fails the pull; treat normal (1000) and abnormal (1006) closes as the end of the connection. */
+const isCleanClose = (error: SocketError) =>
+  error.reason._tag === 'SocketCloseError' &&
+  (error.reason.code === 1000 || error.reason.code === 1006)
 
 /** Simple HTTP app with a couple of routes, served on the Node HTTP server. */
 const routes = [
@@ -42,33 +43,32 @@ const httpServer = HttpRouter.serve(httpApp).pipe(
   ),
 )
 
-/** WebSocket handler that echoes text frames using the socket run loop. */
+/** WebSocket handler that echoes text frames from a pull loop. */
 const handleConnection = Effect.fn('http-ws.connection')(function* (socket: SocketType) {
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      const write = yield* socket.writer
-
-      const receive = Stream.fromIterable<Uint8Array | string | CloseEvent>([]).pipe(
-        Stream.pipeThroughChannel(toChannelString(socket)),
-        Stream.mapEffect((msg) =>
-          Effect.gen(function* () {
-            yield* Effect.log(`ws recv ${msg}`)
-            yield* write(`echo:${msg}`)
-          }),
-        ),
-        Stream.runDrain,
-      )
+      const writer = yield* socket.writer
+      const pull = yield* readerString(socket)
 
       yield* Effect.log('ws client connected')
-      return yield* receive
+
+      while (true) {
+        for (const msg of yield* pull) {
+          yield* Effect.log(`ws recv ${msg}`)
+          yield* writer.write(`echo:${msg}`)
+        }
+      }
     }),
-  ).pipe(Effect.withSpan('http-ws.connection.scope'))
+  ).pipe(
+    Effect.catchIf(isCleanClose, () => Effect.void),
+    Effect.withSpan('http-ws.connection.scope'),
+  )
 })
 
 /** Run both the HTTP server and WebSocket server in one runtime. */
 const program = Effect.gen(function* () {
   const socketServer = yield* SocketServer
-  yield* Effect.log(`ws listening on ${formatAddress(socketServer.address)}`)
+  yield* Effect.log(`ws listening on ${formatSocketAddress(socketServer.address)}`)
   return yield* socketServer.run(handleConnection)
 }).pipe(
   Effect.withSpan('ws.server'),
@@ -77,7 +77,7 @@ const program = Effect.gen(function* () {
 
 /**
  * Expected logs (example):
- * - ws listening on :::8790
+ * - ws listening on [::]:8790
  * - ws client connected
  * - ws recv hello
  */

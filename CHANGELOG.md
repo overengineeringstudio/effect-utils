@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking changes
 
+- **@overeng/utils-dev**: Effect rc.113 removed fast-check. `Vitest.asProp`
+  now takes `{ arbitrary: Arbitrary.CheckOptions }` instead of
+  `{ fastCheck: FC.Parameters }` and accepts native `Arbitrary` values. The
+  `@overeng/utils-dev/node-vitest/setup-fast-check` export (`FAST_CHECK_SEED` /
+  `FAST_CHECK_PATH`) is removed; a falsified property now reports its own
+  replay token, which reproduces it through `arbitrary: { replay }`.
 - **Genie build cache configuration** (dotfiles#3164): Replace
   `NixBinaryCache` and `cachixBinaryCache` with producer-authored, tagged
   descriptors in JSON, validated by `readBinaryCacheDescriptors` when read
@@ -52,6 +58,16 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Repository-wide**: move the Effect 4 cohort from `effect@4.0.0-rc.112` to
+  `effect@4.0.0-rc.113` (with `@effect/platform-node`, `@effect/vitest`,
+  `@effect/opentelemetry`, `@effect/atom-react`, and the pinned
+  `@effect/platform-node-shared`), matching livestore's cohort. CLI definitions
+  use the PascalCase constructors (`Flag.Boolean`, `Flag.Int`, `Flag.Literals`,
+  `Argument.String`, `Prompt.Select`, `GlobalFlag.Setting`), configs use
+  `Config.String`/`Config.URL`/`Config.Redacted`, and Schema getters use
+  `SchemaGetter.transformEffect`. Property tests generate inputs with the native
+  `effect/unstable/arbitrary/Arbitrary` runner because rc.113 removed
+  `effect/testing/FastCheck` and `Schema.toArbitrary`.
 - **Genie build caches**: Producer-authored, credential-free Nix/REAPI cache
   descriptors validate in TypeScript and Nix. Private descriptors require a
   static fleet runner, ordinary Cachix steps are read-only, and protected

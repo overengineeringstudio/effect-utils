@@ -101,7 +101,7 @@ const NotionWebhookVerificationStruct = Schema.Struct({
 }).annotate({ identifier: 'NotionWebhook.VerificationStruct' })
 
 const decodeVerification = Schema.decodeUnknownResult(NotionWebhookVerificationStruct, {
-  onExcessProperty: 'preserve',
+  onExcessProperty: 'ignore',
 })
 
 /** Parse Notion's unauthenticated one-time verification-token request. */
@@ -207,8 +207,8 @@ export const normalizeNotionWebhookPayload = (
   const eventId = payload.id ?? payload.event_id
   if (eventId === undefined) return { _tag: 'NotionWebhookRejected', reason: 'missing-event-id' }
 
-  // Reconstruct entity explicitly to drop any excess fields that survived the
-  // onExcessProperty:'preserve' decoder — signal.entity must not carry raw payload material.
+  // Reconstruct entity explicitly so signal.entity carries only the declared
+  // fields and never raw payload material.
   const rawEntity = payload.entity
   const entity = rawEntity === undefined ? undefined : { id: rawEntity.id, type: rawEntity.type }
   const entityId = entity?.id

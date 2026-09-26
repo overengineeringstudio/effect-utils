@@ -110,7 +110,7 @@ const stripUndefined = (ast: SchemaAST.AST): SchemaAST.AST => {
   if (ast._tag !== 'Union') return ast
   const members = ast.types.filter((t) => t._tag !== 'Undefined')
   if (members.length === ast.types.length) return ast
-  return members.length === 1 ? members[0]! : new SchemaAST.Union(members, 'anyOf')
+  return members.length === 1 ? members[0]! : new SchemaAST.Union(members, { mode: 'anyOf' })
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

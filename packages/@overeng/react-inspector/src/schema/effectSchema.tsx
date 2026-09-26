@@ -232,51 +232,33 @@ export const getConstraintsFromJSONSchema = (
   const constraints: Record<string, unknown> = {
     ...getAnnotationsFromAST(ast).jsonSchema,
   }
+  // Effect 4 checks carry a flat `annotations.arbitraryConstraint`: `minimum`/
+  // `maximum` with boolean `exclusiveMinimum`/`exclusiveMaximum` flags,
+  // `minLength`/`maxLength`, `patterns: { source, flags }[]`, and
+  // `number: 'integer'` for `isInt`.
   for (const check of ast.checks ?? []) {
-    const arbitrary = asRecord(check.annotations?.arbitrary)
-    const constraint = asRecord(arbitrary?.constraint)
-    if (constraint !== undefined) Object.assign(constraints, constraint)
-
-    // rc.111 emits check data on `annotations.arbitrary.constraint` (handled
-    // above) with these shapes: `patterns: string[]`, `ordered:
-    // { minimum, maximum }`. Normalize them into the flat keys the render
-    // rules expect; `meta._tag` cases cover older/alternate shapes.
-    const patterns = constraints.patterns
-    if (Array.isArray(patterns) === true && patterns.length > 0) {
-      constraints.pattern = patterns[0]
+    const constraint = asRecord(check.annotations?.arbitraryConstraint)
+    if (constraint === undefined) continue
+    if (constraint.minLength !== undefined) constraints.minLength = constraint.minLength
+    if (constraint.maxLength !== undefined) constraints.maxLength = constraint.maxLength
+    if (constraint.minimum !== undefined) {
+      constraints[constraint.exclusiveMinimum === true ? 'exclusiveMinimum' : 'minimum'] =
+        constraint.minimum
     }
-    const ordered = asRecord(constraints.ordered)
-    if (ordered !== undefined) {
-      constraints[ordered.exclusiveMinimum === true ? 'exclusiveMinimum' : 'minimum'] =
-        ordered.minimum
-      constraints[ordered.exclusiveMaximum === true ? 'exclusiveMaximum' : 'maximum'] =
-        ordered.maximum
+    if (constraint.maximum !== undefined) {
+      constraints[constraint.exclusiveMaximum === true ? 'exclusiveMaximum' : 'maximum'] =
+        constraint.maximum
     }
-
-    const meta = asRecord(check.annotations?.meta)
-    switch (meta?._tag) {
-      case 'isMinLength':
-        constraints.minLength = meta.minLength
-        break
-      case 'isMaxLength':
-        constraints.maxLength = meta.maxLength
-        break
-      case 'isPattern':
-        constraints.pattern = meta.regExp
-        break
-      case 'isInt':
-        constraints.integer = true
-        break
-      case 'isBetween':
-        constraints[meta.exclusiveMinimum === true ? 'exclusiveMinimum' : 'minimum'] = meta.minimum
-        constraints[meta.exclusiveMaximum === true ? 'exclusiveMaximum' : 'maximum'] = meta.maximum
-        break
+    if (constraint.number === 'integer') constraints.integer = true
+    const patterns = constraint.patterns
+    const pattern = Array.isArray(patterns) === true ? asRecord(patterns[0]) : undefined
+    if (typeof pattern?.source === 'string') {
+      constraints.pattern = new RegExp(
+        pattern.source,
+        typeof pattern.flags === 'string' ? pattern.flags : '',
+      )
     }
   }
-  delete constraints.patterns
-  delete constraints.ordered
-  delete constraints.noInfinity
-  delete constraints.noNaN
   return constraintRules.flatMap(([key, render]) => {
     if (!(key in constraints)) return []
     const rendered = render(constraints[key])

@@ -33,8 +33,9 @@ export type NotionWebhookData = typeof NotionWebhookData.Type
 /**
  * Minimal Notion webhook event payload wire schema.
  *
- * Decode with `onExcessProperty:'preserve'` so unknown/future Notion fields do
- * not fail-close legitimate events (Notion may add fields in minor API bumps).
+ * Decode with `onExcessProperty:'ignore'` so unknown/future Notion fields do
+ * not fail-close legitimate events (Notion may add fields in minor API bumps);
+ * undeclared fields are stripped from the decoded value.
  */
 export const NotionWebhookPayload = Schema.Struct({
   id: Schema.optional(NonEmptyWebhookString),
@@ -54,8 +55,8 @@ export const NotionWebhookPayload = Schema.Struct({
 
 export type NotionWebhookPayload = typeof NotionWebhookPayload.Type
 
-/** Decode options for `NotionWebhookPayload`: preserve unknown fields, collect all errors. */
+/** Decode options for `NotionWebhookPayload`: tolerate and strip unknown fields, collect all errors. */
 export const notionWebhookDecodeOptions = {
   errors: 'all',
-  onExcessProperty: 'preserve',
+  onExcessProperty: 'ignore',
 } as const

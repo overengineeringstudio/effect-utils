@@ -1,18 +1,19 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
-import { Effect, Schema, Stream } from 'effect'
-import type { CloseEvent, Socket as SocketType } from 'effect/unstable/socket/Socket'
-import { toChannelString } from 'effect/unstable/socket/Socket'
-import type { Address } from 'effect/unstable/socket/SocketServer'
+import { Effect, Schema } from 'effect'
+import { formatSocketAddress } from 'effect/unstable/net/NetAddress'
+import type { Socket as SocketType, SocketError } from 'effect/unstable/socket/Socket'
+import { readerString } from 'effect/unstable/socket/Socket'
 import { SocketServer } from 'effect/unstable/socket/SocketServer'
 
 /**
  * Example: WebSocket JSON server with schema validation.
  *
  * Demonstrates:
- * - `Schema.parseJson` for safe decoding
+ * - `Schema.fromJsonString` for safe decoding
  * - tagged unions for protocol design
  * - error logging on invalid payloads
+ * - pull-based text reads via `Socket.readerString`
  */
 /** Error surfaced when the client payload does not match the schema. */
 class InvalidClientMessageError extends Schema.TaggedError<InvalidClientMessageError>()(
@@ -72,16 +73,19 @@ const encodeServerMessage = Effect.fn('ws-json.encode')(function* (message: Serv
   return yield* Schema.encodeEffect(Schema.fromJsonString(ServerMessageSchema))(message)
 })
 
-/** Normalize socket address for logs. */
-const formatAddress = (address: Address) =>
-  address._tag === 'TcpAddress' ? `${address.hostname}:${address.port}` : address.path
+/** Every close fails the pull; treat normal (1000) and abnormal (1006) closes as the end of the connection. */
+const isCleanClose = (error: SocketError) =>
+  error.reason._tag === 'SocketCloseError' &&
+  (error.reason.code === 1000 || error.reason.code === 1006)
 
 /** Handle a connection with schema-validated JSON messages. */
 const handleConnection = Effect.fn('ws-json.connection')(function* (socket: SocketType) {
   return yield* Effect.scoped(
     Effect.gen(function* () {
       /** Writer is scoped to the connection lifecycle. */
-      const write = yield* socket.writer
+      const writer = yield* socket.writer
+      /** Acquiring the reader attaches to the accepted connection. */
+      const pull = yield* readerString(socket)
 
       const handleMessage = (text: string) =>
         decodeClientMessage(text).pipe(
@@ -91,27 +95,29 @@ const handleConnection = Effect.fn('ws-json.connection')(function* (socket: Sock
                 ? { _tag: 'pong', id: message.id, receivedAt: Date.now() }
                 : { _tag: 'echoed', text: message.text }
 
-            return encodeServerMessage(response).pipe(Effect.flatMap((json) => write(json)))
+            return encodeServerMessage(response).pipe(Effect.flatMap((json) => writer.write(json)))
           }),
           Effect.catch((error) => Effect.logError({ message: 'invalid message', error })),
         )
 
-      const receive = Stream.fromIterable<Uint8Array | string | CloseEvent>([]).pipe(
-        Stream.pipeThroughChannel(toChannelString(socket)),
-        Stream.mapEffect((text) => handleMessage(text)),
-        Stream.runDrain,
-      )
-
       yield* Effect.log('client connected')
-      return yield* receive
+
+      while (true) {
+        for (const text of yield* pull) {
+          yield* handleMessage(text)
+        }
+      }
     }),
-  ).pipe(Effect.withSpan('ws-json.connection.scope'))
+  ).pipe(
+    Effect.catchIf(isCleanClose, () => Effect.void),
+    Effect.withSpan('ws-json.connection.scope'),
+  )
 })
 
 /** Run the websocket JSON server using the provided SocketServer. */
 const runServer = Effect.gen(function* () {
   const socketServer = yield* SocketServer
-  yield* Effect.log(`listening on ${formatAddress(socketServer.address)}`)
+  yield* Effect.log(`listening on ${formatSocketAddress(socketServer.address)}`)
   return yield* socketServer.run(handleConnection)
 }).pipe(Effect.withSpan('ws-json.server'))
 
@@ -119,7 +125,7 @@ const program = runServer.pipe(Effect.provide(layerWebSocket({ port: 8791 })))
 
 /**
  * Expected logs (example):
- * - listening on :::8791
+ * - listening on [::]:8791
  * - client connected
  */
 NodeRuntime.runMain(program)

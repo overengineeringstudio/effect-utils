@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest'
-import * as fc from 'effect/testing/FastCheck'
+import { Schema } from 'effect'
 
 import { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
@@ -119,7 +119,7 @@ describe('notion-md merge planning', () => {
 
   it.prop(
     'keeps local body when remote equals the base snapshot',
-    [fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 })],
+    [Schema.String.check(Schema.isMaxLength(80)), Schema.String.check(Schema.isMaxLength(80))],
     ([baseBody, localBody]) => {
       expect(
         tryMergeMarkdownBodies({
@@ -129,12 +129,12 @@ describe('notion-md merge planning', () => {
         }),
       ).toBe(normalizeMarkdownLineEndings(localBody))
     },
-    { fastCheck: { numRuns: 80 } },
+    { arbitrary: { runs: 80 } },
   )
 
   it.prop(
     'keeps remote body when local equals the base snapshot',
-    [fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 })],
+    [Schema.String.check(Schema.isMaxLength(80)), Schema.String.check(Schema.isMaxLength(80))],
     ([baseBody, remoteBody]) => {
       expect(
         tryMergeMarkdownBodies({
@@ -144,17 +144,21 @@ describe('notion-md merge planning', () => {
         }),
       ).toBe(normalizeMarkdownLineEndings(remoteBody))
     },
-    { fastCheck: { numRuns: 80 } },
+    { arbitrary: { runs: 80 } },
   )
 
   it.prop(
     'plans Markdown updates that transform the current remote body into the desired body',
-    [fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 })],
+    [
+      Schema.String.check(Schema.isMaxLength(80)),
+      Schema.String.check(Schema.isMaxLength(80)),
+      Schema.String.check(Schema.isMaxLength(80)),
+    ],
     ([baseBody, remoteBody, desiredBody]) => {
       expect(applyMarkdownUpdate({ baseBody, remoteBody, desiredBody })).toBe(
         normalizeMarkdownLineEndings(desiredBody),
       )
     },
-    { fastCheck: { numRuns: 80 } },
+    { arbitrary: { runs: 80 } },
   )
 })

@@ -30,7 +30,7 @@ const generateVscodeCommand = Cli.Command.make(
   'vscode',
   {
     output: outputOption,
-    exclude: Cli.Flag.string('exclude').pipe(
+    exclude: Cli.Flag.String('exclude').pipe(
       Cli.Flag.withDescription('Comma-separated list of members to exclude'),
       Cli.Flag.optional,
     ),
@@ -90,7 +90,7 @@ const generateSchemaCommand = Cli.Command.make(
   'schema',
   {
     output: outputOption,
-    outputPath: Cli.Flag.string('output-path').pipe(
+    outputPath: Cli.Flag.String('output-path').pipe(
       Cli.Flag.withAlias('p'),
       Cli.Flag.withDescription('Output path (relative to megarepo root)'),
       Cli.Flag.withDefault('schema/megarepo.schema.json'),

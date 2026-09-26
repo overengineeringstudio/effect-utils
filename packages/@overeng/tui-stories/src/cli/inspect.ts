@@ -10,11 +10,11 @@ import { discoverStories } from '../StoryDiscovery.ts'
 import { findStory } from '../StoryModule.ts'
 import { InspectApp, InspectView } from './renderers/InspectOutput/mod.ts'
 
-const storyIdArg = Args.string('story-id').pipe(
+const storyIdArg = Args.String('story-id').pipe(
   Args.withDescription('Story title or ID to inspect'),
 )
 
-const pathOption = Options.string('path').pipe(
+const pathOption = Options.String('path').pipe(
   Options.withDescription('Package directory to search for stories'),
 )
 

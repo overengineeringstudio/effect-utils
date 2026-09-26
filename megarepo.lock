@@ -3,10 +3,10 @@
   "members": {
     "effect": {
       "url": "https://github.com/effect-ts/effect",
-      "ref": "main",
-      "commit": "e5998a45f69960b38eb2b8cb67cbb07b9e6962c7",
-      "pinned": false,
-      "lockedAt": "2026-07-27T20:31:28.318Z"
+      "ref": "d3b837aee836f35d625d55205f7d6e61305fc198",
+      "commit": "d3b837aee836f35d625d55205f7d6e61305fc198",
+      "pinned": true,
+      "lockedAt": "2026-09-25T20:31:24.081Z"
     }
   }
 }

@@ -16,37 +16,37 @@ import { findStory, parseArgOverrides } from '../StoryModule.ts'
 import { renderStory, type TimelineMode } from '../StoryRenderer.ts'
 import { RenderApp, RenderView } from './renderers/RenderOutput/mod.ts'
 
-const storyIdArg = Args.string('story-id').pipe(
+const storyIdArg = Args.String('story-id').pipe(
   Args.withDescription('Story title or ID to render (supports prefix/substring match)'),
 )
 
-const storyNameOption = Options.string('story').pipe(
+const storyNameOption = Options.String('story').pipe(
   Options.withAlias('s'),
   Options.withDescription('Named story export to render (defaults to first)'),
   Options.optional,
 )
 
-const pathOption = Options.string('path').pipe(
+const pathOption = Options.String('path').pipe(
   Options.withDescription('Package directory to search for stories'),
 )
 
-const widthOption = Options.integer('width').pipe(
+const widthOption = Options.Int('width').pipe(
   Options.withAlias('w'),
   Options.withDescription('Terminal width for layout'),
   Options.withDefault(80),
 )
 
-const finalOption = Options.boolean('final').pipe(
+const finalOption = Options.Boolean('final').pipe(
   Options.withDescription('Apply all timeline events (show final state)'),
   Options.withDefault(false),
 )
 
-const atOption = Options.integer('at').pipe(
+const atOption = Options.Int('at').pipe(
   Options.withDescription('Apply timeline events up to this timestamp (ms)'),
   Options.optional,
 )
 
-const argOption = Options.string('arg').pipe(
+const argOption = Options.String('arg').pipe(
   Options.withAlias('a'),
   Options.withDescription('Override story arg (key=value format, repeatable)'),
   Options.between(0, Number.POSITIVE_INFINITY),

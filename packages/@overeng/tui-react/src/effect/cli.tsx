@@ -11,7 +11,7 @@
  * import { outputOption, outputModeLayer } from "@overeng/tui-react"
  *
  * const myCommand = Command.make("my-cmd", {
- *   name: Options.text("name"),
+ *   name: Options.String("name"),
  *   output: outputOption,
  * }, ({ name, output }) =>
  *   myProgram(name).pipe(
@@ -94,12 +94,12 @@ export type OutputModeValue = (typeof OUTPUT_MODE_VALUES)[number]
  * ```
  */
 export const outputOption = {
-  mode: Flag.choice('output', OUTPUT_MODE_VALUES).pipe(
+  mode: Flag.Literals('output', OUTPUT_MODE_VALUES).pipe(
     Flag.withAlias('o'),
     Flag.withDescription('Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson'),
     Flag.optional,
   ),
-  json: Flag.boolean('json').pipe(
+  json: Flag.Boolean('json').pipe(
     Flag.withDescription('Emit a single JSON document (alias for --output json)'),
     Flag.optional,
   ),
