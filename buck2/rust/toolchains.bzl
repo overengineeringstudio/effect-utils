@@ -105,6 +105,9 @@ def _native_rust_toolchain_impl(ctx):
             nightly_features = False,
             panic_runtime = PanicRuntime("unwind"),
             rustc_env = ctx.attrs.compile_env,
+            # Buck defaults to rustc opt-level 0; make it explicit so Prelude
+            # also supplies Cargo build scripts' required OPT_LEVEL for cc-rs.
+            rustc_flags = ["-Copt-level=0"],
             rustc_target_triple = ctx.attrs.target_triple,
             rustdoc = RunInfo(args = [ctx.attrs.rustdoc]),
             rustdoc_env = ctx.attrs.compile_env,
