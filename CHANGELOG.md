@@ -54,6 +54,16 @@ All notable changes to this project will be documented in this file.
   workspace and Storybook-gate imports, including the optional OTel and
   Storybook peer stacks. CI scans the imports shipped in all package archives
   against each archive's own dependency declarations.
+- **Buck2 native Rust consumers**: Keep Nix's automatic RPATH and inherited
+  linker flags out of the exact Rust linker capability. The artifact inspector
+  still rejects every product carrying DT_RPATH or DT_RUNPATH.
+- **Buck2 native source products**: `mkBuckProductFromSource` imports native
+  products itself with `importNative = true`, so no caller-built attrset can
+  stand in for the Buck build. Native products declare `cargoWorkspaceRoot`,
+  which is added to the source fileset. The Rust Reindeer graph emits
+  `crate_archive`, which lets the sandbox use `mkBuck2CargoArchives` offline.
+  Canonical `@cell//` targets match their descriptor labels, and
+  `host_platform_label(cell = ...)` emits `@cell//` labels.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it

@@ -81,7 +81,7 @@ export FAKE_REINDEER_BEHAVIOR=unpinned
 if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/hash-error"; then
   fail "gate accepted an unpinned http_archive"
 fi
-grep -Fq 'every generated http_archive must carry one sha256 pin' "$TEMP_ROOT/hash-error" || fail "unpinned archive failure was not diagnosed"
+grep -Fq 'every generated crate archive must carry one sha256 pin' "$TEMP_ROOT/hash-error" || fail "unpinned archive failure was not diagnosed"
 cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$THIRD_PARTY/BUCK" || fail "unpinned graph replaced the tracked graph"
 
 export FAKE_REINDEER_BEHAVIOR=generate

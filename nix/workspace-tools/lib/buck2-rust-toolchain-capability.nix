@@ -56,6 +56,10 @@ let
   packages = lib.mapAttrs (
     name: package:
     pkgs.writeShellScriptBin executableNames.${name} ''
+      ${lib.optionalString (name == "rust-linker" && pkgs.stdenv.hostPlatform.isLinux) ''
+        export NIX_DONT_SET_RPATH=1
+        export NIX_LDFLAGS=
+      ''}
       exec ${lib.escapeShellArg "${package}/bin/${executableNames.${name}}"} "$@"
     ''
   ) upstreamPackages;

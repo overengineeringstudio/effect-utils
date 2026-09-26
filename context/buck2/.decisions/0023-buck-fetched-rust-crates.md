@@ -84,3 +84,15 @@ the whole third-party package on a locked member, with the `licenses`-pattern
 escape closed — is the load-bearing evidence for this decision, not the churn;
 and the 126 `licenses` attributes are dropped by non-vendored Reindeer
 (upstream limitation), accepted as a cost.
+
+## Amendment 2 — offline Nix source builds
+
+Reindeer still resolves the same `vendor = false` Cargo lock and emits one
+SHA-256-pinned archive per registry crate, but the generated rule is now
+`crate_archive`. Outside Nix it delegates to Prelude `http_archive` unchanged.
+When `mkBuckProductFromSource` supplies `nix_store.crates_root`, the rule copies
+the matching pinned archive from `mkBuck2CargoArchives` and verifies its digest
+before extraction. This keeps network access out of sandboxed native source
+builds without changing Cargo's resolution authority or Buck's compilation
+graph. The generated-graph gate continues to prove archive pins and an
+unchanged `Cargo.lock`.

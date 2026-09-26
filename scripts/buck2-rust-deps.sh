@@ -130,10 +130,10 @@ if grep -Fq 'vendor/' "$candidate"; then
   exit 1
 fi
 
-archive_count="$(grep -Ec '^http_archive[(]$' "$candidate" || true)"
+archive_count="$(grep -Ec '^(http_archive|crate_archive)[(]$' "$candidate" || true)"
 sha256_count="$(grep -Ec '^    sha256 = "[0-9a-f]{64}",$' "$candidate" || true)"
 if [ "$archive_count" -eq 0 ] || [ "$sha256_count" -ne "$archive_count" ]; then
-  echo "buck2-rust-deps: every generated http_archive must carry one sha256 pin" >&2
+  echo "buck2-rust-deps: every generated crate archive must carry one sha256 pin" >&2
   exit 1
 fi
 

@@ -136,5 +136,24 @@ pkgs.runCommand "buck2-rules"
     chmod -R u+w "$out"
     mkdir -p "$out/prelude"
     tar -xzf ${buck2.passthru.prelude} --strip-components=1 -C "$out/prelude"
+    # Prelude-generated linker and Cargo buildscript shims run in Nix sandboxes,
+    # where /usr/bin/env does not exist. Bind their interpreter to the declared
+    # shell rather than relying on the host filesystem.
+    for script in \
+      "$out/prelude/utils/cmd_script.bzl" \
+      "$out/prelude/rust/cargo_buildscript.bzl" \
+      "$out/prelude/rust/context.bzl"; do
+      substituteInPlace "$script" \
+        --replace-fail '"#!/usr/bin/env bash"' '"#!${pkgs.bash}/bin/bash"'
+    done
+    ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+      # Product binaries intentionally use the portable /lib64 interpreter.
+      # A Cargo build script is an executable build-time tool, however, and
+      # cannot use that interpreter inside the Nix sandbox. Run it through the
+      # declared loader and libraries without changing the product's ELF.
+      substituteInPlace "$out/prelude/rust/tools/buildscript_run.py" \
+        --replace-fail '            os.path.abspath(buildscript),' \
+        '            ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib", os.path.abspath(buildscript)],'
+    ''}
 
   ''

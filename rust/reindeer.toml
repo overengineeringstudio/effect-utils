@@ -30,10 +30,12 @@ rust_binary = "cargo.rust_binary"
 cxx_library = "cargo.cxx_library"
 prebuilt_cxx_library = "cargo.prebuilt_cxx_library"
 buildscript_genrule = "buildscript_run"
+http_archive = "crate_archive"
 
 buckfile_imports = """
 load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")
 load("@prelude//rust:cargo_package.bzl", "cargo")
+load("//buck2/rust:crates.bzl", "crate_archive")
 """
 
 generated_file_header = """
