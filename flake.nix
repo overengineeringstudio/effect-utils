@@ -328,7 +328,6 @@ rec {
         { pkgs, thirdPartyBuckFiles }:
         import ./nix/workspace-tools/lib/buck2-cargo-archives.nix { inherit pkgs thirdPartyBuckFiles; };
 
-
       # Verify and import one tracked Buck JavaScript product (descriptor plus
       # content-addressed module bytes) into a wrappable Nix output.
       lib.mkBuck2JavaScriptProductImport =
