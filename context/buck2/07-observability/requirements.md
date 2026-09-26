@@ -1,15 +1,15 @@
 # Buck2 Observability Requirements
 
-This subsystem owns build telemetry for the Buck2 lane: the identity that
-correlates callers with Buck commands, the run record that carries native
-evidence off-host, the event-log adapter that decodes it, the trace views and
-bounded metrics derived from it, and the ingest and archive contract that makes
-local and CI delivery identical. It is a composite node: its children are
+This subsystem owns build telemetry for the Buck2 lane: identity correlating
+pipeline runs and Buck commands, the portable run record, event-log decoding,
+derived trace views and bounded metrics, ingest/archive, and index-backed
+trace access for reviewers and agents. It is a composite node with children
 [01-run-identity](./01-run-identity/requirements.md),
 [02-run-record](./02-run-record/requirements.md),
 [03-event-log-adapter](./03-event-log-adapter/requirements.md),
-[04-trace-views](./04-trace-views/requirements.md), and
-[05-ingest-and-archive](./05-ingest-and-archive/requirements.md).
+[04-trace-views](./04-trace-views/requirements.md),
+[05-ingest-and-archive](./05-ingest-and-archive/requirements.md), and
+[06-trace-access](./06-trace-access/requirements.md).
 It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 [buck2 requirements](../requirements.md); the buck2 vision applies unchanged.
 
@@ -91,6 +91,7 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
   are permitted a fixed set of high-cardinality identifiers for per-run
   discovery: `cicd.pipeline.run.id`, `cicd.pipeline.run.attempt`,
   `cicd.pipeline.task.run.id`, `vcs.ref.head.revision`,
+  `vcs.ref.base.revision`, `buck2.vcs.merge.revision`,
   `vcs.repository.url.full`, `vcs.change.id`, `ci.provider`, `ci.pr.fork`,
   and the Buck trace id. None of these ever becomes a metric label.
 - **BUCK.OBS-R06 Retention corridor:** Trace storage holds 30 days; long-term
@@ -124,10 +125,11 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 
 ## Requirement Trace
 
-| Requirements                             | Refinement                     |
-| ---------------------------------------- | ------------------------------ |
-| BUCK.OBS-R01, BUCK.OBS-R02               | 03 Event-log Adapter           |
-| BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07 | 01 Run Identity, 02 Run Record |
-| BUCK.OBS-R05, BUCK.OBS-T02               | 04 Trace Views                 |
-| BUCK.OBS-R03, BUCK.OBS-R06, BUCK.OBS-R08 | 05 Ingest and Archive          |
-| BUCK.OBS-R09                             | Root + all children            |
+| Requirements                                           | Refinement                     |
+| ------------------------------------------------------ | ------------------------------ |
+| BUCK.OBS-R01, BUCK.OBS-R02                             | 03 Event-log Adapter           |
+| BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07               | 01 Run Identity, 02 Run Record |
+| BUCK.OBS-R05, BUCK.OBS-T02                             | 04 Trace Views                 |
+| BUCK.OBS-R03, BUCK.OBS-R06, BUCK.OBS-R08               | 05 Ingest and Archive          |
+| BUCK.OBS-R01, BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08 | 06 Trace Access                |
+| BUCK.OBS-R09                                           | Root + all children            |

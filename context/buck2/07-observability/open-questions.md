@@ -30,12 +30,14 @@ experiments (as tested hypotheses).
   command leaves no silent gap) is fixed only upstream. Revisit if upstream
   merges or if >10% of true waits sit on busy waiters.
 
-## OQ3: When can direct OTLP become a fast path? — open
+## OQ3: When can direct OTLP become an optional fast path? — open, not gating
 
 - Prerequisites (q18): `otel-span` must honor `OTEL_EXPORTER_OTLP_HEADERS`
-  (today ignored — measured) and define a spool flush protocol; the bundle
-  remains the system of record either way. Enable per trusted environment
-  only, after the uploader is stable.
+  (today ignored — measured) and define a spool flush protocol. The sealed
+  record remains the system of record; upload-enqueued ingest targets
+  job-end→clickable ≤30 s p95 plus upload time without this fast path. Enable
+  only after measuring whether it adds useful latency improvement without
+  introducing a second correctness path.
 
 ## OQ4: When do the `ci.*` vendor keys migrate to OTel CICD attributes? — open
 
@@ -47,15 +49,18 @@ experiments (as tested hypotheses).
   rename across the spool, ingester, and dashboards. The build path must
   not carry two schemes indefinitely.
 
-## OQ5: Evidence-namespace lifecycle details — open (dotfiles contract gaps)
+## OQ5: Evidence-namespace lifecycle details — resolved
 
-- Capability lifetime/revocation for the label-gated fork adapter (scope:
-  repository, PR head, byte budget, expiry); whether normalized OTLP in the
-  archive outlives raw logs; whether the evidence store is a dedicated
-  namespace or a segregated prefix of an existing authenticated service. The
-  default answers live in the
-  [delivery bakeoff](./02-run-record/.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md);
-  dotfiles owns the final deployment shape.
+- The fleet build-evidence trait owns the dedicated ZFS dataset and placement
+  claim, one hardened `buck2-evidence` service with separate upload and
+  read-only resolver Tailscale Services, a SQLite index/queue, ~one-year raw
+  retention within ≤150 GiB/yr, and queue health. Upload is tailnet-only in
+  V1; fork ingestion and its short-lived capability/revocation story are
+  explicitly deferred rather than presumed implemented. Trace storage lasts
+  30 days, and the archived raw record enables re-ingest. The dedicated
+  namespace and service choice is recorded in
+  [05](./05-ingest-and-archive/spec.md); the fleet realization lives in
+  dotfiles `context/fleet/traits/build-evidence`.
 
 ## OQ6: Adjacent work tracked elsewhere — not this lane's scope
 

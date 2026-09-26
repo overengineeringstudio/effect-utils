@@ -55,10 +55,11 @@ attribution at ingest. It refines BUCK.OBS-R01 and BUCK.OBS-R02 of the
   membership, and per-command salted span ids (01). Re-running ingest is
   idempotent.
 - **BUCK.OBS.ADP-R07 Daemon wait at ingest:** Ingest attributes daemon waits
-  by joining the run's logs: peers scoped exactly by the daemon-provided
-  `ConcurrentCommands` trace-id list; a `DiceBlockConcurrentCommand` span read
-  directly as exact attribution; otherwise inferred daemon-wait spans with
-  causal producer ranking, confidence tiers, and producer links. Default gap
-  threshold 1 s (opt-in 500 ms); gap summary attributes always on the command
-  span as the degradation floor. An upstream dice-hook track runs in
-  parallel and never gates this design.
+  by joining logs within one job-scoped CI record or local invocation record:
+  peers scoped by the daemon-provided `ConcurrentCommands` trace-id list;
+  a `DiceBlockConcurrentCommand` span read directly is exact attribution;
+  otherwise inferred waits carry causal producer ranking, confidence tiers,
+  and producer links only when peer evidence is present. A peer outside the
+  record is not invented; per-log gap summaries remain the degradation floor.
+  Default gap threshold 1 s (opt-in 500 ms). The upstream dice-hook track
+  never gates this design.

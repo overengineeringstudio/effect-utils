@@ -9,14 +9,21 @@ It was settled against a domain reference map of six federated sources
 
 ### Run hierarchy (OTel CICD, used for local and CI runs alike)
 
-**Pipeline Run** is one execution of a top-level verb (`check:quick`,
-a CI job's task list, a local publish). It maps to OTel
-`cicd.pipeline.run.*`. _Avoid_: "CI run" for local runs — the vocabulary is
-deliberately the same in both places (BUCK.OBS-R03).
+**Pipeline Run** is one local entrypoint invocation or one CI pipeline attempt
+across all its jobs. It maps to OTel `cicd.pipeline.run.*`. _Avoid_: "CI run"
+for local runs; both use the same vocabulary (BUCK.OBS-R03).
 
-**Task Run** is one task execution inside a pipeline run (a devenv task,
-a CI job step). It maps to `cicd.pipeline.task.*`. The existing
-`devenv.task.exec` span is this concept; renaming is an open question (OQ4).
+**Pipeline Run ID** is the provider-neutral identity of that invocation or
+attempt, minted only if absent and propagated across jobs. It is not a trace
+ID: the pipeline trace ID derives deterministically from it. _Avoid_:
+"provider run ID" for this cross-provider identity.
+
+**Job Run** is one matrix-qualified CI job execution inside a Pipeline Run;
+its job key includes matrix values so sibling variants cannot collide.
+
+**Task Run** is one devenv task execution inside a Pipeline Run or Job Run.
+It maps to `cicd.pipeline.task.*`; the existing `devenv.task.exec` span
+represents this concept (the naming migration is OQ4).
 
 **Worker** is where a pipeline run executed (a laptop or a CI runner):
 `cicd.worker.*`. The provider (e.g. GitHub Actions) appears only as a resource
@@ -61,15 +68,29 @@ process) is a different, scoped sense — see flagged ambiguities.
 
 **Task Span** is the existing `devenv.task.exec` span (a Task Run's span).
 
+**Pipeline Trace** is the per-attempt trace that joins a Pipeline Run, its
+jobs and task runs with Buck Critical Views. Distinct attempts are related
+by links, not parent-child identity.
+
+**Trace Access** is the read-only discovery surface over indexed run records
+and derived traces. Its **Resolver** maps a PR, run, or deterministic trace ID
+to an indexed status and viewer link; it does not search Tempo to discover
+identity. _Avoid_: "trace store" for the resolver — Tempo stores the spans.
+
 ### The portable unit
 
-**Run Record** is the sealed unit of one pipeline run's telemetry and
-evidence: a manifest, the span spool, and the native evidence. Its lifecycle
-verbs are **seal** (freeze the manifest with content digests), **upload** (one
-provider-neutral content-addressed PUT), **ingest** (convert, export views,
-archive), and **archive** (retain per policy). _Avoid_: "replay" for any of
-these — Buck owns `log replay` (Superconsole re-rendering); "evidence bundle"
-(the anchor is Run Record); "delivery" as a noun for this pipeline.
+**Run Record** is a sealed unit of telemetry and native evidence. In CI each
+job contributes its own record within one Pipeline Run; locally the invocation
+has one record. Each record contains a manifest, span spool, and native
+evidence. Its lifecycle verbs are **seal** (freeze content digests),
+**upload** (provider-neutral content-addressed PUT), **ingest** (convert,
+export views, archive), and **archive** (retain per policy). _Avoid_:
+"replay" — Buck owns `log replay` (Superconsole re-rendering);
+"evidence bundle" (the anchor is Run Record).
+
+**Attempt-Close Record** is the provider-neutral CI completion signal for a
+Pipeline Run attempt: the expected matrix-qualified jobs and their conclusions.
+It is not another job's native evidence or a second run root.
 
 **Span Spool** is the existing otel-span JSONL spool
 (`OTEL_SPAN_SPOOL_DIR`), reused unchanged as the run record's span part.
@@ -104,20 +125,23 @@ identifiers.
 ## Structure
 
 ```text
-partOf ladder:   pipeline run -> task run -> Buck command -> action -> executor stage
-                 (materialization spans hang off commands and actions)
+partOf ladder:   pipeline run -> job run (CI) -> task run -> Buck command -> action -> executor stage
+                 (local task runs may belong directly to the pipeline run)
 unit lifecycle:  run record: write -> seal -> upload -> ingest -> archive
 derivation:      run record --event-log adapter--> span model --trace views--> {full view, critical view} + bounded metrics
-identity:        wrapper trace id = f(caller trace id, command span id);
+identity:        pipeline run id --framed domain-separated hash--> pipeline trace id;
+                 wrapper trace id = f(caller trace id, command span id);
                  salted OTLP span ids = f(log identity, Buck span id)  (Buck ids collide across commands)
+access:          index --resolver--> PR/run/trace links and versioned JSON
 wait:            peer commands on one daemon --join--> daemon wait (exact | inferred)
 ```
 
 ## Flagged Ambiguities
 
-- **Run record vs InvocationRecord:** the run record is this lane's portable
-  unit (a pipeline-run noun); InvocationRecord is an upstream per-command
-  artifact that may sit inside one. Never interchangeable.
+- **Run Record vs Pipeline Run vs InvocationRecord:** a CI Pipeline Run can
+  contain many job-scoped Run Records plus one Attempt-Close Record; a local
+  invocation has one Run Record. InvocationRecord is an upstream per-command
+  artifact inside a record, never the portable unit.
 - **Trace view vs editor view:** "view" also names the materialization
   surface's editor views (03-materialization). "Trace view" is always
   qualified.

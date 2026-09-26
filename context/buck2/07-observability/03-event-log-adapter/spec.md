@@ -66,7 +66,7 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 ## Daemon-Wait Join
 
 ```text
-inputs:  all logs of one pipeline run (the run record guarantees the batch)
+inputs:  all logs in one job-scoped CI record or local invocation record
 scope:   peers = ConcurrentCommands.trace_ids[] from each log (exact,
          daemon-provided); time-overlap is never the default scope
 exact:   a DiceBlockConcurrentCommand span covering a gap -> emit the wait
@@ -81,6 +81,13 @@ always:  gap summary attributes on the command span (count, total ms, max ms)
 ids:     wait span id derived from waiter command key + gap start
          (deterministic; re-joins idempotent)
 ```
+
+CI jobs have separate records (02), so the batch guarantees complete logs
+only **within** a job, not across the whole Pipeline Run. When a
+daemon-provided peer trace ID is absent from that batch, keep the wait
+unattributed rather than inventing a producer; retain the per-log gap
+summary. No other CI job's record is assumed to be present at this ingest
+step.
 
 Measured on a 43-log corpus: precision 0.957 / recall 1.0 at 500 ms; P = R =
 1.0 at 1 s (six true sub-second waits traded away); ms-level cost inside the
