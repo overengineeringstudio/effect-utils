@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:4e3c6ba1b9f27e5a0b5063ef3dfe51c5110e8e41984b6d35c2b0e6fdcf936769
+# Store fingerprint: sha256:b80c828a6e72ec8ac7668b937e70136078e07b2ceb2d22910018903b579410fa
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -31485,6 +31485,7 @@ pnpm_store_view(
         "@playwright/test": "@playwright+test@1.63.0",
         "@storybook/react": "@storybook+react@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-dom@19._c8fa65d991fb5130",
         "@storybook/react-vite": "@storybook+react-vite@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-do_9b5eccc39f239997",
+        "@types/node": "@types+node@26.5.0",
         "@types/react": "@types+react@19.2.18",
         "@types/react-reconciler": "@types+react-reconciler@0.33.0_@types+react@19.2.18",
         "@vitejs/plugin-react": "@vitejs+plugin-react@6.1.1_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0",
