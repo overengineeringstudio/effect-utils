@@ -99,6 +99,7 @@ All notable changes to this project will be documented in this file.
   `missingAuthPolicy=skip`. Regenerate consumer workflows to pick this up.
 
 ### Fixed
+
 - **Storybook story gate**: Load consumer Vitest gate configs with the Vite
   runner so installed `@overeng/utils` TypeScript imports under `node_modules`
   work without Node's unsupported type stripping.
@@ -115,7 +116,6 @@ All notable changes to this project will be documented in this file.
 - **notion-md product publication**: Declare Node types in its own package
   dependencies so the isolated Buck typecheck resolves `types: ["node"]` and
   the from-source Nix product can be published.
-
 - **Storybook and Playwright task caches**: The shared `storybook:build:<name>`
   tasks, Storybook dev processes, and Playwright test tasks now export
   `CACHE_DIR` (and `VITE_CACHE_DIR` for Playwright) as
