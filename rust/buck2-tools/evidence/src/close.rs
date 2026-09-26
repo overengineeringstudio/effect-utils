@@ -75,7 +75,9 @@ pub fn accept(conn: &Connection, digest: &str, body: &[u8]) -> Result<bool> {
 }
 use rusqlite::OptionalExtension;
 
-fn root_body(close: &CloseRecord, jobs: &[(String, String, Option<i64>, Option<i64>)], received: i64) -> Value {
+type JobStatus = (String, String, Option<i64>, Option<i64>);
+
+fn root_body(close: &CloseRecord, jobs: &[JobStatus], received: i64) -> Value {
     let trace = ids::run_trace(&close.pipeline_run_id);
     let mut spans = Vec::new();
     let started = jobs.iter().filter_map(|(_,_,s,_)| *s).min().unwrap_or(received);
@@ -119,7 +121,7 @@ fn pending_closes(cfg: &Config) -> Result<Vec<(String,String,i64)>> {
     Ok(rows)
 }
 
-fn jobs_for(cfg: &Config, run: &str) -> Result<Vec<(String,String,Option<i64>,Option<i64>)>> {
+fn jobs_for(cfg: &Config, run: &str) -> Result<Vec<JobStatus>> {
     let conn = crate::index::open(&cfg.index_path())?;
     let mut stmt = conn.prepare("select job,status,uploaded_at,ingested_at from records where run_id=?1")?;
     let rows = stmt.query_map([run], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?.collect::<rusqlite::Result<_>>()?;

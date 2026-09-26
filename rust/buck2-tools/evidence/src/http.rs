@@ -12,7 +12,7 @@ use axum::routing::{get, put};
 use axum::{Json, Router};
 use serde_json::json;
 
-use crate::store::{self, Manifest, UploadError, UploadOutcome};
+use crate::store::{self, Manifest, UploadError};
 use crate::{index, now_ms, Config};
 
 pub type BoxFut<T> = Pin<Box<dyn Future<Output = T> + Send>>;
@@ -79,9 +79,9 @@ async fn upload(State(st): State<AppState>, headers: HeaderMap, Path(digest): Pa
     let d = digest.clone();
     let outcome = tokio::task::spawn_blocking(move || store::accept(&cfg, &d, &body)).await.unwrap();
     let manifest = match outcome {
-        Ok(UploadOutcome::Stored(m)) => m,
+        Ok(Some(m)) => m,
         // Stored earlier but never indexed (crash between rename and enqueue): heal now.
-        Ok(UploadOutcome::AlreadyStored) => match store::read_manifest(&store::record_dir(&st.cfg, &digest)) {
+        Ok(None) => match store::read_manifest(&store::record_dir(&st.cfg, &digest)) {
             Ok(m) => m,
             Err(e) => return db_err(e),
         },

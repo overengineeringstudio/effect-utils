@@ -55,13 +55,6 @@ pub struct FileEntry {
     pub sha256: String,
 }
 
-#[derive(Debug)]
-pub enum UploadOutcome {
-    /// First time this digest reached the store.
-    Stored(Manifest),
-    /// Same bytes already stored (or archived): a no-op by construction.
-    AlreadyStored,
-}
 
 #[derive(Debug)]
 pub enum UploadError {
@@ -85,7 +78,7 @@ pub fn read_manifest(dir: &Path) -> StepResult<Manifest> {
 
 /// Unpacks a tar body, verifies manifest digest + every file digest, then renames into the store.
 /// Blocking: call from `spawn_blocking`.
-pub fn accept(cfg: &Config, digest: &str, body: &[u8]) -> Result<UploadOutcome, UploadError> {
+pub fn accept(cfg: &Config, digest: &str, body: &[u8]) -> Result<Option<Manifest>, UploadError> {
     if !is_digest(digest) {
         return Err(UploadError::Rejected("digest must be 64 lowercase hex".into()));
     }
@@ -94,7 +87,7 @@ pub fn accept(cfg: &Config, digest: &str, body: &[u8]) -> Result<UploadOutcome, 
     }
     let dest = record_dir(cfg, digest);
     if dest.exists() {
-        return Ok(UploadOutcome::AlreadyStored);
+        return Ok(None);
     }
     // Unique per request: concurrent identical PUTs must never share a staging dir.
     static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -152,11 +145,11 @@ pub fn accept(cfg: &Config, digest: &str, body: &[u8]) -> Result<UploadOutcome, 
     })();
     match result {
         Ok(manifest) => match std::fs::rename(&stage, &dest) {
-            Ok(()) => Ok(UploadOutcome::Stored(manifest)),
+            Ok(()) => Ok(Some(manifest)),
             // Lost a race with a concurrent identical upload: same bytes, same outcome.
             Err(_) if dest.exists() => {
                 let _ = std::fs::remove_dir_all(&stage);
-                Ok(UploadOutcome::AlreadyStored)
+                Ok(None)
             }
             Err(e) => Err(io(e)),
         },

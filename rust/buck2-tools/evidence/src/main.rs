@@ -415,10 +415,10 @@ async fn main() -> anyhow::Result<()> {
     if let Some(spool) = local {
         let (digest, body) = buck2_evidence::transport::bundle(&spool)?;
         match store::accept(&cfg, &digest, &body) {
-            Ok(store::UploadOutcome::Stored(manifest)) => {
+            Ok(Some(manifest)) => {
                 svc.blocking(move |_, c| enqueue(c, &digest, &manifest, body.len() as u64)).await?;
             }
-            Ok(store::UploadOutcome::AlreadyStored) => {}
+            Ok(None) => {}
             Err(error) => anyhow::bail!("local record rejected: {error:?}"),
         }
     }
