@@ -26,6 +26,7 @@ import {
   createVitestOutputCapture,
   hasCompleteReferenceCoverage,
   linkNodeModules,
+  prepareBaselineNodeModules,
   parseSettleRecords,
   referenceStoryKeys,
   isStoryGateOk,
@@ -735,6 +736,70 @@ describe('assertionStoryKey', () => {
     expect(
       captures.has(assertionStoryKey({ file: 'NumberField.stories.tsx', fullName: 'With Hint' })),
     ).toBe(true)
+  })
+})
+
+describe('prepareBaselineNodeModules', () => {
+  it('uses an independent install when lockfiles differ without replacing it with borrowed modules', () => {
+    const root = mkdtempSync(join(tmpdir(), 'story-gate-baseline-deps-'))
+    const repoRoot = join(root, 'repo')
+    const worktreeDir = join(root, 'baseline')
+    try {
+      mkdirSync(join(repoRoot, 'node_modules'), { recursive: true })
+      mkdirSync(join(worktreeDir, 'node_modules'), { recursive: true })
+      writeFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'head')
+      writeFileSync(join(worktreeDir, 'pnpm-lock.yaml'), 'baseline')
+      writeFileSync(join(worktreeDir, 'node_modules', 'sentinel'), 'baseline install')
+
+      prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef: 'main' })
+
+      expect(readFileSync(join(worktreeDir, 'node_modules', 'sentinel'), 'utf8')).toBe(
+        'baseline install',
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses mismatched lockfiles without an independent install, including borrowed links', () => {
+    const root = mkdtempSync(join(tmpdir(), 'story-gate-baseline-deps-'))
+    const repoRoot = join(root, 'repo')
+    const worktreeDir = join(root, 'baseline')
+    try {
+      mkdirSync(join(repoRoot, 'node_modules'), { recursive: true })
+      mkdirSync(worktreeDir)
+      writeFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'head')
+      writeFileSync(join(worktreeDir, 'pnpm-lock.yaml'), 'baseline')
+
+      expect(() =>
+        prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef: 'main' }),
+      ).toThrow(/Install in .* and re-run/)
+
+      symlinkSync(join(repoRoot, 'node_modules'), join(worktreeDir, 'node_modules'), 'dir')
+      expect(() =>
+        prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef: 'main' }),
+      ).toThrow(/cannot borrow the installed dependencies/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('borrows modules when lockfiles match', () => {
+    const root = mkdtempSync(join(tmpdir(), 'story-gate-baseline-deps-'))
+    const repoRoot = join(root, 'repo')
+    const worktreeDir = join(root, 'baseline')
+    try {
+      mkdirSync(join(repoRoot, 'node_modules'), { recursive: true })
+      mkdirSync(worktreeDir)
+      writeFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'same')
+      writeFileSync(join(worktreeDir, 'pnpm-lock.yaml'), 'same')
+
+      prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef: 'main' })
+
+      expect(readlinkSync(join(worktreeDir, 'node_modules'))).toBe(join(repoRoot, 'node_modules'))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 
