@@ -6,9 +6,13 @@
 {
   capabilities,
   pnpmArchives,
-  # Offline crate supply for Rust products (`cargo-archives.nix`); null when the
-  # product has no third-party crates.
+  # Offline crate supply for Rust products (`mkBuck2CargoArchives`); null
+  # when the product has no third-party crates.
   cargoArchives ? null,
+  # Native import is constructed here from our own Buck derivation.
+  importNative ? false,
+  expectedPlatform ? null,
+  runtimeKind ? null,
   product,
   producerCommit,
   repositoryRoot ? ../..,
@@ -18,12 +22,14 @@
 
 let
   lib = pkgs.lib;
+  cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
   source =
     if repositorySource == null then
       lib.fileset.toSource {
         root = repositoryRoot;
-        fileset = lib.fileset.unions [
-          (repositoryRoot + "/.buckconfig")
+        fileset = lib.fileset.unions (
+          [
+            (repositoryRoot + "/.buckconfig")
           (repositoryRoot + "/.buckroot")
           (repositoryRoot + "/BUCK")
           (repositoryRoot + "/package.json")
@@ -45,7 +51,10 @@ let
           (repositoryRoot + "/scripts")
           (repositoryRoot + "/buck2")
           (repositoryRoot + "/packages/@overeng")
-        ];
+        ]
+        ++ lib.optionals (product.kind == "native") [
+          (repositoryRoot + "/${cargoWorkspaceRoot}")
+        ]);
       }
     else
       repositorySource;
@@ -70,8 +79,19 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   product.kind != "native" || outputName == "artifact.tar"
 ) "buck2-products: native products must name the build_product payload artifact.tar";
-pkgs.stdenv.mkDerivation {
-  pname = "${safeName}-buck2-from-source";
+assert lib.assertMsg (
+  product.kind != "native"
+  || (
+    cargoWorkspaceRoot != null
+    && builtins.match "[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*" cargoWorkspaceRoot != null
+    && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" cargoWorkspaceRoot)
+  )
+) "buck2-products: native products must declare a relative cargoWorkspaceRoot";
+assert lib.assertMsg (!importNative || product.kind == "native")
+  "buck2-products: importNative requires a native product";
+let
+  sourceProduct = pkgs.stdenv.mkDerivation {
+    pname = "${safeName}-buck2-from-source";
   version = product.version or "0.0.0";
   src = source;
 
@@ -141,4 +161,32 @@ pkgs.stdenv.mkDerivation {
     productKind = product.kind;
     expectedProductSha256 = expectedSha256;
   };
-}
+  };
+in
+if importNative then
+  (import ../workspace-tools/lib/buck2-artifact-realize.nix { inherit pkgs; }) {
+    name = productName;
+    expectedTarget = target;
+    expectedPlatform =
+      if expectedPlatform == null then
+        let
+          host = pkgs.stdenv.hostPlatform;
+        in
+        {
+          os = if host.isDarwin then "darwin" else "linux";
+          architecture = host.parsed.cpu.name;
+          abi = if host.isDarwin then "darwin" else host.libc;
+        }
+      else
+        expectedPlatform;
+    runtimeKind =
+      if runtimeKind == null then
+        (if pkgs.stdenv.hostPlatform.isDarwin then "mach-o-dynamic" else "elf-dynamic")
+      else
+        runtimeKind;
+    descriptorPath = lib.escapeShellArg "${sourceProduct}/descriptor.json";
+    archivePath = lib.escapeShellArg "${sourceProduct}/${outputName}";
+    passthru.buck2Product = sourceProduct;
+  }
+else
+  sourceProduct

@@ -203,42 +203,82 @@ dynamic_import="$(build_expr "$dynamic_import_expr")"
 }
 "$dynamic_import/bin/fixture-tool"
 
-# Source import: the descriptor is only a build output, so the realization must
-# apply the contract and the caller's declaration at build time (no IFD).
+# Native import is produced by mkBuckProductFromSource itself. A caller cannot
+# substitute a descriptor-bearing attrset for the source Buck derivation.
 source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
-  sourceImport = import (repo + \"/nix/buck2-products/native-import.nix\") { inherit pkgs; };
   descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
-  mkSource = { root ? exported, productName ? descriptor.name }: {
-    outPath = root;
-    productKind = \"native\";
-    inherit productName;
-    artifactName = \"artifact.tar\";
-    target = descriptor.semanticProvenance.target;
-  };"
-source_import="$(build_expr "let
-  $common_let
-  $source_product_let
-in sourceImport { sourceProduct = mkSource { }; expectedPlatform = descriptor.platform; }")"
+  builder = import (repo + \"/nix/buck2-products/from-source.nix\") {
+    inherit pkgs;
+    buck2 = pkgs.writeShellScriptBin \"buck2\" \"exit 1\";
+  };
+  mkBuild = { root ? exported, productName ? descriptor.name, target ? descriptor.semanticProvenance.target }:
+    (import (repo + \"/nix/buck2-products/from-source.nix\") {
+      inherit pkgs;
+      buck2 = pkgs.writeShellScriptBin \"buck2\" ''
+        if [[ \"\$*\" == *'[descriptor]'* ]]; then
+          printf '%s\\n' '\${root}/descriptor.json'
+        else
+          printf '%s\\n' '\${root}/artifact.tar'
+        fi
+      '';
+    }) {
+      importNative = true;
+      expectedPlatform = descriptor.platform;
+      runtimeKind = \"elf-dynamic\";
+      repositorySource = exported;
+      capabilities = pkgs.runCommand \"empty-buck-capabilities\" { } \"mkdir \$out\";
+      pnpmArchives = pkgs.runCommand \"empty-pnpm-archives\" { } \"mkdir \$out\";
+      producerCommit = \"0000000000000000000000000000000000000000\";
+      product = {
+        kind = \"native\";
+        name = productName;
+        inherit target;
+        outputName = \"artifact.tar\";
+        cargoWorkspaceRoot = \"rust\";
+      };
+    };"
+source_import="$(build_expr "let $common_let $source_product_let in mkBuild { }")"
 "$source_import/bin/fixture-tool"
 expect_build_failure \
   "source import declared name mismatch" \
   "descriptor does not match the declared product" \
-  "let
-  $common_let
-  $source_product_let
-in sourceImport { sourceProduct = mkSource { productName = \"other-tool\"; }; expectedPlatform = descriptor.platform; }"
+  "let $common_let $source_product_let in mkBuild { productName = \"other-tool\"; }"
 expect_build_failure \
-  "source import descriptor outside the contract" \
-  "descriptor has unknown fields: extra" \
-  "let
-  $common_let
-  $source_product_let
-  tampered = pkgs.runCommand \"tampered-source-product\" { nativeBuildInputs = [ pkgs.jq ]; } ''
+  "forged source product rejected" \
+  "unexpected argument 'sourceProduct'" \
+  "let $common_let $source_product_let in builder {
+    sourceProduct = { outPath = exported; productKind = \"native\"; };
+    importNative = true;
+    capabilities = pkgs.hello;
+    pnpmArchives = pkgs.hello;
+    producerCommit = \"0000000000000000000000000000000000000000\";
+    product = { kind = \"native\"; name = \"fixture-tool\"; outputName = \"artifact.tar\"; target = \"//fixtures:tool\"; cargoWorkspaceRoot = \"rust\"; };
+  }"
+cell_descriptor="$(build_expr "let $common_let $source_product_let in
+  pkgs.runCommand \"cell-qualified-source-descriptor\" { nativeBuildInputs = [ pkgs.jq ]; } ''
+    mkdir -p \$out
+    cp \${exported}/artifact.tar \$out/artifact.tar
+    jq -c '.semanticProvenance.target = \"consumer//fixtures:tool\"' \${exported}/descriptor.json > \$out/descriptor.json
+  ''")"
+export BUCK2_BRIDGE_CELL_DESCRIPTOR="$cell_descriptor"
+cell_import="$(build_expr "let $common_let $source_product_let in
+  mkBuild {
+    root = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_CELL_DESCRIPTOR\");
+    target = \"@consumer//fixtures:tool\";
+  }")"
+"$cell_import/bin/fixture-tool"
+tampered_source="$(build_expr "let $common_let $source_product_let in
+  pkgs.runCommand \"tampered-source-product\" { nativeBuildInputs = [ pkgs.jq ]; } ''
     mkdir -p \$out
     cp \${exported}/artifact.tar \$out/artifact.tar
     jq -c '. + {extra: true}' \${exported}/descriptor.json > \$out/descriptor.json
-  '';
-in sourceImport { sourceProduct = mkSource { root = tampered; }; expectedPlatform = descriptor.platform; }"
+  ''")"
+export BUCK2_BRIDGE_TAMPERED_SOURCE="$tampered_source"
+expect_build_failure \
+  "source import descriptor outside the contract" \
+  "descriptor has unknown fields: extra" \
+  "let $common_let $source_product_let in
+    mkBuild { root = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_TAMPERED_SOURCE\"); }"
 
 inspector_expr="let
   $common_let

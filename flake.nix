@@ -308,6 +308,8 @@ rec {
       lib.mkConsumerBuckRoot = args: import ./nix/buck2-products/consumer-root.nix args;
 
       # Rebuild a declared Buck product from source inside the Nix sandbox.
+      # For native products, importNative = true realizes and validates the
+      # resulting artifact without accepting a caller-supplied source product.
       lib.mkBuckProductFromSource =
         {
           pkgs,
@@ -324,13 +326,8 @@ rec {
       # fixed-output fetch per `crate_archive` digest in the given Reindeer graphs.
       lib.mkBuck2CargoArchives =
         { pkgs, thirdPartyBuckFiles }:
-        import ./nix/buck2-products/cargo-archives.nix { inherit pkgs thirdPartyBuckFiles; };
+        import ./nix/workspace-tools/lib/buck2-cargo-archives.nix { inherit pkgs thirdPartyBuckFiles; };
 
-      # Verify and import a native build_product rebuilt by mkBuckProductFromSource
-      # (`product.kind = "native"`) through the same realization as published
-      # artifacts; the descriptor is validated at build time, not evaluation.
-      lib.mkBuck2NativeSourceProductImport =
-        { pkgs }: import ./nix/buck2-products/native-import.nix { inherit pkgs; };
 
       # Verify and import one tracked Buck JavaScript product (descriptor plus
       # content-addressed module bytes) into a wrappable Nix output.

@@ -4,8 +4,8 @@ Reindeer emits one `crate_archive` per registry crate (`[buck] http_archive =
 "crate_archive"`). A normal build downloads it exactly like `http_archive`,
 pinned by the `Cargo.lock` sha256. A sandboxed Nix build has no network: it
 sets `nix_store.crates_root` to a Nix store tree of `<sha256>.tgz` fixed-output
-fetches (`nix/buck2-products/cargo-archives.nix`), and the archive is copied from
-there, re-verified, and extracted offline by the capability archive tool.
+fetches (`nix/workspace-tools/lib/buck2-cargo-archives.nix`), and the archive is
+copied from there, re-verified, and extracted offline by the capability tool.
 """
 
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")

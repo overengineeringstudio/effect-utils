@@ -179,11 +179,11 @@ def host_platform_label(cell = ""):
     """
     host = host_info()
     if host.os.is_linux and host.arch.is_x86_64:
-        return cell + "//buck2/platforms:linux_x86_64"
+        return ("@" + cell if cell else "") + "//buck2/platforms:linux_x86_64"
     if host.os.is_linux and host.arch.is_aarch64:
-        return cell + "//buck2/platforms:linux_aarch64"
+        return ("@" + cell if cell else "") + "//buck2/platforms:linux_aarch64"
     if host.os.is_macos and host.arch.is_aarch64:
-        return cell + "//buck2/platforms:macos_aarch64"
+        return ("@" + cell if cell else "") + "//buck2/platforms:macos_aarch64"
     fail("host_platform supports only x86_64-linux, aarch64-linux, and aarch64-darwin")
 
 def host_standalone_platform_label():

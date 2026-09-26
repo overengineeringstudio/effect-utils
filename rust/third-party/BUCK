@@ -3,8 +3,9 @@
 
 load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")
 load("@prelude//rust:cargo_package.bzl", "cargo")
+load("//buck2/rust:crates.bzl", "crate_archive")
 
-http_archive(
+crate_archive(
     name = "adler2-2.0.1.crate",
     sha256 = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa",
     strip_prefix = "adler2-2.0.1",
@@ -21,7 +22,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "anstream-1.0.0.crate",
     sha256 = "824a212faf96e9acacdbd09febd34438f8f711fb84e09a8916013cd7815ca28d",
     strip_prefix = "anstream-1.0.0",
@@ -51,7 +52,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "anstyle-1.0.14.crate",
     sha256 = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000",
     strip_prefix = "anstyle-1.0.14",
@@ -72,7 +73,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "anstyle-parse-1.0.0.crate",
     sha256 = "52ce7f38b242319f7cabaa6813055467063ecdc9d355bbb4ce0c68908cd8130e",
     strip_prefix = "anstyle-parse-1.0.0",
@@ -94,7 +95,7 @@ cargo.rust_library(
     deps = [":utf8parse-0.2"],
 )
 
-http_archive(
+crate_archive(
     name = "anstyle-query-1.1.5.crate",
     sha256 = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc",
     strip_prefix = "anstyle-query-1.1.5",
@@ -111,7 +112,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "anyhow-1.0.104.crate",
     sha256 = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470",
     strip_prefix = "anyhow-1.0.104",
@@ -132,7 +133,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "async-stream-0.3.6.crate",
     sha256 = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476",
     strip_prefix = "async-stream-0.3.6",
@@ -154,7 +155,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "async-stream-impl-0.3.6.crate",
     sha256 = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d",
     strip_prefix = "async-stream-impl-0.3.6",
@@ -177,7 +178,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "async-trait-0.1.91.crate",
     sha256 = "ae36dc4177970ef04fde5178d3e2429882def40e57a451f919c098f72baa6cec",
     strip_prefix = "async-trait-0.1.91",
@@ -200,7 +201,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "atomic-waker-1.1.2.crate",
     sha256 = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0",
     strip_prefix = "atomic-waker-1.1.2",
@@ -223,7 +224,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "axum-0.7.9.crate",
     sha256 = "edca88bc138befd0323b20752846e6587272d3b03b0343c8ea28a6f819e6e71f",
     strip_prefix = "axum-0.7.9",
@@ -280,7 +281,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "axum-core-0.4.5.crate",
     sha256 = "09f2bd6146b97ae3359fa0cc6d6b376d9539582c7b4220f041a33ec24c226199",
     strip_prefix = "axum-core-0.4.5",
@@ -319,7 +320,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "base64-0.22.1.crate",
     sha256 = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6",
     strip_prefix = "base64-0.22.1",
@@ -341,7 +342,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "base64-0.23.1.crate",
     sha256 = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5",
     strip_prefix = "base64-0.23.1",
@@ -362,7 +363,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "block-buffer-0.12.1.crate",
     sha256 = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa",
     strip_prefix = "block-buffer-0.12.1",
@@ -380,7 +381,7 @@ cargo.rust_library(
     deps = [":hybrid-array-0.4"],
 )
 
-http_archive(
+crate_archive(
     name = "bytes-1.12.1.crate",
     sha256 = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04",
     strip_prefix = "bytes-1.12.1",
@@ -401,7 +402,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "cfg-if-1.0.4.crate",
     sha256 = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
     strip_prefix = "cfg-if-1.0.4",
@@ -424,7 +425,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "clap-4.6.6.crate",
     sha256 = "473c7e07f409a8d772161724aa8db6a765a2532a70f9667eeb7b49d3d02fbdca",
     strip_prefix = "clap-4.6.6",
@@ -455,7 +456,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "clap_builder-4.6.6.crate",
     sha256 = "7b48fea5a88e9ae728a2dcbedbfc0e730f7d60da42e1cb049a83c9fb8b789889",
     strip_prefix = "clap_builder-4.6.6",
@@ -486,7 +487,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "clap_derive-4.6.4.crate",
     sha256 = "d012d2b9d65aca7f18f4d9878a045bc17899bba951561ba5ec3c2ba1eed9a061",
     strip_prefix = "clap_derive-4.6.4",
@@ -511,7 +512,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "clap_lex-1.1.0.crate",
     sha256 = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9",
     strip_prefix = "clap_lex-1.1.0",
@@ -528,7 +529,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "colorchoice-1.0.5.crate",
     sha256 = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570",
     strip_prefix = "colorchoice-1.0.5",
@@ -545,7 +546,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "const-oid-0.10.2.crate",
     sha256 = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c",
     strip_prefix = "const-oid-0.10.2",
@@ -562,7 +563,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "cpufeatures-0.3.0.crate",
     sha256 = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201",
     strip_prefix = "cpufeatures-0.3.0",
@@ -587,7 +588,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "crc32fast-1.5.0.crate",
     sha256 = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511",
     strip_prefix = "crc32fast-1.5.0",
@@ -609,7 +610,7 @@ cargo.rust_library(
     deps = [":cfg-if-1"],
 )
 
-http_archive(
+crate_archive(
     name = "crypto-common-0.2.2.crate",
     sha256 = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453",
     strip_prefix = "crypto-common-0.2.2",
@@ -627,7 +628,7 @@ cargo.rust_library(
     deps = [":hybrid-array-0.4"],
 )
 
-http_archive(
+crate_archive(
     name = "digest-0.11.3.crate",
     sha256 = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2",
     strip_prefix = "digest-0.11.3",
@@ -657,7 +658,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "either-1.17.0.crate",
     sha256 = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d",
     strip_prefix = "either-1.17.0",
@@ -678,7 +679,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "equivalent-1.0.2.crate",
     sha256 = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f",
     strip_prefix = "equivalent-1.0.2",
@@ -695,7 +696,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "errno-0.3.14.crate",
     sha256 = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb",
     strip_prefix = "errno-0.3.14",
@@ -717,7 +718,7 @@ cargo.rust_library(
     deps = [":libc-0.2"],
 )
 
-http_archive(
+crate_archive(
     name = "filetime-0.2.29.crate",
     sha256 = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759",
     strip_prefix = "filetime-0.2.29",
@@ -744,7 +745,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "flate2-1.1.9.crate",
     sha256 = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c",
     strip_prefix = "flate2-1.1.9",
@@ -771,7 +772,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "fnv-1.0.7.crate",
     sha256 = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1",
     strip_prefix = "fnv-1.0.7",
@@ -792,7 +793,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "form_urlencoded-1.2.2.crate",
     sha256 = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf",
     strip_prefix = "form_urlencoded-1.2.2",
@@ -815,7 +816,7 @@ cargo.rust_library(
     deps = [":percent-encoding-2"],
 )
 
-http_archive(
+crate_archive(
     name = "futures-channel-0.3.33.crate",
     sha256 = "262590f4fe6afeb0bc83be1daa64e52657fe185690a958af7f3ad0e92085c5ae",
     strip_prefix = "futures-channel-0.3.33",
@@ -838,7 +839,7 @@ cargo.rust_library(
     deps = [":futures-core-0.3"],
 )
 
-http_archive(
+crate_archive(
     name = "futures-core-0.3.33.crate",
     sha256 = "2cd50c473c80f6d7c3670a752354b8e569b1a7cbfdc0419ec88e5edad85e0dc7",
     strip_prefix = "futures-core-0.3.33",
@@ -860,7 +861,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "futures-executor-0.3.33.crate",
     sha256 = "6754879cc9f2c66f88c6e5c35344bb0bdb0708b0352b1201815667c7eabc7458",
     strip_prefix = "futures-executor-0.3.33",
@@ -886,7 +887,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "futures-macro-0.3.33.crate",
     sha256 = "2d6d3cde68c518367be28956066ddfef33813991b77a55005a69dae04bf3b10b",
     strip_prefix = "futures-macro-0.3.33",
@@ -909,7 +910,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "futures-sink-0.3.33.crate",
     sha256 = "e34418ac499d6305c2fb5ad0ed2f6ac998c5f8ca209b4510f7f94242c647e307",
     strip_prefix = "futures-sink-0.3.33",
@@ -931,7 +932,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "futures-task-0.3.33.crate",
     sha256 = "b231ed28831efb4a61a08580c4bc233ec56bc009f4cd8f52da2c3cb97df0c109",
     strip_prefix = "futures-task-0.3.33",
@@ -952,7 +953,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "futures-util-0.3.33.crate",
     sha256 = "a77a90a256fce34da66415271e30f94ee91c57b04b8a2c042d9cf3220179deaa",
     strip_prefix = "futures-util-0.3.33",
@@ -987,7 +988,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "getrandom-0.2.17.crate",
     sha256 = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0",
     strip_prefix = "getrandom-0.2.17",
@@ -1015,7 +1016,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "getrandom-0.4.3.crate",
     sha256 = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
     strip_prefix = "getrandom-0.4.3",
@@ -1036,7 +1037,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "glob-0.3.3.crate",
     sha256 = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280",
     strip_prefix = "glob-0.3.3",
@@ -1053,7 +1054,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "h2-0.4.15.crate",
     sha256 = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155",
     strip_prefix = "h2-0.4.15",
@@ -1083,7 +1084,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "hashbrown-0.12.3.crate",
     sha256 = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888",
     strip_prefix = "hashbrown-0.12.3",
@@ -1101,7 +1102,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "hashbrown-0.17.1.crate",
     sha256 = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a",
     strip_prefix = "hashbrown-0.17.1",
@@ -1118,7 +1119,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "heck-0.5.0.crate",
     sha256 = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea",
     strip_prefix = "heck-0.5.0",
@@ -1135,7 +1136,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "hex-0.4.3.crate",
     sha256 = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70",
     strip_prefix = "hex-0.4.3",
@@ -1157,7 +1158,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "http-1.5.0.crate",
     sha256 = "918d3568bebf352712bc2ef3d46a8bcf1a75b373be6539de198e9105cbbf9ce0",
     strip_prefix = "http-1.5.0",
@@ -1182,7 +1183,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "http-body-1.1.0.crate",
     sha256 = "ca2a8f2913ee65f60facd6a5905613afaa448497a0230cc41ce022d93290bc2c",
     strip_prefix = "http-body-1.1.0",
@@ -1203,7 +1204,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "http-body-util-0.1.4.crate",
     sha256 = "e9f41fd6a08e4d4ec69df65976da761afd5ad5e58a9d4acb46bd1c953a9e3ff2",
     strip_prefix = "http-body-util-0.1.4",
@@ -1228,7 +1229,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "httparse-1.10.1.crate",
     sha256 = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87",
     strip_prefix = "httparse-1.10.1",
@@ -1249,7 +1250,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "httpdate-1.0.3.crate",
     sha256 = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9",
     strip_prefix = "httpdate-1.0.3",
@@ -1266,7 +1267,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "hybrid-array-0.4.14.crate",
     sha256 = "707114b52a152fa7bdb290cd7cd5912d9467273b6d74e21b8d81aca1f8533f6b",
     strip_prefix = "hybrid-array-0.4.14",
@@ -1284,7 +1285,7 @@ cargo.rust_library(
     deps = [":typenum-1"],
 )
 
-http_archive(
+crate_archive(
     name = "hyper-1.11.0.crate",
     sha256 = "d22053281f852e11534f5198498373cbb59295120a20771d90f7ed1897490a72",
     strip_prefix = "hyper-1.11.0",
@@ -1324,7 +1325,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "hyper-timeout-0.5.2.crate",
     sha256 = "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0",
     strip_prefix = "hyper-timeout-0.5.2",
@@ -1348,7 +1349,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "hyper-util-0.1.20.crate",
     sha256 = "96547c2556ec9d12fb1578c4eaf448b04993e7fb79cbaad930a656880a6bdfa0",
     strip_prefix = "hyper-util-0.1.20",
@@ -1390,7 +1391,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "indexmap-1.9.3.crate",
     sha256 = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99",
     strip_prefix = "indexmap-1.9.3",
@@ -1409,7 +1410,7 @@ cargo.rust_library(
     deps = [":hashbrown-0.12"],
 )
 
-http_archive(
+crate_archive(
     name = "indexmap-2.14.0.crate",
     sha256 = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9",
     strip_prefix = "indexmap-2.14.0",
@@ -1435,7 +1436,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "is_terminal_polyfill-1.70.2.crate",
     sha256 = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695",
     strip_prefix = "is_terminal_polyfill-1.70.2",
@@ -1453,7 +1454,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "itertools-0.14.0.crate",
     sha256 = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285",
     strip_prefix = "itertools-0.14.0",
@@ -1476,7 +1477,7 @@ cargo.rust_library(
     deps = [":either-1"],
 )
 
-http_archive(
+crate_archive(
     name = "itoa-1.0.18.crate",
     sha256 = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
     strip_prefix = "itoa-1.0.18",
@@ -1499,7 +1500,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "libc-0.2.186.crate",
     sha256 = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66",
     strip_prefix = "libc-0.2.186",
@@ -1548,7 +1549,7 @@ buildscript_run(
     version = "0.2.186",
 )
 
-http_archive(
+crate_archive(
     name = "log-0.4.33.crate",
     sha256 = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad",
     strip_prefix = "log-0.4.33",
@@ -1565,7 +1566,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "matchit-0.7.3.crate",
     sha256 = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94",
     strip_prefix = "matchit-0.7.3",
@@ -1583,7 +1584,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "memchr-2.8.3.crate",
     sha256 = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
     strip_prefix = "memchr-2.8.3",
@@ -1605,7 +1606,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "mime-0.3.17.crate",
     sha256 = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a",
     strip_prefix = "mime-0.3.17",
@@ -1622,7 +1623,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "miniz_oxide-0.8.9.crate",
     sha256 = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316",
     strip_prefix = "miniz_oxide-0.8.9",
@@ -1648,7 +1649,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "mio-1.2.2.crate",
     sha256 = "30d65c71f1ce40ab09135ce117d742b9f8a19ff91a41a8b57ed50bc2de59c427",
     strip_prefix = "mio-1.2.2",
@@ -1671,7 +1672,7 @@ cargo.rust_library(
     deps = [":libc-0.2"],
 )
 
-http_archive(
+crate_archive(
     name = "once_cell-1.21.4.crate",
     sha256 = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50",
     strip_prefix = "once_cell-1.21.4",
@@ -1694,7 +1695,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "opentelemetry-0.27.1.crate",
     sha256 = "ab70038c28ed37b97d8ed414b6429d343a8bbf44c9f79ec854f3a643029ba6d7",
     strip_prefix = "opentelemetry-0.27.1",
@@ -1739,7 +1740,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "opentelemetry-proto-0.27.0.crate",
     sha256 = "a6e05acbfada5ec79023c85368af14abd0b307c015e9064d249b2a950ef459a6",
     strip_prefix = "opentelemetry-proto-0.27.0",
@@ -1776,7 +1777,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "opentelemetry_sdk-0.27.1.crate",
     sha256 = "231e9d6ceef9b0b2546ddf52335785ce41252bc7474ee8ba05bfad277be13ab8",
     strip_prefix = "opentelemetry_sdk-0.27.1",
@@ -1818,7 +1819,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "percent-encoding-2.3.2.crate",
     sha256 = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220",
     strip_prefix = "percent-encoding-2.3.2",
@@ -1840,7 +1841,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "pin-project-1.1.13.crate",
     sha256 = "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924",
     strip_prefix = "pin-project-1.1.13",
@@ -1858,7 +1859,7 @@ cargo.rust_library(
     deps = [":pin-project-internal-1"],
 )
 
-http_archive(
+crate_archive(
     name = "pin-project-internal-1.1.13.crate",
     sha256 = "c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b",
     strip_prefix = "pin-project-internal-1.1.13",
@@ -1881,7 +1882,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "pin-project-lite-0.2.17.crate",
     sha256 = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd",
     strip_prefix = "pin-project-lite-0.2.17",
@@ -1898,7 +1899,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "ppv-lite86-0.2.21.crate",
     sha256 = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9",
     strip_prefix = "ppv-lite86-0.2.21",
@@ -1920,7 +1921,7 @@ cargo.rust_library(
     deps = [":zerocopy-0.8"],
 )
 
-http_archive(
+crate_archive(
     name = "proc-macro2-1.0.107.crate",
     sha256 = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9",
     strip_prefix = "proc-macro2-1.0.107",
@@ -1976,7 +1977,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "prost-0.13.5.crate",
     sha256 = "2796faa41db3ec313a31f7624d9286acf277b52de526150b7e69f3debf891ee5",
     strip_prefix = "prost-0.13.5",
@@ -2008,7 +2009,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "prost-0.14.4.crate",
     sha256 = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1",
     strip_prefix = "prost-0.14.4",
@@ -2034,7 +2035,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "prost-derive-0.13.5.crate",
     sha256 = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d",
     strip_prefix = "prost-derive-0.13.5",
@@ -2059,7 +2060,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "prost-derive-0.14.4.crate",
     sha256 = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf",
     strip_prefix = "prost-derive-0.14.4",
@@ -2090,7 +2091,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "prost-types-0.14.4.crate",
     sha256 = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a",
     strip_prefix = "prost-types-0.14.4",
@@ -2112,7 +2113,7 @@ cargo.rust_library(
     deps = [":prost-0.14"],
 )
 
-http_archive(
+crate_archive(
     name = "quote-1.0.47.crate",
     sha256 = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001",
     strip_prefix = "quote-1.0.47",
@@ -2134,7 +2135,7 @@ cargo.rust_library(
     deps = [":proc-macro2-1"],
 )
 
-http_archive(
+crate_archive(
     name = "rand-0.8.7.crate",
     sha256 = "22f6172bdec972074665ed81ed53b71da00bfc44b65a753cfde883ec4c702a1a",
     strip_prefix = "rand-0.8.7",
@@ -2166,7 +2167,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "rand_chacha-0.3.1.crate",
     sha256 = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88",
     strip_prefix = "rand_chacha-0.3.1",
@@ -2188,7 +2189,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "rand_core-0.6.4.crate",
     sha256 = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c",
     strip_prefix = "rand_core-0.6.4",
@@ -2211,7 +2212,7 @@ cargo.rust_library(
     deps = [":getrandom-0.2"],
 )
 
-http_archive(
+crate_archive(
     name = "rustversion-1.0.23.crate",
     sha256 = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f",
     strip_prefix = "rustversion-1.0.23",
@@ -2255,7 +2256,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "ruzstd-0.8.3.crate",
     sha256 = "a7c1c839d570d835527c9a5e4db7cb2198683a988cb9d7293fc8674e6bd58fc8",
     strip_prefix = "ruzstd-0.8.3",
@@ -2278,7 +2279,7 @@ cargo.rust_library(
     deps = [":twox-hash-2"],
 )
 
-http_archive(
+crate_archive(
     name = "ryu-1.0.23.crate",
     sha256 = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f",
     strip_prefix = "ryu-1.0.23",
@@ -2301,7 +2302,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "serde-1.0.229.crate",
     sha256 = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
     strip_prefix = "serde-1.0.229",
@@ -2367,7 +2368,7 @@ buildscript_run(
     version = "1.0.229",
 )
 
-http_archive(
+crate_archive(
     name = "serde_core-1.0.229.crate",
     sha256 = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48",
     strip_prefix = "serde_core-1.0.229",
@@ -2426,7 +2427,7 @@ buildscript_run(
     version = "1.0.229",
 )
 
-http_archive(
+crate_archive(
     name = "serde_derive-1.0.229.crate",
     sha256 = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348",
     strip_prefix = "serde_derive-1.0.229",
@@ -2459,7 +2460,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "serde_json-1.0.151.crate",
     sha256 = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14",
     strip_prefix = "serde_json-1.0.151",
@@ -2517,7 +2518,7 @@ buildscript_run(
     version = "1.0.151",
 )
 
-http_archive(
+crate_archive(
     name = "serde_path_to_error-0.1.20.crate",
     sha256 = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457",
     strip_prefix = "serde_path_to_error-0.1.20",
@@ -2538,7 +2539,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "serde_urlencoded-0.7.1.crate",
     sha256 = "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd",
     strip_prefix = "serde_urlencoded-0.7.1",
@@ -2567,7 +2568,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "sha2-0.11.0.crate",
     sha256 = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4",
     strip_prefix = "sha2-0.11.0",
@@ -2594,7 +2595,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "signal-hook-registry-1.4.8.crate",
     sha256 = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b",
     strip_prefix = "signal-hook-registry-1.4.8",
@@ -2615,7 +2616,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "simd-adler32-0.3.9.crate",
     sha256 = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214",
     strip_prefix = "simd-adler32-0.3.9",
@@ -2632,7 +2633,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "slab-0.4.12.crate",
     sha256 = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5",
     strip_prefix = "slab-0.4.12",
@@ -2653,7 +2654,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "smallvec-1.15.2.crate",
     sha256 = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90",
     strip_prefix = "smallvec-1.15.2",
@@ -2674,7 +2675,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "socket2-0.5.10.crate",
     sha256 = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678",
     strip_prefix = "socket2-0.5.10",
@@ -2693,7 +2694,7 @@ cargo.rust_library(
     deps = [":libc-0.2"],
 )
 
-http_archive(
+crate_archive(
     name = "socket2-0.6.5.crate",
     sha256 = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4",
     strip_prefix = "socket2-0.6.5",
@@ -2712,7 +2713,7 @@ cargo.rust_library(
     deps = [":libc-0.2"],
 )
 
-http_archive(
+crate_archive(
     name = "strsim-0.11.1.crate",
     sha256 = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f",
     strip_prefix = "strsim-0.11.1",
@@ -2729,7 +2730,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "syn-2.0.119.crate",
     sha256 = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297",
     strip_prefix = "syn-2.0.119",
@@ -2762,7 +2763,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "syn-3.0.3.crate",
     sha256 = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3",
     strip_prefix = "syn-3.0.3",
@@ -2794,7 +2795,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "sync_wrapper-1.0.2.crate",
     sha256 = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263",
     strip_prefix = "sync_wrapper-1.0.2",
@@ -2817,7 +2818,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "tar-0.4.46.crate",
     sha256 = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840",
     strip_prefix = "tar-0.4.46",
@@ -2838,7 +2839,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "thiserror-1.0.69.crate",
     sha256 = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52",
     strip_prefix = "thiserror-1.0.69",
@@ -2883,7 +2884,7 @@ buildscript_run(
     version = "1.0.69",
 )
 
-http_archive(
+crate_archive(
     name = "thiserror-impl-1.0.69.crate",
     sha256 = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1",
     strip_prefix = "thiserror-impl-1.0.69",
@@ -2912,7 +2913,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "tokio-1.53.1.crate",
     sha256 = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed",
     strip_prefix = "tokio-1.53.1",
@@ -2958,7 +2959,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "tokio-macros-2.7.0.crate",
     sha256 = "385a6cb71ab9ab790c5fe8d67f1645e6c450a7ce006a33de03daa956cf70a496",
     strip_prefix = "tokio-macros-2.7.0",
@@ -2981,7 +2982,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "tokio-stream-0.1.18.crate",
     sha256 = "32da49809aab5c3bc678af03902d4ccddea2a87d028d86392a4b1560c6906c70",
     strip_prefix = "tokio-stream-0.1.18",
@@ -3004,7 +3005,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "tokio-util-0.7.18.crate",
     sha256 = "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098",
     strip_prefix = "tokio-util-0.7.18",
@@ -3039,7 +3040,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "tonic-0.12.3.crate",
     sha256 = "877c5b330756d856ffcc4553ab34a5684481ade925ecc54bcd1bf02b1d0d4d52",
     strip_prefix = "tonic-0.12.3",
@@ -3092,7 +3093,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "tower-0.4.13.crate",
     sha256 = "b8fa9be0de6cf49e536ce1851f987bd21a43b771b09473c3549a6c853db37c1c",
     strip_prefix = "tower-0.4.13",
@@ -3144,7 +3145,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "tower-0.5.3.crate",
     sha256 = "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4",
     strip_prefix = "tower-0.5.3",
@@ -3182,7 +3183,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "tower-layer-0.3.3.crate",
     sha256 = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e",
     strip_prefix = "tower-layer-0.3.3",
@@ -3199,7 +3200,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "tower-service-0.3.3.crate",
     sha256 = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3",
     strip_prefix = "tower-service-0.3.3",
@@ -3216,7 +3217,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "tracing-0.1.44.crate",
     sha256 = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100",
     strip_prefix = "tracing-0.1.44",
@@ -3246,7 +3247,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "tracing-attributes-0.1.31.crate",
     sha256 = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da",
     strip_prefix = "tracing-attributes-0.1.31",
@@ -3269,7 +3270,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "tracing-core-0.1.36.crate",
     sha256 = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a",
     strip_prefix = "tracing-core-0.1.36",
@@ -3291,7 +3292,7 @@ cargo.rust_library(
     deps = [":once_cell-1"],
 )
 
-http_archive(
+crate_archive(
     name = "try-lock-0.2.5.crate",
     sha256 = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b",
     strip_prefix = "try-lock-0.2.5",
@@ -3308,7 +3309,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "twox-hash-2.1.4.crate",
     sha256 = "5283634e518fe9e82c7b20520bb4bc209009fd16c82077c802f8111ecbb0117a",
     strip_prefix = "twox-hash-2.1.4",
@@ -3326,7 +3327,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "typenum-1.20.1.crate",
     sha256 = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20",
     strip_prefix = "typenum-1.20.1",
@@ -3344,7 +3345,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "unicode-ident-1.0.24.crate",
     sha256 = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75",
     strip_prefix = "unicode-ident-1.0.24",
@@ -3367,7 +3368,7 @@ alias(
     visibility = ["PUBLIC"],
 )
 
-http_archive(
+crate_archive(
     name = "ureq-3.4.2.crate",
     sha256 = "9a7ac20be9b7726e0bbdbf974c059676d9acb1cd414961f570a4e8231cacd7fc",
     strip_prefix = "ureq-3.4.2",
@@ -3391,7 +3392,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "ureq-proto-0.6.4.crate",
     sha256 = "f86fd172ccca569e458f61b6bdd6220965a9ef36e672a6852953b51a0e1583be",
     strip_prefix = "ureq-proto-0.6.4",
@@ -3415,7 +3416,7 @@ cargo.rust_library(
     ],
 )
 
-http_archive(
+crate_archive(
     name = "utf8-zero-0.8.1.crate",
     sha256 = "b8c0a043c9540bae7c578c88f91dda8bd82e59ae27c21baca69c8b191aaf5a6e",
     strip_prefix = "utf8-zero-0.8.1",
@@ -3436,7 +3437,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "utf8parse-0.2.2.crate",
     sha256 = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821",
     strip_prefix = "utf8parse-0.2.2",
@@ -3454,7 +3455,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "want-0.3.1.crate",
     sha256 = "bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e",
     strip_prefix = "want-0.3.1",
@@ -3472,7 +3473,7 @@ cargo.rust_library(
     deps = [":try-lock-0.2"],
 )
 
-http_archive(
+crate_archive(
     name = "zerocopy-0.8.56.crate",
     sha256 = "556764e583adb45a9f8d413c2a147fa7e8d821e48e12b14fd560b607998b75eb",
     strip_prefix = "zerocopy-0.8.56",
@@ -3507,7 +3508,7 @@ cargo.rust_library(
     visibility = [],
 )
 
-http_archive(
+crate_archive(
     name = "zmij-1.0.23.crate",
     sha256 = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b",
     strip_prefix = "zmij-1.0.23",

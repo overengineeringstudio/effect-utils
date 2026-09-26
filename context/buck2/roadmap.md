@@ -104,12 +104,14 @@ resolution paths.
   otel-scrape, archive-tool, core, and product. Cargo manifests and the root
   lock remain request and resolution authority; generated first-party rules and
   the strict Reindeer graph project that authority without a second lock.
-- Third-party Rust sources are Buck-fetched per
+- Third-party Rust sources follow
   [decision 0023](./.decisions/0023-buck-fetched-rust-crates.md): Reindeer uses
-  `vendor = false`, 126 `http_archive` targets take their sha256 from the
-  authoritative lock, and build/buildscript actions remain offline. The former
-  Nix vendor realization, vendor symlink task, and vendored Cargo config are
-  gone.
+  `vendor = false` and emits `crate_archive` targets pinned by the authoritative
+  Cargo lock. Ordinary Buck builds fetch the pinned archives; sandboxed
+  from-source Nix builds provide the same bytes through `mkBuck2CargoArchives`
+  without network access. Build and buildscript actions remain offline. The
+  former Nix vendor realization, vendor symlink task, and vendored Cargo config
+  are gone.
 - `otelite` and `otel-scrape` emit strict `buck-build-product/v1` products for
   x86_64 Linux glibc, aarch64 Linux glibc, and aarch64 Darwin. Every tuple was
   executed natively, published under an immutable payload-addressed release,
