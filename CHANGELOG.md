@@ -95,6 +95,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/effect-rpc-explorer**: Add a passive Effect RPC observer with
+  policy-safe capture, bounded revisioned records, inspector snapshots/deltas,
+  schema and OpenAPI descriptors, and schema-backed lifecycle telemetry.
+- **@overeng/effect-rpc-explorer**: Resolve capture independently per RPC
+  with a construction-time host selector and `RpcExplorerCapture` annotation;
+  sparse policies retain host > RPC > root schema > omit precedence across
+  protocol and middleware observation.
+- **@overeng/effect-rpc-explorer-react**: Add the responsive React Aria/StyleX
+  inspector for RPC lifecycles, captured fields, schema metadata, and
+  accessible filtering, sorting, and keyboard navigation.
+
 - **Repository-wide**: move the Effect 4 cohort from `effect@4.0.0-rc.112` to
   `effect@4.0.0-rc.113` (with `@effect/platform-node`, `@effect/vitest`,
   `@effect/opentelemetry`, `@effect/atom-react`, and the pinned
@@ -150,6 +161,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/otel-contract**: Accept an additive `incremental` counter option
+  so OTLP metrics preserve monotonic counter semantics.
+
 - **Buck2 editor views**: Editor-view publication proves the materialized snapshot
   copy against the admitted pre-copy digests in an owner-resolved link form — plus a
   per-root inventory of every symlink's literal text, recorded by the materializer
@@ -194,6 +208,9 @@ All notable changes to this project will be documented in this file.
   require the explicit `--compose` flag for the paused cross-repository shape,
   fail closed when a member still carries standalone Buck root authority, and
   retain structured composition failure causes at the command boundary.
+- **@overeng/effect-rpc-explorer / otel-contract**: Route fault spans and lifecycle
+  counters through schema-backed telemetry contracts while preserving monotonic
+  counter temporality and the explorer's bounded labels and host-only instruments.
 - **devenv**: Load tracked Buck products through the flake's
   `buckProducts`, which wires the source recipes cache-native manifest rows
   require. The loader now requires `fromSourceProducts`, so a caller that

@@ -16,6 +16,8 @@ export const internalPackages = [
   'effect-distributed-lock',
   'effect-path',
   'effect-react',
+  'effect-rpc-explorer',
+  'effect-rpc-explorer-react',
   'effect-rpc-tanstack',
   'effect-schema-form',
   'effect-schema-form-aria',

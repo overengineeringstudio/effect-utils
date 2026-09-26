@@ -157,6 +157,60 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-rpc-explorer-react:test_collect",
+      "excludes": [],
+      "packageName": "effect-rpc-explorer-react",
+      "packagePath": "packages/@overeng/effect-rpc-explorer-react",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/ChannelContentPanel.unit.test.ts",
+        "src/SchemaTree.unit.test.ts",
+        "src/projection.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-rpc-explorer-react:test",
+      "taskName": "test:effect-rpc-explorer-react",
+      "testFiles": [
+        "src/ChannelContentPanel.unit.test.ts",
+        "src/SchemaTree.unit.test.ts",
+        "src/projection.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-rpc-explorer:test_collect",
+      "excludes": [],
+      "packageName": "effect-rpc-explorer",
+      "packagePath": "packages/@overeng/effect-rpc-explorer",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/descriptor.unit.test.ts",
+        "src/explorer.unit.test.ts",
+        "src/inspector.unit.test.ts",
+        "src/middleware.unit.test.ts",
+        "src/policy.unit.test.ts",
+        "src/protocol.unit.test.ts",
+        "src/store.unit.test.ts",
+        "src/telemetry.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-rpc-explorer:test",
+      "taskName": "test:effect-rpc-explorer",
+      "testFiles": [
+        "src/descriptor.unit.test.ts",
+        "src/explorer.unit.test.ts",
+        "src/inspector.unit.test.ts",
+        "src/middleware.unit.test.ts",
+        "src/policy.unit.test.ts",
+        "src/protocol.unit.test.ts",
+        "src/store.unit.test.ts",
+        "src/telemetry.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/effect-rpc-tanstack:test_collect",
       "excludes": [],
       "packageName": "effect-rpc-tanstack",

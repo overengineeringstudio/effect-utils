@@ -9,6 +9,8 @@ import { buck2TypeScriptAdmission as effectAiClaudeCliAdmission } from '../../pa
 import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectPathAdmission } from '../../packages/@overeng/effect-path/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectReactAdmission } from '../../packages/@overeng/effect-react/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRpcExplorerAdmission } from '../../packages/@overeng/effect-rpc-explorer/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRpcExplorerReactAdmission } from '../../packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackAdmission } from '../../packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackBasicAdmission } from '../../packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAriaAdmission } from '../../packages/@overeng/effect-schema-form-aria/BUCK.genie.ts'
@@ -81,6 +83,8 @@ export const buck2TypeScriptAdmissions = {
   effectDistributedLock: effectDistributedLockAdmission,
   effectPath: effectPathAdmission,
   effectReact: effectReactAdmission,
+  effectRpcExplorer: effectRpcExplorerAdmission,
+  effectRpcExplorerReact: effectRpcExplorerReactAdmission,
   effectRpcTanstack: effectRpcTanstackAdmission,
   effectRpcTanstackBasic: effectRpcTanstackBasicAdmission,
   effectSchemaForm: effectSchemaFormAdmission,

@@ -1022,7 +1022,24 @@ describe('OtelMetric', () => {
       if (entry.id !== 'otel_contract_test_bridge_counter_total') return false
       return entry.attributes?.service === 'api' && entry.attributes?.cache_hit === 'true'
     })
-    expect(pair?.state).toMatchObject({ count: 3 })
+    expect(pair?.state).toMatchObject({ count: 3, incremental: false })
+  })
+
+  it('preserves monotonic counter temporality when requested', async () => {
+    const counter = OtelMetric.counter({
+      name: 'otel_contract_test_monotonic_counter_total',
+      incremental: true,
+      labels: Schema.Struct({ outcome: OtelAttr.literal('outcome', 'ok', 'failed') }),
+    })
+    const bridge = OtelMetric.effect.counter(counter)
+    await Effect.runPromise(bridge.increment({ outcome: 'ok' }))
+
+    const entry = (await Effect.runPromise(Metric.snapshot)).find(
+      (candidate) =>
+        candidate.id === 'otel_contract_test_monotonic_counter_total' &&
+        candidate.attributes?.outcome === 'ok',
+    )
+    expect(entry?.state).toMatchObject({ count: 1, incremental: true })
   })
 
   it('bridges schema-first histograms to tagged Effect metrics', async () => {
