@@ -105,9 +105,13 @@ def _native_rust_toolchain_impl(ctx):
             nightly_features = False,
             panic_runtime = PanicRuntime("unwind"),
             rustc_env = ctx.attrs.compile_env,
-            # Buck defaults to rustc opt-level 0; make it explicit so Prelude
-            # also supplies Cargo build scripts' required OPT_LEVEL for cc-rs.
-            rustc_flags = ["-Copt-level=0"],
+            # Prelude links binaries through rustc unless advanced unstable
+            # linking is enabled. Pin that final link to the same Nix capability
+            # whose portable RPATH/interpreter environment rustc_env carries.
+            rustc_flags = [
+                "-Copt-level=0",  # Cargo build scripts need OPT_LEVEL.
+                "-Clinker={}".format(ctx.attrs.linker),
+            ],
             rustc_target_triple = ctx.attrs.target_triple,
             rustdoc = RunInfo(args = [ctx.attrs.rustdoc]),
             rustdoc_env = ctx.attrs.compile_env,
