@@ -1306,9 +1306,8 @@ in
   tasks."otel:pipeline-run:test" = {
     description = "Check deterministic run identity and interruption handling";
     exec = trace.exec "otel:pipeline-run:test" ''
-      env -u PIPELINE_RUN_ID -u PIPELINE_TASK_KEY -u PIPELINE_ROOT_OWNER \
-        bash ${./nix/devenv-modules/tasks/shared/tests/pipeline-run.test.sh} \
-          ${otelSpan}/bin/otel-span
+      PATH=${lib.makeBinPath [ pkgs.jq pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.gnugrep ]}:$PATH \
+        bash ${./nix/devenv-modules/tasks/shared/tests/pipeline-run.test.sh} ${otelSpan}/bin/otel-span
     '';
   };
 
