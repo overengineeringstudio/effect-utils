@@ -71,7 +71,14 @@ native.rust_binary(
     crate = "otel_scrape",
     crate_root = "src/main.rs",
     srcs = [
+        "src/adapters/deadnix.rs",
+        "src/adapters/mod.rs",
+        "src/adapters/node_cpuprofile.rs",
+        "src/adapters/oxlint.rs",
+        "src/adapters/vitest.rs",
+        "src/content_address.rs",
         "src/main.rs",
+        "src/telemetry_registry.gen.rs",
     ],
     deps = [
         "//rust/third-party:getrandom",

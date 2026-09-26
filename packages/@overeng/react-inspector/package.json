@@ -29,7 +29,7 @@
     "!dist/**/*.tsbuildinfo"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.json --noEmit false --outDir dist --declaration true --declarationMap false --composite false --incremental false",
+    "build": "tsc --project tsconfig.json --noEmit false --outDir dist-pack --declaration true --declarationMap false --composite false --incremental false",
     "storybook": "storybook dev -p 6011",
     "storybook:build": "storybook build"
   },

@@ -29,6 +29,7 @@ native.rust_binary(
     crate_root = "src/main.rs",
     srcs = [
         "src/main.rs",
+        "src/npm_manifest.rs",
     ],
     deps = [
         "//rust/buck2-tools/core:lib",
