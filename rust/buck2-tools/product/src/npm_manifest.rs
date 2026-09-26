@@ -315,10 +315,19 @@ mod tests {
         let source = br#"{"name":"x","exports":{".":{"types":"./dist/src/mod.d.ts","default":"./src/mod.ts"}},"publishConfig":{"access":"public","registry":"https://registry.example.test","exports":{".":{"types":"./dist/src/mod.d.ts","default":"./dist/src/mod.js"}},"bin":{"x":"./dist/src/cli.js"}}}"#;
         let packed = published_manifest(source, &BTreeMap::new()).unwrap();
         let text = String::from_utf8(packed.clone()).unwrap();
-        assert!(text.contains(r#""publishConfig": {"#));
-        assert!(text.contains(r#""access": "public""#));
-        assert!(text.contains(r#""registry": "https://registry.example.test""#));
-        assert!(!text.contains(r#""publishConfig": {"exports""#));
+        let Json::Object(fields) = serde_json::from_slice::<Json>(&packed).unwrap() else {
+            panic!("packed manifest must be an object");
+        };
+        assert_eq!(
+            fields.iter().find(|(key, _)| key == "publishConfig").map(|(_, value)| value),
+            Some(&Json::Object(vec![
+                ("access".to_owned(), Json::String("public".to_owned())),
+                (
+                    "registry".to_owned(),
+                    Json::String("https://registry.example.test".to_owned()),
+                ),
+            ]))
+        );
         assert!(text.find("\"types\"").unwrap() < text.find("\"default\"").unwrap());
         validate_targets(
             &packed,
