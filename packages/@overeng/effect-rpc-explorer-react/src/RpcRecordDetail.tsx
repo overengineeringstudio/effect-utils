@@ -4,6 +4,7 @@ import {
   Button,
   Heading,
   Tab,
+  Link,
   TabList,
   TabPanel,
   Tabs,
@@ -35,6 +36,7 @@ import {
 } from './view-model.ts'
 
 /** Typed inputs for the selected-record detail surface. */
+export type { TraceHref }
 export type { RpcRecordDetailProps }
 /** Selected-record detail with summary, timeline, content, descriptor, and trace tabs. */
 export { RpcRecordDetail }
@@ -95,7 +97,11 @@ const styles = stylex.create({
     borderColor: explorerTokens.warning,
     fontWeight: 600,
   },
-  back: { display: { default: 'none', '@media (max-width: 63.99rem)': 'inline-flex' } },
+  back: {
+    display: { default: 'none', '@media (max-width: 63.99rem)': 'inline-flex' },
+    alignItems: 'center',
+    columnGap: explorerTokens['density-block'],
+  },
   hidden: { display: 'none' },
   visible: { display: 'inline-flex' },
   status: {
@@ -147,6 +153,14 @@ const styles = stylex.create({
     fontFamily: explorerTokens['font-data'],
   },
   stack: { display: 'grid', gap: explorerTokens['density-gap'] },
+  traceLink: {
+    color: explorerTokens.info,
+    textDecoration: 'underline',
+    outline: {
+      default: 'none',
+      '[data-focus-visible]': `2px solid ${explorerTokens['focus-ring']}`,
+    },
+  },
   empty: { padding: spacing[4], color: explorerTokens['muted-text'] },
   timeline: { display: 'grid', gap: 0, margin: 0, padding: 0, listStyle: 'none' },
   timelineItem: {
@@ -418,13 +432,34 @@ const DescriptorPanel = ({
   )
 }
 
-const TracePanel = ({ record }: { record: RpcRecord }): ReactNode =>
-  record.trace === undefined ? (
-    <p {...stylex.props(styles.empty)}>No trace context observed</p>
-  ) : (
+type TraceHref = (trace: {
+  readonly traceId: string
+  readonly spanId?: string | undefined
+}) => string | undefined
+
+const TracePanel = ({
+  record,
+  traceHref,
+}: {
+  record: RpcRecord
+  traceHref?: TraceHref | undefined
+}): ReactNode => {
+  if (record.trace === undefined) {
+    return <p {...stylex.props(styles.empty)}>No trace context observed</p>
+  }
+  const href = traceHref?.(record.trace)
+  return (
     <div {...stylex.props(styles.stack)}>
       <dl {...stylex.props(styles.propertyGrid)}>
-        <Property label="Trace ID">{record.trace.traceId}</Property>
+        <Property label="Trace ID">
+          {href === undefined ? (
+            record.trace.traceId
+          ) : (
+            <Link href={href} target="_blank" rel="noreferrer" {...stylex.props(styles.traceLink)}>
+              {record.trace.traceId}
+            </Link>
+          )}
+        </Property>
         <Property label="Span ID">{record.trace.spanId ?? 'Not observed'}</Property>
         <Property label="Sampled">
           {record.trace.sampled === undefined ? 'Not observed' : String(record.trace.sampled)}
@@ -438,6 +473,7 @@ const TracePanel = ({ record }: { record: RpcRecord }): ReactNode =>
       </div>
     </div>
   )
+}
 
 interface RpcRecordDetailProps {
   readonly record: RpcRecord
@@ -445,6 +481,7 @@ interface RpcRecordDetailProps {
   readonly projection: ExplorerProjection
   readonly nowMillis: number
   readonly onBack: () => void
+  readonly traceHref?: TraceHref | undefined
   readonly backVisibility: 'auto' | 'always' | 'never'
 }
 
@@ -455,6 +492,7 @@ const RpcRecordDetail = ({
   nowMillis,
   onBack,
   backVisibility,
+  traceHref,
 }: RpcRecordDetailProps): ReactNode => {
   const events = eventsForRecord({ record, projection })
   return (
@@ -469,7 +507,7 @@ const RpcRecordDetail = ({
           )}
           onPress={onBack}
         >
-          <span aria-hidden="true">← </span>Back to records
+          <span aria-hidden="true">←</span>Back to records
         </Button>
         <div {...stylex.props(styles.detailIdentity)}>
           <Heading id="rpc-explorer-detail-title" level={2} {...stylex.props(styles.detailTitle)}>
@@ -518,7 +556,7 @@ const RpcRecordDetail = ({
           <DescriptorPanel descriptor={descriptor} />
         </TabPanel>
         <TabPanel id="trace" {...stylex.props(styles.tabPanel)}>
-          <TracePanel record={record} />
+          <TracePanel record={record} traceHref={traceHref} />
         </TabPanel>
       </Tabs>
     </article>
