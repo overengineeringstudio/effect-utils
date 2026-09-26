@@ -203,6 +203,43 @@ dynamic_import="$(build_expr "$dynamic_import_expr")"
 }
 "$dynamic_import/bin/fixture-tool"
 
+# Source import: the descriptor is only a build output, so the realization must
+# apply the contract and the caller's declaration at build time (no IFD).
+source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
+  sourceImport = import (repo + \"/nix/buck2-products/native-import.nix\") { inherit pkgs; };
+  descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+  mkSource = { root ? exported, productName ? descriptor.name }: {
+    outPath = root;
+    productKind = \"native\";
+    inherit productName;
+    artifactName = \"artifact.tar\";
+    target = descriptor.semanticProvenance.target;
+  };"
+source_import="$(build_expr "let
+  $common_let
+  $source_product_let
+in sourceImport { sourceProduct = mkSource { }; expectedPlatform = descriptor.platform; }")"
+"$source_import/bin/fixture-tool"
+expect_build_failure \
+  "source import declared name mismatch" \
+  "descriptor does not match the declared product" \
+  "let
+  $common_let
+  $source_product_let
+in sourceImport { sourceProduct = mkSource { productName = \"other-tool\"; }; expectedPlatform = descriptor.platform; }"
+expect_build_failure \
+  "source import descriptor outside the contract" \
+  "descriptor has unknown fields: extra" \
+  "let
+  $common_let
+  $source_product_let
+  tampered = pkgs.runCommand \"tampered-source-product\" { nativeBuildInputs = [ pkgs.jq ]; } ''
+    mkdir -p \$out
+    cp \${exported}/artifact.tar \$out/artifact.tar
+    jq -c '. + {extra: true}' \${exported}/descriptor.json > \$out/descriptor.json
+  '';
+in sourceImport { sourceProduct = mkSource { root = tampered; }; expectedPlatform = descriptor.platform; }"
+
 inspector_expr="let
   $common_let
 in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-dynamic.nix\") { inherit pkgs; }"
