@@ -188,6 +188,7 @@ repository_static_checks(
     "//rust/buck2-tools/archive-tool:static_sources",
     "//rust/buck2-tools/core:static_sources",
     "//rust/buck2-tools/events:static_sources",
+    "//rust/buck2-tools/evidence:static_sources",
     "//rust/buck2-tools/product:static_sources"
 ],
     visibility = ["PUBLIC"],

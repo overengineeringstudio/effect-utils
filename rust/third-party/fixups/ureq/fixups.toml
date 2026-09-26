@@ -1,0 +1,2 @@
+# The default User-Agent embeds the package name and version at compile time.
+cargo_env = ["CARGO_PKG_NAME", "CARGO_PKG_VERSION"]

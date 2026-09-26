@@ -1,0 +1,2 @@
+# The build script selects thread parking implementation cfgs.
+buildscript.run = true

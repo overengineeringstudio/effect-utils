@@ -26,14 +26,14 @@ tokio = { version = "1", features = [
   "fs",
   "io-util",
 ] }
-axum = "0.7"
-tonic = "0.12"
-prost = "0.13"
+axum = "0.8"
+tonic = "0.14"
+prost = "0.14"
 serde.workspace = true
 serde_json.workspace = true
 # opentelemetry-proto provides the message types, canonical OTLP/JSON serde,
 # protobuf decode, AND the generated tonic server traits + *Server adapters.
-opentelemetry-proto = { version = "0.27", default-features = false, features = [
+opentelemetry-proto = { version = "0.31", default-features = false, features = [
   "gen-tonic",
   "trace",
   "metrics",
