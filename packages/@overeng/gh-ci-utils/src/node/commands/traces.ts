@@ -45,6 +45,7 @@ type Document = {
   comparison?: Comparison
 }
 
+/** Failure of the `traces` command: invalid input, resolver access, or snapshot publication. */
 export class TraceCommandError extends Schema.TaggedError<TraceCommandError>()(
   'TraceCommandError',
   {
@@ -98,7 +99,7 @@ const print = (doc: Document) => {
   }
 }
 
-const publishFreeze = async (doc: Document, prNumber: number) => {
+const publishFreeze = async ({ doc, prNumber }: { doc: Document; prNumber: number }) => {
   const slug = `buck2-pr-${doc.repository.replaceAll(/[^A-Za-z0-9-]/g, '-')}-${prNumber}-${Date.now()}`
   const dir = path.join('resources', 'vista', slug)
   await fs.mkdir(dir, { recursive: true })
@@ -122,6 +123,7 @@ const publishFreeze = async (doc: Document, prNumber: number) => {
   })
 }
 
+/** `gh-ci-utils traces <pr>`: resolve a PR's Buck build traces and optionally freeze them in Vista. */
 export const tracesCommand = Cli.Command.make('traces', { pr, repo, resolver, freeze }).pipe(
   Cli.Command.withHandler(
     ({ pr: number, repo: repoOpt, resolver: resolverOpt, freeze: shouldFreeze }) =>
@@ -168,7 +170,7 @@ export const tracesCommand = Cli.Command.make('traces', { pr, repo, resolver, fr
         print(doc)
         if (shouldFreeze) {
           yield* Effect.tryPromise({
-            try: () => publishFreeze(doc, number),
+            try: () => publishFreeze({ doc, prNumber: number }),
             catch: (cause) =>
               new TraceCommandError({
                 message: `Could not publish trace snapshot: ${String(cause)}`,
