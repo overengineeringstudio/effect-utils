@@ -2912,8 +2912,7 @@ jobs:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 120
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     defaults:
       run:
         shell: bash
@@ -2921,7 +2920,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -2971,7 +2969,8 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Publish products and propose manifest
+      - id: product-publication
+        name: Publish products
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (steps.publication-scope.outputs.publish == 'true')
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2982,16 +2981,47 @@ jobs:
           nix/buck2-products/publish.sh --proposal "$proposal"
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
-            exit 0
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-
+      - id: publisher-app-config
+        name: Check publisher GitHub App configuration
+        if: steps.product-publication.outputs.changed == 'true'
+        env:
+          APP_ID: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
+        run: |
+          if [ -n "$APP_ID" ] && [ -n "$APP_PRIVATE_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+      - id: publisher-app-token
+        name: Mint publisher GitHub App token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
+          private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
+          owner: overengineeringstudio
+          repositories: effect-utils
+        if: steps.publisher-app-config.outputs.enabled == 'true'
+      - name: Propose published product manifest
+        if: steps.publisher-app-config.outputs.enabled == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
           branch=automation/buck2-products-manifest
           git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true
           git switch -C "$branch"
           cp "$proposal" nix/buck2-products/manifest.json
           git add nix/buck2-products/manifest.json
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'overeng-nix-publisher[bot]'
+          git config user.email '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'
           git commit -m 'chore(buck2): update product cache manifest'
           gh auth setup-git
           git push --force-with-lease origin "HEAD:refs/heads/$branch"
