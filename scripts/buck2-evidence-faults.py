@@ -12,8 +12,6 @@ import sys
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
 
 binary = pathlib.Path(sys.argv[1]).resolve()
 root = pathlib.Path(tempfile.mkdtemp(prefix="buck-evidence-faults-"))
@@ -92,9 +90,6 @@ def command(*args, env=None, check=True):
         raise AssertionError(f"{args}: {proc.stderr}")
     return proc
 
-
-def digest_of(spool):
-    return json.loads((spool / "manifest.json").read_text())["digest"]
 
 
 def seal(number, poison=False):
