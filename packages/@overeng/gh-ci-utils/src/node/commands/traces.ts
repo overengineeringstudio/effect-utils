@@ -38,7 +38,7 @@ type Document = {
   comparison?: Comparison
 }
 
-const pr = Cli.Argument.Integer('pr').pipe(Cli.Argument.withDescription('Pull request number'))
+const pr = Cli.Argument.Int('pr').pipe(Cli.Argument.withDescription('Pull request number'))
 const repo = Cli.Flag.String('repo').pipe(Cli.Flag.optional)
 const resolver = Cli.Flag.String('resolver').pipe(Cli.Flag.optional)
 const freeze = Cli.Flag.Boolean('freeze').pipe(Cli.Flag.withDefault(false))

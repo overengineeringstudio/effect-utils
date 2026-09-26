@@ -42,7 +42,8 @@ pkgs.stdenv.mkDerivation {
   pname = "buck2-evidence";
   version = "0.0.0";
   src = source;
-  nativeBuildInputs = [ buck2 pkgs.cacert ];
+  # Buck's Rust prelude generates linker wrappers with `#!/usr/bin/env bash`.
+  nativeBuildInputs = [ buck2 pkgs.bash pkgs.cacert ];
   dontConfigure = true;
   dontFixup = true;
   buildPhase = ''
