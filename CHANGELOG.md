@@ -43,6 +43,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Storybook and Playwright task caches**: The shared `storybook:build:<name>`
+  tasks, Storybook dev processes, and Playwright test tasks now export
+  `CACHE_DIR` (and `VITE_CACHE_DIR` for Playwright) as
+  `<devenv root>/.devenv/{storybook,vite}-cache/<name>`, which replaces any
+  inherited value. Storybook previously defaulted its cache to
+  `<pkg>/node_modules/.cache`, which is read-only in the Buck editor view, so
+  every Storybook build failed with `EACCES`.
 - **Package archive imports**: Published package manifests declare their runtime
   workspace and Storybook-gate imports, including the optional OTel and
   Storybook peer stacks. CI scans the imports shipped in all package archives
