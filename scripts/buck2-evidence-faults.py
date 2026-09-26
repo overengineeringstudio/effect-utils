@@ -95,7 +95,9 @@ def digest_of(spool):
 
 def seal(number, poison=False):
     spool = root / f"spool-{number}"
-    trace = hashlib.sha256(f"fault-trace-{number}".encode()).hexdigest()[:32]
+    run_id = f"ci/test/example%2Frepo/{number}/1"
+    payload = b"buck2.pipeline-run.trace/v1\0" + len(run_id.encode()).to_bytes(4, "big") + run_id.encode()
+    trace = hashlib.sha256(payload).hexdigest()[:32]
     if poison:
         (spool / "buck2").mkdir(parents=True)
         (spool / "buck2" / "invalid.pb.zst").write_bytes(b"not a zstd frame")
@@ -107,7 +109,7 @@ def seal(number, poison=False):
         doc = {"resourceSpans": [{"resource": {"attributes": []},
                                   "scopeSpans": [{"scope": {"name": "fault"}, "spans": [span]}]}]}
         (spool / "spans" / "job.jsonl").write_text(json.dumps(doc) + "\n")
-    result = command("seal", "--spool", spool, "--run-id", f"ci/test/example%2Frepo/{number}/1",
+    result = command("seal", "--spool", spool, "--run-id", run_id,
                      "--task-key", "fault", env={"PIPELINE_REPOSITORY": "example/repo", "VCS_CHANGE_ID": "42"})
     digest = result.stdout.strip().split(":")[-1]
     return spool, digest
