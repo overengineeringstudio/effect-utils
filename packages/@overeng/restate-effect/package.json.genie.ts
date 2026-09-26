@@ -18,15 +18,17 @@ import utilsPkg from '../utils/package.json.genie.ts'
 const peerDepNames = ['effect'] as const
 
 /* OTel deps are used ONLY by the `./otel` subpath — the base `.` export must not
- * pull them. They are PEERS (a consumer that imports `./otel` provides them) and
- * also dev deps (so the package builds + the OTel test runs locally). This keeps
- * the core dependency-light (decision 0007, spec §10). `@opentelemetry/sdk-metrics`
- * is a peer because the metrics path (decision 0014) imports its
- * `PeriodicExportingMetricReader` / `MetricReader` types directly from `./otel`. */
+ * pull them. They are optional PEERS (a consumer that imports `./otel` provides
+ * them) and dev deps for local builds/tests. Keep the core dependency-light
+ * while declaring every runtime import in the published OTel entry. */
 const otelPeerDepNames = [
   '@effect/opentelemetry',
   '@opentelemetry/api',
+  '@opentelemetry/resources',
   '@opentelemetry/sdk-metrics',
+  '@opentelemetry/sdk-trace-base',
+  '@opentelemetry/sdk-trace-node',
+  '@opentelemetry/semantic-conventions',
   '@restatedev/restate-sdk-opentelemetry',
 ] as const
 
@@ -103,6 +105,9 @@ export default packageJson(
         './testing': './dist/testing/testing.js',
       },
     },
+    peerDependenciesMeta: Object.fromEntries(
+      otelPeerDepNames.map((name) => [name, { optional: true }]),
+    ),
   } satisfies PackageJsonInputData,
   workspaceDeps,
 )
