@@ -1,0 +1,7 @@
+# The build script compiles the target-specific cryptographic primitives and
+# derives its symbol prefix from the full Cargo package identity. Forward its
+# native link directives so those primitives reach final Buck binaries.
+cargo_env = true
+[buildscript.run]
+rustc_link_lib = true
+rustc_link_search = true

@@ -1,0 +1,2 @@
+# Preserve provider and target cfg selection from the crate build script.
+buildscript.run = true
