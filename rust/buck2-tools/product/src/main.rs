@@ -457,7 +457,9 @@ fn mach_o_signing_policy(bytes: &[u8], offset: usize, size: usize) -> ToolResult
         ));
     }
     match (ad_hoc_code_directory, cms_size) {
-        (true, Some(8)) => Ok("adhoc/v1"),
+        // Both Apple codesign and Bun emit valid ad-hoc CodeDirectories. Apple
+        // adds an empty CMS wrapper; Bun omits the wrapper altogether.
+        (true, None | Some(8)) => Ok("adhoc/v1"),
         (false, Some(size)) if size > 8 => Ok("embedded/v1"),
         (true, Some(_)) => Err(fail(
             "BUCK2_PRODUCT_MACHO",
@@ -466,10 +468,6 @@ fn mach_o_signing_policy(bytes: &[u8], offset: usize, size: usize) -> ToolResult
         (false, _) => Err(fail(
             "BUCK2_PRODUCT_MACHO",
             "non-ad-hoc Mach-O CodeDirectory has no embedded CMS signature",
-        )),
-        (true, None) => Err(fail(
-            "BUCK2_PRODUCT_MACHO",
-            "ad-hoc Mach-O CodeDirectory has no empty CMS wrapper",
         )),
     }
 }
@@ -1241,6 +1239,23 @@ mod tests {
             mach_o_signing_policy(&ad_hoc, 0, ad_hoc.len()).unwrap(),
             "adhoc/v1"
         );
+        let bun_ad_hoc = [
+            0xfade_0cc0u32, 36, 1, 0, 20, 0xfade_0c02, 16, 0, 0x2,
+        ]
+        .into_iter()
+        .flat_map(u32::to_be_bytes)
+        .collect::<Vec<_>>();
+        assert_eq!(
+            mach_o_signing_policy(&bun_ad_hoc, 0, bun_ad_hoc.len()).unwrap(),
+            "adhoc/v1"
+        );
+        let unsigned = [
+            0xfade_0cc0u32, 36, 1, 0, 20, 0xfade_0c02, 16, 0, 0,
+        ]
+        .into_iter()
+        .flat_map(u32::to_be_bytes)
+        .collect::<Vec<_>>();
+        assert!(mach_o_signing_policy(&unsigned, 0, unsigned.len()).is_err());
 
         let embedded = signature_with_cms(0, 16);
         assert_eq!(

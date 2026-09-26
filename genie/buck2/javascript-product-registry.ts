@@ -10,6 +10,8 @@ import type { JavaScriptProduct } from './javascript-candidates.ts'
 export const javaScriptProductRegistry = {
   'packages/@overeng/ci-tools': [
     {
+      // In-repo proof of the compiled-executable product kind (context/buck2/02-execution).
+      compiledExecutable: true,
       entrypoint: 'bin/ci-tools.ts',
       kind: 'cli',
       output: 'ci-tools.js',

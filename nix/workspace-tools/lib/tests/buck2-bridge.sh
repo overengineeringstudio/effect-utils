@@ -425,6 +425,18 @@ in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-mach-o-dynami
 }"
 mach_o_inspector_out="$(build_expr "$mach_o_inspector_expr")"
 "$mach_o_inspector_out" "$mach_o_descriptor" "$mach_o_root"
+cp "$mach_o_root/bin/fixture-tool" "$mach_o_root/bin/bun-adhoc-tool"
+# Bun's ad-hoc CodeDirectory is a one-entry superblob without Apple's empty
+# CMS wrapper; the inspector must accept it without admitting unsigned output.
+printf '\372\336\014\300\000\000\000\044\000\000\000\001\000\000\000\000\000\000\000\024\372\336\014\002\000\000\000\020\000\000\000\000\000\000\000\002' \
+  | dd of="$mach_o_root/bin/bun-adhoc-tool" bs=1 seek=64 conv=notrunc status=none
+jq '.entrypoints = ["bin/bun-adhoc-tool"]' "$mach_o_descriptor" >"$mach_o_descriptor.bun-adhoc"
+"$mach_o_inspector_out" "$mach_o_descriptor.bun-adhoc" "$mach_o_root"
+cp "$mach_o_root/bin/bun-adhoc-tool" "$mach_o_root/bin/bun-unsigned-tool"
+printf '\000\000\000\000' | dd of="$mach_o_root/bin/bun-unsigned-tool" bs=1 seek=96 conv=notrunc status=none
+jq '.entrypoints = ["bin/bun-unsigned-tool"]' "$mach_o_descriptor" >"$mach_o_descriptor.bun-unsigned"
+expect_command_failure "unsigned Mach-O without CMS wrapper" "must carry the ad-hoc flag" \
+  "$mach_o_inspector_out" "$mach_o_descriptor.bun-unsigned" "$mach_o_root"
 cp "$mach_o_root/bin/fixture-tool" "$mach_o_root/bin/no-adhoc-tool"
 printf '\000\000\000\000' | dd of="$mach_o_root/bin/no-adhoc-tool" bs=1 seek=104 conv=notrunc status=none
 jq '.entrypoints = ["bin/no-adhoc-tool"]' "$mach_o_descriptor" >"$mach_o_descriptor.no-adhoc"

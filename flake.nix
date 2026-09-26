@@ -91,7 +91,18 @@ rec {
           producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           repositoryRoot = ./.;
         };
+        # Compiled-executable products imported for this host platform (compiled.nix).
+        buckCompiledProducts = import ./nix/buck2-products/compiled.nix {
+          inherit
+            mkBuckProductFromSource
+            pnpmArchives
+            ;
+          capabilities = buck2Capabilities;
+          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
+          repositoryRoot = ./.;
+        };
         buck2-go = import ./nix/go.nix { inherit pkgs; };
+        buck2-bun-compile-runtime = import ./nix/bun-compile-runtime.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         buck2-rust-toolchain-capability =
           import ./nix/workspace-tools/lib/buck2-rust-toolchain-capability.nix
@@ -100,7 +111,7 @@ rec {
               nixpkgsRevision = nixpkgs.rev;
             };
         capabilityPackages = {
-          inherit buck2 buck2-go;
+          inherit buck2 buck2-go buck2-bun-compile-runtime;
           inherit pnpm;
           bun = pkgs.bun;
           buck2-node = pkgs.writeShellScriptBin "node" ''
@@ -200,6 +211,7 @@ rec {
           cliPackages
           // providerCliPackages
           // nativeProductPackages
+          // buckCompiledProducts
           // capabilityPackages
           // {
             buck2-rules = buck2Rules;
@@ -307,8 +319,8 @@ rec {
       lib.mkConsumerBuckRoot = args: import ./nix/buck2-products/consumer-root.nix args;
 
       # Rebuild a declared Buck product from source inside the Nix sandbox.
-      # For native products, importNative = true realizes and validates the
-      # resulting artifact without accepting a caller-supplied source product.
+      # For native and compiled-executable products, importNative = true realizes
+      # and validates the artifact without a caller-supplied source product.
       lib.mkBuckProductFromSource =
         {
           pkgs,

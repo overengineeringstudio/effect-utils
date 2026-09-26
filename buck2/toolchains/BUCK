@@ -61,6 +61,16 @@ support_tool(
     visibility = ["PUBLIC"],
 )
 
+# The official Bun release a compiled product embeds (`bun build --compile
+# --compile-executable-path`). Actions only read its bytes; see
+# nix/bun-compile-runtime.nix.
+support_tool(
+    name = "bun_compile_runtime",
+    protocol = "effect-utils/buck2-bun-compile-runtime/v1",
+    tool_id = "bun-compile-runtime",
+    visibility = ["PUBLIC"],
+)
+
 support_tool(
     name = "tool_cargo",
     protocol = "rust-lang/cargo/v1",

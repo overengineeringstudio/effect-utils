@@ -115,6 +115,32 @@ tree, or rewritten package rule. Changing later repository metadata does not
 change the identity of an already-published product. The anonymous artifact
 URL is an interoperability path, not a second source of product authority.
 
+### Compiled-executable products
+
+`compiled-executable` refines BRIDGE-R01–R03 and BRIDGE-R05–R09. This
+repository owns the inventory's `kind` discriminator: it is lowercase,
+hyphenated and exact; unknown values fail import rather than falling back
+to `native`. The kind denotes a Bun-compiled native CLI,
+not a portable JavaScript module and not a Cargo product. Its Buck target emits
+`artifact.tar` and a `buck-build-product/v1` descriptor. The from-source recipe
+captures both artifacts and calls `importNative`, reusing the exact descriptor
+validation, archive scan, ELF/Mach-O inspection, and dynamic ELF patching path
+used by native products. It requires no Cargo workspace root. A generated
+inventory binds each compiled product name to its Buck target; each host
+derivation imports its own platform tuple. It has no JS/package cache-manifest
+row: the immutable imported Nix store path is the distribution unit.
+
+On protected main, the compiled-product publisher builds that imported
+derivation on each admitted native runner and pushes it to Cachix. Pull-request
+jobs build and smoke the same import without a write credential. Darwin builds
+run on the macOS arm64 runner; the import inspects but does not strip, patch,
+or re-sign Bun's embedded Mach-O ad-hoc signature. The signing inspector
+accepts an ad-hoc CodeDirectory with either no CMS wrapper (Bun) or a single
+empty CMS wrapper (Apple codesign); a nonempty CMS payload or unsigned
+CodeDirectory fails. Linux imports may patch the
+ELF interpreter via the existing `elf-dynamic/v1` realization path after the
+archive and runtime descriptors have been independently checked.
+
 ### Protected publisher identity
 
 ```text

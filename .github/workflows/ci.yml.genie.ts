@@ -694,7 +694,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|pnpm-archives\\.nix|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|compiled\\.nix|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|pnpm-archives\\.nix|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
             'if [ -n "$tracked_editor$tracked_product" ]; then',
             '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
             '  exit 1',
@@ -720,6 +720,113 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
+    ],
+  },
+  /**
+   * Prove the compiled-executable fixture on native Linux and Darwin runners.
+   * PRs build and run it without any cache write credentials; `publish-compiled-products`
+   * is the protected-main writer. The same `build_product` descriptor and Nix
+   * runtime inspector run on both platforms.
+   */
+  'compiled-products': {
+    if: normalCiIf,
+    strategy: { 'fail-fast': false, matrix: { runner: [...RUNNER_PROFILES] } },
+    'runs-on': namespaceRunner({
+      profile: '${{ matrix.runner }}' as RunnerProfile,
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': 120,
+    permissions: { contents: 'read' },
+    defaults: bashShellDefaults,
+    steps: [
+      checkoutStep(),
+      installNixStep({ binaryCaches: [binaryCache] }),
+      trustedCachixStep,
+      {
+        name: 'Build and smoke compiled Bun product',
+        run: withCiSourceRoot(
+          [
+            'set -euo pipefail',
+            'out=$(nix build --no-link --print-out-paths .#ci-tools-compiled)',
+            'test -f "$out/bin/ci-tools"',
+            '"$out/bin/ci-tools" --help',
+          ].join('\n'),
+        ),
+      },
+    ],
+  },
+  /**
+   * Compiled products are platform-specific store paths. The protected main
+   * writer builds and pushes each native import on the matching runner; it
+   * does not propose a platform-agnostic JS/package manifest row. In particular
+   * the macOS lane publishes ad-hoc signed, unmodified Mach-O bytes.
+   */
+  'publish-compiled-products': {
+    if: trustedSecretCiIf,
+    strategy: { 'fail-fast': false, matrix: { runner: [...RUNNER_PROFILES] } },
+    'runs-on': namespaceRunner({
+      profile: '${{ matrix.runner }}' as RunnerProfile,
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': 120,
+    permissions: { contents: 'read' },
+    defaults: bashShellDefaults,
+    steps: [
+      checkoutStep(),
+      installNixStep({ binaryCaches: [binaryCache] }),
+      cachixCliBuildStep,
+      trustedCachixStep,
+      cachixPushStep({
+        jobIf: trustedSecretCiIf,
+        triggers: ['push', 'workflow_dispatch'],
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+        step: {
+          name: 'Publish compiled Bun product',
+          run: withCiSourceRoot(
+            [
+              'set -euo pipefail',
+              'out=$(nix build --no-link --print-out-paths .#ci-tools-compiled)',
+              'test -f "$out/bin/ci-tools"',
+              '"$out/bin/ci-tools" --help',
+              'cachix push overeng-effect-utils "$out"',
+            ].join('\n'),
+          ),
+        },
+      }),
+    ],
+  },
+  /**
+   * Native aarch64 Linux publication runs on dev4's fleet runner. Namespace's
+   * standard product matrix exposes only Linux x86_64 and Darwin arm64.
+   */
+  'publish-compiled-products-linux-arm64': {
+    if: trustedSecretCiIf,
+    'runs-on': ['sh-linux-arm64', 'nix'],
+    'timeout-minutes': 120,
+    permissions: { contents: 'read' },
+    defaults: bashShellDefaults,
+    steps: [
+      checkoutStep(),
+      installNixStep({ binaryCaches: [binaryCache] }),
+      cachixCliBuildStep,
+      trustedCachixStep,
+      cachixPushStep({
+        jobIf: trustedSecretCiIf,
+        triggers: ['push', 'workflow_dispatch'],
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+        step: {
+          name: 'Publish aarch64 Linux compiled Bun product',
+          run: withCiSourceRoot(
+            [
+              'set -euo pipefail',
+              'out=$(nix build --no-link --print-out-paths .#ci-tools-compiled)',
+              'test -f "$out/bin/ci-tools"',
+              '"$out/bin/ci-tools" --help',
+              'cachix push overeng-effect-utils "$out"',
+            ].join('\n'),
+          ),
+        },
+      }),
     ],
   },
   /**

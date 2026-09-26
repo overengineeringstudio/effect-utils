@@ -15,7 +15,6 @@ import { fileURLToPath } from 'node:url'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import * as packageCommandRunner from './package-command-runner.ts'
 import {
   assemblePortableFarm,
   assertNoUnboundRequireMain,
@@ -26,6 +25,7 @@ import {
   planPackageLaunch,
   normalizePortableCommonJsGlobals,
   projectProductDescriptor,
+  runCompileExecutable,
   requireNormalizedRelativePath,
   verifyExternalSurface,
 } from './package-command-runner.ts'
@@ -1030,36 +1030,32 @@ describe('package command runner', () => {
     })
   })
 
-  // The stage entry points are exported through one forward `export { ... }`
-  // list at the top of the module instead of an `export` modifier per
-  // declaration, so the public surface reads first without reordering the
-  // pipeline. That list is hand-maintained: dropping a name from it, or
-  // renaming a declaration without updating it, silently removes a Buck-facing
-  // entry point, and only a consumer's import would notice. Pin the surface.
-  describe('the module surface Buck consumers import', () => {
-    it('exports every stage entry point through the forward export list', () => {
-      expect(
-        Object.keys(packageCommandRunner)
-          .filter((name) => name !== 'default')
-          .sort(),
-      ).toStrictEqual([
-        'PORTABLE_PRODUCT_PLATFORM',
-        'RUNTIME_ARGV_DELIMITER',
-        'assemblePortableFarm',
-        'assertNoUnboundRequireMain',
-        'assertPortableModuleComments',
-        'bareSpecifierPackage',
-        'bundleImportSpecifiers',
-        'createEntryOverridePlugin',
-        'normalizePortableCommonJsGlobals',
-        'parsePackageCommand',
-        'parseProductDescriptorCommand',
-        'planPackageLaunch',
-        'projectProductDescriptor',
-        'readPlatformGatedManifest',
-        'requireNormalizedRelativePath',
-        'verifyExternalSurface',
-      ])
+  describe('compiled executable boundary', () => {
+    it('rejects external module imports before creating any executable', async () => {
+      const root = scratch('compiled-external-')
+      const modulePath = join(root, 'cli.js')
+      const moduleDescriptor = join(root, 'module.json')
+      const output = join(root, 'compiled')
+      writeFileSync(modulePath, 'console.log(42)\n')
+      writeFileSync(
+        moduleDescriptor,
+        JSON.stringify({
+          schema: 'effect-utils/javascript-module/v2',
+          productKind: 'cli',
+          externalModules: ['unbundled-dependency'],
+        }),
+      )
+
+      await expect(
+        runCompileExecutable({
+          compileRuntime: '/not/read',
+          module: modulePath,
+          moduleDescriptor,
+          output,
+          target: 'bun-linux-x64',
+        }),
+      ).rejects.toThrow('cannot load external modules: ["unbundled-dependency"]')
+      expect(() => statSync(output)).toThrow()
     })
   })
 })

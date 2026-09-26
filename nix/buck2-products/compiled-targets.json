@@ -1,0 +1,14 @@
+{
+  "products": [
+    {
+      "kind": "compiled-executable",
+      "name": "ci-tools",
+      "outputName": "artifact.tar",
+      "packagePath": "packages/@overeng/ci-tools",
+      "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-compiled-product",
+      "version": "0.0.0"
+    }
+  ],
+  "schema": "effect-utils/buck-compiled-targets/v1",
+  "schemaVersion": 1
+}

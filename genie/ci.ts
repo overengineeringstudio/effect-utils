@@ -51,6 +51,7 @@ export const EXTRA_CI_JOB_NAMES = [
   // The native ruleset flag (`required_review_thread_resolution`) is the live merge
   // gate; this job is the early visible PR signal. Merge-blocking.
   'pr-reviews-resolved',
+  'compiled-products',
 ] as const
 
 /** CI job keys that run only after changes reach `main`. */
@@ -59,6 +60,8 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
   'test-live-deploy-ci-tools',
   'deploy-storybooks',
   'publish-products',
+  'publish-compiled-products',
+  'publish-compiled-products-linux-arm64',
 ] as const
 
 /**
@@ -102,7 +105,7 @@ export const REQUIRED_CI_JOB_NAMES = [
   ...EXTRA_CI_JOB_NAMES,
 ] as const satisfies readonly CIJobName[]
 
-const matrixCIJobNames = ['test'] as const
+const matrixCIJobNames = ['test', 'compiled-products'] as const
 
 /** GitHub status-check context names emitted by a workflow job key. */
 export const ciJobCheckContexts = (jobName: CIJobName) => {
