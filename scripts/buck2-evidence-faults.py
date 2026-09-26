@@ -183,10 +183,13 @@ try:
     print(f"Tempo down: PASS (recovered in {recovered['attempts']} attempts)")
 
     # Kill the server while a push is in flight; the orphaned lease must recover.
+    release_push.clear()
+    with lock:
+        pushes_before = len(requests)
     block_push.set()
     spool, digest = seal(4)
     upload(spool)
-    eventually(lambda: len(requests) >= 3, "in-flight push")
+    eventually(lambda: len(requests) > pushes_before, "in-flight push")
     process.kill()
     process.wait(timeout=10)
     block_push.clear()
