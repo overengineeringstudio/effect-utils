@@ -32,6 +32,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Package archive imports**: Published package manifests declare their runtime
+  workspace and Storybook-gate imports, including the optional OTel and
+  Storybook peer stacks. CI scans the imports shipped in all package archives
+  against each archive's own dependency declarations.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it

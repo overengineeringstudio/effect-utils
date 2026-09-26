@@ -37,7 +37,12 @@ const runtimeDeps = catalog.compose({
   },
   peerDependencies: {
     workspace: [utilsPkg, tuiReactPkg],
-    external: catalog.pick(...ownPeerDepNames),
+    external: catalog.pick(
+      ...ownPeerDepNames,
+      '@storybook/react-vite',
+      '@vitest/browser-playwright',
+      'storybook',
+    ),
   },
   mode: 'install',
 })
@@ -64,6 +69,11 @@ export default packageJson(
     },
     dependenciesMeta: {
       '@overeng/tui-react': { injected: true },
+    },
+    peerDependenciesMeta: {
+      '@storybook/react-vite': { optional: true },
+      '@vitest/browser-playwright': { optional: true },
+      storybook: { optional: true },
     },
   },
   runtimeDeps,

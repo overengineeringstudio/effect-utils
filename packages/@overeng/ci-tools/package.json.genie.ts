@@ -29,7 +29,12 @@ const workspaceDeps = catalog.compose({
   },
   peerDependencies: {
     workspace: [utilsPkg],
-    external: catalog.pick('effect'),
+    external: catalog.pick(
+      'effect',
+      '@storybook/react-vite',
+      '@vitest/browser-playwright',
+      'storybook',
+    ),
   },
 })
 
@@ -56,6 +61,11 @@ export default packageJson(
         '.': './dist/src/mod.js',
         './cli': './dist/src/cli-command.js',
       },
+    },
+    peerDependenciesMeta: {
+      '@storybook/react-vite': { optional: true },
+      '@vitest/browser-playwright': { optional: true },
+      storybook: { optional: true },
     },
   } satisfies PackageJsonInputData,
   workspaceDeps,

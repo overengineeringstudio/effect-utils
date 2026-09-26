@@ -62,7 +62,8 @@ const runtimeImportViolations = (manifest: PackageManifest, packageRoot: string)
     const extension = extname(file) as keyof typeof scanners
     const scanner = scanners[extension]
     if (scanner === undefined) continue
-    for (const { path: specifier } of scanner.scanImports(readFileSync(file, 'utf8'))) {
+    const source = readFileSync(file, 'utf8').replace(/^#![^\n]*(?:\n|$)/, '')
+    for (const { path: specifier } of scanner.scanImports(source)) {
       if (specifier.startsWith('.') === true || specifier.startsWith('/') === true) {
         const target = resolve(dirname(file), specifier)
         if (existsSync(target) === true) pending.push(target)
@@ -76,6 +77,7 @@ const runtimeImportViolations = (manifest: PackageManifest, packageRoot: string)
       if (
         specifier.startsWith('node:') === true ||
         specifier.startsWith('bun:') === true ||
+        specifier.startsWith('virtual:') === true ||
         builtins.has(packageName) === true ||
         packageName === manifest.name ||
         declared.has(packageName) === true

@@ -34,6 +34,8 @@
     "@overeng/otel-contract": "workspace:^",
     "@overeng/utils": "workspace:^",
     "@playwright/test": "1.63.0",
+    "@storybook/react-vite": "10.6.0",
+    "@vitest/browser-playwright": "4.1.9",
     "effect": "4.0.0-rc.112",
     "mdast-util-gfm-strikethrough": "2.0.0",
     "mdast-util-gfm-table": "2.0.0",
@@ -43,6 +45,7 @@
     "micromark-extension-gfm-task-list-item": "2.1.0",
     "remark-parse": "11.0.0",
     "remark-stringify": "11.0.0",
+    "storybook": "10.6.0",
     "unified": "11.0.5",
     "unist-util-visit": "5.1.0",
     "vitest": "4.1.9"
