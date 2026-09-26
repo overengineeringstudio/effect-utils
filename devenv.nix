@@ -68,6 +68,7 @@ let
     }
   ];
   trace = import ./nix/devenv-modules/tasks/lib/trace.nix { inherit lib; };
+  otelSpan = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
 
   # Shared task modules (from shared/ directory)
   taskModules = {
@@ -542,19 +543,23 @@ let
       cd "$root"
       ${standaloneBuckCachePosture}
 
-      # Keep native evidence per invocation, including failed builds. Capture setup and
-      # telemetry must not prevent the direct Buck invocation or change its exit code.
+      # The pipeline entrypoint owns seal/ingest after the whole task graph,
+      # so command evidence remains writable while siblings run concurrently.
       spool=""
-      if ${pkgs.coreutils}/bin/mkdir -p "$root/.devenv/otel/buck2-events"; then
+      if [ -n "''${PIPELINE_SPOOL_DIR:-}" ]; then
+        spool="$PIPELINE_SPOOL_DIR/buck2"
+        ${pkgs.coreutils}/bin/mkdir -p "$spool" || spool=""
+      elif ${pkgs.coreutils}/bin/mkdir -p "$root/.devenv/otel/buck2-events"; then
         spool="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/otel/buck2-events/${taskName}.XXXXXXXX")" || spool=""
       fi
       buck_args=(build ${lib.escapeShellArg target})
       unset BUCK_WRAPPER_UUID BUCK_COMMAND_SPAN_ID BUCK_COMMAND_START_NS \
         BUCK_COMMAND_TRACE_ID BUCK_COMMAND_PARENT_SPAN_ID
       if [ -n "$spool" ]; then
-        event_log="$spool/command_events.pb.zst"
-        sidecar="$spool/traceparent.sidecar"
-        buck_args+=(--event-log "$event_log" --write-build-id "$spool/buck-trace-id")
+        command_key="${taskName}-$(${pkgs.coreutils}/bin/date +%s%N)-$$"
+        event_log="$spool/$command_key.pb.zst"
+        sidecar="$spool/$command_key.sidecar"
+        buck_args+=(--event-log "$event_log" --write-build-id "$spool/$command_key.buck-trace-id")
         if prepared="$("''${OTEL_SPAN_BIN:-otel-span}" buck2 --sidecar "$sidecar")"; then
           eval "$prepared"
         fi
@@ -578,13 +583,6 @@ let
           --end-time-ns "$command_end_ns" \
           --status-code "$command_status" \
           --attr-int "exit.code=$buck_exit" || true
-      fi
-      if [ -n "$spool" ] && [ -s "$event_log" ]; then
-        # Each OTLP request is bounded in the adapter; this outer cap also bounds
-        # decode so a wedged collector or hostile log never holds the task.
-        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
-          ${pkgs.coreutils}/bin/timeout -k 5 60 \
-          ${repoPackages.buck2-events}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" || true
       fi
       exit "$buck_exit"
     '';
@@ -905,6 +903,7 @@ in
     repoPackages.otelite
     repoPackages.otel-scrape
     repoPackages.buck2-events
+    repoPackages.buck2-evidence
     # Nix-distributed Buck binary used by direct repository tasks.
     buck2Machine
     buck2Stage0Definition.product
@@ -1304,11 +1303,20 @@ in
     exec = buck2AggregateExec "buck2:all" "//:all";
   };
 
+  tasks."otel:pipeline-run:test" = {
+    description = "Check deterministic run identity and interruption handling";
+    exec = trace.exec "otel:pipeline-run:test" ''
+      PATH=${lib.makeBinPath [ pkgs.jq pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.gnugrep ]}:$PATH \
+        bash ${./nix/devenv-modules/tasks/shared/tests/pipeline-run.test.sh} ${otelSpan}/bin/otel-span
+    '';
+  };
+
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
     "cargo:proto-bindings:check"
     "check:buck2-producer-overlap"
     "nix:check:quick"
+    "otel:pipeline-run:test"
   ];
   # One Buck invocation executes every admitted bounded lane. This is what `test:run` waits on;
   # the per-lane `test:<package>` tasks (imported above) exist for standalone use and are not

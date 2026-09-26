@@ -30,11 +30,15 @@ All notable changes to this project will be documented in this file.
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
 ### Changed
+- **Pipeline run tracing:** `otel-span pipeline-run -- devenv tasks run <verb>`
+  now seeds one deterministic run/job trace, records local roots even on
+  interruption, and seals Buck command evidence into a per-run spool.
+  `otel-span run` now validates inbound W3C context like Buck preparation and
+  preserves unsampled flags.
 - **Buck2 observability VRS:** Specify pipeline-run trace identity,
   job-scoped records and CI attempt-close rosters, sealed VCS fields,
   cumulative ingest/readback, and PR trace access with an index-backed
-  resolver, versioned agent JSON, and caller-owned Vista freeze. This is
-  design/documentation; service and CLI behavior are not yet shipped.
+  resolver, versioned agent JSON, and caller-owned Vista freeze.
 - **Genie Netlify deploy step**: PR previews no longer pass
   `unauthorizedPolicy=skip`. A configured Netlify token that the provider
   rejects now fails the PR deploy check instead of emitting a green skipped
