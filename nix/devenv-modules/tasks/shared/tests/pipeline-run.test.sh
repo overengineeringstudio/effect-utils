@@ -15,6 +15,8 @@ expect_vector ci/forge/repo%2Fmodule/421/2 'build[os=linux]' \
   7a371c25e1cdd9310f41bf4e68258873 8575a743f3e704ce 375a82ccc85b7720
 expect_vector ci/forge/repo%2Fmodule/421/3 'build[os=linux]' \
   9b8ca9aa66a0bfccee03149ae0dbd7e7 ea002faa119c8557 334dee18a70271e4
+expect_vector ci/forge/repo%2Fmodule/421/2 'compile[locale=ö]' \
+  7a371c25e1cdd9310f41bf4e68258873 8575a743f3e704ce f0f360ed828c9728
 
 for bad in local/not-a-uuid ci/forge/repo/421 ci/forge/repo/421/0 \
   'ci/forge/repo%2fmodule/421/2' 'ci/forge/repo%41/421/2' \
