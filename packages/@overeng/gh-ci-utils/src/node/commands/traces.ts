@@ -38,10 +38,10 @@ type Document = {
   comparison?: Comparison
 }
 
-const pr = Cli.Argument.integer('pr').pipe(Cli.Argument.withDescription('Pull request number'))
-const repo = Cli.Flag.string('repo').pipe(Cli.Flag.optional)
-const resolver = Cli.Flag.string('resolver').pipe(Cli.Flag.optional)
-const freeze = Cli.Flag.boolean('freeze').pipe(Cli.Flag.withDefault(false))
+const pr = Cli.Argument.Integer('pr').pipe(Cli.Argument.withDescription('Pull request number'))
+const repo = Cli.Flag.String('repo').pipe(Cli.Flag.optional)
+const resolver = Cli.Flag.String('resolver').pipe(Cli.Flag.optional)
+const freeze = Cli.Flag.Boolean('freeze').pipe(Cli.Flag.withDefault(false))
 
 const isDocument = (value: unknown): value is Document => {
   if (typeof value !== 'object' || value === null) return false
