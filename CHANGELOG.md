@@ -29,7 +29,23 @@ All notable changes to this project will be documented in this file.
   Generation-time validation cannot cover raw workflow YAML outside Genie or
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
+### Added
+
+- **Genie Netlify split build/deploy for PR previews**: Add
+  `netlifyPreviewBuildSteps` (uncredentialed `pull_request` job: builds via the
+  new `netlify:stage` task and uploads the static output) and
+  `netlifyPreviewDeployJobs` / `netlifyPreviewDeployTrigger` (trusted
+  `workflow_run` workflow on the default branch: resolves the PR from the event
+  payload, deploys the artifact via the new `netlify:deploy-staged` task with
+  the token scoped to the deploy step, and posts the managed comment from a
+  separate `pull-requests: write` job). Fork PRs are not deployed. The
+  workflow-report comment/publisher steps accept an explicit `pullRequest`
+  identity for `workflow_run` callers. The single-job `netlifyDeployStep` and
+  `netlify:deploy` task are unchanged. effect-utils uses the split for its
+  Storybook previews again.
+
 ### Changed
+
 - **Buck2 observability VRS:** Specify pipeline-run trace identity,
   job-scoped records and CI attempt-close rosters, sealed VCS fields,
   cumulative ingest/readback, and PR trace access with an index-backed
