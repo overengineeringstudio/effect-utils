@@ -74,7 +74,9 @@ const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const pkgJsonPath = fileURLToPath(
     new URL(
-      import.meta.url.endsWith('.js') ? '../../../../package.json' : '../../../package.json',
+      import.meta.url.endsWith('.js') === true
+        ? '../../../../package.json'
+        : '../../../package.json',
       import.meta.url,
     ),
   )

@@ -61,7 +61,7 @@ export interface TuiStorybookConfigOptionsWithViteFinal<
 }
 
 const opentuiStubPath = new URL(
-  `../opentui-stub.${import.meta.url.endsWith('.js') ? 'js' : 'ts'}`,
+  `../opentui-stub.${import.meta.url.endsWith('.js') === true ? 'js' : 'ts'}`,
   import.meta.url,
 ).pathname
 
