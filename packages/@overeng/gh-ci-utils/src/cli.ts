@@ -11,11 +11,13 @@ import { logsCommand } from './node/commands/logs.ts'
 import { cancelCommand, rerunCommand, runCommand } from './node/commands/rerun.ts'
 import { runnersCommand } from './node/commands/runners.ts'
 import { statusCommand } from './node/commands/status.ts'
+import { tracesCommand } from './node/commands/traces.ts'
 
 /** Root CLI command for the gh-ci-utils tool */
 export const ghCiUtilsCommand = Cli.Command.make('gh-ci-utils').pipe(
   Cli.Command.withSubcommands([
     statusCommand,
+    tracesCommand,
     logsCommand,
     runCommand,
     rerunCommand,
