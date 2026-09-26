@@ -143,6 +143,7 @@
     "effect": "4.0.0-rc.112",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
+    "storybook": "10.6.0",
     "typescript": "7.0.2",
     "vitest": "4.1.9"
   },
