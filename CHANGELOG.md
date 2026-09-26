@@ -66,7 +66,8 @@ All notable changes to this project will be documented in this file.
   `host_platform_label(cell = ...)` emits `@cell//` labels.
 - **Buck package products**: `:dist-package` archives are now Node-consumable.
   `tsgo_emit` emits JavaScript next to declarations, the npm packer applies
-  `publishConfig` with `pnpm pack` semantics, and packing fails when any
+  `publishConfig` and resolves `workspace:` dependencies from Buck-declared
+  package manifests with `pnpm pack` semantics. Packing fails when any
   `exports`/`main`/`module`/`types`/`bin` target is a runtime `.ts` source or
   is not shipped. All 18 published packages now declare
   `publishConfig.exports` against the emitted `dist/src/*.js` layout with

@@ -348,20 +348,20 @@ def _npm_package_archive_impl(ctx):
     dist = ctx.attrs.dist[DefaultInfo].default_outputs[0]
     typecheck = ctx.attrs.typecheck[DefaultInfo].default_outputs[0]
     output = ctx.actions.declare_output(ctx.attrs.output)
+    args = cmd_args(
+        ctx.attrs.product_tool[RunInfo],
+        "npm-package",
+        "--package-tree",
+        package_tree.tree,
+        "--dist",
+        dist,
+        "--artifact",
+        output.as_output(),
+    )
+    for manifest in ctx.attrs.workspace_manifests:
+        args.add("--workspace-manifest", manifest)
     ctx.actions.run(
-        cmd_args(
-            [
-                ctx.attrs.product_tool[RunInfo],
-                "npm-package",
-                "--package-tree",
-                package_tree.tree,
-                "--dist",
-                dist,
-                "--artifact",
-                output.as_output(),
-            ],
-            hidden = [typecheck],
-        ),
+        cmd_args(args, hidden = [typecheck]),
         category = "npm_package_archive",
         local_only = True,
         allow_cache_upload = False,
@@ -374,6 +374,7 @@ _npm_package_archive = rule(
     attrs = {
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "dist": attrs.dep(providers = [DefaultInfo]),
+        "workspace_manifests": attrs.list(attrs.source(), default = []),
         "typecheck": attrs.dep(providers = [DefaultInfo]),
         "output": attrs.string(),
         "product_tool": attrs.exec_dep(providers = [BuckSupportToolInfo]),

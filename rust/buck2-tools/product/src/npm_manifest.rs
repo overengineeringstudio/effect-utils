@@ -11,7 +11,10 @@ use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{collections::BTreeSet, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 /// Order-preserving JSON value: export condition order is resolution order.
 #[derive(Clone, Debug, PartialEq)]
@@ -122,8 +125,85 @@ fn fail(message: impl Into<String>) -> ToolError {
     ToolError::new("BUCK2_PRODUCT_NPM_MANIFEST", message)
 }
 
+/// Read only Buck-declared workspace manifests, not the ambient checkout.
+pub fn workspace_versions(manifests: &[Vec<u8>]) -> ToolResult<BTreeMap<String, String>> {
+    let mut versions = BTreeMap::new();
+    for bytes in manifests {
+        let Json::Object(fields) = serde_json::from_slice(bytes)
+            .map_err(|error| fail(format!("workspace package.json is not valid JSON: {error}")))?
+        else {
+            return Err(fail("workspace package.json must be an object"));
+        };
+        let string_field = |key| {
+            fields.iter().find_map(|(field, value)| {
+                if field == key {
+                    if let Json::String(value) = value {
+                        Some(value.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        };
+        let name = string_field("name").ok_or_else(|| fail("workspace package has no name"))?;
+        let version =
+            string_field("version").ok_or_else(|| fail(format!("{name} has no version")))?;
+        if versions.insert(name.clone(), version).is_some() {
+            return Err(fail(format!("duplicate workspace package: {name}")));
+        }
+    }
+    Ok(versions)
+}
+
+fn resolve_workspace_dependencies(
+    fields: &mut [(String, Json)],
+    versions: &BTreeMap<String, String>,
+) -> ToolResult<()> {
+    for (section, value) in fields {
+        if ![
+            "dependencies",
+            "devDependencies",
+            "optionalDependencies",
+            "peerDependencies",
+        ]
+        .contains(&section.as_str())
+        {
+            continue;
+        }
+        let Json::Object(dependencies) = value else {
+            continue;
+        };
+        for (name, specifier) in dependencies {
+            let Json::String(specifier) = specifier else {
+                continue;
+            };
+            let Some(range) = specifier.strip_prefix("workspace:") else {
+                continue;
+            };
+            let version = versions.get(name).ok_or_else(|| {
+                fail(format!(
+                    "{section}.{name}: no declared workspace package version"
+                ))
+            })?;
+            *specifier = match range {
+                "^" => format!("^{version}"),
+                "~" => format!("~{version}"),
+                "*" => version.clone(),
+                "" => return Err(fail(format!("{section}.{name}: empty workspace range"))),
+                other => other.to_owned(),
+            };
+        }
+    }
+    Ok(())
+}
+
 /// Applies `publishConfig` with `pnpm pack` semantics and returns the packed manifest bytes.
-pub fn published_manifest(source: &[u8]) -> ToolResult<Vec<u8>> {
+pub fn published_manifest(
+    source: &[u8],
+    versions: &BTreeMap<String, String>,
+) -> ToolResult<Vec<u8>> {
     let manifest: Json = serde_json::from_slice(source)
         .map_err(|error| fail(format!("package.json is not valid JSON: {error}")))?;
     let Json::Object(mut fields) = manifest else {
@@ -144,6 +224,7 @@ pub fn published_manifest(source: &[u8]) -> ToolResult<Vec<u8>> {
             }
         }
     }
+    resolve_workspace_dependencies(&mut fields, versions)?;
     let mut bytes = serde_json::to_vec_pretty(&Json::Object(fields))
         .map_err(|error| fail(format!("could not serialize package.json: {error}")))?;
     bytes.push(b'\n');
@@ -227,7 +308,7 @@ mod tests {
     #[test]
     fn publish_config_replaces_fields_in_order_and_is_removed() {
         let source = br#"{"name":"x","exports":{".":{"types":"./dist/src/mod.d.ts","default":"./src/mod.ts"}},"publishConfig":{"access":"public","exports":{".":{"types":"./dist/src/mod.d.ts","default":"./dist/src/mod.js"}},"bin":{"x":"./dist/src/cli.js"}}}"#;
-        let packed = published_manifest(source).unwrap();
+        let packed = published_manifest(source, &BTreeMap::new()).unwrap();
         let text = String::from_utf8(packed.clone()).unwrap();
         assert!(!text.contains("publishConfig"));
         assert!(!text.contains("access"));
@@ -267,5 +348,30 @@ mod tests {
             &shipped(&["dist/src/mod.d.ts", "src/styles.css", "package.json"]),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn workspace_ranges_resolve_against_declared_manifest_versions() {
+        let versions =
+            workspace_versions(&[br#"{"name":"@x/dep","version":"2.3.4"}"#.to_vec()]).unwrap();
+        for (source, expected) in [
+            ("workspace:^", "^2.3.4"),
+            ("workspace:~", "~2.3.4"),
+            ("workspace:*", "2.3.4"),
+            ("workspace:>=2.1.0", ">=2.1.0"),
+        ] {
+            let input = format!(r#"{{"dependencies":{{"@x/dep":"{source}"}}}}"#);
+            let packed = published_manifest(input.as_bytes(), &versions).unwrap();
+            let parsed: serde_json::Value = serde_json::from_slice(&packed).unwrap();
+            assert_eq!(parsed["dependencies"]["@x/dep"], expected);
+        }
+        let missing = published_manifest(
+            br#"{"dependencies":{"@x/unknown":"workspace:^"}}"#,
+            &versions,
+        )
+        .unwrap_err();
+        assert!(missing
+            .message
+            .contains("no declared workspace package version"));
     }
 }

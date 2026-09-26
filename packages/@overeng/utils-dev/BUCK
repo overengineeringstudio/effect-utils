@@ -197,6 +197,8 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+    ],
     output = "overeng-utils-dev.tgz",
     visibility = ["PUBLIC"],
 )

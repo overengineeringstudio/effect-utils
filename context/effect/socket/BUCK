@@ -4,7 +4,7 @@
 # Projection source: context/effect/socket/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:e60adea33d1b4ce4f0856497394c914e8ccf6c42ae5bac67ec09aae7f0c4c194
+# Semantic fingerprint: sha256:ffdf32ac58e3e5ae59c16eea4366fcde4f862ba0c0b91c90bdd1dc84ddc37161
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/BUCK.genie.ts, context/effect/socket/BUCK.genie.ts, context/effect/socket/examples/**/*.css, context/effect/socket/examples/**/*.cts, context/effect/socket/examples/**/*.js, context/effect/socket/examples/**/*.mts, context/effect/socket/examples/**/*.spec.cjs, context/effect/socket/examples/**/*.spec.jsx, context/effect/socket/examples/**/*.spec.mjs, context/effect/socket/examples/**/*.test.cjs, context/effect/socket/examples/**/*.test.jsx, context/effect/socket/examples/**/*.test.mjs, context/effect/socket/examples/**/*.ts, context/effect/socket/examples/**/*.tsx, context/effect/socket/examples/**/__snapshots__/*.snap, context/effect/socket/package.json.genie.ts, context/effect/socket/tsconfig.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -123,6 +123,8 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+    ],
     output = "effect-socket-examples.tgz",
     visibility = ["PUBLIC"],
 )

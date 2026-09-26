@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -792,10 +792,37 @@ export const buck2TypeScriptPackageProjection = ({
     .map(snapshotBaselineFor)
     .filter((baseline) => existsSync(path.join(process.cwd(), packagePath, baseline)))
   const declarationSources = packageSources.filter(isHandwrittenDeclaration)
-  const buckPackagePaths = new Set(
-    [packagePath, ...workspaceSiblings.map((sibling) => sibling.packagePath)].filter((candidate) =>
-      existsSync(path.join(process.cwd(), candidate, 'BUCK.genie.ts')),
+  const packageManifest = JSON.parse(
+    readFileSync(path.join(process.cwd(), packagePath, 'package.json'), 'utf8'),
+  ) as Record<string, Record<string, string> | undefined>
+  const workspaceNames = new Set(
+    ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'].flatMap(
+      (section) =>
+        Object.entries(packageManifest[section] ?? {})
+          .filter(([, specifier]) => specifier.startsWith('workspace:'))
+          .map(([name]) => name),
     ),
+  )
+  const workspaceManifestPaths = [...workspaceNames]
+    .map((name) => {
+      const sibling = workspaceSiblings.find((entry) => entry.packageName === name)
+      if (sibling !== undefined) return sibling.packagePath
+      const member = pnpmWorkspaceMemberPaths.find((memberPath) => {
+        const manifestPath = path.join(process.cwd(), memberPath, 'package.json')
+        if (existsSync(manifestPath) === false) return false
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string }
+        return manifest.name === name
+      })
+      if (member === undefined) throw new Error(`${packagePath}: unknown workspace package ${name}`)
+      return member
+    })
+    .toSorted((left, right) => compareStrings({ left, right }))
+  const buckPackagePaths = new Set(
+    [
+      packagePath,
+      ...workspaceSiblings.map((sibling) => sibling.packagePath),
+      ...workspaceManifestPaths,
+    ].filter((candidate) => existsSync(path.join(process.cwd(), candidate, 'BUCK.genie.ts'))),
   )
   const dependencyView = dependencyImporter?.replace(
     '//buck2/dependencies:importer_',
@@ -1038,6 +1065,7 @@ export const buck2TypeScriptPackageProjection = ({
     testTargets: testTargets.map((target) => target.semanticData),
     visibility,
     workspaceSiblingProjections,
+    workspaceManifestPaths,
   }
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-typescript-package-projection',
@@ -1226,6 +1254,11 @@ export const buck2TypeScriptPackageProjection = ({
       '    package_tree = ":package_tree",',
       '    dist = ":dist",',
       `    typecheck = ${starlarkString(`:${primaryAuthority.typecheckTargetName}`)},`,
+      '    workspace_manifests = [',
+      ...workspaceManifestPaths.map(
+        (manifestPath) => `        ${starlarkString(sourceLabel(`${manifestPath}/package.json`))},`,
+      ),
+      '    ],',
       `    output = ${starlarkString(`${packageName.replace(/^@/u, '').replaceAll('/', '-')}.tgz`)},`,
       renderBuck2Visibility({ visibility }),
       ')',

@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/pty-effect/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:dfb3e9e89bc7ed2a8554869707193e92e2758c1b05b0366856a8b019de206219
+# Semantic fingerprint: sha256:f74e2a03daebe2b50aaf04ce595ba30098a13e2a0fd91116e5ac199e9698d4d4
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/pty-effect/BUCK.genie.ts, packages/@overeng/pty-effect/BUCK.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/pty-effect/src/**/*.css, packages/@overeng/pty-effect/src/**/*.cts, packages/@overeng/pty-effect/src/**/*.js, packages/@overeng/pty-effect/src/**/*.mts, packages/@overeng/pty-effect/src/**/*.spec.cjs, packages/@overeng/pty-effect/src/**/*.spec.jsx, packages/@overeng/pty-effect/src/**/*.spec.mjs, packages/@overeng/pty-effect/src/**/*.test.cjs, packages/@overeng/pty-effect/src/**/*.test.jsx, packages/@overeng/pty-effect/src/**/*.test.mjs, packages/@overeng/pty-effect/src/**/*.ts, packages/@overeng/pty-effect/src/**/*.tsx, packages/@overeng/pty-effect/src/**/__snapshots__/*.snap, packages/@overeng/pty-effect/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -173,6 +173,10 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/otel-contract:package.json",
+        "//packages/@overeng/utils-dev:package.json",
+    ],
     output = "overeng-pty-effect.tgz",
     visibility = ["PUBLIC"],
 )

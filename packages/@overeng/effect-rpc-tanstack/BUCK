@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:6754817b7725c8ec6d3e7055d03db991634b7a60479c04e4578f4916388af943
+# Semantic fingerprint: sha256:80fba22bd3557a16f1acc6d8e33314b499060f81b41a64f840ff3a433f9f9e85
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/src/**/*.css, packages/@overeng/effect-rpc-tanstack/src/**/*.cts, packages/@overeng/effect-rpc-tanstack/src/**/*.js, packages/@overeng/effect-rpc-tanstack/src/**/*.mts, packages/@overeng/effect-rpc-tanstack/src/**/*.spec.cjs, packages/@overeng/effect-rpc-tanstack/src/**/*.spec.jsx, packages/@overeng/effect-rpc-tanstack/src/**/*.spec.mjs, packages/@overeng/effect-rpc-tanstack/src/**/*.test.cjs, packages/@overeng/effect-rpc-tanstack/src/**/*.test.jsx, packages/@overeng/effect-rpc-tanstack/src/**/*.test.mjs, packages/@overeng/effect-rpc-tanstack/src/**/*.ts, packages/@overeng/effect-rpc-tanstack/src/**/*.tsx, packages/@overeng/effect-rpc-tanstack/src/**/__snapshots__/*.snap, packages/@overeng/effect-rpc-tanstack/tsconfig.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -147,6 +147,9 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/utils:package.json",
+    ],
     output = "overeng-effect-rpc-tanstack.tgz",
     visibility = ["PUBLIC"],
 )
