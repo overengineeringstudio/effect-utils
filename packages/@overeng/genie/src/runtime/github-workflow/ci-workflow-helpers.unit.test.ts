@@ -1362,6 +1362,7 @@ describe('storybook preview split build/deploy', () => {
             buildSecretRefs: secretRefs(build),
             buildUsesStage: stepsOf(build).some(({ step }) => String(step.run ?? '').includes('netlify:stage')),
             buildUploads: stepsOf(build).some(({ step }) => String(step.uses ?? '').startsWith('actions/upload-artifact@')),
+            buildUploadIncludesHidden: stepsOf(build).some(({ step }) => String(step.uses ?? '').startsWith('actions/upload-artifact@') && step.with?.['include-hidden-files'] === true),
             deployTriggers: deploy.on,
             resolveIf: deploy.jobs['resolve-preview'].if,
             deployNeeds: deploy.jobs['deploy-preview'].needs,
@@ -1400,6 +1401,7 @@ describe('storybook preview split build/deploy', () => {
     expect(facts.buildSecretRefs).toEqual([])
     expect(facts.buildUsesStage).toBe(true)
     expect(facts.buildUploads).toBe(true)
+    expect(facts.buildUploadIncludesHidden).toBe(true)
   })
 
   it('deploys only from a successful pull_request run of the build workflow', () => {

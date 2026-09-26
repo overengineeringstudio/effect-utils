@@ -225,6 +225,8 @@ export const netlifyPreviewBuildSteps = (opts: { readonly artifactName?: string 
       name: opts.artifactName ?? netlifyPreviewArtifactName,
       path: netlifyPreviewStageDir,
       'if-no-files-found': 'error',
+      // Static sites can need dotfile paths such as `.well-known/`; upload-artifact skips them by default.
+      'include-hidden-files': true,
       'retention-days': 3,
     },
   },

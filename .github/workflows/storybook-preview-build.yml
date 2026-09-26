@@ -96,6 +96,7 @@ jobs:
           name: netlify-preview-static
           path: '${{ runner.temp }}/netlify-preview-stage'
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 3
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code') }}-build-storybooks"
