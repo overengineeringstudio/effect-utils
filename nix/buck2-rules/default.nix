@@ -146,5 +146,14 @@ pkgs.runCommand "buck2-rules"
       substituteInPlace "$script" \
         --replace-fail '"#!/usr/bin/env bash"' '"#!${pkgs.bash}/bin/bash"'
     done
+    ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+      # Product binaries intentionally use the portable /lib64 interpreter.
+      # A Cargo build script is an executable build-time tool, however, and
+      # cannot use that interpreter inside the Nix sandbox. Run it through the
+      # declared loader and libraries without changing the product's ELF.
+      substituteInPlace "$out/prelude/rust/tools/buildscript_run.py" \
+        --replace-fail '            os.path.abspath(buildscript),' \
+        '            ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib", os.path.abspath(buildscript)],'
+    ''}
 
   ''
