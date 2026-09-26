@@ -47,6 +47,7 @@ import {
   githubAccessTokenEnv,
   readBinaryCacheDescriptors,
 } from '../../genie/ci-workflow.ts'
+import { withGitHubEvidence, evidenceCloseJob, evidenceEnabled } from '../../genie/ci-workflow/evidence.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
 
 const workflowReportFlakeRef =
@@ -1481,6 +1482,57 @@ const withCiOtelCapture = (jobMap: Record<string, any>) =>
     }),
   )
 
+const evidencePrCommentJob = {
+  if: `\${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (${evidenceEnabled}) }}`,
+  'runs-on': 'ubuntu-latest',
+  permissions: { contents: 'read', 'pull-requests': 'write' },
+  defaults: bashShellDefaults,
+  steps: [{
+    name: 'Upsert PR evidence link',
+    shell: 'bash',
+    env: {
+      GH_TOKEN: '${{ github.token }}',
+      GH_REPO: '${{ github.repository }}',
+      PR_NUMBER: '${{ github.event.pull_request.number }}',
+    },
+    run: [
+      'set -euo pipefail',
+      'marker=\"<!-- workflow-report:pipeline-evidence -->\"',
+      'body=$(mktemp)',
+      'printf "%s\\n### Pipeline evidence\\n\\n[Browse this PR’s pipeline evidence](https://buck2-evidence-resolver-dev3.tail8108.ts.net/pr/%s/%s)\\n" "$marker" "$GH_REPO" "$PR_NUMBER" > "$body"',
+      "comment_id=$(gh api \"repos/$GH_REPO/issues/$PR_NUMBER/comments\" --paginate --jq '.[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"<!-- workflow-report:pipeline-evidence -->\"))) | .id' | sed -n '1p')",
+      'if [ -n \"$comment_id\" ]; then gh api --method PATCH \"repos/$GH_REPO/issues/comments/$comment_id\" --field body=@\"$body\" >/dev/null;',
+      'else gh pr comment \"$PR_NUMBER\" --body-file \"$body\"; fi',
+    ].join('\n'),
+  }],
+} as const
+
+const allCiJobs: Record<string, any> = {
+  // Source-policy is independent of product gates and has no devenv dependency.
+  'default-ref-policy': {
+    if: `\${{ ${notNightlyMeasurementIf} }}`,
+    ...defaultRefPolicyCheckJob({
+      runsOn: namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+      }),
+      defaultRefs: { 'livestorejs/livestore': 'dev' },
+    }),
+  },
+  ...withCiOtelCapture(jobs),
+  ...extraJobs,
+  ...deployJobs,
+  'evidence-pr-link': evidencePrCommentJob,
+  'notify-alignment': notifyAlignmentJob({
+    targetRepo: 'schickling/megarepo-all',
+    needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
+    runner: [
+      'namespace-profile-linux-x86-64',
+      'namespace-features:github.run-id=${{ github.run_id }}',
+    ],
+  }),
+}
+
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   trustTier: 'public',
@@ -1509,41 +1561,19 @@ export default ciWorkflow({
           default: false,
           type: 'boolean',
         },
+        evidence_mode: {
+          description: 'Pipeline evidence: off by default; seal locally for dry run or upload through trusted tailnet',
+          required: false,
+          default: 'off',
+          type: 'choice',
+          options: ['off', 'seal', 'upload'],
+        },
       },
     },
   },
-  permissions: { contents: 'read' },
+  permissions: { contents: 'read', 'id-token': 'write' },
   jobs: {
-    // Keep default-ref/source-policy separate from product checks: downstream
-    // validation branches should fail one authority job, not obscure
-    // lint/typecheck/test signal.
-    // Checkout exemption: policy scans checkout authority files and never invokes devenv or Buck.
-    'default-ref-policy': {
-      // A cron carries no code change, so the source-policy scan has nothing to say.
-      if: `\${{ ${notNightlyMeasurementIf} }}`,
-      ...defaultRefPolicyCheckJob({
-        // Keep this tiny policy job on the same Namespace runner class as the
-        // rest of CI so source-policy enforcement does not wait on legacy labels.
-        runsOn: namespaceRunner({
-          profile: 'namespace-profile-linux-x86-64',
-          runId: '${{ github.run_id }}',
-        }),
-        // LiveStore intentionally uses dev as its trunk branch.
-        defaultRefs: { 'livestorejs/livestore': 'dev' },
-      }),
-    },
-    ...withCiOtelCapture(jobs),
-    ...extraJobs,
-    ...deployJobs,
-    'notify-alignment': {
-      ...notifyAlignmentJob({
-        targetRepo: 'schickling/megarepo-all',
-        needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
-        runner: [
-          'namespace-profile-linux-x86-64',
-          'namespace-features:github.run-id=${{ github.run_id }}',
-        ],
-      }),
-    },
+    ...withGitHubEvidence(allCiJobs),
+    'evidence-attempt-close': evidenceCloseJob(allCiJobs),
   },
 } satisfies CiWorkflowArgs)
