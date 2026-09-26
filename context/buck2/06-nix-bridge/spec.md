@@ -115,6 +115,49 @@ tree, or rewritten package rule. Changing later repository metadata does not
 change the identity of an already-published product. The anonymous artifact
 URL is an interoperability path, not a second source of product authority.
 
+### Protected publisher identity
+
+```text
+protected main publish-products job
+  -> CACHIX_AUTH_TOKEN: publish immutable products
+  -> GitHub App private key: mint repository-scoped installation token
+       -> push automation/buck2-products-manifest
+       -> open or update the manifest PR
+```
+
+The checked-in [GitHub App registration manifest](./publisher-github-app.manifest.json)
+defines `overeng-nix-publisher`, owned by `overengineeringstudio`. Its only
+explicit repository permissions are `contents:write` and
+`pull_requests:write`; metadata read is GitHub's implicit minimum. It receives
+no webhook events and has no webhook delivery. The installation selects
+**only** `overengineeringstudio/effect-utils` and
+`overengineeringstudio/private-shared`: both trusted Nix publishers propose
+manifest PRs, and the identical least-privilege permission set serves both.
+Each publisher mints a token with its own repository explicitly selected, never
+an installation-wide token or a token for the other repository.
+
+The app ID is repository Actions variable `NIX_PUBLISHER_GITHUB_APP_ID`; the
+private key is repository Actions secret
+`NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY`, provisioned independently on each
+installed repository from the same 1Password item. Neither the key nor an
+installation token is committed. Only the protected-main `publish-products`
+job (push or workflow dispatch, never PR) mints the short-lived installation
+token with `actions/create-github-app-token`; only its manifest-proposal step
+receives that token as `GH_TOKEN`/`GITHUB_TOKEN` for the manifest branch push
+and PR creation. The default workflow token has read-only contents permission and
+cannot propose the PR. Publication-scope and no-change guards still skip
+unnecessary publication and PR updates. If either the app ID variable or key
+secret is absent, Cachix publication succeeds and the manifest PR is skipped
+with a notice; `GITHUB_TOKEN` is never used to push/create a PR. App-authored
+manifest commits trigger the normal PR CI.
+
+Rotate the non-expiring private key by generating a new key in App settings,
+replacing its 1Password item and both repositories' Actions secrets, verifying
+token minting from both protected jobs, then revoking the old key. On suspected
+exposure revoke the affected key immediately; uninstall the app from both
+repositories to halt writes while investigating. Installation tokens expire
+automatically and must never be saved.
+
 ## Private pnpm Consumption
 
 Nix realizes a private package product before dependency installation. The

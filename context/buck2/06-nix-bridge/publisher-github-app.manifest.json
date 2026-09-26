@@ -1,0 +1,15 @@
+{
+  "name": "overeng-nix-publisher",
+  "description": "Proposes Nix product manifests from protected main-branch publisher jobs.",
+  "url": "https://github.com/overengineeringstudio/effect-utils",
+  "hook_attributes": {
+    "url": "https://github.com/overengineeringstudio/effect-utils",
+    "active": false
+  },
+  "public": false,
+  "default_permissions": {
+    "contents": "write",
+    "pull_requests": "write"
+  },
+  "default_events": []
+}
