@@ -2,12 +2,3 @@
 members {
   effect "effect-ts/effect"
 }
-
-generators {
-  composition {
-    enabled #true
-    platformHub effect-utils
-    isolationDir megarepo
-    ignoredMembers effect
-  }
-}

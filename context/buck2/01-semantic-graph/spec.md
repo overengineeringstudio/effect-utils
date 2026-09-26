@@ -23,7 +23,7 @@ genie-composed typed models -----------------+--> normalized graph
 repository policy ---------------------------+        |
                                                       v
                                      projection: BUCK files + closure
-                                     descriptors + composition root
+                                     descriptors
 ```
 
 ## Graph Shape
@@ -75,11 +75,6 @@ change that preserves semantics must not churn shard bytes. Freshness
 verification regenerates into memory or temporary storage, compares exact
 bytes, and reports the owning semantic source on mismatch. Generated files are
 read-only as a local guardrail; Git write bits are not freshness identity.
-
-The projection also emits the composition root: `.buckconfig` cell
-declarations, canonical member mounts, platform wiring, and the per-cell
-`target_platform_detector_spec` coverage required by
-[05-composition](../05-composition/spec.md).
 
 ## Conformance
 

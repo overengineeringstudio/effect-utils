@@ -109,6 +109,10 @@ let
     ];
     smokeTestArgs = [ "--version" ];
   };
+  # This wrapper serves the Cachix-published `mr.js` pinned in manifest.json, so its
+  # capability and environment contract follows that published descriptor, not the
+  # source tree. Source retired the composed shape; narrow this to `git` + `nix` in
+  # the manifest update that republishes the megarepo row from main.
   megarepo = mk "megarepo" {
     binaryName = "mr";
     environment = {

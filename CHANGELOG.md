@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Breaking changes
+
 - **Genie build cache configuration** (dotfiles#3164): Replace
   `NixBinaryCache` and `cachixBinaryCache` with producer-authored, tagged
   descriptors in JSON, validated by `readBinaryCacheDescriptors` when read
@@ -30,6 +31,7 @@ All notable changes to this project will be documented in this file.
   `missingAuthPolicy=skip`. Regenerate consumer workflows to pick this up.
 
 ### Fixed
+
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
@@ -40,6 +42,7 @@ All notable changes to this project will be documented in this file.
   rejects malformed descriptors that bypass it.
 
 ### Added
+
 - **Genie build caches**: Producer-authored, credential-free Nix/REAPI cache
   descriptors validate in TypeScript and Nix. Private descriptors require a
   static fleet runner, ordinary Cachix steps are read-only, and protected
@@ -97,6 +100,23 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- **@overeng/megarepo** (breaking): Retire the composed Buck shape (principal
+  q5). Remove `mr store worktree new --compose`, the composition root and
+  publisher, dist overlays, the per-workspace capability resolver, `cp -a`/R6
+  member mounts, owned-worktree acquisition, the composition apply state
+  machine, and the `generators.composition` config field (the root megarepo
+  of `mr fetch`/`apply`/`lock`/`status`/`check` rejects it with a migration
+  message; nested members pinned to older history still decode and ignore
+  it); `mr apply`, `pin`,
+  `status`, `check`, and `store gc` no longer recognize composed workspaces
+  (recreate any as standalone worktrees). The packaged `mr` keeps its
+  `MR_COMPOSITION_*`/`MR_CAPABILITY_*` wrapper wiring until the megarepo
+  product row is republished from main, because the wrapper contract must match
+  the published descriptor.
+  `buck2-member.json` is now a schema-version-2 capability manifest
+  (`capabilities` only); `capability-projection.ts` moves to
+  `src/buck2-capabilities/`. effect-utils drops its own composition
+  declaration.
 - **Buck2 product import**: Remove the obsolete GitHub-release JavaScript
   product loader and mixed manifest schema now that every published product is
   Cachix-backed. Keep the Cachix publisher and the native Rust release importer.

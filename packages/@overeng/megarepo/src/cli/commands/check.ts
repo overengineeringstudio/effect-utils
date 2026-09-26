@@ -3,13 +3,12 @@ import * as Cli from 'effect/unstable/cli'
 
 import { EffectPath } from '@overeng/effect-path'
 
-import { readMegarepoConfig } from '../../core/config.ts'
+import { readMegarepoConfig, rejectRetiredRootConfig } from '../../core/config.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../core/lock.ts'
 import { checkSourcePolicy, formatSourcePolicyViolation } from '../../core/source-policy.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
 import { CheckCommandError, LockFileRequiredError, NotInMegarepoError } from '../errors.ts'
 import * as Observability from '../observability.ts'
-import { preflightCompositionCommand, readCompositionLockFile } from './composition.ts'
 
 /** Encodes the structured check result as pretty-printed JSON for `--json` output. */
 const CheckReportJson = Schema.fromJsonString(Schema.Unknown, { space: 2 })
@@ -37,18 +36,9 @@ export const checkCommand = Cli.Command.make(
 
       const root = rootOpt.value
       const { config } = yield* readMegarepoConfig(root)
-      const compositionIdentity = yield* preflightCompositionCommand({
-        workspaceRoot: root,
-        compositionEnabled: config.generators?.composition?.enabled === true,
-      })
+      yield* rejectRetiredRootConfig({ megarepoRoot: root, config })
       const rootLockPath = EffectPath.ops.join(root, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME))
-      const lockFileOpt =
-        compositionIdentity === undefined
-          ? yield* readLockFile(rootLockPath)
-          : yield* readCompositionLockFile({
-              workspaceRoot: root,
-              ownedMemberPath: compositionIdentity.ownedSourcePath,
-            })
+      const lockFileOpt = yield* readLockFile(rootLockPath)
 
       if (Option.isNone(lockFileOpt) === true) {
         return yield* new LockFileRequiredError({

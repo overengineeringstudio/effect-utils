@@ -9,8 +9,6 @@ import { Effect } from 'effect'
 import type { AbsoluteDirPath, AbsoluteFilePath, MegarepoConfig } from '../core/config.ts'
 import { generateVscode } from './vscode.ts'
 
-export * from '../composition/root/composition-root.ts'
-export * from '../composition/root/composition-root-publisher.ts'
 export * from './schema.ts'
 export * from './vscode.ts'
 
@@ -32,9 +30,6 @@ export const getEnabledGenerators = (config: MegarepoConfig): string[] => {
   const generators: string[] = []
   if (config.generators?.vscode?.enabled === true) {
     generators.push('.vscode/megarepo.code-workspace')
-  }
-  if (config.generators?.composition?.enabled === true) {
-    generators.push('.buckroot', '.buckconfig', '.watchmanconfig', 'BUCK', '.megarepo/bin/buck2')
   }
   return generators
 }

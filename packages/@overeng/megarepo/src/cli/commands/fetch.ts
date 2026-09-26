@@ -49,7 +49,7 @@ const sharedOptions = {
   ),
   worktreeMode: Cli.Flag.choice('worktree-mode', ['commit', 'tracking', 'auto']).pipe(
     Cli.Flag.withDescription(
-      'Worktree strategy for --apply: commit (deterministic), tracking (branch worktrees), auto (commit in CI, tracking locally or for composition)',
+      'Worktree strategy for --apply: commit (deterministic), tracking (branch worktrees), auto (commit in CI, tracking locally)',
     ),
     Cli.Flag.withDefault('auto' as const),
   ),

@@ -213,29 +213,7 @@ done
 echo "  ok: shared mutation tasks select explicit worktree strategies"
 
 echo ""
-echo "Test 8: source-mode mr receives the canonical composition runtime"
-devenv_file="$(cd "$(dirname "$module_file")/../../../.." && pwd)/devenv.nix"
-for runtime_name in \
-  MR_COMPOSITION_CP_BIN \
-  MR_COMPOSITION_BUCK2_BIN \
-  MR_COMPOSITION_BUCK2_PROTOCOL \
-  MR_COMPOSITION_SYSTEM \
-  MR_COMPOSITION_PLATFORM \
-  MR_COMPOSITION_GIT_BIN \
-  MR_COMPOSITION_WATCHMAN_BIN \
-  MR_CAPABILITY_NIX_BIN \
-  MR_CAPABILITY_PROJECTION \
-  MR_CAPABILITY_MV_BIN
-do
-  if ! grep -F "env.$runtime_name =" "$devenv_file" >/dev/null; then
-    echo "FAIL: source-mode mr is missing $runtime_name"
-    exit 1
-  fi
-done
-echo "  ok: source-mode mr receives the canonical composition runtime"
-
-echo ""
-echo "Test 9: shared mutation tasks preserve mr failures"
+echo "Test 8: shared mutation tasks preserve mr failures"
 for task in mr:setup mr:fetch-apply mr:apply
 do
   task_block="$(sed -n "/\"$task\" = {/,/status =/p" "$module_file")"

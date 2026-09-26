@@ -84,9 +84,7 @@ invariants named in its own document:
   is a key-stability regression
   ([04-reuse](./04-reuse/requirements.md),
   [second-context key-stability evidence](./.experiments/2026-09-19-second-context-key-stability.md)).
-  Untrusted public contexts are read-only. Cross-shape comparison between
-  standalone and paused composed roots is a migration diagnostic, not an
-  enduring action-key portability contract.
+  Untrusted public contexts are read-only.
 - **BUCK-R07 Wall-clock budgets:** The admitted surface holds a warm no-op
   check at ≤ 5 s and a fresh-context green with warm shared cache at ≤ 3 min.
   Admission widening that breaks a budget is a regression to fix before

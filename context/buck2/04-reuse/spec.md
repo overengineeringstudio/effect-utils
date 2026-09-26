@@ -47,7 +47,6 @@ build report and event log), not from wall-clock inference:
    (REUSE-R02); investigate any miss as a key regression using action-digest
    comparison from the event log.
 
-The same procedure at the composition boundary (standalone root vs composed
-root) guards decision 0014's identity claim. Budget measurements (REUSE-R03)
+Budget measurements (REUSE-R03)
 run on a quiet host or record load context; contention-dominated numbers are
 not regressions.

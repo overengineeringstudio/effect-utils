@@ -139,13 +139,3 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
     })
   })
 })
-
-describe('worktree mode help', () => {
-  it.each(['apply', 'fetch'] as const)('%s documents context-sensitive auto mode', (command) => {
-    const result = runCli(command, '--help')
-    const help = result.stdout.replace(/\s+/gu, ' ')
-
-    expect(result.status).toBe(0)
-    expect(help).toContain('auto (commit in CI, tracking locally or for composition)')
-  })
-})
