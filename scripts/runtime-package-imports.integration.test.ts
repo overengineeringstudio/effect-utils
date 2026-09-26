@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { builtinModules } from 'node:module'
+import { tmpdir } from 'node:os'
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
 
 import cacheTargets from '../nix/buck2-products/cache-targets.json'
@@ -8,6 +9,7 @@ import cacheTargets from '../nix/buck2-products/cache-targets.json'
 type ExportTarget = string | { [condition: string]: ExportTarget }
 
 type PackageManifest = {
+  exports?: Record<string, ExportTarget>
   name: string
   dependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
@@ -18,7 +20,11 @@ type PackageManifest = {
 const root = resolve(import.meta.dir, '..')
 const products = cacheTargets.products.filter((product) => product.kind === 'package')
 const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/, '')))
-const scanner = new Bun.Transpiler({ loader: 'js' })
+const scanners = {
+  '.js': new Bun.Transpiler({ loader: 'js' }),
+  '.ts': new Bun.Transpiler({ loader: 'ts' }),
+  '.tsx': new Bun.Transpiler({ loader: 'tsx' }),
+}
 
 const barePackageName = (specifier: string): string =>
   specifier.startsWith('@') === true
@@ -28,7 +34,7 @@ const barePackageName = (specifier: string): string =>
 const exportPaths = (entry: ExportTarget): string[] =>
   typeof entry === 'string' ? [entry] : Object.values(entry).flatMap(exportPaths)
 
-const runtimeImportViolations = (manifest: PackageManifest, dist: string): string[] => {
+const runtimeImportViolations = (manifest: PackageManifest, packageRoot: string): string[] => {
   const declared = new Set([
     ...Object.keys(manifest.dependencies ?? {}),
     ...Object.keys(manifest.peerDependencies ?? {}),
@@ -36,23 +42,34 @@ const runtimeImportViolations = (manifest: PackageManifest, dist: string): strin
   ])
   const visited = new Set<string>()
   const violations: string[] = []
-  const exports = Object.values(manifest.publishConfig?.exports ?? {}).flatMap(exportPaths)
-  if (exports.length === 0) throw new Error(`${manifest.name} has no published exports`)
-  const pending = exports
-    .filter((entry) => entry.endsWith('.js'))
-    .map((entry) => resolve(dist, entry.replace(/^\.\/dist\//, '')))
-  if (pending.length === 0) throw new Error(`${manifest.name} has no published JavaScript entry`)
+  const sourceEntries = Object.values(manifest.exports ?? {})
+    .flatMap(exportPaths)
+    .filter((entry) => existsSync(resolve(packageRoot, entry)) === true)
+  const publishedEntries = Object.values(manifest.publishConfig?.exports ?? {})
+    .flatMap(exportPaths)
+    .filter((entry) => existsSync(resolve(packageRoot, entry)) === true)
+  const pending = [...sourceEntries, ...publishedEntries]
+    .filter((entry) => /\.(?:js|ts|tsx)$/.test(entry) && entry.endsWith('.d.ts') === false)
+    .map((entry) => resolve(packageRoot, entry))
+  if (pending.length === 0) throw new Error(`${manifest.name} has no shipped runtime entry`)
 
   while (pending.length > 0) {
     const file = pending.pop()!
     if (visited.has(file) === true) continue
     visited.add(file)
     if (existsSync(file) === false)
-      throw new Error(`${manifest.name}: missing published runtime file ${file}`)
+      throw new Error(`${manifest.name}: missing shipped runtime file ${file}`)
+    const extension = extname(file) as keyof typeof scanners
+    const scanner = scanners[extension]
+    if (scanner === undefined) continue
     for (const { path: specifier } of scanner.scanImports(readFileSync(file, 'utf8'))) {
       if (specifier.startsWith('.') === true || specifier.startsWith('/') === true) {
         const target = resolve(dirname(file), specifier)
-        if (extname(target) === '.js' && existsSync(target) === true) pending.push(target)
+        if (existsSync(target) === true) pending.push(target)
+        else if (target.endsWith('.js') === true) {
+          const source = target.replace(/\.js$/, '.ts')
+          if (existsSync(source) === true) pending.push(source)
+        }
         continue
       }
       const packageName = barePackageName(specifier)
@@ -65,15 +82,15 @@ const runtimeImportViolations = (manifest: PackageManifest, dist: string): strin
       )
         continue
       violations.push(
-        `${manifest.name}: ${file.slice(dist.length + 1)} imports ${specifier} without a runtime dependency`,
+        `${manifest.name}: ${file.slice(packageRoot.length + 1)} imports ${specifier} without a runtime dependency`,
       )
     }
   }
   return violations
 }
 
-test('all cache package products declare imports reachable from their shipped JavaScript exports', () => {
-  const targets = products.map((product) => product.target.replace(/:dist-package$/, ':dist'))
+test('all cache package products declare imports reachable from their shipped runtime exports', () => {
+  const targets = products.map((product) => product.target)
   const build = Bun.spawnSync(
     [process.env.BUCK2_BIN ?? 'buck2', 'build', '--show-output', '--local-only', ...targets],
     {
@@ -85,7 +102,7 @@ test('all cache package products declare imports reachable from their shipped Ja
   )
   if (build.exitCode !== 0) {
     throw new Error(
-      `Buck dist build failed:\n${build.stderr.toString()}\n${build.stdout.toString()}`,
+      `Buck package build failed:\n${build.stderr.toString()}\n${build.stdout.toString()}`,
     )
   }
   const output = new Map(
@@ -99,14 +116,25 @@ test('all cache package products declare imports reachable from their shipped Ja
         return [match[1]!, match[2]!] as const
       }),
   )
-  const violations = products.flatMap((product) => {
-    const target = product.target.replace(/:dist-package$/, ':dist')
-    const path = output.get(target)
-    if (path === undefined) throw new Error(`Buck did not report an output for ${target}`)
-    const manifest = JSON.parse(
-      readFileSync(join(root, product.packagePath, 'package.json'), 'utf8'),
-    ) as PackageManifest
-    return runtimeImportViolations(manifest, isAbsolute(path) === true ? path : join(root, path))
-  })
-  expect(violations).toEqual([])
+  const stage = mkdtempSync(join(tmpdir(), 'effect-utils-package-imports-'))
+  try {
+    const violations = products.flatMap((product, index) => {
+      const path = output.get(product.target)
+      if (path === undefined) throw new Error(`Buck did not report an output for ${product.target}`)
+      const archive = isAbsolute(path) === true ? path : join(root, path)
+      const extraction = join(stage, String(index))
+      mkdirSync(extraction)
+      const unpack = Bun.spawnSync(['tar', '-xzf', archive, '-C', extraction])
+      if (unpack.exitCode !== 0)
+        throw new Error(`Cannot extract ${product.name}: ${unpack.stderr.toString()}`)
+      const packageRoot = join(extraction, 'package')
+      const manifest = JSON.parse(
+        readFileSync(join(packageRoot, 'package.json'), 'utf8'),
+      ) as PackageManifest
+      return runtimeImportViolations(manifest, packageRoot)
+    })
+    expect(violations).toEqual([])
+  } finally {
+    rmSync(stage, { recursive: true, force: true })
+  }
 }, 900_000)
