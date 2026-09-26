@@ -134,6 +134,25 @@ describe('standalone Buck cache posture', () => {
     ).not.toContain('allow_cache_uploads = true')
   })
 
+  it('replaces a publisher overlay with anonymous read-only posture in a reader root', () => {
+    const publisher = standaloneCachePostureConfig({
+      current: '',
+      env: { BUCK2_CACHE_WRITE_BASIC_AUTH: 'd3JpdGVyOnNlY3JldA==' },
+      trustedOrigin,
+    })
+    const reader = standaloneCachePostureConfig({
+      current: publisher,
+      env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
+      trustedOrigin,
+    })
+
+    expect(reader).toContain('remote_cache_enabled = true')
+    expect(reader).toContain('allow_cache_uploads = false')
+    expect(reader).not.toContain('default_allow_cache_upload = true')
+    expect(reader).not.toContain('http_headers')
+    expect(reader).not.toContain('BUCK2_CACHE_WRITE_BASIC_AUTH')
+  })
+
   it('preserves local overrides while adding and removing the managed posture atomically', () => {
     const root = makeRoot()
     const output = join(root, '.buckconfig.local')
