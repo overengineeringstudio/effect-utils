@@ -14,11 +14,11 @@ import utilsPkg from '../utils/package.json.genie.ts'
 const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
-    workspace: [otelContractPkg],
+    workspace: [otelContractPkg, tuiReactPkg, utilsPkg],
     external: catalog.pick('jsonc-parser', 'typescript'),
   },
   devDependencies: {
-    workspace: [tuiReactPkg, utilsDevPkg, utilsPkg],
+    workspace: [utilsDevPkg],
     external: {
       ...catalog.pick(
         '@effect/platform-node',
@@ -35,10 +35,6 @@ const supportDeps = catalog.compose({
         'prettier',
       ),
     },
-  },
-  peerDependencies: {
-    workspace: [utilsPkg, tuiReactPkg],
-    external: catalog.pick('effect'),
   },
   mode: 'install',
 })

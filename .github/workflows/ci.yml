@@ -2798,6 +2798,10 @@ jobs:
             genie/buck2/javascript-candidates.unit.test.ts \
             packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
             packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
+      - name: Check published package runtime imports
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test scripts/runtime-package-imports.integration.test.ts'
       - name: Check product publisher, manifest import, and from-source contracts
         env:
           GITHUB_TOKEN: ${{ github.token }}

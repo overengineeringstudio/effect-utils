@@ -25,9 +25,12 @@ pnpm add @overeng/restate-effect effect
 ```
 
 `@restatedev/restate-sdk` and `@restatedev/restate-sdk-clients` come bundled. The
-`./otel` subpath additionally needs `@effect/opentelemetry`, `@opentelemetry/api`,
-`@opentelemetry/sdk-metrics`, and `@restatedev/restate-sdk-opentelemetry` (peer deps
-you install when you use it). To run an endpoint you also bring
+optional `./otel` subpath additionally needs `@effect/opentelemetry`,
+`@opentelemetry/api`, `@opentelemetry/resources`, `@opentelemetry/sdk-metrics`,
+`@opentelemetry/sdk-trace-base`, `@opentelemetry/sdk-trace-node`,
+`@opentelemetry/semantic-conventions`, and
+`@restatedev/restate-sdk-opentelemetry` (optional peer deps to install when you use
+it). To run an endpoint you also bring
 `@effect/platform-node` for `NodeRuntime.runMain`. You need a `restate-server` binary
 to run handlers (Restate's CLI/Docker in production, or the `./testing` harness in
 tests).

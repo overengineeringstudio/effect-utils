@@ -664,6 +664,13 @@ const extraJobs: Record<string, any> = {
         ),
       },
       {
+        name: 'Check published package runtime imports',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test scripts/runtime-package-imports.integration.test.ts',
+        ),
+      },
+      {
         // Workspace-tools and Nix contract suites bound the product boundary pre-merge: the
         // publisher (source of the manifest), the importer (its only consumer), and the
         // retained Megarepo from-source recovery recipe (`buck2:nix-bridge:check`'s contract,
