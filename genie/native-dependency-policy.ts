@@ -47,7 +47,8 @@ export const nativeDependencyPolicy = {
   '@myobie/pty': { _tag: 'denied-lifecycle-build' },
   esbuild: { _tag: 'denied-lifecycle-build' },
   fsevents: { _tag: 'denied-lifecycle-build' },
-  'msgpackr-extract': { _tag: 'denied-lifecycle-build' },
+  // effect dropped its msgpackr dependency in 4.0.0-rc.113; kept as a guard rail.
+  'msgpackr-extract': { _tag: 'denied-lifecycle-build', defensive: true },
   'node-pty': { _tag: 'nix-grafted', graft: 'link', via: 'nix/node-pty-native.nix' },
   sharp: { _tag: 'denied-lifecycle-build', defensive: true },
   'unix-dgram': { _tag: 'denied-lifecycle-build', defensive: true },
