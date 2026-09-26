@@ -149,7 +149,11 @@ describe('notion-md merge planning', () => {
 
   it.prop(
     'plans Markdown updates that transform the current remote body into the desired body',
-    [Schema.String.check(Schema.isMaxLength(80)), Schema.String.check(Schema.isMaxLength(80)), Schema.String.check(Schema.isMaxLength(80))],
+    [
+      Schema.String.check(Schema.isMaxLength(80)),
+      Schema.String.check(Schema.isMaxLength(80)),
+      Schema.String.check(Schema.isMaxLength(80)),
+    ],
     ([baseBody, remoteBody, desiredBody]) => {
       expect(applyMarkdownUpdate({ baseBody, remoteBody, desiredBody })).toBe(
         normalizeMarkdownLineEndings(desiredBody),

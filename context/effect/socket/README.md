@@ -50,24 +50,27 @@ const receive = Effect.gen(function* () {
       yield* Effect.log(`recv ${text}`)
     }
   }
-}).pipe(Effect.scoped, Effect.catchIf(isCleanClose, () => Effect.void))
+}).pipe(
+  Effect.scoped,
+  Effect.catchIf(isCleanClose, () => Effect.void),
+)
 ```
 
 Example (manual close with a reason):
 
 ```ts
-const writer = yield* socket.writer
-yield* writer.write(new Socket.CloseEvent(1000, 'done'))
+const writer = yield * socket.writer
+yield * writer.write(new Socket.CloseEvent(1000, 'done'))
 ```
 
 Example (close after a specific message):
 
 ```ts
-const writer = yield* socket.writer
-const pull = yield* Socket.readerString(socket)
+const writer = yield * socket.writer
+const pull = yield * Socket.readerString(socket)
 while (true) {
-  for (const text of yield* pull) {
-    if (text === 'bye') yield* writer.write(new Socket.CloseEvent(1000, 'bye'))
+  for (const text of yield * pull) {
+    if (text === 'bye') yield * writer.write(new Socket.CloseEvent(1000, 'bye'))
   }
 }
 ```

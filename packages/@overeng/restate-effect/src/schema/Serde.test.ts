@@ -221,15 +221,11 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     createdAt: Schema.DateFromString,
     score: Schema.BigIntFromString,
   })
-  fcIt.prop(
-    'round-trips a transformed schema (encoded ≠ decoded)',
-    [Transformed],
-    ([value]) => {
-      const serde = effectSerde({ schema: Transformed })
-      const eq = Schema.toEquivalence(Transformed)
-      expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
-    },
-  )
+  fcIt.prop('round-trips a transformed schema (encoded ≠ decoded)', [Transformed], ([value]) => {
+    const serde = effectSerde({ schema: Transformed })
+    const eq = Schema.toEquivalence(Transformed)
+    expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
+  })
 
   /* An OPTIONAL state field (the `normalizeStateSchema` papercut path): a present
    * value must round-trip through the recovered value schema. Constrained to a

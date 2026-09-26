@@ -276,7 +276,8 @@ describe('classifyColdWorktree near-misses', () => {
 // =============================================================================
 
 const Timestamp = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: NOW }))
-const UnpushedCount = (minimum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum: 50 }))
+const UnpushedCount = (minimum: number) =>
+  Schema.Int.check(Schema.isBetween({ minimum, maximum: 50 }))
 
 const OpenOrNonePrState = Schema.Union([
   Schema.Struct({ state: Schema.Literal('open') }),
@@ -297,7 +298,9 @@ const arbLossless: Arbitrary.Arbitrary<StoreWorktreeLossless> = Arbitrary.schema
   Schema.Struct({ unpushed: UnpushedCount(0), dirty: Schema.Boolean, hasStash: Schema.Boolean }),
 )
 
-const arbColdSince: Arbitrary.Arbitrary<number | undefined> = Arbitrary.schema(Schema.UndefinedOr(Timestamp))
+const arbColdSince: Arbitrary.Arbitrary<number | undefined> = Arbitrary.schema(
+  Schema.UndefinedOr(Timestamp),
+)
 
 describe('classifyColdWorktree invariants (property)', () => {
   it.prop(

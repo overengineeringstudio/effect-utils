@@ -97,7 +97,9 @@ const runClient = Effect.gen(function* () {
           for (const text of yield* pull) {
             yield* decodeServerMessage(text).pipe(
               Effect.tap((decoded) => Effect.log(decoded)),
-              Effect.catch((error) => Effect.logError({ message: 'invalid server message', error })),
+              Effect.catch((error) =>
+                Effect.logError({ message: 'invalid server message', error }),
+              ),
             )
           }
         }
