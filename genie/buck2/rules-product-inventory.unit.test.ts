@@ -42,9 +42,8 @@ const expectedFiles = [
   'packages/@overeng/buck2-tools/src/repository-validation-runner.ts',
   'packages/@overeng/buck2-tools/src/static-check-runner.ts',
   'packages/@overeng/buck2-tools/src/typescript-runner.ts',
+  'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
-  'packages/@overeng/megarepo/src/composition/capabilities/capability-projection.ts',
-  'packages/@overeng/megarepo/src/composition/capabilities/composition-capability-resolver-schema.ts',
 ] as const
 
 describe('Buck rules product inventory', () => {
@@ -60,7 +59,7 @@ describe('Buck rules product inventory', () => {
   it('contains runtime and capability inputs but no effect-utils package product targets', () => {
     expect(buck2RulesInventory.files).toContain('buck2-member.json')
     expect(buck2RulesInventory.files).toContain(
-      'packages/@overeng/megarepo/src/composition/capabilities/capability-projection.ts',
+      'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
     )
     expect(buck2RulesInventory.files).toContain(
       'packages/@overeng/buck2-tools/src/typescript-runner.ts',
@@ -72,7 +71,7 @@ describe('Buck rules product inventory', () => {
           path.startsWith('packages/@overeng/') &&
           path.startsWith('packages/@overeng/buck2-tools/') === false &&
           path !== 'packages/@overeng/megarepo/src/buck2-manifest.ts' &&
-          path.startsWith('packages/@overeng/megarepo/src/composition/capabilities/') === false,
+          path !== 'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
       ),
     ).toEqual([])
   })

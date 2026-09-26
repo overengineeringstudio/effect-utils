@@ -352,60 +352,20 @@ let
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
   typescriptPublicationRootPredicate = ''
-    typescript_publication_workspace_root() {
-      local member_root workspace_root branch_ref repo_root bare_repo common_dir admin_dir
-      local backlink backlink_dir repository_root
+    typescript_publication_root() {
+      local member_root repository_root
 
       member_root="$(${pkgs.coreutils}/bin/realpath "$1")" || return 1
 
-      # The tracked Buck root is the ordinary publication shape. Its root marker and
-      # Git top-level identity prevent a directory that merely resembles repos/effect-utils
-      # from inheriting write authority.
-      if [ -f "$member_root/.buckroot" ]; then
-        repository_root="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
-          --path-format=absolute --show-toplevel)" || return 1
-        repository_root="$(${pkgs.coreutils}/bin/realpath "$repository_root")" || return 1
-        [ "$repository_root" = "$member_root" ] || return 1
-        printf "%s\n" "$member_root"
-        return 0
-      fi
-
-      # The composed shape remains an explicit downstream compatibility boundary.
-      workspace_root="$(${pkgs.coreutils}/bin/realpath "$member_root/../..")" || return 1
-      [ "$member_root" = "$workspace_root/repos/effect-utils" ] || return 1
-      [ -f "$member_root/.git" ] || return 1
-
-      branch_ref="$(${pkgs.git}/bin/git -C "$member_root" symbolic-ref --quiet HEAD)" || return 2
-      case "$branch_ref" in
-        refs/heads/*) ;;
-        *) return 1 ;;
-      esac
-
-      common_dir="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
-        --path-format=absolute --git-common-dir)" || return 2
-      common_dir="$(${pkgs.coreutils}/bin/realpath "$common_dir")" || return 2
-      bare_repo="$common_dir"
-      [ "$(${pkgs.coreutils}/bin/basename "$bare_repo")" = ".bare" ] || return 2
-      repo_root="$(${pkgs.coreutils}/bin/dirname "$bare_repo")"
-      [ "$workspace_root" = "$repo_root/$branch_ref" ] || return 1
-
-      admin_dir="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
-        --path-format=absolute --git-dir)" || return 2
-      admin_dir="$(${pkgs.coreutils}/bin/realpath "$admin_dir")" || return 2
-      [ "$(${pkgs.coreutils}/bin/dirname "$admin_dir")" = "$bare_repo/worktrees" ] ||
-        return 2
-      [ -f "$admin_dir/gitdir" ] || return 2
-      backlink="$(<"$admin_dir/gitdir")"
-      case "$backlink" in
-        /*) ;;
-        *) backlink="$admin_dir/$backlink" ;;
-      esac
-      backlink_dir="$(${pkgs.coreutils}/bin/realpath \
-        "$(${pkgs.coreutils}/bin/dirname "$backlink")")" || return 2
-      backlink="$backlink_dir/$(${pkgs.coreutils}/bin/basename "$backlink")"
-      [ "$backlink" = "$member_root/.git" ] || return 2
-
-      printf "%s\n" "$workspace_root"
+      # The tracked Buck root is the only publication shape. Its root marker and Git
+      # top-level identity prevent a directory that merely resembles it from inheriting
+      # write authority.
+      [ -f "$member_root/.buckroot" ] || return 1
+      repository_root="$(${pkgs.git}/bin/git -C "$member_root" rev-parse \
+        --path-format=absolute --show-toplevel)" || return 1
+      repository_root="$(${pkgs.coreutils}/bin/realpath "$repository_root")" || return 1
+      [ "$repository_root" = "$member_root" ] || return 1
+      printf "%s\n" "$member_root"
     }
   '';
   standaloneBuckCachePosture = ''
@@ -431,7 +391,7 @@ let
     '';
 
   # Every Buck-invoking task uses the checkout's pinned binary and standalone
-  # project root, so CI lanes cannot silently fall back to a composed workspace.
+  # project root.
   buck2UnitTestExec =
     { name, targets }:
     trace.exec name ''
@@ -534,8 +494,6 @@ let
     "genie/buck2/*.ts"
     "packages/@overeng/buck2-tools/src/**/*.ts"
     "packages/@overeng/megarepo/src/buck2-manifest.ts"
-    "packages/@overeng/megarepo/src/composition/overlays/dist-overlay-schema.ts"
-    "packages/@overeng/megarepo/src/composition/root/composition-root.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.tsx"
     "packages/@overeng/tui-core/src/**/*.cts"
@@ -969,25 +927,12 @@ in
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
-  # Source-mode mr must receive the same pinned composition runtime as the
-  # packaged wrapper; refreshed tasks can invoke composition from owned members.
-  env.MR_COMPOSITION_CP_BIN = "${pkgs.coreutils}/bin/cp";
-  env.MR_COMPOSITION_BUCK2_BIN = "${buck2Machine}/bin/buck2";
-  env.MR_COMPOSITION_BUCK2_PROTOCOL = "facebook/buck2-cli/2026-09-01";
-  env.MR_COMPOSITION_SYSTEM = currentSystem;
-  env.MR_COMPOSITION_PLATFORM = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux";
-  env.MR_COMPOSITION_GIT_BIN = "${pkgs.git}/bin/git";
-  env.MR_COMPOSITION_WATCHMAN_BIN = "${pkgs.watchman}/bin/watchman";
-  env.MR_CAPABILITY_NIX_BIN = "${pkgs.nix}/bin/nix";
-  env.MR_CAPABILITY_PROJECTION = "${buck2Capabilities}";
-  env.MR_CAPABILITY_MV_BIN = "${pkgs.coreutils}/bin/mv";
-
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
   env.RESTATE_SERVER_BIN = "${restate}/bin/restate-server";
 
-  # Repository composition remains an explicit mr operation. Generated-source freshness
-  # is its only repository-local prerequisite; the check aggregates do not invoke it.
+  # `mr:apply` stays outside the check aggregates. Generated-source freshness is its
+  # only repository-local prerequisite.
   tasks."mr:apply".after = [ "genie:check" ];
 
   # buck2-tools executes inside pinned Bun actions and exercises Bun.YAML/Bun.which.
@@ -1288,16 +1233,11 @@ in
         ]
       }
       export WORKSPACE_ROOT="$root"
-      workspace_root="$(typescript_publication_workspace_root "$root")" || {
+      workspace_root="$(typescript_publication_root "$root")" || {
         identity_status=$?
-        echo "buck2:typescript:materialize-dist requires a composed" \
-          "megarepo workspace or a standalone Buck root" >&2
+        echo "buck2:typescript:materialize-dist requires a standalone Buck root" >&2
         exit "$identity_status"
       }
-      if [ "$workspace_root" != "$root" ]; then
-        export WORKSPACE_ROOT="$workspace_root"
-        export BUCK2_BIN="$workspace_root/.megarepo/bin/"buck2
-      fi
       exec ${pkgs.bun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
         materialize-dist "$root" "$workspace_root" "$BUCK2_BIN" \
         ${pkgs.coreutils}/bin/mv ${pkgs.coreutils}/bin/chmod

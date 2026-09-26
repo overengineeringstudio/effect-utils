@@ -16,23 +16,13 @@ configuration hash.
 platform tuple makes Buck its sole producer. **Authority Transfer** is the
 change that consumes an admission and deletes the superseded producer.
 
-**Workspace** is the unit of work: a synthesized composition root at the
-store worktree path containing every repository as a member mount. Every
-build runs from one; a workspace is disposable and is never itself a git
-repository.
-
-**Owned Member** is a Workspace's single writable member — the
-branch-attached git worktree of the repo the workspace exists to develop, on
-a branch the workspace owns. It is the default working directory.
-The megarepo ontology also defines this term; its
-[`Owned member`](../megarepo/ontology.md#workspace-ownership) definition is canonical.
-
-**Member Mount** is any other member: a read-only `cp -a` copy of its locked
-revision, advanced atomically by RENAME_EXCHANGE.
-
-**Member Cell** is a megarepo member mounted at its canonical path
-(`repos/<name>`) under its canonical cell name inside a Workspace. Every
-repository, including the Owned Member, is a Member Cell.
+**Standalone Root** is a repository's tracked checkout acting as its only Buck
+project root: its canonical cell at `.`, the bundled prelude, and the
+Nix-produced capability cell. The composed Workspace, Owned Member, Member
+Mount, and Member Cell terms are retired with the composed Buck root
+(principal q5, 2026-09-25); megarepo's
+[`Mount`](../megarepo/ontology.md#source-mounts) names a source checkout that is
+never a cell.
 
 **Materialization** is a Buck action that produces a dependency surface
 (a package's `node_modules` tree) from manifests, the lockfile, and patches
@@ -63,7 +53,7 @@ producers, tasks, and install steps it deletes.
 
 ```text
 authored intent -> Semantic Operation -> Configured Operation
-Composition Root + Member Cells -> configured Buck graph
+Standalone Root -> configured Buck graph
 Materialization -> action inputs + Editor Surface
 action + Shared Cache -> result + Native Evidence
 result -> BuildProduct -> Nix Import

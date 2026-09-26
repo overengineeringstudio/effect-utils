@@ -34,7 +34,7 @@ let
     if pkgs.stdenv.hostPlatform.isDarwin then "aarch64-macos" else pkgs.stdenv.hostPlatform.system;
 in
 pkgs.runCommand "buck2-capabilities" { nativeBuildInputs = [ pkgs.bun ]; } ''
-  bun ${src}/packages/@overeng/megarepo/src/composition/capabilities/capability-projection.ts \
+  bun ${src}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
     --input ${input} \
     --output "$out" \
     --platform ${platform}

@@ -18,19 +18,30 @@ const shouldDeleteFile = (relativePath) =>
 // Darwin copy imports occasionally leave the staged twin behind after the
 // rename target already landed. The twin's name embeds a pid and timestamp,
 // so a surviving twin turns the fixed-output hash into a per-build lottery.
+const pacquetStageMarker = '_pacquet-stage_'
 const pacquetStagePattern = /^(.+)_pacquet-stage_\d+_\d+_\d+$/
 
-// Drop a staged twin only when it is a byte-identical copy of its landed
-// target; anything else means the import did not complete and must fail.
-const removePacquetStageTwin = (dirPath, entryName, relativePath) => {
-  const match = pacquetStagePattern.exec(entryName)
-  if (match === null) return false
+// Drop a staged twin only when it is a byte-identical regular file under
+// node_modules with a regular landed target. Every other marker is unsafe:
+// it is either malformed, outside pnpm's materialization, or incomplete.
+const removePacquetStageTwin = (dirPath, entry, relativePath) => {
+  if (!entry.name.includes(pacquetStageMarker)) return false
+  if (!relativePath.split(path.sep).includes('node_modules')) {
+    throw new Error(`prepared workspace retained a pacquet stage artifact outside node_modules: ${relativePath}`)
+  }
+  if (!entry.isFile()) {
+    throw new Error(`prepared workspace retained a pacquet stage artifact that is not a regular file: ${relativePath}`)
+  }
+  const match = pacquetStagePattern.exec(entry.name)
+  if (match === null) {
+    throw new Error(`prepared workspace retained a pacquet stage artifact with a malformed suffix: ${relativePath}`)
+  }
   const targetPath = path.join(dirPath, match[1])
   const target = fs.lstatSync(targetPath, { throwIfNoEntry: false })
   if (target === undefined || !target.isFile()) {
     throw new Error(`prepared workspace retained a pacquet stage file without its landed target: ${relativePath}`)
   }
-  const entryPath = path.join(dirPath, entryName)
+  const entryPath = path.join(dirPath, entry.name)
   if (!fs.readFileSync(entryPath).equals(fs.readFileSync(targetPath))) {
     throw new Error(`prepared workspace retained a pacquet stage file that differs from its landed target: ${relativePath}`)
   }
@@ -54,6 +65,7 @@ const normalizePreparedTree = (rootPath) => {
         continue
       }
 
+      if (removePacquetStageTwin(dirPath, entry, relativePath)) continue
       if (entry.isDirectory()) {
         normalize(entryPath)
         fs.chmodSync(entryPath, 0o755)
@@ -69,7 +81,6 @@ const normalizePreparedTree = (rootPath) => {
           fs.rmSync(entryPath, { force: true })
           continue
         }
-        if (removePacquetStageTwin(dirPath, entry.name, relativePath)) continue
         const mode = fs.statSync(entryPath).mode
         fs.chmodSync(entryPath, (mode & 0o111) === 0 ? 0o444 : 0o555)
       }
@@ -92,7 +103,7 @@ const scanPreparedTree = (rootPath) => {
         binViolations.push(path.relative(root, entryPath))
         continue
       }
-      if (pacquetStagePattern.test(entry.name)) {
+      if (entry.name.includes(pacquetStageMarker)) {
         stageViolations.push(path.relative(root, entryPath))
         continue
       }

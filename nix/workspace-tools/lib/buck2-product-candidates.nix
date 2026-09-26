@@ -10,7 +10,6 @@
   products,
   nativeProducts ? (import ../../buck2-native-products { inherit pkgs; }).products,
   typeProofCompilerBin,
-  capabilityProjection ? null,
   oxfmtPkg ? pkgs.oxfmt,
   gitRev ? "unknown",
   commitTs ? 0,
@@ -30,7 +29,6 @@ let
     "@opentui/core-win32-arm64"
     "@opentui/core-win32-x64"
   ];
-  buck2 = import ../../buck2.nix { inherit pkgs; };
   # The stamp every CLI's `resolveCliVersion()` parses for human-readable
   # version output. Buck produces platform-invariant bytes, so the host-facing
   # build identity is supplied by this wrapper rather than baked into them.
@@ -111,30 +109,16 @@ let
   };
   megarepo = mk "megarepo" {
     binaryName = "mr";
-    environment = {
-      CLI_BUILD_STAMP = buildStamp;
-      MR_CAPABILITY_MV_BIN = "${pkgs.coreutils}/bin/mv";
-      MR_CAPABILITY_NIX_BIN = "${pkgs.nix}/bin/nix";
-      MR_COMPOSITION_BUCK2_BIN = "${buck2}/bin/buck2";
-      MR_COMPOSITION_BUCK2_PROTOCOL = "facebook/buck2-cli/2026-09-01";
-      MR_COMPOSITION_CP_BIN = "${pkgs.coreutils}/bin/cp";
-      MR_COMPOSITION_GIT_BIN = "${pkgs.git}/bin/git";
-      MR_COMPOSITION_PLATFORM = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux";
-      MR_COMPOSITION_SYSTEM = pkgs.stdenv.hostPlatform.system;
-      MR_COMPOSITION_WATCHMAN_BIN = "${pkgs.watchman}/bin/watchman";
-    }
-    // pkgs.lib.optionalAttrs (capabilityProjection != null) {
-      MR_CAPABILITY_PROJECTION = "${capabilityProjection}";
-    };
+    environment.CLI_BUILD_STAMP = buildStamp;
     expectedExternalCapabilities = [
-      "buck2"
-      "coreutils"
       "git"
       "nix"
-      "watchman"
     ];
     expectedProductKind = "cli";
-    pathPackages = [ pkgs.watchman ];
+    pathPackages = [
+      pkgs.git
+      pkgs.nix
+    ];
     smokeTestArgs = [ "--help" ];
   };
   tui-stories = mk "tui-stories" {

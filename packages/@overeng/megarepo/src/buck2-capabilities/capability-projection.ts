@@ -3,8 +3,19 @@ import { access, mkdir, readFile, realpath, stat, symlink, writeFile } from 'nod
 import * as NodePath from 'node:path'
 import process from 'node:process'
 
-import type { BuckMemberCapability } from '../../buck2-manifest.ts'
-import type { ResolvedCompositionCapability } from './composition-capability-resolver-schema.ts'
+import type { BuckMemberCapability } from '../buck2-manifest.ts'
+
+/**
+ * Manifest capability plus its exact Nix realization, executable identity, and complete
+ * immutable runtime closure (`closureStorePaths` is sorted and includes `nixOutputPath`).
+ */
+type ResolvedCapability = {
+  readonly capability: BuckMemberCapability
+  readonly nixOutputPath: string
+  readonly executablePath: string
+  readonly executableDigest: `sha256:${string}`
+  readonly closureStorePaths: readonly string[]
+}
 
 /** Supported host tuples for materialized capability projections. */
 export type CapabilityProjectionPlatform = 'aarch64-linux' | 'aarch64-macos' | 'x86_64-linux'
@@ -28,7 +39,7 @@ export const makeCapabilityProjectionManifest = ({
   resolved,
 }: {
   readonly platform: CapabilityProjectionPlatform
-  readonly resolved: ResolvedCompositionCapability
+  readonly resolved: ResolvedCapability
 }): CapabilityProjectionManifest => ({
   closureIdentity: resolved.nixOutputPath,
   closureStorePaths: resolved.closureStorePaths,
@@ -94,7 +105,7 @@ export const projectResolvedCapabilities = async ({
 }: {
   readonly projectionPath: string
   readonly platform: CapabilityProjectionPlatform
-  readonly resolved: ReadonlyArray<ResolvedCompositionCapability>
+  readonly resolved: ReadonlyArray<ResolvedCapability>
 }): Promise<{ readonly projectionPath: string; readonly generation: string }> => {
   const manifests = resolved.map((resolvedCapability) =>
     makeCapabilityProjectionManifest({ platform, resolved: resolvedCapability }),
@@ -179,7 +190,7 @@ const executableDigest = async (path: string): Promise<`sha256:${string}`> =>
 
 const resolveNixProjectionInput = async (
   input: NixCapabilityProjectionInput,
-): Promise<ResolvedCompositionCapability> => {
+): Promise<ResolvedCapability> => {
   const outputRoot = await realpath(input.nixOutputPath)
   const executablePath = await realpath(NodePath.join(outputRoot, input.capability.executable))
   const outputInfo = await stat(outputRoot)

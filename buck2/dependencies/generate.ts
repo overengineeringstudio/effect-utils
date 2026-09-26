@@ -11,7 +11,7 @@ import {
 
 /**
  * Every path below is repository-relative, and the process reading them is not always
- * rooted at the repository: the Buck-built Genie product runs from the composed workspace
+ * rooted at the repository: the Buck-built Genie product runs from its caller's directory
  * while generating a separate install-free tree, so `process.cwd()` names neither. The repo
  * context anchors on the repository that owns this module instead.
  */

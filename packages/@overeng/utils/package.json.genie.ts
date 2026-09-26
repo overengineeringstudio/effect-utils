@@ -19,6 +19,12 @@ const peerDepNames = [
   '@playwright/test',
   'effect',
 ] as const
+/* Storybook gate entries are optional; the consumer supplies its own Storybook runtime. */
+const storybookGatePeers = [
+  '@storybook/react-vite',
+  '@vitest/browser-playwright',
+  'storybook',
+] as const
 
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils' }),
@@ -74,7 +80,7 @@ const runtimeDeps = catalog.compose({
     },
   },
   peerDependencies: {
-    external: catalog.pick(...peerDepNames),
+    external: catalog.pick(...peerDepNames, ...storybookGatePeers),
   },
   mode: 'install',
 })
@@ -239,6 +245,9 @@ export default packageJson(
         },
       },
     },
+    peerDependenciesMeta: Object.fromEntries(
+      storybookGatePeers.map((name) => [name, { optional: true }]),
+    ),
   } satisfies PackageJsonInputData,
   runtimeDeps,
 )

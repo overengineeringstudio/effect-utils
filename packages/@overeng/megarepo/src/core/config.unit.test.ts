@@ -1,9 +1,12 @@
-import { Option, Schema } from 'effect'
+import { Cause, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+
+import { EffectPath } from '@overeng/effect-path'
 
 import {
   buildSourceStringWithRef,
   CONFIG_FILE_NAME_JSON,
+  decodeMegarepoConfigContent,
   DEFAULT_STORE_PATH,
   ENV_VARS,
   generateJsonSchema,
@@ -15,6 +18,7 @@ import {
   isValidMemberName,
   MegarepoConfig,
   parseSourceString,
+  rejectRetiredRootConfig,
   validateMemberName,
 } from './config.ts'
 
@@ -442,31 +446,51 @@ describe('config', () => {
         members: {},
         generators: {
           vscode: { enabled: true, exclude: ['docs'] },
-          composition: {
-            enabled: true,
-            platformHub: 'effect-utils',
-            ignoredMembers: ['effect'],
-            isolationDir: 'fleet-buck',
-          },
         },
       }
       const result = Schema.decodeSync(MegarepoConfig)(input)
       expect(result.generators?.vscode?.enabled).toBe(true)
       expect(result.generators?.vscode?.exclude).toEqual(['docs'])
-      expect(result.generators?.composition?.enabled).toBe(true)
-      expect(result.generators?.composition?.platformHub).toBe('effect-utils')
-      expect(result.generators?.composition?.ignoredMembers).toEqual(['effect'])
-      expect(result.generators?.composition?.isolationDir).toBe('fleet-buck')
     })
 
-    it.each([
-      ['missing platform hub', { enabled: true }],
-      ['invalid platform hub', { platformHub: '../effect-utils' }],
-      ['invalid isolation directory', { platformHub: 'effect-utils', isolationDir: 'nested/path' }],
-    ])('should reject composition config with %s', (_name, composition) => {
-      expect(() =>
-        Schema.decodeUnknownSync(MegarepoConfig)({ members: {}, generators: { composition } }),
-      ).toThrow()
+    it('ignores a retired generators.composition block when decoding, but rejects it for the root', () => {
+      const config = Effect.runSync(
+        decodeMegarepoConfigContent({
+          format: 'kdl',
+          content: [
+            'members {',
+            '  effect "effect-ts/effect"',
+            '}',
+            'generators {',
+            '  composition {',
+            '    enabled #true',
+            '    platformHub effect-utils',
+            '  }',
+            '}',
+          ].join('\n'),
+        }),
+      )
+      expect(config.members.effect).toBe('effect-ts/effect')
+
+      const megarepoRoot = EffectPath.unsafe.absoluteDir('/tmp/root/')
+      const exit = Effect.runSyncExit(rejectRetiredRootConfig({ megarepoRoot, config }))
+      if (Exit.isSuccess(exit) === true) expect.fail('root with generators.composition accepted')
+      expect(Cause.pretty(exit.cause)).toContain(
+        'generators.composition was removed with the composed Buck shape',
+      )
+      expect(
+        Exit.isSuccess(
+          Effect.runSyncExit(
+            rejectRetiredRootConfig({
+              megarepoRoot,
+              config: new MegarepoConfig({
+                members: {},
+                generators: { vscode: { enabled: true } },
+              }),
+            }),
+          ),
+        ),
+      ).toBe(true)
     })
 
     it('should decode config with $schema field', () => {
@@ -503,16 +527,6 @@ describe('config', () => {
       const defs = schema['$defs'] as Record<string, Record<string, unknown>>
       expect(defs['MegarepoConfigEncoded']).toBeDefined()
       expect(defs['MegarepoConfigEncoded']?.['type']).toBe('object')
-      const composition = defs['CompositionGeneratorConfigEncoded']!
-      expect(composition).toMatchObject({
-        type: 'object',
-        required: ['platformHub'],
-        additionalProperties: false,
-      })
-      expect((composition['properties'] as Record<string, unknown>)['platformHub']).toMatchObject({
-        type: 'string',
-        pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$',
-      })
     })
   })
 

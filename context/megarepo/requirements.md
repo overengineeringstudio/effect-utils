@@ -5,8 +5,7 @@ Status: ratified.
 The "why" of this sub-VRS is [vision.md](./vision.md). In one line: megarepo
 (`mr`) exists so that several independently
 developed git repositories can be worked on as one environment without any of
-them having to know it — arranging them on disk from a declared intent, and
-owning the workspace state a composed build reads. Every requirement below is
+them having to know it — arranging them on disk from a declared intent. Every requirement below is
 derived from an already-ratified source (a migrated decision record, a buck2
 decision that names `mr`, or an observable contract of the shipped tool); the
 derivation is cited per requirement. Nothing here is new policy.
@@ -16,16 +15,15 @@ derivation is cited per requirement. Nothing here is new policy.
 - The composition contract this tool serves is
   [../buck2/05-composition/requirements.md](../buck2/05-composition/requirements.md)
   (`COMP-R*`). Those requirements constrain `mr` and are **referenced, never
-  restated**: mount shape, cell identity, root declarations, and action-identity
-  hygiene belong there. This document covers only what `mr` owns and
-  05-composition does not say.
+  restated**: that source mounts are never Buck cells belongs there. This
+  document covers only what `mr` owns and 05-composition does not say.
 - Terms: [ontology.md](./ontology.md). Mechanism: [spec.md](./spec.md).
 - Decision records: [.decisions/](./.decisions/), migrated from the package on
   2026-08-31.
 
 ## Assumptions
 
-- **MR-A01 Composition contract upstream:** The composed build's correctness
+- **MR-A01 Composition contract upstream:** The Buck-facing correctness
   requirements are owned by `COMP-R*`. `mr` is an implementation of them plus
   the obligations here; where the two appear to conflict, `COMP-R*` wins and
   this document is wrong.
@@ -42,10 +40,8 @@ derivation is cited per requirement. Nothing here is new policy.
   authoritative index — a workspace contributes only after running an `mr`
   command. The cost is over-retention of store worktrees; it is accepted
   because the failure direction is keeping disk, not losing work.
-- **MR-T02 Legacy mount shape retained:** `mr` keeps supporting the legacy
-  symlink mount for reference-only members until their retirement, on the terms
-  COMP-R10/COMP-R11 set. The cost is two mount shapes in the codebase for a
-  bounded period.
+- **MR-T02 Legacy mount shape retained:** Retired with the composed workspace shape
+  (principal q5, 2026-09-25).
 - **MR-T03 Reclamation lags:** Grace windows and archive retention mean the
   store holds reclaimable bytes for weeks. Accepted: the alternative is
   deleting on weaker evidence.
@@ -61,26 +57,14 @@ derivation is cited per requirement. Nothing here is new policy.
   worktrees are excluded, because co-development deliberately moves `HEAD`
   ahead of the lock. (Decision
   [0009](./.decisions/0009-apply-drift-postcondition.md).)
-- **MR-R02 Canonical source admission:** A locked source is admissible as mount
-  input only as the detached `refs/commits/<commit>` worktree at exact `HEAD`
-  with no tracked, untracked, or ignored entries. Ignored bytes are refused,
-  not skipped over. (Decision 0020 Amendment 2 in the buck2 tree.)
-- **MR-R03 Atomic workspace application:** Capability, mount, and overlay state
-  for one workspace is applied under a single update lock, and root Buck
-  authority is published last. A workspace is observably at the lock or
-  observably refused; no intermediate state is published to a consumer.
-  (Decision 0020 Amendment 2.)
-- **MR-R04 Mount identity is verified, not assumed:** Every produced mount is
-  checked against the content identity computed from its source before it is
-  published. On Darwin this post-condition is mandatory — case-insensitive
-  APFS collapses colliding paths silently at materialization, and this check is
-  what makes that loud. Mount-mechanism control flow branches on process exit
-  codes, never on stderr text. (Decision 0020 Amendment 1.)
-- **MR-R05 Overlay surface is declared:** The dist overlay placed into a mount
-  is exactly the set a per-member genie projection declares. A glob, a
-  heuristic, or "whatever exists in the member's dist" is not an admissible
-  source of that set. (Decision
-  [../buck2/.decisions/0021-cross-member-types-dist-overlay.md](../buck2/.decisions/0021-cross-member-types-dist-overlay.md).)
+- **MR-R02 Canonical source admission:** Retired with the composed workspace shape
+  (principal q5, 2026-09-25).
+- **MR-R03 Atomic workspace application:** Retired with the composed workspace shape
+  (principal q5, 2026-09-25).
+- **MR-R04 Mount identity is verified, not assumed:** Retired with the composed workspace shape
+  (principal q5, 2026-09-25).
+- **MR-R05 Overlay surface is declared:** Retired with the composed workspace shape
+  (principal q5, 2026-09-25).
 
 ### Must never lose work
 
@@ -122,26 +106,12 @@ derivation is cited per requirement. Nothing here is new policy.
   depends on host git configuration, host identity, or platform path
   resolution. (Decision
   [0006](./.decisions/0006-test-contract-and-validation.md).)
-- **MR-R11 Standalone worktree is the canonical development context:** For a
-  Buck-admitted repository, a development or agent worktree is a standalone
-  worktree by default; a composed workspace is a declared exception for active
-  fork co-development or generator-source imports (buck2 decision
-  [0034](../buck2/.decisions/0034-artifact-default-composition-no-registry.md)). (Decision
-  [0027](../buck2/.decisions/0027-composed-default-worktrees.md); the
-  multi-root soak is the named hardening gate.)
-- **MR-R12 Routine application is shape-preserving:** No routine command —
-  `mr apply`, `mr fetch --apply`, `mr pin`, `mr unpin`, `mr check`, or a
-  status-gated devenv task — may relocate a worktree or convert a legacy flat
-  root. A legacy projection is a typed, zero-mutation refusal instructing the
-  caller to recreate it. There is no in-place migration or recovery command.
-- **MR-R13 Explicit composition happens directly at creation:** When worktree
-  creation is explicitly requested with `--compose`, and the target commit
-  enables the composition generator, it creates the branch checkout directly
-  at `P/repos/<owned>`, where `P` is its final store path. A composition
-  declaration in `megarepo.kdl` enables the generator but never selects the
-  composed worktree shape. Git worktree registration, together with matching
-  `.git`, branch, and bare repository identity at that path, is the permanent
-  authority. An exact incomplete birth may be retried in place; ambiguous
-  roots and foreign bytes are refused without relocation or deletion.
-  Generated metadata describes the rebuildable projection and never becomes a
-  second root-identity authority.
+- **MR-R11 Standalone worktree is the only development context:** A
+  development or agent worktree is a standalone worktree; `mr` creates no
+  composed workspace (principal q5, 2026-09-25, superseding the declared
+  exception of buck2 decision
+  [0027](../buck2/.decisions/0027-composed-default-worktrees.md)).
+- **MR-R12 Routine application is shape-preserving:** Retired with the composed workspace shape
+  (principal q5, 2026-09-25).
+- **MR-R13 Explicit composition happens directly at creation:** Retired with the composed workspace shape
+  (principal q5, 2026-09-25).

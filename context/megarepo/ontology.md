@@ -3,8 +3,8 @@
 The domain language of the megarepo tool (`mr`). This absorbs and supersedes
 `packages/@overeng/megarepo/docs/glossary.md`, which covered store GC only.
 
-Terms specific to the buck2-facing composition contract — cell, composition
-root, isolation dir, action identity — are defined in
+Terms specific to Buck — cell, standalone root, isolation dir, action identity
+— are defined in
 [../buck2/ontology.md](../buck2/ontology.md) and
 [../buck2/05-composition/](../buck2/05-composition/requirements.md), and are
 used here without redefinition.
@@ -15,7 +15,7 @@ used here without redefinition.
 
 **Megarepo**:
 A git repository containing a `megarepo.kdl` (or legacy `megarepo.json`). It
-declares which repos are members and is the root of the composed environment.
+declares which repos are members and is the root of the multi-repo environment.
 Megarepos nest: a megarepo can itself be a member of another.
 
 **Member**:
@@ -51,69 +51,16 @@ A lock-entry flag meaning `mr fetch --apply` must not advance this member.
 Orthogonal to ref type: ref type says what a member tracks, `pinned` says
 whether the tool may move it.
 
-### Workspace ownership
-
-**Composition workspace**:
-The synthesized root at which a composed build runs, located at the store
-worktree path of the repo under development. It is not itself a git repository;
-it holds the Buck root authority, `buck-out`, and the member mounts.
-_Avoid_: composition root (that names the Buck-side artifact this workspace
-carries, defined in the buck2 tree), checkout.
-
-**Owned member**:
-The workspace's single writable member — the branch-attached git worktree of
-the repo the workspace exists to develop, and the default working directory for
-work in that workspace. Exclusivity is git's one-worktree-per-branch rule, not
-tool bookkeeping.
-_Avoid_: root repo, primary member.
+### Source mounts
 
 **Mount**:
-A member's materialization inside a workspace at `repos/<name>`. Every member
-that is not the owned member is a read-only mount of its locked revision:
-tracked sources plus the dist overlay, protected files `0444` / dirs `0555`.
-_Avoid_: link, symlink (the symlink shape is retired legacy, not the concept).
-
-**Advance**:
-Replacing a mount's content with a newer locked revision by staging a fresh
-copy and exchanging it atomically, never by mutating the live mount in place.
-The distinction matters because a live Buck daemon may be reading the mount
-during the exchange.
-
-**R6 identity**:
-The content-identity layer for member mounts: canonical tree scan,
-protected-tree verification, and the persisted mount manifest. R6 defines what
-a mount _is_, in content terms, independently of the mechanism that produced
-it; the **R6 post-condition** is the check that a freshly produced mount
-matches the identity computed from its source.
-_Avoid_: confusing this with `COMP-R06` in
-[../buck2/05-composition/requirements.md](../buck2/05-composition/requirements.md)
-("no member `.buckroot`"). Same spelling, unrelated concepts: `COMP-R06` is a
-numbered composition requirement, R6 here is the name of a layer in `mr`. Where
-both could be meant, write "R6 identity" or "COMP-R06" in full.
-
-**Capability projection**:
-The per-`(toolset, platform)` set of store-resolved executables copied into a
-mount at `.buck2/capabilities`, verified by its own `--check` gate. Host state,
-not repository content: it is gitignored, so a mount without it fails at load
-rather than building against the wrong tools.
-
-**Dist overlay**:
-A member's Buck2-built dist artifacts at the locked revision, placed into the
-mount alongside tracked sources so the `exports` types→dist mechanism resolves
-across members. Digest-neutral by construction, since the root's
-`[project] ignore` covers `dist`. Declared per member by a genie projection —
-a manifest, never a glob.
-
-**Update lock**:
-The single workspace-scoped lock held across the capability, mount, and overlay
-stages of `mr apply`, released only after root Buck authority is published. It
-is what makes a workspace either fully at the lock or visibly refused, never
-half-applied.
-
-**Reference-only member** (`ignoredMembers`):
-A configured legacy-symlink member that is a checkout, not a build input. Its
-whole path enters the root `[project].ignore`, and no target or load may
-reference it.
+A member's place in a megarepo at `repos/<name>`: a symlink to the store
+worktree that satisfies its lock entry (or to a local path member). A mount is a
+source checkout for reading, editing, and running the member's own tooling; it
+is never a Buck cell. The composed workspace shape (owned member, read-only
+`cp -a` mounts, dist overlays, per-workspace capability projection) is retired
+(principal q5, 2026-09-25).
+_Avoid_: link (names the mechanism, not the role).
 
 ### Store liveness and reclamation
 
@@ -174,26 +121,15 @@ _Avoid_: trash, recycle bin.
 The leitwort is **evidence**. Every destructive rule in this vocabulary is
 phrased as a demand for positive evidence, and absence of evidence resolves to
 _keep_ or _refuse_ — never to _proceed_. Cold, staleness, and the lossless
-floor are three independent evidence sources for one deletion; the R6
-post-condition is evidence a mount is what it claims; admission of a locked
-source is evidence a materialization is canonical. The vocabulary splits along
-the same seam as the tool:
+floor are three independent evidence sources for one deletion; admission of a
+locked source is evidence a materialization is canonical.
 
 ```text
-arrangement            ownership
-  megarepo               composition workspace
-  member          ──▶      owned member (writable, exactly one)
-                  ──▶      mount (read-only, the rest)
-  store                    ├─ R6 identity
-  canonical worktree       ├─ capability projection
-  pinned materialization   └─ dist overlay
-  intent / resolved state  update lock
-  live set, cold, archive, reap
+megarepo ── member ──▶ mount (repos/<name>) ──▶ canonical worktree | pinned materialization
+store ── canonical worktree, pinned materialization
+intent / resolved state
+live set, cold, archive, reap
 ```
-
-A member is the arrangement-side noun; inside a workspace that same repository
-is either the owned member or a mount. The two never coincide: one repository
-has one role per workspace.
 
 ## Flagged Ambiguities
 
@@ -204,5 +140,3 @@ has one role per workspace.
 - **`--all` mode** is not "delete everything stale" — it is the
   protection-bypassing mode that ignores the live set entirely. Cold
   reclamation is a separate, live-set-honoring path within default gc.
-- **R6 vs COMP-R06**: see the R6 identity entry above. Unrelated concepts that
-  collide in shorthand.

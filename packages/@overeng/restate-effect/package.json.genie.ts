@@ -18,41 +18,33 @@ import utilsPkg from '../utils/package.json.genie.ts'
 const peerDepNames = ['effect'] as const
 
 /* OTel deps are used ONLY by the `./otel` subpath — the base `.` export must not
- * pull them. They are PEERS (a consumer that imports `./otel` provides them) and
- * also dev deps (so the package builds + the OTel test runs locally). This keeps
- * the core dependency-light (decision 0007, spec §10). `@opentelemetry/sdk-metrics`
- * is a peer because the metrics path (decision 0014) imports its
- * `PeriodicExportingMetricReader` / `MetricReader` types directly from `./otel`. */
+ * pull them. They are optional PEERS (a consumer that imports `./otel` provides
+ * them) and dev deps for local builds/tests. Keep the core dependency-light
+ * while declaring every runtime import in the published OTel entry. */
 const otelPeerDepNames = [
   '@effect/opentelemetry',
   '@opentelemetry/api',
+  '@opentelemetry/resources',
   '@opentelemetry/sdk-metrics',
+  '@opentelemetry/sdk-trace-base',
+  '@opentelemetry/sdk-trace-node',
+  '@opentelemetry/semantic-conventions',
   '@restatedev/restate-sdk-opentelemetry',
 ] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/restate-effect' }),
   dependencies: {
-    workspace: [otelContractPkg],
+    workspace: [otelContractPkg, utilsPkg],
     external: catalog.pick('@restatedev/restate-sdk', '@restatedev/restate-sdk-clients'),
   },
   devDependencies: {
-    /* `@overeng/utils` provides the shared SSOT helpers the source consumes:
-     * `formatReasonMessage` (RestateError), `textEncodeToArrayBuffer` (Serde) and
-     * `freePort`/`freePorts` (testing harness) — all dependency-free isomorphic /
-     * `node:net` helpers. utils is a PEER (mirroring `notion-effect-client`) so its
-     * broad peer surface propagates to the consumer rather than bloating this
-     * dependency-light core; listed as a dev workspace dep too so it builds + tests
-     * locally. */
-    workspace: [utilsDevPkg, utilsPkg],
-    /* This is the only importer whose peer graph binds a `@overeng/utils` peer
-     * that utils itself satisfies through its own devDependencies, so the
-     * repo-wide `injectWorkspacePackages: true` makes pnpm 12 resolve the edge
-     * as an injected `file:` snapshot instead of workspace source — freezing
-     * this package's view of utils for tsc and vitest. pnpm 12 ignores
-     * `dependenciesMeta.injected: false` while the workspace-wide setting is on
-     * (`inject_workspace_packages || injected` in its resolver), so the
-     * supported opt-out is a path-based workspace specifier. */
+    /* utils-dev supplies test helpers; utils is a runtime dependency because
+     * Serde, RestateError and the exported testing harness import it. */
+    workspace: [utilsDevPkg],
+    /* Keep utils linked live rather than freezing pnpm's injected snapshot:
+     * pnpm 12 ignores dependenciesMeta.injected: false under the workspace-wide
+     * injection setting, so the path-based workspace specifier is required. */
     liveWorkspaceLinks: ['@overeng/utils'],
     external: {
       ...catalog.pick(
@@ -60,6 +52,11 @@ const workspaceDeps = catalog.compose({
         ...otelPeerDepNames,
         ...otelSdkDeps,
         '@effect/vitest',
+        '@effect/platform-node',
+        '@playwright/test',
+        '@storybook/react-vite',
+        '@vitest/browser-playwright',
+        'storybook',
         '@types/node',
         'typescript',
         'vitest',
@@ -67,7 +64,6 @@ const workspaceDeps = catalog.compose({
     },
   },
   peerDependencies: {
-    workspace: [utilsPkg],
     external: catalog.pick(...peerDepNames, ...otelPeerDepNames),
   },
 })
@@ -103,6 +99,9 @@ export default packageJson(
         './testing': './dist/testing/testing.js',
       },
     },
+    peerDependenciesMeta: Object.fromEntries(
+      otelPeerDepNames.map((name) => [name, { optional: true }]),
+    ),
   } satisfies PackageJsonInputData,
   workspaceDeps,
 )

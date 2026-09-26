@@ -7,12 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { createComposedOwnedWorkspace } from '../composition/acquisition/owned-worktree-acquisition.ts'
 import type { MegarepoConfig } from '../core/config.ts'
 import type { MemberSource } from '../core/config.ts'
 import * as Git from '../core/git.ts'
 import type { LockFile } from '../core/lock.ts'
-import { makeCanonicalTempDirectoryScoped } from '../test-utils/temp-root.ts'
 import {
   validateStoreMembers,
   runPreflightChecks,
@@ -254,95 +252,6 @@ describe('store-hygiene', () => {
           expect(issues[0]!.fix).toBeDefined()
           expect(issues[0]!.meta?._tag).toBe('missing_bare')
         }),
-      ))
-    it('accepts a composed branch whose registered worktree is nested at P/repos/owned', () =>
-      runWithContext(
-        Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem
-          const tmp = yield* makeCanonicalTempDirectoryScoped()
-          const sourcePath = NodePath.join(tmp, 'source')
-          const basePath = EffectPath.unsafe.absoluteDir(`${NodePath.join(tmp, 'store')}/`)
-          const store = makeTestStore(basePath)
-          const source: MemberSource = {
-            type: 'github',
-            owner: 'owner',
-            repo: 'myrepo',
-            ref: Option.some('feature'),
-          }
-          const bareRepoPath = store.getBareRepoPath(source)
-          const workspaceRoot = store.getWorktreePath({ source, ref: 'feature' })
-
-          yield* fs.makeDirectory(EffectPath.unsafe.absoluteDir(`${sourcePath}/`), {
-            recursive: true,
-          })
-          yield* Git.runCommand({ cwd: sourcePath, args: ['init', '-b', 'main'] })
-          yield* fs.writeFileString(
-            EffectPath.unsafe.absoluteFile(NodePath.join(sourcePath, 'megarepo.kdl')),
-            'members {}\n',
-          )
-          yield* Git.runCommand({
-            cwd: sourcePath,
-            args: ['-c', 'user.name=Test User', '-c', 'user.email=test@example.com', 'add', '-A'],
-          })
-          yield* Git.runCommand({
-            cwd: sourcePath,
-            args: [
-              '-c',
-              'user.name=Test User',
-              '-c',
-              'user.email=test@example.com',
-              'commit',
-              '--no-gpg-sign',
-              '--no-verify',
-              '-m',
-              'base',
-            ],
-          })
-          yield* fs.makeDirectory(
-            EffectPath.unsafe.absoluteDir(`${NodePath.dirname(bareRepoPath)}/`),
-            { recursive: true },
-          )
-          yield* Git.runCommand({
-            cwd: tmp,
-            args: ['clone', '--bare', sourcePath, bareRepoPath],
-          })
-          const commit = yield* Git.getCurrentCommit(sourcePath)
-          yield* createComposedOwnedWorkspace({
-            bareRepo: bareRepoPath,
-            workspaceRoot,
-            ownedMember: 'myrepo',
-            branch: 'feature',
-            startPoint: 'main',
-            generate: () => Effect.void,
-          })
-
-          const issues = yield* validateStoreMembers({
-            memberNames: ['myrepo'],
-            config: makeTestConfig({ myrepo: 'owner/myrepo#feature' }),
-            lockFile: makeTestLockFile({ myrepo: { ref: 'feature', commit } }),
-            store,
-          })
-
-          expect(issues.filter((issue) => issue.type === 'broken_worktree')).toEqual([])
-
-          yield* fs.writeFileString(
-            EffectPath.unsafe.absoluteFile(NodePath.join(workspaceRoot, 'repos', 'myrepo', '.git')),
-            'gitdir: /tmp/foreign\n',
-          )
-          const ambiguousIssues = yield* validateStoreMembers({
-            memberNames: ['myrepo'],
-            config: makeTestConfig({ myrepo: 'owner/myrepo#feature' }),
-            lockFile: makeTestLockFile({ myrepo: { ref: 'feature', commit } }),
-            store,
-          })
-          expect(ambiguousIssues).toMatchObject([
-            { severity: 'error', type: 'ambiguous_worktree', memberName: 'myrepo' },
-          ])
-          expect(yield* fixStoreIssues({ issues: ambiguousIssues, store })).toMatchObject([
-            { status: 'skipped', issueType: 'ambiguous_worktree' },
-          ])
-          expect(yield* fs.exists(EffectPath.unsafe.absoluteDir(`${workspaceRoot}/`))).toBe(true)
-        }).pipe(Effect.scoped),
       ))
   })
 

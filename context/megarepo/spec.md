@@ -1,7 +1,7 @@
 # Megarepo Spec
 
 This document specifies the megarepo tool (`mr`): what it arranges on disk and
-what it owns in a composition workspace. It builds on
+how members are mounted into a megarepo. It builds on
 [requirements.md](./requirements.md); terms are defined in
 [ontology.md](./ontology.md).
 
@@ -17,45 +17,34 @@ implementation reaching it.
 
 ## Scope
 
-**Defines:** the two responsibilities of `mr` (repo arrangement and workspace
-ownership), the CLI surface, the composition state machine, and the source
+**Defines:** repo arrangement, source mounts, the CLI surface, and the source
 hierarchy.
 
-**Does not define:** the buck2-facing composition contract — the composition
-root shape, cell identity, action-identity hygiene, and the mount-shape
-requirements (`COMP-R*`) live in
+**Does not define:** the buck2-facing composition contract — the standalone
+root shape, cell identity, action-identity hygiene, and the rule that source
+mounts are never cells (`COMP-R*`) live in
 [../buck2/05-composition/](../buck2/05-composition/requirements.md) and are
 referenced here, never restated. Nor does it define buck2 execution,
 materialization, or cache wiring (`../buck2/02-*` … `../buck2/04-*`).
 
-## Two Responsibilities
+## Responsibility
 
-`mr` does two separable things. Everything in this spec belongs to one of them.
+`mr` arranges repositories: it resolves declared sources into the host-global
+store and mounts each member into the megarepo.
 
 ```text
   megarepo.kdl (intent)                  megarepo.lock (resolved state)
         │                                        │
         ▼                                        ▼
-  ┌───────────────────────────────────────────────────────┐
-  │ 1. Repo arrangement                                   │
-  │    resolve sources → bare repos + per-ref worktrees    │
-  │    in the store → liveness, hygiene, GC                │
-  └───────────────────────────────────────────────────────┘
-                          │ locked revisions + store worktrees
-                          ▼
-  ┌───────────────────────────────────────────────────────┐
-  │ 2. Workspace ownership                                │
-  │    acquire owned worktree → mounts → overlays →        │
-  │    capabilities → publish root Buck authority          │
-  └───────────────────────────────────────────────────────┘
-                          │
-                          ▼
-                 composition workspace
+  resolve sources → bare repos + per-ref worktrees in the store
+        │                     └─ liveness, hygiene, GC
+        ▼
+  repos/<name> → store worktree (source mount)
 ```
 
-Responsibility 1 is durable, host-global, and shared across every workspace on
-the machine. Responsibility 2 is per-workspace and disposable: a workspace can
-be town down and rebuilt from the lock plus the store.
+The store is durable, host-global, and shared across every megarepo on the
+machine. Mounts are per-megarepo and disposable: `mr apply` rebuilds them from
+the lock plus the store.
 
 ## Repo Arrangement
 
@@ -127,148 +116,29 @@ clean/lossless floor (decision
 [0008](./.decisions/0008-ref-mismatch-clean-archive.md)). `--all` is the
 protection-bypassing mode and honors none of this.
 
-Composed workspace roots are conservatively retained by both default and
-`--all` GC. GC inspects the nested owned worktree for Git and dirty-state
-evidence, but the current archive primitive can only move a flat worktree.
-Archiving a composed root stays disabled until a root-aware journaled archive
-can preserve the complete workspace and its nested Git registration atomically.
-
 Absence of evidence never licenses deletion: an unavailable `gh`, a failed
 fetch, an unreadable workspace record, or an empty observation ledger all
 resolve to _keep_.
 
-## Workspace Ownership
+## Source Mounts
 
-### Workspace anatomy
+`mr apply` makes the workspace match the lock: each remote member's
+`repos/<name>` becomes a symlink to the store worktree that satisfies its lock
+entry, and each local-path member's to its path. A mount is a source checkout
+for reading, editing, and running the member's own tooling; it is never a Buck
+cell (COMP-R02 in
+[../buck2/05-composition/](../buck2/05-composition/requirements.md)).
 
-A composition workspace is rooted at the store worktree path of the repo it
-exists to develop. The workspace root is not itself a git repository; the owned
-member is. The root shape and cell wiring are specified by
-[../buck2/05-composition/spec.md](../buck2/05-composition/spec.md) — this
-document specifies only what `mr` does to produce it.
+A branch worktree resolves to its canonical store path `P` only when Git's
+registration agrees: the branch is registered exactly at `P`, or nowhere while
+`P` is absent or registered for no branch. Any other registration is refused
+as ambiguous rather than shadowed. A member path that is a real directory or
+file rather than a symlink is foreign and refused before replacement.
 
-### Workspace identity and creation
-
-A composed root `P` is a rebuildable projection around one owned Git worktree
-`W`, exactly `P/repos/<owned>`. The bare repository's worktree registration is
-authoritative only when it names `W` and agrees with `W`'s `.git` pointer and
-branch identity. Root generation metadata remains descriptive; there is no
-root ownership manifest.
-
-`mr store worktree new` creates a standalone Git worktree by default. An explicit
-`--compose` request reads the target commit's composition capability before
-creating anything. For a capable branch it claims an absent `P`, creates
-`P/repos`, runs `git worktree add` directly at final `W`, links the owned config
-into `P`, and runs normal composition generation. Composition fails closed when
-the nested owned checkout carries `.buckconfig` or `.buckroot`; those markers
-would let Buck2 discover a second project when invoked from the member. Creation
-never stages or publishes another root and never relocates `W`.
-
-Creation may retry only recognizable partial births: an otherwise empty `P`
-with an empty `repos`, or the exact registered `W` with matching Git identity
-and a missing or correct root-config link. Before Git registration, any other
-root entry or non-empty `repos` is foreign. A branch registered anywhere but
-`W`, a mismatched `.git`/bare/branch identity, or an incorrect root-config
-symlink is ambiguous and fails closed with exact paths. Refusal never moves
-`W` or deletes bytes.
-
-Routine application validates this composed Git shape, then only plans or
-reconciles generated state. A legacy flat `P` is refused before mutation with a
-typed instruction to recreate it through `mr store worktree new`. There is no
-public cutover, recover, unlock, or composition-status lifecycle surface.
-
-Store path resolution, pinning, status, and GC derive the same `P`/`W` pair
-from the canonical registration shape. Both default cold GC and `gc --all`
-hard-keep composed roots until a root-aware archive/delete primitive exists.
-The flat recursive-delete path is never used for `P`.
-
-### The composition state machine
-
-`mr apply` is a state machine over one workspace, taking the update lock once
-and publishing root Buck authority last so that no consumer can observe a root
-that points at state not yet materialized.
-
-```mermaid
-stateDiagram-v2
-  [*] --> Resolve
-  Resolve: validate P/W Git identity and resolve locked sources
-  Resolve --> Lock
-  Lock: take the workspace update lock
-  Lock --> Capabilities
-  Capabilities: project executable capabilities per (toolset, platform)
-  Capabilities --> Mounts
-  Mounts: materialize / advance read-only member mounts
-  Mounts --> Overlays
-  Overlays: place the dist overlay at the locked revision
-  Overlays --> Publish
-  Publish: write root Buck authority, release the lock
-  Publish --> [*]
-  Resolve --> Refuse: invalid Git identity or non-admissible source
-  Mounts --> Refuse: R6 post-condition mismatch
-  Refuse --> [*]
-```
-
-Exclusivity of the owned member is not enforced by `mr` bookkeeping: it is
-git's own one-worktree-per-branch rule. A second workspace on the same branch
-is refused by git before `mr` has to have an opinion.
-
-### Admission of a locked source
-
-Only an immutable, canonical materialization may become a mount source: the
-detached `refs/commits/<commit>` worktree at exact `HEAD` with no tracked,
-untracked, or ignored entries. Ignored bytes are refused rather than silently
-entering the content snapshot — an ignored file is still a byte on disk, and
-admitting it would make two workspaces at the same commit disagree.
-
-### Mount mechanism and content identity
-
-The mount mechanism is `cp -a` from the immutable store, advanced by stage plus
-`RENAME_EXCHANGE`, per COMP-R10 — the alternatives (hardlink farms, in-place
-git-worktree regeneration, symlinks) are disqualified there on demonstrated
-evidence and are not re-argued here. Two layers implement it:
-
-| Layer                | Owns                                                                                      |
-| -------------------- | ----------------------------------------------------------------------------------------- |
-| R6 identity          | canonical tree scan, protected-tree verification, persisted mount manifest — content only |
-| cp-a mount mechanism | copy, capability placement, protection, atomic advance, teardown, recovery                |
-
-R6 defines _what a mount is_, independent of how it got there; the cp-a layer
-is the only mechanism that currently produces one. The separation is
-load-bearing: the mechanism validates its own output against an identity it
-does not define, so a half-completed copy cannot certify itself.
-
-Regeneration ordering within the mechanism is fixed: materialize → capability
-copy → protect. The capability copy is not optional (`.buck2/capabilities` is
-gitignored, so a mount without it fails at load time). Protection is files
-`0444` / dirs `0555`; teardown chmods directories only, because `rm -rf` of a
-protected mount otherwise fails. Advance is stage-plus-exchange, never
-in-place. A dirty mount is detected by hash against the locked sha, and refused
-rather than repaired.
-
-On Darwin the R6 post-condition is mandatory rather than advisory:
-case-insensitive APFS silently collapses colliding paths at materialization,
-and the identity check is what turns that into a loud failure. `mr` branches on
-`mv` exit codes and never on stderr text, because Darwin's errno rendering is
-not stable (decision 0020 Amendment 1 in the buck2 tree).
-
-### Dist overlay
-
-A member mount carries tracked sources plus the member's Buck2-built dist
-artifacts at the locked revision, pulled from the shared cache and built
-locally only on miss. Which targets constitute the overlay is declared by a
-per-member genie projection — a manifest, never a glob, so the overlay surface
-is reviewable and cannot silently widen. The composition root's
-`[project] ignore` covers `dist`, which is what keeps action digests pure
-source while the consumption surface rides along
-([../buck2/.decisions/0021-cross-member-types-dist-overlay.md](../buck2/.decisions/0021-cross-member-types-dist-overlay.md)).
-
-### Reference-only members
-
-`ignoredMembers` names configured legacy-symlink members that are checkouts,
-not build inputs. Their entire `repos/<name>` path is added to the root
-`[project].ignore`; no target or load may reference them. The legacy symlink is
-admissible there precisely because Buck cannot traverse, hash, detect, or
-invalidate through an excluded path.
+`mr store worktree new` creates standalone worktrees only. The composed
+workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`
+mounts, dist overlays, per-workspace capability projection, and a synthesized
+Buck root — is retired (principal q5, 2026-09-25).
 
 ## CLI Surface
 
@@ -277,7 +147,7 @@ invalidate through an excluded path.
 | `mr init` / `mr add`             | arrangement    | create `megarepo.kdl`; add a member declaration                       |
 | `mr fetch --apply`               | arrangement    | fetch remotes, advance unpinned members, then update the lock         |
 | `mr lock`                        | arrangement    | record current workspace commits into the lock; never touches remotes |
-| `mr apply`                       | ownership      | lock → workspace, exactly; never modifies the lock                    |
+| `mr apply`                       | mounts         | lock → workspace, exactly; never modifies the lock                    |
 | `mr status` / `mr ls`            | both           | report intent vs lock vs workspace drift; read-only                   |
 | `mr pin`                         | arrangement    | freeze a member against `mr fetch --apply`                            |
 | `mr store gc` / `status` / `fix` | arrangement    | reclaim, report, and repair store worktrees                           |
@@ -302,51 +172,34 @@ current layout: `src/lib/` no longer exists.
 
 ```text
 packages/@overeng/megarepo/src/
-  core/                  # repo arrangement primitives, composition-agnostic
+  core/                  # repo arrangement primitives
     git.ts ref.ts lock.ts config.ts
     megarepo-traversal.ts issues.ts observability.ts
     source-policy.ts version.ts
     nix-lock/
-  composition/           # workspace ownership, one dir per state-machine stage
-    acquisition/         # owned branch-attached worktree acquire + recover
-    mounts/              # R6 identity + cp-a mount mechanism
-    overlays/            # dist overlay declaration and lifecycle
-    capabilities/        # capability projection and resolution
-    root/                # composition-root generation
-    apply/               # the state machine that sequences the above
-  store/                 # store layout, liveness, hygiene, GC, locks
-  sync/                  # member sync: store fetch + worktree placement
+  store/                 # store layout, branch-worktree resolution, liveness, hygiene, GC, locks
+  sync/                  # member sync: store fetch, worktree placement, mount inspection
   generators/            # config-file generators (vscode workspace, JSON schema)
+  buck2-capabilities/    # capability projection run by the Nix buck2-capabilities output
   buck2-manifest.ts      # public subpath export: ./buck2-manifest
   *.contract.ts          # OTel semantic-convention contracts, read by path
   cli/                   # unchanged
 ```
 
-Two properties are the point of the split, and either one breaking is a reason
-to reject a change that otherwise matches the tree:
+`core/` imports none of its siblings: repo arrangement is usable, and
+testable, on its own. `store/` is the home of the `store-*` family. Store
+layout, liveness, hygiene and GC are arrangement-side, but the family is too
+large to sit as loose files in `core/`, so it gets a sibling directory.
+`sync/` and `generators/` are siblings of `core/` rather than members of it,
+because they compose `core/` and `store/`.
 
-1. **`core/` does not import `composition/`.** Repo arrangement is usable, and
-   testable, without any composition concept. The dependency runs one way.
-2. **`composition/` subdirectories mirror the state machine.** A stage of
-   `mr apply` maps to exactly one directory, so the sequence in the code and
-   the sequence in this spec are the same list.
-
-`store/` is the home of the `store-*` family. Store layout, liveness, hygiene
-and GC are arrangement-side, but the family is too large to sit as loose files
-in `core/`, so it gets a sibling directory rather than a subdirectory of either
-half.
-
-`sync/` and `generators/` are siblings of `core/` rather than members of it.
-Both reach into `composition/` — `sync/` inspects member mounts before it will
-touch a member path, and `generators/` re-exports the composition-root
-generators — so folding either into `core/` would break property 1.
-
-`buck2-manifest.ts` stays a top-level file, not a member of `composition/`: it
-is the package's public subpath export (`@overeng/megarepo/buck2-manifest`) and
-its stability contract is external. The `*.contract.ts` files likewise stay at
-the `src/` root, because the weaver registry references them by path. Tests
-stay colocated with their subject (`*.unit.test.ts`, `*.integration.test.ts`
-beside the module).
+`buck2-manifest.ts` stays a top-level file: it is the package's public subpath
+export (`@overeng/megarepo/buck2-manifest`) and its stability contract is
+external. `buck2-capabilities/capability-projection.ts` is shipped by path in
+the Buck rules product and executed by `nix/buck2-capabilities.nix`. The
+`*.contract.ts` files likewise stay at the `src/` root, because the weaver
+registry references them by path. Tests stay colocated with their subject
+(`*.unit.test.ts`, `*.integration.test.ts` beside the module).
 
 ## Open Design Questions
 

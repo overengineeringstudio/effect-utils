@@ -43,7 +43,21 @@
     "@effect/opentelemetry": "^4.0.0-rc.112",
     "@effect/platform-node": "^4.0.0-rc.112",
     "@playwright/test": "^1.63.0",
-    "effect": "^4.0.0-rc.112"
+    "@storybook/react-vite": "^10.6.0",
+    "@vitest/browser-playwright": "^4.1.9",
+    "effect": "^4.0.0-rc.112",
+    "storybook": "^10.6.0"
+  },
+  "peerDependenciesMeta": {
+    "@storybook/react-vite": {
+      "optional": true
+    },
+    "@vitest/browser-playwright": {
+      "optional": true
+    },
+    "storybook": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public",

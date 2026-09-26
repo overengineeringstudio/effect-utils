@@ -43,6 +43,8 @@ import {
   prReviewsResolvedJob,
   prReviewsResolvedJobId,
   githubTokenEnv,
+  githubAppInstallationTokenStep,
+  githubAccessTokenEnv,
   readBinaryCacheDescriptors,
 } from '../../genie/ci-workflow.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
@@ -664,6 +666,13 @@ const extraJobs: Record<string, any> = {
         ),
       },
       {
+        name: 'Check published package runtime imports',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test scripts/runtime-package-imports.integration.test.ts',
+        ),
+      },
+      {
         // Workspace-tools and Nix contract suites bound the product boundary pre-merge: the
         // publisher (source of the manifest), the importer (its only consumer), and the
         // retained Megarepo from-source recovery recipe (`buck2:nix-bridge:check`'s contract,
@@ -760,12 +769,9 @@ const extraJobs: Record<string, any> = {
       runId: '${{ github.run_id }}',
     }),
     'timeout-minutes': 120,
-    permissions: { contents: 'write', 'pull-requests': 'write' },
+    permissions: { contents: 'read' },
     defaults: bashShellDefaults,
-    env: {
-      GH_TOKEN: '${{ github.token }}',
-      GITHUB_TOKEN: '${{ github.token }}',
-    },
+    env: githubTokenEnv(),
     steps: [
       checkoutStep(),
       {
@@ -804,7 +810,8 @@ const extraJobs: Record<string, any> = {
         triggers: ['push', 'workflow_dispatch'],
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
         step: {
-          name: 'Publish products and propose manifest',
+          id: 'product-publication',
+          name: 'Publish products',
           if: "steps.publication-scope.outputs.publish == 'true'",
           env: githubTokenEnv(),
           run: withCiSourceRoot(
@@ -814,28 +821,69 @@ const extraJobs: Record<string, any> = {
               'nix/buck2-products/publish.sh --proposal "$proposal"',
               'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
               '  echo "::notice::The v2 product manifest is already current"',
-              '  exit 0',
-              'fi',
-              '',
-              'branch=automation/buck2-products-manifest',
-              'git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true',
-              'git switch -C "$branch"',
-              'cp "$proposal" nix/buck2-products/manifest.json',
-              'git add nix/buck2-products/manifest.json',
-              `git config user.name 'github-actions[bot]'`,
-              `git config user.email '41898282+github-actions[bot]@users.noreply.github.com'`,
-              `git commit -m 'chore(buck2): update product cache manifest'`,
-              'gh auth setup-git',
-              'git push --force-with-lease origin "HEAD:refs/heads/$branch"',
-              'if ! gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\' | grep -q .; then',
-              '  gh pr create --base main --head "$branch" \\',
-              `    --title 'chore(buck2): update product cache manifest' \\`,
-              `    --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'`,
+              '  echo "changed=false" >> "$GITHUB_OUTPUT"',
+              'else',
+              '  echo "changed=true" >> "$GITHUB_OUTPUT"',
               'fi',
             ].join('\n'),
           ),
         },
       }),
+      {
+        id: 'publisher-app-config',
+        name: 'Check publisher GitHub App configuration',
+        if: "steps.product-publication.outputs.changed == 'true'",
+        env: {
+          APP_ID: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
+          // Presence only: the key itself stays confined to the token-minting step.
+          APP_PRIVATE_KEY_PRESENT: "${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}",
+        },
+        run: [
+          'if [ -n "$APP_ID" ] && [ "$APP_PRIVATE_KEY_PRESENT" = true ]; then',
+          '  echo "enabled=true" >> "$GITHUB_OUTPUT"',
+          'else',
+          '  echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"',
+          '  echo "enabled=false" >> "$GITHUB_OUTPUT"',
+          'fi',
+        ].join('\n'),
+      },
+      {
+        ...githubAppInstallationTokenStep({
+          id: 'publisher-app-token',
+          name: 'Mint publisher GitHub App token',
+          appId: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
+          privateKey: '${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}',
+          owner: 'overengineeringstudio',
+          repositories: ['effect-utils'],
+        }),
+        if: "steps.publisher-app-config.outputs.enabled == 'true'",
+      },
+      {
+        name: 'Propose published product manifest',
+        if: "steps.publisher-app-config.outputs.enabled == 'true'",
+        env: githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
+        run: withCiSourceRoot(
+          [
+            'set -euo pipefail',
+            'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
+            'branch=automation/buck2-products-manifest',
+            'git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true',
+            'git switch -C "$branch"',
+            'cp "$proposal" nix/buck2-products/manifest.json',
+            'git add nix/buck2-products/manifest.json',
+            `git config user.name 'overeng-nix-publisher[bot]'`,
+            `git config user.email '\${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'`,
+            `git commit -m 'chore(buck2): update product cache manifest'`,
+            'gh auth setup-git',
+            'git push --force-with-lease origin "HEAD:refs/heads/$branch"',
+            'if ! gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\' | grep -q .; then',
+            '  gh pr create --base main --head "$branch" \\',
+            `    --title 'chore(buck2): update product cache manifest' \\`,
+            `    --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'`,
+            'fi',
+          ].join('\n'),
+        ),
+      },
     ],
   },
   /**

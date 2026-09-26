@@ -1,12 +1,10 @@
 /**
  * Canonical scoped temporary roots for fixtures.
  *
- * Composition refuses non-canonical paths on purpose: R6 identity, owned-worktree
- * acquisition and locked-source admission all require the physical path, because
- * Git reports physical paths and a mount whose identity is a symlink is not the
- * mount that was admitted. Real callers reach those guards through paths Git or
- * the store already resolved, so a fixture rooted at a raw temporary directory
- * is not reproducing what production hands in.
+ * Store guards compare physical paths on purpose, because Git reports physical
+ * paths. Real callers reach those guards through paths Git or the store already
+ * resolved, so a fixture rooted at a raw temporary directory is not reproducing
+ * what production hands in.
  *
  * On macOS `os.tmpdir()` sits under the `/var` -> `/private/var` symlink, so a
  * raw temporary root is exactly that non-canonical shape and the guards refuse

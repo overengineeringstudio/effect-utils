@@ -12,11 +12,6 @@ import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { resolveStoreBranchWorktree } from '../composition/acquisition/owned-worktree-acquisition.ts'
-import {
-  foreignMemberMountMessage,
-  inspectMemberMount,
-} from '../composition/mounts/member-mount.ts'
 import {
   getMemberPath,
   getSourceRef,
@@ -29,8 +24,10 @@ import { detectRefMismatch, formatRefMismatchMessage } from '../core/issues.ts'
 import type { LockFile } from '../core/lock.ts'
 import * as Observability from '../core/observability.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../core/ref.ts'
+import { resolveStoreBranchWorktree } from '../store/store-branch-worktree.ts'
 import { StoreLock } from '../store/store-lock.ts'
 import { Store } from '../store/store.ts'
+import { foreignMemberMountMessage, inspectMemberMount } from './member-mount.ts'
 import type { MemberSyncResult, SyncMode } from './types.ts'
 
 /**
@@ -579,14 +576,10 @@ export const syncMember = <R = never>({
       readonly ref: string
       readonly refType: RefType
     }) => {
-      const workspaceRoot = store.getWorktreePath({ source, ref, refType })
+      const worktreePath = store.getWorktreePath({ source, ref, refType })
       return refType === 'branch' && bareExists === true
-        ? resolveStoreBranchWorktree({
-            bareRepo: bareRepoPath,
-            workspaceRoot,
-            branch: ref,
-          })
-        : Effect.succeed(workspaceRoot)
+        ? resolveStoreBranchWorktree({ bareRepo: bareRepoPath, worktreePath, branch: ref })
+        : Effect.succeed(worktreePath)
     }
     const worktreePathExists = (worktreePath: string) =>
       fs
