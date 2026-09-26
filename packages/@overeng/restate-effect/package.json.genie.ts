@@ -93,10 +93,16 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
-        './admin': './dist/admin/admin.js',
-        './otel': './dist/observability/otel.js',
-        './testing': './dist/testing/testing.js',
+        '.': { types: './dist/src/mod.d.ts', default: './dist/src/mod.js' },
+        './admin': { types: './dist/src/admin/admin.d.ts', default: './dist/src/admin/admin.js' },
+        './otel': {
+          types: './dist/src/observability/otel.d.ts',
+          default: './dist/src/observability/otel.js',
+        },
+        './testing': {
+          types: './dist/src/testing/testing.d.ts',
+          default: './dist/src/testing/testing.js',
+        },
       },
     },
     peerDependenciesMeta: Object.fromEntries(

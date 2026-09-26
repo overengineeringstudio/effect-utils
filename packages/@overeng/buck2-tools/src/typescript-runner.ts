@@ -665,8 +665,10 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
         'false',
         '--declaration',
         'true',
+        // Published package products ship JavaScript runtime entries next to their
+        // declarations; Node cannot type-strip `.ts` under node_modules.
         '--emitDeclarationOnly',
-        'true',
+        'false',
         '--pretty',
         'false',
       ],
