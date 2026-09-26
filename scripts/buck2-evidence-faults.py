@@ -175,7 +175,7 @@ try:
     down.set()
     spool, digest = seal(3)
     upload(spool)
-    eventually(lambda: (r if r and r["attempts"] >= 1 and r["status"] != "failed" else None)
+    eventually(lambda: (r if r and r["lastError"] and r["status"] != "failed" else None)
                if (r := record(digest)) else None, "transient collector error")
     down.clear()
     recovered = status(digest, "ingested")
