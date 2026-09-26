@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/oxc-config/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:def49c8a7e0b06a139b159888823321500b52ed28ed09f528e1b21a46f3ff09e
+# Semantic fingerprint: sha256:0c52bc25203155966dbfc291448f51983e89a3c3d6adb2995b391d5b31b103bf
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/oxc-config/src/**/*.css, packages/@overeng/oxc-config/src/**/*.cts, packages/@overeng/oxc-config/src/**/*.js, packages/@overeng/oxc-config/src/**/*.mts, packages/@overeng/oxc-config/src/**/*.spec.cjs, packages/@overeng/oxc-config/src/**/*.spec.jsx, packages/@overeng/oxc-config/src/**/*.spec.mjs, packages/@overeng/oxc-config/src/**/*.test.cjs, packages/@overeng/oxc-config/src/**/*.test.jsx, packages/@overeng/oxc-config/src/**/*.test.mjs, packages/@overeng/oxc-config/src/**/*.ts, packages/@overeng/oxc-config/src/**/*.tsx, packages/@overeng/oxc-config/src/**/__snapshots__/*.snap, packages/@overeng/oxc-config/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -242,6 +242,8 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+    ],
     output = "overeng-oxc-config.tgz",
     visibility = ["PUBLIC"],
 )

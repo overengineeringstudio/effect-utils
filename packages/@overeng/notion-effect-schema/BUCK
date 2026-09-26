@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/notion-effect-schema/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:2fab2e6cc4ddb994cf244beb6614552613ce58ec74a933b10d8b0a7cee5a8e03
+# Semantic fingerprint: sha256:8f75c0de5f7a8accbf9f320d80646fabb3c2c3f7ca274e5db4f78313e7d5ec0a
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-effect-schema/src/**/*.css, packages/@overeng/notion-effect-schema/src/**/*.cts, packages/@overeng/notion-effect-schema/src/**/*.js, packages/@overeng/notion-effect-schema/src/**/*.mts, packages/@overeng/notion-effect-schema/src/**/*.spec.cjs, packages/@overeng/notion-effect-schema/src/**/*.spec.jsx, packages/@overeng/notion-effect-schema/src/**/*.spec.mjs, packages/@overeng/notion-effect-schema/src/**/*.test.cjs, packages/@overeng/notion-effect-schema/src/**/*.test.jsx, packages/@overeng/notion-effect-schema/src/**/*.test.mjs, packages/@overeng/notion-effect-schema/src/**/*.ts, packages/@overeng/notion-effect-schema/src/**/*.tsx, packages/@overeng/notion-effect-schema/src/**/__snapshots__/*.snap, packages/@overeng/notion-effect-schema/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -218,6 +218,10 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/notion-core:package.json",
+        "//packages/@overeng/utils-dev:package.json",
+    ],
     output = "overeng-notion-effect-schema.tgz",
     visibility = ["PUBLIC"],
 )

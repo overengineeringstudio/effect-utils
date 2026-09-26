@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:56346f24a0ece63bb8f3151aaa61ffa900d658952269e36951f09c533bfaef3f
+# Semantic fingerprint: sha256:feec28bd0e56673f253ebba2849e7751de08f2cbf2daccabd6f8384a27137d9b
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts, packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/src/**/*.css, packages/@overeng/effect-ai-claude-cli/src/**/*.cts, packages/@overeng/effect-ai-claude-cli/src/**/*.js, packages/@overeng/effect-ai-claude-cli/src/**/*.mts, packages/@overeng/effect-ai-claude-cli/src/**/*.spec.cjs, packages/@overeng/effect-ai-claude-cli/src/**/*.spec.jsx, packages/@overeng/effect-ai-claude-cli/src/**/*.spec.mjs, packages/@overeng/effect-ai-claude-cli/src/**/*.test.cjs, packages/@overeng/effect-ai-claude-cli/src/**/*.test.jsx, packages/@overeng/effect-ai-claude-cli/src/**/*.test.mjs, packages/@overeng/effect-ai-claude-cli/src/**/*.ts, packages/@overeng/effect-ai-claude-cli/src/**/*.tsx, packages/@overeng/effect-ai-claude-cli/src/**/__snapshots__/*.snap, packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -137,6 +137,9 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/utils-dev:package.json",
+    ],
     output = "overeng-effect-ai-claude-cli.tgz",
     visibility = ["PUBLIC"],
 )

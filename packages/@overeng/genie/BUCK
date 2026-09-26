@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:7449a32de92738496c070e14df05dc2bb91944ae35100ce746fa5d8278bdf7a3
+# Semantic fingerprint: sha256:80f961d9cbb967384e04ddb4e18b51a1675db131832d5a71b57e9c40682a0648
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/genie/BUCK.genie.ts, packages/@overeng/genie/BUCK.genie.ts, packages/@overeng/genie/bin/**/*.css, packages/@overeng/genie/bin/**/*.cts, packages/@overeng/genie/bin/**/*.js, packages/@overeng/genie/bin/**/*.mts, packages/@overeng/genie/bin/**/*.spec.cjs, packages/@overeng/genie/bin/**/*.spec.jsx, packages/@overeng/genie/bin/**/*.spec.mjs, packages/@overeng/genie/bin/**/*.test.cjs, packages/@overeng/genie/bin/**/*.test.jsx, packages/@overeng/genie/bin/**/*.test.mjs, packages/@overeng/genie/bin/**/*.ts, packages/@overeng/genie/bin/**/*.tsx, packages/@overeng/genie/bin/**/__snapshots__/*.snap, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/genie/src/**/*.css, packages/@overeng/genie/src/**/*.cts, packages/@overeng/genie/src/**/*.js, packages/@overeng/genie/src/**/*.mts, packages/@overeng/genie/src/**/*.spec.cjs, packages/@overeng/genie/src/**/*.spec.jsx, packages/@overeng/genie/src/**/*.spec.mjs, packages/@overeng/genie/src/**/*.test.cjs, packages/@overeng/genie/src/**/*.test.jsx, packages/@overeng/genie/src/**/*.test.mjs, packages/@overeng/genie/src/**/*.ts, packages/@overeng/genie/src/**/*.tsx, packages/@overeng/genie/src/**/__snapshots__/*.snap, packages/@overeng/genie/tsconfig.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -465,6 +465,12 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/otel-contract:package.json",
+        "//packages/@overeng/tui-react:package.json",
+        "//packages/@overeng/utils:package.json",
+        "//packages/@overeng/utils-dev:package.json",
+    ],
     output = "overeng-genie.tgz",
     visibility = ["PUBLIC"],
 )

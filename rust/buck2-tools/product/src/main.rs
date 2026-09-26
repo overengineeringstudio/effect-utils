@@ -66,6 +66,8 @@ struct NpmPackageArgs {
     dist: PathBuf,
     #[arg(long)]
     artifact: PathBuf,
+    #[arg(long)]
+    workspace_manifest: Vec<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -881,12 +883,31 @@ fn npm_package(args: NpmPackageArgs) -> ToolResult<()> {
         .find(|(archive_path, _)| archive_path == "package/package.json")
         .map(|(_, path)| path)
         .ok_or_else(|| fail("BUCK2_PRODUCT_INPUT", "package tree has no package.json"))?;
-    let manifest = npm_manifest::published_manifest(&fs::read(manifest_source).map_err(|error| {
-        fail(
-            "BUCK2_PRODUCT_INPUT",
-            format!("could not read package.json: {error}"),
-        )
-    })?)?;
+    let workspace_manifests = args
+        .workspace_manifest
+        .iter()
+        .map(|path| {
+            fs::read(path).map_err(|error| {
+                fail(
+                    "BUCK2_PRODUCT_INPUT",
+                    format!(
+                        "could not read declared workspace manifest {}: {error}",
+                        path.display()
+                    ),
+                )
+            })
+        })
+        .collect::<ToolResult<Vec<_>>>()?;
+    let versions = npm_manifest::workspace_versions(&workspace_manifests)?;
+    let manifest = npm_manifest::published_manifest(
+        &fs::read(manifest_source).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read package.json: {error}"),
+            )
+        })?,
+        &versions,
+    )?;
     let archived = files
         .iter()
         .filter_map(|(archive_path, _)| archive_path.strip_prefix("package/"))
@@ -900,7 +921,12 @@ fn npm_package(args: NpmPackageArgs) -> ToolResult<()> {
     let mut builder = Builder::new(encoder);
     for (archive_path, source_path) in files {
         if archive_path == "package/package.json" {
-            let header = tar_header(&archive_path, manifest.len() as u64, EntryType::Regular, 0o444)?;
+            let header = tar_header(
+                &archive_path,
+                manifest.len() as u64,
+                EntryType::Regular,
+                0o444,
+            )?;
             builder
                 .append(&header, manifest.as_slice())
                 .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
@@ -1382,6 +1408,7 @@ mod tests {
                 package_tree: package_tree.clone(),
                 dist: dist.clone(),
                 artifact: artifact.clone(),
+                workspace_manifest: Vec::new(),
             })
             .unwrap();
         }

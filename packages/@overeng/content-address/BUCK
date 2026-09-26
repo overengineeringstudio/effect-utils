@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/content-address/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:88154e7a766ddc45a790824cafe6e291b9eb33dcd82a315ff9746b5c9ea15db3
+# Semantic fingerprint: sha256:f3fc718b11203e0dba93488552104c39c32acfaa24f844dc705c207a95b7abe0
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/content-address/src/**/*.css, packages/@overeng/content-address/src/**/*.cts, packages/@overeng/content-address/src/**/*.js, packages/@overeng/content-address/src/**/*.mts, packages/@overeng/content-address/src/**/*.spec.cjs, packages/@overeng/content-address/src/**/*.spec.jsx, packages/@overeng/content-address/src/**/*.spec.mjs, packages/@overeng/content-address/src/**/*.test.cjs, packages/@overeng/content-address/src/**/*.test.jsx, packages/@overeng/content-address/src/**/*.test.mjs, packages/@overeng/content-address/src/**/*.ts, packages/@overeng/content-address/src/**/*.tsx, packages/@overeng/content-address/src/**/__snapshots__/*.snap, packages/@overeng/content-address/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -134,6 +134,9 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/utils-dev:package.json",
+    ],
     output = "overeng-content-address.tgz",
     visibility = ["PUBLIC"],
 )

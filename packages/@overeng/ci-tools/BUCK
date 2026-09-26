@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/ci-tools/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:76fdad029ba1c0b1411d056d7dfa99d6a24b0909f3290f6e43dd00a1f3de3660
+# Semantic fingerprint: sha256:5b4dd8323001c66e1f47dc30c38f4eb57a58211ae925835f5f3e016328609033
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/BUCK.genie.ts, packages/@overeng/ci-tools/BUCK.genie.ts, packages/@overeng/ci-tools/bin/**/*.css, packages/@overeng/ci-tools/bin/**/*.cts, packages/@overeng/ci-tools/bin/**/*.js, packages/@overeng/ci-tools/bin/**/*.mts, packages/@overeng/ci-tools/bin/**/*.spec.cjs, packages/@overeng/ci-tools/bin/**/*.spec.jsx, packages/@overeng/ci-tools/bin/**/*.spec.mjs, packages/@overeng/ci-tools/bin/**/*.test.cjs, packages/@overeng/ci-tools/bin/**/*.test.jsx, packages/@overeng/ci-tools/bin/**/*.test.mjs, packages/@overeng/ci-tools/bin/**/*.ts, packages/@overeng/ci-tools/bin/**/*.tsx, packages/@overeng/ci-tools/bin/**/__snapshots__/*.snap, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/ci-tools/src/**/*.css, packages/@overeng/ci-tools/src/**/*.cts, packages/@overeng/ci-tools/src/**/*.js, packages/@overeng/ci-tools/src/**/*.mts, packages/@overeng/ci-tools/src/**/*.spec.cjs, packages/@overeng/ci-tools/src/**/*.spec.jsx, packages/@overeng/ci-tools/src/**/*.spec.mjs, packages/@overeng/ci-tools/src/**/*.test.cjs, packages/@overeng/ci-tools/src/**/*.test.jsx, packages/@overeng/ci-tools/src/**/*.test.mjs, packages/@overeng/ci-tools/src/**/*.ts, packages/@overeng/ci-tools/src/**/*.tsx, packages/@overeng/ci-tools/src/**/__snapshots__/*.snap, packages/@overeng/ci-tools/tsconfig.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -198,6 +198,11 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/otel-contract:package.json",
+        "//packages/@overeng/utils:package.json",
+        "//packages/@overeng/utils-dev:package.json",
+    ],
     output = "overeng-ci-tools.tgz",
     visibility = ["PUBLIC"],
 )

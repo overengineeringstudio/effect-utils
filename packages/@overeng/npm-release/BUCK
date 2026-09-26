@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/npm-release/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:12cf02ad908bf1ebf6bf97b2b7ef7550b233522e3abfb89747ae78cb61988f60
+# Semantic fingerprint: sha256:9eeec4ec73ada3733dae3ffded509abeac1d0448bd7dea23203a7e68ea1cf722
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/npm-release/src/**/*.css, packages/@overeng/npm-release/src/**/*.cts, packages/@overeng/npm-release/src/**/*.js, packages/@overeng/npm-release/src/**/*.mts, packages/@overeng/npm-release/src/**/*.spec.cjs, packages/@overeng/npm-release/src/**/*.spec.jsx, packages/@overeng/npm-release/src/**/*.spec.mjs, packages/@overeng/npm-release/src/**/*.test.cjs, packages/@overeng/npm-release/src/**/*.test.jsx, packages/@overeng/npm-release/src/**/*.test.mjs, packages/@overeng/npm-release/src/**/*.ts, packages/@overeng/npm-release/src/**/*.tsx, packages/@overeng/npm-release/src/**/__snapshots__/*.snap, packages/@overeng/npm-release/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -144,6 +144,9 @@ npm_package_archive(
     package_tree = ":package_tree",
     dist = ":dist",
     typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/utils-dev:package.json",
+    ],
     output = "overeng-npm-release.tgz",
     visibility = ["PUBLIC"],
 )
