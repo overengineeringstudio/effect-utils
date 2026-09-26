@@ -734,6 +734,32 @@ export const linkNodeModules = ({
   }
 }
 
+/** Borrow dependencies only for a baseline with the same lockfile. */
+export const prepareBaselineNodeModules = ({
+  repoRoot,
+  worktreeDir,
+  baselineRef,
+}: {
+  repoRoot: string
+  worktreeDir: string
+  baselineRef: string
+}): void => {
+  const lockPath = 'pnpm-lock.yaml'
+  if (
+    readFileSync(join(repoRoot, lockPath), 'utf8') !==
+    readFileSync(join(worktreeDir, lockPath), 'utf8')
+  ) {
+    const ownInstall = join(worktreeDir, 'node_modules')
+    if (existsSync(ownInstall) === false || lstatSync(ownInstall).isDirectory() === false) {
+      throw new Error(
+        `[story-gate] ${lockPath} differs between HEAD and ${baselineRef}, so the derived worktree cannot borrow the installed dependencies. Install in ${worktreeDir} and re-run.`,
+      )
+    }
+    return
+  }
+  linkNodeModules({ repoRoot, worktreeDir })
+}
+
 interface ProcessSignalControl {
   readonly pid: number
   once(event: 'SIGINT' | 'SIGTERM' | 'exit', listener: () => void): unknown
@@ -1622,10 +1648,10 @@ export const runStoryGate = async ({
 
   /**
    * The baseline pair's identity covers BOTH trees, not just the worktree it
-   * renders from. The derived worktree borrows the main tree's `node_modules`
-   * by symlink, so an edit to a workspace package in the main tree reaches the
-   * baseline capture through that link — which is precisely how a capture set
-   * ends up spanning two trees while looking like it came from one.
+   * renders from. With matching lockfiles the derived worktree borrows the main
+   * tree's `node_modules` by symlink, so a main-tree workspace edit can reach
+   * the baseline capture through that link. With different lockfiles, the
+   * derived tree uses its own install instead.
    */
   const baselinePairIdentity = (): TreeIdentity => {
     const worktree = readTreeIdentity({
@@ -1692,16 +1718,7 @@ export const runStoryGate = async ({
       })
     }
 
-    const lockPath = 'pnpm-lock.yaml'
-    if (
-      readFileSync(join(repoRoot, lockPath), 'utf8') !==
-      readFileSync(join(worktreeDir, lockPath), 'utf8')
-    ) {
-      throw new Error(
-        `[story-gate] ${lockPath} differs between HEAD and ${baselineRef}, so the derived worktree cannot borrow the installed dependencies. Install in ${worktreeDir} and re-run.`,
-      )
-    }
-    linkNodeModules({ repoRoot, worktreeDir })
+    prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef })
 
     // The baseline tree is captured `baselineCaptures` times — THREE by default
     // — and the LAST capture is the one kept. Three reasons, all measured.
