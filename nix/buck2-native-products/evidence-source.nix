@@ -42,8 +42,10 @@ pkgs.stdenv.mkDerivation {
   pname = "buck2-evidence";
   version = "0.0.0";
   src = source;
-  # Buck's Rust prelude generates linker wrappers with `#!/usr/bin/env bash`.
-  nativeBuildInputs = [ buck2 pkgs.bash pkgs.cacert ];
+  nativeBuildInputs = [
+    buck2
+    pkgs.cacert
+  ];
   dontConfigure = true;
   dontFixup = true;
   buildPhase = ''
@@ -51,7 +53,13 @@ pkgs.stdenv.mkDerivation {
     export HOME="$TMPDIR/home" XDG_CACHE_HOME="$TMPDIR/cache" XDG_RUNTIME_DIR="$TMPDIR/runtime"
     mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
     cp -R ${capabilities}/. .buck2/capabilities
-    artifact="$(${buck2}/bin/buck2 --isolation-dir nix-evidence build --config nix_store.crates_root=${cargoArchives} --local-only --no-remote-cache --console simple --show-simple-output effect_utils//rust/buck2-tools/evidence:buck2-evidence)"
+    # The bundled prelude emits `#!/usr/bin/env bash` scripts, but Nix's Linux
+    # sandbox has no /usr/bin/env. Keep Buck's bundled prelude as the source of
+    # truth and patch only the interpreter of scripts it generates here.
+    ${buck2}/bin/buck2 --isolation-dir nix-evidence expand-external-cell prelude
+    substituteInPlace prelude/utils/cmd_script.bzl prelude/rust/cargo_buildscript.bzl \
+      --replace-fail '#!/usr/bin/env bash' '#!${pkgs.bash}/bin/bash'
+    artifact="$(${buck2}/bin/buck2 --isolation-dir nix-evidence build --config external_cells.prelude=disabled --config nix_store.crates_root=${cargoArchives} --local-only --no-remote-cache --console simple --show-simple-output effect_utils//rust/buck2-tools/evidence:buck2-evidence)"
     test -f "$artifact"
     cp "$artifact" ./buck2-evidence
     runHook postBuild

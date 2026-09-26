@@ -38,7 +38,7 @@ type Document = {
   comparison?: Comparison
 }
 
-class TraceCommandError extends Schema.TaggedError<TraceCommandError>()('TraceCommandError', {
+export class TraceCommandError extends Schema.TaggedError<TraceCommandError>()('TraceCommandError', {
   message: Schema.String,
 }) {}
 
