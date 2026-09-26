@@ -1,0 +1,203 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts
+# Projection schema version: 12
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:7b133b8bea3f7adeb4160003f0bd1c5f85e80799396a344bde340d1d93867b5b
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/src/**/*.css, packages/@overeng/effect-rpc-explorer-react/src/**/*.cts, packages/@overeng/effect-rpc-explorer-react/src/**/*.js, packages/@overeng/effect-rpc-explorer-react/src/**/*.mts, packages/@overeng/effect-rpc-explorer-react/src/**/*.spec.cjs, packages/@overeng/effect-rpc-explorer-react/src/**/*.spec.jsx, packages/@overeng/effect-rpc-explorer-react/src/**/*.spec.mjs, packages/@overeng/effect-rpc-explorer-react/src/**/*.test.cjs, packages/@overeng/effect-rpc-explorer-react/src/**/*.test.jsx, packages/@overeng/effect-rpc-explorer-react/src/**/*.test.mjs, packages/@overeng/effect-rpc-explorer-react/src/**/*.ts, packages/@overeng/effect-rpc-explorer-react/src/**/*.tsx, packages/@overeng/effect-rpc-explorer-react/src/**/__snapshots__/*.snap, packages/@overeng/effect-rpc-explorer-react/tsconfig.json.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/stylex-tokens/BUCK.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
+load("//buck2:editor_view.bzl", "editor_view_inputs")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/ChannelContentPanel.tsx",
+    "src/ChannelContentPanel.unit.test.ts",
+    "src/RpcExplorer.tsx",
+    "src/RpcRecordDetail.tsx",
+    "src/SchemaTree.tsx",
+    "src/SchemaTree.unit.test.ts",
+    "src/mod.ts",
+    "src/normalized-value.ts",
+    "src/projection.ts",
+    "src/projection.unit.test.ts",
+    "src/schema-field.ts",
+    "src/stories/RpcExplorer.stories.tsx",
+    "src/stories/fixtures.ts",
+    "src/stories/live-core.ts",
+    "src/styles.css",
+    "src/themes.ts",
+    "src/tokens.stylex.ts",
+    "src/view-model.ts",
+])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/effect-rpc-explorer-react",
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "packages/@overeng/effect-rpc-explorer-react",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/effect-rpc-explorer-react",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:view_packages_overeng_effect_rpc_explorer_react_c7c12bb1f450",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rpc_explorer_react_c7c12bb1f450",
+    files = {
+        "package.json": "package.json",
+        "src/ChannelContentPanel.tsx": "src/ChannelContentPanel.tsx",
+        "src/ChannelContentPanel.unit.test.ts": "src/ChannelContentPanel.unit.test.ts",
+        "src/RpcExplorer.tsx": "src/RpcExplorer.tsx",
+        "src/RpcRecordDetail.tsx": "src/RpcRecordDetail.tsx",
+        "src/SchemaTree.tsx": "src/SchemaTree.tsx",
+        "src/SchemaTree.unit.test.ts": "src/SchemaTree.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/normalized-value.ts": "src/normalized-value.ts",
+        "src/projection.ts": "src/projection.ts",
+        "src/projection.unit.test.ts": "src/projection.unit.test.ts",
+        "src/schema-field.ts": "src/schema-field.ts",
+        "src/stories/RpcExplorer.stories.tsx": "src/stories/RpcExplorer.stories.tsx",
+        "src/stories/fixtures.ts": "src/stories/fixtures.ts",
+        "src/stories/live-core.ts": "src/stories/live-core.ts",
+        "src/styles.css": "src/styles.css",
+        "src/themes.ts": "src/themes.ts",
+        "src/tokens.stylex.ts": "src/tokens.stylex.ts",
+        "src/view-model.ts": "src/view-model.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/effect-rpc-explorer/dist": "//packages/@overeng/effect-rpc-explorer:dist",
+        "node_modules/@overeng/effect-rpc-explorer/package.json": "//packages/@overeng/effect-rpc-explorer:package.json",
+        "node_modules/@overeng/stylex-tokens/dist": "//packages/@overeng/stylex-tokens:dist",
+        "node_modules/@overeng/stylex-tokens/package.json": "//packages/@overeng/stylex-tokens:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/effect-rpc-explorer/node_modules": "//packages/@overeng/effect-rpc-explorer:package_tree",
+        "node_modules/@overeng/stylex-tokens/node_modules": "//packages/@overeng/stylex-tokens:package_tree",
+    },
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "test_package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rpc_explorer_react_c7c12bb1f450",
+    files = {
+        "package.json": "package.json",
+        "src/ChannelContentPanel.tsx": "src/ChannelContentPanel.tsx",
+        "src/ChannelContentPanel.unit.test.ts": "src/ChannelContentPanel.unit.test.ts",
+        "src/RpcExplorer.tsx": "src/RpcExplorer.tsx",
+        "src/RpcRecordDetail.tsx": "src/RpcRecordDetail.tsx",
+        "src/SchemaTree.tsx": "src/SchemaTree.tsx",
+        "src/SchemaTree.unit.test.ts": "src/SchemaTree.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/normalized-value.ts": "src/normalized-value.ts",
+        "src/projection.ts": "src/projection.ts",
+        "src/projection.unit.test.ts": "src/projection.unit.test.ts",
+        "src/schema-field.ts": "src/schema-field.ts",
+        "src/stories/RpcExplorer.stories.tsx": "src/stories/RpcExplorer.stories.tsx",
+        "src/stories/fixtures.ts": "src/stories/fixtures.ts",
+        "src/stories/live-core.ts": "src/stories/live-core.ts",
+        "src/styles.css": "src/styles.css",
+        "src/themes.ts": "src/themes.ts",
+        "src/tokens.stylex.ts": "src/tokens.stylex.ts",
+        "src/view-model.ts": "src/view-model.ts",
+        "tsconfig.json": "tsconfig.json",
+        "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/effect-rpc-explorer/dist": "//packages/@overeng/effect-rpc-explorer:dist",
+        "node_modules/@overeng/effect-rpc-explorer/package.json": "//packages/@overeng/effect-rpc-explorer:package.json",
+        "node_modules/@overeng/stylex-tokens/dist": "//packages/@overeng/stylex-tokens:dist",
+        "node_modules/@overeng/stylex-tokens/package.json": "//packages/@overeng/stylex-tokens:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/effect-rpc-explorer/node_modules": "//packages/@overeng/effect-rpc-explorer:package_tree",
+        "node_modules/@overeng/stylex-tokens/node_modules": "//packages/@overeng/stylex-tokens:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+editor_view_inputs(
+    name = "editor_view_inputs",
+    editor_inputs = ":editor_inputs",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    declaration_entrypoint = "mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    typecheck = ":typecheck",
+    output = "overeng-effect-rpc-explorer-react.tgz",
+    visibility = ["PUBLIC"],
+)
+
+vitest_test(
+    name = "test",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_collect",
+    package_tree = ":test_package_tree",
+    static_parse = True,
+    visibility = ["PUBLIC"],
+)

@@ -10,6 +10,8 @@ import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/packa
 import effectDistributedLockPkg from './packages/@overeng/effect-distributed-lock/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
 import effectReactPkg from './packages/@overeng/effect-react/package.json.genie.ts'
+import effectRpcExplorerPkg from './packages/@overeng/effect-rpc-explorer/package.json.genie.ts'
+import effectRpcExplorerReactPkg from './packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts'
 import effectRpcTanstackBasicPkg from './packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts'
 import effectRpcTanstackPkg from './packages/@overeng/effect-rpc-tanstack/package.json.genie.ts'
 import effectSchemaFormAriaPkg from './packages/@overeng/effect-schema-form-aria/package.json.genie.ts'
@@ -50,6 +52,8 @@ export const rootWorkspacePackages = [
   effectDistributedLockPkg,
   effectPathPkg,
   effectReactPkg,
+  effectRpcExplorerPkg,
+  effectRpcExplorerReactPkg,
   effectRpcTanstackBasicPkg,
   effectRpcTanstackPkg,
   effectSchemaFormAriaPkg,

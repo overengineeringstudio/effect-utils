@@ -12,6 +12,8 @@ packages:
   - packages/@overeng/effect-distributed-lock
   - packages/@overeng/effect-path
   - packages/@overeng/effect-react
+  - packages/@overeng/effect-rpc-explorer
+  - packages/@overeng/effect-rpc-explorer-react
   - packages/@overeng/effect-rpc-tanstack
   - packages/@overeng/effect-rpc-tanstack/examples/basic
   - packages/@overeng/effect-schema-form
