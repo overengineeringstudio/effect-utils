@@ -5,6 +5,7 @@ name: CI
 
 permissions:
   contents: read
+  id-token: write
 
 on:
   push:
@@ -35,6 +36,12 @@ on:
         required: false
         default: false
         type: boolean
+      evidence_mode:
+        description: 'Pipeline evidence: off by default; seal locally for dry run or upload through trusted tailnet'
+        required: false
+        default: off
+        type: choice
+        options: [off, seal, upload]
 
 jobs:
   default-ref-policy:
@@ -43,6 +50,7 @@ jobs:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     permissions:
       contents: read
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -50,6 +58,24 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: default-ref-policy
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -58,8 +84,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = 
-            extra-trusted-public-keys = 
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Check first-party default refs
@@ -424,13 +450,22 @@ jobs:
           process.exit(1)
           NODE
         shell: bash
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-default-ref-policy"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-default-ref-policy"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   typecheck:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -459,8 +494,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -468,6 +503,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: typecheck
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -480,7 +533,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -532,7 +586,7 @@ jobs:
         shell: bash
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
+          bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
           command -v script >/dev/null 2>&1
           tmp_log="$(mktemp)"
           before="$(git status --porcelain=v1)"
@@ -546,9 +600,10 @@ jobs:
       - name: Type check (Buck)
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:quick' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:quick'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:quick' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:quick'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -640,13 +695,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-typecheck"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-typecheck"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   lint:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -675,8 +741,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -684,6 +750,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: lint
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -696,7 +780,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -745,9 +830,10 @@ jobs:
       - name: Format + lint
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -839,13 +925,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-lint"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-lint"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   test:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     strategy:
@@ -877,8 +974,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -886,6 +983,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: test
+          MATRIX_VALUE: ${{ matrix.runner }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -898,7 +1013,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -947,9 +1063,10 @@ jobs:
       - name: Unit tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1041,13 +1158,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-${{ strategy.job-index }}"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-${{ strategy.job-index }}"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   test-playwright-utils:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1076,8 +1204,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1085,6 +1213,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: test-playwright-utils
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1097,7 +1243,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1146,9 +1293,10 @@ jobs:
       - name: Utils Playwright tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:utils' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:utils'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:utils' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:utils'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1240,13 +1388,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-utils"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-utils"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   test-playwright-tui-react:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1275,8 +1434,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1284,6 +1443,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: test-playwright-tui-react
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1296,7 +1473,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1345,9 +1523,10 @@ jobs:
       - name: TUI React Playwright tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:tui-react' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:tui-react'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:tui-react' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:tui-react'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1439,13 +1618,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-tui-react"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-tui-react"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   test-megarepo-cold-gc:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1474,8 +1664,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1483,6 +1673,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: test-megarepo-cold-gc
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1495,7 +1703,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1544,9 +1753,10 @@ jobs:
       - name: Megarepo cold-GC tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1638,13 +1848,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-megarepo-cold-gc"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-megarepo-cold-gc"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   pnpm-builder-contract:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1673,8 +1894,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1682,6 +1903,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: pnpm-builder-contract
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1694,7 +1933,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1888,13 +2128,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-builder-contract"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-builder-contract"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   pnpm-regression:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1923,8 +2174,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -1932,6 +2183,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: pnpm-regression
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1944,7 +2213,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2089,13 +2359,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-regression"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-regression"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   bundle-smoke:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2124,8 +2405,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -2133,6 +2414,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: bundle-smoke
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2145,7 +2444,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2194,9 +2494,10 @@ jobs:
       - name: Bundle smoke tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
+          bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2288,13 +2589,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bundle-smoke"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bundle-smoke"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   cargo:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2323,8 +2635,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -2332,6 +2644,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: cargo
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2344,7 +2674,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2393,9 +2724,10 @@ jobs:
       - name: Cargo build + test + clippy + fmt
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run cargo:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run cargo:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run cargo:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run cargo:check'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2487,13 +2819,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-cargo"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-cargo"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   weaver:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2522,8 +2865,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -2531,6 +2874,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: weaver
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2543,7 +2904,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2599,9 +2961,10 @@ jobs:
       - name: Weaver registry gates (Buck quick + diff + live-check)
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:quick weaver:diff weaver:live-check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:quick weaver:diff weaver:live-check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:quick weaver:diff weaver:live-check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:quick weaver:diff weaver:live-check'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2693,13 +3056,24 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-weaver"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-weaver"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   pr-a-inert-buck:
     if: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
     runs-on: ubuntu-latest
@@ -2709,14 +3083,36 @@ jobs:
         shell: bash
     permissions:
       contents: read
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: pr-a-inert-buck
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -2725,8 +3121,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = 
-            extra-trusted-public-keys = 
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Provide cachix CLI from nixpkgs
@@ -2741,7 +3137,6 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2779,29 +3174,24 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check'
       - name: Evaluate every flake output without building
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run nix:flake:eval' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:flake:eval'
+          bash "$__genie_ci_retry_script" 'devenv tasks run nix:flake:eval' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:flake:eval'
       - name: Run focused normalized, projection, and runner tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
-          FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"
-          export FINGERPRINT_BIN
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \
             genie/buck2/typescript-package-projection.unit.test.ts \
             genie/buck2/javascript-candidates.unit.test.ts \
             packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
             packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
-      - name: Check published package runtime imports
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test scripts/runtime-package-imports.integration.test.ts'
       - name: Check product publisher, manifest import, and from-source contracts
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2833,6 +3223,12 @@ jobs:
               effect_utils//packages/@overeng/ci-tools:ci-tools-candidate \
               effect_utils//:editor_view_inputs
           '
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pr-a-inert-buck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2842,6 +3238,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -2849,6 +3246,24 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: seed-pnpm-archives
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -2857,8 +3272,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = 
-            extra-trusted-public-keys = 
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Use pinned devenv from lock
@@ -2900,23 +3315,35 @@ jobs:
           BUCK2_ARCHIVE_CAS_AUTHORIZATION: ${{ secrets.BUCK2_ARCHIVE_CAS_AUTHORIZATION }}
           BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}
           BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:archives:seed' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:archives:seed'
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-seed-pnpm-archives"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:archives:seed' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:archives:seed'
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-seed-pnpm-archives"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   publish-products:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 120
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -2924,11 +3351,33 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: publish-products
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - id: publication-scope
         name: Check publication scope
         run: |
@@ -2953,8 +3402,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = 
-            extra-trusted-public-keys = 
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
         if: steps.publication-scope.outputs.publish == 'true'
@@ -2967,15 +3416,14 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         if: steps.publication-scope.outputs.publish == 'true'
-      - name: Publish to Cachix
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.publication-scope.outputs.publish == 'true'
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - id: product-publication
-        name: Publish products
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (steps.publication-scope.outputs.publish == 'true')
+        if: steps.publication-scope.outputs.publish == 'true'
+      - name: Publish products and propose manifest
+        if: steps.publication-scope.outputs.publish == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -2985,47 +3433,16 @@ jobs:
           nix/buck2-products/publish.sh --proposal "$proposal"
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-      - id: publisher-app-config
-        name: Check publisher GitHub App configuration
-        if: steps.product-publication.outputs.changed == 'true'
-        env:
-          APP_ID: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
-          APP_PRIVATE_KEY_PRESENT: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}
-        run: |
-          if [ -n "$APP_ID" ] && [ "$APP_PRIVATE_KEY_PRESENT" = true ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-      - id: publisher-app-token
-        name: Mint publisher GitHub App token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
-          private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
-          owner: overengineeringstudio
-          repositories: effect-utils
-        if: steps.publisher-app-config.outputs.enabled == 'true'
-      - name: Propose published product manifest
-        if: steps.publisher-app-config.outputs.enabled == 'true'
-        env:
-          GITHUB_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
-          GH_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
-          proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
+
           branch=automation/buck2-products-manifest
           git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true
           git switch -C "$branch"
           cp "$proposal" nix/buck2-products/manifest.json
           git add nix/buck2-products/manifest.json
-          git config user.name 'overeng-nix-publisher[bot]'
-          git config user.email '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'chore(buck2): update product cache manifest'
           gh auth setup-git
           git push --force-with-lease origin "HEAD:refs/heads/$branch"
@@ -3034,6 +3451,12 @@ jobs:
               --title 'chore(buck2): update product cache manifest' \
               --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'
           fi
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-publish-products"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3047,14 +3470,36 @@ jobs:
         shell: bash
     permissions:
       contents: read
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: trusted-buck2-remote-cache-proof
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -3063,8 +3508,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = 
-            extra-trusted-public-keys = 
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Prepare CI helper scripts
@@ -3204,6 +3649,12 @@ jobs:
           echo "Fresh-root remote action and test-cache proof passed"
           BUCK2_REMOTE_CACHE_PROOF
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash "$proof_script"
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-trusted-buck2-remote-cache-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3227,8 +3678,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -3236,6 +3687,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: bootstrap-cold-proof
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3248,7 +3717,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -3297,9 +3767,10 @@ jobs:
       - name: Bootstrap cold-proof (R32)
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
+          bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -3350,13 +3821,24 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bootstrap-cold-proof"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bootstrap-cold-proof"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   devenv-perf:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on:
@@ -3367,6 +3849,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -3381,6 +3864,9 @@ jobs:
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -3393,8 +3879,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -3402,6 +3888,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: devenv-perf
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3414,7 +3918,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -4155,6 +4660,12 @@ jobs:
             !${{ github.workspace }}/tmp/devenv-perf-ci/baseline/**
           if-no-files-found: error
           retention-days: 7
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     timeout-minutes: 90
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-devenv-perf"
@@ -4231,6 +4742,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -4239,6 +4751,9 @@ jobs:
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -4251,8 +4766,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -4260,6 +4775,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: nix-closure-sizes
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -4272,7 +4805,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -4849,6 +5383,12 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-closure-sizes"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -4862,6 +5402,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -4870,6 +5411,9 @@ jobs:
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -4879,6 +5423,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: source-shape
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: 'Measure source shape: effect-utils'
         shell: bash
         env:
@@ -5107,6 +5669,12 @@ jobs:
             !tmp/source-shape-ci/baseline/**
           if-no-files-found: error
           retention-days: 14
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-source-shape"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -5123,6 +5691,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -5131,10 +5700,31 @@ jobs:
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: ci-measurements-report
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -5143,8 +5733,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = 
-            extra-trusted-public-keys = 
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Provide CI measurement report tools
@@ -7653,6 +8243,12 @@ jobs:
             !tmp/ci-measurement-report/baseline/**
           if-no-files-found: error
           retention-days: 14
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-ci-measurements-report"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -7676,8 +8272,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -7685,6 +8281,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: test-integration-notion
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7697,7 +8311,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -7751,9 +8366,10 @@ jobs:
           NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID: ${{ secrets.NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID || secrets.NOTION_TEST_PARENT_PAGE_ID }}
           NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID: ${{ secrets.NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID }}
           NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_datasource_sync_demo == true || inputs.run_datasource_sync_demo == 'true') && secrets.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID || '' }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:notion-integration' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:notion-integration' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -7804,13 +8420,24 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-integration-notion"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-integration-notion"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   test-integration-restate:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     concurrency:
@@ -7834,8 +8461,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -7843,6 +8470,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: test-integration-restate
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7855,7 +8500,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -7904,9 +8550,10 @@ jobs:
       - name: Restate integration tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:restate-integration' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:restate-integration'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:restate-integration' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:restate-integration'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -7957,10 +8604,21 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
   test-live-deploy-ci-tools:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     concurrency:
@@ -7984,8 +8642,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -7993,6 +8651,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: test-live-deploy-ci-tools
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -8005,7 +8681,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -8103,6 +8780,7 @@ jobs:
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
           VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"
           export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"
@@ -8159,10 +8837,21 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    permissions:
+      id-token: write
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
   deploy-storybooks:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on:
@@ -8170,6 +8859,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -8185,8 +8875,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Checkout CI measurement baseline ref
@@ -8194,6 +8884,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
+          fetch-depth: 2
+      - name: Prepare provider-neutral pipeline identity
+        if: ${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}
+        shell: bash
+        env:
+          JOB_KEY: deploy-storybooks
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -8206,7 +8914,8 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          skipPush: true
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -8264,11 +8973,11 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             deploy_ran=1
             __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
+          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             deploy_ran=1
             __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
+          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
           fi
           if [ "$deploy_ran" = "1" ] && [ ! -s "$workflow_report_path" ]; then
             echo "Error: ci-tools did not emit a Netlify workflow report record." >&2
@@ -8292,7 +9001,7 @@ jobs:
           WORKFLOW_REPORT_ALLOW_MISSING_INPUT: '1'
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:collect-bundle --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:collect-bundle --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:collect-bundle --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:collect-bundle --show-output'
       - name: Render workflow report comment
         shell: bash
         env:
@@ -8314,7 +9023,7 @@ jobs:
           WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:render-comment-body --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:render-comment-body --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:render-comment-body --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:render-comment-body --show-output'
       - name: Publish workflow report
         if: always() && !cancelled()
         shell: bash
@@ -8329,9 +9038,10 @@ jobs:
           WORKFLOW_REPORT_COMMENT_BODY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-comment.md'
           WORKFLOW_REPORT_SUMMARY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-summary.md'
           WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
+          PIPELINE_RUN_PREFIX: ${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:publish --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:publish --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:publish --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:publish --show-output'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -8382,8 +9092,48 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Seal and publish pipeline evidence
+        if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
+        shell: bash
+        env:
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh seal || true
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-deploy-storybooks"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+  evidence-pr-link:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && ((github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) == 'seal' || (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) == 'upload') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Upsert PR evidence link
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          marker="<!-- workflow-report:pipeline-evidence -->"
+          body=$(mktemp)
+          printf "%s\n### Pipeline evidence\n\n[Browse this PR’s pipeline evidence](https://buck2-evidence-resolver-dev3.tail8108.ts.net/pr/%s/%s)\n" "$marker" "$GH_REPO" "$PR_NUMBER" > "$body"
+          comment_id=$(gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[] | select(.body | contains("<!-- workflow-report:pipeline-evidence -->")) | .id' | sed -n '1p')
+          if [ -n "$comment_id" ]; then gh api --method PATCH "repos/$GH_REPO/issues/comments/$comment_id" --field body=@"$body" >/dev/null;
+          else gh pr comment "$PR_NUMBER" --body-file "$body"; fi
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-evidence-pr-link"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
     env:
       FORCE_SETUP: '1'
@@ -8428,3 +9178,68 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+  evidence-attempt-close:
+    runs-on: ubuntu-latest
+    needs:
+      - default-ref-policy
+      - typecheck
+      - lint
+      - test
+      - test-playwright-utils
+      - test-playwright-tui-react
+      - test-megarepo-cold-gc
+      - pnpm-builder-contract
+      - pnpm-regression
+      - bundle-smoke
+      - cargo
+      - weaver
+      - pr-a-inert-buck
+      - seed-pnpm-archives
+      - publish-products
+      - trusted-buck2-remote-cache-proof
+      - bootstrap-cold-proof
+      - devenv-perf
+      - pr-reviews-resolved
+      - nix-closure-sizes
+      - source-shape
+      - ci-measurements-report
+      - test-integration-notion
+      - test-integration-restate
+      - test-live-deploy-ci-tools
+      - deploy-storybooks
+      - evidence-pr-link
+      - notify-alignment
+    if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) == 'seal' || (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) == 'upload') }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
+      TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+      TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Prepare Nix
+        uses: cachix/install-nix-action@v31
+      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+      - name: Close pipeline attempt
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          EXPECTED_KEYS_JSON: '[{"job":"default-ref-policy","key":"default-ref-policy"},{"job":"typecheck","key":"typecheck"},{"job":"lint","key":"lint"},{"job":"test","key":"test[runner=namespace-profile-linux-x86-64]"},{"job":"test","key":"test[runner=namespace-profile-macos-arm64]"},{"job":"test-playwright-utils","key":"test-playwright-utils"},{"job":"test-playwright-tui-react","key":"test-playwright-tui-react"},{"job":"test-megarepo-cold-gc","key":"test-megarepo-cold-gc"},{"job":"pnpm-builder-contract","key":"pnpm-builder-contract"},{"job":"pnpm-regression","key":"pnpm-regression"},{"job":"bundle-smoke","key":"bundle-smoke"},{"job":"cargo","key":"cargo"},{"job":"weaver","key":"weaver"},{"job":"pr-a-inert-buck","key":"pr-a-inert-buck"},{"job":"seed-pnpm-archives","key":"seed-pnpm-archives"},{"job":"publish-products","key":"publish-products"},{"job":"trusted-buck2-remote-cache-proof","key":"trusted-buck2-remote-cache-proof"},{"job":"bootstrap-cold-proof","key":"bootstrap-cold-proof"},{"job":"devenv-perf","key":"devenv-perf"},{"job":"pr-reviews-resolved","key":"pr-reviews-resolved"},{"job":"nix-closure-sizes","key":"nix-closure-sizes"},{"job":"source-shape","key":"source-shape"},{"job":"ci-measurements-report","key":"ci-measurements-report"},{"job":"test-integration-notion","key":"test-integration-notion"},{"job":"test-integration-restate","key":"test-integration-restate"},{"job":"test-live-deploy-ci-tools","key":"test-live-deploy-ci-tools"},{"job":"deploy-storybooks","key":"deploy-storybooks"},{"job":"evidence-pr-link","key":"evidence-pr-link"},{"job":"notify-alignment","key":"notify-alignment"}]'
+          BUCK2_EVIDENCE_UPLOAD_URL: 'https://buck2-evidence-upload-dev3.tail8108.ts.net/'
+        run: bash genie/ci-scripts/evidence-job.sh close || true
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-evidence-attempt-close"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
