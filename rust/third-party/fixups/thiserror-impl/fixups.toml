@@ -6,5 +6,4 @@
 # of this source tree. You may select, at your option, one of the
 # above-listed licenses.
 
-cfgs = ["has_std"]
-buildscript.run = false
+cargo_env = ["CARGO_PKG_VERSION_PATCH"]
