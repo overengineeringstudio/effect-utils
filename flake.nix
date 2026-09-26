@@ -184,7 +184,6 @@ rec {
             ;
           products = trackedBuck2Products.products;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
-          capabilityProjection = buck2Capabilities;
         };
         cliPackages = buck2ProductCandidates // {
           genie = buck2ProductCandidates.genie.overrideAttrs (old: {
