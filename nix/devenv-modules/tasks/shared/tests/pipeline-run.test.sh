@@ -26,6 +26,15 @@ for bad in local/not-a-uuid ci/forge/repo/421 ci/forge/repo/421/0 \
   fi
 done
 
+# An externally owned CI run cannot silently collapse multiple jobs into
+# worker/local when its matrix-qualified key is missing.
+PIPELINE_RUN_ID=ci/forge/repo%2Fmodule/421/2 \
+  OTEL_TASK_TRACEPARENT=00-11111111111111111111111111111111-2222222222222222-01 \
+  env -u PIPELINE_TASK_KEY "$span" pipeline-run -- bash -c \
+    '[[ -z ${OTEL_TASK_TRACEPARENT:-} && -z ${PIPELINE_TRACE_ID:-} ]]' \
+  2> "$tmp/missing-key"
+[[ $(< "$tmp/missing-key") == *'invalid pipeline identity'* ]]
+
 # run and buck2 preparation accept the same W3C contexts. Unsampled flags
 # survive in the child and in the Buck command sidecar.
 for bad in \
