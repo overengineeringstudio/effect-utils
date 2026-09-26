@@ -66,94 +66,96 @@ let
         esac
       '';
       deployScript = artifactDirSetup: ''
-          set -euo pipefail
-          ${artifactDirSetup}
+        set -euo pipefail
+        ${artifactDirSetup}
 
-          input="''${DEVENV_TASK_INPUT:-"{}"}"
-          deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "draft"' <<<"$input")"
-          missing_auth_policy="$(${pkgs.jq}/bin/jq -r '.missingAuthPolicy // .missing_auth_policy // "fail"' <<<"$input")"
-          unauthorized_policy="$(${pkgs.jq}/bin/jq -r '.unauthorizedPolicy // .unauthorized_policy // "fail"' <<<"$input")"
-          url_env_key="$(${pkgs.jq}/bin/jq -r '.urlEnvKey // .url_env_key // ${builtins.toJSON urlEnvKey}' <<<"$input")"
-          case "$deploy_type" in
-            prod|pr|draft) ;;
-            *)
-              echo "Error: Unknown Netlify deploy type '$deploy_type'. Use: prod, pr, draft" >&2
-              exit 1
-              ;;
-          esac
-          case "$missing_auth_policy" in
-            fail|skip) ;;
-            *)
-              echo "Error: Unknown Netlify missing auth policy '$missing_auth_policy'. Use: fail, skip" >&2
-              exit 1
-              ;;
-          esac
-          case "$unauthorized_policy" in
-            fail|skip) ;;
-            *)
-              echo "Error: Unknown Netlify unauthorized policy '$unauthorized_policy'. Use: fail, skip" >&2
-              exit 1
-              ;;
-          esac
+        input="''${DEVENV_TASK_INPUT:-"{}"}"
+        deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "draft"' <<<"$input")"
+        missing_auth_policy="$(${pkgs.jq}/bin/jq -r '.missingAuthPolicy // .missing_auth_policy // "fail"' <<<"$input")"
+        unauthorized_policy="$(${pkgs.jq}/bin/jq -r '.unauthorizedPolicy // .unauthorized_policy // "fail"' <<<"$input")"
+        url_env_key="$(${pkgs.jq}/bin/jq -r '.urlEnvKey // .url_env_key // ${builtins.toJSON urlEnvKey}' <<<"$input")"
+        case "$deploy_type" in
+          prod|pr|draft) ;;
+          *)
+            echo "Error: Unknown Netlify deploy type '$deploy_type'. Use: prod, pr, draft" >&2
+            exit 1
+            ;;
+        esac
+        case "$missing_auth_policy" in
+          fail|skip) ;;
+          *)
+            echo "Error: Unknown Netlify missing auth policy '$missing_auth_policy'. Use: fail, skip" >&2
+            exit 1
+            ;;
+        esac
+        case "$unauthorized_policy" in
+          fail|skip) ;;
+          *)
+            echo "Error: Unknown Netlify unauthorized policy '$unauthorized_policy'. Use: fail, skip" >&2
+            exit 1
+            ;;
+        esac
 
-          args=(
-            deploy netlify
-            --target ${lib.escapeShellArg name}
-            --display-name ${lib.escapeShellArg name}
-            --artifact-dir "$artifact_dir"
-            --mode "$deploy_type"
-            --site-name ${lib.escapeShellArg siteName}
-            --site-id-env NETLIFY_SITE_ID
-            --auth-token-env NETLIFY_AUTH_TOKEN
-            --netlify-bin ${lib.escapeShellArg resolvedNetlifyBin}
-            --missing-auth-policy "$missing_auth_policy"
-            --unauthorized-policy "$unauthorized_policy"
-          )
+        args=(
+          deploy netlify
+          --target ${lib.escapeShellArg name}
+          --display-name ${lib.escapeShellArg name}
+          --artifact-dir "$artifact_dir"
+          --mode "$deploy_type"
+          --site-name ${lib.escapeShellArg siteName}
+          --site-id-env NETLIFY_SITE_ID
+          --auth-token-env NETLIFY_AUTH_TOKEN
+          --netlify-bin ${lib.escapeShellArg resolvedNetlifyBin}
+          --missing-auth-policy "$missing_auth_policy"
+          --unauthorized-policy "$unauthorized_policy"
+        )
 
-          if [ "$deploy_type" = "pr" ]; then
-            pr_number="$(${pkgs.jq}/bin/jq -r '.pr // empty' <<<"$input")"
-            if [ -z "$pr_number" ]; then
-              echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
-              exit 1
-            fi
-            args+=(--pr "$pr_number")
+        if [ "$deploy_type" = "pr" ]; then
+          pr_number="$(${pkgs.jq}/bin/jq -r '.pr // empty' <<<"$input")"
+          if [ -z "$pr_number" ]; then
+            echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
+            exit 1
           fi
+          args+=(--pr "$pr_number")
+        fi
 
-          ${if siteId != null then "export NETLIFY_SITE_ID=${lib.escapeShellArg siteId}" else ""}
+        ${if siteId != null then "export NETLIFY_SITE_ID=${lib.escapeShellArg siteId}" else ""}
 
-          ${
-            if workspaceFilter then
-              ''
-                workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' ${lib.escapeShellArg packageJsonPath})"
-                if [ -n "$workspace_filter" ]; then
-                  args+=(--workspace-filter "$workspace_filter")
-                fi
-              ''
-            else
-              ""
-          }
+        ${
+          if workspaceFilter then
+            ''
+              workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' ${lib.escapeShellArg packageJsonPath})"
+              if [ -n "$workspace_filter" ]; then
+                args+=(--workspace-filter "$workspace_filter")
+              fi
+            ''
+          else
+            ""
+        }
 
-          if [ -n "''${WORKFLOW_REPORT_OUTPUT_FILE:-}" ]; then
-            args+=(--workflow-report-output-file "$WORKFLOW_REPORT_OUTPUT_FILE")
-          fi
-          if [ -n "''${GITHUB_OUTPUT:-}" ]; then
-            args+=(--github-output-file "$GITHUB_OUTPUT")
-          fi
-          if [ -n "''${GITHUB_ENV:-}" ]; then
-            args+=(--github-env-file "$GITHUB_ENV")
-          fi
-          if [ -n "$url_env_key" ]; then
-            args+=(--url-env-key "$url_env_key")
-          fi
+        if [ -n "''${WORKFLOW_REPORT_OUTPUT_FILE:-}" ]; then
+          args+=(--workflow-report-output-file "$WORKFLOW_REPORT_OUTPUT_FILE")
+        fi
+        if [ -n "''${GITHUB_OUTPUT:-}" ]; then
+          args+=(--github-output-file "$GITHUB_OUTPUT")
+        fi
+        if [ -n "''${GITHUB_ENV:-}" ]; then
+          args+=(--github-env-file "$GITHUB_ENV")
+        fi
+        if [ -n "$url_env_key" ]; then
+          args+=(--url-env-key "$url_env_key")
+        fi
 
-          ${lib.escapeShellArg resolvedCiToolsBin} "''${args[@]}"
-        '';
+        ${lib.escapeShellArg resolvedCiToolsBin} "''${args[@]}"
+      '';
     in
     {
       "netlify:deploy:${name}" = {
         description = "Deploy ${name} to Netlify";
         inherit after;
-        exec = trace.exec "netlify:deploy:${name}" (deployScript "artifact_dir=${lib.escapeShellArg staticDir}");
+        exec = trace.exec "netlify:deploy:${name}" (
+          deployScript "artifact_dir=${lib.escapeShellArg staticDir}"
+        );
       };
       "netlify:stage:${name}" = {
         description = "Build ${name} and stage its static output for a separate Netlify deploy";
