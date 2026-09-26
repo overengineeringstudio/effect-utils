@@ -86,7 +86,8 @@ tsgo_typecheck = rule(
 def _tsgo_emit_impl(ctx):
     _require_relative_path(ctx.attrs.project, "project")
     _require_relative_path(ctx.attrs.out_dir, "out_dir")
-    _require_relative_path(ctx.attrs.declaration_entrypoint, "declaration_entrypoint")
+    if ctx.attrs.declaration_entrypoint:
+        _require_relative_path(ctx.attrs.declaration_entrypoint, "declaration_entrypoint")
     toolchain = ctx.attrs._tsgo[EffectTsgoToolchainInfo]
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
     directory = ctx.actions.declare_output(ctx.attrs.out_dir, dir = True)
@@ -133,7 +134,7 @@ tsgo_emit = rule(
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "project": attrs.string(default = "tsconfig.json"),
         "out_dir": attrs.string(default = "dist"),
-        "declaration_entrypoint": attrs.string(default = "src/mod.d.ts"),
+        "declaration_entrypoint": attrs.string(default = ""),
         "declaration_sources": attrs.dict(
             key = attrs.string(),
             value = attrs.source(),

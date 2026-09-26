@@ -101,10 +101,22 @@
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js",
-      "./node": "./dist/node/mod.js",
-      "./storybook": "./dist/storybook/mod.js",
-      "./opentui": "./dist/effect/opentui/mod.js"
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./node": {
+        "types": "./dist/src/node/mod.d.ts",
+        "default": "./dist/src/node/mod.js"
+      },
+      "./storybook": {
+        "types": "./dist/src/storybook/mod.d.ts",
+        "default": "./dist/src/storybook/mod.js"
+      },
+      "./opentui": {
+        "types": "./dist/src/effect/opentui/mod.d.ts",
+        "default": "./dist/src/effect/opentui/mod.js"
+      }
     }
   }
 }

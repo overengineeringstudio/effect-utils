@@ -1,12 +1,12 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
+import { rootWorkspacePackages } from '../../package.json.genie.ts'
 import {
   createGenieOutput,
   type GenieOutput,
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
-import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 import { javaScriptActionRuntime, packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
@@ -681,6 +681,18 @@ type Buck2DependencyProjection =
       readonly dependencyTarget: string
     }
 
+/** Source package metadata supplied by the owning repository's Genie registry. */
+export type Buck2WorkspacePackageGenerator = {
+  readonly meta: { readonly workspace: { readonly memberPath: string } }
+  readonly data: {
+    readonly name: string
+    readonly dependencies?: Readonly<Record<string, string>>
+    readonly devDependencies?: Readonly<Record<string, string>>
+    readonly optionalDependencies?: Readonly<Record<string, string>>
+    readonly peerDependencies?: Readonly<Record<string, string>>
+  }
+}
+
 export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly packageName: string
   readonly packagePath: string
@@ -688,6 +700,8 @@ export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly rulesCell?: `@${string}`
   readonly sourceRoots: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
+  /** Consumer roots supply their own Genie registry; the platform root defaults to its own. */
+  readonly workspacePackages?: readonly Buck2WorkspacePackageGenerator[]
   /** Project-level authority declarations; one package may own more than one root project. */
   readonly authorities: readonly [
     Buck2TypeScriptProjectAuthorityMetadata,
@@ -706,6 +720,7 @@ export const buck2TypeScriptPackageProjection = ({
   rulesCell,
   sourceRoots,
   workspaceSiblings = [],
+  workspacePackages = rootWorkspacePackages,
   authorities,
   tests,
   testDataRoots = [],
@@ -792,10 +807,41 @@ export const buck2TypeScriptPackageProjection = ({
     .map(snapshotBaselineFor)
     .filter((baseline) => existsSync(path.join(process.cwd(), packagePath, baseline)))
   const declarationSources = packageSources.filter(isHandwrittenDeclaration)
-  const buckPackagePaths = new Set(
-    [packagePath, ...workspaceSiblings.map((sibling) => sibling.packagePath)].filter((candidate) =>
-      existsSync(path.join(process.cwd(), candidate, 'BUCK.genie.ts')),
+  // Package generators are the authority. Reading emitted manifests here races
+  // concurrent genie regeneration and can project a previous dependency graph.
+  const packageManifest = workspacePackages.find(
+    (member) => member.meta.workspace.memberPath === packagePath,
+  )?.data
+  if (packageManifest === undefined) {
+    throw new Error(`${packagePath}: missing workspace package generator`)
+  }
+  const workspaceNames = new Set(
+    [
+      packageManifest.dependencies,
+      packageManifest.devDependencies,
+      packageManifest.optionalDependencies,
+      packageManifest.peerDependencies,
+    ].flatMap((dependencies) =>
+      Object.entries(dependencies ?? {})
+        .filter(([, specifier]) => specifier.startsWith('workspace:'))
+        .map(([name]) => name),
     ),
+  )
+  const workspaceManifestPaths = [...workspaceNames]
+    .map((name) => {
+      const sibling = workspacePackages.find((member) => member.data.name === name)
+      if (sibling === undefined) {
+        throw new Error(`${packagePath}: unknown workspace package ${name}`)
+      }
+      return sibling.meta.workspace.memberPath
+    })
+    .toSorted((left, right) => compareStrings({ left, right }))
+  const buckPackagePaths = new Set(
+    [
+      packagePath,
+      ...workspaceSiblings.map((sibling) => sibling.packagePath),
+      ...workspaceManifestPaths,
+    ].filter((candidate) => existsSync(path.join(process.cwd(), candidate, 'BUCK.genie.ts'))),
   )
   const dependencyView = dependencyImporter?.replace(
     '//buck2/dependencies:importer_',
@@ -971,13 +1017,18 @@ export const buck2TypeScriptPackageProjection = ({
       sibling.packageTreeTarget,
     ])
     .toSorted(([left], [right]) => compareStrings({ left, right }))
-  const staticSourceExcludes = pnpmWorkspaceMemberPaths
+  const staticSourceExcludes = workspacePackages
+    .map((member) => member.meta.workspace.memberPath)
     .filter((candidate) => candidate.startsWith(`${packagePath}/`))
     .map((candidate) => `${path.posix.relative(packagePath, candidate)}/**`)
     .toSorted((left, right) => compareStrings({ left, right }))
   const semanticInputs = [
     ...commonSemanticInputs,
-    'genie/packages.ts',
+    ...(workspacePackages === rootWorkspacePackages ? ['genie/packages.ts'] : []),
+    // The owning repository's registry supplies names, paths and ranges from Genie sources.
+    ...workspacePackages.map(
+      (member) => `${member.meta.workspace.memberPath}/package.json.genie.ts`,
+    ),
     projectionSource,
     `${packagePath}/package.json.genie.ts`,
     `${packagePath}/tsconfig.json.genie.ts`,
@@ -1038,6 +1089,7 @@ export const buck2TypeScriptPackageProjection = ({
     testTargets: testTargets.map((target) => target.semanticData),
     visibility,
     workspaceSiblingProjections,
+    workspaceManifestPaths,
   }
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-typescript-package-projection',
@@ -1226,6 +1278,11 @@ export const buck2TypeScriptPackageProjection = ({
       '    package_tree = ":package_tree",',
       '    dist = ":dist",',
       `    typecheck = ${starlarkString(`:${primaryAuthority.typecheckTargetName}`)},`,
+      '    workspace_manifests = [',
+      ...workspaceManifestPaths.map(
+        (manifestPath) => `        ${starlarkString(sourceLabel(`${manifestPath}/package.json`))},`,
+      ),
+      '    ],',
       `    output = ${starlarkString(`${packageName.replace(/^@/u, '').replaceAll('/', '-')}.tgz`)},`,
       renderBuck2Visibility({ visibility }),
       ')',

@@ -58,10 +58,22 @@
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js",
-      "./client": "./dist/client.js",
-      "./server": "./dist/server.js",
-      "./router": "./dist/router.js"
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./client": {
+        "types": "./dist/src/client.d.ts",
+        "default": "./dist/src/client.js"
+      },
+      "./server": {
+        "types": "./dist/src/server.d.ts",
+        "default": "./dist/src/server.js"
+      },
+      "./router": {
+        "types": "./dist/src/router.d.ts",
+        "default": "./dist/src/router.js"
+      }
     }
   }
 }

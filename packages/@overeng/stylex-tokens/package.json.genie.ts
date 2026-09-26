@@ -3,6 +3,7 @@ import {
   catalog,
   exportEntry,
   packageJson,
+  publishedSourceExport,
   privatePackageDefaults,
   workspaceMember,
   type PackageJsonInputData,
@@ -39,8 +40,8 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        './tokens.stylex': './dist/tokens.stylex.js',
-        './preflight.css': './dist/preflight.css',
+        './tokens.stylex': publishedSourceExport('tokens.stylex'),
+        './preflight.css': './src/preflight.css',
       },
     },
   } satisfies PackageJsonInputData,

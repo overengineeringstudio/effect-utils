@@ -86,11 +86,17 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/src/runtime/mod.js',
-        './node': './dist/src/runtime/node/mod.js',
-        './composition': './dist/src/runtime/composition/mod.js',
-        './cli': './dist/src/build/mod.js',
-        './sdk': './dist/src/sdk/mod.js',
+        '.': { types: './dist/src/runtime/mod.d.ts', default: './dist/src/runtime/mod.js' },
+        './node': {
+          types: './dist/src/runtime/node/mod.d.ts',
+          default: './dist/src/runtime/node/mod.js',
+        },
+        './composition': {
+          types: './dist/src/runtime/composition/mod.d.ts',
+          default: './dist/src/runtime/composition/mod.js',
+        },
+        './cli': { types: './dist/src/build/mod.d.ts', default: './dist/src/build/mod.js' },
+        './sdk': { types: './dist/src/sdk/mod.d.ts', default: './dist/src/sdk/mod.js' },
       },
     },
     dependenciesMeta: {

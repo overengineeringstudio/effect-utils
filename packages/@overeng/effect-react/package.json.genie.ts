@@ -56,8 +56,11 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
-        './react-aria': './dist/react-aria/mod.js',
+        '.': { types: './dist/src/mod.d.ts', default: './dist/src/mod.js' },
+        './react-aria': {
+          types: './dist/src/react-aria/mod.d.ts',
+          default: './dist/src/react-aria/mod.js',
+        },
       },
     },
     scripts: {

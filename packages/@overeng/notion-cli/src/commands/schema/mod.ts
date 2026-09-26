@@ -72,7 +72,14 @@ const GeneratorPackageJsonSchema = Schema.Struct({ version: Schema.String })
 
 const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
-  const pkgJsonPath = fileURLToPath(new URL('../../../package.json', import.meta.url))
+  const pkgJsonPath = fileURLToPath(
+    new URL(
+      import.meta.url.endsWith('.js') === true
+        ? '../../../../package.json'
+        : '../../../package.json',
+      import.meta.url,
+    ),
+  )
   const content = yield* fs.readFileString(pkgJsonPath)
   const pkg = yield* Schema.decodeEffect(Schema.fromJsonString(GeneratorPackageJsonSchema))(content)
   return pkg.version
