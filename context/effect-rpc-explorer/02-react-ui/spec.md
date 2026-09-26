@@ -128,7 +128,11 @@ shows kind and each available channel's JSON Schema as a progressively disclosed
 field tree, retaining annotation titles, descriptions, examples, and required
 field semantics. Unavailable projections remain visible with or without a
 warning; an available best-effort projection is not presented as a validation guarantee.
-Trace shows actual IDs only when present and renders `No trace context observed` otherwise.
+Trace shows actual IDs only when present and renders `No trace context observed`
+otherwise. When the host's optional `traceHref` callback returns a URL for the
+record's `{ traceId, spanId? }`, the trace ID and the list-row trace marker are
+React Aria links opening in a new tab with `rel="noreferrer"`; without a URL,
+both remain plain text. The package never constructs trace URLs.
 The detail header uses the projected RPC title when present, otherwise the
 descriptor tag display, followed by the optional summary and a textual
 `Deprecated` badge when the projected deprecation flag is true. The Descriptor
@@ -221,8 +225,10 @@ RpcExplorer
     └── TracePanel
 ```
 
-`RpcExplorer` receives `client`, optional initial filters, and presentation
-options. It owns client projection/selection state through the established React
+`RpcExplorer` receives `client`, optional initial filters, presentation options,
+and an optional
+`traceHref?: (trace: { readonly traceId: string; readonly spanId?: string | undefined }) => string | undefined`
+host callback. It owns client projection/selection state through the established React
 state convention; it exposes only the diagnostic `clearHistory` action. Child
 components receive typed view models derived from one projection revision.
 `ChannelContentPanel` accepts `ChannelObservation`, not `unknown`, so it cannot
@@ -232,13 +238,14 @@ accidentally receive an uncaptured raw value.
 
 Stories use fixed core-wire fixtures with stable timestamps and IDs:
 
-| Story family   | Required states                                                                                                                                         |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| lifecycle      | empty/loading, active unary, completed unary, stream batch, typed failure, defect, interruption, send failure, notification, uncertain connection fault |
-| content safety | all omit/reveal/redact/policy-fault and Redacted/unsupported/truncated nodes                                                                            |
-| retention      | stream-value truncation, completed eviction notice, clear-history reset, stale/reset reconnect                                                          |
-| layout         | narrow drill-in/back, wide split, dense long list                                                                                                       |
-| accessibility  | keyboard selection, filter, tabs/disclosure, focus preservation/eviction, status labels                                                                 |
+| Story family     | Required states                                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| lifecycle        | empty/loading, active unary, completed unary, stream batch, typed failure, defect, interruption, send failure, notification, uncertain connection fault |
+| content safety   | all omit/reveal/redact/policy-fault and Redacted/unsupported/truncated nodes                                                                            |
+| retention        | stream-value truncation, completed eviction notice, clear-history reset, stale/reset reconnect                                                          |
+| layout           | narrow drill-in/back, wide split, dense long list                                                                                                       |
+| accessibility    | keyboard selection, filter, tabs/disclosure, focus preservation/eviction, status labels                                                                 |
+| trace navigation | host-provided trace link in row and detail, plain-text fallback, new-tab attributes                                                                     |
 
 The live-protocol story uses a real in-memory core store and inspector client. It
 first supplies a snapshot, then emits deltas, clears diagnostic history while an
