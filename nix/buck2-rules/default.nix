@@ -136,5 +136,15 @@ pkgs.runCommand "buck2-rules"
     chmod -R u+w "$out"
     mkdir -p "$out/prelude"
     tar -xzf ${buck2.passthru.prelude} --strip-components=1 -C "$out/prelude"
+    # Prelude-generated linker and Cargo buildscript shims run in Nix sandboxes,
+    # where /usr/bin/env does not exist. Bind their interpreter to the declared
+    # shell rather than relying on the host filesystem.
+    for script in \
+      "$out/prelude/utils/cmd_script.bzl" \
+      "$out/prelude/rust/cargo_buildscript.bzl" \
+      "$out/prelude/rust/context.bzl"; do
+      substituteInPlace "$script" \
+        --replace-fail '"#!/usr/bin/env bash"' '"#!${pkgs.bash}/bin/bash"'
+    done
 
   ''
