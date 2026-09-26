@@ -68,7 +68,7 @@ let
   # context, every instrumented command runs bare. Under `otel-span run --
   # devenv tasks run …` the task span exports OTEL_TASK_TRACEPARENT into the
   # task body, so this is true and commands wrap.
-  otelTraceContextActive = ''${otelCanEmitShell} && [[ "''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}" =~ ^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$ ]]'';
+  otelTraceContextActive = ''${otelCanEmitShell} && [[ "''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}" =~ ^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$ ]] && [[ "''${BASH_REMATCH[1]}" != 00000000000000000000000000000000 && "''${BASH_REMATCH[2]}" != 0000000000000000 ]]'';
   taskFileStem =
     taskName:
     builtins.replaceStrings
