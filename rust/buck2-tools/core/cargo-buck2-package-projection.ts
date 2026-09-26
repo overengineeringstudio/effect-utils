@@ -31,6 +31,12 @@ export type DefineCargoBuck2PackageProjectionOptions = {
   readonly cargoLockPath?: string
   readonly reindeerConfigPath?: string
   readonly workspaceMemberManifestPaths: readonly string[]
+  /**
+   * Manifests of Buck-projected Cargo packages outside this workspace that members reach
+   * through `path` dependencies (for example a shared library workspace). Each resolves to
+   * `//<package path>:lib` and must itself carry a `BUCK.genie.ts` projection.
+   */
+  readonly foreignPackageManifestPaths?: readonly string[]
   readonly thirdPartyBuckPath?: string
   readonly thirdPartyPackage?: string
   readonly buck2LoadLabelPrefix?: string
@@ -43,6 +49,7 @@ type ProjectionDefinition = {
   readonly cargoLockPath: string
   readonly cargoManifestPath: string
   readonly context: ProjectionContext
+  readonly foreignPackages: readonly WorkspaceMember[]
   readonly generatorSourcePaths: readonly string[]
   readonly regenerationCommand: string
   readonly reindeerConfigPath: string
@@ -65,6 +72,7 @@ export const defineCargoBuck2PackageProjection = ({
   cargoLockPath: configuredCargoLockPath,
   reindeerConfigPath: configuredReindeerConfigPath,
   workspaceMemberManifestPaths: configuredWorkspaceMemberManifestPaths,
+  foreignPackageManifestPaths: configuredForeignPackageManifestPaths = [],
   thirdPartyBuckPath: configuredThirdPartyBuckPath,
   thirdPartyPackage = '//rust/third-party',
   buck2LoadLabelPrefix = '//buck2',
@@ -163,6 +171,28 @@ export const defineCargoBuck2PackageProjection = ({
     manifestPath,
     manifest: Bun.TOML.parse(repo.readText(manifestPath)) as CargoManifest,
   }))
+  const memberPackagePaths = new Set(workspaceMembers.map((member) => member.packagePath))
+  const foreignPackages = configuredForeignPackageManifestPaths.map((configuredPath, index) => {
+    const manifestPath = validateRepoPath({
+      repo,
+      value: configuredPath,
+      field: `foreignPackageManifestPaths[${index}]`,
+    })
+    const packagePath = path.posix.dirname(manifestPath)
+    if (memberPackagePaths.has(packagePath) === true) {
+      throw new Error(`Foreign Cargo package is a member of this workspace: ${packagePath}`)
+    }
+    if (existsSync(repo.resolve(packagePath, 'BUCK.genie.ts')) === false) {
+      throw new Error(
+        `Foreign Cargo package must itself be Buck-projected (no BUCK.genie.ts): ${packagePath}`,
+      )
+    }
+    return {
+      packagePath,
+      manifestPath,
+      manifest: Bun.TOML.parse(repo.readText(manifestPath)) as CargoManifest,
+    }
+  })
   const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
   if (workspace.resolver !== '2')
     throw new Error('The Buck projection supports only Cargo resolver = "2"')
@@ -178,6 +208,7 @@ export const defineCargoBuck2PackageProjection = ({
     )
   }
   const context: ProjectionContext = {
+    foreignPackageByPath: new Map(foreignPackages.map((foreign) => [foreign.packagePath, foreign])),
     lockPackageNames: new Set(
       (lock.package ?? []).map((entry) =>
         requireValue({ value: entry.name, field: 'Cargo.lock package.name' }),
@@ -200,6 +231,7 @@ export const defineCargoBuck2PackageProjection = ({
     cargoLockPath,
     cargoManifestPath,
     context,
+    foreignPackages,
     generatorSourcePaths,
     regenerationCommand,
     reindeerConfigPath,
@@ -224,6 +256,7 @@ const cargoBuck2PackageProjectionFor = ({
     cargoLockPath,
     cargoManifestPath,
     context,
+    foreignPackages,
     generatorSourcePaths,
     regenerationCommand,
     reindeerConfigPath,
@@ -357,7 +390,22 @@ const cargoBuck2PackageProjectionFor = ({
     (source) =>
       source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
   )
-  const normalLabels = normalDependencies.map((dependency) => dependency.label)
+  const renamedConditional = [...conditionalNormalDependencies, ...conditionalDevDependencies]
+    .filter((entry) => entry.dependency.package !== undefined)
+    .map((entry) => entry.dependency.name)
+  if (renamedConditional.length > 0) {
+    throw new Error(
+      `Renamed target-specific Cargo dependencies are unsupported in ${member.manifestPath}: ${sorted(renamedConditional).join(', ')}`,
+    )
+  }
+  const normalLabels = normalDependencies
+    .filter((dependency) => dependency.package === undefined)
+    .map((dependency) => dependency.label)
+  // A renamed crate keeps the registry crate name in its rule; the request name is the
+  // extern name the member's code uses, which Buck binds through `named_deps`.
+  const namedDependencies = normalDependencies
+    .filter((dependency) => dependency.package !== undefined)
+    .map((dependency) => ({ label: dependency.label, name: crateIdentifier(dependency.name) }))
   const workspaceContractSources = sorted(['BUCK', 'BUCK.genie.ts', 'Cargo.toml', ...sources])
   const compileEnv = {
     CARGO_PKG_NAME: packageName,
@@ -371,6 +419,7 @@ const cargoBuck2PackageProjectionFor = ({
     reindeerConfigPath,
     thirdPartyBuckPath,
     ...workspaceMembers.map((workspaceMember) => workspaceMember.manifestPath),
+    ...foreignPackages.map((foreignPackage) => foreignPackage.manifestPath),
     projectionSource,
     `${packagePath}/src/**/*.rs`,
     `${packagePath}/tests/**/*.rs`,
@@ -442,6 +491,16 @@ const cargoBuck2PackageProjectionFor = ({
     `    crate_root = ${starlarkString(crateRoot)},`,
     ...renderStringList({ name: 'srcs', values: ruleSources }),
     ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
+    ...(namedDependencies.length === 0
+      ? []
+      : [
+          '    named_deps = {',
+          ...namedDependencies.map(
+            (dependency) =>
+              `        ${starlarkString(dependency.name)}: ${starlarkString(dependency.label)},`,
+          ),
+          '    },',
+        ]),
     ...commonRuleLines,
     ...(visibility === undefined
       ? []
@@ -712,6 +771,7 @@ type WorkspaceMember = {
 }
 
 type ProjectionContext = {
+  readonly foreignPackageByPath: ReadonlyMap<string, WorkspaceMember>
   readonly lockPackageNames: ReadonlySet<string>
   readonly memberByPath: ReadonlyMap<string, WorkspaceMember>
   readonly repo: RepoContext
@@ -732,6 +792,7 @@ const normalizeDependencyRequest = ({
 }): {
   readonly defaultFeatures: boolean
   readonly features: readonly string[]
+  readonly package?: string
   readonly path?: string
   readonly version?: string
   readonly workspace: boolean
@@ -753,9 +814,9 @@ const normalizeDependencyRequest = ({
     ],
     field,
   })
-  if (request.package !== undefined) {
+  if (request.package !== undefined && (request.path !== undefined || request.workspace === true)) {
     throw new Error(
-      `Unsupported renamed Cargo dependency at ${field}: ${dependencyName} -> ${request.package}`,
+      `Unsupported renamed Cargo path or workspace dependency at ${field}: ${dependencyName} -> ${request.package}`,
     )
   }
   if (request.optional === true)
@@ -769,6 +830,7 @@ const normalizeDependencyRequest = ({
   return {
     defaultFeatures: request['default-features'] ?? true,
     features: sorted(request.features ?? []),
+    ...(request.package === undefined ? {} : { package: request.package }),
     ...(request.path === undefined ? {} : { path: request.path }),
     ...(request.version === undefined ? {} : { version: request.version }),
     workspace: request.workspace === true,
@@ -780,6 +842,8 @@ type ResolvedDependency = {
   readonly features: readonly string[]
   readonly label: string
   readonly name: string
+  /** Registry package behind a renamed request (`name = { package = "..." }`). */
+  readonly package?: string
   readonly requestSource: 'member' | 'workspace'
   readonly targetAvailable: boolean
   readonly version?: string
@@ -828,6 +892,9 @@ const resolveDependency = ({
     effectiveRequest = {
       defaultFeatures: normalizedInherited.defaultFeatures && memberRequest.defaultFeatures,
       features: sorted([...normalizedInherited.features, ...memberRequest.features]),
+      ...(normalizedInherited.package === undefined
+        ? {}
+        : { package: normalizedInherited.package }),
       ...(normalizedInherited.version === undefined
         ? {}
         : { version: normalizedInherited.version }),
@@ -849,16 +916,25 @@ const resolveDependency = ({
     requestSource = 'workspace'
   }
 
-  if (context.lockPackageNames.has(dependencyName) === false) {
-    throw new Error(`Cargo.lock has no package for dependency ${dependencyName} at ${field}`)
+  const packageName = effectiveRequest.package ?? dependencyName
+  if (context.lockPackageNames.has(packageName) === false) {
+    throw new Error(`Cargo.lock has no package for dependency ${packageName} at ${field}`)
   }
+  // Reindeer names a public alias after the rename only when the root package declares it
+  // (single-package workspaces); virtual workspaces expose the package name.
+  const targetName =
+    effectiveRequest.package !== undefined &&
+    context.thirdPartyTargets.has(dependencyName) === false
+      ? packageName
+      : dependencyName
   return {
     defaultFeatures: effectiveRequest.defaultFeatures,
     features: effectiveRequest.features,
-    label: `${context.thirdPartyPackage}:${dependencyName}`,
+    label: `${context.thirdPartyPackage}:${targetName}`,
     name: dependencyName,
+    ...(effectiveRequest.package === undefined ? {} : { package: effectiveRequest.package }),
     requestSource,
-    targetAvailable: context.thirdPartyTargets.has(dependencyName),
+    targetAvailable: context.thirdPartyTargets.has(targetName),
     ...(effectiveRequest.version === undefined ? {} : { version: effectiveRequest.version }),
   }
 }
@@ -882,10 +958,11 @@ const resolveMemberPathDependency = ({
   }
   readonly requestSource: ResolvedDependency['requestSource']
 }): ResolvedDependency => {
-  const dependencyMember = context.memberByPath.get(dependencyPath)
+  const dependencyMember =
+    context.memberByPath.get(dependencyPath) ?? context.foreignPackageByPath.get(dependencyPath)
   if (dependencyMember === undefined) {
     throw new Error(
-      `Cargo path dependency at ${field} is not a workspace member: ${dependencyPath}`,
+      `Cargo path dependency at ${field} is neither a workspace member nor a declared foreign package: ${dependencyPath}`,
     )
   }
   const dependencyPackage = requireValue({

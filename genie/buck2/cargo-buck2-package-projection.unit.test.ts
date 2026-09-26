@@ -152,10 +152,19 @@ type CargoFixtureMember = {
 const renderCargoFixture = ({
   members,
   workspaceDependencies = '',
+  registryPackages = ['serde'],
+  thirdPartyTargets = ['serde'],
+  foreignPackages = {},
   render,
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
   readonly workspaceDependencies?: string
+  readonly registryPackages?: readonly string[]
+  readonly thirdPartyTargets?: readonly string[]
+  /** Repository-relative package paths of Cargo packages outside `rust/`; `projected` adds BUCK.genie.ts. */
+  readonly foreignPackages?: Readonly<
+    Record<string, CargoFixtureMember & { readonly projected: boolean }>
+  >
   readonly render: string
 }): string => {
   const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
@@ -175,10 +184,25 @@ const renderCargoFixture = ({
     )
     write(
       'rust/Cargo.lock',
-      'version = 4\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
+      `version = 4\n${registryPackages
+        .map(
+          (name) =>
+            `\n[[package]]\nname = "${name}"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n`,
+        )
+        .join('')}`,
     )
     write('rust/reindeer.toml', 'vendor = false\nthird_party_dir = "third-party"\n')
-    write('rust/third-party/BUCK', 'alias(\n    name = "serde",\n    actual = ":serde-1.0.0",\n)\n')
+    write(
+      'rust/third-party/BUCK',
+      thirdPartyTargets
+        .map((name) => `alias(\n    name = "${name}",\n    actual = ":${name}-1.0.0",\n)\n`)
+        .join('\n'),
+    )
+    for (const [packagePath, foreign] of Object.entries(foreignPackages)) {
+      write(`${packagePath}/Cargo.toml`, foreign.manifest)
+      for (const file of foreign.files) write(`${packagePath}/${file}`, '// fixture\n')
+      if (foreign.projected === true) write(`${packagePath}/BUCK.genie.ts`, '// projected\n')
+    }
     for (const [memberPath, member] of Object.entries(members)) {
       const [header, ...rest] = member.manifest.split('\n[')
       write(
@@ -200,6 +224,9 @@ const renderCargoFixture = ({
       workspaceRoot: 'rust',
       workspaceMemberManifestPaths: Object.keys(members).map(
         (memberPath) => `rust/${memberPath}/Cargo.toml`,
+      ),
+      foreignPackageManifestPaths: Object.keys(foreignPackages).map(
+        (packagePath) => `${packagePath}/Cargo.toml`,
       ),
       generatorSourcePaths: [],
     })
@@ -383,7 +410,7 @@ describe('Cargo workspace path dependencies', () => {
         render: 'crates/app',
       }),
     ).toThrow(
-      'Cargo path dependency at dependencies.ghost is not a workspace member: rust/crates/ghost',
+      'Cargo path dependency at dependencies.ghost is neither a workspace member nor a declared foreign package: rust/crates/ghost',
     )
     expect(() =>
       renderCargoFixture({
@@ -400,5 +427,99 @@ describe('Cargo workspace path dependencies', () => {
     ).toThrow(
       'Cargo path dependency at dependencies.tool does not expose the contracted :lib target',
     )
+  })
+})
+
+describe('Cargo cross-workspace path dependencies', () => {
+  const sharedLibrary = (projected: boolean) => ({
+    'shared/otel-bootstrap': {
+      manifest:
+        '[package]\nname = "otel-bootstrap"\nversion = "0.1.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n',
+      files: ['src/lib.rs'],
+      projected,
+    },
+  })
+  const consumer = {
+    app: {
+      manifest:
+        '[package]\nname = "app"\n\n[dependencies]\notel-bootstrap = { path = "../../shared/otel-bootstrap" }',
+      files: ['src/main.rs'],
+    },
+  }
+
+  it('labels a declared, projected foreign package by its package path', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: consumer,
+        foreignPackages: sharedLibrary(true),
+        render: 'app',
+      }),
+    )
+    expect(rules.app).toContain('deps = [\n        "//shared/otel-bootstrap:lib",\n    ],')
+  })
+
+  it('rejects undeclared and unprojected foreign packages', () => {
+    expect(() => renderCargoFixture({ members: consumer, render: 'app' })).toThrow(
+      'Cargo path dependency at dependencies.otel-bootstrap is neither a workspace member nor a declared foreign package: shared/otel-bootstrap',
+    )
+    expect(() =>
+      renderCargoFixture({
+        members: consumer,
+        foreignPackages: sharedLibrary(false),
+        render: 'app',
+      }),
+    ).toThrow(
+      'Foreign Cargo package must itself be Buck-projected (no BUCK.genie.ts): shared/otel-bootstrap',
+    )
+  })
+})
+
+describe('Cargo renamed dependencies', () => {
+  const renamed = (dependency: string) => ({
+    relay: {
+      manifest: `[package]\nname = "relay"\n\n[dependencies]\n${dependency}\nserde.workspace = true`,
+      files: ['src/main.rs'],
+    },
+  })
+
+  it('binds the request name through named_deps to the public alias', () => {
+    const rendered = renderCargoFixture({
+      members: renamed('webpki = { package = "rustls-webpki", version = "0.103" }'),
+      registryPackages: ['rustls-webpki', 'serde'],
+      thirdPartyTargets: ['serde', 'webpki'],
+      render: 'relay',
+    })
+    expect(renderedRules(rendered).relay).toContain(
+      'deps = [\n        "//rust/third-party:serde",\n    ],\n    named_deps = {\n        "webpki": "//rust/third-party:webpki",\n    },',
+    )
+  })
+
+  it('falls back to the package-named alias of a virtual workspace graph', () => {
+    const rendered = renderCargoFixture({
+      members: renamed('webpki.workspace = true'),
+      workspaceDependencies: 'webpki = { package = "rustls-webpki", version = "0.103" }\n',
+      registryPackages: ['rustls-webpki', 'serde'],
+      thirdPartyTargets: ['rustls-webpki', 'serde'],
+      render: 'relay',
+    })
+    expect(renderedRules(rendered).relay).toContain(
+      'named_deps = {\n        "webpki": "//rust/third-party:rustls-webpki",\n    },',
+    )
+  })
+
+  it('rejects renames of path dependencies and unlocked packages', () => {
+    expect(() =>
+      renderCargoFixture({
+        members: renamed('webpki = { package = "rustls-webpki", version = "0.103" }'),
+        thirdPartyTargets: ['serde', 'webpki'],
+        render: 'relay',
+      }),
+    ).toThrow('Cargo.lock has no package for dependency rustls-webpki at dependencies.webpki')
+    expect(() =>
+      renderCargoFixture({
+        members: renamed('webpki = { package = "rustls-webpki", path = "../vendored" }'),
+        render: 'relay',
+      }),
+    ).toThrow('Unsupported renamed Cargo path or workspace dependency at dependencies.webpki')
   })
 })
