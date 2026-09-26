@@ -1265,6 +1265,42 @@ describe('ci workflow standard job helpers', () => {
     },
   )
 
+  it('fails Netlify PR previews on rejected credentials while tolerating absent fork secrets', () => {
+    const fixture = spawnSync(
+      'bun',
+      [
+        '-e',
+        `
+          import { netlifyDeployStep } from './genie/ci-workflow.ts'
+          const run = netlifyDeployStep({ NETLIFY_AUTH_TOKEN: 'netlify-secret' }).run
+          const policies = Object.fromEntries(
+            run
+              .split('\\n')
+              .filter((line) => line.includes('netlify:deploy'))
+              .map((line) => {
+                const inputs = [...line.matchAll(/--input ([A-Za-z]+)=(\\S+)/g)].map(
+                  ([, key, value]) => [key, value],
+                )
+                const byKey = Object.fromEntries(inputs)
+                return [
+                  byKey.type,
+                  Object.fromEntries(inputs.filter(([key]) => key.endsWith('Policy'))),
+                ]
+              }),
+          )
+          console.log(JSON.stringify(policies))
+        `,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+
+    expect(fixture.status, fixture.stderr).toBe(0)
+    expect(JSON.parse(fixture.stdout)).toEqual({
+      prod: { missingAuthPolicy: 'skip' },
+      pr: { missingAuthPolicy: 'skip' },
+    })
+  })
+
   it('centralizes self-hosted devenv task job composition', () => {
     expect(ciWorkflowSource).toContain('export const devenvTaskStep')
     expect(ciWorkflowSource).toContain('export const standardSelfHostedDevenvTaskJob')

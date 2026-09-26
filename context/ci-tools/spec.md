@@ -219,12 +219,14 @@ Unexpected defects remain defects. They are not converted into expected domain
 errors unless the boundary has enough information to classify them.
 
 Netlify static deploys may emit a skipped record when an optional static output
-directory is absent. An optional Netlify PR-preview workflow may also opt into
+directory is absent. A Netlify deploy may also opt into
 `unauthorizedPolicy=skip`: both API lookup and CLI rejection then emit the same
-structured skipped record. The default remains `fail`, and production workflow
-composition never opts into this policy. Vercel deploys treat missing
-configured artifact output as `MissingBuildOutput` because the artifact path is
-the deploy input.
+structured skipped record. The default remains `fail`, and the shared workflow
+composition never opts into this policy for PR previews or production deploys:
+a present but rejected token is a configuration defect that fails the check.
+Only absent credentials (`missingAuthPolicy=skip`, e.g. fork PRs) skip. Vercel
+deploys treat missing configured artifact output as `MissingBuildOutput`
+because the artifact path is the deploy input.
 
 Requirement trace: R05, R06, R08.
 
@@ -271,8 +273,8 @@ specific cause.
 
 Unauthorized project access is classified identically at the API and CLI
 boundaries. With the default `unauthorizedPolicy=fail`, it emits a failure
-record and exits non-zero. With the explicit `skip` policy used by optional PR
-previews, it emits a skipped record and exits zero. The policy never changes
+record and exits non-zero. With the explicit `skip` policy, it emits a skipped
+record and exits zero. The policy never changes
 the classification or retryability of the underlying provider response.
 
 The Netlify task launcher passes `--workspace-filter` when a deployment opts

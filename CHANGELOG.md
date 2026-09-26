@@ -22,6 +22,13 @@ All notable changes to this project will be documented in this file.
   Generation-time validation cannot cover raw workflow YAML outside Genie or
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
+### Changed
+- **Genie Netlify deploy step**: PR previews no longer pass
+  `unauthorizedPolicy=skip`. A configured Netlify token that the provider
+  rejects now fails the PR deploy check instead of emitting a green skipped
+  record; absent credentials on fork PRs still skip via
+  `missingAuthPolicy=skip`. Regenerate consumer workflows to pick this up.
+
 ### Fixed
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
