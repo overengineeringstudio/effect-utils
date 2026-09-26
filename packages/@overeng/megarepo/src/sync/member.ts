@@ -12,11 +12,6 @@ import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { resolveStoreBranchWorktree } from '../store/store-branch-worktree.ts'
-import {
-  foreignMemberMountMessage,
-  inspectMemberMount,
-} from './member-mount.ts'
 import {
   getMemberPath,
   getSourceRef,
@@ -29,8 +24,10 @@ import { detectRefMismatch, formatRefMismatchMessage } from '../core/issues.ts'
 import type { LockFile } from '../core/lock.ts'
 import * as Observability from '../core/observability.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../core/ref.ts'
+import { resolveStoreBranchWorktree } from '../store/store-branch-worktree.ts'
 import { StoreLock } from '../store/store-lock.ts'
 import { Store } from '../store/store.ts'
+import { foreignMemberMountMessage, inspectMemberMount } from './member-mount.ts'
 import type { MemberSyncResult, SyncMode } from './types.ts'
 
 /**

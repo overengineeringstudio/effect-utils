@@ -51,11 +51,11 @@ workspaces are deleted (principal q5, 2026-09-25); mr keeps only member source
 mounts, which are never Buck cells. Consumers retire source-mount execution and
 cross-member writes as they pass these proofs:
 
-| Consumer class                                  | Retirement change                                                                            | Admission proof                                                   |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| CLI executed from another member's source mount | Execute the already-packaged Nix CLI; move each consumer's mount execution to that package   | Command succeeds without reading the source mount                 |
-| Dependency task that writes another member      | Move the producer into that member's own repository; consume only its published artifacts    | Mutation sentinel on the member stays clean across task execution |
-| Live cross-workspace branch sharing             | Commit upstream in its own repository, publish, then advance the consumer's pin              | The pin advance alone changes the consumer input                  |
+| Consumer class                                  | Retirement change                                                                          | Admission proof                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| CLI executed from another member's source mount | Execute the already-packaged Nix CLI; move each consumer's mount execution to that package | Command succeeds without reading the source mount                 |
+| Dependency task that writes another member      | Move the producer into that member's own repository; consume only its published artifacts  | Mutation sentinel on the member stays clean across task execution |
+| Live cross-workspace branch sharing             | Commit upstream in its own repository, publish, then advance the consumer's pin            | The pin advance alone changes the consumer input                  |
 
 ## Phase 2b — declared dependency closure
 

@@ -118,7 +118,6 @@ export interface MemberStatus {
   symlinkExists: boolean
   source: string
   isLocal: boolean
-  writable?: boolean | undefined
   lockInfo?: LockInfo | undefined
   isMegarepo: boolean
   nestedMembers?: readonly MemberStatus[] | undefined
@@ -152,7 +151,6 @@ export const MemberStatus: Schema.Codec<MemberStatus, MemberStatus> = Schema.sus
     symlinkExists: Schema.Boolean,
     source: Schema.String,
     isLocal: Schema.Boolean,
-    writable: Schema.optional(Schema.Boolean),
     lockInfo: Schema.optional(LockInfo),
     isMegarepo: Schema.Boolean,
     nestedMembers: Schema.optional(Schema.Array(MemberStatus)),

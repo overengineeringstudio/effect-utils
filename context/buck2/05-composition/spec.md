@@ -73,7 +73,11 @@ Consumer roots take the same output from effect-utils' flake.
   "schemaVersion": 2,
   "capabilities": [
     { "toolId": "buck2", "protocol": "…", "flakePackage": "buck2", "executable": "bin/buck2" },
-    { "_tag": "ToolchainAuthority", "toolchain": "tsgo", "provides": [ { "toolId": "effect-tsgo", "…": "…" } ] }
+    {
+      "_tag": "ToolchainAuthority",
+      "toolchain": "tsgo",
+      "provides": [{ "toolId": "effect-tsgo", "…": "…" }]
+    }
   ]
 }
 ```

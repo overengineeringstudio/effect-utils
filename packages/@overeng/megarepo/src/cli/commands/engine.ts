@@ -17,10 +17,6 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
-  foreignMemberMountMessage,
-  inspectMemberMount,
-} from '../../sync/member-mount.ts'
-import {
   type ConfigNotFoundError,
   findConfigPath,
   getMemberPath,
@@ -46,6 +42,7 @@ import { runPreflightChecks, type StoreHygieneError } from '../../store/store-hy
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import type { StoreLock } from '../../store/store-lock.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
+import { foreignMemberMountMessage, inspectMemberMount } from '../../sync/member-mount.ts'
 import {
   type GitProtocol,
   type MissingRefAction,
@@ -724,23 +721,23 @@ export const runCommand = ({
 
     const doSync = (progressHandle?: SyncUIHandle) =>
       syncMegarepo({
-            megarepoRoot: root.value,
-            options: {
-              mode: effectiveMode,
-              dryRun,
-              force,
-              all,
-              only: onlyMembers,
-              skip: skipMembers,
-              gitProtocol,
-              createBranches,
-              ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
-              ...(commitMode === true ? { commitMode: true } : {}),
-              ...(lockSyncMode !== undefined ? { lockSyncMode } : {}),
-            },
-            ...(progressHandle !== undefined ? { progressHandle } : {}),
-            ...(onMissingRef !== undefined ? { onMissingRef } : {}),
-          })
+        megarepoRoot: root.value,
+        options: {
+          mode: effectiveMode,
+          dryRun,
+          force,
+          all,
+          only: onlyMembers,
+          skip: skipMembers,
+          gitProtocol,
+          createBranches,
+          ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
+          ...(commitMode === true ? { commitMode: true } : {}),
+          ...(lockSyncMode !== undefined ? { lockSyncMode } : {}),
+        },
+        ...(progressHandle !== undefined ? { progressHandle } : {}),
+        ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+      })
 
     /** Merge fetch errors into apply results so errors from the fetch phase are visible.
      * - Replace apply error results with fetch errors (fetch has the actual git error, apply only knows "not in lock file")

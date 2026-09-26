@@ -3152,14 +3152,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({
-    repo: repoString,
-    ref: refOpt,
-    base: baseOpt,
-    commit: commitOpt,
-    porcelain,
-    output,
-  }) =>
+  ({ repo: repoString, ref: refOpt, base: baseOpt, commit: commitOpt, porcelain, output }) =>
     Effect.gen(function* () {
       const outputMode = yield* resolveOutputOption(output)
       const store = yield* Store

@@ -66,9 +66,7 @@ const scanMembersRecursive = ({
   depth?: number
 }): Effect.Effect<
   MemberStatus[],
-  | PlatformError
-  | Schema.SchemaError
-  | Git.GitCommandError,
+  PlatformError | Schema.SchemaError | Git.GitCommandError,
   FileSystem.FileSystem | ChildProcessSpawner | Store
 > =>
   Effect.gen(function* () {
@@ -263,7 +261,6 @@ const scanMembersRecursive = ({
         symlinkExists,
         source: sourceString,
         isLocal,
-        writable: isOwned === true,
         lockInfo:
           lockedMember !== undefined
             ? {

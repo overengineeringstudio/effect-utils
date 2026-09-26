@@ -13,10 +13,6 @@ import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
-  foreignMemberMountMessage,
-  inspectMemberMount,
-} from '../../sync/member-mount.ts'
-import {
   buildSourceStringWithRef,
   MegarepoConfig,
   getMemberPath,
@@ -43,6 +39,7 @@ import { resolveStoreBranchWorktree } from '../../store/store-branch-worktree.ts
 import { runPreflightChecks } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
+import { foreignMemberMountMessage, inspectMemberMount } from '../../sync/member-mount.ts'
 import {
   Cwd,
   findMegarepoRoot,
@@ -165,8 +162,7 @@ export const pinCommand = Cli.Command.make(
             const configOwner =
               EffectPath.ops.parent(
                 EffectPath.unsafe.absoluteFile(yield* fs.realPath(configPath)),
-              ) ??
-              root.value
+              ) ?? root.value
             const lockPath = EffectPath.ops.join(
               configOwner,
               EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -629,8 +625,7 @@ export const unpinCommand = Cli.Command.make(
             const configOwner =
               EffectPath.ops.parent(
                 EffectPath.unsafe.absoluteFile(yield* fs.realPath(configPath)),
-              ) ??
-              root.value
+              ) ?? root.value
             const lockPath = EffectPath.ops.join(
               configOwner,
               EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
