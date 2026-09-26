@@ -45,7 +45,11 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = [
     buck2
     pkgs.cacert
-  ];
+  ]
+  ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.autoPatchelfHook;
+  # The toolchain links Linux binaries against the portable FHS loader; the
+  # installed binary is repointed at the Nix loader like realized products.
+  buildInputs = lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.stdenv.cc.cc.lib;
   dontConfigure = true;
   dontFixup = true;
   buildPhase = ''
@@ -59,6 +63,13 @@ pkgs.stdenv.mkDerivation {
     ${buck2}/bin/buck2 --isolation-dir nix-evidence expand-external-cell prelude
     substituteInPlace prelude/utils/cmd_script.bzl prelude/rust/cargo_buildscript.bzl \
       --replace-fail '#!/usr/bin/env bash' '#!${pkgs.bash}/bin/bash'
+    ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+      # Build scripts carry the portable /lib64 loader, which the sandbox lacks.
+      # Run them through the Nix loader instead of rewriting the toolchain.
+      substituteInPlace prelude/rust/tools/buildscript_run.py \
+        --replace-fail '            os.path.abspath(buildscript),' \
+        '            ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.stdenv.cc.cc.lib}/lib", os.path.abspath(buildscript)],'
+    ''}
     artifact="$(${buck2}/bin/buck2 --isolation-dir nix-evidence build --config external_cells.prelude=disabled --config nix_store.crates_root=${cargoArchives} --local-only --no-remote-cache --console simple --show-simple-output effect_utils//rust/buck2-tools/evidence:buck2-evidence)"
     test -f "$artifact"
     cp "$artifact" ./buck2-evidence
@@ -67,6 +78,7 @@ pkgs.stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
     install -Dm755 ./buck2-evidence "$out/bin/buck2-evidence"
+    ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''autoPatchelf "$out"''}
     runHook postInstall
   '';
   meta = {
