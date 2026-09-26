@@ -31,6 +31,12 @@ export type DefineCargoBuck2PackageProjectionOptions = {
   readonly cargoLockPath?: string
   readonly reindeerConfigPath?: string
   readonly workspaceMemberManifestPaths: readonly string[]
+  /**
+   * Manifests of Buck-projected Cargo packages outside this workspace that members reach
+   * through `path` dependencies (for example a shared library workspace). Each resolves to
+   * `//<package path>:lib` and must itself carry a `BUCK.genie.ts` projection.
+   */
+  readonly foreignPackageManifestPaths?: readonly string[]
   readonly thirdPartyBuckPath?: string
   readonly thirdPartyPackage?: string
   readonly buck2LoadLabelPrefix?: string
@@ -43,6 +49,7 @@ type ProjectionDefinition = {
   readonly cargoLockPath: string
   readonly cargoManifestPath: string
   readonly context: ProjectionContext
+  readonly foreignPackages: readonly WorkspaceMember[]
   readonly generatorSourcePaths: readonly string[]
   readonly regenerationCommand: string
   readonly reindeerConfigPath: string
@@ -65,6 +72,7 @@ export const defineCargoBuck2PackageProjection = ({
   cargoLockPath: configuredCargoLockPath,
   reindeerConfigPath: configuredReindeerConfigPath,
   workspaceMemberManifestPaths: configuredWorkspaceMemberManifestPaths,
+  foreignPackageManifestPaths: configuredForeignPackageManifestPaths = [],
   thirdPartyBuckPath: configuredThirdPartyBuckPath,
   thirdPartyPackage = '//rust/third-party',
   buck2LoadLabelPrefix = '//buck2',
@@ -163,6 +171,28 @@ export const defineCargoBuck2PackageProjection = ({
     manifestPath,
     manifest: Bun.TOML.parse(repo.readText(manifestPath)) as CargoManifest,
   }))
+  const memberPackagePaths = new Set(workspaceMembers.map((member) => member.packagePath))
+  const foreignPackages = configuredForeignPackageManifestPaths.map((configuredPath, index) => {
+    const manifestPath = validateRepoPath({
+      repo,
+      value: configuredPath,
+      field: `foreignPackageManifestPaths[${index}]`,
+    })
+    const packagePath = path.posix.dirname(manifestPath)
+    if (memberPackagePaths.has(packagePath) === true) {
+      throw new Error(`Foreign Cargo package is a member of this workspace: ${packagePath}`)
+    }
+    if (existsSync(repo.resolve(packagePath, 'BUCK.genie.ts')) === false) {
+      throw new Error(
+        `Foreign Cargo package must itself be Buck-projected (no BUCK.genie.ts): ${packagePath}`,
+      )
+    }
+    return {
+      packagePath,
+      manifestPath,
+      manifest: Bun.TOML.parse(repo.readText(manifestPath)) as CargoManifest,
+    }
+  })
   const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
   if (workspace.resolver !== '2')
     throw new Error('The Buck projection supports only Cargo resolver = "2"')
@@ -178,12 +208,14 @@ export const defineCargoBuck2PackageProjection = ({
     )
   }
   const context: ProjectionContext = {
+    foreignPackageByPath: new Map(foreignPackages.map((foreign) => [foreign.packagePath, foreign])),
     lockPackageNames: new Set(
       (lock.package ?? []).map((entry) =>
         requireValue({ value: entry.name, field: 'Cargo.lock package.name' }),
       ),
     ),
     memberByPath: new Map(workspaceMembers.map((member) => [member.packagePath, member])),
+    repo,
     thirdPartyPackage,
     thirdPartyTargets: new Set(
       [...repo.readText(thirdPartyBuckPath).matchAll(/^    name = "([^"]+)",$/gm)].map((match) =>
@@ -191,6 +223,7 @@ export const defineCargoBuck2PackageProjection = ({
       ),
     ),
     workspace,
+    workspaceRoot,
   }
 
   const definition: ProjectionDefinition = {
@@ -198,6 +231,7 @@ export const defineCargoBuck2PackageProjection = ({
     cargoLockPath,
     cargoManifestPath,
     context,
+    foreignPackages,
     generatorSourcePaths,
     regenerationCommand,
     reindeerConfigPath,
@@ -222,6 +256,7 @@ const cargoBuck2PackageProjectionFor = ({
     cargoLockPath,
     cargoManifestPath,
     context,
+    foreignPackages,
     generatorSourcePaths,
     regenerationCommand,
     reindeerConfigPath,
@@ -271,12 +306,8 @@ const cargoBuck2PackageProjectionFor = ({
   ) {
     throw new Error(`Cargo package ${packagePath} must inherit workspace.package.edition`)
   }
-  if (
-    packageMetadata.autobins !== undefined ||
-    packageMetadata.autolib !== undefined ||
-    packageMetadata.autotests !== undefined
-  ) {
-    throw new Error(`Cargo automatic target overrides are unsupported in ${member.manifestPath}`)
+  if (packageMetadata.autotests !== undefined) {
+    throw new Error(`Cargo autotests overrides are unsupported in ${member.manifestPath}`)
   }
   if (
     (packageMetadata.build !== undefined && packageMetadata.build !== false) ||
@@ -348,51 +379,33 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   const sources = discoverRustSources({ packagePath, repo })
-  const sourceSet = new Set(sources)
-
-  const library = manifest.lib
-  if (library?.['proc-macro'] === true || library?.['crate-type'] !== undefined) {
-    throw new Error(
-      `Cargo proc-macro and crate-type library semantics are unsupported in ${member.manifestPath}`,
-    )
-  }
-  const libraryName = library?.name
-  const libraryPath = library?.path
-  if ((libraryName === undefined) !== (libraryPath === undefined)) {
-    throw new Error(
-      `Cargo library name and path must be explicit together in ${member.manifestPath}`,
-    )
-  }
-  if (libraryPath !== undefined && sourceSet.has(libraryPath) === false) {
-    throw new Error(`Cargo library path is not a discovered Rust source: ${libraryPath}`)
-  }
-
-  const binaries = (manifest.bin ?? []).map((binary, index) => {
-    if ((binary['required-features']?.length ?? 0) > 0) {
-      throw new Error(`Cargo binary required-features are unsupported at bin[${index}]`)
-    }
-    const name = requireValue({ value: binary.name, field: `bin[${index}].name` })
-    const crateRoot = requireValue({ value: binary.path, field: `bin[${index}].path` })
-    if (sourceSet.has(crateRoot) === false) {
-      throw new Error(`Cargo binary path is not a discovered Rust source: ${crateRoot}`)
-    }
-    return { crateRoot, name }
-  })
-  if (library === undefined && binaries.length === 0) {
-    throw new Error(`Cargo package ${packagePath} has no explicit library or binary target`)
-  }
-  if (new Set(binaries.map((binary) => binary.name)).size !== binaries.length) {
-    throw new Error(`Cargo package ${packagePath} has duplicate binary names`)
-  }
-
-  const binaryRoots = new Set(binaries.map((binary) => binary.crateRoot))
+  const { binaries, library } = discoverCargoTargets({ member, packageName, sources })
+  const binaryRuleSources = new Map(
+    binaries.map((binary) => [binary.name, binaryTargetSources({ binary, sources })]),
+  )
+  const binaryOwnedSources = new Set([...binaryRuleSources.values()].flat())
   const srcSources = sources.filter((source) => source.startsWith('src/'))
-  const librarySources = srcSources.filter((source) => binaryRoots.has(source) === false)
+  const librarySources = srcSources.filter((source) => binaryOwnedSources.has(source) === false)
   const integrationTestRoots = sources.filter(
     (source) =>
       source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
   )
-  const normalLabels = normalDependencies.map((dependency) => dependency.label)
+  const renamedConditional = [...conditionalNormalDependencies, ...conditionalDevDependencies]
+    .filter((entry) => entry.dependency.package !== undefined)
+    .map((entry) => entry.dependency.name)
+  if (renamedConditional.length > 0) {
+    throw new Error(
+      `Renamed target-specific Cargo dependencies are unsupported in ${member.manifestPath}: ${sorted(renamedConditional).join(', ')}`,
+    )
+  }
+  const normalLabels = normalDependencies
+    .filter((dependency) => dependency.package === undefined)
+    .map((dependency) => dependency.label)
+  // A renamed crate keeps the registry crate name in its rule; the request name is the
+  // extern name the member's code uses, which Buck binds through `named_deps`.
+  const namedDependencies = normalDependencies
+    .filter((dependency) => dependency.package !== undefined)
+    .map((dependency) => ({ label: dependency.label, name: crateIdentifier(dependency.name) }))
   const workspaceContractSources = sorted(['BUCK', 'BUCK.genie.ts', 'Cargo.toml', ...sources])
   const compileEnv = {
     CARGO_PKG_NAME: packageName,
@@ -406,6 +419,7 @@ const cargoBuck2PackageProjectionFor = ({
     reindeerConfigPath,
     thirdPartyBuckPath,
     ...workspaceMembers.map((workspaceMember) => workspaceMember.manifestPath),
+    ...foreignPackages.map((foreignPackage) => foreignPackage.manifestPath),
     projectionSource,
     `${packagePath}/src/**/*.rs`,
     `${packagePath}/tests/**/*.rs`,
@@ -425,7 +439,7 @@ const cargoBuck2PackageProjectionFor = ({
     edition,
     graphFingerprints,
     integrationTestRoots,
-    library: libraryName === undefined ? undefined : { name: libraryName, path: libraryPath },
+    library,
     librarySources,
     normalDependencies,
     packageName,
@@ -477,6 +491,16 @@ const cargoBuck2PackageProjectionFor = ({
     `    crate_root = ${starlarkString(crateRoot)},`,
     ...renderStringList({ name: 'srcs', values: ruleSources }),
     ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
+    ...(namedDependencies.length === 0
+      ? []
+      : [
+          '    named_deps = {',
+          ...namedDependencies.map(
+            (dependency) =>
+              `        ${starlarkString(dependency.name)}: ${starlarkString(dependency.label)},`,
+          ),
+          '    },',
+        ]),
     ...commonRuleLines,
     ...(visibility === undefined
       ? []
@@ -486,13 +510,13 @@ const cargoBuck2PackageProjectionFor = ({
   ]
 
   const rules: string[] = []
-  if (libraryName !== undefined && libraryPath !== undefined) {
+  if (library !== undefined) {
     rules.push(
       ...renderRule({
         rule: 'rust_library',
         name: 'lib',
-        crate: libraryName,
-        crateRoot: libraryPath,
+        crate: library.name,
+        crateRoot: library.path,
         ruleSources: librarySources,
         dependencies: normalLabels,
         conditionalDependencies: normalConditional,
@@ -501,17 +525,17 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   for (const binary of binaries) {
-    const binaryDependencies = sorted([
-      ...normalLabels,
-      ...(libraryName === undefined ? [] : [':lib']),
-    ])
+    const binaryDependencies = sorted([...normalLabels, ...(library === undefined ? [] : [':lib'])])
     rules.push(
       ...renderRule({
         rule: 'rust_binary',
         name: binary.name,
         crate: crateIdentifier(binary.name),
         crateRoot: binary.crateRoot,
-        ruleSources: [binary.crateRoot],
+        ruleSources: requireValue({
+          value: binaryRuleSources.get(binary.name),
+          field: `${member.manifestPath} bin ${binary.name} sources`,
+        }),
         dependencies: binaryDependencies,
         conditionalDependencies: normalConditional,
         visibility: ['PUBLIC'],
@@ -523,7 +547,9 @@ const cargoBuck2PackageProjectionFor = ({
     // cell: a label attribute resolves in the calling package's cell.
     const rulesCell = buck2LoadLabelPrefix.match(/^@([A-Za-z0-9][A-Za-z0-9._-]*)\/\//)?.[1]
     const hostPlatform =
-      rulesCell === undefined ? 'host_platform_label()' : `host_platform_label(cell = ${starlarkString(rulesCell)})`
+      rulesCell === undefined
+        ? 'host_platform_label()'
+        : `host_platform_label(cell = ${starlarkString(rulesCell)})`
     if (binaries.length !== 1) {
       throw new Error(
         `BuildProduct projection requires exactly one binary in ${member.manifestPath}`,
@@ -745,11 +771,14 @@ type WorkspaceMember = {
 }
 
 type ProjectionContext = {
+  readonly foreignPackageByPath: ReadonlyMap<string, WorkspaceMember>
   readonly lockPackageNames: ReadonlySet<string>
   readonly memberByPath: ReadonlyMap<string, WorkspaceMember>
+  readonly repo: RepoContext
   readonly thirdPartyPackage: string
   readonly thirdPartyTargets: ReadonlySet<string>
   readonly workspace: NonNullable<CargoWorkspace['workspace']>
+  readonly workspaceRoot: string
 }
 
 const normalizeDependencyRequest = ({
@@ -763,6 +792,7 @@ const normalizeDependencyRequest = ({
 }): {
   readonly defaultFeatures: boolean
   readonly features: readonly string[]
+  readonly package?: string
   readonly path?: string
   readonly version?: string
   readonly workspace: boolean
@@ -784,9 +814,9 @@ const normalizeDependencyRequest = ({
     ],
     field,
   })
-  if (request.package !== undefined) {
+  if (request.package !== undefined && (request.path !== undefined || request.workspace === true)) {
     throw new Error(
-      `Unsupported renamed Cargo dependency at ${field}: ${dependencyName} -> ${request.package}`,
+      `Unsupported renamed Cargo path or workspace dependency at ${field}: ${dependencyName} -> ${request.package}`,
     )
   }
   if (request.optional === true)
@@ -800,6 +830,7 @@ const normalizeDependencyRequest = ({
   return {
     defaultFeatures: request['default-features'] ?? true,
     features: sorted(request.features ?? []),
+    ...(request.package === undefined ? {} : { package: request.package }),
     ...(request.path === undefined ? {} : { path: request.path }),
     ...(request.version === undefined ? {} : { version: request.version }),
     workspace: request.workspace === true,
@@ -811,6 +842,8 @@ type ResolvedDependency = {
   readonly features: readonly string[]
   readonly label: string
   readonly name: string
+  /** Registry package behind a renamed request (`name = { package = "..." }`). */
+  readonly package?: string
   readonly requestSource: 'member' | 'workspace'
   readonly targetAvailable: boolean
   readonly version?: string
@@ -831,38 +864,14 @@ const resolveDependency = ({
 }): ResolvedDependency => {
   const memberRequest = normalizeDependencyRequest({ dependencyName, request, field })
   if (memberRequest.path !== undefined) {
-    const dependencyPath = path.posix.normalize(
-      path.posix.join(member.packagePath, memberRequest.path),
-    )
-    const dependencyMember = context.memberByPath.get(dependencyPath)
-    if (dependencyMember === undefined) {
-      throw new Error(
-        `Cargo path dependency at ${field} is not a workspace member: ${dependencyPath}`,
-      )
-    }
-    const dependencyPackage = requireValue({
-      value: dependencyMember.manifest.package,
-      field: `${dependencyMember.manifestPath} package`,
-    })
-    if (dependencyPackage.name !== dependencyName) {
-      throw new Error(
-        `Cargo path dependency rename is unsupported at ${field}: ${dependencyName} -> ${String(dependencyPackage.name)}`,
-      )
-    }
-    if (dependencyMember.manifest.lib === undefined) {
-      throw new Error(
-        `Cargo path dependency at ${field} does not expose the contracted :lib target`,
-      )
-    }
-    return {
-      defaultFeatures: memberRequest.defaultFeatures,
-      features: memberRequest.features,
-      label: `//${dependencyPath}:lib`,
-      name: dependencyName,
+    return resolveMemberPathDependency({
+      context,
+      dependencyName,
+      dependencyPath: path.posix.normalize(path.posix.join(member.packagePath, memberRequest.path)),
+      field,
+      request: memberRequest,
       requestSource: 'member',
-      targetAvailable: true,
-      ...(memberRequest.version === undefined ? {} : { version: memberRequest.version }),
-    }
+    })
   }
 
   let effectiveRequest = memberRequest
@@ -877,29 +886,110 @@ const resolveDependency = ({
       request: inheritedRequest,
       field: `workspace.dependencies.${dependencyName}`,
     })
-    if (normalizedInherited.workspace === true || normalizedInherited.path !== undefined) {
-      throw new Error(`Unsupported nested workspace/path dependency for ${dependencyName}`)
+    if (normalizedInherited.workspace === true) {
+      throw new Error(`Unsupported nested workspace dependency for ${dependencyName}`)
     }
     effectiveRequest = {
       defaultFeatures: normalizedInherited.defaultFeatures && memberRequest.defaultFeatures,
       features: sorted([...normalizedInherited.features, ...memberRequest.features]),
-      version: normalizedInherited.version,
+      ...(normalizedInherited.package === undefined
+        ? {}
+        : { package: normalizedInherited.package }),
+      ...(normalizedInherited.version === undefined
+        ? {}
+        : { version: normalizedInherited.version }),
       workspace: false,
+    }
+    if (normalizedInherited.path !== undefined) {
+      // Cargo resolves `[workspace.dependencies]` paths against the workspace root.
+      return resolveMemberPathDependency({
+        context,
+        dependencyName,
+        dependencyPath: path.posix.normalize(
+          path.posix.join(context.workspaceRoot, normalizedInherited.path),
+        ),
+        field,
+        request: effectiveRequest,
+        requestSource: 'workspace',
+      })
     }
     requestSource = 'workspace'
   }
 
-  if (context.lockPackageNames.has(dependencyName) === false) {
-    throw new Error(`Cargo.lock has no package for dependency ${dependencyName} at ${field}`)
+  const packageName = effectiveRequest.package ?? dependencyName
+  if (context.lockPackageNames.has(packageName) === false) {
+    throw new Error(`Cargo.lock has no package for dependency ${packageName} at ${field}`)
   }
+  // Reindeer names a public alias after the rename only when the root package declares it
+  // (single-package workspaces); virtual workspaces expose the package name.
+  const targetName =
+    effectiveRequest.package !== undefined &&
+    context.thirdPartyTargets.has(dependencyName) === false
+      ? packageName
+      : dependencyName
   return {
     defaultFeatures: effectiveRequest.defaultFeatures,
     features: effectiveRequest.features,
-    label: `${context.thirdPartyPackage}:${dependencyName}`,
+    label: `${context.thirdPartyPackage}:${targetName}`,
+    name: dependencyName,
+    ...(effectiveRequest.package === undefined ? {} : { package: effectiveRequest.package }),
+    requestSource,
+    targetAvailable: context.thirdPartyTargets.has(targetName),
+    ...(effectiveRequest.version === undefined ? {} : { version: effectiveRequest.version }),
+  }
+}
+
+const resolveMemberPathDependency = ({
+  context,
+  dependencyName,
+  dependencyPath,
+  field,
+  request,
+  requestSource,
+}: {
+  readonly context: ProjectionContext
+  readonly dependencyName: string
+  readonly dependencyPath: string
+  readonly field: string
+  readonly request: {
+    readonly defaultFeatures: boolean
+    readonly features: readonly string[]
+    readonly version?: string
+  }
+  readonly requestSource: ResolvedDependency['requestSource']
+}): ResolvedDependency => {
+  const dependencyMember =
+    context.memberByPath.get(dependencyPath) ?? context.foreignPackageByPath.get(dependencyPath)
+  if (dependencyMember === undefined) {
+    throw new Error(
+      `Cargo path dependency at ${field} is neither a workspace member nor a declared foreign package: ${dependencyPath}`,
+    )
+  }
+  const dependencyPackage = requireValue({
+    value: dependencyMember.manifest.package,
+    field: `${dependencyMember.manifestPath} package`,
+  })
+  if (dependencyPackage.name !== dependencyName) {
+    throw new Error(
+      `Cargo path dependency rename is unsupported at ${field}: ${dependencyName} -> ${String(dependencyPackage.name)}`,
+    )
+  }
+  const dependencyTargets = discoverCargoTargets({
+    member: dependencyMember,
+    packageName: dependencyName,
+    sources: discoverRustSources({ packagePath: dependencyPath, repo: context.repo }),
+  })
+  if (dependencyTargets.library === undefined) {
+    throw new Error(`Cargo path dependency at ${field} does not expose the contracted :lib target`)
+  }
+  return {
+    defaultFeatures: request.defaultFeatures,
+    features: request.features,
+    label: `//${dependencyPath}:lib`,
     name: dependencyName,
     requestSource,
-    targetAvailable: context.thirdPartyTargets.has(dependencyName),
-    ...(effectiveRequest.version === undefined ? {} : { version: effectiveRequest.version }),
+    targetAvailable: true,
+    ...(request.version === undefined ? {} : { version: request.version }),
   }
 }
 
@@ -925,6 +1015,146 @@ const resolveDependencyTable = ({
       }),
     )
     .toSorted((left, right) => compareStrings({ left: left.name, right: right.name }))
+
+type CargoLibraryTarget = { readonly name: string; readonly path: string }
+type CargoBinaryTarget = { readonly crateRoot: string; readonly name: string }
+
+/**
+ * Cargo target discovery for one package: explicit `[lib]`/`[[bin]]` entries with Cargo's
+ * inferred defaults (`src/lib.rs`, `src/main.rs`, `src/bin/*.rs`, `src/bin/<name>/main.rs`),
+ * honoring `autolib`/`autobins = false`. Explicit targets keep manifest order; inferred
+ * binaries follow sorted by name, skipped when an explicit binary claims their name or path.
+ */
+const discoverCargoTargets = ({
+  member,
+  packageName,
+  sources,
+}: {
+  readonly member: WorkspaceMember
+  readonly packageName: string
+  readonly sources: readonly string[]
+}): { readonly binaries: readonly CargoBinaryTarget[]; readonly library?: CargoLibraryTarget } => {
+  const manifest = member.manifest
+  const sourceSet = new Set(sources)
+  const autoTarget = (key: 'autobins' | 'autolib'): boolean => {
+    const value = manifest.package?.[key] ?? true
+    if (typeof value !== 'boolean') {
+      throw new Error(`Cargo ${key} must be a boolean in ${member.manifestPath}`)
+    }
+    return value
+  }
+  const autolib = autoTarget('autolib')
+  const autobins = autoTarget('autobins')
+
+  const explicitLibrary = manifest.lib
+  if (explicitLibrary?.['proc-macro'] === true || explicitLibrary?.['crate-type'] !== undefined) {
+    throw new Error(
+      `Cargo proc-macro and crate-type library semantics are unsupported in ${member.manifestPath}`,
+    )
+  }
+  const defaultLibraryPath = 'src/lib.rs'
+  let library: CargoLibraryTarget | undefined
+  if (explicitLibrary !== undefined) {
+    const libraryPath = explicitLibrary.path ?? defaultLibraryPath
+    if (sourceSet.has(libraryPath) === false) {
+      throw new Error(
+        explicitLibrary.path === undefined
+          ? `Cargo [lib] without path needs ${defaultLibraryPath} in ${member.manifestPath}`
+          : `Cargo library path is not a discovered Rust source: ${libraryPath}`,
+      )
+    }
+    library = { name: explicitLibrary.name ?? crateIdentifier(packageName), path: libraryPath }
+  } else if (autolib === true && sourceSet.has(defaultLibraryPath) === true) {
+    library = { name: crateIdentifier(packageName), path: defaultLibraryPath }
+  }
+
+  const inferableBinaries: CargoBinaryTarget[] = [
+    ...(sourceSet.has('src/main.rs') === true
+      ? [{ crateRoot: 'src/main.rs', name: packageName }]
+      : []),
+    ...sources.flatMap((source) => {
+      const match = source.match(/^src\/bin\/(?:([^/]+)\.rs|([^/]+)\/main\.rs)$/)
+      if (match === null) return []
+      const name = requireValue({ value: match[1] ?? match[2], field: `${source} binary name` })
+      return [{ crateRoot: source, name }]
+    }),
+  ]
+  const inferableNames = inferableBinaries.map((binary) => binary.name)
+  const ambiguousNames = inferableNames.filter(
+    (name, index) => inferableNames.indexOf(name) !== index,
+  )
+  if (ambiguousNames.length > 0) {
+    throw new Error(
+      `Cargo binary target discovery is ambiguous in ${member.manifestPath}: ${sorted(ambiguousNames).join(', ')}`,
+    )
+  }
+
+  const explicitBinaries = (manifest.bin ?? []).map((binary, index) => {
+    if ((binary['required-features']?.length ?? 0) > 0) {
+      throw new Error(`Cargo binary required-features are unsupported at bin[${index}]`)
+    }
+    const name = requireValue({ value: binary.name, field: `bin[${index}].name` })
+    const crateRoot =
+      binary.path ??
+      inferableBinaries.find((candidate) => candidate.name === name)?.crateRoot ??
+      requireValue<string>({
+        value: undefined,
+        field: `bin[${index}].path (no src/bin/${name}.rs, src/bin/${name}/main.rs, or src/main.rs for the package binary)`,
+      })
+    if (sourceSet.has(crateRoot) === false) {
+      throw new Error(`Cargo binary path is not a discovered Rust source: ${crateRoot}`)
+    }
+    return { crateRoot, name }
+  })
+  const explicitNames = new Set(explicitBinaries.map((binary) => binary.name))
+  const explicitRoots = new Set(explicitBinaries.map((binary) => binary.crateRoot))
+  const binaries = [
+    ...explicitBinaries,
+    ...(autobins === true
+      ? inferableBinaries
+          .filter(
+            (binary) =>
+              explicitNames.has(binary.name) === false &&
+              explicitRoots.has(binary.crateRoot) === false,
+          )
+          .toSorted((left, right) => compareStrings({ left: left.name, right: right.name }))
+      : []),
+  ]
+  if (library === undefined && binaries.length === 0) {
+    throw new Error(`Cargo package ${member.packagePath} has no library or binary target`)
+  }
+  if (new Set(binaries.map((binary) => binary.name)).size !== binaries.length) {
+    throw new Error(`Cargo package ${member.packagePath} has duplicate binary names`)
+  }
+  const crateRoots = [
+    ...(library === undefined ? [] : [library.path]),
+    ...binaries.map((binary) => binary.crateRoot),
+  ]
+  const sharedRoots = crateRoots.filter((root, index) => crateRoots.indexOf(root) !== index)
+  if (sharedRoots.length > 0) {
+    throw new Error(
+      `Cargo targets share a crate root in ${member.manifestPath}: ${sorted(sharedRoots).join(', ')}`,
+    )
+  }
+  return library === undefined ? { binaries } : { binaries, library }
+}
+
+/** A `src/bin/<name>/main.rs` binary owns its directory's modules; any other binary owns its root. */
+const binaryTargetSources = ({
+  binary,
+  sources,
+}: {
+  readonly binary: CargoBinaryTarget
+  readonly sources: readonly string[]
+}): readonly string[] => {
+  const directoryMatch = binary.crateRoot.match(/^(src\/bin\/[^/]+\/)main\.rs$/)
+  if (directoryMatch === null) return [binary.crateRoot]
+  const directory = requireValue({
+    value: directoryMatch[1],
+    field: `${binary.crateRoot} directory`,
+  })
+  return sources.filter((source) => source.startsWith(directory))
+}
 
 const discoverRustSources = ({
   packagePath,

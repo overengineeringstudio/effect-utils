@@ -84,6 +84,15 @@ All notable changes to this project will be documented in this file.
   `crate_archive`, which lets the sandbox use `mkBuck2CargoArchives` offline.
   Canonical `@cell//` targets match their descriptor labels, and
   `host_platform_label(cell = ...)` emits `@cell//` labels.
+- **Buck2 Cargo projector**: `defineCargoBuck2PackageProjection` discovers
+  Cargo's implicit targets (`src/lib.rs`, empty or path-only `[lib]`,
+  `src/main.rs`, `src/bin/*.rs`, `src/bin/<name>/main.rs`, `[[bin]]` without
+  `path`) and honors `autolib`/`autobins = false`. It resolves
+  `[workspace.dependencies]` `path` entries inherited with `workspace = true`,
+  path dependencies on Buck-projected packages outside the workspace declared
+  through `foreignPackageManifestPaths` (label `//<package path>:lib`), and
+  renamed registry dependencies (`package = "..."`) through `named_deps`.
+  Projections of explicit targets are byte-identical.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
