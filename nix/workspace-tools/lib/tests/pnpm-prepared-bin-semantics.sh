@@ -67,6 +67,33 @@ grep -F 'node_modules/.bin' "$workspace/scan-error" >/dev/null ||
 rm -rf "$workspace/node_modules/.bin"
 node "$prepared_tree" scan "$workspace"
 
+# pacquet stage twins embed a pid and timestamp. A byte-identical twin of a
+# landed file is dropped; a twin without an identical target fails closed, and
+# the scan independently rejects any surviving twin.
+stage_sandbox="$sandbox/pacquet-stage"
+stage_pkg="$stage_sandbox/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
+mkdir -p "$stage_pkg"
+printf '{"name":"pkg"}\n' > "$stage_pkg/package.json"
+cp "$stage_pkg/package.json" "$stage_pkg/package.json_pacquet-stage_26141_1790407040075053000_110"
+chmod 0444 "$stage_pkg/package.json_pacquet-stage_26141_1790407040075053000_110"
+node "$prepared_tree" normalize "$stage_sandbox"
+[ -f "$stage_pkg/package.json" ] || fail 'normalization dropped the landed stage target'
+[ -z "$(find "$stage_sandbox" -name '*_pacquet-stage_*' -print -quit)" ] ||
+  fail 'normalization retained an identical pacquet stage twin'
+node "$prepared_tree" scan "$stage_sandbox"
+chmod -R u+w "$stage_sandbox"
+printf '{"name":"partial"}\n' > "$stage_pkg/package.json_pacquet-stage_1_2_3"
+if node "$prepared_tree" normalize "$stage_sandbox" 2>"$sandbox/stage-error"; then
+  fail 'normalization accepted a pacquet stage twin that differs from its target'
+fi
+grep -F 'differs from its landed target' "$sandbox/stage-error" >/dev/null ||
+  fail 'normalization did not explain the divergent pacquet stage twin'
+if node "$prepared_tree" scan "$stage_sandbox" 2>"$sandbox/stage-scan-error"; then
+  fail 'strict scan accepted a surviving pacquet stage twin'
+fi
+grep -F 'package.json_pacquet-stage_1_2_3' "$sandbox/stage-scan-error" >/dev/null ||
+  fail 'strict scan did not identify the surviving pacquet stage twin'
+
 # Nix store payloads are read-only. Restore establishes a mutable projection
 # workspace through tar metadata before the projector reaches nested virtual
 # store node_modules directories.
