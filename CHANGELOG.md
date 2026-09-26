@@ -36,10 +36,9 @@ All notable changes to this project will be documented in this file.
   workspace and Storybook-gate imports, including the optional OTel and
   Storybook peer stacks. CI scans the imports shipped in all package archives
   against each archive's own dependency declarations.
-- **Buck2 native Rust consumers**: Pass the Nix-backed linker capability
-  explicitly to rustc. Rust binaries otherwise pick an ambient linker rather
-  than the toolchain's RPATH-free Linux linker environment, violating the
-  native product contract.
+- **Buck2 native Rust consumers**: Keep Nix's automatic RPATH and inherited
+  linker flags out of the exact Rust linker capability. The artifact inspector
+  still rejects every product carrying DT_RPATH or DT_RUNPATH.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
