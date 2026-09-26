@@ -226,7 +226,10 @@ pub fn published_manifest(
             }
         }
         if !publish_only.is_empty() {
-            fields.insert(index, ("publishConfig".to_owned(), Json::Object(publish_only)));
+            fields.insert(
+                index,
+                ("publishConfig".to_owned(), Json::Object(publish_only)),
+            );
         }
     }
     resolve_workspace_dependencies(&mut fields, versions)?;
@@ -319,7 +322,10 @@ mod tests {
             panic!("packed manifest must be an object");
         };
         assert_eq!(
-            fields.iter().find(|(key, _)| key == "publishConfig").map(|(_, value)| value),
+            fields
+                .iter()
+                .find(|(key, _)| key == "publishConfig")
+                .map(|(_, value)| value),
             Some(&Json::Object(vec![
                 ("access".to_owned(), Json::String("public".to_owned())),
                 (
