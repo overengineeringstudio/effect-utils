@@ -94,6 +94,40 @@ fi
 grep -F 'package.json_pacquet-stage_1_2_3' "$sandbox/stage-scan-error" >/dev/null ||
   fail 'strict scan did not identify the surviving pacquet stage twin'
 
+rm "$stage_pkg/package.json_pacquet-stage_1_2_3"
+malformed_stage="$stage_pkg/package.json_pacquet-stage_bad"
+cp "$stage_pkg/package.json" "$malformed_stage"
+if node "$prepared_tree" normalize "$stage_sandbox" 2>"$sandbox/malformed-stage-error"; then
+  fail 'normalization accepted a pacquet stage artifact with a malformed suffix'
+fi
+grep -F 'malformed suffix' "$sandbox/malformed-stage-error" >/dev/null ||
+  fail 'normalization did not explain the malformed pacquet stage suffix'
+[ -f "$malformed_stage" ] || fail 'normalization deleted the malformed pacquet stage artifact'
+if node "$prepared_tree" scan "$stage_sandbox" 2>"$sandbox/malformed-stage-scan-error"; then
+  fail 'strict scan accepted a malformed pacquet stage artifact'
+fi
+grep -F 'package.json_pacquet-stage_bad' "$sandbox/malformed-stage-scan-error" >/dev/null ||
+  fail 'strict scan did not identify the malformed pacquet stage artifact'
+rm "$malformed_stage"
+
+outside_dir="$stage_sandbox/package-source"
+outside_target="$outside_dir/source.js"
+outside_stage="${outside_target}_pacquet-stage_1_2_3"
+mkdir -p "$outside_dir"
+printf 'export const value = 1\n' > "$outside_target"
+cp "$outside_target" "$outside_stage"
+if node "$prepared_tree" normalize "$stage_sandbox" 2>"$sandbox/outside-stage-error"; then
+  fail 'normalization accepted a pacquet stage artifact outside node_modules'
+fi
+grep -F 'outside node_modules' "$sandbox/outside-stage-error" >/dev/null ||
+  fail 'normalization did not explain the pacquet stage artifact outside node_modules'
+[ -f "$outside_stage" ] || fail 'normalization deleted the pacquet stage artifact outside node_modules'
+if node "$prepared_tree" scan "$stage_sandbox" 2>"$sandbox/outside-stage-scan-error"; then
+  fail 'strict scan accepted a pacquet stage artifact outside node_modules'
+fi
+grep -F 'source.js_pacquet-stage_1_2_3' "$sandbox/outside-stage-scan-error" >/dev/null ||
+  fail 'strict scan did not identify the pacquet stage artifact outside node_modules'
+
 # Nix store payloads are read-only. Restore establishes a mutable projection
 # workspace through tar metadata before the projector reaches nested virtual
 # store node_modules directories.
