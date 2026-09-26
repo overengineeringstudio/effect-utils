@@ -78,6 +78,9 @@
             "context": "test-integration-restate"
           },
           {
+            "context": "build-products"
+          },
+          {
             "context": "pr-reviews-resolved"
           }
         ]

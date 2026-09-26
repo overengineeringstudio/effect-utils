@@ -47,6 +47,9 @@ export const EXTRA_CI_JOB_NAMES = [
   'nix-closure-sizes',
   'source-shape',
   'test-integration-restate',
+  // Credential-free build of every published `.#buck-product-*-from-source` attr, so a PR
+  // cannot break the trusted `publish-products` lane after merge. Merge-blocking.
+  'build-products',
   // Review-thread resolution gate: fails while any PR review thread is unresolved.
   // The native ruleset flag (`required_review_thread_resolution`) is the live merge
   // gate; this job is the early visible PR signal. Merge-blocking.
