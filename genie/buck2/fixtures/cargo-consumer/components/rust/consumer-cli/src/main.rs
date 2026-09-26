@@ -1,3 +1,5 @@
+mod message;
+
 fn main() {
-    println!("consumer fixture");
+    println!("{}", message::TEXT);
 }

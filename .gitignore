@@ -15,6 +15,10 @@ node_modules
 *.tsbuildinfo
 dist
 
+# @overeng/react-inspector's standalone `build` script writes here so it never
+# touches the Buck-owned `dist`.
+/packages/@overeng/react-inspector/dist-pack/
+
 # Python
 __pycache__/
 *.pyc

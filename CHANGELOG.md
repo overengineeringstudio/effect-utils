@@ -102,6 +102,11 @@ All notable changes to this project will be documented in this file.
   Genie package inputs rather than racing concurrently generated JSON.
   Published Storybook aliases resolve the emitted OpenTUI stub, and the
   published Notion schema CLI reads its version from the shipped manifest.
+  `@overeng/react-inspector`'s standalone `build` script writes `dist-pack`,
+  never the Buck-owned `dist`.
+- **Cargo Buck projection**: Rust binaries declare their non-root `src/`
+  module files as `srcs`, so editing a module such as `buck2-product`'s
+  `npm_manifest.rs` invalidates the cached binary.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it

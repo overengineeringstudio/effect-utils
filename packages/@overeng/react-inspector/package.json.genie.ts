@@ -98,9 +98,14 @@ export default packageJson(
       },
     },
     scripts: {
-      /** The standalone pack build writes to the same layout as the Buck emit. */
+      /**
+       * Standalone source build for checkouts without Buck. It writes to
+       * `dist-pack`, never to `dist`: `dist` has one producer, and
+       * `buck2:typescript:materialize-dist` may leave it read-only. Published
+       * archives come from Buck's `:dist-package`, not from this output.
+       */
       build:
-        'tsc --project tsconfig.json --noEmit false --outDir dist --declaration true --declarationMap false --composite false --incremental false',
+        'tsc --project tsconfig.json --noEmit false --outDir dist-pack --declaration true --declarationMap false --composite false --incremental false',
       storybook: 'storybook dev -p 6011',
       'storybook:build': 'storybook build',
     },
