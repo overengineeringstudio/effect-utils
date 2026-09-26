@@ -1175,13 +1175,13 @@ describe('--all nested error reporting', () => {
         )
         yield* fs.makeDirectory(childPath, { recursive: true })
         yield* initGitRepo(childPath)
-        const retiredConfig = JSON.stringify(
-          {
+        const retiredConfig = yield* Schema.encodeEffect(
+          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+        )(
+          new MegarepoConfig({
             members: { 'leaf-lib': leafPath },
             generators: { composition: { enabled: true, platformHub: 'leaf-lib' } },
-          },
-          null,
-          2,
+          }),
         )
         yield* fs.writeFileString(
           EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
