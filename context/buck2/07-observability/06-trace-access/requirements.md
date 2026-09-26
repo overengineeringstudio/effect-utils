@@ -47,17 +47,20 @@ BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08, and BUCK.OBS-R01 of the
   merge base, displaying the main-run spread as a noise band and distinguishing
   deltas inside it from those outside it. It must disclose a missing or
   incomplete baseline rather than present a single run as a stable median.
-- **BUCK.OBS.ACCESS-R05 Frozen review:** A reviewer can request a frozen Vista
-  snapshot when a review artifact must outlive the 30-day Tempo trace window;
-  regular page loads do not generate one.
+- **BUCK.OBS.ACCESS-R05 Frozen review:** The read-only resolver page makes a
+  copyable `gh-ci-utils traces <pr> --freeze` command available. An agent or
+  operator runs it in their own Vista context to publish a frozen snapshot
+  from resolver JSON when a review artifact must outlive Tempo's 30-day
+  window. Resolver page loads and reads do not publish snapshots.
 
 ### Must give agents a stable contract
 
 - **BUCK.OBS.ACCESS-R06 Versioned JSON (refines BUCK.OBS-R08):** The resolver
   exposes versioned JSON for the same PR/run/job/trace identities and verdict
   shown in HTML. `gh-ci-utils traces <pr>` consumes it and reports trace IDs,
-  relevant deltas, and next actions; an off-tailnet request fails with an
-  explicit access message, not an empty PR result.
+  relevant deltas, and next actions; `--freeze` consumes the same JSON and
+  publishes through the caller's Vista context. An off-tailnet request fails
+  with an explicit access message, not an empty PR result.
 - **BUCK.OBS.ACCESS-R07 Read-only and safe display (refines BUCK.OBS-R01):**
   Resolver reads cannot mutate ingestion state; untrusted evidence fields
   render as escaped text, not executable HTML. Trace IDs are locators, not

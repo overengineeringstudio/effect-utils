@@ -22,21 +22,25 @@ workflow generation (genie ci-workflow), or speedup work measured by this lane.
 ```text
 devenv tasks run entrypoint [01] ── PIPELINE_RUN_ID, seeded trace context
   └─ caller prepares Buck command span / wrapper UUID, invokes Buck directly
-       └─ native evidence + span spool ──> run record [02]
+       └─ native evidence + span spool ──> per-job/local run record [02]
                                            seal: content digests, VCS identity
                                            upload: tailnet capability or spool-only
-                                             │
-                                             v
-                          buck2-evidence [05]: enqueue with upload; worker
+              CI finalizer ── attempt-close roster [02] ──┐
+                                             │             │
+                                             v             v
+                          buck2-evidence [05]: atomic enqueue + worker
                              ├─ event-log adapter [03]: decode + daemon waits
                              ├─ trace views [04]: critical in caller trace;
                              │                     linked full trace
+                             ├─ close roster / 6 h timeout -> one CI root
+                             ├─ cumulative by-ID readback across jobs
                              └─ chunked OTLP → Tempo (30 d), metrics → Mimir
                                    raw archive + index (~1 y)
                                              │ read only
                                              v
                           trace access [06]: PR resolver /t/<id>, JSON,
-                          overview + baseline, Grafana / Perfetto / Vista
+                          overview + baseline, Grafana / Perfetto;
+                          copyable CLI freeze -> caller's Vista context
 ```
 
 Every stage is offline-safe: a failure anywhere right of the Buck command
@@ -47,11 +51,11 @@ leaves the build result and the native evidence untouched (BUCK.OBS-R01).
 | Child | Owns |
 | --- | --- |
 | [01-run-identity](./01-run-identity/spec.md) | pipeline-run trace seed, entrypoint and caller↔Buck command correlation |
-| [02-run-record](./02-run-record/spec.md) | portable spool/manifest/native evidence, VCS fields, seal and upload |
+| [02-run-record](./02-run-record/spec.md) | per-job/local records, VCS fields, seal/upload and CI attempt-close roster |
 | [03-event-log-adapter](./03-event-log-adapter/spec.md) | direct decode, vendored schema, span model and daemon wait |
 | [04-trace-views](./04-trace-views/spec.md) | full/critical view rules, cap, summaries and bounded metrics |
-| [05-ingest-and-archive](./05-ingest-and-archive/spec.md) | single service, queued ingest, Tempo/Mimir export, archive, reconciliation and retention |
-| [06-trace-access](./06-trace-access/spec.md) | read-only PR/trace resolver, review page and agent JSON contract |
+| [05-ingest-and-archive](./05-ingest-and-archive/spec.md) | single service, queued ingest, attempt completion, cumulative Tempo readback and retention |
+| [06-trace-access](./06-trace-access/spec.md) | read-only PR/trace resolver, review page, JSON and caller-owned Vista freeze command |
 
 Dependency order follows data flow: `02` consumes identity from `01`, `03`
 decodes the native evidence in `02`, `04` shapes spans from `03`, `05`

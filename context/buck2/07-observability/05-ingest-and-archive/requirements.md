@@ -12,8 +12,10 @@ BUCK.OBS-R06, and BUCK.OBS-R08 of the
 - **BUCK.OBS.ING-A01 Fleet backend:** Tempo (30 d) and Mimir are deployed by
   the dotfiles fleet config; this subsystem owns only the contract the
   ingester implements.
-- **BUCK.OBS.ING-A02 Batch guarantee:** ingest always sees all logs of one
-  pipeline run (the run record), locally and in CI alike.
+- **BUCK.OBS.ING-A02 Record batch:** ingest sees all native logs for one
+  job-scoped CI record or one local invocation at once. A CI Pipeline Run
+  accumulates several records and an attempt-close roster; no job's batch
+  is mistaken for a complete run trace.
 
 ## Acceptable Tradeoffs
 
@@ -72,7 +74,16 @@ BUCK.OBS-R06, and BUCK.OBS-R08 of the
   work. From job end to a clickable trace, the p95 target is ≤30 seconds
   plus upload time; a restarted service resumes pending work without silent
   loss.
-- **BUCK.OBS.ING-R09 Complete readback:** Before a view is marked ingested,
-  by-id readback confirms the expected deterministic spans. Missing spans are
-  repushed selectively, and an unconverged view is explicitly reported as
-  `missing_spans`, not as complete.
+- **BUCK.OBS.ING-R09 Cumulative readback:** Before a trace is marked
+  complete, by-id readback confirms the union of expected deterministic span
+  IDs from every job and root sharing that trace. Every later write triggers
+  recheck of the whole set; a previously ingested record reverts to
+  `missing_spans` if its spans disappear. Missing IDs are repushed
+  selectively, never reported as complete without convergence.
+- **BUCK.OBS.ING-R10 Bounded attempt closure:** The ingester accepts a
+  provider-neutral attempt-close record (02) and writes exactly one CI run
+  root after each expected job is ingested or marked missing, synthesizing
+  error spans for missing jobs. If closure is absent or listed jobs remain
+  unaccounted for, about six hours after the last upload the attempt is
+  closed as `incomplete` with one root; an incomplete run is not presented
+  as successful.

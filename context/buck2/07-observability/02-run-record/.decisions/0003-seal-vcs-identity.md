@@ -18,8 +18,18 @@ A provider run object can have no PR association even for a PR run, and a merge 
 
 ## Decision
 
-The manifest and ingest index carry `vcs.change.id` when a PR number is available from the adapter environment. At seal time git resolves the checked-out head or, for merge checkouts, the PR head and base parents and the merge revision. The manifest calls the merge fact `mergeRevision`; the index calls it `merge_revision`, both repository-local. Missing facts are omitted, not guessed from a provider run object. The trace identity remains derived before sealing from the pipeline-run and command identity; the manifest digest depends on the sealed evidence, never on a trace id. See [requirements](../requirements.md) and [schema](../spec.md).
+The manifest and ingest index carry `vcs.change.id` when a PR number is available from the adapter environment. At seal time git resolves the PR head and base revisions separately from the checked-out merge commit. Missing facts are omitted, not guessed from a provider run object. Trace identity derives before sealing from pipeline-run and command identity; the manifest digest depends on sealed evidence, never a trace id. See [requirements](../requirements.md) and [schema](../spec.md). Amendment 1 names the merge field.
 
 ## Consequences
 
-PR lookup remains possible even if the provider returns no associated PR. An absent head/base reference cannot be replaced with a claimed provider SHA. Full-view id derivation belongs to the ingest/view spec, not the record manifest. The exported OTel attribute for the merge revision is unresolved ([DQ1](../spec.md)); these repository-local field names are not a claim of a standard semantic convention.
+PR lookup remains possible even if the provider returns no associated PR. An absent head/base reference cannot be replaced with a claimed provider SHA. Full-view id derivation belongs to the ingest/view spec, not the record manifest.
+
+## Amendment 1 — VCS Revision Semantics (q49)
+
+Accepted 2026-09-26 (Johannes). `vcs.ref.head.revision` names the PR head,
+`vcs.ref.base.revision` its base, and the merge-checkout commit is
+`buck2.vcs.merge.revision`, a Buck2 observability lane-owned vendor attribute
+in the manifest, index, and exported trace. Do not alias the merge commit as
+the PR head. Revisit the vendor key only if OTel semconv gains a matching
+merge-revision attribute. This closes the former DQ1 without claiming a
+nonexistent standard key.

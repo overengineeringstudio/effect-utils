@@ -38,3 +38,22 @@ start limit. Tempo accepted 6,255 spans but retained 5,232 across idle gaps.
 ## Consequences
 
 `index.sqlite` is both resolver index and queue authority. The service must observe queue age, attempts, dead letters, readback deficits, and worker failures. Deterministic content does not itself imply duplicate-free short-window replay; the checkpoint/probe pair is required. The read-only resolver must not share the upload socket or gain queue mutation routes. Experiment latency excludes tailnet upload, which remained unmeasured.
+
+## Amendment 1 — Cumulative Readback and Attempt Closure (q50)
+
+Accepted 2026-09-26 (Johannes; review of PR #1414 and companion fleet PR).
+One shared run trace accumulates jobs over time. A successful readback of
+only the latest job cannot establish trace completeness: after each later
+write, reconcile the **union** of every expected span ID in that trace and
+revert an earlier `ingested` record to `missing_spans` if its IDs vanish.
+Publishing a complete run trace requires cumulative readback at the same
+trace-group generation as the index transition.
+
+The CI finalizer uploads 02's attempt-close record through the normal
+uploader. The ingester emits the sole root only after all roster jobs are
+ingested or marked missing, with deterministic error spans for absent jobs.
+If closure or a listed job remains outstanding, six hours after the last
+upload the persisted sweep emits one root and labels the attempt
+`incomplete`. Without a roster it cannot infer unobserved jobs or overwrite
+that root if closure arrives late. The ≤30-second p95 plus upload target is
+for a completed job's full view, not for a run root still in progress.

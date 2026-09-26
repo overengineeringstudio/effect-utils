@@ -69,15 +69,18 @@ salting. It refines BUCK.OBS-R03 and BUCK.OBS-R07 of the
   W3C-nonzero. An already supplied identity is preserved.
 - **BUCK.OBS.ID-R10 Exactly one completed run root:** Only the run identity
   owner writes its root: the local entrypoint on completion (including
-  best-effort INT/TERM), or the CI ingester after run completion. Ingestion
-  reconstructs a missing local root after a kill/crash and synthesizes
-  missing CI job spans from the run's job inventory; no first-job provisional
-  root or duplicate root is written.
-- **BUCK.OBS.ID-R11 Context propagation and caller links:** The local and CI
-  entrypoints seed W3C `TRACEPARENT` for the run, prevent stale
-  `OTEL_TASK_TRACEPARENT` from overriding the seed, and replace an outer
-  caller trace with bidirectional span links rather than nesting the run
-  beneath it. Generic task instrumentation must join the seeded run trace.
+  best-effort INT/TERM), or the CI ingester after an attempt-close roster
+  settles, with a six-hour last-upload `incomplete` timeout if the close
+  record is absent or listed jobs remain unaccounted for. Ingestion
+  reconstructs a missing local root after kill/crash and synthesizes error
+  spans for missing CI jobs; no first-job provisional or duplicate root is
+  written.
+- **BUCK.OBS.ID-R11 Context propagation and caller links:** The entrypoints
+  seed W3C `TRACEPARENT`, prevent stale `OTEL_TASK_TRACEPARENT` from
+  overriding it, and replace an outer caller trace instead of nesting under
+  it. The new root always links back to the outer span; a forward link is
+  written only by an outer-span owner that can record it before completion.
+  Generic task instrumentation must join the seeded run trace.
 - **BUCK.OBS.ID-R12 Bounded trace size:** Per-job traces linked through the
   run index remain the fallback when a whole-run trace exceeds the backend's
   usable size; a fallback does not silently split one run across random

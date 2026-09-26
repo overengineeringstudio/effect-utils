@@ -34,41 +34,87 @@ seal -> upload socket -> verify -> durable record -> index.sqlite
                               resolver read socket
 ```
 
-1. `buck2-evidence seal` captures the provider-neutral VCS change id
-   (PR number when present, supplied as environment by the provider adapter)
-   and head/base/merge revisions from git at seal time (02's record schema).
-   Upload verifies the manifest and every member digest, bounded-decodes
-   untrusted records (02), durably stores the record, and commits an
-   `uploaded` index row plus a pending `jobs` row in one SQLite transaction.
-   The store is durable before the transaction, so a sweep can find records
-   whose process died between store placement and enqueue. Repeated uploads
-   for the same digest cannot enqueue duplicate work.
+1. `buck2-evidence seal` captures the env-supplied VCS change id and git PR
+   head/base and separate merge checkout revisions at seal time (02). Upload
+   distinguishes `buck2-run-record/v1` job evidence from
+   `buck2-attempt-close/v1` attempt closure, verifies each payload and its
+   digest, durably stores it, then commits its index row and pending queue
+   work in one `index.sqlite` transaction. A sweep can find an object
+   whose process died between store placement and enqueue. Identical
+   digest uploads do not enqueue duplicate work; conflicting close rosters
+   for the same attempt fail visibly.
 2. The immediate worker reads sidecar lines (01), assigns task/command
    nesting, converts event logs through the in-process adapter (03), joins
    daemon wait in the batch, and derives critical/full views plus bounded
-   metrics (04). It stamps `cicd.*`/`vcs.*`/`ci.provider`; untrusted runs also
-   carry `ci.pr.fork=true`. Local `ingest` uses the same converter and
-   uploader path as the service, with endpoints provided by configuration.
+   metrics (04). It stamps `cicd.*`/`vcs.*`,
+   lane-owned `buck2.vcs.merge.revision`, and `ci.provider`; untrusted
+   runs also carry `ci.pr.fork=true`. Local `ingest` uses the same converter
+   and uploader path as the service, with endpoints provided by configuration.
 3. Persist a plan of expected `(trace_id, span_id)` and OTLP chunks below
    ~3.5 MB; checkpoint each successful chunk. On retry, before re-pushing
    any uncheckpointed/in-flight chunk, read its trace by deterministic id,
    skip spans already present, and only send missing spans. Tempo can retain
    duplicate span ids if the same chunk is re-pushed within ~5 seconds;
    deterministic ids alone do not guarantee duplicate-free replay.
-4. After push, fetch each affected trace by id, compare expected span ids
-   with returned ids, and selectively re-push missing spans. Do not mark
-   `ingested` until readback converges for the view; expose an
-   unconverged result as `missing_spans` with counts. Backend search is not
-   an acceptance gate. Push bounded metrics to Mimir.
-5. The index records VCS identity from the sealed record, the per-view ids,
-   archive location, byte count, state, attempts and error. The resolver
-   can expose an `ingested` id as a clickable trace, `pending` while work
-   remains, and an explicit `missing_spans` state for incomplete readback.
+4. After every push into a shared trace, fetch by ID and compare against
+   the **union** of expected `(trace_id, span_id)` pairs contributed by all
+   jobs in that attempt plus its eventual root and synthetic missing-job
+   spans. Recheck the entire union after later job/root writes and once
+   more at the index-state publication boundary. Persist a trace-group
+   generation with the expected set; the transition to `ingested` succeeds
+   only if the readback covered that same generation. If older spans vanish
+   after a later write, revert their formerly `ingested` job records to
+   `missing_spans`, selectively re-push missing IDs, and keep the run trace
+   pending until the aggregate converges. A successful later job alone can
+   never make the shared run trace complete. Backend search is not an
+   acceptance gate. Push bounded metrics to Mimir.
+5. The index records sealed VCS identity, per-view ids, archive location,
+   byte count, state, attempts, error, attempt-close roster and trace-group
+   expected IDs/generation. Full job views can be clicked after their own
+   complete readback, under the job-end ≤30 s p95 plus upload target; the
+   shared run trace remains explicitly pending until attempt closure and
+   cumulative readback. A missing job is reported even if its trace has
+   synthetic error spans.
 
-   Resolver-facing status vocabulary is `pending`, `sealed`, `uploaded`,
-   `ingesting`, `ingested`, `missing_spans`, `expired`; the queue's
-   dead-letter state and last error are separate failure details, not a
-   false `ingested` transition. Only `ingested` redirects to a trace.
+   Resolver-facing states include `pending`, `sealed`, `uploaded`,
+   `ingesting`, `ingested`, `missing_spans`, `incomplete`, `expired`. The
+   queue dead-letter and last error are separate failure details. Only a
+   view verified as `ingested` redirects as complete; the shared trace
+   cannot inherit a completed job view's status.
+
+## Attempt Completion (BUCK.OBS.ING-R10)
+
+```text
+job records -> durable index -> close roster -> expected jobs accounted for
+                                  └─ missing evidence -> error job spans
+                              -> one CI root -> cumulative readback
+no close or unsettled roster -> ~6 h after last upload -> incomplete root
+```
+
+The final CI job depends on all work jobs and always uploads 02's
+attempt-close record through the normal uploader. Store their expected
+matrix-qualified job keys and conclusions with the attempt, separately
+from per-job evidence.
+
+Do not infer a missing record merely because the close record arrives before
+a delayed job upload. A `skipped`/`cancelled` job known not to have executed
+can be marked missing immediately; a listed job with unknown upload outcome
+remains pending until it arrives or the persisted deadline expires. Once
+every listed job is ingested or marked missing, emit each missing job's
+deterministic error span and exactly one root bounded by known run/job times
+and close time. Keep the provider conclusion and evidence outcome separately:
+a success conclusion cannot hide absent evidence. Checkpoint root identity
+and completion in the durable queue/index state to prevent duplicate roots.
+
+If no close record arrives **or** a listed job remains unaccounted for, the
+sweep closes the attempt approximately six hours after its **last** upload.
+With a roster, mark outstanding listed jobs missing and synthesize their
+error spans; without one, synthesize only known jobs and never invent a
+complete inventory. Emit one root and mark the attempt `incomplete`. A
+close/job record arriving after timeout is retained as late evidence but
+cannot rewrite the already-published root; the attempt stays visibly
+incomplete for review. Restart preserves the deadline rather than resetting
+the idle timer. Job-specific full views remain discoverable meanwhile.
 
 **View ancestry and trace ids (BUCK.OBS.ING-R02/R06).** With a caller
 context the critical view stays in the caller trace: its trace id equals
@@ -94,9 +140,10 @@ transient failures back off exponentially with a bounded cap, and permanent
 decode/validation failures dead-letter rather than blocking other records.
 A periodic store/index sweep (10–30 s in the bakeoff) repairs missed
 enqueues and due work; `drain` and `backfill` expose operator recovery.
-Job end to a clickable complete trace targets ≤30 s p95 plus upload time;
-the upload is not held open for conversion. An unconverged trace is never
-reported as complete merely to meet the latency target.
+Job end to a clickable **job full-view** trace targets ≤30 s p95 plus
+upload time; the shared run trace stays pending until attempt closure.
+An unconverged trace is never reported as complete merely to meet the
+latency target.
 
 ## Archive Layout
 
@@ -107,9 +154,13 @@ reported as complete merely to meet the latency target.
                        provider URL may appear, never required)
   spans/               the span spool, unchanged
   buck2-events/        raw *_events.pb.zst, unchanged
-index.sqlite           reconciliation index: (repo, run, attempt, job) ->
-                       digest, bytes, sealed VCS fields, per-view trace ids,
-                       state, missing count, archive path; jobs + pushes
+<evidence-prefix>/<repository>/YYYY/MM/DD/run-<run-id>/attempt-<n>/
+  attempt-close.json  optional CI roster/conclusions, content-addressed
+index.sqlite           job records: (repo, run, attempt, job) -> digest,
+                       bytes, sealed VCS fields, per-view ids and status;
+                       attempts: close digest, expected jobs/conclusions,
+                       last-upload/deadline, completion, trace-group generation;
+                       jobs + push checkpoints + expected span ids
 store/sha256/<digest>/  durable verified upload before archive placement
 incoming/              atomic staging for in-progress uploads
 ```
@@ -178,10 +229,18 @@ continues to explain expired evidence.
   placement and before enqueue is swept; a crash mid-push checkpoints
   completed chunks and probes the in-flight chunk before repush, with no
   duplicate span ids on readback.
+- Shared trace regression: ingest two jobs into one run trace, observe a
+  complete first job, then lose one of its spans on the second upload. The
+  union readback reverts first-job status to `missing_spans` and `/t/<id>`
+  never advertises the shared run as complete until it converges.
+- Attempt closure: a failed job without an upload appears as a synthetic
+  error span after close; if closure or a listed job remains outstanding,
+  the restart-safe six-hour last-upload timer emits one root and
+  `incomplete`, never a duplicate root.
 - Incomplete backend readback never redirects as complete; missing ids are
   selectively repushed and persistent loss shows `missing_spans`.
-- Fork ingest: an untrusted-tagged record decodes under caps and carries
-  `ci.pr.fork=true`; queries can filter it.
+- Future fork ingest, when separately authorized: an untrusted-tagged record
+  decodes under caps and carries `ci.pr.fork=true`; queries can filter it.
 - Evidence: [replay baseline](./.experiments/2026-09-25-ci-to-tempo-replay-baseline.md),
   [ingest bakeoff](./.experiments/2026-09-26-ingest-service-bakeoff.md),
   [decision 0001](./.decisions/0001-ingest-parity-and-retention.md),

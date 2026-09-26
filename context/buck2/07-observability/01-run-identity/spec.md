@@ -65,18 +65,26 @@ alone writes the root: locally the generic `devenv tasks run <verb>`
 entrypoint records start/end around the child and writes both root and
 worker span at exit (including best-effort SIGINT and SIGTERM without
 masking the child's exit status); nested invocations inheriting that id
-do not emit another root. In CI the ingester writes the root after the job
-set is sealed or a completion timeout, using run/job bounds and inventory.
-It also reconstructs a missing local root after SIGKILL/crash when a record
-is recovered and synthesizes missing CI job spans. A first-job root would
-freeze incorrect bounds; spans cannot be updated and duplicate root ids
-persist in Tempo. Until the late root arrives, the index-backed resolver
-serves the run; a trace viewer may show an orphan job temporarily.
+do not emit another root. In CI the ingester writes the root after 02's
+attempt-close record arrives and every listed job is ingested or marked
+missing, using its roster/conclusions and run/job bounds. It synthesizes
+deterministic error spans for missing jobs. If close never arrives or listed
+jobs remain unaccounted for, a persisted deadline about six hours after the
+last upload writes one root and labels the attempt `incomplete`; late
+evidence cannot rewrite the root (05).
+Ingest also reconstructs a missing local root after SIGKILL/crash when a
+record is recovered. A first-job root would freeze incorrect bounds;
+spans cannot be updated and duplicate root ids persist in Tempo. Until
+the late root arrives, the index-backed resolver serves the run as pending.
 
-The same generic entrypoint runs locally and from the CI adapter. It accepts
-a valid caller W3C context only to link the old outer span to the new root
-and the new root back to the old span; it replaces rather than parents the
-run under the old trace. It clears any inherited `OTEL_TASK_TRACEPARENT`
+The same generic entrypoint runs locally and from the CI adapter. With a
+valid outer W3C context, it replaces rather than parents the new run under
+that trace. The new root always links back to the prior span. An
+outer-span-to-new-root forward link is written only if that span's owner is
+otel-span-aware (for example, `otel-span run` records the link before
+ending its outer span); an unrelated or already-completed caller cannot
+be mutated through `TRACEPARENT`, so navigation is then one-way. It
+clears any inherited `OTEL_TASK_TRACEPARENT`
 before seeding. During the devenv transition, it seeds **both**
 `TRACEPARENT` and `OTEL_TASK_TRACEPARENT` with the same run/job context:
 the pinned devenv executor and shell hooks overwrite `TRACEPARENT`, while
@@ -90,10 +98,11 @@ and it can mask failures.
 
 Whole-run traces are the default; if backend size limits make them unusable,
 seed a trace per matrix-qualified job and link job roots through the run
-index, without reverting to random per-task traces. Ingestion verifies each
-job's expected span ids against settled by-id readback before claiming
-completeness: an accepted OTLP batch is not proof of persistence across
-long gaps between job arrivals. See the [loss evidence](./.experiments/2026-09-26-seeded-run-trace.md).
+index, without reverting to random per-task traces. Ingestion verifies
+the cumulative expected span-id set for the whole shared trace after each
+later job write and before declaring it complete: accepted OTLP is not
+proof of persistence across inter-job gaps. See the
+[loss evidence](./.experiments/2026-09-26-seeded-run-trace.md).
 The record's pre-manifest identity and VCS metadata remain defined by
 [02-run-record](../02-run-record/spec.md).
 
@@ -166,11 +175,13 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
   different providers, attempts, matrix legs, and ambiguous-separator
   candidates yield distinct ids. Nested local invocations inherit one run
   without duplicate roots; independent invocations mint distinct ids.
-- Lifecycle: CI ingester emits one bounded root after completion and
-  reconstructs missing job spans; the local entrypoint preserves success,
-  failure, INT and TERM statuses, and missing roots after kill are
-  reconstructed. An outer caller has links in both directions but is
-  not the run's parent; stale task context cannot override either seed.
+- Lifecycle: CI ingester emits one bounded root after 02's close roster
+  settles, synthesizes missing error job spans, and closes absent-roster
+  attempts as `incomplete` after a six-hour last-upload timeout. The local
+  entrypoint preserves success, failure, INT and TERM statuses, and missing
+  roots after kill are reconstructed. The root links back to an outer
+  caller; only a participating owner can write the forward link before its
+  span ends. Stale task context cannot override either seed.
 - Seeded-run evidence: [traceparent bakeoff](./.experiments/2026-09-26-seeded-run-trace.md)
   and [decision 0002](./.decisions/0002-seeded-pipeline-run-trace.md).
 - Caller-correlation evidence: [caller-correlation bakeoff](./.experiments/2026-09-25-caller-correlation-and-salting.md)

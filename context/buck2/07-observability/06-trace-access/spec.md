@@ -62,7 +62,7 @@ runs (latest attempt visible) ──> jobs ──> top tasks
      │                             │         │
      └──────── Grafana / Perfetto trace buttons ────────┘
 A/B: each task vs median of eligible main runs; main spread = noise band
-freeze for review (explicit action) ──> Vista snapshot
+freeze for review: copy `gh-ci-utils traces <pr> --freeze` -> own Vista context
 ```
 
 The one-line verdict summarizes direction and meaningful task changes; do
@@ -72,8 +72,12 @@ as such; when Buck's action critical path is available, use that path rather
 than implying task-span chronology is Buck's action critical path. Runs,
 then their jobs, then top tasks remain navigable at phone width, with trace
 buttons beside the relevant level. The page is an overview, not an automatic
-redirect to Grafana (which is cramped on a phone). The on-demand Vista action
-freezes a review snapshot; it does not run as part of page loads or ingest.
+redirect to Grafana (which is cramped on a phone). The read-only page shows
+a copyable `gh-ci-utils traces <pr> --freeze` command, not a publishing
+endpoint. An agent or operator executes it in their own Vista context:
+the CLI reads the same versioned resolver JSON, constructs and publishes
+the frozen Vista review snapshot under that caller's authority. Page
+loads, index reads, and ingest never trigger publication.
 
 For each PR run, locate the merge-base revision recorded at seal time. Select
 the latest **k=7** indexed main-branch pipeline runs whose revision is at or
@@ -122,11 +126,11 @@ The example values are synthetic; never treat URLs as authentication tokens.
   "runs": [{
     "runId": "ci/provider/example%2Fproject/123/1",
     "attempt": 1,
-    "mergeRevision": "abcdef0123456789abcdef0123456789abcdef01",
+    "buck2.vcs.merge.revision": "abcdef0123456789abcdef0123456789abcdef01",
     "status": "ingested",
     "trace": { "id": "0123456789abcdef0123456789abcdef", "url": "/t/0123456789abcdef0123456789abcdef" },
     "jobs": [{ "key": "build[os=linux]", "status": "ingested", "durationMs": 120000,
-      "traces": [{ "kind": "critical", "id": "fedcba9876543210fedcba9876543210", "url": "/t/fedcba9876543210fedcba9876543210" }],
+      "traces": [{ "kind": "critical", "id": "0123456789abcdef0123456789abcdef", "url": "/t/0123456789abcdef0123456789abcdef" }],
       "topTasks": [{ "name": "build", "durationMs": 90000 }] }]
   }],
   "comparison": { "baselineCount": 7, "tasks": [{ "jobKey": "build[os=linux]", "name": "build",
@@ -136,27 +140,32 @@ The example values are synthetic; never treat URLs as authentication tokens.
 ```
 
 `status` distinguishes `pending`, `sealed`, `uploaded`, `ingesting`,
-`ingested`, `missing_spans`, and `expired` where the index has that state;
-`missing_spans` must not produce an apparently complete trace link. `trace`
-and `comparison` may be `null` when their inputs are unavailable. HTML and
-JSON share the same indexed run selection and A/B classification. An agent
-uses `gh-ci-utils traces <pr>` to read this JSON, print the run/job summary,
-verdict, top deltas and IDs, and supply the next `gcx traces get -d tempo
-<id> --llm -o json` and Perfetto URL. The resolver URL comes from
-configuration/environment, never a hard-coded fleet hostname; off-tailnet
-failure states that tailnet access is required. An agent skill points to
-this command, not a second bespoke trace CLI.
-
-## Open Design Questions
-
-- **DQ1 — Vista freeze authority:** Which authorized actor and trigger create
-  the on-demand frozen review snapshot without granting the read-only resolver
-  mutation rights? Resolve with a reviewed Vista publication contract and
-  access boundary; the accepted decision fixes the on-demand role, not its
-  authorization mechanism.
+`ingested`, `missing_spans`, `incomplete`, and `expired` where the index has
+that state. A missing expected job is a job-level error, distinct from spans
+lost by Tempo; an attempt without closure **or** with an unsettled expected
+job is `incomplete` after its six-hour idle timeout. A shared run trace
+must not advertise complete until all expected jobs settle and the
+cumulative expected span-ID union
+passes readback at the published index generation. `trace` and `comparison`
+may be `null` when their inputs are unavailable. HTML and JSON share the
+same indexed run selection and A/B classification. `gh-ci-utils traces <pr>`
+reads this JSON to print runs/jobs, verdict, top deltas and IDs, with next
+`gcx traces get -d tempo <id> --llm -o json` and Perfetto actions.
+`gh-ci-utils traces <pr> --freeze` consumes this JSON and publishes via the
+invoking agent's or operator's Vista context; it does not POST to the
+resolver. The resolver URL is configured, never a hard-coded fleet hostname;
+off-tailnet failure states that tailnet access is required. The agent skill
+points to these commands, not a second bespoke CLI.
 
 ## Conformance
 
+- A read-only page exposes the copyable freeze command; executing it as an
+  authorized Vista caller publishes a snapshot from versioned JSON without
+  any resolver mutation or implicit page-load publication.
+- After a second job's write removes a first job's spans from Tempo, the
+  shared run status reverts to `missing_spans`; a missing roster job is
+  displayed as an error span and an absent close eventually shows
+  `incomplete`.
 - An indexed but not yet ingested ID serves pending; complete readback serves
   a working Grafana link; unknown and expired IDs report distinct states.
 - A main sample above the merge base never enters the A/B baseline; a PR

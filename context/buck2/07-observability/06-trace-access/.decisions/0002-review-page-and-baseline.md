@@ -47,3 +47,13 @@ Vista is an on-demand “freeze for review” snapshot, not a default view.
   quietly substituting a single run for seven.
 - A frozen review can outlive Tempo's 30-day window, while ordinary pages
   remain backed by the live index and trace store.
+
+## Amendment 1 — Read-Only Freeze Handoff (q48)
+
+Accepted 2026-09-26 (Johannes). The resolver never publishes a Vista
+snapshot or accepts a mutation request. Its PR page offers a copyable
+`gh-ci-utils traces <pr> --freeze` command. An agent or operator runs that
+command in their own Vista context; it reads versioned resolver JSON and
+publishes the frozen review there. Nothing is frozen during page load or
+ingest. This resolves the former trace-access DQ1 without giving the
+read-only resolver a write authority.

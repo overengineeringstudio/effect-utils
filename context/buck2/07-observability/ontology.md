@@ -79,13 +79,18 @@ identity. _Avoid_: "trace store" for the resolver — Tempo stores the spans.
 
 ### The portable unit
 
-**Run Record** is the sealed unit of one pipeline run's telemetry and
-evidence: a manifest, the span spool, and the native evidence. Its lifecycle
-verbs are **seal** (freeze the manifest with content digests), **upload** (one
-provider-neutral content-addressed PUT), **ingest** (convert, export views,
-archive), and **archive** (retain per policy). _Avoid_: "replay" for any of
-these — Buck owns `log replay` (Superconsole re-rendering); "evidence bundle"
-(the anchor is Run Record); "delivery" as a noun for this pipeline.
+**Run Record** is a sealed unit of telemetry and native evidence. In CI each
+job contributes its own record within one Pipeline Run; locally the invocation
+has one record. Each record contains a manifest, span spool, and native
+evidence. Its lifecycle verbs are **seal** (freeze content digests),
+**upload** (provider-neutral content-addressed PUT), **ingest** (convert,
+export views, archive), and **archive** (retain per policy). _Avoid_:
+"replay" — Buck owns `log replay` (Superconsole re-rendering);
+"evidence bundle" (the anchor is Run Record).
+
+**Attempt-Close Record** is the provider-neutral CI completion signal for a
+Pipeline Run attempt: the expected matrix-qualified jobs and their conclusions.
+It is not another job's native evidence or a second run root.
 
 **Span Spool** is the existing otel-span JSONL spool
 (`OTEL_SPAN_SPOOL_DIR`), reused unchanged as the run record's span part.
@@ -129,12 +134,14 @@ identity:        pipeline run id --framed domain-separated hash--> pipeline trac
                  salted OTLP span ids = f(log identity, Buck span id)  (Buck ids collide across commands)
 access:          index --resolver--> PR/run/trace links and versioned JSON
 wait:            peer commands on one daemon --join--> daemon wait (exact | inferred)
+```
 
 ## Flagged Ambiguities
 
-- **Run record vs InvocationRecord:** the run record is this lane's portable
-  unit (a pipeline-run noun); InvocationRecord is an upstream per-command
-  artifact that may sit inside one. Never interchangeable.
+- **Run Record vs Pipeline Run vs InvocationRecord:** a CI Pipeline Run can
+  contain many job-scoped Run Records plus one Attempt-Close Record; a local
+  invocation has one Run Record. InvocationRecord is an upstream per-command
+  artifact inside a record, never the portable unit.
 - **Trace view vs editor view:** "view" also names the materialization
   surface's editor views (03-materialization). "Trace view" is always
   qualified.
