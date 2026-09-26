@@ -45,12 +45,21 @@ let
   );
   hasPackages = packages != [ ];
 
+  # Storybook resolves its cache below the nearest `node_modules/.cache`,
+  # which is the read-only Buck editor view. `CACHE_DIR` redirects it to a
+  # writable per-checkout, per-package directory so parallel builds of
+  # different packages never share cache state.
+  exportCacheDir = pkg: ''
+    export CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/storybook-cache/${pkg.name}"}
+  '';
+
   mkBuildTask = pkg: {
     "storybook:build:${pkg.name}" = {
       description = "Build storybook for ${pkg.name}";
       exec = trace.exec "storybook:build:${pkg.name}" ''
         set -euo pipefail
         source ${lib.escapeShellArg pnpmTaskHelpersScript}
+        ${exportCacheDir pkg}
         run_package_bin storybook storybook build
       '';
       cwd = pkg.path;
@@ -79,6 +88,7 @@ let
         _host="''${TS_HOSTNAME:-localhost}"
         echo "[storybook] ${pkg.name}: http://$_host:${toString (getAllocatedPort pkg)}"
         source ${lib.escapeShellArg pnpmTaskHelpersScript}
+        ${exportCacheDir pkg}
         run_package_bin storybook storybook dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci --exact-port
       '';
       cwd = pkg.path;

@@ -188,7 +188,7 @@ extract_shared_task_script() {
           }) {
             pkgs = pkgsForTest;
             lib = lib;
-            config = { };
+            config = { devenv.root = \"$workspace\"; };
           })
         ];
       };
@@ -405,7 +405,7 @@ EOF
 chmod +x "$workspace/packages/demo/node_modules/storybook/bin/storybook.js"
 cat > "$workspace/packages/demo/node_modules/.bin/storybook" <<'EOF'
 #!/usr/bin/env bash
-printf 'storybook-shim:%s\n' "$*"
+printf 'storybook-shim:%s cache=%s\n' "$*" "${CACHE_DIR:-unset}"
 EOF
 chmod +x "$workspace/packages/demo/node_modules/.bin/storybook"
 mkdir -p "$workspace/repos/source/packages/pkg"
@@ -1086,11 +1086,11 @@ echo "Test 28: generated test task runs vitest without pnpm exec"
   [ "$output" = "vitest-shim:run --testTimeout 30000 --hookTimeout 30000" ]
 )
 
-echo "Test 29: generated storybook task runs storybook without pnpm exec"
+echo "Test 29: generated storybook task runs storybook without pnpm exec, caching outside node_modules"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
-  [ "$output" = "storybook-shim:build" ]
+  [ "$output" = "storybook-shim:build cache=$workspace/.devenv/storybook-cache/demo" ]
 )
 
 echo "Test 30: clean removes only root-owned topology and leaves shared content intact"

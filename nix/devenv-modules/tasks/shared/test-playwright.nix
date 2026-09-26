@@ -22,7 +22,12 @@
   playwrightBin ? "playwright",
   playwrightPkg ? null,
 }:
-{ lib, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
@@ -32,9 +37,10 @@ let
       description = "Run playwright tests for ${pkg.name}";
       # Storybook and Vite otherwise discover caches below node_modules inside
       # the immutable Buck editor view and fail before Playwright can start.
+      # Same per-checkout location as the storybook task module.
       exec = trace.exec "test:pw:${pkg.name}" ''
-        export CACHE_DIR="''${CACHE_DIR:-''${XDG_CACHE_HOME:-''${TMPDIR:-/tmp}}/storybook/${pkg.name}}"
-        export VITE_CACHE_DIR="''${VITE_CACHE_DIR:-''${XDG_CACHE_HOME:-''${TMPDIR:-/tmp}}/vite/${pkg.name}}"
+        export CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/storybook-cache/${pkg.name}"}
+        export VITE_CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/vite-cache/${pkg.name}"}
         ${playwrightBin} test
       '';
       cwd = pkg.path;
