@@ -43,6 +43,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **notion-md product publication**: Declare Node types in its own package
+  dependencies so the isolated Buck typecheck resolves `types: ["node"]` and
+  the from-source Nix product can be published.
+
 - **Storybook and Playwright task caches**: The shared `storybook:build:<name>`
   tasks, Storybook dev processes, and Playwright test tasks now export
   `CACHE_DIR` (and `VITE_CACHE_DIR` for Playwright) as

@@ -46,6 +46,7 @@ const workspaceDeps = catalog.compose({
         '@effect/vitest',
         '@storybook/react',
         '@storybook/react-vite',
+        '@types/node',
         '@types/react',
         '@types/react-reconciler',
         '@vitest/browser-playwright',
