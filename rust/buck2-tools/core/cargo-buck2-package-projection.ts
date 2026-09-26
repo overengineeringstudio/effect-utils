@@ -466,10 +466,7 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   for (const binary of binaries) {
-    const binaryDependencies = sorted([
-      ...normalLabels,
-      ...(library === undefined ? [] : [':lib']),
-    ])
+    const binaryDependencies = sorted([...normalLabels, ...(library === undefined ? [] : [':lib'])])
     rules.push(
       ...renderRule({
         rule: 'rust_binary',
@@ -491,7 +488,9 @@ const cargoBuck2PackageProjectionFor = ({
     // cell: a label attribute resolves in the calling package's cell.
     const rulesCell = buck2LoadLabelPrefix.match(/^@([A-Za-z0-9][A-Za-z0-9._-]*)\/\//)?.[1]
     const hostPlatform =
-      rulesCell === undefined ? 'host_platform_label()' : `host_platform_label(cell = ${starlarkString(rulesCell)})`
+      rulesCell === undefined
+        ? 'host_platform_label()'
+        : `host_platform_label(cell = ${starlarkString(rulesCell)})`
     if (binaries.length !== 1) {
       throw new Error(
         `BuildProduct projection requires exactly one binary in ${member.manifestPath}`,
@@ -885,7 +884,9 @@ const resolveMemberPathDependency = ({
 }): ResolvedDependency => {
   const dependencyMember = context.memberByPath.get(dependencyPath)
   if (dependencyMember === undefined) {
-    throw new Error(`Cargo path dependency at ${field} is not a workspace member: ${dependencyPath}`)
+    throw new Error(
+      `Cargo path dependency at ${field} is not a workspace member: ${dependencyPath}`,
+    )
   }
   const dependencyPackage = requireValue({
     value: dependencyMember.manifest.package,
@@ -969,10 +970,7 @@ const discoverCargoTargets = ({
   const autobins = autoTarget('autobins')
 
   const explicitLibrary = manifest.lib
-  if (
-    explicitLibrary?.['proc-macro'] === true ||
-    explicitLibrary?.['crate-type'] !== undefined
-  ) {
+  if (explicitLibrary?.['proc-macro'] === true || explicitLibrary?.['crate-type'] !== undefined) {
     throw new Error(
       `Cargo proc-macro and crate-type library semantics are unsupported in ${member.manifestPath}`,
     )
@@ -1074,7 +1072,10 @@ const binaryTargetSources = ({
 }): readonly string[] => {
   const directoryMatch = binary.crateRoot.match(/^(src\/bin\/[^/]+\/)main\.rs$/)
   if (directoryMatch === null) return [binary.crateRoot]
-  const directory = requireValue({ value: directoryMatch[1], field: `${binary.crateRoot} directory` })
+  const directory = requireValue({
+    value: directoryMatch[1],
+    field: `${binary.crateRoot} directory`,
+  })
   return sources.filter((source) => source.startsWith(directory))
 }
 
