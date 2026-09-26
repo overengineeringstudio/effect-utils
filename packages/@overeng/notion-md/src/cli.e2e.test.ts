@@ -140,7 +140,7 @@ describe('notion-md CLI boundary', () => {
   it(
     'validates missing sync targets before resolving Notion credentials',
     async () => {
-      await expect(runCli(['sync'])).rejects.toThrow('Expected: at least 1 value')
+      await expect(runCli(['sync'])).rejects.toThrow('Missing required argument: path')
     },
     cliTestTimeoutMs,
   )
@@ -220,7 +220,7 @@ describe('notion-md CLI boundary', () => {
   it(
     'gc validates missing targets without requiring a Notion token',
     async () => {
-      await expect(runCli(['gc'])).rejects.toThrow('Expected: at least 1 value')
+      await expect(runCli(['gc'])).rejects.toThrow('Missing required argument: path')
     },
     cliTestTimeoutMs,
   )
