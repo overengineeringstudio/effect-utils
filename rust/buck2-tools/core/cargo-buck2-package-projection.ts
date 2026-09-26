@@ -519,6 +519,11 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   if (buildProduct === true) {
+    // A product package in another cell than the rules must name the rules
+    // cell: a label attribute resolves in the calling package's cell.
+    const rulesCell = buck2LoadLabelPrefix.match(/^@([A-Za-z0-9][A-Za-z0-9._-]*)\/\//)?.[1]
+    const hostPlatform =
+      rulesCell === undefined ? 'host_platform_label()' : `host_platform_label(cell = ${starlarkString(rulesCell)})`
     if (binaries.length !== 1) {
       throw new Error(
         `BuildProduct projection requires exactly one binary in ${member.manifestPath}`,
@@ -530,7 +535,7 @@ const cargoBuck2PackageProjectionFor = ({
       `    name = ${starlarkString(`${packageName}-product-executable`)},`,
       `    binary = ${starlarkString(`:${binary.name}`)},`,
       `    recipe = ${starlarkString(`cargo-workspace:${packageName}@${version}`)},`,
-      `    target_platform = host_platform_label(),`,
+      `    target_platform = ${hostPlatform},`,
       ')',
       '',
       'build_product(',
@@ -538,7 +543,7 @@ const cargoBuck2PackageProjectionFor = ({
       `    entrypoint = ${starlarkString(`bin/${packageName}`)},`,
       `    executable = ${starlarkString(`:${packageName}-product-executable`)},`,
       `    product_name = ${starlarkString(packageName)},`,
-      `    target_platform = host_platform_label(),`,
+      `    target_platform = ${hostPlatform},`,
       ')',
       '',
     )

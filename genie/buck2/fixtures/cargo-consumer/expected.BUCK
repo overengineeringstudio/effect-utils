@@ -46,7 +46,7 @@ rust_product_executable(
     name = "consumer-cli-product-executable",
     binary = ":consumer-cli",
     recipe = "cargo-workspace:consumer-cli@0.1.0",
-    target_platform = host_platform_label(),
+    target_platform = host_platform_label(cell = "rules"),
 )
 
 build_product(
@@ -54,5 +54,5 @@ build_product(
     entrypoint = "bin/consumer-cli",
     executable = ":consumer-cli-product-executable",
     product_name = "consumer-cli",
-    target_platform = host_platform_label(),
+    target_platform = host_platform_label(cell = "rules"),
 )
