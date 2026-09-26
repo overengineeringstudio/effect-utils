@@ -61,7 +61,12 @@ export const netlifyStageStep = (
   name: 'Build and stage Netlify static output',
   shell: 'bash' as const,
   env: { NETLIFY_STAGE_DIR: opts.stageDir },
-  run: runDevenvTasksBefore('netlify:stage', '--show-output', '--input', '"stageDir=$NETLIFY_STAGE_DIR"'),
+  run: runDevenvTasksBefore(
+    'netlify:stage',
+    '--show-output',
+    '--input',
+    '"stageDir=$NETLIFY_STAGE_DIR"',
+  ),
 })
 
 /**

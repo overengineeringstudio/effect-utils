@@ -62,9 +62,9 @@ The main-only exclusion is deliberate and fixes the absent-check failure mode: r
 
 Storybook deploys split by trust. `deploy-storybooks` in the CI workflow is main-only and deploys production with `NETLIFY_AUTH_TOKEN`. PR previews use two workflows outside CI, so preview latency and CI conclusions stay independent:
 
-| Workflow                     | Event                       | Trust                   | Outcome                                                                                                                    |
-| ---------------------------- | --------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `storybook-preview-build.yml`  | `pull_request`              | PR code, no secrets     | `build-storybooks` runs `netlify:stage` and uploads the static output as the `netlify-preview-static` artifact.             |
+| Workflow                       | Event                       | Trust                   | Outcome                                                                                                                    |
+| ------------------------------ | --------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `storybook-preview-build.yml`  | `pull_request`              | PR code, no secrets     | `build-storybooks` runs `netlify:stage` and uploads the static output as the `netlify-preview-static` artifact.            |
 | `storybook-preview-deploy.yml` | `workflow_run` of the build | default-branch revision | Resolves the PR from the event payload, deploys the artifact with `netlify:deploy-staged`, and updates the sticky comment. |
 
 The deploy workflow treats the artifact as data: it checks out `github.workflow_sha`, never the PR head, and hands the static files to `netlify deploy --no-build`. PR number and head SHA come from `github.event.workflow_run` and the GitHub API; a closed PR or a head that moved past the triggering run is skipped. Fork PRs are not deployed. `NETLIFY_AUTH_TOKEN` exists only in the deploy step environment, and only `publish-preview-comment` has `pull-requests: write`. Because `workflow_run` workflows run from the default branch, changes to the deploy workflow take effect after they merge.

@@ -156,10 +156,7 @@ export const vercelDeployJobs = (opts: {
     step: Record<string, unknown>,
     project: VercelProject,
   ): Record<string, unknown> =>
-    withGithubTokenEnv(
-      opts.deployStepDecorator?.(step, project) ?? step,
-      tokenExpression,
-    )
+    withGithubTokenEnv(opts.deployStepDecorator?.(step, project) ?? step, tokenExpression)
 
   return buildVercelDeployJobs({
     ...opts,
@@ -218,7 +215,9 @@ const netlifyPreviewSummaryPath = `${netlifyPreviewReportDir}/summary.md`
  * upload the staged static output. Requires no secrets.
  */
 export const netlifyPreviewBuildSteps = (opts: { readonly artifactName?: string } = {}) => [
-  withGithubTokenEnv(buildNetlifyStageStep(runDevenvTasksBefore, { stageDir: netlifyPreviewStageDir })),
+  withGithubTokenEnv(
+    buildNetlifyStageStep(runDevenvTasksBefore, { stageDir: netlifyPreviewStageDir }),
+  ),
   {
     name: 'Upload staged Netlify output',
     uses: 'actions/upload-artifact@v4',

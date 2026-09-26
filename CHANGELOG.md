@@ -45,6 +45,7 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+
 - **Buck2 observability VRS:** Specify pipeline-run trace identity,
   job-scoped records and CI attempt-close rosters, sealed VCS fields,
   cumulative ingest/readback, and PR trace access with an index-backed
