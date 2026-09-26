@@ -78,6 +78,7 @@ pub fn read_manifest(dir: &Path) -> StepResult<Manifest> {
 
 /// Unpacks a tar body, verifies manifest digest + every file digest, then renames into the store.
 /// Blocking: call from `spawn_blocking`.
+/// Returns the manifest only for a new store entry; `None` means it was already present.
 pub fn accept(cfg: &Config, digest: &str, body: &[u8]) -> Result<Option<Manifest>, UploadError> {
     if !is_digest(digest) {
         return Err(UploadError::Rejected("digest must be 64 lowercase hex".into()));
