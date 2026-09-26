@@ -94,9 +94,12 @@ export default packageJson(
         'notion-md': './dist/src/cli.js',
       },
       exports: {
-        '.': './dist/src/mod.js',
-        './cli': './dist/src/cli.js',
-        './cli-program': './dist/src/cli-program.js',
+        '.': { types: './dist/src/mod.d.ts', default: './dist/src/mod.js' },
+        './cli': { types: './dist/src/cli.d.ts', default: './dist/src/cli.js' },
+        './cli-program': {
+          types: './dist/src/cli-program.d.ts',
+          default: './dist/src/cli-program.js',
+        },
       },
     },
   } satisfies PackageJsonInputData,

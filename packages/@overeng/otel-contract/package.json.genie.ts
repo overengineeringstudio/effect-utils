@@ -45,8 +45,8 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
-        './registry': './dist/registry.js',
+        '.': { types: './dist/src/mod.d.ts', default: './dist/src/mod.js' },
+        './registry': { types: './dist/src/registry.d.ts', default: './dist/src/registry.js' },
       },
     },
   } satisfies PackageJsonInputData,

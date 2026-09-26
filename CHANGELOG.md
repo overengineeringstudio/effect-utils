@@ -64,6 +64,15 @@ All notable changes to this project will be documented in this file.
   `crate_archive`, which lets the sandbox use `mkBuck2CargoArchives` offline.
   Canonical `@cell//` targets match their descriptor labels, and
   `host_platform_label(cell = ...)` emits `@cell//` labels.
+- **Buck package products**: `:dist-package` archives are now Node-consumable.
+  `tsgo_emit` emits JavaScript next to declarations, the npm packer applies
+  `publishConfig` with `pnpm pack` semantics, and packing fails when any
+  `exports`/`main`/`module`/`types`/`bin` target is a runtime `.ts` source or
+  is not shipped. All 18 published packages now declare
+  `publishConfig.exports` against the emitted `dist/src/*.js` layout with
+  `types` conditions (the previous `./dist/*.js` targets did not exist).
+  Consumers that import published tarballs from Node (e.g. Playwright configs)
+  no longer hit `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
