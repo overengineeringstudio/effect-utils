@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 const ciWorkflowModuleRoot = fileURLToPath(new URL('../../../../../../', import.meta.url))
 
@@ -1306,6 +1306,141 @@ describe('ci workflow standard job helpers', () => {
     expect(ciWorkflowSource).toContain('export const standardSelfHostedDevenvTaskJob')
     expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPrepSteps(prep)')
     expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPostSteps(post)')
+  })
+})
+
+describe('storybook preview split build/deploy', () => {
+  let facts: ReturnType<typeof JSON.parse>
+
+  beforeAll(() => {
+    const fixture = spawnSync(
+      'bun',
+      [
+        '-e',
+        `
+          import { readFileSync } from 'node:fs'
+          import { netlifyPreviewDeployJobs } from './genie/ci-workflow.ts'
+          const parse = (file) => Bun.YAML.parse(readFileSync('.github/workflows/' + file, 'utf8'))
+          const build = parse('storybook-preview-build.yml')
+          const deploy = parse('storybook-preview-deploy.yml')
+          const stepsOf = (workflow) =>
+            Object.entries(workflow.jobs).flatMap(([jobId, job]) =>
+              (job.steps ?? []).map((step) => ({ jobId, step })),
+            )
+          const secretRefs = (workflow) =>
+            Object.entries(workflow.jobs).flatMap(([jobId, job]) => {
+              const { steps = [], ...jobRest } = job
+              return [
+                ...(JSON.stringify(jobRest).includes('secrets.') ? [{ jobId, scope: 'job' }] : []),
+                ...steps.flatMap((step) =>
+                  Object.entries(step.env ?? {})
+                    .filter(([, value]) => String(value).includes('secrets.'))
+                    .map(([key]) => ({ jobId, step: step.id ?? step.name, key })),
+                ),
+                ...steps
+                  .filter((step) => JSON.stringify({ ...step, env: undefined }).includes('secrets.'))
+                  .map((step) => ({ jobId, step: step.id ?? step.name, scope: 'non-env' })),
+              ]
+            }).concat(
+              JSON.stringify({ ...workflow, jobs: undefined }).includes('secrets.')
+                ? [{ scope: 'workflow' }]
+                : [],
+            )
+          const resolveStep = deploy.jobs['resolve-preview'].steps.find((s) => s.id === 'pull-request')
+          const deployStep = deploy.jobs['deploy-preview'].steps.find((s) => s.id === 'deploy')
+          const stagedRun = netlifyPreviewDeployJobs({
+            runsOn: 'runner',
+            setupSteps: [],
+            netlifyAuthToken: 'token',
+            title: 't',
+            noRecordsMessage: 'n',
+            stateId: 's',
+          })['deploy-preview'].steps.find((s) => s.id === 'deploy').run
+          console.log(JSON.stringify({
+            buildName: build.name,
+            buildTriggers: Object.keys(build.on),
+            buildSecretRefs: secretRefs(build),
+            buildUsesStage: stepsOf(build).some(({ step }) => String(step.run ?? '').includes('netlify:stage')),
+            buildUploads: stepsOf(build).some(({ step }) => String(step.uses ?? '').startsWith('actions/upload-artifact@')),
+            deployTriggers: deploy.on,
+            resolveIf: deploy.jobs['resolve-preview'].if,
+            deployNeeds: deploy.jobs['deploy-preview'].needs,
+            deployIf: deploy.jobs['deploy-preview'].if,
+            resolveEnv: resolveStep.env,
+            deployStepEnvKeys: Object.keys(deployStep.env).sort(),
+            deployPr: deployStep.env.NETLIFY_PREVIEW_PR,
+            deploySecretRefs: secretRefs(deploy),
+            permissions: Object.fromEntries(
+              Object.entries(deploy.jobs).map(([jobId, job]) => [jobId, job.permissions]),
+            ),
+            workflowPermissions: deploy.permissions,
+            checkoutRefs: stepsOf(deploy)
+              .filter(({ step }) => String(step.uses ?? '').startsWith('actions/checkout@'))
+              .map(({ step }) => step.with?.ref),
+            downloadRunIds: stepsOf(deploy)
+              .filter(({ jobId, step }) => jobId === 'deploy-preview' && String(step.uses ?? '').startsWith('actions/download-artifact@'))
+              .map(({ step }) => step.with['run-id']),
+            deployReadsPullRequestEvent: JSON.stringify(deploy).includes('github.event.pull_request'),
+            stagedDeployPolicies: [...stagedRun.matchAll(/--input "?([A-Za-z]+Policy)=(\\w+)/g)].map(([, k, v]) => k + '=' + v),
+          }))
+        `,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(fixture.status, fixture.stderr).toBe(0)
+    facts = JSON.parse(fixture.stdout)
+  })
+
+  it('builds PR previews in an uncredentialed pull_request job', () => {
+    expect(facts.buildTriggers).toEqual(['pull_request'])
+    expect(facts.buildSecretRefs).toEqual([])
+    expect(facts.buildUsesStage).toBe(true)
+    expect(facts.buildUploads).toBe(true)
+  })
+
+  it('deploys only from a successful pull_request run of the build workflow', () => {
+    expect(facts.deployTriggers).toEqual({
+      workflow_run: { workflows: [facts.buildName], types: ['completed'] },
+    })
+    expect(facts.resolveIf).toContain("github.event.workflow_run.conclusion == 'success'")
+    expect(facts.resolveIf).toContain("github.event.workflow_run.event == 'pull_request'")
+    expect(facts.deployNeeds).toEqual(['resolve-preview'])
+    expect(facts.deployIf).toBe("${{ needs.resolve-preview.outputs.deploy == 'true' }}")
+  })
+
+  it('derives PR identity from the workflow_run payload, never the PR checkout or artifact', () => {
+    expect(facts.resolveEnv).toMatchObject({
+      RUN_PR_NUMBER: '${{ github.event.workflow_run.pull_requests[0].number }}',
+      RUN_HEAD_SHA: '${{ github.event.workflow_run.head_sha }}',
+      RUN_HEAD_REPO: '${{ github.event.workflow_run.head_repository.full_name }}',
+      RUN_CONCLUSION: '${{ github.event.workflow_run.conclusion }}',
+    })
+    expect(facts.deployPr).toBe('${{ needs.resolve-preview.outputs.number }}')
+    expect(facts.deployReadsPullRequestEvent).toBe(false)
+    expect(facts.checkoutRefs).toEqual(['${{ github.workflow_sha }}', '${{ github.workflow_sha }}'])
+    expect(facts.downloadRunIds).toEqual(['${{ github.event.workflow_run.id }}'])
+  })
+
+  it('scopes the Netlify token to the deploy step and PR writes to the comment job', () => {
+    expect(facts.deploySecretRefs).toEqual([
+      { jobId: 'deploy-preview', step: 'deploy', key: 'NETLIFY_AUTH_TOKEN' },
+    ])
+    expect(facts.deployStepEnvKeys).toEqual([
+      'GITHUB_TOKEN',
+      'NETLIFY_AUTH_TOKEN',
+      'NETLIFY_PREVIEW_PR',
+      'NETLIFY_STAGE_DIR',
+    ])
+    expect(facts.workflowPermissions).toEqual({})
+    expect(facts.permissions).toEqual({
+      'resolve-preview': { 'pull-requests': 'read' },
+      'deploy-preview': { actions: 'read', contents: 'read', 'pull-requests': 'read' },
+      'publish-preview-comment': { contents: 'read', 'pull-requests': 'write' },
+    })
+  })
+
+  it('keeps rejected Netlify credentials fatal for staged PR previews', () => {
+    expect(facts.stagedDeployPolicies).toEqual(['missingAuthPolicy=skip'])
   })
 })
 

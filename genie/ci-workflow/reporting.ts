@@ -30,8 +30,26 @@ export type WorkflowReportCollectorStepOptions = {
   readonly if?: string
 }
 
+/**
+ * Pull request identity for workflow-report steps. Defaults to the current
+ * `pull_request` event. A `workflow_run` consumer passes identity it derived
+ * from the triggering run's event payload instead.
+ */
+export type WorkflowReportPullRequest = {
+  readonly eventName: string
+  readonly number: string
+  readonly headRepo: string
+}
+
+const currentEventPullRequest: WorkflowReportPullRequest = {
+  eventName: '${{ github.event_name }}',
+  number: '${{ github.event.pull_request.number }}',
+  headRepo: '${{ github.event.pull_request.head.repo.full_name }}',
+}
+
 export type WorkflowReportPublisherStepOptions = {
   readonly commentBodyPath: string
+  readonly pullRequest?: WorkflowReportPullRequest
   readonly summaryPath?: string
   readonly stateId: string
   readonly id?: string
@@ -42,6 +60,7 @@ export type WorkflowReportPublisherStepOptions = {
 
 export type WorkflowReportCommentBodyStepOptions = {
   readonly bundlePath: string
+  readonly pullRequest?: WorkflowReportPullRequest
   readonly commentBodyPath: string
   readonly title: string
   readonly noRecordsMessage: string
@@ -118,8 +137,8 @@ export const workflowReportCommentBodyStep = (
     ...githubTokenEnv(),
     GH_TOKEN: '${{ github.token }}',
     GH_REPO: '${{ github.repository }}',
-    WORKFLOW_REPORT_EVENT_NAME: '${{ github.event_name }}',
-    WORKFLOW_REPORT_PR_NUMBER: '${{ github.event.pull_request.number }}',
+    WORKFLOW_REPORT_EVENT_NAME: (opts.pullRequest ?? currentEventPullRequest).eventName,
+    WORKFLOW_REPORT_PR_NUMBER: (opts.pullRequest ?? currentEventPullRequest).number,
     WORKFLOW_REPORT_BUNDLE_PATH: opts.bundlePath,
     WORKFLOW_REPORT_COMMENT_BODY_PATH: opts.commentBodyPath,
     WORKFLOW_REPORT_SUMMARY_PATH: opts.summaryPath ?? opts.commentBodyPath,
@@ -146,9 +165,9 @@ export const workflowReportPublisherStep = (
     ...githubTokenEnv(),
     GH_TOKEN: '${{ github.token }}',
     GH_REPO: '${{ github.repository }}',
-    WORKFLOW_REPORT_EVENT_NAME: '${{ github.event_name }}',
-    WORKFLOW_REPORT_PR_NUMBER: '${{ github.event.pull_request.number }}',
-    WORKFLOW_REPORT_HEAD_REPO: '${{ github.event.pull_request.head.repo.full_name }}',
+    WORKFLOW_REPORT_EVENT_NAME: (opts.pullRequest ?? currentEventPullRequest).eventName,
+    WORKFLOW_REPORT_PR_NUMBER: (opts.pullRequest ?? currentEventPullRequest).number,
+    WORKFLOW_REPORT_HEAD_REPO: (opts.pullRequest ?? currentEventPullRequest).headRepo,
     WORKFLOW_REPORT_STATE_ID: opts.stateId,
     WORKFLOW_REPORT_COMMENT_BODY_PATH: opts.commentBodyPath,
     WORKFLOW_REPORT_SUMMARY_PATH: opts.summaryPath ?? opts.commentBodyPath,

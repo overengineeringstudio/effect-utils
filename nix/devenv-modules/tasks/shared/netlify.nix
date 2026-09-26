@@ -47,13 +47,29 @@ let
         deployment.urlEnvKey or "NETLIFY_DEPLOY_URL_${
           lib.toUpper (builtins.replaceStrings [ "-" "." "/" ] [ "_" "_" "_" ] name)
         }";
-    in
-    {
-      "netlify:deploy:${name}" = {
-        description = "Deploy ${name} to Netlify";
-        after = if afterTask == null then [ ] else [ afterTask ];
-        exec = trace.exec "netlify:deploy:${name}" ''
+      after = if afterTask == null then [ ] else [ afterTask ];
+      # `stageDir` is an absolute directory outside the source tree that holds
+      # one `<deployment name>/` subdirectory per target. The build side writes
+      # it; the credentialed side only reads it, so it never runs the build.
+      readStageDir = taskName: ''
+        stage_dir="$(${pkgs.jq}/bin/jq -r '.stageDir // .stage_dir // empty' <<<"''${DEVENV_TASK_INPUT:-"{}"}")"
+        if [ -z "$stage_dir" ]; then
+          echo "Error: ${taskName} requires 'stageDir' input (e.g. --input stageDir=/tmp/netlify-stage)" >&2
+          exit 1
+        fi
+        case "$stage_dir" in
+          /*) ;;
+          *)
+            echo "Error: ${taskName} requires an absolute 'stageDir', got '$stage_dir'" >&2
+            exit 1
+            ;;
+        esac
+      '';
+      deployExec =
+        taskName: artifactDirSetup:
+        trace.exec taskName ''
           set -euo pipefail
+          ${artifactDirSetup}
 
           input="''${DEVENV_TASK_INPUT:-"{}"}"
           deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "draft"' <<<"$input")"
@@ -86,7 +102,7 @@ let
             deploy netlify
             --target ${lib.escapeShellArg name}
             --display-name ${lib.escapeShellArg name}
-            --artifact-dir ${lib.escapeShellArg staticDir}
+            --artifact-dir "$artifact_dir"
             --mode "$deploy_type"
             --site-name ${lib.escapeShellArg siteName}
             --site-id-env NETLIFY_SITE_ID
@@ -134,6 +150,39 @@ let
 
           ${lib.escapeShellArg resolvedCiToolsBin} "''${args[@]}"
         '';
+    in
+    {
+      "netlify:deploy:${name}" = {
+        description = "Deploy ${name} to Netlify";
+        inherit after;
+        exec = deployExec "netlify:deploy:${name}" "artifact_dir=${lib.escapeShellArg staticDir}";
+      };
+      "netlify:stage:${name}" = {
+        description = "Build ${name} and stage its static output for a separate Netlify deploy";
+        inherit after;
+        exec = trace.exec "netlify:stage:${name}" ''
+          set -euo pipefail
+          ${readStageDir "netlify:stage:${name}"}
+          if [ ! -d ${lib.escapeShellArg staticDir} ]; then
+            echo "Error: ${name} static output ${staticDir} does not exist after its build" >&2
+            exit 1
+          fi
+          target_dir="$stage_dir/"${lib.escapeShellArg name}
+          rm -rf "$target_dir"
+          mkdir -p "$target_dir"
+          cp -RL ${lib.escapeShellArg staticDir}/. "$target_dir/"
+        '';
+      };
+      "netlify:deploy-staged:${name}" = {
+        description = "Deploy the staged ${name} static output to Netlify without building it";
+        exec = deployExec "netlify:deploy-staged:${name}" ''
+          ${readStageDir "netlify:deploy-staged:${name}"}
+          artifact_dir="$stage_dir/"${lib.escapeShellArg name}
+          if [ ! -d "$artifact_dir" ] || [ -L "$artifact_dir" ]; then
+            echo "Error: staged Netlify output for ${name} is missing at $artifact_dir" >&2
+            exit 1
+          fi
+        '';
       };
     };
 
@@ -154,6 +203,19 @@ in
           description = "Deploy all configured targets to Netlify";
           exec = null;
           after = if hasDeployments then map (d: "netlify:deploy:${d.name}") deployments else [ ];
+        };
+        # Split build/deploy: an uncredentialed job runs `netlify:stage` and
+        # uploads `stageDir`; a credentialed job restores it and runs
+        # `netlify:deploy-staged`, which never builds.
+        "netlify:stage" = {
+          description = "Build all configured targets and stage their static output";
+          exec = null;
+          after = if hasDeployments then map (d: "netlify:stage:${d.name}") deployments else [ ];
+        };
+        "netlify:deploy-staged" = {
+          description = "Deploy all staged targets to Netlify without building them";
+          exec = null;
+          after = if hasDeployments then map (d: "netlify:deploy-staged:${d.name}") deployments else [ ];
         };
       }
     ]

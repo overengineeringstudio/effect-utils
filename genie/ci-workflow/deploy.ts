@@ -1,9 +1,19 @@
-import { netlifyDeployStep as buildNetlifyDeployStep } from '../deploy-preview/netlify.ts'
+import {
+  netlifyDeployStep as buildNetlifyDeployStep,
+  netlifyStagedPreviewDeployStep as buildNetlifyStagedPreviewDeployStep,
+  netlifyStageStep as buildNetlifyStageStep,
+} from '../deploy-preview/netlify.ts'
+import { workflowReportPathOutputName } from '../deploy-preview/shared.ts'
 import {
   type VercelProject,
   vercelDeployJobs as buildVercelDeployJobs,
   vercelDeployStep as buildVercelDeployStep,
 } from '../deploy-preview/vercel.ts'
+import {
+  workflowReportCollectorStep,
+  workflowReportCommentBodyStep,
+  workflowReportPublisherStep,
+} from './reporting.ts'
 import {
   bashShellDefaults,
   githubTokenEnv,
@@ -176,3 +186,258 @@ export const netlifyDeployStep = (env: Record<string, string> = {}) =>
     ...buildNetlifyDeployStep(runDevenvTasksBefore),
     env,
   })
+
+// =============================================================================
+// Netlify Split Build/Deploy (PR previews)
+// =============================================================================
+//
+// PR previews split into two trust zones:
+//
+// 1. An uncredentialed `pull_request` job runs `netlifyPreviewBuildSteps`: it
+//    builds every Netlify target and uploads the static output as an artifact.
+// 2. A `workflow_run` workflow on the default branch runs
+//    `netlifyPreviewDeployJobs`: it resolves the PR from the triggering run's
+//    event payload, deploys the artifact as static files with the Netlify
+//    token, and posts the managed PR comment.
+//
+// The deploy side treats the artifact as data: it checks out only the
+// default-branch revision for its tooling and never executes artifact content.
+
+/** Artifact carrying `<stageDir>/<target>/` static output from build to deploy. */
+export const netlifyPreviewArtifactName = 'netlify-preview-static'
+
+const netlifyPreviewCommentArtifactName = 'netlify-preview-comment'
+const netlifyPreviewStageDir = '${{ runner.temp }}/netlify-preview-stage'
+const netlifyPreviewReportDir = '${{ runner.temp }}/workflow-reports/netlify-preview'
+const netlifyPreviewBundlePath = `${netlifyPreviewReportDir}/bundle.json`
+const netlifyPreviewCommentBodyPath = `${netlifyPreviewReportDir}/comment.md`
+const netlifyPreviewSummaryPath = `${netlifyPreviewReportDir}/summary.md`
+
+/**
+ * Steps for the uncredentialed PR job: build + stage every Netlify target, then
+ * upload the staged static output. Requires no secrets.
+ */
+export const netlifyPreviewBuildSteps = (opts: { readonly artifactName?: string } = {}) => [
+  withGithubTokenEnv(buildNetlifyStageStep(runDevenvTasksBefore, { stageDir: netlifyPreviewStageDir })),
+  {
+    name: 'Upload staged Netlify output',
+    uses: 'actions/upload-artifact@v4',
+    with: {
+      name: opts.artifactName ?? netlifyPreviewArtifactName,
+      path: netlifyPreviewStageDir,
+      'if-no-files-found': 'error',
+      'retention-days': 3,
+    },
+  },
+]
+
+/** `on:` block for a deploy workflow triggered by the named PR build workflow. */
+export const netlifyPreviewDeployTrigger = (buildWorkflowName: string) => ({
+  workflow_run: { workflows: [buildWorkflowName], types: ['completed'] },
+})
+
+/** One deploy at a time per PR head; a newer build supersedes an older deploy. */
+export const netlifyPreviewDeployConcurrency = {
+  group:
+    '${{ github.workflow }}-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}',
+  'cancel-in-progress': true,
+} as const
+
+/** Deploy only after a successful `pull_request` run of the build workflow. */
+export const netlifyPreviewDeployIf =
+  "${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}"
+
+/**
+ * Resolves the pull request for a `workflow_run` event from the event payload
+ * and the GitHub API only (never from artifact contents). Outputs `deploy`,
+ * `number`, `head-sha`, and `head-repo`.
+ *
+ * Fork policy: fork PRs are resolved but not deployed (`deploy=false`), so no
+ * fork-authored content is published under the repository's Netlify site. A
+ * PR whose head moved past the triggering run is skipped as stale.
+ */
+const workflowRunPullRequestStep = {
+  id: 'pull-request',
+  name: 'Resolve pull request from the triggering run',
+  shell: 'bash',
+  env: {
+    GH_TOKEN: '${{ github.token }}',
+    RUN_EVENT: '${{ github.event.workflow_run.event }}',
+    RUN_CONCLUSION: '${{ github.event.workflow_run.conclusion }}',
+    RUN_HEAD_SHA: '${{ github.event.workflow_run.head_sha }}',
+    RUN_HEAD_BRANCH: '${{ github.event.workflow_run.head_branch }}',
+    RUN_HEAD_REPO: '${{ github.event.workflow_run.head_repository.full_name }}',
+    RUN_PR_NUMBER: '${{ github.event.workflow_run.pull_requests[0].number }}',
+  },
+  run: [
+    'set -euo pipefail',
+    'test "$RUN_EVENT" = pull_request',
+    'test "$RUN_CONCLUSION" = success',
+    '[[ "$RUN_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]',
+    'test -n "$RUN_HEAD_REPO"',
+    'test -n "$RUN_HEAD_BRANCH"',
+    'pr_number="$RUN_PR_NUMBER"',
+    'if [ -z "$pr_number" ]; then',
+    '  # `workflow_run.pull_requests` is empty for fork heads; match the open PR by head.',
+    '  pr_number=$(gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" --slurp \\',
+    '    | jq -r --arg repo "$RUN_HEAD_REPO" --arg ref "$RUN_HEAD_BRANCH" --arg sha "$RUN_HEAD_SHA" \\',
+    '      \'[.[][] | select(.head.repo.full_name == $repo and .head.ref == $ref and .head.sha == $sha)] | if length == 1 then .[0].number else "" end\')',
+    'fi',
+    'deploy=true',
+    'if [ -z "$pr_number" ]; then',
+    '  echo "::notice::No open pull request matches $RUN_HEAD_REPO@$RUN_HEAD_SHA; skipping preview deploy"',
+    '  deploy=false',
+    'else',
+    '  [[ "$pr_number" =~ ^[1-9][0-9]*$ ]]',
+    '  pr_json=$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$pr_number")',
+    '  test "$(jq -r \'.head.repo.full_name\' <<<"$pr_json")" = "$RUN_HEAD_REPO"',
+    '  if [ "$(jq -r \'.state\' <<<"$pr_json")" != open ] || [ "$(jq -r \'.head.sha\' <<<"$pr_json")" != "$RUN_HEAD_SHA" ]; then',
+    '    echo "::notice::PR #$pr_number is closed or its head moved past $RUN_HEAD_SHA; skipping stale preview deploy"',
+    '    deploy=false',
+    '  fi',
+    'fi',
+    'if [ "$RUN_HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then',
+    '  echo "::notice::Fork pull request from $RUN_HEAD_REPO; fork previews are not deployed"',
+    '  deploy=false',
+    'fi',
+    '{',
+    '  echo "deploy=$deploy"',
+    '  echo "number=$pr_number"',
+    '  echo "head-sha=$RUN_HEAD_SHA"',
+    '  echo "head-repo=$RUN_HEAD_REPO"',
+    '} >> "$GITHUB_OUTPUT"',
+  ].join('\n'),
+} as const
+
+const trustedDefaultBranchCheckoutStep = {
+  name: 'Checkout default-branch tooling',
+  uses: 'actions/checkout@v6',
+  with: { ref: '${{ github.workflow_sha }}', 'persist-credentials': false },
+} as const
+
+/**
+ * Jobs for the trusted `workflow_run` deploy workflow.
+ *
+ * - `resolve-preview`: payload/API-derived PR identity (`pull-requests: read`).
+ * - `deploy-preview`: downloads the artifact (`actions: read`), deploys it with
+ *   the Netlify token scoped to the deploy step env only, and renders the
+ *   comment body.
+ * - `publish-preview-comment`: the only job with `pull-requests: write`.
+ *
+ * `setupSteps` must not check out code: the helper checks out the
+ * default-branch workflow revision itself.
+ */
+export const netlifyPreviewDeployJobs = (opts: {
+  readonly runsOn: string | readonly string[]
+  readonly setupSteps: readonly Record<string, unknown>[]
+  /** Secret expression, e.g. `${{ secrets.NETLIFY_AUTH_TOKEN }}`. */
+  readonly netlifyAuthToken: string
+  readonly title: string
+  readonly noRecordsMessage: string
+  readonly stateId: string
+  readonly artifactName?: string
+  readonly timeoutMinutes?: number
+}): Record<string, Record<string, unknown>> => {
+  const pullRequest = {
+    eventName: 'pull_request',
+    number: '${{ needs.resolve-preview.outputs.number }}',
+    headRepo: '${{ needs.resolve-preview.outputs.head-repo }}',
+  }
+  const timeoutMinutes = opts.timeoutMinutes ?? 30
+  const deployStep = buildNetlifyStagedPreviewDeployStep(runDevenvTasksBefore, {
+    stageDir: netlifyPreviewStageDir,
+    prNumber: pullRequest.number,
+  })
+  return {
+    'resolve-preview': {
+      if: netlifyPreviewDeployIf,
+      'runs-on': opts.runsOn,
+      'timeout-minutes': 5,
+      permissions: { 'pull-requests': 'read' },
+      defaults: bashShellDefaults,
+      outputs: {
+        deploy: '${{ steps.pull-request.outputs.deploy }}',
+        number: '${{ steps.pull-request.outputs.number }}',
+        'head-sha': '${{ steps.pull-request.outputs.head-sha }}',
+        'head-repo': '${{ steps.pull-request.outputs.head-repo }}',
+      },
+      steps: [workflowRunPullRequestStep],
+    },
+    'deploy-preview': {
+      needs: ['resolve-preview'],
+      if: "${{ needs.resolve-preview.outputs.deploy == 'true' }}",
+      'runs-on': opts.runsOn,
+      'timeout-minutes': timeoutMinutes,
+      permissions: { actions: 'read', contents: 'read', 'pull-requests': 'read' },
+      defaults: bashShellDefaults,
+      steps: [
+        trustedDefaultBranchCheckoutStep,
+        ...opts.setupSteps,
+        {
+          name: 'Download staged Netlify output',
+          uses: 'actions/download-artifact@v4',
+          with: {
+            name: opts.artifactName ?? netlifyPreviewArtifactName,
+            path: netlifyPreviewStageDir,
+            'run-id': '${{ github.event.workflow_run.id }}',
+            'github-token': '${{ github.token }}',
+          },
+        },
+        withGithubTokenEnv({
+          ...deployStep,
+          // The Netlify token exists only in this step's environment.
+          env: { ...deployStep.env, NETLIFY_AUTH_TOKEN: opts.netlifyAuthToken },
+        }),
+        workflowReportCollectorStep({
+          bundleId: opts.stateId,
+          inputPaths: [`\${{ steps.deploy.outputs.${workflowReportPathOutputName} }}`],
+          outputPath: netlifyPreviewBundlePath,
+          allowMissingInput: true,
+        }),
+        workflowReportCommentBodyStep({
+          bundlePath: netlifyPreviewBundlePath,
+          commentBodyPath: netlifyPreviewCommentBodyPath,
+          summaryPath: netlifyPreviewSummaryPath,
+          title: opts.title,
+          noRecordsMessage: opts.noRecordsMessage,
+          stateId: opts.stateId,
+          entryId: '${{ needs.resolve-preview.outputs.head-sha }}',
+          entryLabel: "${{ format('PR {0}', needs.resolve-preview.outputs.number) }}",
+          pullRequest,
+        }),
+        {
+          name: 'Upload rendered preview comment',
+          uses: 'actions/upload-artifact@v4',
+          with: {
+            name: netlifyPreviewCommentArtifactName,
+            path: netlifyPreviewReportDir,
+            'if-no-files-found': 'error',
+            'retention-days': 1,
+          },
+        },
+      ],
+    },
+    'publish-preview-comment': {
+      needs: ['resolve-preview', 'deploy-preview'],
+      'runs-on': opts.runsOn,
+      'timeout-minutes': timeoutMinutes,
+      permissions: deployCommentPermissions,
+      defaults: bashShellDefaults,
+      steps: [
+        trustedDefaultBranchCheckoutStep,
+        ...opts.setupSteps,
+        {
+          name: 'Download rendered preview comment',
+          uses: 'actions/download-artifact@v4',
+          with: { name: netlifyPreviewCommentArtifactName, path: netlifyPreviewReportDir },
+        },
+        workflowReportPublisherStep({
+          commentBodyPath: netlifyPreviewCommentBodyPath,
+          summaryPath: netlifyPreviewSummaryPath,
+          stateId: opts.stateId,
+          pullRequest,
+        }),
+      ],
+    },
+  }
+}
