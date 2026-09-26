@@ -4,7 +4,7 @@
 # Projection source: rust/buck2-tools/evidence/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:0926f287e9f2b1dbaf32808fad13e97522f43b35bddfe138814ac16a79167c75
+# Semantic fingerprint: sha256:03ab6aa4e43aa4463cb890d462d46f89e029ecd9a97d7f0b2d343c96a117c1b6
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/evidence/BUCK.genie.ts, rust/buck2-tools/evidence/Cargo.toml, rust/buck2-tools/evidence/src/**/*.rs, rust/buck2-tools/evidence/tests/**/*.rs, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
