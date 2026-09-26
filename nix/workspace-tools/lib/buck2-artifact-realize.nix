@@ -135,7 +135,13 @@ pkgs.runCommand "${name}-buck2-import"
       and .platform == $declared.platform
       and .runtimeKind == $declared.runtimeKind
       and ($declared.digest == null or .digest == $declared.digest)
-      and ($declared.target == null or .target == $declared.target)
+      and (
+        $declared.target == null
+        or .target == $declared.target
+        # A cell-relative declaration matches the cell-qualified label
+        # `str(ctx.label.raw_target())` records, whatever the root names the cell.
+        or ($declared.target | startswith("//")) and (.target | sub("^[A-Za-z0-9_-]+//"; "//")) == $declared.target
+      )
     ' "$observation" >/dev/null || {
       ${pkgs.jq}/bin/jq -n --argjson declared "$declared" --slurpfile observed "$observation" \
         '{declared: $declared, observed: ($observed[0] | del(.canonical))}' >&2
