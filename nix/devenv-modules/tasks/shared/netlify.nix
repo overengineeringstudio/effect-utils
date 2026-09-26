@@ -65,9 +65,7 @@ let
             ;;
         esac
       '';
-      deployExec =
-        taskName: artifactDirSetup:
-        trace.exec taskName ''
+      deployScript = artifactDirSetup: ''
           set -euo pipefail
           ${artifactDirSetup}
 
@@ -155,7 +153,7 @@ let
       "netlify:deploy:${name}" = {
         description = "Deploy ${name} to Netlify";
         inherit after;
-        exec = deployExec "netlify:deploy:${name}" "artifact_dir=${lib.escapeShellArg staticDir}";
+        exec = trace.exec "netlify:deploy:${name}" (deployScript "artifact_dir=${lib.escapeShellArg staticDir}");
       };
       "netlify:stage:${name}" = {
         description = "Build ${name} and stage its static output for a separate Netlify deploy";
@@ -175,14 +173,14 @@ let
       };
       "netlify:deploy-staged:${name}" = {
         description = "Deploy the staged ${name} static output to Netlify without building it";
-        exec = deployExec "netlify:deploy-staged:${name}" ''
+        exec = trace.exec "netlify:deploy-staged:${name}" (deployScript ''
           ${readStageDir "netlify:deploy-staged:${name}"}
           artifact_dir="$stage_dir/"${lib.escapeShellArg name}
           if [ ! -d "$artifact_dir" ] || [ -L "$artifact_dir" ]; then
             echo "Error: staged Netlify output for ${name} is missing at $artifact_dir" >&2
             exit 1
           fi
-        '';
+        '');
       };
     };
 
