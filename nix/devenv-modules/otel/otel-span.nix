@@ -3,9 +3,11 @@
 # Delivers spans via spool file ($OTEL_SPAN_SPOOL_DIR) or HTTP POST (fallback).
 #
 # Subcommands:
-#   run       — wrap a command in an OTLP trace span
-#   emit-span — emit one OTLP span with typed attributes
-#   buck2     — prepare Buck command identity and sidecar (never runs Buck)
+#   run             — wrap a command in an OTLP trace span
+#   emit-span       — emit one OTLP span with typed attributes
+#   buck2           — prepare Buck command identity and sidecar (never runs Buck)
+#   pipeline-run    — seed one run/job trace around `devenv tasks run <verb>`
+#   pipeline-derive — print the shared run/root/job ids for a run id and job key
 #
 # Usage:
 #   packages = [ effectUtils.lib.mkOtelSpan { inherit pkgs; } ];
@@ -668,12 +670,19 @@ pkgs.writeShellScriptBin "otel-span" ''
         else
           run_id="$PIPELINE_RUN_ID"
         fi
-        job_key="''${PIPELINE_TASK_KEY:-worker/local}"
+        if (( owner )); then
+          job_key="''${PIPELINE_TASK_KEY:-worker/local}"
+        else
+          job_key="''${PIPELINE_TASK_KEY:-}"
+        fi
         if ! _valid_pipeline_run_id "$run_id" || [[ -z "$job_key" ]]; then
           echo "otel-span pipeline-run: invalid pipeline identity; running without seeded telemetry" >&2
           invalid=1
         fi
         if (( invalid )); then
+          unset OTEL_TASK_TRACEPARENT PIPELINE_TRACE_ID PIPELINE_ROOT_SPAN_ID \
+            PIPELINE_TASK_SPAN_ID PIPELINE_SPOOL_DIR PIPELINE_ROOT_OWNER \
+            PIPELINE_ENTRYPOINT_ACTIVE OTEL_SPAN_SPOOL_DIR
           "$@"
           return $?
         fi
@@ -684,10 +693,11 @@ pkgs.writeShellScriptBin "otel-span" ''
         export PIPELINE_TRACE_ID="$trace_id" PIPELINE_ROOT_SPAN_ID="$root_id" PIPELINE_TASK_SPAN_ID="$job_id"
         if (( owner )); then export PIPELINE_ROOT_OWNER=entrypoint; fi
         # A nested task stays beneath its active span, not a second job/root.
-        if [[ "''${PIPELINE_ROOT_OWNER:-}" == entrypoint ]] && _valid_traceparent "$inherited" &&
-          [[ "''${BASH_REMATCH[1]}" == "$trace_id" ]] && (( ! owner )); then
+        if (( ! owner )) && [[ "''${PIPELINE_ENTRYPOINT_ACTIVE:-}" == 1 ]] &&
+          _valid_traceparent "$inherited" && [[ "''${BASH_REMATCH[1]}" == "$trace_id" ]]; then
           nested=1
         fi
+        export PIPELINE_ENTRYPOINT_ACTIVE=1
         if _valid_traceparent "$inherited" && [[ "''${BASH_REMATCH[1]}" != "$trace_id" ]]; then
           outer="$inherited"
         fi
