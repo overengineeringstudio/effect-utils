@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 
 import { resolveConfig } from '../Config.ts'
@@ -37,6 +37,10 @@ type Document = {
   runs: Run[]
   comparison?: Comparison
 }
+
+class TraceCommandError extends Schema.TaggedError<TraceCommandError>()('TraceCommandError', {
+  message: Schema.String,
+}) {}
 
 const pr = Cli.Argument.Int('pr').pipe(Cli.Argument.withDescription('Pull request number'))
 const repo = Cli.Flag.String('repo').pipe(Cli.Flag.optional)
@@ -93,27 +97,48 @@ const publishFreeze = async (doc: Document, prNumber: number) => {
 export const tracesCommand = Cli.Command.make('traces', { pr, repo, resolver, freeze }).pipe(
   Cli.Command.withHandler(({ pr: number, repo: repoOpt, resolver: resolverOpt, freeze: shouldFreeze }) =>
     Effect.gen(function* () {
-      if (!Number.isSafeInteger(number) || number <= 0) return yield* Effect.fail(new Error('PR number must be positive'))
+      if (!Number.isSafeInteger(number) || number <= 0) {
+        return yield* new TraceCommandError({ message: 'PR number must be positive' })
+      }
       const config = yield* resolveConfig({})
       const selectedRepo = Option.isSome(repoOpt) ? repoOpt.value : config.repos[0]
       if (!selectedRepo || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(selectedRepo)) {
-        return yield* Effect.fail(new Error('Could not determine owner/repo; pass --repo owner/name'))
+        return yield* new TraceCommandError({ message: 'Could not determine owner/repo; pass --repo owner/name' })
       }
       const base = Option.isSome(resolverOpt) ? resolverOpt.value : process.env.BUCK2_EVIDENCE_RESOLVER_URL ?? config.resolverUrl
-      if (!base) return yield* Effect.fail(new Error('Set BUCK2_EVIDENCE_RESOLVER_URL or config.resolverUrl to a tailnet resolver URL'))
+      if (!base) {
+        return yield* new TraceCommandError({
+          message: 'Set BUCK2_EVIDENCE_RESOLVER_URL or config.resolverUrl to a tailnet resolver URL',
+        })
+      }
       const url = `${base.replace(/\/$/, '')}/pr/${selectedRepo}/${number}.json`
       const doc = yield* Effect.tryPromise({
         try: async () => {
           const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
-          if (!response.ok) throw new Error(`Resolver returned HTTP ${response.status}`)
+          if (!response.ok) {
+            throw new TraceCommandError({ message: `Resolver returned HTTP ${response.status}` })
+          }
           const body: unknown = await response.json()
-          if (!isDocument(body)) throw new Error('Unknown resolver JSON schema; expected buck2-trace-access/v1')
+          if (!isDocument(body)) {
+            throw new TraceCommandError({
+              message: 'Unknown resolver JSON schema; expected buck2-trace-access/v1',
+            })
+          }
           return body
         },
-        catch: (cause) => new Error(`Trace resolver unavailable (${url}); tailnet access is required: ${String(cause)}`),
+        catch: (cause) =>
+          new TraceCommandError({
+            message: `Trace resolver unavailable (${url}); tailnet access is required: ${String(cause)}`,
+          }),
       })
       print(doc)
-      if (shouldFreeze) yield* Effect.tryPromise(() => publishFreeze(doc, number))
+      if (shouldFreeze) {
+        yield* Effect.tryPromise({
+          try: () => publishFreeze(doc, number),
+          catch: (cause) =>
+            new TraceCommandError({ message: `Could not publish trace snapshot: ${String(cause)}` }),
+        })
+      }
     }),
   ),
   Cli.Command.withDescription('Show PR run/job trace IDs from the tailnet resolver; --freeze publishes a Vista snapshot'),
