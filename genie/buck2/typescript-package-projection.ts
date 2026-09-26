@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
+import { rootWorkspacePackages } from '../../package.json.genie.ts'
 import {
   createGenieOutput,
   type GenieOutput,
@@ -792,29 +793,33 @@ export const buck2TypeScriptPackageProjection = ({
     .map(snapshotBaselineFor)
     .filter((baseline) => existsSync(path.join(process.cwd(), packagePath, baseline)))
   const declarationSources = packageSources.filter(isHandwrittenDeclaration)
-  const packageManifest = JSON.parse(
-    readFileSync(path.join(process.cwd(), packagePath, 'package.json'), 'utf8'),
-  ) as Record<string, Record<string, string> | undefined>
+  // Package generators are the authority. Reading emitted manifests here races
+  // concurrent genie regeneration and can project a previous dependency graph.
+  const packageManifest = rootWorkspacePackages.find(
+    (member) => member.meta.workspace.memberPath === packagePath,
+  )?.data
+  if (packageManifest === undefined) {
+    throw new Error(`${packagePath}: missing workspace package generator`)
+  }
   const workspaceNames = new Set(
-    ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'].flatMap(
-      (section) =>
-        Object.entries(packageManifest[section] ?? {})
-          .filter(([, specifier]) => specifier.startsWith('workspace:'))
-          .map(([name]) => name),
+    [
+      packageManifest.dependencies,
+      packageManifest.devDependencies,
+      packageManifest.optionalDependencies,
+      packageManifest.peerDependencies,
+    ].flatMap((dependencies) =>
+      Object.entries(dependencies ?? {})
+        .filter(([, specifier]) => specifier.startsWith('workspace:'))
+        .map(([name]) => name),
     ),
   )
   const workspaceManifestPaths = [...workspaceNames]
     .map((name) => {
-      const sibling = workspaceSiblings.find((entry) => entry.packageName === name)
-      if (sibling !== undefined) return sibling.packagePath
-      const member = pnpmWorkspaceMemberPaths.find((memberPath) => {
-        const manifestPath = path.join(process.cwd(), memberPath, 'package.json')
-        if (existsSync(manifestPath) === false) return false
-        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string }
-        return manifest.name === name
-      })
-      if (member === undefined) throw new Error(`${packagePath}: unknown workspace package ${name}`)
-      return member
+      const sibling = rootWorkspacePackages.find((member) => member.data.name === name)
+      if (sibling === undefined) {
+        throw new Error(`${packagePath}: unknown workspace package ${name}`)
+      }
+      return sibling.meta.workspace.memberPath
     })
     .toSorted((left, right) => compareStrings({ left, right }))
   const buckPackagePaths = new Set(
@@ -1005,6 +1010,9 @@ export const buck2TypeScriptPackageProjection = ({
   const semanticInputs = [
     ...commonSemanticInputs,
     'genie/packages.ts',
+    // The root registry supplies names, paths and dependency ranges directly
+    // from all package generators; none of their generated manifests are inputs.
+    ...pnpmWorkspaceMemberPaths.map((memberPath) => `${memberPath}/package.json.genie.ts`),
     projectionSource,
     `${packagePath}/package.json.genie.ts`,
     `${packagePath}/tsconfig.json.genie.ts`,

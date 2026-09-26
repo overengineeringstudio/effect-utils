@@ -57,8 +57,8 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
-        './styles.css': './dist/styles.css',
+        '.': { types: './dist/mod.d.ts', default: './dist/mod.js' },
+        './styles.css': './src/styles.css',
       },
     },
     scripts: {

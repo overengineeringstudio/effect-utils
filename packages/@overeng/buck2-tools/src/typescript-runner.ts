@@ -38,7 +38,7 @@ type TypecheckOptions = {
 }
 
 type EmitOptions = {
-  readonly declarationEntrypoint: string
+  readonly declarationEntrypoint: string | undefined
   readonly declarationSources: readonly string[]
   readonly outDir: string
   readonly output: string
@@ -188,10 +188,12 @@ export const parseEmitOptions = (args: readonly string[]): EmitOptions => {
       name: 'out dir',
       value: requireArgument({ args, index: 3, name: 'out dir' }),
     }),
-    declarationEntrypoint: requireNormalizedRelativePath({
-      name: 'declaration entrypoint',
-      value: requireArgument({ args, index: 4, name: 'declaration entrypoint' }),
-    }),
+    declarationEntrypoint: (() => {
+      const value = requireArgument({ args, index: 4, name: 'declaration entrypoint' })
+      return value === ''
+        ? undefined
+        : requireNormalizedRelativePath({ name: 'declaration entrypoint', value })
+    })(),
     output: requireArgument({ args, index: 5, name: 'output' }),
     declarationSources,
   }
@@ -417,6 +419,32 @@ const packageTreeArtifactDirectory = (root: string): string | undefined =>
     ? dirname(dirname(root))
     : undefined
 
+/** Leave enough ancestors in the temporary tree for every declared relative sibling. */
+export const stagedEmitPackageRoot = (options: {
+  readonly packageTree: string
+  readonly readRoots: readonly string[]
+  readonly stagingRoot: string
+}): string => {
+  const packageArtifact = packageTreeArtifactDirectory(options.packageTree)
+  const depth =
+    packageArtifact === undefined
+      ? 0
+      : Math.max(
+          0,
+          ...options.readRoots.flatMap((root) => {
+            const siblingArtifact = packageTreeArtifactDirectory(root)
+            return siblingArtifact === undefined
+              ? []
+              : [
+                  relative(packageArtifact, siblingArtifact)
+                    .split(sep)
+                    .filter((segment) => segment === '..').length,
+                ]
+          }),
+        )
+  return join(options.stagingRoot, ...Array(depth).fill('workspace'), 'package')
+}
+
 /**
  * Recreates the relative workspace topology around an emit staging directory.
  *
@@ -515,22 +543,24 @@ export const copyDeclarationSources = async (options: {
 }
 
 const validateOutput = async (options: {
-  readonly declarationEntrypoint: string
+  readonly declarationEntrypoint?: string | undefined
   readonly output: string
 }): Promise<void> => {
   const { declarationEntrypoint, output } = options
-  const expected = join(output, declarationEntrypoint)
-  let expectedMetadata: Stats
-  try {
-    expectedMetadata = await lstat(expected)
-  } catch (error) {
-    if (isErrnoException(error) === true && error.code === 'ENOENT') {
-      fail(`expected declaration entrypoint was not emitted: ${declarationEntrypoint}`)
+  if (declarationEntrypoint !== undefined) {
+    const expected = join(output, declarationEntrypoint)
+    let expectedMetadata: Stats
+    try {
+      expectedMetadata = await lstat(expected)
+    } catch (error) {
+      if (isErrnoException(error) === true && error.code === 'ENOENT') {
+        fail(`expected declaration entrypoint was not emitted: ${declarationEntrypoint}`)
+      }
+      throw error
     }
-    throw error
-  }
-  if (expectedMetadata.isFile() === false) {
-    fail(`expected declaration entrypoint is not a regular file: ${declarationEntrypoint}`)
+    if (expectedMetadata.isFile() === false) {
+      fail(`expected declaration entrypoint is not a regular file: ${declarationEntrypoint}`)
+    }
   }
 
   const visit = async (path: string): Promise<void> => {
@@ -634,7 +664,8 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
   let primaryError: unknown
 
   try {
-    const packageRoot = join(stagingRoot, 'package')
+    const packageRoot = stagedEmitPackageRoot({ packageTree, readRoots, stagingRoot })
+    await mkdir(dirname(packageRoot), { recursive: true })
     await cp(packageTree, packageRoot, {
       dereference: false,
       preserveTimestamps: true,

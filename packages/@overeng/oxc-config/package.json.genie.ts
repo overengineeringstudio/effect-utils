@@ -14,6 +14,7 @@ import {
   workspaceMember,
   exportEntry,
   packageJson,
+  publishedSourceExport,
   privatePackageDefaults,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
@@ -57,6 +58,13 @@ export default packageJson(
           environment: 'node',
         },
       ),
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        './plugin': publishedSourceExport('mod'),
+        './stylex-upstream-plugin': publishedSourceExport('stylex-upstream-plugin'),
+      },
     },
   } satisfies PackageJsonInputData,
   deps,

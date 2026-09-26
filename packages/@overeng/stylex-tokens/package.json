@@ -28,8 +28,11 @@
   "publishConfig": {
     "access": "public",
     "exports": {
-      "./tokens.stylex": "./dist/tokens.stylex.js",
-      "./preflight.css": "./dist/preflight.css"
+      "./tokens.stylex": {
+        "types": "./dist/src/tokens.stylex.d.ts",
+        "default": "./dist/src/tokens.stylex.js"
+      },
+      "./preflight.css": "./src/preflight.css"
     }
   }
 }
