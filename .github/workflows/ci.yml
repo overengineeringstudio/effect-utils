@@ -2990,9 +2990,9 @@ jobs:
         if: steps.product-publication.outputs.changed == 'true'
         env:
           APP_ID: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
-          APP_PRIVATE_KEY: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
+          APP_PRIVATE_KEY_PRESENT: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}
         run: |
-          if [ -n "$APP_ID" ] && [ -n "$APP_PRIVATE_KEY" ]; then
+          if [ -n "$APP_ID" ] && [ "$APP_PRIVATE_KEY_PRESENT" = true ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"
