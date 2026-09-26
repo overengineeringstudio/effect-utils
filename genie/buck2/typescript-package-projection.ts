@@ -7,7 +7,6 @@ import {
   createGenieOutput,
   type GenieOutput,
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
-import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 import { javaScriptActionRuntime, packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
@@ -682,6 +681,18 @@ type Buck2DependencyProjection =
       readonly dependencyTarget: string
     }
 
+/** Source package metadata supplied by the owning repository's Genie registry. */
+export type Buck2WorkspacePackageGenerator = {
+  readonly meta: { readonly workspace: { readonly memberPath: string } }
+  readonly data: {
+    readonly name: string
+    readonly dependencies?: Readonly<Record<string, string>>
+    readonly devDependencies?: Readonly<Record<string, string>>
+    readonly optionalDependencies?: Readonly<Record<string, string>>
+    readonly peerDependencies?: Readonly<Record<string, string>>
+  }
+}
+
 export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly packageName: string
   readonly packagePath: string
@@ -689,6 +700,8 @@ export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly rulesCell?: `@${string}`
   readonly sourceRoots: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
+  /** Consumer roots supply their own Genie registry; the platform root defaults to its own. */
+  readonly workspacePackages?: readonly Buck2WorkspacePackageGenerator[]
   /** Project-level authority declarations; one package may own more than one root project. */
   readonly authorities: readonly [
     Buck2TypeScriptProjectAuthorityMetadata,
@@ -707,6 +720,7 @@ export const buck2TypeScriptPackageProjection = ({
   rulesCell,
   sourceRoots,
   workspaceSiblings = [],
+  workspacePackages = rootWorkspacePackages,
   authorities,
   tests,
   testDataRoots = [],
@@ -795,7 +809,7 @@ export const buck2TypeScriptPackageProjection = ({
   const declarationSources = packageSources.filter(isHandwrittenDeclaration)
   // Package generators are the authority. Reading emitted manifests here races
   // concurrent genie regeneration and can project a previous dependency graph.
-  const packageManifest = rootWorkspacePackages.find(
+  const packageManifest = workspacePackages.find(
     (member) => member.meta.workspace.memberPath === packagePath,
   )?.data
   if (packageManifest === undefined) {
@@ -815,7 +829,7 @@ export const buck2TypeScriptPackageProjection = ({
   )
   const workspaceManifestPaths = [...workspaceNames]
     .map((name) => {
-      const sibling = rootWorkspacePackages.find((member) => member.data.name === name)
+      const sibling = workspacePackages.find((member) => member.data.name === name)
       if (sibling === undefined) {
         throw new Error(`${packagePath}: unknown workspace package ${name}`)
       }
@@ -1003,16 +1017,18 @@ export const buck2TypeScriptPackageProjection = ({
       sibling.packageTreeTarget,
     ])
     .toSorted(([left], [right]) => compareStrings({ left, right }))
-  const staticSourceExcludes = pnpmWorkspaceMemberPaths
+  const staticSourceExcludes = workspacePackages
+    .map((member) => member.meta.workspace.memberPath)
     .filter((candidate) => candidate.startsWith(`${packagePath}/`))
     .map((candidate) => `${path.posix.relative(packagePath, candidate)}/**`)
     .toSorted((left, right) => compareStrings({ left, right }))
   const semanticInputs = [
     ...commonSemanticInputs,
-    'genie/packages.ts',
-    // The root registry supplies names, paths and dependency ranges directly
-    // from all package generators; none of their generated manifests are inputs.
-    ...pnpmWorkspaceMemberPaths.map((memberPath) => `${memberPath}/package.json.genie.ts`),
+    ...(workspacePackages === rootWorkspacePackages ? ['genie/packages.ts'] : []),
+    // The owning repository's registry supplies names, paths and ranges from Genie sources.
+    ...workspacePackages.map(
+      (member) => `${member.meta.workspace.memberPath}/package.json.genie.ts`,
+    ),
     projectionSource,
     `${packagePath}/package.json.genie.ts`,
     `${packagePath}/tsconfig.json.genie.ts`,

@@ -60,7 +60,10 @@ export interface TuiStorybookConfigOptionsWithViteFinal<
   viteFinal: StorybookViteFinal<TConfig>
 }
 
-const opentuiStubPath = new URL('../opentui-stub.ts', import.meta.url).pathname
+const opentuiStubPath = new URL(
+  `../opentui-stub.${import.meta.url.endsWith('.js') ? 'js' : 'ts'}`,
+  import.meta.url,
+).pathname
 
 /** Apply shared Vite config: server binding and file-watch policy. */
 const applySharedConfig = (config: InlineConfig): void => {
