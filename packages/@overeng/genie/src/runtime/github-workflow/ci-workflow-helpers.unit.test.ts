@@ -1381,7 +1381,11 @@ describe('storybook preview split build/deploy', () => {
               .filter(({ jobId, step }) => jobId === 'deploy-preview' && String(step.uses ?? '').startsWith('actions/download-artifact@'))
               .map(({ step }) => step.with['run-id']),
             deployReadsPullRequestEvent: JSON.stringify(deploy).includes('github.event.pull_request'),
-            stagedDeployPolicies: [...stagedRun.matchAll(/--input "?([A-Za-z]+Policy)=(\\w+)/g)].map(([, k, v]) => k + '=' + v),
+            stagedDeployPolicies: [
+              ...new Set(
+                [...stagedRun.matchAll(/--input "?([A-Za-z]+Policy)=(\\w+)/g)].map(([, k, v]) => k + '=' + v),
+              ),
+            ],
           }))
         `,
       ],
