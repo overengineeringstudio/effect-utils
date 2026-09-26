@@ -430,7 +430,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   typecheck:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -646,7 +647,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   lint:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -845,7 +847,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   test:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     strategy:
@@ -1047,7 +1050,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   test-playwright-utils:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1246,7 +1250,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   test-playwright-tui-react:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1445,7 +1450,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   test-megarepo-cold-gc:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1644,7 +1650,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   pnpm-builder-contract:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1894,7 +1901,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   pnpm-regression:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2095,7 +2103,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   bundle-smoke:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2294,7 +2303,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   cargo:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2493,7 +2503,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   weaver:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2699,7 +2710,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   pr-a-inert-buck:
     if: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
     runs-on: ubuntu-latest
@@ -2713,6 +2725,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -2905,7 +2918,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   publish-products:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on:
@@ -2920,7 +2934,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
@@ -3017,6 +3032,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -3330,7 +3346,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   devenv-perf:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on:
@@ -3347,7 +3364,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       ARTIFACT_DIR: '${{ github.workspace }}/tmp/devenv-perf-ci'
       OTEL_SERVICE_NAME: devenv-perf-ci
       RUNNER_CLASS: 'nscloud-ubuntu-24.04-amd64-16x64-with-features,namespace-features:github.run-id=${{ github.run_id }}'
@@ -4193,7 +4211,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   nix-closure-sizes:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
     runs-on:
@@ -4208,7 +4227,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -4839,7 +4859,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -5100,7 +5121,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -7784,7 +7806,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   test-integration-restate:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     concurrency:
@@ -7934,7 +7957,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   test-live-deploy-ci-tools:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     concurrency:
@@ -8136,7 +8160,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   deploy-storybooks:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on:
@@ -8362,7 +8387,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   notify-alignment:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
@@ -8401,4 +8427,5 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
