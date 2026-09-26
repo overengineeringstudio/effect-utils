@@ -8,7 +8,6 @@
  */
 
 import { createHash } from 'node:crypto'
-import * as NodePath from 'node:path'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'

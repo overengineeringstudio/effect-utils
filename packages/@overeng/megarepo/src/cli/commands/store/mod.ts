@@ -53,7 +53,6 @@ import { readWorktreeInUse, type InUseHolder } from '../../../store/store-inuse.
 import {
   collectStoreLiveSet,
   isPathProtected,
-  refreshWorkspaceRegistry,
   type StoreLiveSet,
 } from '../../../store/store-liveness.ts'
 import { StoreLock } from '../../../store/store-lock.ts'

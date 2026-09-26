@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Cause, Effect, Exit, Option, Schema } from 'effect'
+import { Effect, Exit, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'

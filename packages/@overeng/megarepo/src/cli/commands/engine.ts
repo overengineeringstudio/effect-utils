@@ -646,7 +646,6 @@ export const runCommand = ({
     const json = output === 'json' || output === 'ndjson'
 
     const resolvedWorktreeMode = worktreeMode ?? 'auto'
-    const appliesWorkspace = mode === 'apply' || applyAfterFetch === true
 
     const cwd = yield* Cwd
     const root = yield* findMegarepoRoot(cwd)
