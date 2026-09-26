@@ -72,7 +72,18 @@ grep -F 'env -u CACHIX_AUTH_TOKEN curl -fsS "$artifact_url"' "$publisher" >/dev/
 grep -F 'P1 cache publisher (decision 0037)' "$publisher" >/dev/null
 grep -F 'publish-products:' "$workflow" >/dev/null
 grep -F 'CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}' "$workflow" >/dev/null
-grep -F 'pull-requests: write' "$workflow" >/dev/null
+# The manifest PR is opened with the publisher GitHub App token; the job token stays read-only.
+publish_job="$(sed -n '/^  publish-products:/,/^  [a-z][a-z0-9-]*:$/p' "$workflow")"
+grep -F 'uses: actions/create-github-app-token@' <<<"$publish_job" >/dev/null
+grep -F 'private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}' <<<"$publish_job" >/dev/null
+if grep -E 'pull-requests: write|contents: write' <<<"$publish_job" >/dev/null; then
+  echo "buck2-cache-products-test: publish-products must not grant write scopes to GITHUB_TOKEN" >&2
+  exit 1
+fi
+if [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' <<<"$publish_job")" -ne 2 ]; then
+  echo "buck2-cache-products-test: the publisher App key must reach only the token-minting step (and the presence check)" >&2
+  exit 1
+fi
 grep -F 'nix/buck2-products/publish.sh --proposal "$proposal"' "$workflow" >/dev/null
 if grep -F 'nix/buck2-products/publish.sh --proposal "$proposal" --product' "$workflow" >/dev/null; then
   echo "buck2-cache-products-test: publication workflow still selects a hand-maintained product subset" >&2
