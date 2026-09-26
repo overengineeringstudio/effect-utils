@@ -53,10 +53,6 @@ export default packageJson(
           types: './dist/src/node-vitest/mod.d.ts',
           default: './dist/src/node-vitest/mod.js',
         },
-        './node-vitest/setup-fast-check': {
-          types: './dist/src/node-vitest/setup-fast-check.d.ts',
-          default: './dist/src/node-vitest/setup-fast-check.js',
-        },
         './otelite': { types: './dist/src/otelite/mod.d.ts', default: './dist/src/otelite/mod.js' },
         './cli-contract': {
           types: './dist/src/cli-contract.d.ts',
