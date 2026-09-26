@@ -17,12 +17,12 @@ This experiment records the review findings, not a deployed page.
 
 ## Result
 
-| Variant | Observation |
-| --- | --- |
-| V1: seven main runs | 12 tasks faster than every main sample, none slower, 64 inside the spread. Runs, jobs and top tasks stayed accessible. |
-| V2: one base-revision main run | Reported apparent regressions of +22.7 s and +15.1 s that both sat inside the multi-run main spread. |
-| V3: Grafana redirect | Left almost nothing readable on a phone. |
-| V4: verdict + critical chain | The short header improved orientation; its chain was a heuristic over task spans, not Buck's action-level critical path. |
+| Variant                        | Observation                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| V1: seven main runs            | 12 tasks faster than every main sample, none slower, 64 inside the spread. Runs, jobs and top tasks stayed accessible.   |
+| V2: one base-revision main run | Reported apparent regressions of +22.7 s and +15.1 s that both sat inside the multi-run main spread.                     |
+| V3: Grafana redirect           | Left almost nothing readable on a phone.                                                                                 |
+| V4: verdict + critical chain   | The short header improved orientation; its chain was a heuristic over task spans, not Buck's action-level critical path. |
 
 The review established the k=7 baseline instead of the earlier suggested
 k=5. The main spread is a noise band, not a confidence interval or proof

@@ -21,10 +21,10 @@ already puts deployment in dotfiles.
 
 ## Options
 
-| Option | Outcome | Reason |
-| --- | --- | --- |
-| Add `06-trace-access`; refine 01/02/05; fleet trait in dotfiles | Accepted | Preserves the data-flow order and one owner per contract |
-| Fold resolver and PR page into 05 | Rejected | Mixes ingest mechanics with review/agent access contracts |
+| Option                                                          | Outcome  | Reason                                                    |
+| --------------------------------------------------------------- | -------- | --------------------------------------------------------- |
+| Add `06-trace-access`; refine 01/02/05; fleet trait in dotfiles | Accepted | Preserves the data-flow order and one owner per contract  |
+| Fold resolver and PR page into 05                               | Rejected | Mixes ingest mechanics with review/agent access contracts |
 
 ## Decision
 

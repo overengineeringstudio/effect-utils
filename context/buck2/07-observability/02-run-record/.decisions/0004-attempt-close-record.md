@@ -21,11 +21,11 @@ rules as job records.
 
 ## Options
 
-| Option | Outcome | Reason |
-| --- | --- | --- |
+| Option                                               | Outcome  | Reason                                                                   |
+| ---------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
 | Always-run attempt-close record plus bounded timeout | Accepted | Explicit roster, one completed root, recovery if finalizer cannot upload |
-| First job emits a provisional root | Rejected | Immutable wrong bounds and duplicate roots |
-| Infer completion from observed job uploads alone | Rejected | Failed/missing job never appears in the observed set |
+| First job emits a provisional root                   | Rejected | Immutable wrong bounds and duplicate roots                               |
+| Infer completion from observed job uploads alone     | Rejected | Failed/missing job never appears in the observed set                     |
 
 ## Decision
 

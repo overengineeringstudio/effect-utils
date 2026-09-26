@@ -19,11 +19,11 @@ would fragment the access contract.
 
 ## Options
 
-| Option | Outcome | Reason |
-| --- | --- | --- |
+| Option                                                           | Outcome  | Reason                                                              |
+| ---------------------------------------------------------------- | -------- | ------------------------------------------------------------------- |
 | Versioned resolver JSON + `gh-ci-utils traces <pr>` + skill note | Accepted | Existing CI agent entry point and a durable typed consumer contract |
-| New standalone Rust CLI | Rejected | Another command to discover for the same JSON |
-| Raw JSON without CLI | Rejected | Agents would repeatedly reinterpret the response |
+| New standalone Rust CLI                                          | Rejected | Another command to discover for the same JSON                       |
+| Raw JSON without CLI                                             | Rejected | Agents would repeatedly reinterpret the response                    |
 
 ## Decision
 

@@ -125,11 +125,11 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 
 ## Requirement Trace
 
-| Requirements                             | Refinement                     |
-| ---------------------------------------- | ------------------------------ |
-| BUCK.OBS-R01, BUCK.OBS-R02               | 03 Event-log Adapter           |
-| BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07 | 01 Run Identity, 02 Run Record |
-| BUCK.OBS-R05, BUCK.OBS-T02               | 04 Trace Views                 |
-| BUCK.OBS-R03, BUCK.OBS-R06, BUCK.OBS-R08 | 05 Ingest and Archive          |
-| BUCK.OBS-R01, BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08 | 06 Trace Access |
-| BUCK.OBS-R09                             | Root + all children            |
+| Requirements                                           | Refinement                     |
+| ------------------------------------------------------ | ------------------------------ |
+| BUCK.OBS-R01, BUCK.OBS-R02                             | 03 Event-log Adapter           |
+| BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07               | 01 Run Identity, 02 Run Record |
+| BUCK.OBS-R05, BUCK.OBS-T02                             | 04 Trace Views                 |
+| BUCK.OBS-R03, BUCK.OBS-R06, BUCK.OBS-R08               | 05 Ingest and Archive          |
+| BUCK.OBS-R01, BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08 | 06 Trace Access                |
+| BUCK.OBS-R09                                           | Root + all children            |

@@ -18,22 +18,22 @@ start limit. Tempo accepted 6,255 spans but retained 5,232 across idle gaps.
 
 ## Decision
 
-- Verify and durably place the upload, then write the record index row and a pending job in **one `index.sqlite` transaction**. Wake a bounded worker immediately; sweep the durable store and index periodically to recover missed enqueues. Lease, retry with capped backoff, and dead-letter failed jobs. Upload returns after durability, not after conversion. Target job end → clickable *complete* trace ≤30 seconds p95 **plus upload time** (q39).
+- Verify and durably place the upload, then write the record index row and a pending job in **one `index.sqlite` transaction**. Wake a bounded worker immediately; sweep the durable store and index periodically to recover missed enqueues. Lease, retry with capped backoff, and dead-letter failed jobs. Upload returns after durability, not after conversion. Target job end → clickable _complete_ trace ≤30 seconds p95 **plus upload time** (q39).
 - Build a single Rust `buck2-evidence` BuildProduct in effect-utils `rust/buck2-tools`, with `seal`, `upload`, `ingest`, `serve`, `drain`, `backfill`, and `retention`, sharing the in-process event adapter. The same ingest implementation runs locally and in the service. The resolver is served by the same unit on a **second Unix socket**. Dotfiles owns the hardened unit, archive dataset, retention timer, and two managed Tailscale Services: tailnet-OIDC/capability-gated upload and read-only resolver (q44).
 - Checkpoint OTLP chunks. Before replay of a possibly in-flight chunk, read back by deterministic trace id and push only absent spans. Acknowledgement is not completion: read back the expected span ids before switching to `ingested`; retry missing spans deterministically. If completeness cannot be established, keep the explicit `missing_spans` state and count rather than advertising a complete trace (q44/q45).
 - Keep the shared per-run caller trace. Dotfiles tunes Tempo live-store idle/live windows above expected inter-job gaps and verifies the isolated repro against fleet Tempo. The [upstream issue](https://github.com/grafana/tempo/issues/8002) records the defect; the ingester still reconciles via readback because gaps can outlast tuning (q45).
 
 ## Options
 
-| Option | Outcome | Rationale |
-| --- | --- | --- |
-| One Rust service, SQLite queue and readback reconciliation | Accepted | One durable index, immediate drain, no second orchestration server |
-| Synchronous ingest or polling-only trigger | Rejected | Ties CI completion to conversion or misses the latency target |
-| Dedicated Restate server | Rejected | Another stateful server; one server-crash replay duplicated 1,713 spans |
-| Shared Hypermerge Restate server | Rejected | Shared lifecycle and resource limits couple unrelated automation |
-| systemd path-unit drain | Rejected | Backend outage tripped unit start limit; no automatic recovery |
-| Tempo tuning without readback repair | Rejected | Longer gaps can still lose spans silently |
-| Per-job traces instead of the shared run trace | Size fallback | Avoids same-ID idle gaps but loses the selected whole-run waterfall |
+| Option                                                     | Outcome       | Rationale                                                               |
+| ---------------------------------------------------------- | ------------- | ----------------------------------------------------------------------- |
+| One Rust service, SQLite queue and readback reconciliation | Accepted      | One durable index, immediate drain, no second orchestration server      |
+| Synchronous ingest or polling-only trigger                 | Rejected      | Ties CI completion to conversion or misses the latency target           |
+| Dedicated Restate server                                   | Rejected      | Another stateful server; one server-crash replay duplicated 1,713 spans |
+| Shared Hypermerge Restate server                           | Rejected      | Shared lifecycle and resource limits couple unrelated automation        |
+| systemd path-unit drain                                    | Rejected      | Backend outage tripped unit start limit; no automatic recovery          |
+| Tempo tuning without readback repair                       | Rejected      | Longer gaps can still lose spans silently                               |
+| Per-job traces instead of the shared run trace             | Size fallback | Avoids same-ID idle gaps but loses the selected whole-run waterfall     |
 
 ## Consequences
 

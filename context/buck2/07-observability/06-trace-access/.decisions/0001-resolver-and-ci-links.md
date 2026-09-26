@@ -25,12 +25,12 @@ CI identity and a Tailscale Service app capability; fork ingestion is deferred
 
 ## Options
 
-| Option | Outcome | Reason |
-| --- | --- | --- |
-| Index-backed tailnet resolver; CI updates its existing comment and step summary | Accepted | Stable PR entry, pending state and existing CI write authority |
-| Ingester writes a comment after ingest | Rejected | GitHub write credential on the fleet host |
-| Resolver without a PR link | Rejected | Discoverability from the PR conversation suffers |
-| Public Funnel upload for fork runs in V1 | Deferred | Extra public ingress and credential path; the tailnet-only admission contract is smaller |
+| Option                                                                          | Outcome  | Reason                                                                                   |
+| ------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| Index-backed tailnet resolver; CI updates its existing comment and step summary | Accepted | Stable PR entry, pending state and existing CI write authority                           |
+| Ingester writes a comment after ingest                                          | Rejected | GitHub write credential on the fleet host                                                |
+| Resolver without a PR link                                                      | Rejected | Discoverability from the PR conversation suffers                                         |
+| Public Funnel upload for fork runs in V1                                        | Deferred | Extra public ingress and credential path; the tailnet-only admission contract is smaller |
 
 ## Decision
 

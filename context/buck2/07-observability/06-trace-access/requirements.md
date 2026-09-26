@@ -69,8 +69,8 @@ BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08, and BUCK.OBS-R01 of the
 
 ## Requirement Trace
 
-| Requirements | Refinement |
-| --- | --- |
+| Requirements             | Refinement        |
+| ------------------------ | ----------------- |
 | BUCK.OBS.ACCESS-R01, R02 | BUCK.OBS-R04, R03 |
-| BUCK.OBS.ACCESS-R03–R05 | BUCK.OBS-R01 |
+| BUCK.OBS.ACCESS-R03–R05  | BUCK.OBS-R01      |
 | BUCK.OBS.ACCESS-R06, R07 | BUCK.OBS-R08, R01 |

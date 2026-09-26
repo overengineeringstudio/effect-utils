@@ -12,12 +12,12 @@ Compared (B) one Rust process with an upload Unix socket, SQLite WAL index/queue
 
 ## Result
 
-| Candidate | Sequential p50 / p95 | 30-record burst p95 | Finding |
-| --- | --- | --- | --- |
-| B, SQLite queue | 2.21 / 2.74 s | 16.51 s (three workers) | Recovered tested crashes, outage, missed enqueue and poison cases; zero duplicates with checkpoint/probe. |
-| A2, dedicated Restate | 3.30 / 4.71 s | 13.64 s | 42 journal entries per heavy record; one of two server-crash probes produced 1,713 duplicate spans. |
-| C, path unit | 3.39 / 5.69 s (20 solo-run records) | Not measured | Outage retriggered to `unit-start-limit-hit`; no automatic recovery. |
-| A1, shared Restate | Not benchmarked | Not benchmarked | Shared server activation restarts and resource throttling make ownership unsafe. |
+| Candidate             | Sequential p50 / p95                | 30-record burst p95     | Finding                                                                                                   |
+| --------------------- | ----------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| B, SQLite queue       | 2.21 / 2.74 s                       | 16.51 s (three workers) | Recovered tested crashes, outage, missed enqueue and poison cases; zero duplicates with checkpoint/probe. |
+| A2, dedicated Restate | 3.30 / 4.71 s                       | 13.64 s                 | 42 journal entries per heavy record; one of two server-crash probes produced 1,713 duplicate spans.       |
+| C, path unit          | 3.39 / 5.69 s (20 solo-run records) | Not measured            | Outage retriggered to `unit-start-limit-hit`; no automatic recovery.                                      |
+| A1, shared Restate    | Not benchmarked                     | Not benchmarked         | Shared server activation restarts and resource throttling make ownership unsafe.                          |
 
 B's whole-ingest concurrency limit, rather than substrate, explains its slower burst p95; A2 bounded decode but permitted more concurrent pushes/readbacks. Under B, a missed enqueue was swept and ingested in 12.4 seconds, and the outage case completed 4.5 seconds after backend return. Heavy-load measurements are directional, not a fleet latency guarantee. A separate run-trace repro showed Tempo accepted 6,255 spans, but persisted and returned only 5,232 when three job bursts were spaced 20 seconds apart with reads during the gaps. Direct block inspection confirmed the loss; raising live-store `max_trace_idle` to 2 minutes eliminated that isolated reproduction. The service bakeoff also found incomplete shared-run readback on 13/30 records in one burst; this observation predated isolation of the idle/read interaction.
 

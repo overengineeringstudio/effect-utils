@@ -22,13 +22,13 @@ header only when labeled as a heuristic.
 
 ## Options
 
-| Option | Outcome | Reason |
-| --- | --- | --- |
-| V1 overview plus V4 verdict/chain header; k=7 main baseline | Accepted | Context first, phone-usable, noisy changes distinguished |
-| V1 alone | Rejected | No concise verdict or critical chain at the top |
-| V4 alone | Rejected | Jobs and top tasks need another navigation level |
-| Single base-revision main-run A/B | Rejected | Two observed false regressions were within the main spread |
-| Redirect directly to Grafana | Rejected | Weak phone surface and no run overview |
+| Option                                                      | Outcome  | Reason                                                     |
+| ----------------------------------------------------------- | -------- | ---------------------------------------------------------- |
+| V1 overview plus V4 verdict/chain header; k=7 main baseline | Accepted | Context first, phone-usable, noisy changes distinguished   |
+| V1 alone                                                    | Rejected | No concise verdict or critical chain at the top            |
+| V4 alone                                                    | Rejected | Jobs and top tasks need another navigation level           |
+| Single base-revision main-run A/B                           | Rejected | Two observed false regressions were within the main spread |
+| Redirect directly to Grafana                                | Rejected | Weak phone surface and no run overview                     |
 
 ## Decision
 

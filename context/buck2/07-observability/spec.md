@@ -48,14 +48,14 @@ leaves the build result and the native evidence untouched (BUCK.OBS-R01).
 
 ## Children
 
-| Child | Owns |
-| --- | --- |
-| [01-run-identity](./01-run-identity/spec.md) | pipeline-run trace seed, entrypoint and caller↔Buck command correlation |
-| [02-run-record](./02-run-record/spec.md) | per-job/local records, VCS fields, seal/upload and CI attempt-close roster |
-| [03-event-log-adapter](./03-event-log-adapter/spec.md) | direct decode, vendored schema, span model and daemon wait |
-| [04-trace-views](./04-trace-views/spec.md) | full/critical view rules, cap, summaries and bounded metrics |
+| Child                                                    | Owns                                                                                       |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [01-run-identity](./01-run-identity/spec.md)             | pipeline-run trace seed, entrypoint and caller↔Buck command correlation                    |
+| [02-run-record](./02-run-record/spec.md)                 | per-job/local records, VCS fields, seal/upload and CI attempt-close roster                 |
+| [03-event-log-adapter](./03-event-log-adapter/spec.md)   | direct decode, vendored schema, span model and daemon wait                                 |
+| [04-trace-views](./04-trace-views/spec.md)               | full/critical view rules, cap, summaries and bounded metrics                               |
 | [05-ingest-and-archive](./05-ingest-and-archive/spec.md) | single service, queued ingest, attempt completion, cumulative Tempo readback and retention |
-| [06-trace-access](./06-trace-access/spec.md) | read-only PR/trace resolver, review page, JSON and caller-owned Vista freeze command |
+| [06-trace-access](./06-trace-access/spec.md)             | read-only PR/trace resolver, review page, JSON and caller-owned Vista freeze command       |
 
 Dependency order follows data flow: `02` consumes identity from `01`, `03`
 decodes the native evidence in `02`, `04` shapes spans from `03`, `05`

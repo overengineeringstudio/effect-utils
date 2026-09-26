@@ -10,11 +10,11 @@ A provider run object can have no PR association even for a PR run, and a merge 
 
 ## Options
 
-| Option | Tradeoff | Outcome |
-| --- | --- | --- |
+| Option                                                    | Tradeoff                                                             | Outcome  |
+| --------------------------------------------------------- | -------------------------------------------------------------------- | -------- |
 | PR number from adapter environment, git revisions at seal | Portable evidence and reliable association without a provider lookup | Accepted |
-| Provider API resolves PR on ingest | Can return an empty association | Rejected |
-| Include manifest digest in trace id | Circular dependency on a not-yet-sealed record | Rejected |
+| Provider API resolves PR on ingest                        | Can return an empty association                                      | Rejected |
+| Include manifest digest in trace id                       | Circular dependency on a not-yet-sealed record                       | Rejected |
 
 ## Decision
 

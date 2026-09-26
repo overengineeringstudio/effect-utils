@@ -150,14 +150,14 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
 
 ## Failure Behavior
 
-| Condition | Behavior |
-| --- | --- |
-| No OTEL context outside a seeded run | No export; both views become derived traces (05); no build impact |
-| Invalid `TRACEPARENT` on a direct command | Treat as absent across `otel-span run` and buck2 prepare; never export an invalid Buck wrapper UUID |
-| Invalid or empty `PIPELINE_RUN_ID` | Warn and run the task without seeded telemetry; do not silently mint a different identity or change the build result |
-| Sidecar append fails | Warn; the command view degrades to an independent root |
-| Preparation process fails | Caller invokes Buck anyway without the env; build unaffected |
-| Post-hoc emit fails | Ignored (fail-open); the command span is missing, the build result is unaffected |
+| Condition                                 | Behavior                                                                                                             |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| No OTEL context outside a seeded run      | No export; both views become derived traces (05); no build impact                                                    |
+| Invalid `TRACEPARENT` on a direct command | Treat as absent across `otel-span run` and buck2 prepare; never export an invalid Buck wrapper UUID                  |
+| Invalid or empty `PIPELINE_RUN_ID`        | Warn and run the task without seeded telemetry; do not silently mint a different identity or change the build result |
+| Sidecar append fails                      | Warn; the command view degrades to an independent root                                                               |
+| Preparation process fails                 | Caller invokes Buck anyway without the env; build unaffected                                                         |
+| Post-hoc emit fails                       | Ignored (fail-open); the command span is missing, the build result is unaffected                                     |
 
 ## Conformance
 

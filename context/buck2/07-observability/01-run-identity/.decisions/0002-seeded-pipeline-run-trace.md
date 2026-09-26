@@ -16,12 +16,12 @@ Independent `devenv tasks run` invocations previously minted random task traces;
 
 ## Options
 
-| Option | Tradeoff | Outcome |
-| --- | --- | --- |
-| One run-attempt trace with one root writer and dual propagation during devenv transition | Whole-run waterfall, requires bounded trace size and temporary legacy variable | Accepted |
-| Per-job trace by default | Smaller traces but no single whole-run waterfall | Size fallback |
-| Random per-task traces restitched after ingest | Multiple identities for each span, late correlation | Rejected |
-| Seed task or `@completed` finalizer | No dependable end-of-run ownership; cancellation can skip finalizer | Rejected |
+| Option                                                                                   | Tradeoff                                                                       | Outcome       |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------- |
+| One run-attempt trace with one root writer and dual propagation during devenv transition | Whole-run waterfall, requires bounded trace size and temporary legacy variable | Accepted      |
+| Per-job trace by default                                                                 | Smaller traces but no single whole-run waterfall                               | Size fallback |
+| Random per-task traces restitched after ingest                                           | Multiple identities for each span, late correlation                            | Rejected      |
+| Seed task or `@completed` finalizer                                                      | No dependable end-of-run ownership; cancellation can skip finalizer            | Rejected      |
 
 ## Decision
 
