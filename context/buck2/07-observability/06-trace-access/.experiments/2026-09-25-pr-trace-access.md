@@ -28,7 +28,7 @@ outputs are not part of this VRS.
 | Agent probe | A scratch compact CLI listed indexed runs/traces and the by-ID next command in 0.38 s; span fetch by ID took 3.4 s in its sample. |
 | Push/readback | Critical 691 spans in one chunk: median push→complete 485 ms (n=5); full 7,681 spans in two chunks: median 1,058 ms (n=5), with partial reads in 3/5 samples. |
 | Attribute search | Critical marker first visible after 45–51 min under load; full marker still absent at the last 51-min probe. |
-| Single-run A/B | A merge-base comparison yielded 99 task rows, but unrelated tasks changed 29–61 s, exposing noisy single-run deltas. |
+| Single-run A/B | A base-revision main-run comparison yielded 99 task rows, but unrelated tasks changed 29–61 s, exposing noisy single-run deltas. |
 
 The CI tailnet join and upload duration were **not measured**; neither is a
 claimed end-to-end latency result. The prototype used a one-run comparison,

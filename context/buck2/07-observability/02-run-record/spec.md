@@ -67,9 +67,11 @@ dimensions never shares a record or span identity.
 Every field is provider-neutral; a provider contributes only attribute values.
 The adapter supplies `vcs.change.id` (PR number, if present) via the
 environment. At seal time git resolves `vcs.ref.head.revision` to the PR
-**head** and `vcs.ref.base.revision` to its base, not to the merge checkout;
-where a merge checkout exists, `buck2.vcs.merge.revision` holds its checked-out
-merge commit. The Buck2 observability lane owns the repository-local lowercase
+**head** and `vcs.ref.base.revision` to the base branch commit the tested PR
+merges into (`HEAD^1` of a CI merge checkout), not to the merge commit or a
+separately computed git merge-base. Where a merge checkout exists,
+`buck2.vcs.merge.revision` holds its checked-out merge commit. The Buck2
+observability lane owns the repository-local lowercase
 dotted `buck2.vcs.*` namespace; this selected key is stable for v1, is neither
 registered OTel semconv nor an alternative spelling for `vcs.ref.head.revision`,
 and is omitted if no merge checkout exists. The ingest index stores the same

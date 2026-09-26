@@ -44,9 +44,10 @@ BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08, and BUCK.OBS-R01 of the
   critical path exists, it replaces the task-span chain.
 - **BUCK.OBS.ACCESS-R04 Main-run baseline:** The A/B view must compare each
   PR task duration with the median of up to seven main runs at or before the
-  merge base, displaying the main-run spread as a noise band and distinguishing
-  deltas inside it from those outside it. It must disclose a missing or
-  incomplete baseline rather than present a single run as a stable median.
+  sealed `vcs.ref.base.revision` (the base parent of a merge checkout),
+  displaying the main-run spread as a noise band and distinguishing deltas
+  inside it from those outside it. It must disclose a missing or incomplete
+  baseline rather than present a single run as a stable median.
 - **BUCK.OBS.ACCESS-R05 Frozen review:** The read-only resolver page makes a
   copyable `gh-ci-utils traces <pr> --freeze` command available. An agent or
   operator runs it in their own Vista context to publish a frozen snapshot

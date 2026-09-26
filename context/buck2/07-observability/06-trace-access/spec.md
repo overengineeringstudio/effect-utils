@@ -79,12 +79,16 @@ the CLI reads the same versioned resolver JSON, constructs and publishes
 the frozen Vista review snapshot under that caller's authority. Page
 loads, index reads, and ingest never trigger publication.
 
-For each PR run, locate the merge-base revision recorded at seal time. Select
-the latest **k=7** indexed main-branch pipeline runs whose revision is at or
-before that merge base, never after it. Compare like-for-like job keys
-(including matrix dimensions) and task names. For each task, calculate the
-median of its eligible main-run durations; display their observed minimum to
-maximum as the main spread. A PR duration inside that closed band is marked
+For each PR run, use sealed `vcs.ref.base.revision`: the base branch commit
+that the tested PR merges into (`HEAD^1` of a CI merge checkout), not the
+git merge-base of the PR head and a later-moving branch. Select the latest
+**k=7** indexed main-branch pipeline runs whose revisions are at or before
+that base revision, never after it. This reflects the main state at merge
+time and needs no extra git history beyond the recorded parent. Compare
+like-for-like matrix-qualified job keys and task names. For each task,
+calculate the median of its eligible main-run durations; display their
+observed minimum to maximum as the main spread. A PR duration inside that
+closed band is marked
 `noise`; outside it, show the signed delta from the median and mark it beyond
 spread. Show the sample count per task, including when fewer than seven runs
 exist or a task is absent in a run; with no matching samples display
@@ -169,8 +173,9 @@ points to these commands, not a second bespoke CLI.
   `incomplete`.
 - An indexed but not yet ingested ID serves pending; complete readback serves
   a working Grafana link; unknown and expired IDs report distinct states.
-- A main sample above the merge base never enters the A/B baseline; a PR
-  duration within the main spread is noise even when it differs from median.
+- A main sample above sealed `vcs.ref.base.revision` never enters the A/B
+  baseline; a PR duration within the main spread is noise even when it
+  differs from the median.
 - An HTML and JSON request for one PR present identical IDs, status and
   comparison; a synthetic evidence field containing markup stays text.
 - Evidence: [PR access prototype](./.experiments/2026-09-25-pr-trace-access.md),
