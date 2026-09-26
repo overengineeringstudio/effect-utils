@@ -46,7 +46,7 @@ private resolver service, not to a globally registered web protocol.
 | `GET /pr/<owner>/<repo>/<number>.json` | Same identities, status, verdict, comparison, and links as versioned JSON below; not HTML scraped by agents. |
 | `GET /run/<run-key>` and `.json` | One indexed run, its jobs and trace links; the run key is the index's opaque URL-encoded identity, including attempt, not a bare provider run number. |
 | `GET /compare/<owner>/<repo>/<number>` and `.json` | A/B view computed from PR and eligible main runs indexed for that repository. |
-| `GET /t/<trace-id>` | Redirect to Grafana Explore by ID with the indexed time window **only after** complete ingest/readback; before then display status (`sealed`, `uploaded`, `ingesting`, or `pending`) without an empty Grafana result. Unknown ID explicitly means no matching sealed record reached the index. |
+| `GET /t/<trace-id>` | Redirect to Grafana Explore by ID with the indexed time window only after **that view's** by-ID readback; a job's full-view trace may be ready within the job-end target while its distinct shared run/critical trace stays pending until the roster settles and cumulative readback converges. Before readiness display status (`sealed`, `uploaded`, `ingesting`, `missing_spans`, or `pending`) without an empty Grafana result. Unknown ID means no matching sealed record reached the index. |
 | `GET /t/<trace-id>/chrome.json` and `/perfetto` | Convert the indexed trace for a one-click Perfetto handoff. The browser opens the Perfetto viewer; this is not public resolver access or a public trace export endpoint. |
 
 No GitHub write token is present on the fleet host. An indexed run and its
@@ -130,7 +130,8 @@ The example values are synthetic; never treat URLs as authentication tokens.
     "status": "ingested",
     "trace": { "id": "0123456789abcdef0123456789abcdef", "url": "/t/0123456789abcdef0123456789abcdef" },
     "jobs": [{ "key": "build[os=linux]", "status": "ingested", "durationMs": 120000,
-      "traces": [{ "kind": "critical", "id": "0123456789abcdef0123456789abcdef", "url": "/t/0123456789abcdef0123456789abcdef" }],
+      "traces": [{ "kind": "critical", "id": "0123456789abcdef0123456789abcdef", "url": "/t/0123456789abcdef0123456789abcdef" },
+        { "kind": "full", "id": "fedcba9876543210fedcba9876543210", "url": "/t/fedcba9876543210fedcba9876543210" }],
       "topTasks": [{ "name": "build", "durationMs": 90000 }] }]
   }],
   "comparison": { "baselineCount": 7, "tasks": [{ "jobKey": "build[os=linux]", "name": "build",
