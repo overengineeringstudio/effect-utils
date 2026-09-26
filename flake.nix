@@ -320,6 +320,12 @@ rec {
       lib.mkBuck2ArtifactImport =
         { pkgs }: import ./nix/workspace-tools/lib/buck2-artifact-import.nix { inherit pkgs; };
 
+      # Offline crate supply for mkBuckProductFromSource `cargoArchives`: one
+      # fixed-output fetch per `crate_archive` digest in the given Reindeer graphs.
+      lib.mkBuck2CargoArchives =
+        { pkgs, thirdPartyBuckFiles }:
+        import ./nix/buck2-products/cargo-archives.nix { inherit pkgs thirdPartyBuckFiles; };
+
       # Verify and import a native build_product rebuilt by mkBuckProductFromSource
       # (`product.kind = "native"`) through the same realization as published
       # artifacts; the descriptor is validated at build time, not evaluation.

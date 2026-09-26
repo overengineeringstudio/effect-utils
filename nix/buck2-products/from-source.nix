@@ -6,6 +6,9 @@
 {
   capabilities,
   pnpmArchives,
+  # Offline crate supply for Rust products (`cargo-archives.nix`); null when the
+  # product has no third-party crates.
+  cargoArchives ? null,
   product,
   producerCommit,
   repositoryRoot ? ../..,
@@ -57,7 +60,9 @@ let
     "native"
   ];
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
-  buckBuildArgs = "--config nix_store.root=${pnpmArchives} --local-only --no-remote-cache --console simple --show-simple-output";
+  buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+    lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
+  } --local-only --no-remote-cache --console simple --show-simple-output";
 in
 assert lib.assertMsg (
   builtins.match "[0-9a-f]{40}" producerCommit != null
@@ -124,6 +129,7 @@ pkgs.stdenv.mkDerivation {
   passthru = {
     inherit
       capabilities
+      cargoArchives
       pnpmArchives
       producerCommit
       repositorySource

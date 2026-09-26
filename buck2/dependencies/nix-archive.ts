@@ -5,7 +5,7 @@ import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
 const fail = (message: string): never => {
-  throw new Error(`Nix pnpm archive: ${message}`)
+  throw new Error(`Nix archive: ${message}`)
 }
 
 const args = new Map<string, string>()
@@ -19,13 +19,15 @@ for (let index = 2; index < process.argv.length; index += 2) {
 
 const root = args.get('--root') ?? fail('--root is required')
 const sha256 = args.get('--sha256') ?? fail('--sha256 is required')
-const sizeText = args.get('--size') ?? fail('--size is required')
+// pnpm locks record the archive size; Cargo.lock does not, so crates pin the digest only.
+const sizeText = args.get('--size')
 const output = args.get('--output') ?? fail('--output is required')
 if (isAbsolute(root) === false || root.startsWith('/nix/store/') === false)
   fail(`root must be an immutable Nix store path: ${root}`)
 if (/^[a-f0-9]{64}$/.test(sha256) === false) fail(`invalid sha256: ${sha256}`)
-const size = Number(sizeText)
-if (Number.isSafeInteger(size) === false || size <= 0) fail(`invalid size: ${sizeText}`)
+const size = sizeText === undefined ? undefined : Number(sizeText)
+if (size !== undefined && (Number.isSafeInteger(size) === false || size <= 0))
+  fail(`invalid size: ${sizeText}`)
 
 const source = join(root, `${sha256}.tgz`)
 const hash = createHash('sha256')
@@ -40,4 +42,4 @@ const hasher = new Transform({
 await pipeline(createReadStream(source), hasher, createWriteStream(output))
 const actual = hash.digest('hex')
 if (actual !== sha256) fail(`archive digest mismatch: expected ${sha256}, got ${actual}`)
-if (copiedBytes !== size) fail(`archive size mismatch: expected ${size}, got ${copiedBytes}`)
+if (size !== undefined && copiedBytes !== size) fail(`archive size mismatch: expected ${size}, got ${copiedBytes}`)
