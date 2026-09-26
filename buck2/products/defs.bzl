@@ -4,6 +4,7 @@ load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/package_tools.bzl", "JavaScriptModuleInfo")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo", "product_executable_info")
+load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
 BuildProductInfo = provider(fields = {
@@ -230,6 +231,120 @@ def package_tree_product_executable(
         target_platform = target_platform,
         default_target_platform = target_platform,
         target_compatible_with = product_platform_constraints(target_platform),
+        **kwargs
+    )
+
+# Bun `--target` per admitted dynamic product platform. Static platforms are
+# absent on purpose: a compiled Bun executable is dynamically linked.
+_BUN_COMPILE_TARGETS = {
+    ("darwin", "aarch64", "darwin", "mach-o-dynamic/v1"): "bun-darwin-arm64",
+    ("linux", "aarch64", "glibc", "elf-dynamic/v1"): "bun-linux-arm64",
+    ("linux", "x86_64", "glibc", "elf-dynamic/v1"): "bun-linux-x64",
+}
+
+def _bun_compiled_product_executable_impl(ctx):
+    _validate_product_name(ctx.attrs.product_name)
+    module = ctx.attrs.module[JavaScriptModuleInfo]
+    target_platform = ctx.attrs.target_platform[ProductPlatformInfo]
+    platform_key = (
+        target_platform.os,
+        target_platform.architecture,
+        target_platform.abi,
+        target_platform.runtime_contract,
+    )
+    bun_target = _BUN_COMPILE_TARGETS.get(platform_key)
+    if bun_target == None:
+        fail("bun_compiled_product_executable does not admit target platform {}".format(platform_key))
+    bundler = ctx.attrs._bun[BunToolchainInfo]
+    compile_runtime = ctx.attrs._compile_runtime[BuckSupportToolInfo]
+    executable = ctx.actions.declare_output(ctx.attrs.product_name)
+    ctx.actions.run(
+        cmd_args(
+            [
+                bundler.executable,
+                _runner(ctx),
+                "compile-executable",
+                "--module", module.module,
+                "--module-descriptor", module.descriptor,
+                "--compile-runtime", compile_runtime.store_path,
+                "--target", bun_target,
+                "--output", executable.as_output(),
+            ],
+            hidden = [compile_runtime.executable, compile_runtime.manifest],
+        ),
+        category = "bun_compiled_product_executable",
+        local_only = True,
+        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+    )
+    product_executable = product_executable_info(
+        ctx,
+        executable,
+        ctx.attrs.recipe,
+        ";".join([
+            "contract=effect-utils/buck2-bun-compile/v1",
+            "target=" + bun_target,
+            "bun=" + bundler.identity,
+            "bun-compile-runtime={}:{}".format(compile_runtime.closure_identity, compile_runtime.content_digest),
+        ]),
+        target_platform,
+    )
+    return [
+        DefaultInfo(
+            default_output = executable,
+            other_outputs = [product_executable.provenance.artifact],
+        ),
+        product_executable,
+    ]
+
+
+_bun_compiled_product_executable = rule(
+    impl = _bun_compiled_product_executable_impl,
+    attrs = {
+        "module": attrs.dep(providers = [JavaScriptModuleInfo]),
+        "product_name": attrs.string(),
+        "recipe": attrs.string(),
+        "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
+        "_bun": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:bun",
+            providers = [BunToolchainInfo],
+        )),
+        "_compile_runtime": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:bun_compile_runtime",
+            providers = [BuckSupportToolInfo],
+        )),
+        "_runner": attrs.default_only(attrs.dep(
+            default = "//packages/@overeng/buck2-tools:package_command_runtime",
+            providers = [DefaultInfo],
+        )),
+    },
+)
+
+
+def bun_compiled_product_executable(
+        name,
+        module,
+        product_name,
+        recipe,
+        target_platform,
+        **kwargs):
+    """Compiles one portable CLI module into a native Bun executable for build_product.
+
+    The embedded runtime is the official Bun release (`bun-compile-runtime`), so
+    the executable carries the platform's standard loader and no Nix store path.
+    The compile runs natively on the target platform: Bun signs the Darwin
+    executable ad hoc while writing it, and nothing downstream may rewrite it.
+    """
+    if "target_compatible_with" in kwargs:
+        fail("bun_compiled_product_executable owns target compatibility")
+    _bun_compiled_product_executable(
+        name = name,
+        module = module,
+        product_name = product_name,
+        recipe = recipe,
+        target_platform = target_platform,
+        default_target_platform = target_platform,
+        target_compatible_with = product_platform_constraints(target_platform),
+        exec_compatible_with = native_execution_constraints(target_platform),
         **kwargs
     )
 
