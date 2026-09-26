@@ -128,9 +128,25 @@ export class LockSyncConfig extends Schema.Class<LockSyncConfig>('LockSyncConfig
   sharedInputSource: Schema.optional(Schema.String),
 }) {}
 
+/**
+ * `generators.composition` configured the retired composed Buck shape. The key stays
+ * declared only so a config that still sets it fails with this message instead of the
+ * decoder silently dropping it as an unknown property.
+ */
+const RetiredCompositionGeneratorConfig = Schema.Unknown.pipe(
+  Schema.check(
+    Schema.makeFilter(
+      () =>
+        'generators.composition was removed with the composed Buck shape; delete it from the megarepo config (each member is its own standalone Buck root)',
+    ),
+  ),
+  Schema.annotate({ description: 'Retired. Any value is rejected.' }),
+)
+
 /** All generator configurations */
 export class GeneratorsConfig extends Schema.Class<GeneratorsConfig>('GeneratorsConfig')({
   vscode: Schema.optional(VscodeGeneratorConfig),
+  composition: Schema.optional(RetiredCompositionGeneratorConfig),
 }) {}
 
 // =============================================================================

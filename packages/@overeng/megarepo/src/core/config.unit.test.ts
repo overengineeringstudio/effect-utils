@@ -1,9 +1,10 @@
-import { Option, Schema } from 'effect'
+import { Cause, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
   buildSourceStringWithRef,
   CONFIG_FILE_NAME_JSON,
+  decodeMegarepoConfigContent,
   DEFAULT_STORE_PATH,
   ENV_VARS,
   generateJsonSchema,
@@ -447,6 +448,29 @@ describe('config', () => {
       const result = Schema.decodeSync(MegarepoConfig)(input)
       expect(result.generators?.vscode?.enabled).toBe(true)
       expect(result.generators?.vscode?.exclude).toEqual(['docs'])
+    })
+
+    it('rejects the retired generators.composition block with a migration message', () => {
+      const exit = Effect.runSyncExit(
+        decodeMegarepoConfigContent({
+          format: 'kdl',
+          content: [
+            'members {',
+            '  effect "effect-ts/effect"',
+            '}',
+            'generators {',
+            '  composition {',
+            '    enabled #true',
+            '    platformHub effect-utils',
+            '  }',
+            '}',
+          ].join('\n'),
+        }),
+      )
+      if (Exit.isSuccess(exit) === true) expect.fail('retired generators.composition decoded')
+      expect(Cause.pretty(exit.cause)).toContain(
+        'generators.composition was removed with the composed Buck shape',
+      )
     })
 
     it('should decode config with $schema field', () => {
