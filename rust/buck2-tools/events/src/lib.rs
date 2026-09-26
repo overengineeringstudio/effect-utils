@@ -67,6 +67,23 @@ enum Command {
 pub fn main_entry() -> Result<(), Box<dyn std::error::Error>> {
     run(Cli::parse())
 }
+/// In-process conversion used by the evidence ingester; no child process or
+/// separately packaged converter is needed.
+pub fn ingest_to(
+    logs: Vec<PathBuf>,
+    sidecar: Option<PathBuf>,
+    out: PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    run(Cli {
+        command: Command::Ingest {
+            logs,
+            sidecar,
+            out: Some(out),
+            request_timeout_secs: 5,
+            export_budget_secs: 30,
+        },
+    })
+}
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let Command::Ingest {
         logs,

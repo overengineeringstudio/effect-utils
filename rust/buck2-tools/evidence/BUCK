@@ -1,0 +1,133 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/buck2-tools/evidence/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:0926f287e9f2b1dbaf32808fad13e97522f43b35bddfe138814ac16a79167c75
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/evidence/BUCK.genie.ts, rust/buck2-tools/evidence/Cargo.toml, rust/buck2-tools/evidence/src/**/*.rs, rust/buck2-tools/evidence/tests/**/*.rs, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+load("//buck2/products:defs.bzl", "build_product")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
+load("//buck2/rust:defs.bzl", "rust_product_executable")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/buck2-tools/evidence",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/close.rs",
+        "src/http.rs",
+        "src/index.rs",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/pipeline.rs",
+        "src/resolver.rs",
+        "src/retention.rs",
+        "src/seal.rs",
+        "src/store.rs",
+        "src/transport.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "buck2_evidence",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/close.rs",
+        "src/http.rs",
+        "src/index.rs",
+        "src/lib.rs",
+        "src/pipeline.rs",
+        "src/resolver.rs",
+        "src/retention.rs",
+        "src/seal.rs",
+        "src/store.rs",
+        "src/transport.rs",
+    ],
+    deps = [
+        "//rust/buck2-tools/events:lib",
+        "//rust/third-party:anyhow",
+        "//rust/third-party:axum",
+        "//rust/third-party:base64",
+        "//rust/third-party:bytes",
+        "//rust/third-party:clap",
+        "//rust/third-party:hex",
+        "//rust/third-party:reqwest",
+        "//rust/third-party:rusqlite",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        "//rust/third-party:tar",
+        "//rust/third-party:tokio",
+        "//rust/third-party:tracing",
+        "//rust/third-party:tracing-subscriber",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "buck2-evidence",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "buck2-evidence",
+    crate = "buck2_evidence",
+    crate_root = "src/main.rs",
+    srcs = [
+        "src/main.rs",
+    ],
+    deps = [
+        "//rust/buck2-tools/events:lib",
+        "//rust/third-party:anyhow",
+        "//rust/third-party:axum",
+        "//rust/third-party:base64",
+        "//rust/third-party:bytes",
+        "//rust/third-party:clap",
+        "//rust/third-party:hex",
+        "//rust/third-party:reqwest",
+        "//rust/third-party:rusqlite",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        "//rust/third-party:tar",
+        "//rust/third-party:tokio",
+        "//rust/third-party:tracing",
+        "//rust/third-party:tracing-subscriber",
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "buck2-evidence",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+rust_product_executable(
+    name = "buck2-evidence-product-executable",
+    binary = ":buck2-evidence",
+    recipe = "cargo-workspace:buck2-evidence@0.0.0",
+    target_platform = host_platform_label(),
+)
+
+build_product(
+    name = "buck2-evidence-product",
+    entrypoint = "bin/buck2-evidence",
+    executable = ":buck2-evidence-product-executable",
+    product_name = "buck2-evidence",
+    target_platform = host_platform_label(),
+)
