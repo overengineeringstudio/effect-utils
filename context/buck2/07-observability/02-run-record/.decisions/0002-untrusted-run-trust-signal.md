@@ -2,9 +2,9 @@
 
 Status: accepted
 
-Accepted 2026-09-25 (decision q13; Johannes). Provider-neutral by
-construction; the first provider implementation is GitHub's PR label
-(livestore prior art). May land as a follow-up if non-trivial.
+Accepted 2026-09-25 (decision q13; Johannes). The admission rule is
+provider-neutral; q33 deferred the fork implementation in favor of an
+initial trusted-run-only, private-network upload path.
 
 ## Context
 
@@ -38,18 +38,21 @@ for genuinely interesting external contributions.
 
 ## Decision
 
-Untrusted runs ingest only when an explicit, provider-level trust signal
-authorizes it — on GitHub: a PR label. The signal is consumed by a trusted
-adapter that grants a short-lived, write-only upload capability bound to the
-exact PR head; the build and the uploader see a generic capability and stay
-provider-neutral. Ingested untrusted records are tagged `ci.pr.fork=true`
-so queries can filter (05 stamps the agreed key; its later migration to the
-OTel CICD key family is tracked as
-[OQ4](../../open-questions.md)).
+Untrusted runs may ingest only when an explicit, provider-level trust signal
+authorizes it — on GitHub: a PR label. This fork path is deferred, not part of
+initial delivery: trusted runs join the private network with ephemeral
+federated OIDC identity and use an application-scoped upload capability;
+fork runs remain spool-only. When fork admission is added, a trusted adapter
+grants a short-lived, write-only capability bound to the exact live PR head;
+the build and uploader see a generic capability and stay provider-neutral.
+Ingested untrusted records are tagged `ci.pr.fork=true` so queries can filter
+(05 stamps the agreed key; its later migration to the OTel CICD key family
+is tracked as [OQ4](../../open-questions.md)).
 
 ## Consequences
 
-- Ordinary fork runs are spool-only: no capability, no upload, no data loss.
+- Initially, ordinary fork runs are spool-only: no capability, no upload,
+  no data loss. The deferred path cannot use trusted-run OIDC credentials.
 - The trust gate lives at the record boundary (02), not in the decoder; the
   decoder's own bounds (BUCK.OBS.REC-R07) are defense in depth.
 - One word, three gates: this is _ingest-admission_ trust, distinct from

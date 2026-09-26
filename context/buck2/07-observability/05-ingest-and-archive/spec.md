@@ -12,44 +12,91 @@ Draft.
 
 ## Scope
 
-**Defines:** the ingest sequence, id derivation, chunking, archive layout and
-retention, provider-neutral tagging, and the deployment-ownership boundary.
+**Defines:** the ingest sequence and queue, id derivation, chunking and
+readback repair, archive layout and retention, provider-neutral tagging,
+and the deployment-ownership boundary.
 
 **Does not define:** backend deployment (dotfiles), the trust-signal adapter
-(02), view rules (04).
+(02), view rules (04), or the resolver presentation (06).
 
-## Ingest Sequence
+## Ingest Sequence and Identity
 
 ```text
-sealed run record (content-addressed store or local path)
-  1. verify manifest digests; bounded decode (untrusted records: 02 rules)
-  2. read sidecar lines (01); assign task/command nesting
-  3. decode event logs (03) -> span model + daemon-wait join (batch-scoped)
-  4. derive views + metrics (04); place views per the ancestry rule (below)
-  5. push OTLP traces in chunks < ~3.5 MB; push bounded metrics to Mimir
-  6. stamp provider-neutral run attributes (cicd.* / vcs.* / ci.provider;
-     untrusted runs additionally ci.pr.fork=true)
-  7. archive raw record + write index rows; record both trace ids per command
+seal -> upload socket -> verify -> durable record -> index.sqlite
+                                      | same transaction: index + jobs
+                                      v
+                         worker -> adapter -> OTLP chunks
+                                      |         |
+                                      +-- checkpoint / by-id readback
+                                      v
+                         ingested | missing_spans | retry/dead letter
+                                      |
+                              resolver read socket
 ```
 
-**View ancestry and trace ids.** With a caller context (sidecar line
-present): the **critical view lives in the caller's trace** — its trace id
-_is_ the caller's trace id, and `buck2.command` is parented under the
-pre-derived command span id, so the single-trace caller→Buck hierarchy the
-sidecar promises stays valid. The **full view is a separate deterministic
-trace**: `trace_id = f(repository, run, attempt, job, Buck trace id,
-view kind = full)` — a pre-manifest identity, never the manifest digest and
-never an API call — whose `buck2.command` root carries a span link to the
-caller command span. Without a caller context, both views are such derived
-traces (view kind ∈ {critical, full}), unparented. Both ids per command are
-recorded in the ingest index and run summary so either view is discoverable
-by id.
+1. `buck2-evidence seal` captures the provider-neutral VCS change id
+   (PR number when present, supplied as environment by the provider adapter)
+   and head/base/merge revisions from git at seal time (02's record schema).
+   Upload verifies the manifest and every member digest, bounded-decodes
+   untrusted records (02), durably stores the record, and commits an
+   `uploaded` index row plus a pending `jobs` row in one SQLite transaction.
+   The store is durable before the transaction, so a sweep can find records
+   whose process died between store placement and enqueue. Repeated uploads
+   for the same digest cannot enqueue duplicate work.
+2. The immediate worker reads sidecar lines (01), assigns task/command
+   nesting, converts event logs through the in-process adapter (03), joins
+   daemon wait in the batch, and derives critical/full views plus bounded
+   metrics (04). It stamps `cicd.*`/`vcs.*`/`ci.provider`; untrusted runs also
+   carry `ci.pr.fork=true`. Local `ingest` uses the same converter and
+   uploader path as the service, with endpoints provided by configuration.
+3. Persist a plan of expected `(trace_id, span_id)` and OTLP chunks below
+   ~3.5 MB; checkpoint each successful chunk. On retry, before re-pushing
+   any uncheckpointed/in-flight chunk, read its trace by deterministic id,
+   skip spans already present, and only send missing spans. Tempo can retain
+   duplicate span ids if the same chunk is re-pushed within ~5 seconds;
+   deterministic ids alone do not guarantee duplicate-free replay.
+4. After push, fetch each affected trace by id, compare expected span ids
+   with returned ids, and selectively re-push missing spans. Do not mark
+   `ingested` until readback converges for the view; expose an
+   unconverged result as `missing_spans` with counts. Backend search is not
+   an acceptance gate. Push bounded metrics to Mimir.
+5. The index records VCS identity from the sealed record, the per-view ids,
+   archive location, byte count, state, attempts and error. The resolver
+   can expose an `ingested` id as a clickable trace, `pending` while work
+   remains, and an explicit `missing_spans` state for incomplete readback.
 
-Steps 2–7 are identical locally and on the fleet dev host: the same binary,
-the same code path, environment supplying only endpoints
-(BUCK.OBS-ING-R01 / BUCK.OBS-R03). Re-ingesting the same record reproduces
-byte-identical traces (measured ×3 at the span-id level in the replay
-baseline below).
+   Resolver-facing status vocabulary is `pending`, `sealed`, `uploaded`,
+   `ingesting`, `ingested`, `missing_spans`, `expired`; the queue's
+   dead-letter state and last error are separate failure details, not a
+   false `ingested` transition. Only `ingested` redirects to a trace.
+
+**View ancestry and trace ids (BUCK.OBS.ING-R02/R06).** With a caller
+context the critical view stays in the caller trace: its trace id equals
+the caller trace id and `buck2.command` is parented under the pre-derived
+command span id from the sidecar. For each Buck UUID `u`, the full-view
+trace id is the first 16 bytes of
+`SHA-256(UTF-8(u + ":full"))`, rendered as the 32-hex-character OTLP
+trace id; its `buck2.command` root links to the caller command span.
+Without caller context both views are unparented: the critical-view trace
+id is the first 16 bytes of `SHA-256(UTF-8(u + ":critical"))`, and the
+full-view trace id uses `:full` as above. Both render as 32 lowercase hex
+digits. With caller context its trace encodes pipeline run/attempt identity;
+the Buck UUID carries command/job identity. Do not add
+repository/run/attempt/job again to the hash input, derive it from the
+manifest digest, or call an API to mint it. Record both view ids per
+command in the index and summary.
+
+**Worker and recovery (BUCK.OBS.ING-R08/R09).** `index.sqlite` uses WAL;
+`jobs` rows track lease, attempt count, next attempt, last error, and
+dead-letter state. One service process owns the queue and wakes its sole
+ingest worker on commit. Expired leases are reclaimed after restart;
+transient failures back off exponentially with a bounded cap, and permanent
+decode/validation failures dead-letter rather than blocking other records.
+A periodic store/index sweep (10–30 s in the bakeoff) repairs missed
+enqueues and due work; `drain` and `backfill` expose operator recovery.
+Job end to a clickable complete trace targets ≤30 s p95 plus upload time;
+the upload is not held open for conversion. An unconverged trace is never
+reported as complete merely to meet the latency target.
 
 ## Archive Layout
 
@@ -61,9 +108,10 @@ baseline below).
   spans/               the span spool, unchanged
   buck2-events/        raw *_events.pb.zst, unchanged
 index.sqlite           reconciliation index: (repo, run, attempt, job) ->
-                       bundle digest, byte count, per-view trace ids,
-                       ingest status, archive path
-incoming/              atomic staging for in-progress ingests
+                       digest, bytes, sealed VCS fields, per-view trace ids,
+                       state, missing count, archive path; jobs + pushes
+store/sha256/<digest>/  durable verified upload before archive placement
+incoming/              atomic staging for in-progress uploads
 ```
 
 The `job-<key>` path component keeps every job of one run in its own
@@ -80,30 +128,61 @@ budget (BUCK.OBS-R06, per q32 superseding q14's earlier figure) and
 re-measured under [OQ1](../../open-questions.md), which also carries the
 unmeasured both-views Tempo cost.
 
-## Backend Quirks (designed around)
+## Backend Quirks and Recovery (BUCK.OBS.ING-R09)
 
 - Int-typed attributes do not match TraceQL equality: run ids and attempts
   are pushed as strings.
 - Fresh pushes are invisible to attribute search until a block is cut
-  (measured ≥ 22 min; trace-by-id works immediately): discovery uses the
-  recorded deterministic ids.
+  (measured ≥22 min): discovery uses indexed ids and by-id readback.
 - Large single bodies are rejected by the gateway: chunk below ~3.5 MB.
+- Tempo 3.0.3 can acknowledge all 6,255 spans in a shared run trace while
+  persisting only 5,232 when jobs arrive in bursts separated by 20 seconds
+  and by-id reads occur during the gaps; direct block inspection confirmed
+  loss. A 2-minute `max_trace_idle` avoided the isolated reproduction.
+  Dotfiles owns tuning live-store idle/live windows above expected inter-job
+  gaps and verifying the same repro against fleet Tempo; this does not
+  replace readback and selective deterministic repair for longer gaps.
+  When repair cannot converge, preserve `missing_spans` and its count.
+  The isolated reproduction is filed as [Tempo issue 8002](https://github.com/grafana/tempo/issues/8002).
 
-## Dotfiles Contract
+## Service and Dotfiles Contract (BUCK.OBS.ING-R07/R08)
 
-| Concern                                                                                       | Owner                 | This tree supplies           |
-| --------------------------------------------------------------------------------------------- | --------------------- | ---------------------------- |
-| Ingest binary + converter + id rules                                                          | effect-utils          | the adapter crate, this spec |
-| Ingester service/schedule, auth front, store ACL/lifecycle, index deployment, retention timer | dotfiles fleet config | layout + semantics above     |
+```text
+effect-utils: rust/buck2-tools/buck2-evidence (Buck BuildProduct)
+  seal | upload | ingest | serve | drain | backfill | retention
+  in-process event adapter; same ingest path on laptop and fleet
+dotfiles: one hardened service + two Unix sockets
+  upload socket   -> OIDC-gated managed Tailscale upload Service
+  resolver socket -> read-only managed Tailscale resolver Service
+  archive dataset, index.sqlite, daily retention timer, Tempo tuning
+```
+
+`serve` hosts the upload endpoint, one immediately draining worker and sweep,
+and read-only resolver routes in one unit. The upload Service checks the
+tailnet OIDC identity and application capability before forwarding to the
+upload socket; the resolver Service forwards only read routes through its
+separate socket and cannot mutate records or queue state. No public TCP
+write listener is necessary. Dotfiles owns the dedicated service account,
+socket ownership/modes, writable dataset restriction, systemd hardening,
+quota/lifecycle and two Service mappings, not the converter or index schema.
+The daily `retention` invocation removes raw logs after about a year while
+keeping the ≤150 GiB/year planning corridor; retained index metadata
+continues to explain expired evidence.
 
 ## Conformance
 
-- Parity: one record ingested from a laptop and from the fleet dev host
-  yields identical trace ids and spans.
-- Idempotency: three consecutive ingests of one record return stable span
-  counts with no duplicates.
+- Parity: one sealed record ingested locally and by the service yields the
+  same trace ids and spans; the caller critical trace remains parented and
+  the full root links to the caller command span.
+- Recovery: concurrent duplicate uploads enqueue once; a crash after store
+  placement and before enqueue is swept; a crash mid-push checkpoints
+  completed chunks and probes the in-flight chunk before repush, with no
+  duplicate span ids on readback.
+- Incomplete backend readback never redirects as complete; missing ids are
+  selectively repushed and persistent loss shows `missing_spans`.
 - Fork ingest: an untrusted-tagged record decodes under caps and carries
   `ci.pr.fork=true`; queries can filter it.
 - Evidence: [replay baseline](./.experiments/2026-09-25-ci-to-tempo-replay-baseline.md),
-  [delivery bakeoff](../02-run-record/.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md),
-  [decision 0001](./.decisions/0001-ingest-parity-and-retention.md).
+  [ingest bakeoff](./.experiments/2026-09-26-ingest-service-bakeoff.md),
+  [decision 0001](./.decisions/0001-ingest-parity-and-retention.md),
+  [decision 0002](./.decisions/0002-durable-ingest-and-tempo-readback.md).

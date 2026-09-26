@@ -32,9 +32,12 @@ retention (05 / dotfiles); decode mechanics (03).
   buck2/<command>.report        build reports, where produced
 ```
 
-`run-key` identifies (repository, run, attempt, job) — provider-neutral: the
-CI system supplies these as environment/configuration, exactly as a local
-run supplies its own.
+`run-key` identifies (`PIPELINE_RUN_ID`, matrix-qualified job key) using
+the [pre-manifest grammar](../01-run-identity/spec.md): the same
+provider-neutral identity is available locally and in CI. Encode both
+components for the spool directory rather than using their slash-bearing
+wire values as path segments. A repeated matrix job name with different
+dimensions never shares a record or span identity.
 
 ## Manifest Schema (v1)
 
@@ -44,23 +47,42 @@ run supplies its own.
   "producer": { "converter": "<version>", "sealedAt": "<rfc3339>" },
   "run": {
     "repository": "<owner/name>",
-    "runId": "<provider run id>",
-    "attempt": 1,
-    "event": "push",
+    "pipelineRunId": "ci/forge/repo%2Fmodule/421/2",
+    "runId": "421",
+    "attempt": 2,
+    "jobKey": "<matrix-qualified job key>",
+    "event": "pull_request",
     "worker": { "os": "linux", "arch": "x64" },
     "fork": false,
     "trusted": true
   },
+  "vcs.change.id": "1401",
+  "vcs.ref.head.revision": "<40-hex head commit>",
+  "vcs.ref.base.revision": "<40-hex base commit>",
+  "mergeRevision": "<40-hex merge checkout commit>",
   "files": [{ "path": "buck2/171713_build.pb.zst", "bytes": 711142, "sha256": "…" }]
 }
 ```
 
 Every field is provider-neutral; a provider contributes only attribute values.
+The adapter supplies `vcs.change.id` (the PR number, if present) via the
+environment. At seal time, git resolves `vcs.ref.head.revision` and
+`vcs.ref.base.revision` from the checkout's PR head/base refs (for a merge
+checkout, second and first parents respectively). The repository-local
+manifest field `mergeRevision` comes from the checked-out merge commit;
+the ingest index carries it as `merge_revision`. No OTel semantic-convention
+key is asserted for merge revision. For a non-PR checkout, absent
+change/base/merge facts are omitted rather than inferred from a provider
+API; the checked-out commit is the head revision. The manifest and the
+ingest index both carry these facts; a provider run's PR association may
+be empty and cannot serve as the recovery source.
+
 The manifest never contains hostnames, host paths, usernames, or credentials
 (BUCK.OBS.REC-R05), and it never contains trace ids: record identity is the
-manifest digest, and trace ids derive from a **pre-manifest identity**
-(repository, run, attempt, job, Buck trace id, view kind — see 05), so the
-digest cannot depend on them. Discovered trace ids live in the ingest index.
+manifest digest. Trace ids derive from the pre-manifest
+[`PIPELINE_RUN_ID` and command identity](../01-run-identity/spec.md), not
+the digest; discovered trace ids live in the ingest index. The Buck wrapper
+UUID itself derives from caller trace and command span before sealing.
 
 ## Lifecycle
 
@@ -78,28 +100,49 @@ backfilled by scanning the store's index, not by re-running builds.
 
 ## Trust Signal (untrusted runs)
 
-- Ordinary untrusted runs (e.g. public-repo fork PRs) receive no upload
-  credential: their record stays local (spool-only), by design.
-- Authorization is a provider-level, human-granted signal — on GitHub, a PR
-  label — consumed by a _trusted_ adapter that never checks out or executes
-  untrusted code. It grants a short-lived, write-only capability bound to the
-  exact PR head (repository, branch, SHA re-checked live, per the livestore
-  label-gated prior art: association must be reconciled by head identity, not
-  by event metadata).
-- The uploader and the build remain provider-neutral: they see a generic
+- Initial delivery is for trusted runs only. Trusted CI joins the private
+  network ephemerally via federated OIDC and writes to an authenticated
+  service with an application-scoped capability; the uploader still accepts
+  only a generic destination and credential. There is no public upload
+  ingress in this initial mode.
+- Fork ingestion is deferred, not silently authorized by a PR label today.
+  Ordinary fork runs receive no upload credential and remain spool-only.
+  When enabled, a trusted adapter may grant a short-lived write-only
+  capability after a provider-level, human-granted signal (on GitHub, a PR
+  label). The trusted adapter never checks out or executes untrusted code
+  and rechecks the exact live PR head (repository, branch, SHA) before
+  granting the capability. Fork runners cannot use the trusted-run OIDC
+  join path.
+- The uploader and build remain provider-neutral: they see a generic
   capability, never label syntax. Ingested untrusted records carry
   `ci.pr.fork=true` so queries can filter (05 stamps it;
   BUCK.OBS.REC-R07 bounds the decode).
+
+## Design Question
+
+- **DQ1 Merge revision export:** The record's `mergeRevision` and index's
+  `merge_revision` are repository-local fields. Which standard, if any,
+  should carry that value when exporting OTel attributes? Resolve only
+  after checking the current VCS semantic conventions and downstream
+  query expectations; do not advertise an invented merge-revision
+  attribute as standardized.
 
 ## Conformance
 
 - Same-record check: a local pipeline run and a CI-shaped run of the same
   command produce structurally identical records modulo attribute values.
+- VCS seal: on a PR merge checkout the manifest and index agree on the
+  env-supplied change id, git head/base parents, and merge commit even when
+  the provider run object has no PR association. A push checkout omits
+  unavailable change/base/merge fields rather than inventing them; the
+  trace id remains unchanged if the manifest's file digest changes.
 - Upload idempotency: two uploads of one sealed record commit once; a
   no-credential run reports spool-only with the record intact.
-- Trust: a fork-shaped run without the signal never uploads; with the signal,
-  the capability binds to the exact head and a changed head invalidates it.
+- Trust: without a credential a fork run stays spool-only; after the
+  deferred admission path is enabled, a label is insufficient unless the
+  capability binds to the exact live head, and a changed head invalidates it.
 - Evidence: [delivery bakeoff](./.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md),
   [cold-CI capture](./.experiments/2026-09-24-cold-ci-event-log-capture.md),
   decisions [0001](./.decisions/0001-run-record-system-of-record.md),
-  [0002](./.decisions/0002-untrusted-run-trust-signal.md).
+  [0002](./.decisions/0002-untrusted-run-trust-signal.md),
+  [0003](./.decisions/0003-seal-vcs-identity.md).

@@ -1,0 +1,49 @@
+# 0002 Review Overview and Main-Run Baseline
+
+Status: accepted
+
+Accepted 2026-09-26 (Johannes, q36; q35 reframed into the variants review).
+
+## Context
+
+A single merge-base A/B is noisy, Grafana is cramped on a phone, and an
+automatically frozen Vista artifact is too costly for normal navigation.
+The [variants review](../.experiments/2026-09-26-pr-page-variants.md)
+compared real runs at desktop and phone widths.
+
+## Evidence and Argument
+
+The seven-run view identified 12 tasks faster than every main sample and
+64 changes within the spread. A one-run comparison incorrectly marked two
+inside-spread changes as regressions. The Grafana redirect provided too
+little context at phone width, while a task-span chain provided a useful
+header only when labeled as a heuristic.
+
+## Options
+
+| Option | Outcome | Reason |
+| --- | --- | --- |
+| V1 overview plus V4 verdict/chain header; k=7 main baseline | Accepted | Context first, phone-usable, noisy changes distinguished |
+| V1 alone | Rejected | No concise verdict or critical chain at the top |
+| V4 alone | Rejected | Jobs and top tasks need another navigation level |
+| Single merge-base A/B | Rejected | Two observed false regressions were within the main spread |
+| Redirect directly to Grafana | Rejected | Weak phone surface and no run overview |
+
+## Decision
+
+The PR page leads with a one-line verdict and the slowest job's critical
+chain, then presents runs, jobs and top tasks with Grafana and Perfetto
+buttons. The chain follows task spans until Buck's action critical path is
+available, at which point the action path replaces the heuristic. The A/B
+compares each task to the median of seven eligible main runs at or before
+the merge base and labels changes within their observed spread as noise.
+Vista is an on-demand “freeze for review” snapshot, not a default view.
+
+## Consequences
+
+- Main-run evidence must be ingested and indexed, including revisions and
+  matrix-qualified job identities.
+- The comparison reports an incomplete or absent baseline rather than
+  quietly substituting a single run for seven.
+- A frozen review can outlive Tempo's 30-day window, while ordinary pages
+  remain backed by the live index and trace store.

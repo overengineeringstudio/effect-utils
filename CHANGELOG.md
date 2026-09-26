@@ -24,6 +24,10 @@ All notable changes to this project will be documented in this file.
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
 ### Changed
+- **Buck2 observability VRS:** Specify pipeline-run trace identity, sealed
+  record VCS fields, queued ingest/reconciliation, and PR trace access with
+  an index-backed resolver and versioned agent JSON contract. This is a
+  design/documentation change; service and CLI behavior are not yet shipped.
 - **Genie Netlify deploy step**: PR previews no longer pass
   `unauthorizedPolicy=skip`. A configured Netlify token that the provider
   rejects now fails the PR deploy check instead of emitting a green skipped

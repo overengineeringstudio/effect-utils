@@ -63,10 +63,35 @@ implemented by the dotfiles fleet config against this contract; no CI-artifact
 replay is built, and direct OTLP remains a later optional fast path
 ([OQ3](../../open-questions.md)).
 
+## Amendment 1 — Full-view identity (2026-09-26, q38)
+
+Johannes chose the shipped `SHA-256(Buck UUID + ":full")` derivation for the
+full-view trace id, projected to an OTLP trace id. The earlier
+`f(repository, run, attempt, job, Buck trace id, view kind)` description in
+the [05 spec](../spec.md) is superseded: the Buck UUID already derives from
+the caller trace and command span, and the caller trace carries run/attempt
+identity. The critical view remains in the caller trace with a caller
+context; do not break its parent/child relationship to implement the full
+view. The run record captures change id and git head/base/merge revisions at
+seal time; the index carries them forward instead of querying a provider
+whose PR-to-run association may be absent. The sibling [run-record
+spec](../../02-run-record/spec.md) owns the sealed field schema.
+
+The alternative—changing shipped ids to add repository/run/attempt/job
+again—would require re-ingesting existing traces with no functional
+gain after caller identity is seeded. Provider-side PR lookup is rejected
+because a run can have no usable PR association.
+
+The upload/worker choice and Tempo repair are recorded separately in
+[decision 0002](./0002-durable-ingest-and-tempo-readback.md).
+
 ## Consequences
 
 - Ingest code has exactly one path to maintain; a laptop can re-ingest any
-  archived run identically.
+  archived run with the same ids. Later Tempo 3.0.3 probes show that
+  deterministic ids alone do not prevent duplicates on a fast repush:
+  [decision 0002](./0002-durable-ingest-and-tempo-readback.md) requires
+  chunk checkpoints, a by-id probe, and complete readback.
 - Fork-run traces arrive only through 02's trust signal and carry
   `ci.pr.fork=true`; the bounded decoder is the poison boundary.
 - Tempo volume under both-views ingest is unmeasured and tracked

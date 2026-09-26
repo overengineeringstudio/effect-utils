@@ -41,10 +41,14 @@ refines BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07, and BUCK.OBS-R08 of the
   (< 10 ms / < 0.1% of a working build) so it is unconditional, not opt-in.
 - **BUCK.OBS.REC-R03 Seal:** Sealing freezes the manifest — file list, byte
   sizes, SHA-256 digests, schema version, producer and converter versions,
-  run/attempt identity, event type, and trust markers — before anything
-  leaves the host. Trace ids are **not** manifest fields: they derive from a
-  pre-manifest identity and are recorded by the ingest index (05), so the
-  record digest never depends on them.
+  run/attempt identity, event type, trust markers, and available PR/change
+  identity plus head/base and merge-checkout revisions — before anything
+  leaves the host. The PR number comes from the adapter environment;
+  revisions are resolved from git at seal time, not inferred from provider
+  run metadata. A merge revision need not claim an OTel attribute key.
+  Trace ids are **not** manifest fields: they derive from a pre-manifest
+  identity and are recorded by the ingest index (05), so the record digest
+  never depends on them.
 - **BUCK.OBS.REC-R04 Upload:** One provider-neutral, content-addressed PUT
   carries the sealed record (idempotent; conditional-create where supported);
   the local record is retained until an acknowledged commit; a missing
@@ -54,12 +58,13 @@ refines BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07, and BUCK.OBS-R08 of the
   manifest field requires a specific CI provider; provider facts appear only
   as optional provider-neutral attributes (`cicd.*`, `vcs.*`), and no field
   carries hostnames, host paths, or usernames.
-- **BUCK.OBS.REC-R06 Trust signal for untrusted runs:** An untrusted run's
-  record is uploaded only when an explicit, provider-level trust signal
-  authorizes it — on GitHub: a PR label (livestore prior art). The build and
-  uploader see only a generic short-lived write capability, never provider
-  label syntax; authorization binds to the exact PR head and is re-checked
-  before use.
+- **BUCK.OBS.REC-R06 Trust signal for untrusted runs:** Initial delivery
+  admits trusted runs over an authenticated tailnet path and leaves fork runs
+  spool-only. Later fork ingestion requires an explicit provider-level trust
+  signal — on GitHub, a PR label — checked by a trusted adapter against the
+  exact live PR head before granting a short-lived write capability. The
+  build and uploader see only a generic capability, never provider label
+  syntax.
 - **BUCK.OBS.REC-R07 Bounded ingestion of untrusted bytes:** Ingest decodes
   untrusted records with the bounded Rust decoder only — no shell, per-file
   and total size caps, path-traversal rejection, digest verification before
