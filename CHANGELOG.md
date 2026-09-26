@@ -98,9 +98,10 @@ All notable changes to this project will be documented in this file.
   endpoint, per decision 0033. Public PR CI reads anonymously over TLS with
   uploads disabled; `BUCK2_NO_REMOTE_CACHE=1` still disables reads explicitly.
   Only a job holding `BUCK2_CACHE_WRITE_BASIC_AUTH` gets the publisher posture
-  in `.buckconfig.local`. The trusted remote-cache proof on protected `main` is
-  now the public tier's writer and uses the `BUCK2_PUBLIC_CACHE_WRITE_AUTH`
-  Actions secret. Composed roots (`buck2-member.json` `remoteCache`) are unchanged.
+  in `.buckconfig.local`. The trusted remote-cache proof on protected `main`
+  writes with `BUCK2_PUBLIC_CACHE_WRITE_AUTH`, then verifies a fresh reader
+  checkout without the publisher overlay or credential. Composed roots
+  (`buck2-member.json` `remoteCache`) are unchanged.
 
 - **Buck2 editor views**: Editor-view publication proves the materialized snapshot
   copy against the admitted pre-copy digests in an owner-resolved link form — plus a
