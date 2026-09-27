@@ -267,6 +267,22 @@ const viteCacheDir = (): Pick<ViteUserConfig, 'cacheDir'> => {
   return cacheDir === undefined || cacheDir === '' ? {} : { cacheDir }
 }
 
+/**
+ * Stories render against `NODE_ENV=development`, as they do in Storybook, not
+ * Vitest's `test`.
+ *
+ * Vite inlines `process.env.NODE_ENV` from the process, and Vitest has set it to
+ * `test`. Libraries read that value as "running under jsdom": react-aria's
+ * virtualizer disables virtualization and then reads `process.env.VIRT_ON`,
+ * which throws `ReferenceError: process is not defined` in a real browser, so
+ * every story with a virtualized collection failed before its `play` ran. The
+ * dependency optimizer takes its own copy of the value, so it is set in both
+ * places.
+ */
+const storybookNodeEnv = {
+  'process.env.NODE_ENV': JSON.stringify('development'),
+} as const
+
 const createProject = ({
   configDir,
   theme,
@@ -290,6 +306,8 @@ const createProject = ({
 
   return {
     ...viteCacheDir(),
+    define: storybookNodeEnv,
+    optimizeDeps: { rolldownOptions: { transform: { define: storybookNodeEnv } } },
     // Caller plugins come after the React pin and before the Portable Stories
     // integration: a compiler transform must run before the integration turns
     // each CSF module into a test, and the React pin must apply to its output.
