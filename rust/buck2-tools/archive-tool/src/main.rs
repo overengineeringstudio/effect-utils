@@ -22,11 +22,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    ExtractCrate(ExtractCrateArgs),
+    #[command(name = "extract-crate")]
+    Crate(ExtractCrateArgs),
     /// A GitHub commit tarball (`git archive`): a pax global header, then one
     /// `<repo>-<rev>/` tree that may hold repository-contained symlinks.
-    ExtractGitArchive(ExtractCrateArgs),
-    ExtractNpm(ExtractNpmArgs),
+    #[command(name = "extract-git-archive")]
+    GitArchive(ExtractCrateArgs),
+    #[command(name = "extract-npm")]
+    Npm(ExtractNpmArgs),
 }
 
 #[derive(Args)]
@@ -702,9 +705,9 @@ fn run() -> ToolResult<()> {
         "native-executable/v1",
     )?;
     match cli.command {
-        Command::ExtractCrate(args) => extract_crate(&args),
-        Command::ExtractGitArchive(args) => extract_git_archive(&args),
-        Command::ExtractNpm(args) => extract_npm(&args),
+        Command::Crate(args) => extract_crate(&args),
+        Command::GitArchive(args) => extract_git_archive(&args),
+        Command::Npm(args) => extract_npm(&args),
     }
 }
 
