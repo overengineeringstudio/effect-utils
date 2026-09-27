@@ -405,9 +405,15 @@ const cargoBuck2PackageProjectionFor = ({
   )
   const binaryOwnedSources = new Set([...binaryRuleSources.values()].flat())
   const srcSources = sources.filter((source) => source.startsWith('src/'))
-  // Cargo lets targets share a crate root, so the library keeps its root even when a binary uses it.
+  // The library can load any `src/` file as a module except binary-only trees: `src/main.rs`
+  // and, unless the library declares `mod bin;` through `src/bin.rs` or `src/bin/mod.rs`,
+  // the sources owned by `src/bin/` binaries. Extra srcs only widen the action inputs.
+  const libraryReachesBin = sources.includes('src/bin.rs') || sources.includes('src/bin/mod.rs')
   const librarySources = srcSources.filter(
-    (source) => source === library?.path || binaryOwnedSources.has(source) === false,
+    (source) =>
+      source === library?.path ||
+      binaryOwnedSources.has(source) === false ||
+      (source.startsWith('src/bin/') === true ? libraryReachesBin : source !== 'src/main.rs'),
   )
   // A binary crate's `mod` files are compile inputs: each binary declares its
   // own sources plus every shared non-root `src/` module, so a module-only edit

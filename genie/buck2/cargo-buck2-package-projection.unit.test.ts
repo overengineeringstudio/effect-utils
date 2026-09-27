@@ -354,6 +354,24 @@ describe('Cargo target discovery', () => {
     )
   })
 
+  it('keeps binary sources the library can load as modules', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest: '[package]\nname = "pkg"\n\n[[bin]]\nname = "tool"\npath = "src/tool.rs"',
+            files: ['src/lib.rs', 'src/tool.rs', 'src/bin/mod.rs', 'src/bin/helper.rs'],
+          },
+        },
+        render: 'pkg',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['lib', 'tool', 'helper', 'mod'])
+    expect(rules.lib).toContain(
+      'srcs = [\n        "src/bin/helper.rs",\n        "src/bin/mod.rs",\n        "src/lib.rs",\n        "src/tool.rs",\n    ],',
+    )
+  })
+
   it('keeps targets that share a crate root', () => {
     const rules = renderedRules(
       renderCargoFixture({
