@@ -114,6 +114,15 @@ const browserEnvironment = (root: HTMLElement): SettleEnvironment => ({
 })
 
 /**
+ * Per-story layer for a plays-only run: each story's `play` executes and an
+ * accessibility violation fails it (the default `'todo'` only warns), but no
+ * settle wait or screenshot runs, so no baseline is needed.
+ */
+export const storyPlayAnnotations = {
+  parameters: { a11y: { test: 'error' } },
+} as const
+
+/**
  * The two per-story gate behaviours whose ecosystem defaults fail silently.
  *
  * `parameters.a11y.test` defaults to `'todo'`, which downgrades every violation
@@ -127,7 +136,7 @@ const browserEnvironment = (root: HTMLElement): SettleEnvironment => ({
  * removed story detectable without a second source of truth.
  */
 export const createStoryGateAnnotations = ({ projectName }: { readonly projectName: string }) => ({
-  parameters: { a11y: { test: 'error' } },
+  parameters: storyPlayAnnotations.parameters,
   afterEach: async (context: GateStoryContext): Promise<void> => {
     const name =
       context.title === undefined || context.name === undefined

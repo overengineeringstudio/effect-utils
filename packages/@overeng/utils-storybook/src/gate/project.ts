@@ -6,12 +6,35 @@
 
 import { appendFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import { playwright } from '@vitest/browser-playwright'
 import type { Plugin, ViteUserConfig } from 'vitest/config'
 
+import { playsOnlyProvideKey } from './constants.ts'
 import { portableStoryTests } from './portable-stories.ts'
+
+/**
+ * Selects what a run of the gate config executes.
+ *
+ * Unset (or `gate`): the full visual gate, driven by `runStoryGate`, which
+ * supplies {@link baselineDirEnvVar}. `plays`: every story's `play` function
+ * and accessibility check run in the browser with no settle wait, screenshot,
+ * or baseline, so a plain `vitest run --config vitest.gate.config.ts` works
+ * anywhere. This is what CI runs; the pixel comparison stays a local,
+ * same-host tool because captures depend on the host's fonts.
+ */
+export const storyGateModeEnvVar = 'OVERENG_STORY_GATE_MODE'
+
+const readPlaysOnly = (): boolean => {
+  const mode = process.env[storyGateModeEnvVar]
+  if (mode === undefined || mode === '' || mode === 'gate') return false
+  if (mode === 'plays') return true
+  throw new Error(
+    `[story-gate] ${storyGateModeEnvVar} must be \`gate\` or \`plays\`, got ${JSON.stringify(mode)}.`,
+  )
+}
 
 /**
  * Directory the current run compares against, supplied by `runStoryGate`.
@@ -234,11 +257,38 @@ export type StorybookPluginFor = (args: {
 
 const defaultStorybookPluginFor: StorybookPluginFor = portableStoryTests
 
+/**
+ * Vite's dependency cache defaults to `<root>/node_modules/.vite`, which is
+ * read-only inside the Buck editor view. The shared task modules export a
+ * writable per-package `VITE_CACHE_DIR`; honour it when present.
+ */
+const viteCacheDir = (): Pick<ViteUserConfig, 'cacheDir'> => {
+  const cacheDir = process.env['VITE_CACHE_DIR']
+  return cacheDir === undefined || cacheDir === '' ? {} : { cacheDir }
+}
+
+/**
+ * Stories render against `NODE_ENV=development`, as they do in Storybook, not
+ * Vitest's `test`.
+ *
+ * Vite inlines `process.env.NODE_ENV` from the process, and Vitest has set it to
+ * `test`. Libraries read that value as "running under jsdom": react-aria's
+ * virtualizer disables virtualization and then reads `process.env.VIRT_ON`,
+ * which throws `ReferenceError: process is not defined` in a real browser, so
+ * every story with a virtualized collection failed before its `play` ran. The
+ * dependency optimizer takes its own copy of the value, so it is set in both
+ * places.
+ */
+const storybookNodeEnv = {
+  'process.env.NODE_ENV': JSON.stringify('development'),
+} as const
+
 const createProject = ({
   configDir,
   theme,
   headless,
   baselineRoot,
+  playsOnly,
   plugins,
   storybookPluginFor,
 }: {
@@ -246,6 +296,7 @@ const createProject = ({
   theme: StoryGateTheme | undefined
   headless: boolean
   baselineRoot: string
+  playsOnly: boolean
   plugins: ViteUserConfig['plugins']
   storybookPluginFor: StorybookPluginFor
 }): ViteUserConfig => {
@@ -254,6 +305,9 @@ const createProject = ({
   const artifactsDir = storyGateArtifactsDir({ baselineRoot, projectName })
 
   return {
+    ...viteCacheDir(),
+    define: storybookNodeEnv,
+    optimizeDeps: { rolldownOptions: { transform: { define: storybookNodeEnv } } },
     // Caller plugins come after the React pin and before the Portable Stories
     // integration: a compiler transform must run before the integration turns
     // each CSF module into a test, and the React pin must apply to its output.
@@ -271,6 +325,7 @@ const createProject = ({
     test: {
       name: projectName,
       setupFiles: ['@overeng/utils-storybook/gate/setup'],
+      provide: { [playsOnlyProvideKey]: playsOnly },
       // Vitest copies visual-diff artifacts into `attachmentsDir` for
       // reporters. Its default `.vitest-attachments` is below the consumer
       // package, so keep that second diagnostic channel in the same owned
@@ -387,6 +442,10 @@ const createProject = ({
  *    {@link resolveReactAlias}. Without it, a consumer that reaches this
  *    package through a cross-checkout `link:` renders every story against a
  *    second React instance and every story times out.
+ *
+ * With `OVERENG_STORY_GATE_MODE=plays` ({@link storyGateModeEnvVar}) the same
+ * config runs only each story's `play` and accessibility check: no baseline is
+ * read, and diagnostics land below the OS temp directory.
  */
 export const createStoryGateConfig = ({
   configDir = '.storybook',
@@ -398,14 +457,24 @@ export const createStoryGateConfig = ({
   /** Seam for unit tests; production callers never pass this. */
   readonly storybookPluginFor?: StorybookPluginFor
 } = {}): ViteUserConfig => {
-  const baselineRoot = readBaselineRoot()
+  const playsOnly = readPlaysOnly()
+  const baselineRoot =
+    playsOnly === true ? join(tmpdir(), 'overeng-story-plays') : readBaselineRoot()
   const projects = (themes ?? [undefined]).map((theme) =>
-    createProject({ configDir, theme, headless, baselineRoot, plugins, storybookPluginFor }),
+    createProject({
+      configDir,
+      theme,
+      headless,
+      baselineRoot,
+      playsOnly,
+      plugins,
+      storybookPluginFor,
+    }),
   )
 
   if (projects.length === 1 && projects[0] !== undefined) return projects[0]
   // Also at the root, not only inside each project. The root config runs its own
   // Vite pipeline for config loading and collection, and a project's `resolve`
   // does not reach it.
-  return { plugins: [pinReactToConsumer()], test: { projects } }
+  return { ...viteCacheDir(), plugins: [pinReactToConsumer()], test: { projects } }
 }
