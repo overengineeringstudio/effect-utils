@@ -770,10 +770,17 @@ describe('defineCatalog', () => {
       const prereleaseCatalog = defineCatalog({
         effect: '4.0.0-rc.113',
         '@effect/vitest': '^4.0.0-rc.113',
+        '@effect/platform-node': '4.0.0-rc.113+build.5',
         react: '19.2.3',
         '@types/react': '^19.2.18',
       })
-      const names = ['effect', '@effect/vitest', 'react', '@types/react'] as const
+      const names = [
+        'effect',
+        '@effect/vitest',
+        '@effect/platform-node',
+        'react',
+        '@types/react',
+      ] as const
 
       const composed = prereleaseCatalog.compose({
         workspace: workspace({ repoName: repo.repoName, memberPath: 'packages/app' }),
@@ -781,6 +788,7 @@ describe('defineCatalog', () => {
       })
 
       const expected = {
+        '@effect/platform-node': '4.0.0-rc.113+build.5',
         '@effect/vitest': '4.0.0-rc.113',
         '@types/react': '^19.2.18',
         effect: '4.0.0-rc.113',

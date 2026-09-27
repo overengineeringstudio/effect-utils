@@ -222,8 +222,11 @@ const createPickFn =
     return result
   }
 
-/** A single (optionally caret-prefixed) prerelease version; group 1 is the exact version. */
-const singlePrereleasePeer = /^\^?(\d+\.\d+\.\d+-[0-9A-Za-z.-]+)$/
+/**
+ * A single (optionally caret-prefixed) prerelease version, with optional build metadata;
+ * group 1 is the exact version.
+ */
+const singlePrereleasePeer = /^\^?(\d+\.\d+\.\d+-[0-9A-Za-z.-]+(?:\+[0-9A-Za-z.-]+)?)$/
 
 /**
  * Peer range for a catalog version: `^version` for a release, the exact version for a
