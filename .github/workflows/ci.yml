@@ -746,7 +746,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DEVENV_TASK_PASSTHROUGH: '1'
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --frozen-lockfile --lockfile-only --offline --ignore-scripts'
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --frozen-lockfile --lockfile-only --offline --ignore-scripts --config.minimum-release-age=0'
       - name: Format + lint
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -415,12 +415,14 @@ const nativeDepPolicyAuditStep = {
  * regenerated `package.json` specifier (#1409, #1427 both slipped a stale lock past
  * PR CI). A frozen, lockfile-only, offline install fails with
  * ERR_PNPM_OUTDATED_LOCKFILE on any drift, without resolving or fetching anything.
+ * `minimum-release-age=0` skips only the release-age policy pass, which needs registry
+ * metadata a cold runner cache lacks offline; real installs still enforce it.
  */
 const frozenLockfileStep = {
   name: 'Check pnpm lockfile matches package specifiers',
   env: { ...githubTokenEnv(), DEVENV_TASK_PASSTHROUGH: '1' },
   run: withCiSourceRoot(
-    '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --frozen-lockfile --lockfile-only --offline --ignore-scripts',
+    '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --frozen-lockfile --lockfile-only --offline --ignore-scripts --config.minimum-release-age=0',
   ),
 } as const
 
