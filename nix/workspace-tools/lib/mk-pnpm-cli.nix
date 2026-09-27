@@ -567,16 +567,21 @@ let
   declaredSourceInputPathsValidated =
     assert _validateSourceInputProjectionContract;
     if hasSourceInputProjectionContract then declaredSourceInputPaths else [ ];
-  stageRootSourceInputManifestAliasesCmd = lib.optionalString hasSourceInputProjectionContract (
+  # pnpm 12.7 computes packlists for directory snapshots retained in the
+  # lockfile even when the narrowed importer set does not reference them.
+  # Stage every declared source-input manifest at both its logical path and the
+  # canonical alias, without pulling source-only changes into FOD identity.
+  stageRootSourceInputManifestsCmd = lib.optionalString hasSourceInputProjectionContract (
     builtins.concatStringsSep "\n" (
-      map (sourcePath: ''
-        logical_dir="$out"/${lib.escapeShellArg sourcePath}
-        alias_dir="$out"/${lib.escapeShellArg "${declaredSourceInputStagePath}/${sourcePath}"}
-        if [ -f "$logical_dir/package.json" ]; then
+      map (
+        sourcePath:
+        copyFileCmd "${sourcePath}/package.json"
+        + ''
+          alias_dir="$out"/${lib.escapeShellArg "${declaredSourceInputStagePath}/${sourcePath}"}
           mkdir -p "$alias_dir"
-          ln -s "$(realpath --relative-to="$alias_dir" "$logical_dir/package.json")" "$alias_dir/package.json"
-        fi
-      '') declaredSourceInputPathsValidated
+          ln -s "$(realpath --relative-to="$alias_dir" "$out"/${lib.escapeShellArg "${sourcePath}/package.json"})" "$alias_dir/package.json"
+        ''
+      ) declaredSourceInputPathsValidated
     )
   );
 
@@ -1206,7 +1211,7 @@ let
       targetPrefix = "";
     }
     + builtins.concatStringsSep "\n" (map stageExternalInstallRootManifestOnlyCmd externalInstallRoots)
-    + stageRootSourceInputManifestAliasesCmd
+    + stageRootSourceInputManifestsCmd
   );
 
   # Each external install root gets its own manifest-only derivation and its

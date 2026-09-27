@@ -384,7 +384,7 @@ in
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v20";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v21";
       version = "0.0.0";
 
       inherit src sourceRoot;
