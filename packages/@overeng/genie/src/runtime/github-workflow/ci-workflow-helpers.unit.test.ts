@@ -1382,6 +1382,10 @@ describe('storybook preview split build/deploy', () => {
               .filter(({ jobId, step }) => jobId === 'deploy-preview' && String(step.uses ?? '').startsWith('actions/download-artifact@'))
               .map(({ step }) => step.with['run-id']),
             deployReadsPullRequestEvent: JSON.stringify(deploy).includes('github.event.pull_request'),
+            headRefJobs: Object.entries(deploy.jobs)
+              .filter(([, job]) => /workflow_run\\.head_(sha|branch|repository)|pull_request\\.head/.test(JSON.stringify(job)))
+              .map(([jobId]) => jobId),
+            stagedTaskNames: [...stagedRun.matchAll(/devenv tasks run (\\S+)/g)].map(([, task]) => task),
             stagedDeployPolicies: [
               ...new Set(
                 [...stagedRun.matchAll(/--input "?([A-Za-z]+Policy)=(\\w+)/g)].map(([, k, v]) => k + '=' + v),
@@ -1447,6 +1451,148 @@ describe('storybook preview split build/deploy', () => {
 
   it('keeps rejected Netlify credentials fatal for staged PR previews', () => {
     expect(facts.stagedDeployPolicies).toEqual(['missingAuthPolicy=skip'])
+  })
+
+  it('never evaluates the PR head: only payload resolution reads head refs', () => {
+    expect(facts.headRefJobs).toEqual(['resolve-preview'])
+  })
+
+  it('deploys the staged directories as data through one task, not per configured target', () => {
+    expect([...new Set(facts.stagedTaskNames)]).toEqual(['netlify:deploy-staged'])
+  })
+
+  describe('staged target validation', () => {
+    const script = join(
+      ciWorkflowModuleRoot,
+      'nix/devenv-modules/tasks/shared/netlify-staged-targets.sh',
+    )
+    const listTargets = (stageDir: string, ...extra: string[]) =>
+      spawnSync('bash', [script, stageDir, ...extra], { encoding: 'utf8' })
+    const withStage = (entries: (stageDir: string) => void, run: (stageDir: string) => void) => {
+      const stageDir = mkdtempSync(join(tmpdir(), 'netlify-stage-'))
+      try {
+        entries(stageDir)
+        run(stageDir)
+      } finally {
+        rmSync(stageDir, { recursive: true, force: true })
+      }
+    }
+
+    it('admits only alias-safe slugs', () => {
+      const names = [
+        'brand-new-pkg',
+        'a',
+        '0x',
+        'a'.repeat(63),
+        'a'.repeat(64),
+        '../x',
+        '..',
+        '.',
+        '.hidden',
+        'a b',
+        'a/b',
+        '-leading',
+        'Upper',
+        'under_score',
+        'dot.ted',
+        'new\nline',
+        '',
+      ]
+      const result = spawnSync(
+        'bash',
+        [
+          '-c',
+          'source "$1"; shift; for name in "$@"; do if netlify_staged_target_name_is_valid "$name"; then printf "1"; else printf "0"; fi; done',
+          'netlify-staged-target-names',
+          script,
+          ...names,
+        ],
+        { encoding: 'utf8' },
+      )
+      expect(result.status, result.stderr).toBe(0)
+      expect(Object.fromEntries(names.map((name, i) => [name, result.stdout[i] === '1']))).toEqual({
+        'brand-new-pkg': true,
+        a: true,
+        '0x': true,
+        ['a'.repeat(63)]: true,
+        ['a'.repeat(64)]: false,
+        '../x': false,
+        '..': false,
+        '.': false,
+        '.hidden': false,
+        'a b': false,
+        'a/b': false,
+        '-leading': false,
+        Upper: false,
+        under_score: false,
+        'dot.ted': false,
+        'new\nline': false,
+        '': false,
+      })
+    })
+
+    it('lists every valid staged directory, including names no revision configures', () => {
+      withStage(
+        (stageDir) => {
+          for (const name of ['storybook', 'brand-new-pkg']) mkdirSync(join(stageDir, name))
+        },
+        (stageDir) => {
+          const result = listTargets(stageDir)
+          expect(result.status, result.stderr).toBe(0)
+          expect(result.stdout).toBe('brand-new-pkg\nstorybook\n')
+        },
+      )
+    })
+
+    it.each([
+      ['dot directory', (stageDir: string) => mkdirSync(join(stageDir, '.hidden')), '.hidden'],
+      ['name with a space', (stageDir: string) => mkdirSync(join(stageDir, 'a b')), 'a\\ b'],
+      [
+        'symlinked directory',
+        (stageDir: string) => symlinkSync(tmpdir(), join(stageDir, 'linked')),
+        'linked (symlink)',
+      ],
+      [
+        'regular file',
+        (stageDir: string) => writeFileSync(join(stageDir, 'file'), ''),
+        'file (not a directory)',
+      ],
+    ] as const)('rejects the whole stage when it contains a %s', (_label, addHostile, reported) => {
+      withStage(
+        (stageDir) => {
+          mkdirSync(join(stageDir, 'storybook'))
+          addHostile(stageDir)
+        },
+        (stageDir) => {
+          const result = listTargets(stageDir)
+          expect(result.status).toBe(1)
+          expect(result.stdout).toBe('')
+          expect(result.stderr).toContain(reported)
+        },
+      )
+    })
+
+    it('rejects an empty stage, a symlinked stage, and more targets than the cap', () => {
+      withStage(
+        () => {},
+        (stageDir) => {
+          expect(listTargets(stageDir).status).toBe(1)
+          const linkedStage = `${stageDir}-link`
+          symlinkSync(stageDir, linkedStage)
+          try {
+            mkdirSync(join(stageDir, 'storybook'))
+            expect(listTargets(linkedStage).status).toBe(1)
+          } finally {
+            rmSync(linkedStage, { force: true })
+          }
+          for (const name of ['a', 'b', 'c']) mkdirSync(join(stageDir, name))
+          expect(listTargets(stageDir, '4').status).toBe(0)
+          const capped = listTargets(stageDir, '3')
+          expect(capped.status).toBe(1)
+          expect(capped.stderr).toContain('at most 3')
+        },
+      )
+    })
   })
 })
 

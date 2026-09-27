@@ -113,6 +113,7 @@ assert_deploy_modules_include_workflow_report_tasks() {
 extract_netlify_task_script() {
   local static_dir="$1"
   local output_path="$2"
+  local task_name="${3:-netlify:deploy:storybook}"
 
   nix-instantiate --eval --strict --json --expr "
     let
@@ -144,8 +145,10 @@ extract_netlify_task_script() {
           })
         ];
       };
-    in evaluated.config.tasks.\"netlify:deploy:storybook\".exec
-  " | jq -r . > "$output_path"
+    in evaluated.config.tasks.\"$task_name\".exec
+  " | jq -r . \
+    | sed -E 's#/nix/store/[^" ]*-netlify-staged-targets\.sh#'"$ROOT"'/nix/devenv-modules/tasks/shared/netlify-staged-targets.sh#g' \
+    > "$output_path"
   chmod +x "$output_path"
 }
 
@@ -312,6 +315,9 @@ cat > "$tmpdir/fake-netlify-pkg/bin/netlify" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_NETLIFY_LOG:?}"
+if [ -n "${FAKE_NETLIFY_CWD_LOG:-}" ]; then
+  printf '%s\n' "$PWD" >> "$FAKE_NETLIFY_CWD_LOG"
+fi
 
 if [ "${1:-}" = "deploy" ]; then
   printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://deploy123--fake-site.netlify.app"}\n'
@@ -424,6 +430,7 @@ echo "Test 0: deploy modules compose their workflow-report task dependency"
 assert_deploy_modules_include_workflow_report_tasks
 
 extract_netlify_task_script "$workspace/storybook-static" "$tmpdir/netlify-deploy.sh"
+extract_netlify_task_script "$workspace/storybook-static" "$tmpdir/netlify-deploy-staged.sh" "netlify:deploy-staged"
 extract_vercel_static_task_script "$workspace/static" "$tmpdir/vercel-static-deploy.sh"
 extract_vercel_build_task_script "$tmpdir/vercel-build-deploy.sh"
 
@@ -579,6 +586,56 @@ assert_contains "$build_ci_tools_args" "--build-env LD_LIBRARY_PATH=" "Vercel bu
 assert_not_contains "$build_output" "Error:" "Vercel build wrapper should not surface shell-owned build errors"
 if [ -e "$workspace/.vercel" ]; then
   echo "Assertion failed: Vercel build wrapper should let ci-tools clean local .vercel state" >&2
+  exit 1
+fi
+
+echo "Test 6: Netlify staged deploy deploys every staged directory, including unconfigured ones"
+stage_dir="$tmpdir/netlify-stage"
+mkdir -p "$stage_dir/storybook" "$stage_dir/brand-new-pkg"
+echo "staged storybook" > "$stage_dir/storybook/index.html"
+echo "staged new package" > "$stage_dir/brand-new-pkg/index.html"
+staged_report_file="$tmpdir/netlify-staged-report.jsonl"
+staged_output="$(
+  cd "$workspace"
+  export FAKE_CI_TOOLS_LOG="$tmpdir/netlify-staged-ci-tools.log"
+  export FAKE_NETLIFY_LOG="$tmpdir/netlify-staged.log"
+  export FAKE_NETLIFY_CWD_LOG="$tmpdir/netlify-staged-cwd.log"
+  export NETLIFY_AUTH_TOKEN="fake-token"
+  export DEVENV_TASK_INPUT="{\"type\":\"pr\",\"pr\":42,\"missingAuthPolicy\":\"skip\",\"stageDir\":\"$stage_dir\"}"
+  export WORKFLOW_REPORT_OUTPUT_FILE="$staged_report_file"
+  unset DEVENV_TASK_OUTPUT_FILE GITHUB_OUTPUT GITHUB_ENV
+  bash "$tmpdir/netlify-deploy-staged.sh" 2>&1
+)"
+staged_provider_log="$(cat "$tmpdir/netlify-staged.log")"
+assert_contains "$staged_output" "Netlify deploy URL: https://storybook-pr-42--fake-site.netlify.app" "Staged deploy should deploy the configured target"
+assert_contains "$staged_output" "Netlify deploy URL: https://brand-new-pkg-pr-42--fake-site.netlify.app" "Staged deploy should deploy a target the deploying revision does not configure"
+assert_contains "$staged_provider_log" "--dir=$stage_dir/brand-new-pkg" "Staged deploy should publish the staged directory"
+assert_contains "$staged_provider_log" "--alias=brand-new-pkg-pr-42" "Staged deploy should alias each target per PR"
+assert_not_contains "$staged_provider_log" "--filter=" "Staged deploy should not select a workspace package"
+assert_not_contains "$(cat "$tmpdir/netlify-staged-cwd.log")" "$workspace" "Staged deploy should not run the Netlify CLI inside the repository"
+assert_contains "$(cat "$staged_report_file")" "brand-new-pkg" "Staged deploy should emit a report record per target"
+
+echo "Test 7: Netlify staged deploy rejects hostile stage entries before ci-tools"
+hostile_stage_dir="$tmpdir/netlify-hostile-stage"
+mkdir -p "$hostile_stage_dir/storybook" "$hostile_stage_dir/.hidden"
+ln -s /etc "$hostile_stage_dir/linked"
+set +e
+hostile_output="$(
+  cd "$workspace"
+  : > "$tmpdir/netlify-hostile-ci-tools.log"
+  export FAKE_CI_TOOLS_LOG="$tmpdir/netlify-hostile-ci-tools.log"
+  export FAKE_NETLIFY_LOG="$tmpdir/netlify-hostile.log"
+  export NETLIFY_AUTH_TOKEN="fake-token"
+  export DEVENV_TASK_INPUT="{\"type\":\"pr\",\"pr\":42,\"stageDir\":\"$hostile_stage_dir\"}"
+  bash "$tmpdir/netlify-deploy-staged.sh" 2>&1
+)"
+hostile_status=$?
+set -e
+assert_exit_code 1 "$hostile_status" "Staged deploy should fail on hostile stage entries"
+assert_contains "$hostile_output" ".hidden (name must match" "Staged deploy should name the rejected dot entry"
+assert_contains "$hostile_output" "linked (symlink)" "Staged deploy should name the rejected symlink"
+if [ -s "$tmpdir/netlify-hostile-ci-tools.log" ]; then
+  echo "FAIL: Staged deploy with hostile entries should not call ci-tools"
   exit 1
 fi
 

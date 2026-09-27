@@ -70,10 +70,13 @@ export const netlifyStageStep = (
 })
 
 /**
- * Credentialed half of the split build/deploy: deploys the already-staged
- * static output in `stageDir` as the preview for `prNumber` without building.
- * `stageDir` is untrusted data; the task only hands it to `netlify deploy
- * --no-build`. `prNumber` must come from the trusted event payload.
+ * Credentialed half of the split build/deploy: deploys every target directory
+ * staged in `stageDir` as the preview for `prNumber` without building. The
+ * target set is the staged directory names, not the deploying revision's
+ * configuration, so a PR that adds a target gets it deployed. `stageDir` is
+ * untrusted data; the task validates each name and only hands the directories
+ * to `netlify deploy --no-build`. `prNumber` must come from the trusted event
+ * payload.
  */
 export const netlifyStagedPreviewDeployStep = (
   runDevenvTasksBefore: RunTasksBefore,
