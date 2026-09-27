@@ -55,6 +55,21 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Storybook play tests in CI** (#1392): The shared storybook task module
+  adds `storybook:test:<name>` for packages marked `playTests = true` and a
+  `storybook:test` aggregate. Each runs the package's `vitest.gate.config.ts`
+  with `OVERENG_STORY_GATE_MODE=plays`, a new `@overeng/utils-storybook/gate`
+  mode (`storyGateModeEnvVar`) that runs every story's `play` and
+  accessibility check in headless Chromium without the settle wait,
+  screenshot, or derived baseline. The gate config also honours
+  `VITE_CACHE_DIR` and renders stories under `NODE_ENV=development`, as
+  Storybook does. Under Vitest's `test` value, react-aria's virtualizer read
+  `process.env` in the browser and crashed every virtualized story. CI runs
+  `storybook:test` for `effect-rpc-explorer-react` and
+  `effect-schema-form-aria` in the advisory `Storybook Plays` workflow
+  (`storybook-plays.yml`, pull requests and `main`, no secrets), kept out of
+  `ci.yml` and its required checks.
+
 - **Local Buck2 evidence upload**: `otel-span pipeline-run` sends sealed
   local records and their one-job close to the configured evidence service.
   The service verifies their single carried root and binds upload roles

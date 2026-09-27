@@ -454,6 +454,7 @@ let
       path = "packages/@overeng/effect-schema-form-aria";
       name = "effect-schema-form-aria";
       port = 6010;
+      playTests = true;
     }
     {
       path = "packages/@overeng/react-inspector";
@@ -489,6 +490,7 @@ let
       path = "packages/@overeng/effect-rpc-explorer-react";
       name = "effect-rpc-explorer-react";
       port = 6017;
+      playTests = true;
     }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;

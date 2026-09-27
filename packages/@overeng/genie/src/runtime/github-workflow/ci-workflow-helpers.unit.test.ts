@@ -1311,6 +1311,60 @@ describe('ci workflow standard job helpers', () => {
   })
 })
 
+interface StorybookPlaysWorkflowFacts {
+  readonly triggers: unknown
+  readonly jobs: readonly string[]
+  readonly permissions: readonly unknown[]
+  readonly referencesSecrets: boolean
+  readonly runsPlays: boolean
+  readonly ciHasPlaysJob: boolean
+}
+
+describe('storybook plays workflow', () => {
+  let facts: StorybookPlaysWorkflowFacts
+
+  beforeAll(() => {
+    const fixture = spawnSync(
+      'bun',
+      [
+        '-e',
+        `
+          import { readFileSync } from 'node:fs'
+          import { YAML } from 'bun'
+          const plays = YAML.parse(readFileSync('.github/workflows/storybook-plays.yml', 'utf8'))
+          const ci = YAML.parse(readFileSync('.github/workflows/ci.yml', 'utf8'))
+          console.log(JSON.stringify({
+            triggers: plays.on,
+            jobs: Object.keys(plays.jobs),
+            permissions: [plays.permissions, ...Object.values(plays.jobs).map((job) => job.permissions)],
+            referencesSecrets: JSON.stringify(plays).includes('secrets.'),
+            runsPlays: JSON.stringify(plays).includes('tasks run storybook:test'),
+            ciHasPlaysJob: Object.keys(ci.jobs).includes('test-storybook-plays'),
+          }))
+        `,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(fixture.status, fixture.stderr).toBe(0)
+    facts = JSON.parse(fixture.stdout) as StorybookPlaysWorkflowFacts
+  })
+
+  it('runs story plays for pull requests and main with read-only, secret-free access', () => {
+    expect(facts.triggers).toEqual({
+      pull_request: { types: ['opened', 'reopened', 'synchronize'] },
+      push: { branches: ['main'] },
+    })
+    expect(facts.jobs).toEqual(['test-storybook-plays'])
+    expect(facts.runsPlays).toBe(true)
+    expect(facts.referencesSecrets).toBe(false)
+    for (const permissions of facts.permissions) expect(permissions).toEqual({ contents: 'read' })
+  })
+
+  it('keeps the advisory plays lane out of the required ci.yml workflow', () => {
+    expect(facts.ciHasPlaysJob).toBe(false)
+  })
+})
+
 describe('storybook preview split build/deploy', () => {
   let facts: ReturnType<typeof JSON.parse>
 
