@@ -184,6 +184,13 @@ pub fn mark_ingested(
            spans=?4, dup_spans=?5, last_error=null where digest=?1",
         params![digest, now, archive_path, spans as i64, dup_spans as i64],
     )?;
+    // A new job write reopens the bounded verification window, even for an
+    // already settled run. Cumulative verification still runs on this write.
+    tx.execute(
+        "update closes set last_write_at=?2,settled_at=null
+         where run_id=(select run_id from records where digest=?1)",
+        params![digest, now],
+    )?;
     tx.commit()
 }
 

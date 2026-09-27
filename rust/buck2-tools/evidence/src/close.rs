@@ -85,7 +85,7 @@ pub fn seal_close(spool: &Path, run: &str, repository: &str, jobs_json: &Path) -
 }
 
 pub fn init(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute_batch("create table if not exists closes (digest text primary key, run_id text not null unique, repo text not null, manifest_json text not null, received_at integer not null, root_pushed integer not null default 0, incomplete integer not null default 0, archive_path text, error text);")?;
+    conn.execute_batch("create table if not exists closes (digest text primary key, run_id text not null unique, repo text not null, manifest_json text not null, received_at integer not null, root_pushed integer not null default 0, incomplete integer not null default 0, archive_path text, error text, last_write_at integer not null default 0, settled_at integer);")?;
     let mut columns = conn.prepare("pragma table_info(closes)")?;
     let names: Vec<String> = columns
         .query_map([], |r| r.get(1))?
@@ -95,6 +95,12 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     }
     if !names.iter().any(|name| name == "archive_path") {
         conn.execute_batch("alter table closes add column archive_path text")?;
+    }
+    if !names.iter().any(|name| name == "last_write_at") {
+        conn.execute_batch("alter table closes add column last_write_at integer not null default 0; update closes set last_write_at=received_at")?;
+    }
+    if !names.iter().any(|name| name == "settled_at") {
+        conn.execute_batch("alter table closes add column settled_at integer")?;
     }
     Ok(())
 }
@@ -210,7 +216,8 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
     if synthetic {
         conn.execute(
             "update closes set digest=?1,repo=?2,manifest_json=?3,received_at=?4,
-             incomplete=case when root_pushed=1 then 1 else 0 end,archive_path=?5 where run_id=?6",
+             incomplete=case when root_pushed=1 then 1 else 0 end,archive_path=?5,
+             last_write_at=?4,settled_at=null where run_id=?6",
             params![
                 digest,
                 record.repository,
@@ -222,7 +229,7 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         )?;
     } else {
         let inserted = conn.execute(
-            "insert into closes (digest,run_id,repo,manifest_json,received_at,archive_path) values (?1,?2,?3,?4,?5,?6) on conflict do nothing",
+            "insert into closes (digest,run_id,repo,manifest_json,received_at,archive_path,last_write_at) values (?1,?2,?3,?4,?5,?6,?5) on conflict do nothing",
             params![digest,record.pipeline_run_id,record.repository,manifest_json,now_ms(),archived.to_string_lossy()],
         )? != 0;
         let incomplete: bool = conn.query_row(
@@ -304,9 +311,11 @@ fn root_body(
 
 type PendingClose = (String, String, i64, bool, bool, i64);
 
-/// Retry until all records finish, or close has waited six hours; mark pushed only after OTLP success.
+/// Retry unpushed roots until ready; only probe pushed traces during their settle window.
 fn pending_closes(cfg: &Config) -> Result<Vec<PendingClose>> {
     let conn = crate::index::open(&cfg.index_path())?;
+    let now = now_ms();
+    let cutoff = now - cfg.close_settle_window.as_millis().min(i64::MAX as u128) as i64;
     // Idle CI attempts without a finalizer still get one incomplete root after six hours.
     let mut idle = conn.prepare(
         "select run_id,repo,max(uploaded_at) from records
@@ -314,7 +323,7 @@ fn pending_closes(cfg: &Config) -> Result<Vec<PendingClose>> {
         group by run_id,repo having max(uploaded_at) <= ?1",
     )?;
     let overdue: Vec<(String, String, i64)> = idle
-        .query_map([now_ms() - 6 * 60 * 60 * 1000], |r| {
+        .query_map([now - 6 * 60 * 60 * 1000], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -327,16 +336,20 @@ fn pending_closes(cfg: &Config) -> Result<Vec<PendingClose>> {
             expected_jobs: Vec::new(),
         };
         let digest = hex::encode(Sha256::digest(run.as_bytes()));
-        conn.execute("insert or ignore into closes (digest,run_id,repo,manifest_json,received_at,incomplete) values (?1,?2,?3,?4,?5,1)",
+        conn.execute("insert or ignore into closes (digest,run_id,repo,manifest_json,received_at,incomplete,last_write_at) values (?1,?2,?3,?4,?5,1,?5)",
             params![digest,run,synthetic.repository,serde_json::to_string(&synthetic)?,last_upload])?;
     }
+    conn.execute(
+        "update closes set settled_at=?1 where root_pushed=1 and settled_at is null and last_write_at<=?2",
+        params![now, cutoff],
+    )?;
     let mut stmt = conn.prepare(
         "select digest,manifest_json,received_at,incomplete,root_pushed,
                 coalesce(1000 * cast(strftime('%s',json_extract(manifest_json,'$.sealedAt')) as integer),received_at)
-         from closes",
+         from closes where root_pushed=0 or (settled_at is null and last_write_at>?1)",
     )?;
     let rows = stmt
-        .query_map([], |r| {
+        .query_map([cutoff], |r| {
             Ok((
                 r.get(0)?,
                 r.get(1)?,
@@ -485,8 +498,8 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
             {
                 let conn = crate::index::open(&cfg.index_path())?;
                 conn.execute(
-                    "update closes set root_pushed=1,error=null where digest=?1",
-                    [&digest],
+                    "update closes set root_pushed=1,error=null,last_write_at=?2,settled_at=null where digest=?1",
+                    params![digest, now_ms()],
                 )?;
             }
             done += 1;
@@ -509,6 +522,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let cfg = Config {
+            close_settle_window: std::time::Duration::from_secs(7200),
             state: std::env::temp_dir()
                 .join(format!("evidence-close-{}-{nonce}", std::process::id())),
             otlp: String::new(),
@@ -793,6 +807,97 @@ mod tests {
             "late upload must not rewrite the already-published root"
         );
         server.abort();
+        fs::remove_dir_all(cfg.state).unwrap();
+    }
+    #[tokio::test]
+    async fn settled_close_does_not_query_tempo_on_ticks() {
+        use axum::{extract::State, routing::get, Json, Router};
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        let (mut cfg, conn) = fixture();
+        let run = "ci/owner/repo/settle/1";
+        let close = CloseRecord {
+            schema: "buck2-attempt-close/v1".into(),
+            pipeline_run_id: run.into(),
+            repository: "owner/repo".into(),
+            sealed_at: "2026-09-27T12:00:00Z".into(),
+            expected_jobs: Vec::new(),
+        };
+        let bytes = serde_json::to_vec(&close).unwrap();
+        let digest = hex::encode(Sha256::digest(&bytes));
+        assert!(accept(&cfg, &conn, &digest, &tar_close(&bytes)).unwrap());
+        conn.execute("update closes set root_pushed=1 where run_id=?1", [run])
+            .unwrap();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let root = ids::run_root_span(run);
+        let app = Router::new()
+            .route(
+                "/api/v2/traces/{id}",
+                get({
+                    let root = root.clone();
+                    move |State(requests): State<Arc<AtomicUsize>>| {
+                        let root = root.clone();
+                        async move {
+                            requests.fetch_add(1, Ordering::SeqCst);
+                            Json(json!({"trace":{"resourceSpans":[{"scopeSpans":[{"spans":[{"spanId":root}]}]}]}}))
+                        }
+                    }
+                }),
+            )
+            .with_state(Arc::clone(&requests));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        cfg.tempo = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::new();
+        reconcile(&cfg, &client).await.unwrap();
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+
+        conn.execute(
+            "update closes set last_write_at=?2 where run_id=?1",
+            params![run, now_ms() - 3 * 60 * 60 * 1000],
+        )
+        .unwrap();
+        reconcile(&cfg, &client).await.unwrap();
+        reconcile(&cfg, &client).await.unwrap();
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        let settled: Option<i64> = conn
+            .query_row(
+                "select settled_at from closes where run_id=?1",
+                [run],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(settled.is_some());
+        server.abort();
+        fs::remove_dir_all(cfg.state).unwrap();
+    }
+
+    #[test]
+    fn upgrades_existing_close_index() {
+        let (cfg, conn) = fixture();
+        conn.execute_batch(
+            "drop table closes;
+             create table closes (digest text primary key, run_id text not null unique, repo text not null,
+             manifest_json text not null, received_at integer not null, root_pushed integer not null default 0,
+             incomplete integer not null default 0, archive_path text, error text);
+             insert into closes(digest,run_id,repo,manifest_json,received_at,root_pushed)
+             values ('old','ci/owner/repo/old/1','owner/repo','{}',123,1)",
+        )
+        .unwrap();
+        init(&conn).unwrap();
+        init(&conn).unwrap();
+        let (last_write, settled): (i64, Option<i64>) = conn
+            .query_row(
+                "select last_write_at,settled_at from closes where digest='old'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(last_write, 123);
+        assert_eq!(settled, None);
         fs::remove_dir_all(cfg.state).unwrap();
     }
 }

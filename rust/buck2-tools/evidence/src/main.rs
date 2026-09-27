@@ -107,6 +107,8 @@ struct Common {
     grafana_url: String,
     #[arg(long, default_value_t = 30)]
     readback_timeout_secs: u64,
+    #[arg(long, env = "BUCK2_EVIDENCE_CLOSE_SETTLE_SECS", default_value_t = 7200)]
+    close_settle_secs: u64,
     #[arg(long, default_value_t = 2)]
     workers: usize,
     #[arg(long, default_value_t = 12)]
@@ -129,6 +131,7 @@ impl Common {
             otlp: self.otlp_endpoint.clone(),
             tempo: self.tempo_url.clone(),
             readback_timeout: Duration::from_secs(self.readback_timeout_secs),
+            close_settle_window: Duration::from_secs(self.close_settle_secs),
             grafana: self.grafana_url.clone(),
         }
     }

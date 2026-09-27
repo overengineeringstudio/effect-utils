@@ -25,6 +25,8 @@ pub struct Config {
     pub tempo: String,
     /// Upper bound for one readback wait before the step reports a transient failure.
     pub readback_timeout: Duration,
+    /// Periodic Tempo verification after the most recent trace write.
+    pub close_settle_window: Duration,
     /// Grafana base for `/t/<id>` redirects.
     pub grafana: String,
 }

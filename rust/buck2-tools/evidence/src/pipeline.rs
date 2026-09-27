@@ -582,8 +582,11 @@ pub async fn verify_run_trace(
         }
     }
     if missing_root && state.is_some() {
-        tx.execute("update closes set root_pushed=0 where run_id=?1", [run_id])
-            .map_err(transient)?;
+        tx.execute(
+            "update closes set root_pushed=0,settled_at=null where run_id=?1",
+            [run_id],
+        )
+        .map_err(transient)?;
     }
     let complete = missing_records.is_empty() && !missing_root && state == Some((1, 0));
     let published = tx
@@ -785,6 +788,7 @@ mod tests {
             otlp: String::new(),
             tempo: url,
             readback_timeout: Duration::from_secs(1),
+            close_settle_window: Duration::from_secs(7200),
             grafana: String::new(),
         };
         cfg.ensure_dirs().unwrap();
