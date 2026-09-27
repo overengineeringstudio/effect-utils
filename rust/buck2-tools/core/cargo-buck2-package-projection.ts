@@ -413,6 +413,13 @@ const cargoBuck2PackageProjectionFor = ({
   // own sources plus every shared non-root `src/` module, so a module-only edit
   // changes the rule's action key instead of reusing a stale cached binary.
   const binaryModuleSources = librarySources.filter((source) => source !== library?.path)
+  // A binary root outside `src/bin/` can double as a `mod` of a peer binary (Cargo compiles
+  // it both ways), so peers declare those roots too.
+  const peerBinaryRoots = binaries
+    .map((binary) => binary.crateRoot)
+    .filter(
+      (crateRoot) => crateRoot.startsWith('src/bin/') === false && crateRoot !== library?.path,
+    )
   const integrationTestRoots = sources.filter(
     (source) =>
       source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
@@ -565,6 +572,7 @@ const cargoBuck2PackageProjectionFor = ({
             field: `${member.manifestPath} bin ${binary.name} sources`,
           }),
           ...binaryModuleSources,
+          ...peerBinaryRoots,
         ]),
         dependencies: binaryDependencies,
         conditionalDependencies: normalConditional,

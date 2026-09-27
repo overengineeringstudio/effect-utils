@@ -288,10 +288,10 @@ describe('Cargo target discovery', () => {
     expect(rules['my-tool']).toContain('crate = "my_tool",\n    crate_root = "src/main.rs",')
     expect(rules['my-tool']).toContain('deps = [\n        ":lib",\n    ],')
     expect(rules.extra).toContain(
-      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/util.rs",\n    ],',
+      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
     )
     expect(rules.multi).toContain(
-      'crate_root = "src/bin/multi/main.rs",\n    srcs = [\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/util.rs",\n    ],',
+      'crate_root = "src/bin/multi/main.rs",\n    srcs = [\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
     )
   })
 
@@ -334,6 +334,24 @@ describe('Cargo target discovery', () => {
       'Cargo binary names collide with generated Buck targets in rust/pkg/Cargo.toml: static_sources',
     )
     expect(Object.keys(renderedRules(render(['src/bin/lib.rs'])))).toEqual(['lib'])
+  })
+
+  it('lets a binary load a peer binary root as a module', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          app: {
+            manifest: '[package]\nname = "app"\n\n[[bin]]\nname = "tool"\npath = "src/tool.rs"',
+            files: ['src/main.rs', 'src/tool.rs'],
+          },
+        },
+        render: 'app',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['tool', 'app'])
+    expect(rules.app).toContain(
+      'crate_root = "src/main.rs",\n    srcs = [\n        "src/main.rs",\n        "src/tool.rs",\n    ],',
+    )
   })
 
   it('keeps targets that share a crate root', () => {
