@@ -323,7 +323,8 @@
             '';
         # Lockfile-derived directories must stay canonical and beneath the
         # lockfile directory; `..` anywhere (including one that would dodge the
-        # source-input check), empty segments and absolute paths fail eval.
+        # source-input check), empty segments, absolute paths, undecodable escapes
+        # and unreadable resolutions fail eval; CRLF and YAML escapes decode.
         checks.injected-directory-path-validation =
           assert builtins.all rejectsInjectedDirectory [
             "packages/a/../../../other"
@@ -333,9 +334,16 @@
             "/abs/pkg"
             "packages//x"
             ".devenv/pnpm-source-inputs/current/x"
+            "\"packages/\\x41\""
+            "'unterminated"
           ];
           assert injectedDirsForDirectory "./packages/./a/" == [ "packages/a" ];
           assert injectedDirsForDirectory "'packages/it''s,x'" == [ "packages/it's,x" ];
+          assert injectedDirsForDirectory "\"packages/tab\\tx\\\\y\"" == [ "packages/tab\tx\\y" ];
+          assert
+            pnpmLockInjectedDirs {
+              lockfileContent = "packages:\r\n  x@file:x:\r\n    resolution: {directory: packages/a, type: directory}\r\n";
+            } == [ "packages/a" ];
           pkgs.runCommand "mk-pnpm-cli-injected-directory-path-validation" { } ''
             touch "$out"
           '';

@@ -21,8 +21,11 @@
 
   The parser is line-based over pnpm's canonical lockfile layout (as the
   `patchedDependencies` reader in mk-pnpm-cli.nix is), accepts pnpm 12's
-  multi-document lockfiles, and reads plain, single-quoted and double-quoted
-  YAML scalars (a path containing `,` is always quoted in the flow mapping).
+  multi-document lockfiles and CRLF line endings, and reads plain,
+  single-quoted and double-quoted YAML scalars (a path containing `,` is always
+  quoted in the flow mapping). It fails closed: a directory resolution it
+  cannot read, or a double-quoted escape it does not decode, is an evaluation
+  error rather than a silently unstaged directory.
 */
 { lib }:
 {
@@ -30,13 +33,37 @@
   sourceInputStagePath ? ".devenv/pnpm-source-inputs/current",
 }:
 let
-  lines = lib.splitString "\n" lockfileContent;
+  lines = map (lib.removeSuffix "\r") (lib.splitString "\n" lockfileContent);
 
   topLevelKey = line: builtins.match "([A-Za-z][A-Za-z0-9]*):.*" line;
   resolutionPattern = scalar: "    resolution: \\{directory: ${scalar}, type: directory}";
   singleQuoted = builtins.match (resolutionPattern "'((''|[^'])*)'");
   doubleQuoted = builtins.match (resolutionPattern "\"(([^\"\\\\]|\\\\.)*)\"");
   plain = builtins.match (resolutionPattern "([^'\" ,{}][^,{}]*)");
+  isDirectoryResolution = line: builtins.match "    resolution: \\{.*type: directory}" line != null;
+
+  doubleQuotedEscapes = {
+    "\\" = "\\";
+    "\"" = "\"";
+    "/" = "/";
+    "t" = "\t";
+    "n" = "\n";
+    "r" = "\r";
+  };
+  decodeDoubleQuoted =
+    raw:
+    lib.concatMapStrings (
+      part:
+      if builtins.isString part then
+        part
+      else
+        let
+          escape = builtins.head part;
+        in
+        doubleQuotedEscapes.${escape}
+          or (throw "pnpm-lock-injected-dirs: unsupported escape \\${escape} in directory: \"${raw}\"")
+    ) (builtins.split "\\\\(.)" raw);
+
   directoryResolution =
     line:
     let
@@ -45,11 +72,13 @@ let
       unquoted = plain line;
     in
     if single != null then
-      [ (builtins.replaceStrings [ "''" ] [ "'" ] (builtins.head single)) ]
+      builtins.replaceStrings [ "''" ] [ "'" ] (builtins.head single)
     else if double != null then
-      [ (builtins.replaceStrings [ "\\\"" "\\\\" ] [ "\"" "\\" ] (builtins.head double)) ]
+      decodeDoubleQuoted (builtins.head double)
+    else if unquoted != null then
+      builtins.head unquoted
     else
-      unquoted;
+      throw "pnpm-lock-injected-dirs: unreadable directory resolution: ${line}";
 
   step =
     state: line:
@@ -57,8 +86,8 @@ let
       state // { section = null; }
     else if topLevelKey line != null then
       state // { section = builtins.head (topLevelKey line); }
-    else if state.section == "packages" && directoryResolution line != null then
-      state // { directories = state.directories ++ [ (builtins.head (directoryResolution line)) ]; }
+    else if state.section == "packages" && isDirectoryResolution line then
+      state // { directories = state.directories ++ [ (directoryResolution line) ]; }
     else
       state;
 
