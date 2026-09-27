@@ -298,6 +298,7 @@ mod tests {
             ("first".into(), "span1".into()),
             ("second".into(), "span2".into()),
         ]);
+        drop(stmt);
         conn.execute("update run_traces set verified_at=123 where run_id=?1", [run]).unwrap();
         register_expected(&mut conn, "first", &[crate::pipeline::PlanTrace {
             trace_id: trace.into(), view: "critical".into(), span_ids: vec!["span1".into()],

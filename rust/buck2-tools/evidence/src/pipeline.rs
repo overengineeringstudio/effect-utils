@@ -515,6 +515,8 @@ pub async fn verify_run_trace(
     ).map_err(transient)?;
     let expected = stmt.query_map([&trace], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
         .map_err(transient)?.collect::<rusqlite::Result<Vec<_>>>().map_err(transient)?;
+    drop(stmt);
+    drop(conn);
     let counts = tempo_span_counts(client, &cfg.tempo, &trace).await?;
     let mut missing_records = HashSet::new();
     let mut missing_root = false;
