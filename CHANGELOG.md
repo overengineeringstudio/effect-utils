@@ -100,6 +100,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Storybook story gate**: Load consumer Vitest gate configs with the Vite
+  runner so installed `@overeng/utils-storybook` TypeScript imports under
+  `node_modules` work without Node's unsupported type stripping. Baseline
+  worktrees with a different `pnpm-lock.yaml` use their own installed
+  `node_modules` instead of borrowing incompatible dependencies from HEAD.
+
 - **mk-pnpm-cli external install roots**: Stage every injected `file:`
   directory package the install root's lockfile records
   (`injectWorkspacePackages`), not only the consumer's workspace closure
@@ -112,7 +118,6 @@ All notable changes to this project will be documented in this file.
 - **notion-md product publication**: Declare Node types in its own package
   dependencies so the isolated Buck typecheck resolves `types: ["node"]` and
   the from-source Nix product can be published.
-
 - **Storybook and Playwright task caches**: The shared `storybook:build:<name>`
   tasks, Storybook dev processes, and Playwright test tasks now export
   `CACHE_DIR` (and `VITE_CACHE_DIR` for Playwright) as

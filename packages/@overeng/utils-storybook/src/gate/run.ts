@@ -734,6 +734,33 @@ export const linkNodeModules = ({
   }
 }
 
+/** Borrow dependencies only for a baseline with the same lockfile. */
+export const prepareBaselineNodeModules = ({
+  repoRoot,
+  worktreeDir,
+  baselineRef,
+}: {
+  repoRoot: string
+  worktreeDir: string
+  baselineRef: string
+}): boolean => {
+  const lockPath = 'pnpm-lock.yaml'
+  if (
+    readFileSync(join(repoRoot, lockPath), 'utf8') !==
+    readFileSync(join(worktreeDir, lockPath), 'utf8')
+  ) {
+    const ownInstall = join(worktreeDir, 'node_modules')
+    if (existsSync(ownInstall) === false || lstatSync(ownInstall).isDirectory() === false) {
+      throw new Error(
+        `[story-gate] ${lockPath} differs between HEAD and ${baselineRef}, so the derived worktree cannot borrow the installed dependencies. Install in ${worktreeDir} and re-run.`,
+      )
+    }
+    return false
+  }
+  linkNodeModules({ repoRoot, worktreeDir })
+  return true
+}
+
 interface ProcessSignalControl {
   readonly pid: number
   once(event: 'SIGINT' | 'SIGTERM' | 'exit', listener: () => void): unknown
@@ -1023,6 +1050,12 @@ export const runVitest = async ({
       'run',
       '--config',
       configFile,
+      // The default `bundle` loader externalizes node_modules imports and hands
+      // them to Node, which refuses to strip types under node_modules. A consumer
+      // that installs this package (rather than linking it) would then fail to
+      // load its gate config, because the gate entry ships as TypeScript source.
+      '--configLoader',
+      'runner',
       '--reporter',
       'default',
       '--reporter',
@@ -1558,6 +1591,39 @@ const assertTreeUnchanged = ({
   )
 }
 
+/** Include the main tree only when the baseline borrows its dependencies. */
+export const readBaselinePairIdentity = ({
+  repoRoot,
+  packageRoot,
+  worktreeDir,
+  sourceRoots,
+  borrowedDependencies,
+}: {
+  repoRoot: string
+  packageRoot: string
+  worktreeDir: string
+  sourceRoots: readonly string[]
+  borrowedDependencies: boolean
+}): TreeIdentity => {
+  const worktree = readTreeIdentity({
+    repoRoot: worktreeDir,
+    packageRoot: join(worktreeDir, relative(repoRoot, packageRoot)),
+    sourceRoots,
+  })
+  if (borrowedDependencies === false) return worktree
+
+  const linked = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
+  return {
+    head: worktree.head,
+    digest: createHash('sha1').update(`${worktree.digest}\n${linked.digest}`).digest('hex'),
+    scope: `${worktree.scope}; plus the linked main tree: ${linked.scope}`,
+    entries: Object.fromEntries([
+      ...Object.entries(worktree.entries).map(([key, value]) => [`worktree/${key}`, value]),
+      ...Object.entries(linked.entries).map(([key, value]) => [`linked/${key}`, value]),
+    ]),
+  }
+}
+
 /**
  * Run the gate for one package against one git ref.
  *
@@ -1614,31 +1680,6 @@ export const runStoryGate = async ({
   const captureEvidencePath = join(baselineDir, 'capture-evidence.json')
   const scratchDir = mkdtempSync(join(tmpdir(), 'story-gate-'))
 
-  /**
-   * The baseline pair's identity covers BOTH trees, not just the worktree it
-   * renders from. The derived worktree borrows the main tree's `node_modules`
-   * by symlink, so an edit to a workspace package in the main tree reaches the
-   * baseline capture through that link — which is precisely how a capture set
-   * ends up spanning two trees while looking like it came from one.
-   */
-  const baselinePairIdentity = (): TreeIdentity => {
-    const worktree = readTreeIdentity({
-      repoRoot: worktreeDir,
-      packageRoot: join(worktreeDir, relative(repoRoot, packageRoot)),
-      sourceRoots,
-    })
-    const linked = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
-    return {
-      head: worktree.head,
-      digest: createHash('sha1').update(`${worktree.digest}\n${linked.digest}`).digest('hex'),
-      scope: `${worktree.scope}; plus the linked main tree: ${linked.scope}`,
-      entries: Object.fromEntries([
-        ...Object.entries(worktree.entries).map(([key, value]) => [`worktree/${key}`, value]),
-        ...Object.entries(linked.entries).map(([key, value]) => [`linked/${key}`, value]),
-      ]),
-    }
-  }
-
   if (refresh === true) {
     rmSync(baselineDir, { recursive: true, force: true })
     clearStoryGateArtifacts(baselineDir)
@@ -1686,16 +1727,15 @@ export const runStoryGate = async ({
       })
     }
 
-    const lockPath = 'pnpm-lock.yaml'
-    if (
-      readFileSync(join(repoRoot, lockPath), 'utf8') !==
-      readFileSync(join(worktreeDir, lockPath), 'utf8')
-    ) {
-      throw new Error(
-        `[story-gate] ${lockPath} differs between HEAD and ${baselineRef}, so the derived worktree cannot borrow the installed dependencies. Install in ${worktreeDir} and re-run.`,
-      )
-    }
-    linkNodeModules({ repoRoot, worktreeDir })
+    const borrowedDependencies = prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef })
+    const baselinePairIdentity = (): TreeIdentity =>
+      readBaselinePairIdentity({
+        repoRoot,
+        packageRoot,
+        worktreeDir,
+        sourceRoots,
+        borrowedDependencies,
+      })
 
     // The baseline tree is captured `baselineCaptures` times — THREE by default
     // — and the LAST capture is the one kept. Three reasons, all measured.
