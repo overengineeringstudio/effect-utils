@@ -254,20 +254,23 @@ fn document(
     let runs: Vec<Value> = runs
         .into_iter()
         .map(|(run_id, jobs)| {
-            let status = if jobs.iter().all(|j| j["status"] == "ingested") {
+            let trace = ids::run_trace(&run_id);
+            let state = index::run_trace_state(conn, &trace)?.unwrap_or("pending");
+            let status = if state == "incomplete" {
+                "incomplete"
+            } else if state == "ingested" && jobs.iter().all(|j| j["status"] == "ingested") {
                 "ingested"
             } else {
                 "pending"
             };
-            let trace = ids::run_trace(&run_id);
-            json!({"runId":run_id,"attempt":jobs[0]["attempt"],"status":status,
-            "trace":{"id":trace,"url":format!("/t/{trace}")},
-            "buck2.vcs.merge.revision":jobs[0]["buck2.vcs.merge.revision"],"jobs":jobs})
+            Ok(json!({"runId":run_id,"attempt":jobs[0]["attempt"],"status":status,
+                "trace":{"id":trace,"url":format!("/t/{trace}")},
+                "buck2.vcs.merge.revision":jobs[0]["buck2.vcs.merge.revision"],"jobs":jobs}))
         })
-        .collect();
-    let status = if runs.is_empty() {
-        "pending"
-    } else if runs.iter().all(|r| r["status"] == "ingested") {
+        .collect::<rusqlite::Result<_>>()?;
+    let status = if runs.iter().any(|r| r["status"] == "incomplete") {
+        "incomplete"
+    } else if !runs.is_empty() && runs.iter().all(|r| r["status"] == "ingested") {
         "ingested"
     } else {
         "pending"
@@ -435,6 +438,22 @@ mod tests {
         let doc = document(&conn, "o/r", Some("42"), None).unwrap();
         assert_eq!(doc["runs"][0]["runId"], "ci/github/o/r/10/1");
         assert_eq!(doc["runs"][1]["runId"], "ci/github/o/r/9/1");
+        assert_eq!(doc["runs"][0]["status"], "pending");
+        assert_eq!(doc["status"], "pending");
+        let run = "ci/github/o/r/10/1";
+        conn.execute(
+            "insert into run_traces(run_id,repo,trace_id,verified_at) values (?1,'o/r',?2,20)",
+            rusqlite::params![run, ids::run_trace(run)],
+        )
+        .unwrap();
+        let verified = document(&conn, "o/r", Some("42"), None).unwrap();
+        assert_eq!(verified["runs"][0]["status"], "ingested");
+        assert_eq!(verified["status"], "pending");
+        conn.execute("update run_traces set incomplete=1 where run_id=?1", [run])
+            .unwrap();
+        let incomplete = document(&conn, "o/r", Some("42"), None).unwrap();
+        assert_eq!(incomplete["runs"][0]["status"], "incomplete");
+        assert_eq!(incomplete["status"], "incomplete");
     }
     #[test]
     fn compares_seven_main_runs_no_later_revision_and_marks_spread_noise() {
