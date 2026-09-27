@@ -30,8 +30,7 @@ let
 
   topLevelKey = line: builtins.match "([A-Za-z][A-Za-z0-9]*):.*" line;
   directoryResolution =
-    line:
-    builtins.match "    resolution: \\{directory: ['\"]?([^,'\"]+)['\"]?, type: directory}" line;
+    line: builtins.match "    resolution: \\{directory: ['\"]?([^,'\"]+)['\"]?, type: directory}" line;
 
   step =
     state: line:

@@ -766,12 +766,11 @@ let
           # them during a frozen install, so they are staged as package
           # directories (not workspace members) next to the closure members.
           injectedDirs = builtins.filter (dir: dir != installDir && !(lib.elem dir memberDirs)) (
-            map (relDir: if relDir == "." then installDir else "${installDir}/${relDir}") (
-              pnpmLockInjectedDirs {
+            map (relDir: if relDir == "." then installDir else "${installDir}/${relDir}")
+              (pnpmLockInjectedDirs {
                 lockfileContent = builtins.readFile (evalInstallSourceRoot + "/pnpm-lock.yaml");
                 sourceInputStagePath = canonicalSourceInputStagePath;
-              }
-            )
+              })
           );
         in
         {
@@ -1221,9 +1220,7 @@ let
         ''
         + stageExternalInstallRootManifestOnlyCmd root
         + "\n"
-        + builtins.concatStringsSep "\n" (
-          map (dir: copyFileCmd "${dir}/package.json") root.injectedDirs
-        )
+        + builtins.concatStringsSep "\n" (map (dir: copyFileCmd "${dir}/package.json") root.injectedDirs)
         + copyResolvedPatchFilesCmd {
           sourcePrefix = "";
           workspaceYamlContent = rootPnpmWorkspaceYaml;
