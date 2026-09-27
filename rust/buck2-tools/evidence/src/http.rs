@@ -204,11 +204,11 @@ async fn resolve_trace(State(st): State<AppState>, Path(trace_id): Path<String>)
     if rows.is_empty() && run_state.is_none() {
         return (StatusCode::NOT_FOUND, Json(json!({"traceId":trace_id,"status":"unknown"}))).into_response();
     }
+    if rows.iter().any(|r| r.status == "expired") {
+        return (StatusCode::GONE, Json(json!({"traceId":trace_id,"status":"expired","records":rows}))).into_response();
+    }
     if run_state == Some("incomplete") {
         return (StatusCode::OK, Json(json!({"traceId":trace_id,"status":"incomplete","records":rows}))).into_response();
-    }
-    if rows.iter().any(|r| r.status == "expired") && !rows.iter().any(|r| r.status == "ingested") {
-        return (StatusCode::GONE, Json(json!({"traceId":trace_id,"status":"expired","records":rows}))).into_response();
     }
     if run_state == Some("ingested") || (run_state.is_none() && rows.iter().any(|r| r.status == "ingested")) {
         let left = format!(
