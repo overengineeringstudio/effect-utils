@@ -247,7 +247,9 @@ fn root_body(close: &CloseRecord, jobs: &[JobStatus], received: i64, closed: i64
             {"key":"vcs.repository.name","value":{"stringValue":close.repository}},
             {"key":"evidence.missing_jobs","value":{"intValue":missing.len().to_string()}},
             {"key":"evidence.incomplete","value":{"boolValue":incomplete}}],
-        "status":{"code":if !incomplete && missing.is_empty() && jobs.iter().all(|(_,s,_,_,_)| s == "ingested") {1} else {2}}}));
+        "status":{"code":if !incomplete
+            && missing.iter().all(|j| matches!(j.conclusion.as_str(), "skipped" | "cancelled"))
+            && jobs.iter().all(|(_,s,_,_,_)| s == "ingested") {1} else {2}}}));
     json!({"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"buck2-evidence"}}]},
         "scopeSpans":[{"scope":{"name":"buck2-evidence.close"},"spans":spans}]}]})
 }
@@ -299,22 +301,25 @@ fn jobs_for(cfg: &Config, run: &str) -> Result<Vec<JobStatus>> {
     Ok(rows)
 }
 
-fn ready_to_close(close: &CloseRecord, jobs: &[JobStatus], received: i64, now: i64) -> bool {
-    let all_done = close.expected_jobs.iter().all(|job| {
+fn jobs_complete(close: &CloseRecord, jobs: &[JobStatus]) -> bool {
+    close.expected_jobs.iter().all(|job| {
         matches!(job.conclusion.as_str(), "skipped" | "cancelled")
             || jobs.iter().any(|(key, status, _, _, _)| {
                 key == &job.key && matches!(status.as_str(), "ingested" | "failed")
             })
-    });
+    })
+}
+
+fn ready_to_close(close: &CloseRecord, jobs: &[JobStatus], received: i64, now: i64) -> bool {
     let last_upload = jobs.iter().map(|(_, _, uploaded, _, _)| *uploaded).max().unwrap_or(received);
-    all_done || now - last_upload.max(received) >= 6 * 60 * 60 * 1000
+    jobs_complete(close, jobs) || now - last_upload >= 6 * 60 * 60 * 1000
 }
 
 pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> {
     let db = cfg.clone();
     let pending = tokio::task::spawn_blocking(move || pending_closes(&db)).await??;
     let mut done = 0;
-    for (digest, manifest, received, incomplete, root_pushed, closed) in pending {
+    for (digest, manifest, received, mut incomplete, root_pushed, closed) in pending {
         let close: CloseRecord = serde_json::from_str(&manifest)?;
         let db = cfg.clone();
         let run = close.pipeline_run_id.clone();
@@ -326,6 +331,11 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
         let jobs = tokio::task::spawn_blocking(move || jobs_for(&db, &run)).await??;
         if !root_pushed && !ready_to_close(&close, &jobs, received, now_ms()) {
             continue;
+        }
+        if !root_pushed && !incomplete && !jobs_complete(&close, &jobs) {
+            let conn = crate::index::open(&cfg.index_path())?;
+            conn.execute("update closes set incomplete=1 where digest=?1 and root_pushed=0", [&digest])?;
+            incomplete = true;
         }
         let id = ids::run_trace(&close.pipeline_run_id);
         let root = ids::run_root_span(&close.pipeline_run_id);
@@ -493,6 +503,8 @@ mod tests {
         assert!(!ready_to_close(&close, &jobs, 0, 6 * hour));
         assert!(!ready_to_close(&close, &jobs, 0, 10 * hour));
         assert!(ready_to_close(&close, &jobs, 0, 11 * hour));
+        assert!(ready_to_close(&close, &jobs, 10 * hour, 11 * hour),
+            "late close receipt cannot reset the last-upload deadline");
         let skipped = CloseRecord {
             expected_jobs: vec![ExpectedJob { key: "absent".into(), conclusion: "skipped".into() }],
             ..close
@@ -504,5 +516,97 @@ mod tests {
         assert_eq!(root["startTimeUnixNano"], "100000000");
         assert_eq!(root["endTimeUnixNano"], "600000000");
         assert_eq!(spans[0]["attributes"][1]["value"]["stringValue"], "skipped");
+    }
+
+    #[tokio::test]
+    async fn empty_roster_publishes_one_verified_run_root() {
+        use axum::{extract::State, routing::{get, post}, Json, Router};
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let (mut cfg, conn) = fixture();
+        let run = "ci/owner/repo/999/1";
+        let close = CloseRecord {
+            schema: "buck2-attempt-close/v1".into(),
+            pipeline_run_id: run.into(),
+            repository: "owner/repo".into(),
+            sealed_at: "2026-09-27T12:00:00Z".into(),
+            expected_jobs: Vec::new(),
+        };
+        let bytes = serde_json::to_vec(&close).unwrap();
+        let digest = hex::encode(Sha256::digest(&bytes));
+        assert!(accept(&cfg, &conn, &digest, &tar_close(&bytes)).unwrap());
+        let trace: String = conn.query_row("select trace_id from run_traces where run_id=?1",
+            [run], |r| r.get(0)).unwrap();
+        assert_eq!(trace, ids::run_trace(run), "close alone must index its run trace");
+        let spans = Arc::new(Mutex::new(Vec::<String>::new()));
+        async fn push(State(spans): State<Arc<Mutex<Vec<String>>>>, Json(body): Json<Value>) -> Json<Value> {
+            let mut out = spans.lock().await;
+            for resource in body["resourceSpans"].as_array().into_iter().flatten() {
+                for scope in resource["scopeSpans"].as_array().into_iter().flatten() {
+                    for span in scope["spans"].as_array().into_iter().flatten() {
+                        out.push(span["spanId"].as_str().unwrap().into());
+                    }
+                }
+            }
+            Json(json!({}))
+        }
+        async fn readback(State(spans): State<Arc<Mutex<Vec<String>>>>) -> Json<Value> {
+            let spans = spans.lock().await.iter().map(|id| json!({"spanId":id})).collect::<Vec<_>>();
+            Json(json!({"trace":{"resourceSpans":[{"scopeSpans":[{"spans":spans}]}]}}))
+        }
+        let app = Router::new()
+            .route("/v1/traces", post(push))
+            .route("/api/v2/traces/{id}", get(readback))
+            .with_state(Arc::clone(&spans));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        cfg.otlp = format!("http://{address}");
+        cfg.tempo = cfg.otlp.clone();
+        let client = reqwest::Client::new();
+        assert_eq!(reconcile(&cfg, &client).await.unwrap(), 1);
+        assert_eq!(reconcile(&cfg, &client).await.unwrap(), 0);
+        assert_eq!(spans.lock().await.as_slice(), &[ids::run_root_span(run)]);
+        let (pushed, verified): (bool, Option<i64>) = conn.query_row(
+            "select c.root_pushed,rt.verified_at from closes c join run_traces rt on rt.run_id=c.run_id where c.run_id=?1",
+            [run], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert!(pushed && verified.is_some());
+
+        let timed_out_run = "ci/owner/repo/1000/1";
+        let old = now_ms() - 7 * 60 * 60 * 1000;
+        let timed_out = CloseRecord {
+            pipeline_run_id: timed_out_run.into(),
+            expected_jobs: vec![
+                ExpectedJob { key: "done".into(), conclusion: "success".into() },
+                ExpectedJob { key: "late".into(), conclusion: "failure".into() },
+            ],
+            ..close
+        };
+        let bytes = serde_json::to_vec(&timed_out).unwrap();
+        let digest = hex::encode(Sha256::digest(&bytes));
+        assert!(accept(&cfg, &conn, &digest, &tar_close(&bytes)).unwrap());
+        conn.execute(
+            "insert into records (digest,repo,run_id,attempt,job,manifest_json,bytes,status,uploaded_at)
+             values (?1,'owner/repo',?2,1,'done','{}',0,'ingested',?3)",
+            params!["b".repeat(64), timed_out_run, old],
+        ).unwrap();
+        assert_eq!(reconcile(&cfg, &client).await.unwrap(), 1);
+        let (incomplete, verified): (bool, Option<i64>) = conn.query_row(
+            "select c.incomplete,rt.verified_at from closes c join run_traces rt on rt.run_id=c.run_id where c.run_id=?1",
+            [timed_out_run], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert!(incomplete && verified.is_none(), "timed-out roster cannot be published as complete");
+        conn.execute(
+            "insert into records (digest,repo,run_id,attempt,job,manifest_json,bytes,status,uploaded_at)
+             values (?1,'owner/repo',?2,1,'late','{}',0,'uploaded',?3)",
+            params!["c".repeat(64), timed_out_run, now_ms()],
+        ).unwrap();
+        assert_eq!(reconcile(&cfg, &client).await.unwrap(), 0);
+        let still_incomplete: bool = conn.query_row(
+            "select incomplete from closes where run_id=?1", [timed_out_run], |r| r.get(0)
+        ).unwrap();
+        assert!(still_incomplete, "late upload must not rewrite the already-published root");
+        server.abort();
+        fs::remove_dir_all(cfg.state).unwrap();
     }
 }
