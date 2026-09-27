@@ -113,6 +113,7 @@ native.rust_binary(
         "src/inspect_cmd.rs",
         "src/inspect_logs.rs",
         "src/inspect_metrics.rs",
+        "src/lib.rs",
         "src/main.rs",
         "src/otlp_json.rs",
         "src/receiver.rs",

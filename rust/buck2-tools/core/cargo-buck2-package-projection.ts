@@ -400,27 +400,10 @@ const cargoBuck2PackageProjectionFor = ({
       ).join(', ')}`,
     )
   }
-  const binaryRuleSources = new Map(
-    binaries.map((binary) => [binary.name, binaryTargetSources({ binary, sources })]),
-  )
-  const binaryOwnedSources = new Set([...binaryRuleSources.values()].flat())
+  // Any `src/` file can be a module of any target (`mod main;`, `mod bin;`, a peer binary's
+  // root), so every Rust target declares all of them; extra srcs only widen action inputs.
   const srcSources = sources.filter((source) => source.startsWith('src/'))
-  // A binary crate's `mod` files are compile inputs: each binary declares its
-  // own sources plus every shared non-root `src/` module, so a module-only edit
-  // changes the rule's action key instead of reusing a stale cached binary.
-  const binaryModuleSources = srcSources.filter(
-    (source) => source !== library?.path && binaryOwnedSources.has(source) === false,
-  )
-  // Any `src/` file can be a library module (even a binary root), so a library declares them
-  // all; extra srcs only widen the action inputs.
-  const librarySources = library === undefined ? binaryModuleSources : srcSources
-  // A binary root outside `src/bin/` can double as a `mod` of a peer binary (Cargo compiles
-  // it both ways), so peers declare those roots too.
-  const peerBinaryRoots = binaries
-    .map((binary) => binary.crateRoot)
-    .filter(
-      (crateRoot) => crateRoot.startsWith('src/bin/') === false && crateRoot !== library?.path,
-    )
+  const librarySources = srcSources
   const integrationTestRoots = sources.filter(
     (source) =>
       source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
@@ -567,14 +550,7 @@ const cargoBuck2PackageProjectionFor = ({
         name: binary.name,
         crate: crateIdentifier(binary.name),
         crateRoot: binary.crateRoot,
-        ruleSources: sorted([
-          ...requireValue({
-            value: binaryRuleSources.get(binary.name),
-            field: `${member.manifestPath} bin ${binary.name} sources`,
-          }),
-          ...binaryModuleSources,
-          ...peerBinaryRoots,
-        ]),
+        ruleSources: sorted([binary.crateRoot, ...srcSources]),
         dependencies: binaryDependencies,
         conditionalDependencies: normalConditional,
         visibility: ['PUBLIC'],
@@ -1205,30 +1181,6 @@ const discoverCargoTargets = ({
     throw new Error(`Cargo package ${member.packagePath} has duplicate binary names`)
   }
   return library === undefined ? { binaries } : { binaries, library }
-}
-
-/**
- * A `src/bin/<name>/main.rs` binary owns its directory's modules. A flat `src/bin/<name>.rs`
- * binary resolves `mod` declarations beside its root (including `src/bin/<dir>/mod.rs` of a
- * directory binary), so it declares every `src/bin/` source. Any other binary owns its root.
- */
-const binaryTargetSources = ({
-  binary,
-  sources,
-}: {
-  readonly binary: CargoBinaryTarget
-  readonly sources: readonly string[]
-}): readonly string[] => {
-  const directoryMatch = binary.crateRoot.match(/^(src\/bin\/[^/]+\/)main\.rs$/)
-  if (directoryMatch === null) {
-    if (/^src\/bin\/[^/]+\.rs$/.test(binary.crateRoot) === false) return [binary.crateRoot]
-    return sources.filter((source) => source.startsWith('src/bin/') === true)
-  }
-  const directory = requireValue({
-    value: directoryMatch[1],
-    field: `${binary.crateRoot} directory`,
-  })
-  return sources.filter((source) => source.startsWith(directory))
 }
 
 const discoverRustSources = ({

@@ -291,10 +291,10 @@ describe('Cargo target discovery', () => {
     expect(rules['my-tool']).toContain('crate = "my_tool",\n    crate_root = "src/main.rs",')
     expect(rules['my-tool']).toContain('deps = [\n        ":lib",\n    ],')
     expect(rules.extra).toContain(
-      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
     )
     expect(rules.multi).toContain(
-      'crate_root = "src/bin/multi/main.rs",\n    srcs = [\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+      'crate_root = "src/bin/multi/main.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
     )
   })
 
@@ -320,7 +320,7 @@ describe('Cargo target discovery', () => {
       'crate_root = "src/bin/tool.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
     )
     expect(rules.dir).toContain(
-      'crate_root = "src/bin/dir/main.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n    ],',
+      'crate_root = "src/bin/dir/main.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
     )
   })
 
@@ -372,6 +372,21 @@ describe('Cargo target discovery', () => {
     expect(Object.keys(rules)).toEqual(['lib', 'tool', 'helper', 'mod'])
     expect(rules.lib).toContain(
       'srcs = [\n        "src/bin/helper.rs",\n        "src/bin/mod.rs",\n        "src/lib.rs",\n        "src/tool.rs",\n    ],',
+    )
+  })
+
+  it('lets a package binary load src/bin/mod.rs as a module', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          app: { manifest: '[package]\nname = "app"', files: ['src/main.rs', 'src/bin/mod.rs'] },
+        },
+        render: 'app',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['app', 'mod'])
+    expect(rules.app).toContain(
+      'crate_root = "src/main.rs",\n    srcs = [\n        "src/bin/mod.rs",\n        "src/main.rs",\n    ],',
     )
   })
 

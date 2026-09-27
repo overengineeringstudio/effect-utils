@@ -72,6 +72,7 @@ native.rust_binary(
         "src/gen/buck.data.rs",
         "src/gen/buck.host_sharing.rs",
         "src/gen/buck.subscription.rs",
+        "src/lib.rs",
         "src/main.rs",
         "src/tests.rs",
     ],

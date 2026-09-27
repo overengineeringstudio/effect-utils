@@ -78,6 +78,7 @@ native.rust_binary(
         "src/adapters/oxlint.rs",
         "src/adapters/vitest.rs",
         "src/content_address.rs",
+        "src/lib.rs",
         "src/main.rs",
         "src/telemetry_registry.gen.rs",
     ],

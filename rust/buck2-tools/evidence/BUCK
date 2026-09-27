@@ -89,6 +89,7 @@ native.rust_binary(
         "src/close.rs",
         "src/http.rs",
         "src/index.rs",
+        "src/lib.rs",
         "src/main.rs",
         "src/pipeline.rs",
         "src/resolver.rs",

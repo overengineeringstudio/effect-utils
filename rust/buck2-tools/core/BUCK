@@ -57,6 +57,7 @@ native.rust_binary(
     srcs = [
         "src/bin/buck2-fingerprint.rs",
         "src/fingerprint.rs",
+        "src/lib.rs",
     ],
     deps = [
         "//rust/third-party:base64",
