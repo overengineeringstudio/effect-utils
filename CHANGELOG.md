@@ -23,6 +23,13 @@ All notable changes to this project will be documented in this file.
   `packages/@overeng/utils-storybook/patches/`; genie-projected
   `patchedDependencies` pick up the new path on regeneration.
 
+- **Genie exact prerelease peers**: `catalog.compose` peer dependencies and
+  `catalog.peers` now emit a prerelease catalog version exactly
+  (`effect: 4.0.0-rc.113`) instead of with a caret. Release versions keep `^`.
+  Consumers with `strict-peer-dependencies` now reject a mismatched Effect RC.
+  Repin effect-utils only to a merged product-manifest commit, with the
+  consumer's Effect cohort set to the same exact version (decision 0037,
+  Amendment 2).
 - **@overeng/utils-dev**: Effect rc.113 removed fast-check. `Vitest.asProp`
   now takes `{ arbitrary: Arbitrary.CheckOptions }` instead of
   `{ fastCheck: FC.Parameters }` and accepts native `Arbitrary` values. The
@@ -68,12 +75,15 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
-
+- **Pipeline run tracing:** `otel-span pipeline-run -- devenv tasks run <verb>`
+  now seeds one deterministic run/job trace, records local roots even on
+  interruption, and seals Buck command evidence into a per-run spool.
+  `otel-span run` now validates inbound W3C context like Buck preparation and
+  preserves unsampled flags.
 - **Buck2 observability VRS:** Specify pipeline-run trace identity,
   job-scoped records and CI attempt-close rosters, sealed VCS fields,
   cumulative ingest/readback, and PR trace access with an index-backed
-  resolver, versioned agent JSON, and caller-owned Vista freeze. This is
-  design/documentation; service and CLI behavior are not yet shipped.
+  resolver, versioned agent JSON, and caller-owned Vista freeze.
 - **Genie Netlify deploy step**: PR previews no longer pass
   `unauthorizedPolicy=skip`. A configured Netlify token that the provider
   rejects now fails the PR deploy check instead of emitting a green skipped

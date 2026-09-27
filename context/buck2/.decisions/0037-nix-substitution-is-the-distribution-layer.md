@@ -107,3 +107,21 @@ by independently verified per-digest archive FODs. Clauses 1 and 3 continue to
 require a sandbox-compatible source recipe and same-graph reconstruction on a
 substitution miss. Clauses 2, 4–8, publication as an optimization, and the
 product provenance/digest contract are unchanged.
+
+## Amendment 2 (2026-09-26)
+
+Principal decision q1 adds a consumer compatibility clause to clause 4. Each
+published package declares its Effect peer (every peer whose catalog version
+is a prerelease) as the exact catalog version, e.g. `effect: 4.0.0-rc.113`,
+not `^4.0.0-rc.113`. Genie derives the range from the catalog
+(`peerRangeFromCatalogVersion`), and package manifests never spell it out by
+hand. A consumer running with `strict-peer-dependencies` therefore fails the
+install on any other Effect prerelease instead of silently resolving across
+breaking RC iterations.
+
+Repin rule: a consumer repins effect-utils only to a commit that
+`automation/buck2-products-manifest` merged to `main`, i.e. one where
+`nix/buck2-products/manifest.json` describes products built from that commit.
+Before repinning, move the consumer's catalog `effect` (and its Effect cohort)
+to the exact version in effect-utils' `genie/external.ts` catalog, then
+regenerate. Otherwise the strict peer check fails the install.

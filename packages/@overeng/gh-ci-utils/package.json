@@ -69,10 +69,10 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/platform-node": "^4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.113",
     "@opentui/core": "^0.5.11",
     "@opentui/react": "^0.5.11",
-    "effect": "^4.0.0-rc.113",
+    "effect": "4.0.0-rc.113",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-reconciler": "^0.33.0"

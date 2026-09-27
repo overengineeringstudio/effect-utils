@@ -60,10 +60,7 @@ const workspaceDeps = catalog.compose({
     },
   },
   peerDependencies: {
-    external: {
-      effect: '^4.0.0-rc.113',
-      ...catalog.pick('react'),
-    },
+    external: catalog.pick('effect', 'react'),
   },
 })
 

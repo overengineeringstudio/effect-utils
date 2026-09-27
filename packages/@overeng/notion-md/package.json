@@ -76,10 +76,10 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "^4.0.0-rc.113",
-    "@effect/platform-node": "^4.0.0-rc.113",
+    "@effect/opentelemetry": "4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.113",
     "@playwright/test": "^1.63.0",
-    "effect": "^4.0.0-rc.113"
+    "effect": "4.0.0-rc.113"
   },
   "publishConfig": {
     "access": "public",

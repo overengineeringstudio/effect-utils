@@ -27,7 +27,7 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "^4.0.0-rc.113"
+    "effect": "4.0.0-rc.113"
   },
   "publishConfig": {
     "access": "public",
