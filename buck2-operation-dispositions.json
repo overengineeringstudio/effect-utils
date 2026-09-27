@@ -73,6 +73,10 @@
       "operation": "pr-reviews-resolved"
     },
     {
+      "disposition": "outside-by-policy:nix-realization",
+      "operation": "compiled-products"
+    },
+    {
       "disposition": "outside-by-policy:operator-benchmark",
       "operation": "devenv-perf"
     },
@@ -91,6 +95,14 @@
     {
       "disposition": "outside-by-policy:live-publication",
       "operation": "publish-products"
+    },
+    {
+      "disposition": "outside-by-policy:live-publication",
+      "operation": "publish-compiled-products"
+    },
+    {
+      "disposition": "outside-by-policy:live-publication",
+      "operation": "publish-compiled-products-linux-arm64"
     },
     {
       "disposition": "outside-by-policy:ci-control-plane",

@@ -82,6 +82,12 @@
           },
           {
             "context": "pr-reviews-resolved"
+          },
+          {
+            "context": "compiled-products (namespace-profile-linux-x86-64)"
+          },
+          {
+            "context": "compiled-products (namespace-profile-macos-arm64)"
           }
         ]
       }
