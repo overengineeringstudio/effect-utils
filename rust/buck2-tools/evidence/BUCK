@@ -85,7 +85,16 @@ native.rust_binary(
     crate = "buck2_evidence",
     crate_root = "src/main.rs",
     srcs = [
+        "src/close.rs",
+        "src/http.rs",
+        "src/index.rs",
         "src/main.rs",
+        "src/pipeline.rs",
+        "src/resolver.rs",
+        "src/retention.rs",
+        "src/seal.rs",
+        "src/store.rs",
+        "src/transport.rs",
     ],
     deps = [
         "//rust/buck2-tools/events:lib",
