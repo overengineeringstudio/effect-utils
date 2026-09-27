@@ -15,7 +15,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 
 import type { BunPlugin } from 'bun'
 
-import { canonicalizePath } from './real-path.ts'
+import { canonicalizePath, realpathThroughName } from './real-path.ts'
 import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
 
 // This module is a pipeline: each stage's public entry point sits next to the
@@ -289,6 +289,8 @@ type FarmMapping = {
 }
 
 type Farm = {
+  /** Realpath of `root`; symlink realpaths are compared against this form. */
+  readonly canonicalRoot: string
   readonly gated: ReadonlySet<string>
   readonly mappings: FarmMapping[]
   readonly root: string
@@ -336,6 +338,14 @@ const gatedPackageName = ({
 }
 
 const farmPathFor = ({ farm, real }: { readonly farm: Farm; readonly real: string }): string => {
+  // A target inside the farm is already one of the farm's own images, so it
+  // keeps its place. Both sides are compared canonically: where the scratch
+  // directory is reached through a symlink (Darwin's `/var` ->
+  // `/private/var`), `root` and a canonical path beneath it spell the same
+  // directory differently.
+  if (real === farm.canonicalRoot || real.startsWith(`${farm.canonicalRoot}${sep}`) === true) {
+    return join(farm.root, relative(farm.canonicalRoot, real))
+  }
   let best: FarmMapping | undefined
   for (const mapping of farm.mappings) {
     if (real !== mapping.realRoot && real.startsWith(`${mapping.realRoot}${sep}`) === false)
@@ -369,7 +379,9 @@ const imageSymlink = ({
 }): void => {
   let real: string
   try {
-    real = realpathSync(source)
+    // Never plain `realpathSync`: on Darwin it may name a file through any of
+    // its hard links, including the farm image this assembly just created.
+    real = realpathThroughName(source)
   } catch (error) {
     fail(`package tree symlink is dangling: ${source} (${String(error)})`)
   }
@@ -449,6 +461,7 @@ const assemblePortableFarm = ({
 }): string => {
   const farmRoot = resolve(root)
   rmSync(farmRoot, { force: true, recursive: true })
+  mkdirSync(farmRoot, { recursive: true })
   const treeRoot: FarmMapping = {
     farmRoot,
     materialized: false,
@@ -456,6 +469,7 @@ const assemblePortableFarm = ({
   }
   const seen = new Set<string>()
   const farm: Farm = {
+    canonicalRoot: realpathSync(farmRoot),
     gated: new Set(gatedPackages),
     mappings: [treeRoot],
     root: farmRoot,
@@ -1007,7 +1021,7 @@ const runBundle = async (command: PackageCommand): Promise<void> => {
     packageTree,
     root: join(scratch, 'portable-farm'),
   })
-  const entry = realpathSync(join(farm, command.entrypoint))
+  const entry = realpathThroughName(join(farm, command.entrypoint))
   const external = [...new Set([...command.external, ...gatedManifest.packages])].toSorted(
     (left, right) => (left < right ? -1 : left > right ? 1 : 0),
   )

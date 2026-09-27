@@ -122,6 +122,15 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/buck2-tools portable farm on Darwin** (#1450): a bundle action
+  intermittently failed with "symlink target escapes every declared closure
+  root" naming a file inside its own `portable-farm/.closure` tree. Bun's
+  `realpathSync` asks the kernel for an open descriptor's path, and Darwin's
+  `F_GETPATH` may answer with any hard link of a file — including the farm
+  image the assembly had just hardlinked. Farm assembly now follows link
+  chains with `readlink` and canonicalizes only directories, and a target
+  already inside the farm (compared against the farm root's canonical form)
+  keeps its place instead of being rejected.
 - **Storybook story gate**: Load consumer Vitest gate configs with the Vite
   runner so installed `@overeng/utils-storybook` TypeScript imports under
   `node_modules` work without Node's unsupported type stripping. Baseline
