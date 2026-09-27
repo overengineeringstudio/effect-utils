@@ -764,12 +764,13 @@ const extraJobs: Record<string, any> = {
   },
   /**
    * Credential-free twin of `publish-products`: realizes every published from-source
-   * product on each PR (and push) with the same attr derivation, but never receives a
-   * Cachix token, never pushes, and never proposes a manifest. The public cache is a
-   * read-only substituter only.
+   * product on each PR with the same attr derivation, but never receives a Cachix
+   * token, never pushes, and never proposes a manifest. The public cache is a
+   * read-only substituter only. PR-only: on `main`, `publish-products` builds the
+   * same inventory.
    */
   'build-products': {
-    if: normalCiIf,
+    if: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.event_name == 'pull_request' }}`,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
