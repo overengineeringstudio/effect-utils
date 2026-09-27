@@ -30,5 +30,18 @@
     "oxlint-tsgolint": "7.0.2001",
     "typescript": "5.9.3",
     "vitest": "4.1.9"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./plugin": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./stylex-upstream-plugin": {
+        "types": "./dist/src/stylex-upstream-plugin.d.ts",
+        "default": "./dist/src/stylex-upstream-plugin.js"
+      }
+    }
   }
 }

@@ -68,11 +68,23 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
-        './codex': './dist/adapters/codex.js',
-        './claude': './dist/adapters/claude.js',
-        './opencode': './dist/adapters/opencode.js',
-        './jsonl': './dist/adapters/jsonl.js',
+        '.': { types: './dist/src/mod.d.ts', default: './dist/src/mod.js' },
+        './codex': {
+          types: './dist/src/adapters/codex.d.ts',
+          default: './dist/src/adapters/codex.js',
+        },
+        './claude': {
+          types: './dist/src/adapters/claude.d.ts',
+          default: './dist/src/adapters/claude.js',
+        },
+        './opencode': {
+          types: './dist/src/adapters/opencode.d.ts',
+          default: './dist/src/adapters/opencode.js',
+        },
+        './jsonl': {
+          types: './dist/src/adapters/jsonl.d.ts',
+          default: './dist/src/adapters/jsonl.js',
+        },
       },
     },
   } satisfies PackageJsonInputData,

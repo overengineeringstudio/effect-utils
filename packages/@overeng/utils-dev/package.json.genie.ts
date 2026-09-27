@@ -49,9 +49,15 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        './node-vitest': './dist/node-vitest/mod.js',
-        './otelite': './dist/otelite/mod.js',
-        './cli-contract': './dist/cli-contract.js',
+        './node-vitest': {
+          types: './dist/src/node-vitest/mod.d.ts',
+          default: './dist/src/node-vitest/mod.js',
+        },
+        './otelite': { types: './dist/src/otelite/mod.d.ts', default: './dist/src/otelite/mod.js' },
+        './cli-contract': {
+          types: './dist/src/cli-contract.d.ts',
+          default: './dist/src/cli-contract.js',
+        },
       },
     },
   },

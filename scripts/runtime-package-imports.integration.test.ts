@@ -12,6 +12,7 @@ type PackageManifest = {
   exports?: Record<string, ExportTarget>
   name: string
   dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   publishConfig?: { exports?: Record<string, ExportTarget> }
@@ -94,7 +95,14 @@ const runtimeImportViolations = (manifest: PackageManifest, packageRoot: string)
 test('all cache package products declare imports reachable from their shipped runtime exports', () => {
   const targets = products.map((product) => product.target)
   const build = Bun.spawnSync(
-    [process.env.BUCK2_BIN ?? 'buck2', 'build', '--show-output', '--local-only', ...targets],
+    [
+      process.env.BUCK2_BIN ?? 'buck2',
+      'build',
+      '--show-output',
+      '--local-only',
+      '--no-remote-cache',
+      ...targets,
+    ],
     {
       cwd: root,
       env: process.env,
@@ -133,6 +141,24 @@ test('all cache package products declare imports reachable from their shipped ru
       const manifest = JSON.parse(
         readFileSync(join(packageRoot, 'package.json'), 'utf8'),
       ) as PackageManifest
+      for (const dependencies of [
+        manifest.dependencies,
+        manifest.devDependencies,
+        manifest.optionalDependencies,
+        manifest.peerDependencies,
+      ]) {
+        for (const specifier of Object.values(dependencies ?? {})) {
+          expect(specifier.startsWith('workspace:')).toBe(false)
+        }
+      }
+      const published = Object.values(manifest.exports ?? {}).flatMap(exportPaths)
+      expect(published.some((entry) => entry.endsWith('.js'))).toBe(true)
+      for (const entry of published) {
+        expect(entry.endsWith('.js') || entry.endsWith('.d.ts') || entry.endsWith('.css')).toBe(
+          true,
+        )
+        expect(existsSync(resolve(packageRoot, entry))).toBe(true)
+      }
       return runtimeImportViolations(manifest, packageRoot)
     })
     expect(violations).toEqual([])

@@ -84,6 +84,29 @@ All notable changes to this project will be documented in this file.
   `crate_archive`, which lets the sandbox use `mkBuck2CargoArchives` offline.
   Canonical `@cell//` targets match their descriptor labels, and
   `host_platform_label(cell = ...)` emits `@cell//` labels.
+- **Buck package products**: `:dist-package` archives are now Node-consumable.
+  `tsgo_emit` emits JavaScript next to declarations, the npm packer projects
+  `publishConfig` exports, retains publish-only settings such as `access`, and
+  resolves `workspace:` dependencies from Buck-declared manifests with `pnpm pack`
+  semantics. Packing fails when any
+  `exports`/`main`/`module`/`types`/`bin` target is a runtime `.ts` source or
+  is not shipped. All published packages, including the new RPC explorer pair,
+  now declare `publishConfig.exports` against the emitted `dist` layout with
+  `types` conditions (the previous `./dist/*.js` targets did not exist).
+  Consumers that import published tarballs from Node (e.g. Playwright configs)
+  no longer hit `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`.
+  Every Buck-generated package archive target, including non-registry packages
+  and private examples, now builds: source manifests map runtime exports to
+  emitted files, and packages without declaration publishers no longer require
+  an invented `src/mod.d.ts`. Buck package dependency manifests derive from
+  Genie package inputs rather than racing concurrently generated JSON.
+  Published Storybook aliases resolve the emitted OpenTUI stub, and the
+  published Notion schema CLI reads its version from the shipped manifest.
+  `@overeng/react-inspector`'s standalone `build` script writes `dist-pack`,
+  never the Buck-owned `dist`.
+- **Cargo Buck projection**: Rust binaries declare their non-root `src/`
+  module files as `srcs`, so editing a module such as `buck2-product`'s
+  `npm_manifest.rs` invalidates the cached binary.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it

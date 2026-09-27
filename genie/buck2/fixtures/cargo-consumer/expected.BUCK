@@ -1,7 +1,7 @@
 # Projection source: components/rust/consumer-cli/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:ffa7a6cfa51b2d5728927fd4e45c3b3a1f5396c953e565f0ae4b8d17ba976fd5
+# Semantic fingerprint: sha256:fb588b82f6ad78ea64788892d49cd33741925422e5ea7ba3d75a45c343f1a5a2
 # Semantic inputs: components/rust/Cargo.lock, components/rust/Cargo.toml, components/rust/consumer-cli/BUCK.genie.ts, components/rust/consumer-cli/Cargo.toml, components/rust/consumer-cli/src/**/*.rs, components/rust/consumer-cli/tests/**/*.rs, components/rust/reindeer.toml, vendor/cargo/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -18,6 +18,7 @@ static_source_set(
         "BUCK.genie.ts",
         "Cargo.toml",
         "src/main.rs",
+        "src/message.rs",
     ] + glob(["rust-toolchain.toml"]),
     visibility = ["PUBLIC"],
 )
@@ -28,6 +29,7 @@ native.rust_binary(
     crate_root = "src/main.rs",
     srcs = [
         "src/main.rs",
+        "src/message.rs",
     ],
     deps = [
         "//vendor/cargo:serde",

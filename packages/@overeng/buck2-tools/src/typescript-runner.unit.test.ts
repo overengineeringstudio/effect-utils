@@ -25,6 +25,7 @@ import {
   parseEmitOptions as parseEmit,
   parseTypecheckOptions as parseTypecheck,
   relinkStagedDependencyView,
+  stagedEmitPackageRoot,
 } from './typescript-runner.ts'
 
 const scratchDirectories: string[] = []
@@ -210,6 +211,41 @@ it('projects declared workspace package trees beside the relocated package', asy
   expect(JSON.parse(readFileSync(join(stagedSibling, 'tsconfig.json'), 'utf8'))).toEqual({
     compilerOptions: { composite: true, noEmit: false },
   })
+})
+
+it('stages a nested example and its declared siblings without escaping the scratch root', async () => {
+  const { root } = createFixture()
+  const artifactRoot = join(root, 'buck-out', 'packages', '@overeng')
+  const packageTree = join(
+    artifactRoot,
+    'effect-rpc-tanstack',
+    'examples',
+    'basic',
+    '__package_tree__',
+    'package_tree',
+  )
+  const siblingTree = join(artifactRoot, 'content-address', '__package_tree__', 'package_tree')
+  const stagingRoot = join(root, 'system-temp')
+  mkdirSync(join(siblingTree, 'node_modules'), { recursive: true })
+  mkdirSync(packageTree, { recursive: true })
+  writeFileSync(join(siblingTree, 'package.json'), '{"name":"@overeng/content-address"}\n')
+  const stagedPackageRoot = stagedEmitPackageRoot({
+    packageTree,
+    readRoots: [packageTree, siblingTree],
+    stagingRoot,
+  })
+  mkdirSync(stagedPackageRoot, { recursive: true })
+
+  await linkStagedWorkspaceProjects({
+    packageTree,
+    readRoots: [packageTree, siblingTree],
+    stagedPackageRoot,
+    stagingRoot,
+  })
+
+  expect(
+    readFileSync(join(stagingRoot, 'workspace', 'content-address', 'package.json'), 'utf8'),
+  ).toContain('@overeng/content-address')
 })
 
 describe('TypeScript handwritten declaration copy', () => {

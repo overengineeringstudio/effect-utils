@@ -118,11 +118,17 @@
   "publishConfig": {
     "access": "public",
     "bin": {
-      "notion": "./dist/cli.js"
+      "notion": "./dist/src/cli.js"
     },
     "exports": {
-      ".": "./dist/mod.js",
-      "./config": "./dist/config-def.js"
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./config": {
+        "types": "./dist/src/config-def.d.ts",
+        "default": "./dist/src/config-def.js"
+      }
     }
   }
 }

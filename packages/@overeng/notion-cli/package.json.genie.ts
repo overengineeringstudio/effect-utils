@@ -4,6 +4,7 @@ import {
   workspaceMember,
   exportEntry,
   packageJson,
+  publishedSourceExport,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
@@ -78,11 +79,11 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       bin: {
-        notion: './dist/cli.js',
+        notion: './dist/src/cli.js',
       },
       exports: {
-        '.': './dist/mod.js',
-        './config': './dist/config-def.js',
+        '.': publishedSourceExport('mod'),
+        './config': publishedSourceExport('config-def'),
       },
     },
     dependenciesMeta: {

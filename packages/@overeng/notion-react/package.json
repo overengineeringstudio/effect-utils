@@ -129,15 +129,36 @@
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js",
-      "./markdown": "./dist/markdown/mod.js",
-      "./renderer": "./dist/renderer/mod.js",
-      "./o11y": "./dist/o11y/mod.js",
-      "./o11y/effect": "./dist/o11y/effect-adapter.js",
-      "./o11y/otel": "./dist/o11y/otel-adapter.js",
-      "./web": "./dist/web/mod.js",
-      "./web/styles.css": "./dist/web/styles.css",
-      "./web/katex.css": "./dist/web/katex.css"
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./markdown": {
+        "types": "./dist/src/markdown/mod.d.ts",
+        "default": "./dist/src/markdown/mod.js"
+      },
+      "./renderer": {
+        "types": "./dist/src/renderer/mod.d.ts",
+        "default": "./dist/src/renderer/mod.js"
+      },
+      "./o11y": {
+        "types": "./dist/src/o11y/mod.d.ts",
+        "default": "./dist/src/o11y/mod.js"
+      },
+      "./o11y/effect": {
+        "types": "./dist/src/o11y/effect-adapter.d.ts",
+        "default": "./dist/src/o11y/effect-adapter.js"
+      },
+      "./o11y/otel": {
+        "types": "./dist/src/o11y/otel-adapter.d.ts",
+        "default": "./dist/src/o11y/otel-adapter.js"
+      },
+      "./web": {
+        "types": "./dist/src/web/mod.d.ts",
+        "default": "./dist/src/web/mod.js"
+      },
+      "./web/styles.css": "./src/web/styles.css",
+      "./web/katex.css": "./src/web/katex.css"
     }
   }
 }

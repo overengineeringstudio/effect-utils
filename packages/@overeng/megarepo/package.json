@@ -123,9 +123,18 @@
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js",
-      "./buck2-manifest": "./dist/buck2-manifest.js",
-      "./cli": "./dist/cli.js"
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./buck2-manifest": {
+        "types": "./dist/src/buck2-manifest.d.ts",
+        "default": "./dist/src/buck2-manifest.js"
+      },
+      "./cli": {
+        "types": "./dist/src/cli/mod.d.ts",
+        "default": "./dist/src/cli/mod.js"
+      }
     }
   }
 }

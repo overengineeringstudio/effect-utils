@@ -4,6 +4,7 @@ import {
   workspaceMember,
   exportEntry,
   packageJson,
+  publishedSourceExport,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 import megarepoPkg from '../megarepo/package.json.genie.ts'
@@ -64,7 +65,7 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
+        '.': publishedSourceExport('mod'),
       },
     },
     dependenciesMeta: {

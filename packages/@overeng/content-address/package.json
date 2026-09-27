@@ -35,8 +35,14 @@
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js",
-      "./schema": "./dist/schema.js"
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./schema": {
+        "types": "./dist/src/schema.d.ts",
+        "default": "./dist/src/schema.js"
+      }
     }
   }
 }

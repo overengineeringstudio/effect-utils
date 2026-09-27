@@ -388,6 +388,10 @@ const cargoBuck2PackageProjectionFor = ({
   const binaryRoots = new Set(binaries.map((binary) => binary.crateRoot))
   const srcSources = sources.filter((source) => source.startsWith('src/'))
   const librarySources = srcSources.filter((source) => binaryRoots.has(source) === false)
+  // A binary crate's `mod` files are compile inputs: each binary declares its
+  // own root plus every non-root `src/` module, so a module-only edit changes
+  // the rule's action key instead of reusing a stale cached binary.
+  const binaryModuleSources = librarySources.filter((source) => source !== libraryPath)
   const integrationTestRoots = sources.filter(
     (source) =>
       source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
@@ -511,7 +515,7 @@ const cargoBuck2PackageProjectionFor = ({
         name: binary.name,
         crate: crateIdentifier(binary.name),
         crateRoot: binary.crateRoot,
-        ruleSources: [binary.crateRoot],
+        ruleSources: sorted([binary.crateRoot, ...binaryModuleSources]),
         dependencies: binaryDependencies,
         conditionalDependencies: normalConditional,
         visibility: ['PUBLIC'],

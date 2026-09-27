@@ -1,3 +1,5 @@
+mod npm_manifest;
+
 use buck2_tool_core::{
     canonical_json, normalized_relative, safe_text, sha256_bytes, sha256_sri,
     verify_execution_capability, ToolError, ToolResult,
@@ -64,6 +66,8 @@ struct NpmPackageArgs {
     dist: PathBuf,
     #[arg(long)]
     artifact: PathBuf,
+    #[arg(long)]
+    workspace_manifest: Vec<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -874,11 +878,60 @@ fn npm_package(args: NpmPackageArgs) -> ToolResult<()> {
     collect_npm_files(&args.dist, &args.dist, "package/dist", &mut files)?;
     files.sort_by(|left, right| left.0.cmp(&right.0));
 
+    let manifest_source = files
+        .iter()
+        .find(|(archive_path, _)| archive_path == "package/package.json")
+        .map(|(_, path)| path)
+        .ok_or_else(|| fail("BUCK2_PRODUCT_INPUT", "package tree has no package.json"))?;
+    let workspace_manifests = args
+        .workspace_manifest
+        .iter()
+        .map(|path| {
+            fs::read(path).map_err(|error| {
+                fail(
+                    "BUCK2_PRODUCT_INPUT",
+                    format!(
+                        "could not read declared workspace manifest {}: {error}",
+                        path.display()
+                    ),
+                )
+            })
+        })
+        .collect::<ToolResult<Vec<_>>>()?;
+    let versions = npm_manifest::workspace_versions(&workspace_manifests)?;
+    let manifest = npm_manifest::published_manifest(
+        &fs::read(manifest_source).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read package.json: {error}"),
+            )
+        })?,
+        &versions,
+    )?;
+    let archived = files
+        .iter()
+        .filter_map(|(archive_path, _)| archive_path.strip_prefix("package/"))
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    npm_manifest::validate_targets(&manifest, &archived)?;
+
     let encoder = GzBuilder::new()
         .mtime(0)
         .write(Vec::new(), Compression::best());
     let mut builder = Builder::new(encoder);
     for (archive_path, source_path) in files {
+        if archive_path == "package/package.json" {
+            let header = tar_header(
+                &archive_path,
+                manifest.len() as u64,
+                EntryType::Regular,
+                0o444,
+            )?;
+            builder
+                .append(&header, manifest.as_slice())
+                .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
+            continue;
+        }
         let metadata = fs::metadata(&source_path).map_err(|error| {
             fail(
                 "BUCK2_PRODUCT_INPUT",
@@ -1332,7 +1385,7 @@ mod tests {
         fs::create_dir_all(&dist).unwrap();
         fs::write(
             package_tree.join("package.json"),
-            b"{\"name\":\"fixture\"}\n",
+            br#"{"name":"fixture","exports":{".":"./src/mod.ts"},"publishConfig":{"exports":{".":"./dist/mod.js"}}}"#,
         )
         .unwrap();
         fs::write(
@@ -1355,6 +1408,7 @@ mod tests {
                 package_tree: package_tree.clone(),
                 dist: dist.clone(),
                 artifact: artifact.clone(),
+                workspace_manifest: Vec::new(),
             })
             .unwrap();
         }
@@ -1373,6 +1427,23 @@ mod tests {
                 PathBuf::from("package/src/mod.ts"),
             ]
         );
+        let decoder = flate2::read::GzDecoder::new(File::open(&second).unwrap());
+        let packed_manifest = tar::Archive::new(decoder)
+            .entries()
+            .unwrap()
+            .find_map(|entry| {
+                let mut entry = entry.unwrap();
+                if entry.path().unwrap().as_ref() != Path::new("package/package.json") {
+                    return None;
+                }
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+                Some(bytes)
+            })
+            .unwrap();
+        let packed: serde_json::Value = serde_json::from_slice(&packed_manifest).unwrap();
+        assert_eq!(packed["exports"]["."], "./dist/mod.js");
+        assert!(packed.get("publishConfig").is_none());
     }
 
     #[cfg(target_os = "linux")]
