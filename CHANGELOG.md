@@ -190,6 +190,10 @@ All notable changes to this project will be documented in this file.
   through `foreignPackageManifestPaths` (label `//<package path>:lib`), and
   renamed registry dependencies (`package = "..."`) through `named_deps`.
   Explicit-target projections are unchanged.
+- **Buck2 Cargo projector**: `buildProducts: [{ name, binary?, entrypoint? }]`
+  emits one `rust_product_executable` + `build_product` pair per named Cargo
+  binary, so one package can ship several products (for example
+  `tailnet-relay` and `devnet-edge`). `buildProduct: true` output is unchanged.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
