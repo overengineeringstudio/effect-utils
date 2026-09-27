@@ -1527,10 +1527,14 @@ const dependenciesNamed = ({
 /** Cargo validates every declared feature item, enabled or not. */
 const validateFeatureItem = ({
   state,
+  feature,
   item,
+  isForeignPath,
 }: {
   readonly state: MemberFeatures
+  readonly feature: string
   readonly item: string
+  readonly isForeignPath: (dependency: ResolvedDependency) => boolean
 }): void => {
   const slash = item.indexOf('/')
   if (item.startsWith('dep:') === true) {
@@ -1544,7 +1548,13 @@ const validateFeatureItem = ({
   } else if (slash !== -1) {
     const rawName = item.slice(0, slash)
     const name = rawName.endsWith('?') === true ? rawName.slice(0, -1) : rawName
-    dependenciesNamed({ state, name, via: item })
+    const dependencies = dependenciesNamed({ state, name, via: item })
+    if (dependencies.some(isForeignPath) === true) {
+      // A foreign package's feature set is unified by its own workspace projection.
+      throw new Error(
+        `Cargo features on a foreign path dependency are unsupported at ${state.member.manifestPath} features.${feature}: ${item}`,
+      )
+    }
   } else if (Object.hasOwn(state.declared, item) === false && state.implicit.has(item) === false) {
     throw new Error(`Cargo feature ${item} is not defined in ${state.member.manifestPath}`)
   }
@@ -1580,8 +1590,33 @@ const resolveWorkspaceFeatures = ({
   )
   if (usesFeatures === false) return new Map()
 
+  const isMemberLabel = (label: string): boolean =>
+    label.startsWith('//') === true &&
+    label.endsWith(':lib') === true &&
+    context.memberByPath.has(label.slice('//'.length, -':lib'.length)) === true
+  const isForeignPath = (dependency: ResolvedDependency): boolean =>
+    dependency.label.startsWith(`${context.thirdPartyPackage}:`) === false &&
+    isMemberLabel(dependency.label) === false
   const states = new Map<string, MemberFeatures>()
   for (const member of members) {
+    const conditionalDependencies = resolveConditionalDependencies({
+      context,
+      member,
+      target: member.manifest.target,
+      kind: 'dependencies',
+    }).map((entry) => entry.dependency)
+    // Each member has one `:lib` with one feature list, so a request that only holds on
+    // some platforms (resolver 2) would leak onto every platform.
+    const platformSpecificMemberRequests = conditionalDependencies.filter(
+      (dependency) =>
+        isMemberLabel(dependency.label) === true &&
+        (dependency.optional === true || dependency.features.length > 0),
+    )
+    if (platformSpecificMemberRequests.length > 0) {
+      throw new Error(
+        `Target-specific Cargo dependencies on workspace members cannot request features or be optional in ${member.manifestPath}: ${sorted(platformSpecificMemberRequests.map((dependency) => dependency.name)).join(', ')}`,
+      )
+    }
     const dependencies = [
       ...resolveDependencyTable({
         context,
@@ -1589,12 +1624,7 @@ const resolveWorkspaceFeatures = ({
         dependencies: member.manifest.dependencies,
         field: 'dependencies',
       }),
-      ...resolveConditionalDependencies({
-        context,
-        member,
-        target: member.manifest.target,
-        kind: 'dependencies',
-      }).map((entry) => entry.dependency),
+      ...conditionalDependencies,
     ]
     const dependenciesByName = new Map<string, ResolvedDependency[]>()
     for (const dependency of dependencies) {
@@ -1638,9 +1668,9 @@ const resolveWorkspaceFeatures = ({
   }
 
   const memberState = (dependency: ResolvedDependency): MemberFeatures | undefined =>
-    dependency.label.startsWith(`${context.thirdPartyPackage}:`) === true
-      ? undefined
-      : states.get(dependency.label.slice('//'.length, -':lib'.length))
+    isMemberLabel(dependency.label) === true
+      ? states.get(dependency.label.slice('//'.length, -':lib'.length))
+      : undefined
   const requestFeature = ({
     dependency,
     feature,
@@ -1721,8 +1751,8 @@ const resolveWorkspaceFeatures = ({
   }
 
   for (const state of states.values()) {
-    for (const items of Object.values(state.declared)) {
-      for (const item of items) validateFeatureItem({ state, item })
+    for (const [feature, items] of Object.entries(state.declared)) {
+      for (const item of items) validateFeatureItem({ state, feature, item, isForeignPath })
     }
   }
   for (const state of states.values()) {

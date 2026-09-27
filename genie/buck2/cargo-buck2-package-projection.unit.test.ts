@@ -1003,5 +1003,56 @@ describe('Cargo features', () => {
     ).toThrow(
       'Cargo features on a foreign path dependency are unsupported at dependencies.shared: x',
     )
+    // The same request written as a [features] item, strong or weak, even when disabled.
+    for (const [dependency, item] of [
+      ['shared = { path = "../../shared" }', 'shared/x'],
+      ['shared = { path = "../../shared", optional = true }', 'shared?/x'],
+    ] as const) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            pkg: {
+              manifest: `[package]\nname = "pkg"\n\n[features]\nturbo = ["${item}"]\n\n[dependencies]\n${dependency}`,
+              files: ['src/lib.rs'],
+            },
+          },
+          foreignPackages: {
+            shared: {
+              manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+              files: ['src/lib.rs'],
+              projected: true,
+            },
+          },
+          render: 'pkg',
+        }),
+      ).toThrow(
+        `Cargo features on a foreign path dependency are unsupported at rust/pkg/Cargo.toml features.turbo: ${item}`,
+      )
+    }
+  })
+
+  it('rejects feature requests and optional activation on target-specific member edges', () => {
+    for (const request of [
+      '{ path = "../lib", features = ["sqlite"] }',
+      '{ path = "../lib", optional = true }',
+    ]) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            ...tokenlens('serde.workspace = true'),
+            cli: {
+              manifest: `[package]\nname = "cli"\n\n[target.'cfg(target_os = "linux")'.dependencies]\nlib = ${request}`,
+              files: ['src/main.rs'],
+            },
+          },
+          workspaceDependencies: 'hostname = "0.4"\nrusqlite = "0.39"\n',
+          registryPackages: ['serde', 'hostname', 'rusqlite'],
+          thirdPartyTargets: ['serde', 'hostname', 'rusqlite'],
+          render: 'lib',
+        }),
+      ).toThrow(
+        'Target-specific Cargo dependencies on workspace members cannot request features or be optional in rust/cli/Cargo.toml: lib',
+      )
+    }
   })
 })

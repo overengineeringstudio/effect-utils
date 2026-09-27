@@ -201,7 +201,10 @@ All notable changes to this project will be documented in this file.
   dependent's requested features), since each member has one `:lib`. Enabled
   features render as `features = [...]` and activate their optional deps; a
   binary whose `required-features` stay disabled is omitted. Feature-free
-  packages render unchanged.
+  packages render unchanged. Feature requests that one `:lib` cannot honor
+  are rejected: features on foreign path dependencies (direct or through
+  `dep/feature` items) and feature requests or optional activation on
+  target-specific edges to workspace members.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
