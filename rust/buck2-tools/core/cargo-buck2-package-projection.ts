@@ -385,8 +385,23 @@ const cargoBuck2PackageProjectionFor = ({
   }
   const sources = discoverRustSources({ packagePath, repo })
   const { binaries, library } = discoverCargoTargets({ member, packageName, sources })
+  const reservedTargetNames = new Set([
+    'static_sources',
+    ...(library === undefined ? [] : ['lib']),
+    ...(buildProduct === true
+      ? [`${packageName}-product-executable`, `${packageName}-product`]
+      : []),
+  ])
+  const collidingBinaries = binaries.filter((binary) => reservedTargetNames.has(binary.name))
+  if (collidingBinaries.length > 0) {
+    throw new Error(
+      `Cargo binary names collide with generated Buck targets in ${member.manifestPath}: ${sorted(
+        collidingBinaries.map((binary) => binary.name),
+      ).join(', ')}`,
+    )
+  }
   const binaryRuleSources = new Map(
-    binaries.map((binary) => [binary.name, binaryTargetSources({ binary, sources })]),
+    binaries.map((binary) => [binary.name, binaryTargetSources({ binaries, binary, sources })]),
   )
   const binaryOwnedSources = new Set([...binaryRuleSources.values()].flat())
   const srcSources = sources.filter((source) => source.startsWith('src/'))
@@ -1188,16 +1203,32 @@ const discoverCargoTargets = ({
   return library === undefined ? { binaries } : { binaries, library }
 }
 
-/** A `src/bin/<name>/main.rs` binary owns its directory's modules; any other binary owns its root. */
+/**
+ * A `src/bin/<name>/main.rs` binary owns its directory's modules. A flat `src/bin/<name>.rs`
+ * binary resolves `mod` declarations beside its root, so it also declares the `src/bin/`
+ * sources outside other binaries' directories. Any other binary owns its root.
+ */
 const binaryTargetSources = ({
+  binaries,
   binary,
   sources,
 }: {
+  readonly binaries: readonly CargoBinaryTarget[]
   readonly binary: CargoBinaryTarget
   readonly sources: readonly string[]
 }): readonly string[] => {
   const directoryMatch = binary.crateRoot.match(/^(src\/bin\/[^/]+\/)main\.rs$/)
-  if (directoryMatch === null) return [binary.crateRoot]
+  if (directoryMatch === null) {
+    if (/^src\/bin\/[^/]+\.rs$/.test(binary.crateRoot) === false) return [binary.crateRoot]
+    const binaryDirectories = binaries.flatMap(
+      (candidate) => candidate.crateRoot.match(/^(src\/bin\/[^/]+\/)main\.rs$/)?.[1] ?? [],
+    )
+    return sources.filter(
+      (source) =>
+        source.startsWith('src/bin/') === true &&
+        binaryDirectories.every((directory) => source.startsWith(directory) === false),
+    )
+  }
   const directory = requireValue({
     value: directoryMatch[1],
     field: `${binary.crateRoot} directory`,

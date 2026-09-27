@@ -295,6 +295,47 @@ describe('Cargo target discovery', () => {
     )
   })
 
+  it('lets flat src/bin binaries load sibling modules outside binary directories', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          kit: {
+            manifest: '[package]\nname = "kit"',
+            files: [
+              'src/bin/tool.rs',
+              'src/bin/helper.rs',
+              'src/bin/dir/main.rs',
+              'src/bin/dir/x.rs',
+            ],
+          },
+        },
+        render: 'kit',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['dir', 'helper', 'tool'])
+    expect(rules.tool).toContain(
+      'crate_root = "src/bin/tool.rs",\n    srcs = [\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
+    )
+    expect(rules.dir).toContain(
+      'crate_root = "src/bin/dir/main.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n    ],',
+    )
+  })
+
+  it('rejects binary names that collide with generated Buck targets', () => {
+    const render = (files: readonly string[]) =>
+      renderCargoFixture({
+        members: { pkg: { manifest: '[package]\nname = "pkg"', files } },
+        render: 'pkg',
+      })
+    expect(() => render(['src/lib.rs', 'src/bin/lib.rs'])).toThrow(
+      'Cargo binary names collide with generated Buck targets in rust/pkg/Cargo.toml: lib',
+    )
+    expect(() => render(['src/bin/static_sources.rs'])).toThrow(
+      'Cargo binary names collide with generated Buck targets in rust/pkg/Cargo.toml: static_sources',
+    )
+    expect(Object.keys(renderedRules(render(['src/bin/lib.rs'])))).toEqual(['lib'])
+  })
+
   it('skips hidden paths in automatic binary discovery', () => {
     const rules = renderedRules(
       renderCargoFixture({
