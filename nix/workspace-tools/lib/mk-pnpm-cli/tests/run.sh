@@ -445,8 +445,8 @@ importers:
     configDependencies: {}
     packageManagerDependencies:
       pnpm:
-        specifier: 12.6.0
-        version: 12.6.0
+        specifier: 12.7.0
+        version: 12.7.0
 ---
 lockfileVersion: '9.0'
 settings:

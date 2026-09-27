@@ -348,7 +348,7 @@ set -euo pipefail
 printf '%s\n' "$*" >> "${TEST_PNPM_MUTATOR_LOG:?}"
 printf 'PWD=%s\n' "$PWD" >> "${TEST_PNPM_MUTATOR_LOG:?}"
 if [ "${1:-}" = "--version" ]; then
-  echo "12.6.0"
+  echo "12.7.0"
   exit 0
 fi
 if [ "${1:-}" = "install" ]; then
