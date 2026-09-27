@@ -151,7 +151,9 @@ pkgs.writeShellScriptBin "otel-span" ''
               printf '%s' "$char"
             fi
           done
-        } | ${if pkgs.stdenv.hostPlatform.isDarwin then pkgs.libiconv else pkgs.glibc.bin}/bin/iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1
+        } | ${
+          if pkgs.stdenv.hostPlatform.isDarwin then pkgs.libiconv else pkgs.glibc.bin
+        }/bin/iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1
       }
 
       _valid_pipeline_run_id() {
