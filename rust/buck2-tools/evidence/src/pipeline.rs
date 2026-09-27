@@ -701,6 +701,7 @@ mod tests {
         cfg.ensure_dirs().unwrap();
         let mut conn = index::open(&cfg.index_path()).unwrap();
         index::init(&conn).unwrap();
+        crate::close::init(&conn).unwrap();
         conn.execute_batch("create table jobs(digest text primary key, state text not null, attempts integer not null, next_at integer not null);
             create table pushes(digest text, chunk integer);").unwrap();
         for (digest, span) in [("first", "first"), ("second", "second")] {
