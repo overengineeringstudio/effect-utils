@@ -84,6 +84,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **nix/go.nix**: the hub's official Go release archive moves from 1.26.5 to
+  1.27.1, with all three admitted platform hashes (`linux-amd64`,
+  `linux-arm64`, `darwin-arm64`) taken from `https://go.dev/dl/?mode=json`.
+  The derivation is otherwise unchanged: it is still the unpatched official
+  distribution, so decision 0029's store-reference-free property and
+  `elf-static/v1` reachability are unaffected.
+
 - **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
   Weaver remap dynamic sandbox paths before compilation, so capability
   manifests retain their strict executable digest across sandbox roots.
