@@ -204,6 +204,7 @@ mod tests {
         Arc,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    const RECORD: &[u8] = br#"{"schema":"buck2-run-record/v1","producer":{},"run":{"repository":"owner/repo","pipelineRunId":"local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1","runId":"local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1","attempt":1,"jobKey":"worker/local"},"files":[]}"#;
 
     #[tokio::test]
     async fn accepted_request_with_lost_response_replays_without_offline_ingest() {
@@ -214,11 +215,7 @@ mod tests {
         ));
         let spool = root.join("run");
         fs::create_dir_all(&spool).unwrap();
-        fs::write(
-            spool.join("manifest.json"),
-            br#"{"schema":"buck2-run-record/v1","files":[]}"#,
-        )
-        .unwrap();
+        fs::write(spool.join("manifest.json"), RECORD).unwrap();
         let socket = root.join("service.sock");
         let listener = tokio::net::UnixListener::bind(&socket).unwrap();
         let respond = Arc::new(AtomicBool::new(false));
@@ -284,11 +281,7 @@ mod tests {
         let next = root.join("next");
         let next_close = next.join("attempt-close");
         fs::create_dir_all(&next_close).unwrap();
-        fs::write(
-            next.join("manifest.json"),
-            br#"{"schema":"buck2-run-record/v1","files":[]}"#,
-        )
-        .unwrap();
+        fs::write(next.join("manifest.json"), RECORD).unwrap();
         fs::write(
             next_close.join("manifest.json"),
             br#"{"schema":"buck2-attempt-close/v1"}"#,
@@ -319,11 +312,7 @@ mod tests {
         ));
         let spool = root.join("run");
         fs::create_dir_all(&spool).unwrap();
-        fs::write(
-            spool.join("manifest.json"),
-            br#"{"schema":"buck2-run-record/v1","files":[]}"#,
-        )
-        .unwrap();
+        fs::write(spool.join("manifest.json"), RECORD).unwrap();
         let url = format!("unix://{}", root.join("missing.sock").display());
         assert!(upload(&spool, Some(&url)).await.is_err());
         assert!(
