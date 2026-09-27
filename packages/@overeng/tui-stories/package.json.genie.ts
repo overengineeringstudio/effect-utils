@@ -10,6 +10,7 @@ import {
 import megarepoPkg from '../megarepo/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const ownPeerDepNames = ['effect'] as const
@@ -20,7 +21,7 @@ const runtimeDeps = catalog.compose({
     workspace: [tuiReactPkg, utilsPkg],
   },
   devDependencies: {
-    workspace: [megarepoPkg, utilsDevPkg],
+    workspace: [megarepoPkg, utilsDevPkg, utilsStorybookPkg],
     external: {
       ...catalog.pick(
         ...ownPeerDepNames,

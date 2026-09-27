@@ -4,7 +4,7 @@ import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { shouldNeverHappen } from '../../../isomorphic/core.ts'
+import { shouldNeverHappen } from '@overeng/utils'
 import { createDomStorybookConfig, createTuiStorybookConfig } from './mod.ts'
 
 const runViteFinal = async () => {

@@ -39,6 +39,7 @@ import { buck2TypeScriptAdmission as tuiCoreAdmission } from '../../packages/@ov
 import { buck2TypeScriptAdmission as tuiReactAdmission } from '../../packages/@overeng/tui-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as tuiStoriesAdmission } from '../../packages/@overeng/tui-stories/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsDevAdmission } from '../../packages/@overeng/utils-dev/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as utilsStorybookAdmission } from '../../packages/@overeng/utils-storybook/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsAdmission } from '../../packages/@overeng/utils/BUCK.genie.ts'
 import {
   buck2TestCollectionTargetSuffix,
@@ -114,6 +115,7 @@ export const buck2TypeScriptAdmissions = {
   tuiStories: tuiStoriesAdmission,
   utils: utilsAdmission,
   utilsDev: utilsDevAdmission,
+  utilsStorybook: utilsStorybookAdmission,
 } as const satisfies Record<string, Buck2TypeScriptAdmission>
 
 /** Derives labels and project identity rather than duplicating them in package-local metadata. */

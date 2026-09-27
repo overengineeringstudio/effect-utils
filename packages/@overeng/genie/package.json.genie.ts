@@ -9,6 +9,7 @@ import {
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const supportDeps = catalog.compose({
@@ -18,7 +19,7 @@ const supportDeps = catalog.compose({
     external: catalog.pick('jsonc-parser', 'typescript'),
   },
   devDependencies: {
-    workspace: [utilsDevPkg],
+    workspace: [utilsDevPkg, utilsStorybookPkg],
     external: {
       ...catalog.pick(
         '@effect/platform-node',

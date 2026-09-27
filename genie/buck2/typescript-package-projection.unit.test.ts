@@ -265,8 +265,8 @@ describe('declared-closure package projection', () => {
     expect(outputsByAdmission.tuiReact).toContain(
       '        "src/storybook/asset-modules.d.ts": "src/storybook/asset-modules.d.ts",',
     )
-    expect(outputsByAdmission.utils).toContain(
-      '        "src/node/storybook/gate/virtual-modules.d.ts": "src/node/storybook/gate/virtual-modules.d.ts",',
+    expect(outputsByAdmission.utilsStorybook).toContain(
+      '        "src/gate/virtual-modules.d.ts": "src/gate/virtual-modules.d.ts",',
     )
     expect(outputsByAdmission.utils).toContain(
       '        "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",',

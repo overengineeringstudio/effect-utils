@@ -648,7 +648,7 @@ export const createEffectUtilsRefs = (basePath: string) =>
 
 const storybookBuilderVitePatch = {
   '@storybook/builder-vite@10.6.0':
-    'packages/@overeng/utils/patches/@storybook__builder-vite@10.6.0.patch',
+    'packages/@overeng/utils-storybook/patches/@storybook__builder-vite@10.6.0.patch',
 } satisfies PatchesRegistry
 
 /** Repo-local patches that should not be projected into downstream consumers. */

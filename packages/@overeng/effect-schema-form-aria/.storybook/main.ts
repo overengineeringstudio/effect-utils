@@ -1,4 +1,4 @@
-import { createDomStorybookConfig } from '@overeng/utils/node/storybook/config'
+import { createDomStorybookConfig } from '@overeng/utils-storybook/config'
 
 // No StyleX flag: the Storybook builder merges this package's `vite.config.ts`,
 // which already registers the plugin. Passing it here installed a second

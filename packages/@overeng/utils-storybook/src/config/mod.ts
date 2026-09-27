@@ -109,7 +109,7 @@ type CreateDomStorybookConfig = {
  *
  * @example
  * ```typescript
- * import { createDomStorybookConfig } from '@overeng/utils/node/storybook/config'
+ * import { createDomStorybookConfig } from '@overeng/utils-storybook/config'
  * export default createDomStorybookConfig({})
  * ```
  */
@@ -177,7 +177,7 @@ type CreateTuiStorybookConfig = {
  *
  * @example
  * ```typescript
- * import { createTuiStorybookConfig } from '@overeng/utils/node/storybook/config'
+ * import { createTuiStorybookConfig } from '@overeng/utils-storybook/config'
  * export default createTuiStorybookConfig({
  *   additionalOptimizeDepsInclude: ['@effect/cli > ini', '@effect/cli > toml'],
  * })

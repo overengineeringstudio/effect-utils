@@ -40,6 +40,7 @@ import tuiCorePkg from './packages/@overeng/tui-core/package.json.genie.ts'
 import tuiReactPkg from './packages/@overeng/tui-react/package.json.genie.ts'
 import tuiStoriesPkg from './packages/@overeng/tui-stories/package.json.genie.ts'
 import utilsDevPkg from './packages/@overeng/utils-dev/package.json.genie.ts'
+import utilsStorybookPkg from './packages/@overeng/utils-storybook/package.json.genie.ts'
 import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
 
 /** All package.json genie definitions that belong to the root pnpm workspace */
@@ -84,6 +85,7 @@ export const rootWorkspacePackages = [
   tuiStoriesPkg,
   utilsPkg,
   utilsDevPkg,
+  utilsStorybookPkg,
   ciToolsPkg,
 ] as const
 
