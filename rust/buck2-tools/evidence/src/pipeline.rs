@@ -568,10 +568,12 @@ fn index_span_metadata(
         for rs in doc["resourceSpans"].as_array().into_iter().flatten() {
             for scope in rs["scopeSpans"].as_array().into_iter().flatten() {
                 for span in scope["spans"].as_array().into_iter().flatten() {
-                    let millis = |name: &str| span[name].as_str()
-                        .and_then(|s| s.parse::<i64>().ok()).map(|n| n / 1_000_000);
-                    let (Some(start), Some(end)) =
-                        (millis("startTimeUnixNano"), millis("endTimeUnixNano")) else { continue };
+                    let nanos = |name: &str| span[name].as_str()
+                        .and_then(|s| s.parse::<i64>().ok());
+                    let (Some(start_ns), Some(end_ns)) =
+                        (nanos("startTimeUnixNano"), nanos("endTimeUnixNano")) else { continue };
+                    let start = start_ns.div_euclid(1_000_000);
+                    let end = end_ns.saturating_add(999_999).div_euclid(1_000_000);
                     bounds = Some(match bounds {
                         Some((lo, hi)) => (lo.min(start), hi.max(end)),
                         None => (start, end),
@@ -583,7 +585,8 @@ fn index_span_metadata(
                         .find(|a| a["key"] == "task.name")
                         .and_then(|a| a["value"]["stringValue"].as_str());
                     if let Some(task) = task {
-                        *tasks.entry(task.to_owned()).or_default() += (end - start).max(0) as f64;
+                        *tasks.entry(task.to_owned()).or_default() +=
+                            end_ns.saturating_sub(start_ns) as f64 / 1_000_000.0;
                     }
                 }
             }
