@@ -29,7 +29,20 @@ export type CargoBuck2PackageProjectionOptions = {
   /** Several products from one package, one per named Cargo binary. */
   readonly buildProducts?: readonly CargoBuck2ProductOptions[]
   readonly cliBuildStamp?: boolean
+  /**
+   * Files the package's build script reads besides the package's Rust sources, by
+   * repository-relative path. A file in another Buck package names the label providing it
+   * (for example an `export_file`); a file inside the package needs no label. The build
+   * script sees each at its repository layout relative to `CARGO_MANIFEST_DIR`.
+   */
+  readonly buildScriptInputs?: readonly CargoBuck2BuildScriptInput[]
   readonly sourceUrl: string
+}
+
+/** One declared build script input; see `buildScriptInputs`. */
+export type CargoBuck2BuildScriptInput = {
+  readonly path: string
+  readonly label?: string
 }
 
 export type CargoBuck2PackageProjection = (
@@ -263,6 +276,7 @@ const cargoBuck2PackageProjectionFor = ({
   definition,
   buildProduct = false,
   buildProducts,
+  buildScriptInputs,
   cliBuildStamp = false,
   sourceUrl,
 }: CargoBuck2PackageProjectionOptions & {
@@ -326,15 +340,12 @@ const cargoBuck2PackageProjectionFor = ({
   if (packageMetadata.autotests !== undefined) {
     throw new Error(`Cargo autotests overrides are unsupported in ${member.manifestPath}`)
   }
-  if (
-    (packageMetadata.build !== undefined && packageMetadata.build !== false) ||
-    existsSync(repo.resolve(packagePath, 'build.rs')) === true
-  ) {
-    throw new Error(`Cargo build scripts are unsupported in ${member.manifestPath}`)
-  }
-  if (manifest['build-dependencies'] !== undefined) {
-    throw new Error(`Cargo build dependencies are unsupported in ${member.manifestPath}`)
-  }
+  const buildScript = resolveBuildScript({
+    buildScriptInputs,
+    member,
+    packagePath,
+    repo,
+  })
   if (
     (manifest.test?.length ?? 0) > 0 ||
     (manifest.bench?.length ?? 0) > 0 ||
@@ -399,9 +410,30 @@ const cargoBuck2PackageProjectionFor = ({
     isActive(entry.dependency),
   )
   const enabledFeatures = sorted([...featureState.features])
+  // Cargo ignores `[build-dependencies]` of a package without a build script.
+  const buildDependencies =
+    buildScript === undefined
+      ? []
+      : resolveDependencyTable({
+          context,
+          member,
+          dependencies: manifest['build-dependencies'],
+          field: 'build-dependencies',
+        })
+  const unsupportedBuildDependencies = buildDependencies.filter(
+    (dependency) => dependency.optional === true || dependency.package !== undefined,
+  )
+  if (unsupportedBuildDependencies.length > 0) {
+    throw new Error(
+      `Optional and renamed Cargo build dependencies are unsupported in ${member.manifestPath}: ${sorted(
+        unsupportedBuildDependencies.map((dependency) => dependency.name),
+      ).join(', ')}`,
+    )
+  }
   const unresolvedProductionDependencies = [
     ...activeNormalDependencies,
     ...activeConditionalNormalDependencies.map((entry) => entry.dependency),
+    ...buildDependencies,
   ].filter((dependency) => dependency.targetAvailable === false)
   if (unresolvedProductionDependencies.length > 0) {
     throw new Error(
@@ -444,6 +476,13 @@ const cargoBuck2PackageProjectionFor = ({
       `${product.name}-product-executable`,
       `${product.name}-product`,
     ]),
+    ...(buildScript === undefined
+      ? []
+      : [
+          `${packageName}-build-script-build`,
+          `${packageName}-build-script`,
+          `${packageName}-build-script-run`,
+        ]),
   ])
   const collidingBinaries = binaries.filter((binary) => reservedTargetNames.has(binary.name))
   if (collidingBinaries.length > 0) {
@@ -477,7 +516,20 @@ const cargoBuck2PackageProjectionFor = ({
   const namedDependencies = activeNormalDependencies
     .filter((dependency) => dependency.package !== undefined)
     .map((dependency) => ({ label: dependency.label, name: crateIdentifier(dependency.name) }))
-  const workspaceContractSources = sorted(['BUCK', 'BUCK.genie.ts', 'Cargo.toml', ...sources])
+  const workspaceContractSources = sorted([
+    'BUCK',
+    'BUCK.genie.ts',
+    'Cargo.toml',
+    ...sources,
+    ...(buildScript === undefined
+      ? []
+      : [
+          buildScript.path,
+          ...buildScript.inputs
+            .filter((input) => input.label === undefined)
+            .map((input) => input.path.slice(packagePath.length + 1)),
+        ]),
+  ])
   const compileEnv = {
     CARGO_PKG_NAME: packageName,
     CARGO_PKG_VERSION: version,
@@ -524,6 +576,8 @@ const cargoBuck2PackageProjectionFor = ({
     ...(featureState.activeOptional.size === 0
       ? {}
       : { activeOptionalDependencies: sorted([...featureState.activeOptional]) }),
+    // Absent without a build script so script-free fingerprints stay byte-identical.
+    ...(buildScript === undefined ? {} : { buildScript: { ...buildScript, buildDependencies } }),
     buildProduct,
   }
   const fingerprint = buck2SemanticFingerprint({
@@ -532,11 +586,8 @@ const cargoBuck2PackageProjectionFor = ({
     semanticData,
   })
 
-  const commonRuleLines = [
-    `    edition = ${starlarkString(edition)},`,
-    ...(enabledFeatures.length === 0
-      ? []
-      : renderStringList({ name: 'features', values: enabledFeatures })),
+  const buildScriptRun = `${packageName}-build-script-run`
+  const envLines = (buildScriptOutputs: boolean): readonly string[] => [
     '    env = {',
     ...Object.entries(compileEnv).map(
       ([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`,
@@ -544,7 +595,23 @@ const cargoBuck2PackageProjectionFor = ({
     ...(cliBuildStamp === true
       ? ['        "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),']
       : []),
+    ...(buildScriptOutputs === true
+      ? [`        "OUT_DIR": ${starlarkString(`$(location :${buildScriptRun}[out_dir])`)},`]
+      : []),
     '    },',
+  ]
+  const featureLines =
+    enabledFeatures.length === 0
+      ? []
+      : renderStringList({ name: 'features', values: enabledFeatures })
+  const commonRuleLines = [
+    `    edition = ${starlarkString(edition)},`,
+    ...featureLines,
+    ...envLines(buildScript !== undefined),
+    // The build script's `cargo:rustc-*` directives (cfgs, link flags) reach every target.
+    ...(buildScript === undefined
+      ? []
+      : [`    rustc_flags = [${starlarkString(`@$(location :${buildScriptRun}[rustc_flags])`)}],`]),
   ]
   const normalConditional = activeConditionalNormalDependencies
   const renderRule = ({
@@ -591,6 +658,56 @@ const cargoBuck2PackageProjectionFor = ({
   ]
 
   const rules: string[] = []
+  if (buildScript !== undefined) {
+    const buildScriptBuild = `${packageName}-build-script-build`
+    const buildScriptLauncher = `${packageName}-build-script`
+    const manifestEntries: readonly (readonly [string, string])[] = [
+      ...['Cargo.toml', buildScript.path, ...sources].map(
+        (file) => [`${packagePath}/${file}`, file] as const,
+      ),
+      ...buildScript.inputs.map(
+        (input) => [input.path, input.label ?? input.path.slice(packagePath.length + 1)] as const,
+      ),
+    ].toSorted(([left], [right]) => compareStrings({ left, right }))
+    rules.push(
+      'native.rust_binary(',
+      `    name = ${starlarkString(buildScriptBuild)},`,
+      '    crate = "build_script_build",',
+      `    crate_root = ${starlarkString(buildScript.path)},`,
+      ...renderStringList({ name: 'srcs', values: [buildScript.path] }),
+      ...renderStringList({
+        name: 'deps',
+        values: sorted(buildDependencies.map((dependency) => dependency.label)),
+      }),
+      `    edition = ${starlarkString(edition)},`,
+      ...featureLines,
+      ...envLines(false),
+      ')',
+      '',
+      'cargo_build_script(',
+      `    name = ${starlarkString(buildScriptLauncher)},`,
+      `    build_script = ${starlarkString(`:${buildScriptBuild}`)},`,
+      `    package_path = ${starlarkString(packagePath)},`,
+      '    srcs = {',
+      ...manifestEntries.map(
+        ([key, value]) => `        ${starlarkString(key)}: ${starlarkString(value)},`,
+      ),
+      '    },',
+      ')',
+      '',
+      'buildscript_run(',
+      `    name = ${starlarkString(buildScriptRun)},`,
+      `    package_name = ${starlarkString(packageName)},`,
+      // The launcher runs the build script from the repository-relative tree, so
+      // `$CARGO_MANIFEST_DIR/../<pkg>/<file>` reaches the declared inputs.
+      `    buildscript_rule = ${starlarkString(`:${buildScriptLauncher}`)},`,
+      `    manifest_dir = ${starlarkString(`:${buildScriptLauncher}`)},`,
+      ...featureLines,
+      `    version = ${starlarkString(version)},`,
+      ')',
+      '',
+    )
+  }
   if (library !== undefined) {
     rules.push(
       ...renderRule({
@@ -664,6 +781,12 @@ const cargoBuck2PackageProjectionFor = ({
           `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "rust_product_executable")`,
         ]
       : []),
+    ...(buildScript === undefined
+      ? []
+      : [
+          'load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")',
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "cargo_build_script")`,
+        ]),
     'static_source_set(',
     '    name = "static_sources",',
     `    prefix = ${starlarkString(packagePath)},`,
@@ -1433,6 +1556,98 @@ const renderDependencies = ({
 }
 
 const crateIdentifier = (value: string): string => value.replaceAll(/[^A-Za-z0-9_]/g, '_')
+
+type ResolvedBuildScript = {
+  /** Package-relative crate root of the build script. */
+  readonly path: string
+  /** Declared non-Rust inputs; `label` is absent for files inside the package. */
+  readonly inputs: readonly { readonly path: string; readonly label?: string }[]
+}
+
+/** The package's build script (`build.rs` or `package.build`) and its declared inputs. */
+const resolveBuildScript = ({
+  buildScriptInputs,
+  member,
+  packagePath,
+  repo,
+}: {
+  readonly buildScriptInputs: readonly CargoBuck2BuildScriptInput[] | undefined
+  readonly member: WorkspaceMember
+  readonly packagePath: string
+  readonly repo: RepoContext
+}): ResolvedBuildScript | undefined => {
+  const build = member.manifest.package?.build
+  const scriptPath =
+    typeof build === 'string'
+      ? normalizeBuildScriptPath({ build, manifestPath: member.manifestPath })
+      : build === false || existsSync(repo.resolve(packagePath, 'build.rs')) === false
+        ? undefined
+        : 'build.rs'
+  if (build === true && scriptPath === undefined) {
+    throw new Error(`Cargo package.build = true needs build.rs in ${member.manifestPath}`)
+  }
+  if (scriptPath === undefined) {
+    if (buildScriptInputs !== undefined) {
+      throw new Error(`buildScriptInputs needs a Cargo build script in ${member.manifestPath}`)
+    }
+    return undefined
+  }
+  validateRepoPath({ repo, value: `${packagePath}/${scriptPath}`, field: 'package.build' })
+  const inputs = (buildScriptInputs ?? []).map((input, index) => {
+    const field = `buildScriptInputs[${index}]`
+    validateRepoPath({ repo, value: input.path, field: `${field}.path` })
+    const inPackage = input.path.startsWith(`${packagePath}/`)
+    if (inPackage === true && input.label !== undefined) {
+      throw new Error(`${field} is inside ${packagePath} and takes no label: ${input.path}`)
+    }
+    if (inPackage === false) {
+      if (
+        input.label === undefined ||
+        /^(?:@?[A-Za-z0-9_.-]+)?\/\/[A-Za-z0-9_./@-]*:[A-Za-z0-9_.+=,@~/-]+$/.test(input.label) ===
+          false
+      ) {
+        throw new Error(
+          `${field} outside ${packagePath} needs the Buck label providing it: ${input.path}`,
+        )
+      }
+    }
+    return input.label === undefined
+      ? { path: input.path }
+      : { label: input.label, path: input.path }
+  })
+  const duplicatePaths = inputs
+    .map((input) => input.path)
+    .filter((inputPath, index, paths) => paths.indexOf(inputPath) !== index)
+  if (duplicatePaths.length > 0) {
+    throw new Error(`buildScriptInputs repeat paths: ${sorted(duplicatePaths).join(', ')}`)
+  }
+  return {
+    inputs: inputs.toSorted((left, right) =>
+      compareStrings({ left: left.path, right: right.path }),
+    ),
+    path: scriptPath,
+  }
+}
+
+const normalizeBuildScriptPath = ({
+  build,
+  manifestPath,
+}: {
+  readonly build: string
+  readonly manifestPath: string
+}): string => {
+  const normalized = path.posix.normalize(build)
+  if (
+    normalized !== build ||
+    path.posix.isAbsolute(build) === true ||
+    build.split('/').some((segment) => segment === '..' || segment === '.' || segment === '') ===
+      true ||
+    build.endsWith('.rs') === false
+  ) {
+    throw new Error(`Cargo package.build must be a package-relative .rs path in ${manifestPath}`)
+  }
+  return build
+}
 
 type ResolvedProduct = {
   readonly binary: string

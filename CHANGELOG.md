@@ -260,6 +260,23 @@ All notable changes to this project will be documented in this file.
   rules, writes the sidecar on `generate`, and on `check` re-fetches every
   tarball and fails on digest drift or stale pins. The Cargo projector
   resolves `git`/`rev`/`branch`/`tag` dependencies to the third-party graph.
+- **Buck2 Cargo projector**: first-party build scripts. A package with
+  `build.rs` (or `package.build`) and optional `[build-dependencies]` gets a
+  `<pkg>-build-script-build` binary, a `cargo_build_script` launcher
+  (`buck2/rust/defs.bzl`) and a Prelude `buildscript_run`; the library and
+  binaries receive `OUT_DIR` and the script's `cargo:rustc-*` flags. Files the
+  script reads outside its package are declared with
+  `buildScriptInputs: [{ path, label? }]` (repository-relative; `label` names
+  the Buck target providing a file in another package). The launcher runs the
+  script with `CARGO_MANIFEST_DIR` inside a repository-relative symlink tree,
+  so `$CARGO_MANIFEST_DIR/../<pkg>/<file>` resolves as under Cargo. The
+  consumer-root prelude (`buck2-rules`) still runs ELF build scripts through
+  the Nix loader and hands that loader to launchers as
+  `BUCK2_RUST_BUILD_SCRIPT_LOADER`.
+- **Buck2 from-source products**: `product.cliBuildStamp` (a single-line JSON
+  string) sets `build_identity.cli_build_stamp` for the product's Buck build,
+  so projections rendered with `cliBuildStamp: true` embed a real
+  `CLI_BUILD_STAMP` instead of an empty one.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
