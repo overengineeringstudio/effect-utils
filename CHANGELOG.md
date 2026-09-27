@@ -90,8 +90,8 @@ All notable changes to this project will be documented in this file.
   resolves `workspace:` dependencies from Buck-declared manifests with `pnpm pack`
   semantics. Packing fails when any
   `exports`/`main`/`module`/`types`/`bin` target is a runtime `.ts` source or
-  is not shipped. All 18 published packages now declare
-  `publishConfig.exports` against the emitted `dist/src/*.js` layout with
+  is not shipped. All published packages, including the new RPC explorer pair,
+  now declare `publishConfig.exports` against the emitted `dist` layout with
   `types` conditions (the previous `./dist/*.js` targets did not exist).
   Consumers that import published tarballs from Node (e.g. Playwright configs)
   no longer hit `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`.

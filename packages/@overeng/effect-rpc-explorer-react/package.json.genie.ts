@@ -65,10 +65,13 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
-        './styles.css': './dist/styles.css',
-        './tokens.stylex': './dist/tokens.stylex.js',
-        './themes': './dist/themes.js',
+        '.': { types: './dist/mod.d.ts', default: './dist/mod.js' },
+        './styles.css': './src/styles.css',
+        './tokens.stylex': {
+          types: './dist/tokens.stylex.d.ts',
+          default: './dist/tokens.stylex.js',
+        },
+        './themes': { types: './dist/themes.d.ts', default: './dist/themes.js' },
       },
     },
     scripts: {
