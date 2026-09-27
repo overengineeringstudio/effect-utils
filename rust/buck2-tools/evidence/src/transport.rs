@@ -87,19 +87,22 @@ async fn upload_with_credential(
             url.trim_end_matches('/').to_owned(),
         )
     };
+    let endpoint = reqwest::Url::parse(&format!(
+        "{base}/v1/{}/sha256/{digest}",
+        if is_close { "attempt-close" } else { "records" }
+    ))?;
+    if !matches!(endpoint.scheme(), "http" | "https") {
+        bail!("upload URL uses an unsupported scheme");
+    }
     if !was_pending {
         let tmp = spool.join("upload-pending.tmp");
         fs::write(&tmp, &endpoint_hash)?;
         fs::rename(tmp, &marker)?;
     }
-    let endpoint = format!(
-        "{base}/v1/{}/sha256/{digest}",
-        if is_close { "attempt-close" } else { "records" }
-    );
     let mut ambiguous = was_pending;
     for attempt in 0..5u32 {
         let mut request = client
-            .put(&endpoint)
+            .put(endpoint.clone())
             .header("if-none-match", "*")
             .body(body.clone());
         if let Some(token) = credential {
@@ -395,6 +398,14 @@ mod tests {
             hash,
             "an earlier ambiguous attempt cannot be cleared by invalid config"
         );
+        let unsupported = root.join("unsupported");
+        fs::create_dir(&unsupported).unwrap();
+        fs::write(unsupported.join("manifest.json"), RECORD).unwrap();
+        let err = upload_with_credential(&unsupported, Some("ftp://127.0.0.1"), Some("token"))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("unsupported scheme"), "{err:#}");
+        assert!(!unsupported.join("upload-pending").exists());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -472,7 +483,7 @@ mod tests {
         let requested = server.await.unwrap();
         assert!(requested[0].contains("/attempt-close/"));
         assert!(requested[1].contains("/records/"));
-        assert!(!bad_close.join("upload-pending").exists());
+        assert!(bad_close.join("upload-pending").exists());
         assert!(!good.join("upload-pending").exists());
         assert!(good.join("upload-confirmed").exists());
         fs::remove_dir_all(root).unwrap();
