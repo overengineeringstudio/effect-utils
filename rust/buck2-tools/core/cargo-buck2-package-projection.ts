@@ -62,6 +62,8 @@ type ProjectionDefinition = {
   readonly cargoLockPath: string
   readonly cargoManifestPath: string
   readonly context: ProjectionContext
+  /** Workspace-wide Cargo feature unification, computed on first render. */
+  readonly featureResolution: () => ReadonlyMap<string, MemberFeatureState>
   readonly foreignPackages: readonly WorkspaceMember[]
   readonly generatorSourcePaths: readonly string[]
   readonly regenerationCommand: string
@@ -244,6 +246,7 @@ export const defineCargoBuck2PackageProjection = ({
     cargoLockPath,
     cargoManifestPath,
     context,
+    featureResolution: memoize(() => resolveWorkspaceFeatures({ context })),
     foreignPackages,
     generatorSourcePaths,
     regenerationCommand,
@@ -341,9 +344,6 @@ const cargoBuck2PackageProjectionFor = ({
       `Explicit Cargo test, bench, and example targets are unsupported in ${member.manifestPath}`,
     )
   }
-  if (Object.keys(manifest.features ?? {}).length > 0) {
-    throw new Error(`Package-defined Cargo features are unsupported in ${member.manifestPath}`)
-  }
 
   const packageName = requireValue({
     value: packageMetadata.name,
@@ -386,9 +386,22 @@ const cargoBuck2PackageProjectionFor = ({
     target: manifest.target,
     kind: 'dev-dependencies',
   })
+  const featureState = definition.featureResolution().get(packagePath) ?? {
+    activeOptional: new Set<string>(),
+    definedFeatures: new Set<string>(),
+    features: new Set<string>(),
+  }
+  // Optional dependencies compile only when a unified feature activates them.
+  const isActive = (dependency: ResolvedDependency): boolean =>
+    dependency.optional !== true || featureState.activeOptional.has(dependency.name) === true
+  const activeNormalDependencies = normalDependencies.filter(isActive)
+  const activeConditionalNormalDependencies = conditionalNormalDependencies.filter((entry) =>
+    isActive(entry.dependency),
+  )
+  const enabledFeatures = sorted([...featureState.features])
   const unresolvedProductionDependencies = [
-    ...normalDependencies,
-    ...conditionalNormalDependencies.map((entry) => entry.dependency),
+    ...activeNormalDependencies,
+    ...activeConditionalNormalDependencies.map((entry) => entry.dependency),
   ].filter((dependency) => dependency.targetAvailable === false)
   if (unresolvedProductionDependencies.length > 0) {
     throw new Error(
@@ -398,7 +411,25 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   const sources = discoverRustSources({ packagePath, repo })
-  const { binaries, library } = discoverCargoTargets({ member, packageName, sources })
+  const { binaries: declaredBinaries, library } = discoverCargoTargets({
+    member,
+    packageName,
+    sources,
+  })
+  for (const binary of declaredBinaries) {
+    const undefinedFeatures = (binary.requiredFeatures ?? []).filter(
+      (feature) => featureState.definedFeatures.has(feature) === false,
+    )
+    if (undefinedFeatures.length > 0) {
+      throw new Error(
+        `Cargo binary ${binary.name} requires undefined features in ${member.manifestPath}: ${sorted(undefinedFeatures).join(', ')}`,
+      )
+    }
+  }
+  // Cargo skips a binary whose `required-features` the unified feature set does not enable.
+  const binaries = declaredBinaries.filter((binary) =>
+    (binary.requiredFeatures ?? []).every((feature) => featureState.features.has(feature)),
+  )
   const products = resolveProducts({
     binaries,
     buildProduct,
@@ -438,12 +469,12 @@ const cargoBuck2PackageProjectionFor = ({
       `Renamed target-specific Cargo dependencies are unsupported in ${member.manifestPath}: ${sorted(renamedConditional).join(', ')}`,
     )
   }
-  const normalLabels = normalDependencies
+  const normalLabels = activeNormalDependencies
     .filter((dependency) => dependency.package === undefined)
     .map((dependency) => dependency.label)
   // A renamed crate keeps the registry crate name in its rule; the request name is the
   // extern name the member's code uses, which Buck binds through `named_deps`.
-  const namedDependencies = normalDependencies
+  const namedDependencies = activeNormalDependencies
     .filter((dependency) => dependency.package !== undefined)
     .map((dependency) => ({ label: dependency.label, name: crateIdentifier(dependency.name) }))
   const workspaceContractSources = sorted(['BUCK', 'BUCK.genie.ts', 'Cargo.toml', ...sources])
@@ -488,6 +519,11 @@ const cargoBuck2PackageProjectionFor = ({
     version,
     // Absent unless requested so single-product fingerprints stay byte-identical.
     ...(buildProducts === undefined ? {} : { products }),
+    // Absent for feature-free packages so their fingerprints stay byte-identical.
+    ...(enabledFeatures.length === 0 ? {} : { enabledFeatures }),
+    ...(featureState.activeOptional.size === 0
+      ? {}
+      : { activeOptionalDependencies: sorted([...featureState.activeOptional]) }),
     buildProduct,
   }
   const fingerprint = buck2SemanticFingerprint({
@@ -498,6 +534,9 @@ const cargoBuck2PackageProjectionFor = ({
 
   const commonRuleLines = [
     `    edition = ${starlarkString(edition)},`,
+    ...(enabledFeatures.length === 0
+      ? []
+      : renderStringList({ name: 'features', values: enabledFeatures })),
     '    env = {',
     ...Object.entries(compileEnv).map(
       ([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`,
@@ -507,7 +546,7 @@ const cargoBuck2PackageProjectionFor = ({
       : []),
     '    },',
   ]
-  const normalConditional = conditionalNormalDependencies
+  const normalConditional = activeConditionalNormalDependencies
   const renderRule = ({
     rule,
     name,
@@ -825,6 +864,7 @@ const normalizeDependencyRequest = ({
 }): {
   readonly defaultFeatures: boolean
   readonly features: readonly string[]
+  readonly optional: boolean
   readonly package?: string
   readonly path?: string
   readonly version?: string
@@ -832,7 +872,13 @@ const normalizeDependencyRequest = ({
 } => {
   if (typeof request === 'string') {
     if (request.length === 0) throw new Error(`Empty Cargo version request at ${field}`)
-    return { defaultFeatures: true, features: [], version: request, workspace: false }
+    return {
+      defaultFeatures: true,
+      features: [],
+      optional: false,
+      version: request,
+      workspace: false,
+    }
   }
   assertKnownKeys({
     value: request,
@@ -852,8 +898,6 @@ const normalizeDependencyRequest = ({
       `Unsupported renamed Cargo path or workspace dependency at ${field}: ${dependencyName} -> ${request.package}`,
     )
   }
-  if (request.optional === true)
-    throw new Error(`Unsupported optional Cargo dependency at ${field}`)
   if (request.workspace === true && request.path !== undefined) {
     throw new Error(`Cargo dependency at ${field} cannot combine workspace and path`)
   }
@@ -863,6 +907,7 @@ const normalizeDependencyRequest = ({
   return {
     defaultFeatures: request['default-features'] ?? true,
     features: sorted(request.features ?? []),
+    optional: request.optional === true,
     ...(request.package === undefined ? {} : { package: request.package }),
     ...(request.path === undefined ? {} : { path: request.path }),
     ...(request.version === undefined ? {} : { version: request.version }),
@@ -875,6 +920,8 @@ type ResolvedDependency = {
   readonly features: readonly string[]
   readonly label: string
   readonly name: string
+  /** Compiled only when a unified feature activates it (`optional = true`). */
+  readonly optional?: true
   /** Registry package behind a renamed request (`name = { package = "..." }`). */
   readonly package?: string
   readonly requestSource: 'member' | 'workspace'
@@ -896,6 +943,9 @@ const resolveDependency = ({
   readonly field: string
 }): ResolvedDependency => {
   const memberRequest = normalizeDependencyRequest({ dependencyName, request, field })
+  if (memberRequest.optional === true && /(?:^|\.)dev-dependencies\./.test(field) === true) {
+    throw new Error(`Cargo dev-dependencies cannot be optional at ${field}`)
+  }
   if (memberRequest.path !== undefined) {
     return resolveMemberPathDependency({
       context,
@@ -922,9 +972,13 @@ const resolveDependency = ({
     if (normalizedInherited.workspace === true) {
       throw new Error(`Unsupported nested workspace dependency for ${dependencyName}`)
     }
+    if (normalizedInherited.optional === true) {
+      throw new Error(`Cargo [workspace.dependencies] cannot be optional: ${dependencyName}`)
+    }
     effectiveRequest = {
       defaultFeatures: normalizedInherited.defaultFeatures && memberRequest.defaultFeatures,
       features: sorted([...normalizedInherited.features, ...memberRequest.features]),
+      optional: memberRequest.optional,
       ...(normalizedInherited.package === undefined
         ? {}
         : { package: normalizedInherited.package }),
@@ -965,6 +1019,7 @@ const resolveDependency = ({
     features: effectiveRequest.features,
     label: `${context.thirdPartyPackage}:${targetName}`,
     name: dependencyName,
+    ...(effectiveRequest.optional === true ? { optional: true as const } : {}),
     ...(effectiveRequest.package === undefined ? {} : { package: effectiveRequest.package }),
     requestSource,
     targetAvailable: context.thirdPartyTargets.has(targetName),
@@ -1023,6 +1078,7 @@ const resolveMemberPathDependency = ({
   readonly request: {
     readonly defaultFeatures: boolean
     readonly features: readonly string[]
+    readonly optional: boolean
     readonly version?: string
   }
   readonly requestSource: ResolvedDependency['requestSource']
@@ -1051,11 +1107,18 @@ const resolveMemberPathDependency = ({
   if (dependencyTargets.library === undefined) {
     throw new Error(`Cargo path dependency at ${field} does not expose the contracted :lib target`)
   }
+  if (request.features.length > 0 && context.memberByPath.has(dependencyPath) === false) {
+    // A foreign package's feature set is unified by its own workspace projection.
+    throw new Error(
+      `Cargo features on a foreign path dependency are unsupported at ${field}: ${request.features.join(', ')}`,
+    )
+  }
   return {
     defaultFeatures: request.defaultFeatures,
     features: request.features,
     label: `//${dependencyPath}:lib`,
     name: dependencyName,
+    ...(request.optional === true ? { optional: true as const } : {}),
     requestSource,
     targetAvailable: true,
     ...(request.version === undefined ? {} : { version: request.version }),
@@ -1086,7 +1149,12 @@ const resolveDependencyTable = ({
     .toSorted((left, right) => compareStrings({ left: left.name, right: right.name }))
 
 type CargoLibraryTarget = { readonly name: string; readonly path: string }
-type CargoBinaryTarget = { readonly crateRoot: string; readonly name: string }
+type CargoBinaryTarget = {
+  readonly crateRoot: string
+  readonly name: string
+  /** `required-features`: Cargo builds the binary only when all are enabled. */
+  readonly requiredFeatures?: readonly string[]
+}
 
 /**
  * Cargo target discovery for one package: explicit `[lib]`/`[[bin]]` entries with Cargo's
@@ -1154,8 +1222,12 @@ const discoverCargoTargets = ({
     )
 
   const explicitBinaries = (manifest.bin ?? []).map((binary, index) => {
-    if ((binary['required-features']?.length ?? 0) > 0) {
-      throw new Error(`Cargo binary required-features are unsupported at bin[${index}]`)
+    const requiredFeatures = sorted(binary['required-features'] ?? [])
+    const dependencyFeatures = requiredFeatures.filter((feature) => feature.includes('/'))
+    if (dependencyFeatures.length > 0) {
+      throw new Error(
+        `Cargo binary required-features on dependency features are unsupported at bin[${index}]: ${dependencyFeatures.join(', ')}`,
+      )
     }
     const name = requireValue({ value: binary.name, field: `bin[${index}].name` })
     const candidates = inferableBinaries.filter((candidate) => candidate.name === name)
@@ -1170,7 +1242,9 @@ const discoverCargoTargets = ({
     if (sourceSet.has(crateRoot) === false) {
       throw new Error(`Cargo binary path is not a discovered Rust source: ${crateRoot}`)
     }
-    return { crateRoot, name }
+    return requiredFeatures.length === 0
+      ? { crateRoot, name }
+      : { crateRoot, name, requiredFeatures }
   })
   const explicitNames = new Set(explicitBinaries.map((binary) => binary.name))
   const explicitRoots = new Set(explicitBinaries.map((binary) => binary.crateRoot))
@@ -1402,6 +1476,275 @@ const resolveProducts = ({
     )
   }
   return products
+}
+
+const memoize = <TValue>(compute: () => TValue): (() => TValue) => {
+  let cached: { readonly value: TValue } | undefined
+  return () => {
+    cached ??= { value: compute() }
+    return cached.value
+  }
+}
+
+type MemberFeatureState = {
+  /** Optional dependencies (by request name) that an enabled feature activates. */
+  readonly activeOptional: ReadonlySet<string>
+  /** Declared features plus the implicit features of optional dependencies. */
+  readonly definedFeatures: ReadonlySet<string>
+  /** Unified enabled features, `default` included when declared and requested. */
+  readonly features: ReadonlySet<string>
+}
+
+type MemberFeatures = {
+  readonly member: WorkspaceMember
+  readonly declared: Readonly<Record<string, readonly string[]>>
+  readonly dependenciesByName: ReadonlyMap<string, readonly ResolvedDependency[]>
+  readonly implicit: ReadonlySet<string>
+  readonly features: Set<string>
+  readonly activeOptional: Set<string>
+  /** Weak `dep?/feature` requests waiting for `dep` to activate. */
+  readonly pendingWeak: Map<string, string[]>
+}
+
+const dependenciesNamed = ({
+  state,
+  name,
+  via,
+}: {
+  readonly state: MemberFeatures
+  readonly name: string
+  readonly via: string
+}): readonly ResolvedDependency[] => {
+  const dependencies = state.dependenciesByName.get(name)
+  if (dependencies === undefined) {
+    throw new Error(
+      `Cargo feature ${via} in ${state.member.manifestPath} names no dependency ${name}`,
+    )
+  }
+  return dependencies
+}
+
+/** Cargo validates every declared feature item, enabled or not. */
+const validateFeatureItem = ({
+  state,
+  item,
+}: {
+  readonly state: MemberFeatures
+  readonly item: string
+}): void => {
+  const slash = item.indexOf('/')
+  if (item.startsWith('dep:') === true) {
+    const name = item.slice('dep:'.length)
+    const dependencies = dependenciesNamed({ state, name, via: item })
+    if (dependencies.some((dependency) => dependency.optional === true) === false) {
+      throw new Error(
+        `Cargo feature ${item} in ${state.member.manifestPath} names a non-optional dependency`,
+      )
+    }
+  } else if (slash !== -1) {
+    const rawName = item.slice(0, slash)
+    const name = rawName.endsWith('?') === true ? rawName.slice(0, -1) : rawName
+    dependenciesNamed({ state, name, via: item })
+  } else if (Object.hasOwn(state.declared, item) === false && state.implicit.has(item) === false) {
+    throw new Error(`Cargo feature ${item} is not defined in ${state.member.manifestPath}`)
+  }
+}
+
+/**
+ * Cargo feature unification across the workspace, matching `cargo build --workspace`
+ * under resolver 2: every member is a root with its default features, and each normal
+ * dependency edge (activated optional ones included) adds the features it requests on a
+ * member library. Every member has one `:lib`, so it compiles with the union. Features
+ * requested of third-party crates are Reindeer's concern and are only validated here.
+ */
+const resolveWorkspaceFeatures = ({
+  context,
+}: {
+  readonly context: ProjectionContext
+}): ReadonlyMap<string, MemberFeatureState> => {
+  const members = [...context.memberByPath.values()]
+  const usesFeatures = members.some(
+    (member) =>
+      Object.keys(member.manifest.features ?? {}).length > 0 ||
+      (member.manifest.bin ?? []).some(
+        (binary) => (binary['required-features']?.length ?? 0) > 0,
+      ) === true ||
+      [
+        member.manifest.dependencies,
+        ...Object.values(member.manifest.target ?? {}).map((tables) => tables.dependencies),
+      ].some((table) =>
+        Object.values(table ?? {}).some(
+          (request) => typeof request !== 'string' && request.optional === true,
+        ),
+      ) === true,
+  )
+  if (usesFeatures === false) return new Map()
+
+  const states = new Map<string, MemberFeatures>()
+  for (const member of members) {
+    const dependencies = [
+      ...resolveDependencyTable({
+        context,
+        member,
+        dependencies: member.manifest.dependencies,
+        field: 'dependencies',
+      }),
+      ...resolveConditionalDependencies({
+        context,
+        member,
+        target: member.manifest.target,
+        kind: 'dependencies',
+      }).map((entry) => entry.dependency),
+    ]
+    const dependenciesByName = new Map<string, ResolvedDependency[]>()
+    for (const dependency of dependencies) {
+      dependenciesByName.set(dependency.name, [
+        ...(dependenciesByName.get(dependency.name) ?? []),
+        dependency,
+      ])
+    }
+    const declared = member.manifest.features ?? {}
+    const explicitDependencyReferences = new Set(
+      Object.values(declared)
+        .flat()
+        .filter((item) => item.startsWith('dep:'))
+        .map((item) => item.slice('dep:'.length)),
+    )
+    // Cargo defines a feature per optional dependency unless a `dep:` item names it.
+    const implicit = new Set(
+      dependencies
+        .filter(
+          (dependency) =>
+            dependency.optional === true &&
+            explicitDependencyReferences.has(dependency.name) === false,
+        )
+        .map((dependency) => dependency.name),
+    )
+    const collisions = [...implicit].filter((name) => Object.hasOwn(declared, name))
+    if (collisions.length > 0) {
+      throw new Error(
+        `Cargo features collide with implicit optional-dependency features in ${member.manifestPath}: ${sorted(collisions).join(', ')}`,
+      )
+    }
+    states.set(member.packagePath, {
+      member,
+      declared,
+      dependenciesByName,
+      implicit,
+      features: new Set(),
+      activeOptional: new Set(),
+      pendingWeak: new Map(),
+    })
+  }
+
+  const memberState = (dependency: ResolvedDependency): MemberFeatures | undefined =>
+    dependency.label.startsWith(`${context.thirdPartyPackage}:`) === true
+      ? undefined
+      : states.get(dependency.label.slice('//'.length, -':lib'.length))
+  const requestFeature = ({
+    dependency,
+    feature,
+  }: {
+    readonly dependency: ResolvedDependency
+    readonly feature: string
+  }) => {
+    const target = memberState(dependency)
+    if (target !== undefined) enableFeature({ state: target, feature })
+  }
+  const requestDependency = (dependency: ResolvedDependency) => {
+    const target = memberState(dependency)
+    if (target === undefined) return
+    if (dependency.defaultFeatures === true && Object.hasOwn(target.declared, 'default') === true) {
+      enableFeature({ state: target, feature: 'default' })
+    }
+    for (const feature of dependency.features) enableFeature({ state: target, feature })
+  }
+  const activate = ({ state, name }: { readonly state: MemberFeatures; readonly name: string }) => {
+    if (state.activeOptional.has(name) === true) return
+    state.activeOptional.add(name)
+    if (state.implicit.has(name) === true) enableFeature({ state, feature: name })
+    for (const dependency of dependenciesNamed({ state, name, via: `dep:${name}` })) {
+      requestDependency(dependency)
+      for (const feature of state.pendingWeak.get(name) ?? []) {
+        requestFeature({ dependency, feature })
+      }
+    }
+    state.pendingWeak.delete(name)
+  }
+  const applyItem = ({
+    state,
+    item,
+  }: {
+    readonly state: MemberFeatures
+    readonly item: string
+  }) => {
+    if (item.startsWith('dep:') === true) {
+      activate({ state, name: item.slice('dep:'.length) })
+      return
+    }
+    const slash = item.indexOf('/')
+    if (slash === -1) {
+      enableFeature({ state, feature: item })
+      return
+    }
+    const weak = item.slice(0, slash).endsWith('?')
+    const name = item.slice(0, weak === true ? slash - 1 : slash)
+    const feature = item.slice(slash + 1)
+    const dependencies = dependenciesNamed({ state, name, via: item })
+    const optional = dependencies.some((dependency) => dependency.optional === true)
+    if (weak === false && optional === true) activate({ state, name })
+    if (optional === false || state.activeOptional.has(name) === true) {
+      for (const dependency of dependencies) requestFeature({ dependency, feature })
+    } else {
+      state.pendingWeak.set(name, [...(state.pendingWeak.get(name) ?? []), feature])
+    }
+  }
+  const enableFeature = ({
+    state,
+    feature,
+  }: {
+    readonly state: MemberFeatures
+    readonly feature: string
+  }): void => {
+    if (state.features.has(feature) === true) return
+    const items =
+      Object.hasOwn(state.declared, feature) === true
+        ? state.declared[feature]
+        : state.implicit.has(feature) === true
+          ? [`dep:${feature}`]
+          : undefined
+    if (items === undefined) {
+      throw new Error(`Cargo feature ${feature} is not defined in ${state.member.manifestPath}`)
+    }
+    state.features.add(feature)
+    for (const item of items) applyItem({ state, item })
+  }
+
+  for (const state of states.values()) {
+    for (const items of Object.values(state.declared)) {
+      for (const item of items) validateFeatureItem({ state, item })
+    }
+  }
+  for (const state of states.values()) {
+    if (Object.hasOwn(state.declared, 'default') === true) {
+      enableFeature({ state, feature: 'default' })
+    }
+    for (const dependencies of state.dependenciesByName.values()) {
+      for (const dependency of dependencies) {
+        if (dependency.optional !== true) requestDependency(dependency)
+      }
+    }
+  }
+  return new Map(
+    [...states].map(([packagePath, state]) => [
+      packagePath,
+      {
+        activeOptional: state.activeOptional,
+        definedFeatures: new Set([...Object.keys(state.declared), ...state.implicit]),
+        features: state.features,
+      },
+    ]),
+  )
 }
 
 const effectUtilsWorkspaceMemberManifestPaths = [

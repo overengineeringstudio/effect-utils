@@ -194,6 +194,14 @@ All notable changes to this project will be documented in this file.
   emits one `rust_product_executable` + `build_product` pair per named Cargo
   binary, so one package can ship several products (for example
   `tailnet-relay` and `devnet-edge`). `buildProduct: true` output is unchanged.
+- **Buck2 Cargo projector**: Cargo features. `[features]`, optional
+  dependencies, `dep:`/`dep/feature`/`dep?/feature` items and implicit
+  optional-dependency features are unified across the workspace like
+  `cargo build --workspace` (every member a root with its defaults, plus each
+  dependent's requested features), since each member has one `:lib`. Enabled
+  features render as `features = [...]` and activate their optional deps; a
+  binary whose `required-features` stay disabled is omitted. Feature-free
+  packages render unchanged.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
