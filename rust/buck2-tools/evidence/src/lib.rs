@@ -1,17 +1,17 @@
 //! Immutable Buck evidence records, durable ingest, and indexed trace access.
-pub mod http;
 pub mod close;
+pub mod http;
 pub mod index;
 pub mod pipeline;
-pub mod retention;
 pub mod resolver;
+pub mod retention;
 pub mod seal;
 pub mod store;
 pub mod transport;
 
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use sha2::{Digest, Sha256};
 
 pub const NS: &str = "buck2-evidence/v1";
 
@@ -82,7 +82,10 @@ pub fn permanent(e: impl std::fmt::Display) -> StepError {
 }
 
 pub fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -101,7 +104,9 @@ pub mod ids {
     use sha2::{Digest, Sha256};
 
     fn framed(domain: &str, inputs: &[&str], len: usize) -> String {
-        let mut bytes = Vec::with_capacity(domain.len() + inputs.iter().map(|s| s.len() + 4).sum::<usize>() + 5);
+        let mut bytes = Vec::with_capacity(
+            domain.len() + inputs.iter().map(|s| s.len() + 4).sum::<usize>() + 5,
+        );
         bytes.extend_from_slice(domain.as_bytes());
         bytes.push(0);
         for input in inputs {
@@ -111,7 +116,9 @@ pub mod ids {
         for counter in 0u32.. {
             let h = Sha256::digest(&bytes);
             let truncated = &h[..len];
-            if truncated.iter().any(|b| *b != 0) { return hex::encode(truncated); }
+            if truncated.iter().any(|b| *b != 0) {
+                return hex::encode(truncated);
+            }
             bytes.extend_from_slice(&(counter + 1).to_be_bytes());
         }
         unreachable!()

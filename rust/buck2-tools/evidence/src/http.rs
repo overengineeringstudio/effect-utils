@@ -49,14 +49,22 @@ pub fn resolver_router(state: AppState) -> Router {
 }
 
 pub fn metrics_router(state: AppState) -> Router {
-    Router::new().route("/metrics", get(metrics)).route("/healthz", get(|| async { "ok" })).with_state(state)
+    Router::new()
+        .route("/metrics", get(metrics))
+        .route("/healthz", get(|| async { "ok" }))
+        .with_state(state)
 }
 
 fn db_err(e: impl std::fmt::Display) -> Response {
     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
 }
 
-async fn upload(State(st): State<AppState>, headers: HeaderMap, Path(digest): Path<String>, body: Bytes) -> Response {
+async fn upload(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Path(digest): Path<String>,
+    body: Bytes,
+) -> Response {
     if !st.allow_local_upload && !upload_capability(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -70,14 +78,22 @@ async fn upload(State(st): State<AppState>, headers: HeaderMap, Path(digest): Pa
     .unwrap();
     match known {
         // Conditional create: identical bytes already accepted (spec: client treats 409 as done).
-        Ok(Some(status)) => return (StatusCode::CONFLICT, Json(json!({"digest": digest, "status": status}))).into_response(),
+        Ok(Some(status)) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({"digest": digest, "status": status})),
+            )
+                .into_response()
+        }
         Ok(None) => {}
         Err(e) => return db_err(e),
     }
     let bytes = body.len() as u64;
     let cfg = st.cfg.clone();
     let d = digest.clone();
-    let outcome = tokio::task::spawn_blocking(move || store::accept(&cfg, &d, &body)).await.unwrap();
+    let outcome = tokio::task::spawn_blocking(move || store::accept(&cfg, &d, &body))
+        .await
+        .unwrap();
     let manifest = match outcome {
         Ok(Some(m)) => m,
         // Stored earlier but never indexed (crash between rename and enqueue): heal now.
@@ -91,10 +107,19 @@ async fn upload(State(st): State<AppState>, headers: HeaderMap, Path(digest): Pa
     if let Err(e) = (st.on_stored)(digest.clone(), manifest, bytes).await {
         tracing::warn!(%digest, error = %e, "enqueue failed; sweep will pick it up");
     }
-    (StatusCode::ACCEPTED, Json(json!({"digest": digest, "status": "uploaded"}))).into_response()
+    (
+        StatusCode::ACCEPTED,
+        Json(json!({"digest": digest, "status": "uploaded"})),
+    )
+        .into_response()
 }
 
-async fn upload_close(State(st): State<AppState>, headers: HeaderMap, Path(digest): Path<String>, body: Bytes) -> Response {
+async fn upload_close(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Path(digest): Path<String>,
+    body: Bytes,
+) -> Response {
     if !st.allow_local_upload && !upload_capability(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -103,21 +128,48 @@ async fn upload_close(State(st): State<AppState>, headers: HeaderMap, Path(diges
     match tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {
         let conn = index::open(&cfg.index_path())?;
         crate::close::accept(&conn, &d, &body)
-    }).await {
-        Ok(Ok(true)) => (StatusCode::ACCEPTED, Json(json!({"digest":digest,"status":"pending"}))).into_response(),
-        Ok(Ok(false)) => (StatusCode::CONFLICT, Json(json!({"digest":digest,"status":"pending"}))).into_response(),
-        Ok(Err(e)) => (StatusCode::BAD_REQUEST,e.to_string()).into_response(),
+    })
+    .await
+    {
+        Ok(Ok(true)) => (
+            StatusCode::ACCEPTED,
+            Json(json!({"digest":digest,"status":"pending"})),
+        )
+            .into_response(),
+        Ok(Ok(false)) => (
+            StatusCode::CONFLICT,
+            Json(json!({"digest":digest,"status":"pending"})),
+        )
+            .into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
         Err(e) => db_err(e),
     }
 }
 /// Tailscale Serve forwards app capabilities, but does not enforce them.
 /// Reject spoofed/absent/ambiguous capability objects at the upload boundary.
 fn upload_capability(headers: &HeaderMap) -> bool {
-    let Some(raw) = headers.get("tailscale-app-capabilities").and_then(|h| h.to_str().ok()) else { return false; };
-    let Ok(doc) = serde_json::from_str::<serde_json::Value>(raw) else { return false; };
-    let Some(entries) = doc.get("schickling.dev/cap/buck2-evidence-upload").and_then(|v| v.as_array()) else { return false; };
-    if entries.len() != 1 { return false; }
-    matches!(entries[0].get("role").and_then(|v| v.as_str()), Some("ci-runner" | "dev-host"))
+    let Some(raw) = headers
+        .get("tailscale-app-capabilities")
+        .and_then(|h| h.to_str().ok())
+    else {
+        return false;
+    };
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return false;
+    };
+    let Some(entries) = doc
+        .get("schickling.dev/cap/buck2-evidence-upload")
+        .and_then(|v| v.as_array())
+    else {
+        return false;
+    };
+    if entries.len() != 1 {
+        return false;
+    }
+    matches!(
+        entries[0].get("role").and_then(|v| v.as_str()),
+        Some("ci-runner" | "dev-host")
+    )
 }
 async fn record(State(st): State<AppState>, Path(digest): Path<String>) -> Response {
     let cfg = st.cfg.clone();
@@ -136,7 +188,9 @@ async fn record(State(st): State<AppState>, Path(digest): Path<String>) -> Respo
 
 /// Resolver: stable link that redirects once ingested and says "pending" before.
 async fn resolve_trace(State(st): State<AppState>, Path(trace_id): Path<String>) -> Response {
-    if !valid_trace(&trace_id) { return error_trace(StatusCode::BAD_REQUEST, "invalid trace id"); }
+    if !valid_trace(&trace_id) {
+        return error_trace(StatusCode::BAD_REQUEST, "invalid trace id");
+    }
     let cfg = st.cfg.clone();
     let id = trace_id.clone();
     let rows = tokio::task::spawn_blocking(move || {
@@ -147,37 +201,80 @@ async fn resolve_trace(State(st): State<AppState>, Path(trace_id): Path<String>)
     .unwrap();
     match rows {
         Err(e) => db_err(e),
-        Ok(rows) if rows.is_empty() => (StatusCode::NOT_FOUND, Json(json!({"traceId": trace_id, "status": "unknown"}))).into_response(),
+        Ok(rows) if rows.is_empty() => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"traceId": trace_id, "status": "unknown"})),
+        )
+            .into_response(),
         Ok(rows) if rows.iter().any(|r| r.status == "ingested") => {
-            let left = format!(r#"{{"datasource":"tempo","queries":[{{"refId":"A","queryType":"traceql","query":"{trace_id}"}}]}}"#);
-            let url = format!("{}/explore?left={}", st.cfg.grafana.trim_end_matches('/'), urlencode(&left));
+            let left = format!(
+                r#"{{"datasource":"tempo","queries":[{{"refId":"A","queryType":"traceql","query":"{trace_id}"}}]}}"#
+            );
+            let url = format!(
+                "{}/explore?left={}",
+                st.cfg.grafana.trim_end_matches('/'),
+                urlencode(&left)
+            );
             (StatusCode::FOUND, [(header::LOCATION, url)]).into_response()
         }
-        Ok(rows) => (StatusCode::ACCEPTED, Json(json!({"traceId": trace_id, "status": "pending", "records": rows}))).into_response(),
+        Ok(rows) => (
+            StatusCode::ACCEPTED,
+            Json(json!({"traceId": trace_id, "status": "pending", "records": rows})),
+        )
+            .into_response(),
     }
 }
 fn valid_trace(id: &str) -> bool {
-    id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    id.len() == 32
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 async fn chrome_trace(State(st): State<AppState>, Path(trace_id): Path<String>) -> Response {
-    if !valid_trace(&trace_id) { return error_trace(StatusCode::BAD_REQUEST, "invalid trace id"); }
+    if !valid_trace(&trace_id) {
+        return error_trace(StatusCode::BAD_REQUEST, "invalid trace id");
+    }
     let cfg = st.cfg.clone();
     let id = trace_id.clone();
     let indexed = tokio::task::spawn_blocking(move || -> rusqlite::Result<bool> {
         let conn = index::open(&cfg.index_path())?;
-        Ok(index::trace_status(&conn, &id)?.iter().any(|r| r.status == "ingested"))
-    }).await;
-    if !matches!(indexed, Ok(Ok(true))) { return error_trace(StatusCode::ACCEPTED, "trace pending"); }
-    let url = format!("{}/api/v2/traces/{trace_id}", st.cfg.tempo.trim_end_matches('/'));
-    let response = match reqwest::get(url).await { Ok(r) if r.status().is_success() => r, _ => return error_trace(StatusCode::GONE, "trace expired or Tempo unavailable") };
-    let raw: serde_json::Value = match response.json().await { Ok(doc) => doc, Err(e) => return db_err(e) };
+        Ok(index::trace_status(&conn, &id)?
+            .iter()
+            .any(|r| r.status == "ingested"))
+    })
+    .await;
+    if !matches!(indexed, Ok(Ok(true))) {
+        return error_trace(StatusCode::ACCEPTED, "trace pending");
+    }
+    let url = format!(
+        "{}/api/v2/traces/{trace_id}",
+        st.cfg.tempo.trim_end_matches('/')
+    );
+    let response = match reqwest::get(url).await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return error_trace(StatusCode::GONE, "trace expired or Tempo unavailable"),
+    };
+    let raw: serde_json::Value = match response.json().await {
+        Ok(doc) => doc,
+        Err(e) => return db_err(e),
+    };
     let mut events = Vec::new();
-    for rs in raw["trace"]["resourceSpans"].as_array().into_iter().flatten() {
+    for rs in raw["trace"]["resourceSpans"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
         for ss in rs["scopeSpans"].as_array().into_iter().flatten() {
             for span in ss["spans"].as_array().into_iter().flatten() {
-                let start = span["startTimeUnixNano"].as_str().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
-                let end = span["endTimeUnixNano"].as_str().and_then(|s| s.parse::<u64>().ok()).unwrap_or(start);
+                let start = span["startTimeUnixNano"]
+                    .as_str()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0);
+                let end = span["endTimeUnixNano"]
+                    .as_str()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(start);
                 events.push(json!({"name":span["name"],"ph":"X","ts":start/1000,"dur":end.saturating_sub(start)/1000,
                     "pid":trace_id,"tid":span["parentSpanId"].as_str().unwrap_or("root"),"args":{"spanId":span["spanId"]}}));
             }
@@ -187,19 +284,29 @@ async fn chrome_trace(State(st): State<AppState>, Path(trace_id): Path<String>) 
 }
 
 async fn perfetto(Path(trace_id): Path<String>) -> Response {
-    if !valid_trace(&trace_id) { return error_trace(StatusCode::BAD_REQUEST, "invalid trace id"); }
+    if !valid_trace(&trace_id) {
+        return error_trace(StatusCode::BAD_REQUEST, "invalid trace id");
+    }
     let id = html_escape(&trace_id);
     ([(header::CONTENT_TYPE,"text/html; charset=utf-8")],format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>Perfetto {id}</title></head><body><h1>Perfetto trace {id}</h1><p><a href=\"/t/{id}/chrome.json\" download=\"{id}.json\">Download Chrome trace</a> then open it at <a href=\"https://ui.perfetto.dev/\">Perfetto</a>.</p></body></html>"
     )).into_response()
 }
-fn error_trace(code: StatusCode, message: &str) -> Response { (code,message.to_owned()).into_response() }
-fn html_escape(s: &str) -> String { s.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;") }
+fn error_trace(code: StatusCode, message: &str) -> Response {
+    (code, message.to_owned()).into_response()
+}
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
 
 fn urlencode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
             _ => format!("%{b:02X}"),
         })
         .collect()

@@ -51,7 +51,11 @@ impl Plan {
             traces: self
                 .traces
                 .iter()
-                .map(|t| TraceRow { trace_id: t.trace_id.clone(), view: t.view.clone(), spans: t.span_ids.len() })
+                .map(|t| TraceRow {
+                    trace_id: t.trace_id.clone(),
+                    view: t.view.clone(),
+                    spans: t.span_ids.len(),
+                })
                 .collect(),
         }
     }
@@ -100,17 +104,25 @@ pub async fn prepare(cfg: &Config, digest: &str) -> StepResult<PlanSummary> {
 
     // Decode native evidence in this process. Each command carries its own
     // sidecar; the adapter accepts their concatenation without rewriting logs.
-    let logs: Vec<PathBuf> = manifest.files.iter()
+    let logs: Vec<PathBuf> = manifest
+        .files
+        .iter()
         .filter(|f| f.path.starts_with("buck2/") && f.path.ends_with(".pb.zst"))
-        .map(|f| dir.join(&f.path)).collect();
+        .map(|f| dir.join(&f.path))
+        .collect();
     if !logs.is_empty() {
         let sidecar = tmp.join("sidecar");
         let mut sidecars = String::new();
-        for f in manifest.files.iter().filter(|f| f.path.starts_with("buck2/") && f.path.ends_with(".sidecar")) {
+        for f in manifest
+            .files
+            .iter()
+            .filter(|f| f.path.starts_with("buck2/") && f.path.ends_with(".sidecar"))
+        {
             sidecars.push_str(&std::fs::read_to_string(dir.join(&f.path)).map_err(permanent)?);
         }
         std::fs::write(&sidecar, &sidecars).map_err(transient)?;
-        let callers: HashSet<String> = sidecars.lines()
+        let callers: HashSet<String> = sidecars
+            .lines()
             .filter_map(|line| line.split_once(' ').map(|(uuid, _)| uuid.to_owned()))
             .collect();
         let out = tmp.join("adapter");
@@ -123,8 +135,13 @@ pub async fn prepare(cfg: &Config, digest: &str) -> StepResult<PlanSummary> {
         files.sort();
         for path in files {
             let name = path.file_name().unwrap().to_string_lossy().to_string();
-            let view = if name.contains("-full-") { "full" } else { "critical" };
-            let mut doc: Value = serde_json::from_slice(&std::fs::read(&path).map_err(transient)?).map_err(permanent)?;
+            let view = if name.contains("-full-") {
+                "full"
+            } else {
+                "critical"
+            };
+            let mut doc: Value = serde_json::from_slice(&std::fs::read(&path).map_err(transient)?)
+                .map_err(permanent)?;
             for rs in doc["resourceSpans"].as_array_mut().into_iter().flatten() {
                 let uuid = rs["resource"]["attributes"]
                     .as_array()
@@ -154,11 +171,23 @@ pub async fn prepare(cfg: &Config, digest: &str) -> StepResult<PlanSummary> {
 
     let mut plan_traces: Vec<PlanTrace> = traces
         .into_iter()
-        .map(|((trace_id, view), span_ids)| PlanTrace { trace_id, view, span_ids })
+        .map(|((trace_id, view), span_ids)| PlanTrace {
+            trace_id,
+            view,
+            span_ids,
+        })
         .collect();
     plan_traces.sort_by(|a, b| (&a.view, &a.trace_id).cmp(&(&b.view, &b.trace_id)));
-    let plan = Plan { manifest, traces: plan_traces, chunks };
-    std::fs::write(tmp.join("plan.json"), serde_json::to_vec(&plan).map_err(transient)?).map_err(transient)?;
+    let plan = Plan {
+        manifest,
+        traces: plan_traces,
+        chunks,
+    };
+    std::fs::write(
+        tmp.join("plan.json"),
+        serde_json::to_vec(&plan).map_err(transient)?,
+    )
+    .map_err(transient)?;
     let dest = work_dir(cfg, digest);
     let _ = std::fs::remove_dir_all(&dest);
     std::fs::rename(&tmp, &dest).map_err(transient)?;
@@ -171,35 +200,59 @@ fn str_attr(key: &str, v: &str) -> Value {
 
 /// Preserve the entrypoint's seeded parentage. Sealing/ingest cannot mint a
 /// competing run or job span; the CI close record writes the single root.
-fn shape_spool(dir: &Path, manifest: &Manifest, traces: &mut HashMap<(String, String), Vec<String>>) -> StepResult<Vec<Vec<u8>>> {
+fn shape_spool(
+    dir: &Path,
+    manifest: &Manifest,
+    traces: &mut HashMap<(String, String), Vec<String>>,
+) -> StepResult<Vec<Vec<u8>>> {
     let m = &manifest.run;
     let run_trace = ids::run_trace(&m.pipeline_run_id);
     let mut resource_spans: Vec<Value> = Vec::new();
-    for f in manifest.files.iter().filter(|f| f.path.starts_with("spans/")) {
+    for f in manifest
+        .files
+        .iter()
+        .filter(|f| f.path.starts_with("spans/"))
+    {
         let text = std::fs::read_to_string(dir.join(&f.path)).map_err(transient)?;
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
-            let doc: Value = serde_json::from_str(line).map_err(|e| permanent(format!("{}: {e}", f.path)))?;
+            let doc: Value =
+                serde_json::from_str(line).map_err(|e| permanent(format!("{}: {e}", f.path)))?;
             resource_spans.extend(doc["resourceSpans"].as_array().cloned().unwrap_or_default());
         }
     }
     if resource_spans.is_empty() {
         return Ok(Vec::new());
     }
-    let ids_entry = traces.entry((run_trace.clone(), "critical".into())).or_default();
+    let ids_entry = traces
+        .entry((run_trace.clone(), "critical".into()))
+        .or_default();
     for rs in resource_spans.iter_mut() {
         if let Some(attrs) = rs["resource"]["attributes"].as_array_mut() {
             attrs.push(str_attr("cicd.pipeline.run.id", &m.pipeline_run_id));
-            attrs.push(str_attr("cicd.pipeline.run.attempt", &m.attempt.to_string()));
+            attrs.push(str_attr(
+                "cicd.pipeline.run.attempt",
+                &m.attempt.to_string(),
+            ));
             attrs.push(str_attr("cicd.pipeline.task.name", &m.job_key));
             attrs.push(str_attr("vcs.repository.name", &m.repository));
-            if let Some(head) = &manifest.vcs_head { attrs.push(str_attr("vcs.ref.head.revision", head)); }
-            if let Some(base) = &manifest.vcs_base { attrs.push(str_attr("vcs.ref.base.revision", base)); }
-            if let Some(change) = &manifest.vcs_change_id { attrs.push(str_attr("vcs.change.id", change)); }
-            if let Some(merge) = &manifest.vcs_merge { attrs.push(str_attr("buck2.vcs.merge.revision", merge)); }
+            if let Some(head) = &manifest.vcs_head {
+                attrs.push(str_attr("vcs.ref.head.revision", head));
+            }
+            if let Some(base) = &manifest.vcs_base {
+                attrs.push(str_attr("vcs.ref.base.revision", base));
+            }
+            if let Some(change) = &manifest.vcs_change_id {
+                attrs.push(str_attr("vcs.change.id", change));
+            }
+            if let Some(merge) = &manifest.vcs_merge {
+                attrs.push(str_attr("buck2.vcs.merge.revision", merge));
+            }
         }
         for ss in rs["scopeSpans"].as_array_mut().into_iter().flatten() {
             for span in ss["spans"].as_array_mut().into_iter().flatten() {
-                if span["traceId"] != run_trace { return Err(permanent("span trace differs from seeded pipeline trace")); }
+                if span["traceId"] != run_trace {
+                    return Err(permanent("span trace differs from seeded pipeline trace"));
+                }
                 ids_entry.push(span["spanId"].as_str().unwrap_or_default().to_string());
             }
         }
@@ -211,7 +264,10 @@ fn shape_spool(dir: &Path, manifest: &Manifest, traces: &mut HashMap<(String, St
     for rs in resource_spans {
         let n = serde_json::to_vec(&rs).map_err(transient)?.len();
         if size + n > CHUNK_LIMIT && !batch.is_empty() {
-            out.push(serde_json::to_vec(&json!({"resourceSpans": std::mem::take(&mut batch)})).map_err(transient)?);
+            out.push(
+                serde_json::to_vec(&json!({"resourceSpans": std::mem::take(&mut batch)}))
+                    .map_err(transient)?,
+            );
             size = 0;
         }
         size += n;
@@ -232,8 +288,15 @@ pub fn http_client() -> reqwest::Client {
 }
 
 /// Pushes chunk `i` of the plan. Driver checkpoints after Ok.
-pub async fn push_chunk(client: &reqwest::Client, cfg: &Config, digest: &str, i: usize) -> StepResult<()> {
-    let path = work_dir(cfg, digest).join("chunks").join(format!("{i:04}.json"));
+pub async fn push_chunk(
+    client: &reqwest::Client,
+    cfg: &Config,
+    digest: &str,
+    i: usize,
+) -> StepResult<()> {
+    let path = work_dir(cfg, digest)
+        .join("chunks")
+        .join(format!("{i:04}.json"));
     let body = tokio::fs::read(&path).await.map_err(transient)?;
     let url = format!("{}/v1/traces", cfg.otlp.trim_end_matches('/'));
     let resp = client
@@ -246,7 +309,10 @@ pub async fn push_chunk(client: &reqwest::Client, cfg: &Config, digest: &str, i:
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
     if status.is_success() {
-        if text.contains("rejectedSpans") && !text.contains("\"rejectedSpans\":0") && !text.contains("\"rejectedSpans\":\"0\"") {
+        if text.contains("rejectedSpans")
+            && !text.contains("\"rejectedSpans\":0")
+            && !text.contains("\"rejectedSpans\":\"0\"")
+        {
             return Err(transient(format!("otlp partial rejection: {text}")));
         }
         Ok(())
@@ -285,9 +351,17 @@ struct TempoSpan {
 
 /// Span ids present in Tempo for `trace_id`, with multiplicity (Tempo 3 returns re-pushed
 /// duplicates from the live store).
-pub async fn tempo_span_counts(client: &reqwest::Client, tempo: &str, trace_id: &str) -> StepResult<HashMap<String, usize>> {
+pub async fn tempo_span_counts(
+    client: &reqwest::Client,
+    tempo: &str,
+    trace_id: &str,
+) -> StepResult<HashMap<String, usize>> {
     let url = format!("{}/api/v2/traces/{trace_id}", tempo.trim_end_matches('/'));
-    let resp = client.get(url).send().await.map_err(|e| transient(format!("tempo: {e}")))?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| transient(format!("tempo: {e}")))?;
     if resp.status().as_u16() == 404 {
         return Ok(HashMap::new());
     }
@@ -313,9 +387,17 @@ pub async fn tempo_span_counts(client: &reqwest::Client, tempo: &str, trace_id: 
 
 /// Retry guard: Tempo 3 does not dedup a re-push that lands within ~5 s of the first push
 /// (measured, results/tempo-dedup-probe.jsonl), so a retried chunk is probed by id first.
-pub async fn chunk_visible(client: &reqwest::Client, cfg: &Config, digest: &str, i: usize) -> StepResult<bool> {
-    let path = work_dir(cfg, digest).join("chunks").join(format!("{i:04}.json"));
-    let doc: Value = serde_json::from_slice(&tokio::fs::read(&path).await.map_err(transient)?).map_err(transient)?;
+pub async fn chunk_visible(
+    client: &reqwest::Client,
+    cfg: &Config,
+    digest: &str,
+    i: usize,
+) -> StepResult<bool> {
+    let path = work_dir(cfg, digest)
+        .join("chunks")
+        .join(format!("{i:04}.json"));
+    let doc: Value = serde_json::from_slice(&tokio::fs::read(&path).await.map_err(transient)?)
+        .map_err(transient)?;
     let mut by_trace: HashMap<String, Vec<String>> = HashMap::new();
     for rs in doc["resourceSpans"].as_array().into_iter().flatten() {
         for ss in rs["scopeSpans"].as_array().into_iter().flatten() {
@@ -344,7 +426,11 @@ pub struct Readback {
 }
 
 /// Polls trace-by-id until every planned span id is visible (the index may only flip after this).
-pub async fn readback(client: &reqwest::Client, cfg: &Config, digest: &str) -> StepResult<Readback> {
+pub async fn readback(
+    client: &reqwest::Client,
+    cfg: &Config,
+    digest: &str,
+) -> StepResult<Readback> {
     let plan = load_plan(cfg, digest)?.ok_or_else(|| transient("plan missing; re-prepare"))?;
     let started = Instant::now();
     let deadline = started + cfg.readback_timeout;
@@ -355,19 +441,34 @@ pub async fn readback(client: &reqwest::Client, cfg: &Config, digest: &str) -> S
         let mut still = Vec::new();
         for t in pending {
             let counts = tempo_span_counts(client, &cfg.tempo, &t.trace_id).await?;
-            let missing = t.span_ids.iter().filter(|id| !counts.contains_key(*id)).count();
+            let missing = t
+                .span_ids
+                .iter()
+                .filter(|id| !counts.contains_key(*id))
+                .count();
             if missing == 0 {
                 spans += t.span_ids.len();
-                dups += t.span_ids.iter().map(|id| counts[id].saturating_sub(1)).sum::<usize>();
+                dups += t
+                    .span_ids
+                    .iter()
+                    .map(|id| counts[id].saturating_sub(1))
+                    .sum::<usize>();
             } else {
                 still.push(t);
             }
         }
         if still.is_empty() {
-            return Ok(Readback { spans, dup_spans: dups, waited_ms: started.elapsed().as_millis() as u64 });
+            return Ok(Readback {
+                spans,
+                dup_spans: dups,
+                waited_ms: started.elapsed().as_millis() as u64,
+            });
         }
         if Instant::now() >= deadline {
-            return Err(transient(format!("readback incomplete: {} traces missing spans", still.len())));
+            return Err(transient(format!(
+                "readback incomplete: {} traces missing spans",
+                still.len()
+            )));
         }
         pending = still;
         tokio::time::sleep(delay).await;
@@ -380,19 +481,34 @@ pub fn finalize(cfg: &Config, digest: &str, rb: &Readback) -> StepResult<String>
     let plan = load_plan(cfg, digest)?;
     let mut conn = index::open(&cfg.index_path()).map_err(transient)?;
     let uploaded_at: i64 = conn
-        .query_row("select uploaded_at from records where digest=?1", [digest], |r| r.get(0))
+        .query_row(
+            "select uploaded_at from records where digest=?1",
+            [digest],
+            |r| r.get(0),
+        )
         .map_err(transient)?;
     let Some(plan) = plan else {
         // Already finalized by an earlier attempt (plan removed last).
-        return match index::status_of(&conn, digest).map_err(transient)?.as_deref() {
+        return match index::status_of(&conn, digest)
+            .map_err(transient)?
+            .as_deref()
+        {
             Some("ingested") => Ok(String::new()),
             _ => Err(transient("plan missing before finalize")),
         };
     };
     let path = store::archive(cfg, digest, &plan.manifest, uploaded_at)?;
     let summary = plan.summary();
-    index::mark_ingested(&mut conn, digest, &summary.traces, &path.to_string_lossy(), rb.spans, rb.dup_spans, now_ms())
-        .map_err(transient)?;
+    index::mark_ingested(
+        &mut conn,
+        digest,
+        &summary.traces,
+        &path.to_string_lossy(),
+        rb.spans,
+        rb.dup_spans,
+        now_ms(),
+    )
+    .map_err(transient)?;
     let _ = std::fs::remove_dir_all(work_dir(cfg, digest));
     Ok(path.to_string_lossy().into_owned())
 }

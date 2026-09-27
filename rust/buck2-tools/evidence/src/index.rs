@@ -35,20 +35,32 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 pub fn status_of(conn: &Connection, digest: &str) -> rusqlite::Result<Option<String>> {
-    conn.query_row("select status from records where digest=?1", [digest], |r| r.get(0))
-        .optional()
+    conn.query_row(
+        "select status from records where digest=?1",
+        [digest],
+        |r| r.get(0),
+    )
+    .optional()
 }
 
 /// Inserts the `uploaded` row; returns false when the digest was already known.
-pub fn insert_uploaded(conn: &Connection, digest: &str, m: &Manifest, bytes: u64, now: i64) -> rusqlite::Result<bool> {
+pub fn insert_uploaded(
+    conn: &Connection,
+    digest: &str,
+    m: &Manifest,
+    bytes: u64,
+    now: i64,
+) -> rusqlite::Result<bool> {
     let n = conn.execute(
         "insert into records (digest, repo, run_id, attempt, job, manifest_json, bytes, status, uploaded_at)
          values (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'uploaded', ?8) on conflict(digest) do nothing",
         params![digest, m.run.repository, m.run.pipeline_run_id, m.run.attempt, m.run.job_key,
             serde_json::to_string(m).expect("serializable manifest"), bytes as i64, now],
     )?;
-    conn.execute("insert or ignore into traces (trace_id,digest,view,spans) values (?1,?2,'critical',0)",
-        params![crate::ids::run_trace(&m.run.pipeline_run_id), digest])?;
+    conn.execute(
+        "insert or ignore into traces (trace_id,digest,view,spans) values (?1,?2,'critical',0)",
+        params![crate::ids::run_trace(&m.run.pipeline_run_id), digest],
+    )?;
     Ok(n == 1)
 }
 
@@ -102,7 +114,10 @@ pub fn mark_failed(conn: &Connection, digest: &str, error: &str) -> rusqlite::Re
 }
 
 pub fn note_error(conn: &Connection, digest: &str, error: &str) -> rusqlite::Result<()> {
-    conn.execute("update records set last_error=?2 where digest=?1", params![digest, error])?;
+    conn.execute(
+        "update records set last_error=?2 where digest=?1",
+        params![digest, error],
+    )?;
     Ok(())
 }
 

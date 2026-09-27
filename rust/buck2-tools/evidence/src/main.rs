@@ -4,10 +4,10 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 use std::sync::Arc;
 use std::time::Duration;
 
-use clap::{Args, Parser, Subcommand};
 use buck2_evidence::http::{self, AppState};
 use buck2_evidence::pipeline;
 use buck2_evidence::{index, now_ms, seal, store, Config, StepError};
+use clap::{Args, Parser, Subcommand};
 use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::Notify;
 
@@ -20,39 +20,66 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     Seal {
-        #[arg(long)] spool: PathBuf,
-        #[arg(long)] run_id: String,
-        #[arg(long)] task_key: String,
+        #[arg(long)]
+        spool: PathBuf,
+        #[arg(long)]
+        run_id: String,
+        #[arg(long)]
+        task_key: String,
     },
     SealClose {
-        #[arg(long)] spool: PathBuf,
-        #[arg(long)] run_id: String,
-        #[arg(long)] repository: String,
-        #[arg(long)] jobs_json: PathBuf,
+        #[arg(long)]
+        spool: PathBuf,
+        #[arg(long)]
+        run_id: String,
+        #[arg(long)]
+        repository: String,
+        #[arg(long)]
+        jobs_json: PathBuf,
     },
     Upload {
-        #[arg(long)] spool: PathBuf,
-        #[arg(long, env = "BUCK2_EVIDENCE_UPLOAD_URL")] url: Option<String>,
+        #[arg(long)]
+        spool: PathBuf,
+        #[arg(long, env = "BUCK2_EVIDENCE_UPLOAD_URL")]
+        url: Option<String>,
     },
     Ingest {
-        #[command(flatten)] common: Common,
-        #[arg(long)] spool: PathBuf,
-        #[arg(long)] local: bool,
+        #[command(flatten)]
+        common: Common,
+        #[arg(long)]
+        spool: PathBuf,
+        #[arg(long)]
+        local: bool,
     },
     Serve {
-        #[command(flatten)] common: Common,
-        #[arg(long)] upload_socket: PathBuf,
-        #[arg(long)] resolver_socket: PathBuf,
-        #[arg(long)] metrics_address: Option<String>,
-        #[arg(long)] allow_local_upload: bool,
-        #[arg(long, default_value_t = 20)] sweep_secs: u64,
+        #[command(flatten)]
+        common: Common,
+        #[arg(long)]
+        upload_socket: PathBuf,
+        #[arg(long)]
+        resolver_socket: PathBuf,
+        #[arg(long)]
+        metrics_address: Option<String>,
+        #[arg(long)]
+        allow_local_upload: bool,
+        #[arg(long, default_value_t = 20)]
+        sweep_secs: u64,
     },
-    Drain { #[command(flatten)] common: Common },
-    Backfill { #[command(flatten)] common: Common },
+    Drain {
+        #[command(flatten)]
+        common: Common,
+    },
+    Backfill {
+        #[command(flatten)]
+        common: Common,
+    },
     Retention {
-        #[arg(long)] state_dir: PathBuf,
-        #[arg(long, default_value_t = 365)] days: u64,
-        #[arg(long, default_value_t = 161061273600)] max_bytes: u64,
+        #[arg(long)]
+        state_dir: PathBuf,
+        #[arg(long, default_value_t = 365)]
+        days: u64,
+        #[arg(long, default_value_t = 161061273600)]
+        max_bytes: u64,
     },
 }
 
@@ -60,11 +87,23 @@ enum Cmd {
 struct Common {
     #[arg(long)]
     state_dir: Option<PathBuf>,
-    #[arg(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT", default_value = "http://127.0.0.1:4318")]
+    #[arg(
+        long,
+        env = "OTEL_EXPORTER_OTLP_ENDPOINT",
+        default_value = "http://127.0.0.1:4318"
+    )]
     otlp_endpoint: String,
-    #[arg(long, env = "BUCK2_EVIDENCE_TEMPO_URL", default_value = "http://127.0.0.1:42032")]
+    #[arg(
+        long,
+        env = "BUCK2_EVIDENCE_TEMPO_URL",
+        default_value = "http://127.0.0.1:42032"
+    )]
     tempo_url: String,
-    #[arg(long, env = "BUCK2_EVIDENCE_GRAFANA_URL", default_value = "http://127.0.0.1:3700")]
+    #[arg(
+        long,
+        env = "BUCK2_EVIDENCE_GRAFANA_URL",
+        default_value = "http://127.0.0.1:3700"
+    )]
     grafana_url: String,
     #[arg(long, default_value_t = 30)]
     readback_timeout_secs: u64,
@@ -83,7 +122,10 @@ struct Common {
 impl Common {
     fn config(&self) -> Config {
         Config {
-            state: self.state_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("buck2-evidence-local")),
+            state: self
+                .state_dir
+                .clone()
+                .unwrap_or_else(|| std::env::temp_dir().join("buck2-evidence-local")),
             otlp: self.otlp_endpoint.clone(),
             tempo: self.tempo_url.clone(),
             readback_timeout: Duration::from_secs(self.readback_timeout_secs),
@@ -128,7 +170,12 @@ fn init_queue(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 /// records row + jobs row in one transaction: the enqueue is atomic with the index insert.
-fn enqueue(conn: &mut Connection, digest: &str, m: &store::Manifest, bytes: u64) -> rusqlite::Result<bool> {
+fn enqueue(
+    conn: &mut Connection,
+    digest: &str,
+    m: &store::Manifest,
+    bytes: u64,
+) -> rusqlite::Result<bool> {
     let tx = conn.transaction()?;
     let now = now_ms();
     index::insert_uploaded(&tx, digest, m, bytes, now)?;
@@ -160,7 +207,10 @@ impl Svc {
 
     /// Crash recovery: this process is the queue's only owner, so any lease is orphaned.
     fn recover(conn: &Connection) -> rusqlite::Result<usize> {
-        conn.execute("update jobs set state='queued', next_at=?1 where state='leased'", [now_ms()])
+        conn.execute(
+            "update jobs set state='queued', next_at=?1 where state='leased'",
+            [now_ms()],
+        )
     }
 
     /// Backfill: stored-but-unindexed records and indexed-but-unqueued records.
@@ -207,7 +257,11 @@ impl Svc {
     }
 
     fn next_due(conn: &Connection) -> rusqlite::Result<Option<i64>> {
-        conn.query_row("select min(next_at) from jobs where state='queued'", [], |r| r.get(0))
+        conn.query_row(
+            "select min(next_at) from jobs where state='queued'",
+            [],
+            |r| r.get(0),
+        )
     }
 
     async fn worker(self: Arc<Self>, exit_when_idle: bool) {
@@ -241,9 +295,14 @@ impl Svc {
         let outcome = match result {
             Ok(()) => {
                 self.m.ingested.fetch_add(1, Relaxed);
-                self.m.ingest_ms_sum.fetch_add(started.elapsed().as_millis() as u64, Relaxed);
+                self.m
+                    .ingest_ms_sum
+                    .fetch_add(started.elapsed().as_millis() as u64, Relaxed);
                 self.blocking(move |_, c| {
-                    c.execute("update jobs set state='done', last_error=null where digest=?1", [&d])?;
+                    c.execute(
+                        "update jobs set state='done', last_error=null where digest=?1",
+                        [&d],
+                    )?;
                     c.execute("delete from pushes where digest=?1", [&d])
                 })
                 .await
@@ -310,21 +369,31 @@ impl Svc {
                 self.m.push_skipped.fetch_add(1, Relaxed);
                 continue;
             }
-            if attempts > 1 && self.common.probe_repush && pipeline::chunk_visible(&self.client, &self.cfg, digest, i).await? {
+            if attempts > 1
+                && self.common.probe_repush
+                && pipeline::chunk_visible(&self.client, &self.cfg, digest, i).await?
+            {
                 self.m.push_skipped.fetch_add(1, Relaxed);
             } else {
                 pipeline::push_chunk(&self.client, &self.cfg, digest, i).await?;
                 self.m.pushes.fetch_add(1, Relaxed);
             }
             let d = digest.to_string();
-            self.blocking(move |_, c| c.execute("insert or ignore into pushes values (?1, ?2)", params![d, i as i64]))
-                .await
-                .map_err(buck2_evidence::transient)?;
+            self.blocking(move |_, c| {
+                c.execute(
+                    "insert or ignore into pushes values (?1, ?2)",
+                    params![d, i as i64],
+                )
+            })
+            .await
+            .map_err(buck2_evidence::transient)?;
         }
         let rb = pipeline::readback(&self.client, &self.cfg, digest).await?;
         let cfg = self.cfg.clone();
         let d = digest.to_string();
-        tokio::task::spawn_blocking(move || pipeline::finalize(&cfg, &d, &rb)).await.unwrap()?;
+        tokio::task::spawn_blocking(move || pipeline::finalize(&cfg, &d, &rb))
+            .await
+            .unwrap()?;
         Ok(())
     }
 
@@ -332,13 +401,18 @@ impl Svc {
         let m = &self.m;
         let rss_kb = std::fs::read_to_string("/proc/self/status")
             .ok()
-            .and_then(|s| s.lines().find(|l| l.starts_with("VmRSS:")).map(|l| l.split_whitespace().nth(1).unwrap_or("0").to_string()))
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("VmRSS:"))
+                    .map(|l| l.split_whitespace().nth(1).unwrap_or("0").to_string())
+            })
             .unwrap_or_default();
         let queue = self
             .db()
             .and_then(|c| {
                 let mut st = c.prepare("select state, count(*) from jobs group by state")?;
-                let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+                let rows =
+                    st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
                 rows.collect::<rusqlite::Result<Vec<_>>>()
             })
             .unwrap_or_default();
@@ -366,30 +440,71 @@ impl Svc {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let cli = Cli::parse();
     let (common, serve, local) = match cli.cmd {
-        Cmd::Seal { spool, run_id, task_key } => {
+        Cmd::Seal {
+            spool,
+            run_id,
+            task_key,
+        } => {
             println!("sha256:{}", seal::seal(&spool, &run_id, &task_key)?);
             return Ok(());
         }
-        Cmd::SealClose { spool, run_id, repository, jobs_json } => {
-            println!("sha256:{}", buck2_evidence::close::seal_close(&spool, &run_id, &repository, &jobs_json)?);
+        Cmd::SealClose {
+            spool,
+            run_id,
+            repository,
+            jobs_json,
+        } => {
+            println!(
+                "sha256:{}",
+                buck2_evidence::close::seal_close(&spool, &run_id, &repository, &jobs_json)?
+            );
             return Ok(());
         }
         Cmd::Upload { spool, url } => {
-            println!("{}", buck2_evidence::transport::upload(&spool, url.as_deref()).await?);
+            println!(
+                "{}",
+                buck2_evidence::transport::upload(&spool, url.as_deref()).await?
+            );
             return Ok(());
         }
-        Cmd::Retention { state_dir, days, max_bytes } => {
+        Cmd::Retention {
+            state_dir,
+            days,
+            max_bytes,
+        } => {
             buck2_evidence::retention::enforce(&state_dir, days, max_bytes)?;
             return Ok(());
         }
-        Cmd::Serve { common, upload_socket, resolver_socket, metrics_address, allow_local_upload, sweep_secs } =>
-            (common, Some((upload_socket, resolver_socket, metrics_address, allow_local_upload, sweep_secs)), None),
+        Cmd::Serve {
+            common,
+            upload_socket,
+            resolver_socket,
+            metrics_address,
+            allow_local_upload,
+            sweep_secs,
+        } => (
+            common,
+            Some((
+                upload_socket,
+                resolver_socket,
+                metrics_address,
+                allow_local_upload,
+                sweep_secs,
+            )),
+            None,
+        ),
         Cmd::Drain { common } => (common, None, None),
         Cmd::Backfill { common } => (common, None, None),
-        Cmd::Ingest { common, spool, local: true } => (common, None, Some(spool)),
+        Cmd::Ingest {
+            common,
+            spool,
+            local: true,
+        } => (common, None, Some(spool)),
         Cmd::Ingest { local: false, .. } => anyhow::bail!("ingest requires --local with --spool"),
     };
     let cfg = Arc::new(common.config());
@@ -416,15 +531,22 @@ async fn main() -> anyhow::Result<()> {
         let (digest, body) = buck2_evidence::transport::bundle(&spool)?;
         match store::accept(&cfg, &digest, &body) {
             Ok(Some(manifest)) => {
-                svc.blocking(move |_, c| enqueue(c, &digest, &manifest, body.len() as u64)).await?;
+                svc.blocking(move |_, c| enqueue(c, &digest, &manifest, body.len() as u64))
+                    .await?;
             }
             Ok(None) => {}
             Err(error) => anyhow::bail!("local record rejected: {error:?}"),
         }
     }
-    let Some((upload_socket, resolver_socket, metrics_address, allow_local_upload, sweep_secs)) = serve else {
-        let workers: Vec<_> = (0..common.workers).map(|_| tokio::spawn(svc.clone().worker(true))).collect();
-        for worker in workers { worker.await?; }
+    let Some((upload_socket, resolver_socket, metrics_address, allow_local_upload, sweep_secs)) =
+        serve
+    else {
+        let workers: Vec<_> = (0..common.workers)
+            .map(|_| tokio::spawn(svc.clone().worker(true)))
+            .collect();
+        for worker in workers {
+            worker.await?;
+        }
         println!("{}", svc.metrics_text());
         return Ok(());
     };
@@ -489,7 +611,9 @@ async fn main() -> anyhow::Result<()> {
     let resolver_task = http::serve_unix(&resolver_socket, resolver);
     if let Some(addr) = metrics_address {
         let parsed: std::net::SocketAddr = addr.parse()?;
-        if !parsed.ip().is_loopback() { anyhow::bail!("metrics listener must bind loopback"); }
+        if !parsed.ip().is_loopback() {
+            anyhow::bail!("metrics listener must bind loopback");
+        }
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         tokio::select! {
             result = upload_task => result,
