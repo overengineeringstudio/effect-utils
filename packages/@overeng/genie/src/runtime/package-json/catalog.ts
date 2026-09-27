@@ -135,13 +135,14 @@ export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
    */
   pick<K extends keyof T>(...keys: K[]): { [P in K]: T[P] }
   /**
-   * Generate peerDependencies object with `^` version prefix.
+   * Generate a peerDependencies object from catalog versions (see
+   * `peerRangeFromCatalogVersion`: `^` for releases, exact for prereleases).
    * Useful for library packages that expose dependencies as peer deps.
    *
    * @example
    * ```ts
-   * peerDependencies: catalog.peers('effect', '@effect/platform'),
-   * // → { effect: '^3.19.14', '@effect/platform': '^0.94.1' }
+   * peerDependencies: catalog.peers('effect', 'react'),
+   * // → { effect: '4.0.0-rc.113', react: '^19.2.8' }
    * ```
    */
   peers<K extends keyof T>(...keys: K[]): { [P in K]: string }
@@ -221,13 +222,25 @@ const createPickFn =
     return result
   }
 
-/** Creates a peers function for a catalog object (versions with ^ prefix) */
+/**
+ * Peer range for a catalog version: `^version` for a release, the exact version for a
+ * prerelease. A caret on a prerelease (`^4.0.0-rc.113`) admits every later prerelease of
+ * the same core, and prerelease cohorts such as Effect RCs break between iterations, so a
+ * consumer on a different prerelease must fail the peer check instead of resolving.
+ * An explicit range already carrying `^` is kept as authored.
+ */
+const peerRangeFromCatalogVersion = (version: string) =>
+  version.startsWith('^') === true || /^\d+\.\d+\.\d+-/.test(version) === true
+    ? version
+    : `^${version}`
+
+/** Creates a peers function for a catalog object (see `peerRangeFromCatalogVersion`) */
 const createPeersFn =
   <T extends CatalogInput>(catalog: T) =>
   <K extends keyof T>(...keys: K[]): { [P in K]: string } => {
     const result = {} as { [P in K]: string }
     for (const key of keys) {
-      result[key] = `^${catalog[key]}`
+      result[key] = peerRangeFromCatalogVersion(catalog[key])
     }
     return result
   }
@@ -307,8 +320,7 @@ const resolvePeerDependencies = <
     [
       ...packages.flatMap((pkg) => Object.entries(pkg.data.peerDependencies ?? {})),
       ...Object.entries(external).map(
-        ([name, version]) =>
-          [name, version.startsWith('^') === true ? version : `^${version}`] as const,
+        ([name, version]) => [name, peerRangeFromCatalogVersion(version)] as const,
       ),
     ].toSorted(([nameA], [nameB]) => nameA.localeCompare(nameB)),
   ) as CatalogInput
