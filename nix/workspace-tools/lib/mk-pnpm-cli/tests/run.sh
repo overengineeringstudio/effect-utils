@@ -269,6 +269,16 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-injected-directory-packages"
 
+  echo "Check: injected directory paths are canonical and beneath the lockfile directory"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.injected-directory-path-validation"
+
+  echo "Check: lockfile-derived staging paths reach the shell as literal words"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.injected-directory-shell-escaping"
+
   echo "Check: non-canonical source-input stage paths fail evaluation"
   nix build --no-link --no-write-lock-file \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \

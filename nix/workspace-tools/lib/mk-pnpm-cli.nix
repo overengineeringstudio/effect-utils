@@ -1000,12 +1000,16 @@ let
     in
     entry.includeOptionalDependencies or false;
 
+  # Staged relative paths can come from lockfile text (injected directory
+  # packages), so every destination is passed to the shell as one escaped word.
+  outPathArg = relPath: ''"$out"/${lib.escapeShellArg relPath}'';
+
   mkdirOutParentCmd =
     relPath:
     let
       parent = builtins.dirOf relPath;
     in
-    if parent == "." then ''mkdir -p "$out"'' else ''mkdir -p "$out/${parent}"'';
+    if parent == "." then ''mkdir -p "$out"'' else "mkdir -p ${outPathArg parent}";
 
   copyFileCmd =
     relPath:
@@ -1014,7 +1018,7 @@ let
     in
     ''
       ${mkdirOutParentCmd relPath}
-      cp ${lib.escapeShellArg (toString srcPath)} "$out/${relPath}"
+      cp ${lib.escapeShellArg (toString srcPath)} ${outPathArg relPath}
     '';
 
   copyDirCmd =
@@ -1024,8 +1028,8 @@ let
     in
     ''
       ${mkdirOutParentCmd relPath}
-      cp -R ${lib.escapeShellArg (toString srcPath)} "$out/${builtins.dirOf relPath}/"
-      chmod -R +w "$out/${relPath}"
+      cp -R ${lib.escapeShellArg (toString srcPath)} ${outPathArg "${builtins.dirOf relPath}/"}
+      chmod -R +w ${outPathArg relPath}
     '';
 
   copyOptionalFileCmd =
@@ -1046,7 +1050,7 @@ let
         in
         ''
           ${mkdirOutParentCmd relPath}
-          cp ${lib.escapeShellArg npmrcFile} "$out/${relPath}"
+          cp ${lib.escapeShellArg npmrcFile} ${outPathArg relPath}
         ''
       else
         ''

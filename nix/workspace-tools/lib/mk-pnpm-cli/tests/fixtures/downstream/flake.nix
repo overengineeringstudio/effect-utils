@@ -116,6 +116,98 @@
           };
         profileDedupConsumerA = mkProfileDedupConsumer "profile-dedup-consumer-alpha";
         profileDedupConsumerB = mkProfileDedupConsumer "profile-dedup-consumer-bravo";
+        pnpmLockInjectedDirs =
+          import "${effectUtilsSource}/nix/workspace-tools/lib/pnpm-lock-injected-dirs.nix"
+            {
+              inherit lib;
+            };
+        injectedDirsForDirectory =
+          directory:
+          pnpmLockInjectedDirs {
+            lockfileContent = ''
+              lockfileVersion: '9.0'
+              packages:
+                x@file:x:
+                  resolution: {directory: ${directory}, type: directory}
+            '';
+          };
+        rejectsInjectedDirectory =
+          directory: !(builtins.tryEval (builtins.deepSeq (injectedDirsForDirectory directory) true)).success;
+        # An external install root whose lockfile records injected directory
+        # packages with YAML-quoted names carrying `,` and shell metacharacters.
+        # Generated rather than committed so the odd names stay out of git.
+        injectedExternalRoot =
+          pkgs.runCommand "mk-pnpm-cli-injected-external-root"
+            {
+              lockfile = pkgs.writeText "pnpm-lock.yaml" ''
+                lockfileVersion: '9.0'
+
+                settings:
+                  autoInstallPeers: true
+                  excludeLinksFromLockfile: false
+                  injectWorkspacePackages: true
+
+                importers:
+
+                  packages/member: {}
+
+                packages:
+
+                  'comma@file:packages/a,b':
+                    resolution: {directory: 'packages/a,b', type: directory}
+
+                  'meta@file:packages/meta $(touch marker) $HOME':
+                    resolution: {directory: 'packages/meta $(touch marker) $HOME', type: directory}
+
+                  member@file:packages/member:
+                    resolution: {directory: packages/member, type: directory}
+              '';
+            }
+            ''
+              mkdir -p "$out"
+              cp "$lockfile" "$out/pnpm-lock.yaml"
+              printf 'packages:\n  - packages/member\n' > "$out/pnpm-workspace.yaml"
+              printf '{"name":"injected-root","private":true}\n' > "$out/package.json"
+              for dir in 'packages/member' 'packages/a,b' 'packages/meta $(touch marker) $HOME'; do
+                mkdir -p "$out/$dir"
+                printf '{"name":"%s","version":"0.0.0"}\n' "$(basename "$dir")" > "$out/$dir/package.json"
+              done
+            '';
+        injectedConsumerRoot = pkgs.runCommand "mk-pnpm-cli-injected-consumer-root" { } ''
+          mkdir -p "$out/app"
+          printf '{"name":"injected-consumer-root","private":true}\n' > "$out/package.json"
+          printf 'packages:\n  - app\n' > "$out/pnpm-workspace.yaml"
+          printf "lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n\n  app: {}\n" > "$out/pnpm-lock.yaml"
+          cat > "$out/app/package.json" <<'JSON'
+          {
+            "name": "injected-consumer",
+            "private": true,
+            "version": "0.0.0",
+            "$genie": {
+              "workspaceClosureDirs": ["app", "repos/injected/packages/member"]
+            }
+          }
+          JSON
+        '';
+        injectedFixture = mkPnpmCli {
+          name = "mk-pnpm-cli-injected-fixture";
+          binaryName = "mk-pnpm-cli-injected-fixture";
+          entry = "app/src/mod.ts";
+          packageDir = "app";
+          workspaceRoot = injectedConsumerRoot;
+          workspaceSources = {
+            "repos/injected" = injectedExternalRoot;
+          };
+          depsBuilds = {
+            "." = {
+              hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+            };
+            "repos/injected" = {
+              hash = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+            };
+          };
+          smokeTestArgs = [ ];
+        };
         oxlintNpmFromLib = effect-utils.lib.mkOxlintNpm {
           inherit pkgs;
           bun = pkgs.bun;
@@ -227,6 +319,40 @@
                   exit 1
                 fi
               done < directories
+              touch "$out"
+            '';
+        # Lockfile-derived directories must stay canonical and beneath the
+        # lockfile directory; `..` anywhere (including one that would dodge the
+        # source-input check), empty segments and absolute paths fail eval.
+        checks.injected-directory-path-validation =
+          assert builtins.all rejectsInjectedDirectory [
+            "packages/a/../../../other"
+            "packages/../.devenv/pnpm-source-inputs/current/x"
+            "'packages/a/..'"
+            ".."
+            "/abs/pkg"
+            "packages//x"
+            ".devenv/pnpm-source-inputs/current/x"
+          ];
+          assert injectedDirsForDirectory "./packages/./a/" == [ "packages/a" ];
+          assert injectedDirsForDirectory "'packages/it''s,x'" == [ "packages/it's,x" ];
+          pkgs.runCommand "mk-pnpm-cli-injected-directory-path-validation" { } ''
+            touch "$out"
+          '';
+        # Lockfile-derived names reach the staging shell as literal words:
+        # `,`, spaces, `$(...)` and `$VAR` are copied, never expanded.
+        checks.injected-directory-shell-escaping =
+          pkgs.runCommand "mk-pnpm-cli-injected-directory-shell-escaping" { }
+            ''
+              deps_src=${injectedFixture.passthru.depsSrcByInstallRoot.repos-injected}
+              for dir in 'packages/member' 'packages/a,b' 'packages/meta $(touch marker) $HOME'; do
+                test -f "$deps_src/repos/injected/$dir/package.json" || {
+                  echo "injected directory not staged literally: $dir" >&2
+                  find "$deps_src" >&2
+                  exit 1
+                }
+              done
+              test "$(find "$deps_src/repos/injected/packages" -mindepth 1 -maxdepth 1 | wc -l)" = 3
               touch "$out"
             '';
         checks.invalid-source-input-stage-path =

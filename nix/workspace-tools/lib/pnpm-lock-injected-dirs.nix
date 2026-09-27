@@ -11,9 +11,11 @@
   authority for that set; `file:` tarballs are not directory packages and are
   ignored.
 
-  Paths are relative to the lockfile directory. A directory outside the
-  lockfile directory cannot be staged under the install root and is rejected.
-  So is a directory under `sourceInputStagePath`: that projection is only
+  Paths are relative to the lockfile directory and returned in canonical form
+  (`.` segments dropped). A path that is absolute or has an empty or `..`
+  segment anywhere is rejected: it could name a directory outside the install
+  root, and a canonical beneath-the-root check is simpler than resolving it.
+  A directory under `sourceInputStagePath` is rejected too: that projection is only
   materialized for the aggregate root, whose lockfile this reader is not used
   for, so such an entry could never be staged.
 
@@ -65,16 +67,30 @@ let
     directories = [ ];
   } lines;
 
-  normalize = path: lib.removeSuffix "/" (lib.removePrefix "./" path);
+  canonicalize =
+    path:
+    let
+      segments = builtins.filter (segment: segment != ".") (
+        lib.splitString "/" (lib.removeSuffix "/" path)
+      );
+    in
+    if
+      path == ""
+      || lib.hasPrefix "/" path
+      || builtins.any (segment: segment == "" || segment == "..") segments
+    then
+      throw "pnpm-lock-injected-dirs: injected directory package is not a canonical path beneath the lockfile directory: ${path}"
+    else if segments == [ ] then
+      "."
+    else
+      builtins.concatStringsSep "/" segments;
   isSourceInput = path: path == sourceInputStagePath || lib.hasPrefix "${sourceInputStagePath}/" path;
   checked = map (
     path:
-    if path == ".." || lib.hasPrefix "../" path || lib.hasPrefix "/" path then
-      throw "pnpm-lock-injected-dirs: injected directory package escapes the lockfile directory: ${path}"
-    else if isSourceInput path then
+    if isSourceInput path then
       throw "pnpm-lock-injected-dirs: injected directory package under ${sourceInputStagePath} cannot be staged for this install root: ${path}"
     else
       path
-  ) (map normalize parsed.directories);
+  ) (map canonicalize parsed.directories);
 in
 lib.sort (left: right: left < right) (lib.unique checked)
