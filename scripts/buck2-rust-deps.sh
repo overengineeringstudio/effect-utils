@@ -132,8 +132,71 @@ fi
 
 archive_count="$(grep -Ec '^(http_archive|crate_archive)[(]$' "$candidate" || true)"
 sha256_count="$(grep -Ec '^    sha256 = "[0-9a-f]{64}",$' "$candidate" || true)"
-if [ "$archive_count" -eq 0 ] || [ "$sha256_count" -ne "$archive_count" ]; then
+git_archive_count="$(grep -Ec '^git_archive[(]$' "$candidate" || true)"
+if [ "$((archive_count + git_archive_count))" -eq 0 ] || [ "$sha256_count" -ne "$archive_count" ]; then
   echo "buck2-rust-deps: every generated crate archive must carry one sha256 pin" >&2
+  exit 1
+fi
+
+# Git sources: Reindeer's `git_fetch` carries no digest. Each (repo, rev) must
+# resolve through `[buck] git_fetch = "git_archive"` to a GitHub commit tarball
+# whose sha256 the sidecar pins; both modes fetch the tarball and verify it.
+git_archives="$third_party/git-archives.json"
+git_archives_candidate="$(mktemp "$third_party/.git-archives.json.next.XXXXXX")"
+trap 'cleanup; rm -f "$git_archives_candidate"' EXIT
+# shellcheck disable=SC2016 # JavaScript template literals, not shell expansions.
+if ! "$bun" -e '
+const [candidatePath, sidecarPath, outputPath] = process.argv.slice(1);
+const origin = process.env.BUCK2_RUST_DEPS_GITHUB_ORIGIN ?? "https://github.com";
+const schema = "effect-utils/buck2-git-archives/v1";
+const fail = (message) => {
+  console.error(`buck2-rust-deps: ${message}`);
+  process.exit(1);
+};
+const graph = await Bun.file(candidatePath).text();
+if (/^git_fetch[(]$/m.test(graph))
+  fail("git dependencies need [buck] git_fetch = \"git_archive\" so every git source is sha256-pinned");
+const sources = new Map();
+for (const [, body] of graph.matchAll(/^git_archive[(]\n([\s\S]*?)^[)]$/gm)) {
+  const repo = body.match(/^    repo = "([^"]+)",$/m)?.[1];
+  const rev = body.match(/^    rev = "([0-9a-f]{40})",$/m)?.[1];
+  if (repo === undefined || rev === undefined) fail("git_archive needs one repo and one 40-hex rev");
+  const github = repo.match(/^https:[/][/]github[.]com[/]([A-Za-z0-9_.-]+)[/]([A-Za-z0-9_.-]+?)(?:[.]git)?[/]?$/);
+  if (github === null) fail(`git_archive supports only https://github.com/<owner>/<repo> sources: ${repo}`);
+  sources.set(`${repo} ${rev}`, { repo, rev, owner: github[1], name: github[2] });
+}
+const sidecarFile = Bun.file(sidecarPath);
+const pinned = (await sidecarFile.exists()) ? JSON.parse(await sidecarFile.text()) : undefined;
+if (pinned !== undefined && pinned.schema !== schema) fail(`${sidecarPath} must carry schema ${schema}`);
+const topLevelPrefix = (tarball) => {
+  const tar = Bun.gunzipSync(tarball);
+  for (let offset = 0; offset + 512 <= tar.length; ) {
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const field = (start, length) => new TextDecoder().decode(header.subarray(start, start + length)).replace(/\0.*$/s, "");
+    const size = Number.parseInt(field(124, 12).trim() || "0", 8);
+    const type = field(156, 1);
+    const path = [field(345, 155), field(0, 100)].filter((part) => part !== "").join("/");
+    if (type !== "g" && type !== "x") return path.split("/")[0];
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  fail("git archive holds no entries");
+};
+const archives = [];
+for (const source of [...sources.values()].toSorted((a, b) => (`${a.repo} ${a.rev}` < `${b.repo} ${b.rev}` ? -1 : 1))) {
+  const url = `https://github.com/${source.owner}/${source.name}/archive/${source.rev}.tar.gz`;
+  const response = await fetch(`${origin}/${source.owner}/${source.name}/archive/${source.rev}.tar.gz`);
+  if (response.ok !== true) fail(`fetching ${url} failed: ${response.status}`);
+  const tarball = new Uint8Array(await response.arrayBuffer());
+  const sha256 = new Bun.CryptoHasher("sha256").update(tarball).digest("hex");
+  const previous = pinned?.archives?.find((pin) => pin.repo === source.repo && pin.rev === source.rev);
+  if (previous !== undefined && previous.sha256 !== sha256)
+    fail(`${url} no longer matches its pinned sha256 ${previous.sha256} (fetched ${sha256})`);
+  archives.push({ repo: source.repo, rev: source.rev, url, sha256, strip_prefix: topLevelPrefix(tarball) });
+}
+if (archives.length > 0)
+  await Bun.write(outputPath, `${JSON.stringify({ schema, archives }, null, 2)}\n`);
+' "$candidate" "$git_archives" "$git_archives_candidate"; then
   exit 1
 fi
 
@@ -141,10 +204,25 @@ case "$mode" in
   generate)
     chmod 0644 "$candidate"
     mv "$candidate" "$third_party_buck"
+    if [ -s "$git_archives_candidate" ]; then
+      chmod 0644 "$git_archives_candidate"
+      mv "$git_archives_candidate" "$git_archives"
+    else
+      rm -f "$git_archives"
+    fi
     ;;
   check)
     if ! cmp -s "$third_party_buck" "$candidate"; then
       echo "buck2-rust-deps: generated Reindeer graph is stale" >&2
+      exit 1
+    fi
+    if [ -s "$git_archives_candidate" ]; then
+      if ! cmp -s "$git_archives" "$git_archives_candidate"; then
+        echo "buck2-rust-deps: ${git_archives#"$root"/} is stale (run the generate task)" >&2
+        exit 1
+      fi
+    elif [ -e "$git_archives" ]; then
+      echo "buck2-rust-deps: ${git_archives#"$root"/} pins git sources the graph no longer has" >&2
       exit 1
     fi
     ;;

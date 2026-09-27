@@ -1056,3 +1056,43 @@ describe('Cargo features', () => {
     }
   })
 })
+
+describe('Cargo git dependencies', () => {
+  const render = (dependencies: string, workspaceDependencies = '') =>
+    renderCargoFixture({
+      members: {
+        app: {
+          manifest: `[package]\nname = "app"\n\n[dependencies]\n${dependencies}`,
+          files: ['src/main.rs'],
+        },
+      },
+      workspaceDependencies,
+      registryPackages: ['serde', 'agent-spec', 'pty-core'],
+      thirdPartyTargets: ['serde', 'agent-spec', 'pty-core'],
+      render: 'app',
+    })
+
+  it('labels member and inherited git dependencies by their third-party alias', () => {
+    expect(
+      renderedRules(
+        render(
+          'agent-spec = { git = "https://github.com/o/st2", rev = "0123456789abcdef0123456789abcdef01234567" }\npty-core.workspace = true',
+          'pty-core = { git = "https://github.com/o/pty-rust", branch = "main" }\n',
+        ),
+      ).app,
+    ).toContain(
+      'deps = [\n        "//rust/third-party:agent-spec",\n        "//rust/third-party:pty-core",\n    ],',
+    )
+  })
+
+  it('rejects git mixed with path and git selectors without git', () => {
+    expect(() =>
+      render('agent-spec = { git = "https://github.com/o/st2", path = "../x" }'),
+    ).toThrow(
+      'Cargo dependency at dependencies.agent-spec cannot combine git with path or workspace',
+    )
+    expect(() => render('agent-spec = { version = "1", rev = "abc" }')).toThrow(
+      'Cargo dependency at dependencies.agent-spec sets branch, rev, or tag without git',
+    )
+  })
+})

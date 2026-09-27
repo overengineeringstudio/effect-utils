@@ -250,6 +250,16 @@ All notable changes to this project will be documented in this file.
   are rejected: features on foreign path dependencies (direct or through
   `dep/feature` items) and feature requests or optional activation on
   target-specific edges to workspace members.
+- **Buck2 Rust git dependencies**: offline, digest-pinned supply for Cargo
+  `git` sources. Selecting Reindeer `[buck] git_fetch = "git_archive"` (with
+  `pinned_git_archive` from `buck2/rust/crates.bzl` bound to the workspace's
+  `third-party/git-archives.json`) turns each `(repo, rev)` into a GitHub
+  commit tarball pinned by sha256; `mkBuck2CargoArchives` fetches the pinned
+  tarballs for sandboxed builds and `buck2-archive-tool extract-git-archive`
+  unpacks them offline. `scripts/buck2-rust-deps.sh` rejects bare `git_fetch`
+  rules, writes the sidecar on `generate`, and on `check` re-fetches every
+  tarball and fails on digest drift or stale pins. The Cargo projector
+  resolves `git`/`rev`/`branch`/`tag` dependencies to the third-party graph.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
