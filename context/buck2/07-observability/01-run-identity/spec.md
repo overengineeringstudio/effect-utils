@@ -71,11 +71,14 @@ configured evidence upload endpoint, it uploads a local attempt-close with
 its single job's conclusion and the sealed job record; the service owns
 ingestion and periodic reconciliation. The close declares that the root is
 **carried in the job record**: the service verifies it but never synthesizes
-or publishes a second root. On upload failure the entrypoint logs the
-fallback; without a configured service, it uses one-shot `ingest --local`
-when an OTLP endpoint is available, otherwise it retains the sealed spool.
-This offline path has no service-owned later reconciliation and is
-best-effort.
+or publishes a second root. On a definitively unsent or rejected upload,
+the entrypoint logs the failure and may use one-shot `ingest --local` when
+an OTLP endpoint is available. An ambiguous upload (including a timeout or
+lost acknowledgement after the service may have accepted the request)
+remains pending for service replay; offline ingest is withheld to avoid a
+duplicate root. Without a configured service the entrypoint uses one-shot
+local ingest when OTLP is available, otherwise it retains the sealed spool.
+The offline path has no service-owned later reconciliation and is best-effort.
 In CI the ingester writes the root after 02's attempt-close record arrives
 and every listed job is ingested or marked missing, using its
 roster/conclusions and run/job bounds. It synthesizes deterministic error
