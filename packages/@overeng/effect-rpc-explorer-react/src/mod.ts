@@ -17,6 +17,7 @@ export {
 export type {
   DeltaApplyResult,
   ExplorerClient,
+  ExplorerWatchCursor,
   ExplorerConnection,
   ExplorerProjection,
   ExplorerProjectionStore,

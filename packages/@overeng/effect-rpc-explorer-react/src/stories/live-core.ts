@@ -6,6 +6,7 @@ import {
   defaultNormalizationBounds,
   InspectorRpcGroup,
   makeExplorerStore,
+  makeDescriptorSet,
   makeInspectorGroup,
   makeProtocolObserver,
   makeRpcDescriptors,
@@ -27,6 +28,15 @@ const applicationGroup = RpcGroup.make(
 )
 
 const descriptors = makeRpcDescriptors(applicationGroup)
+/** A group the host mounts after construction, like an app-local provider. */
+const runtimeDescriptors = makeRpcDescriptors(
+  RpcGroup.make(
+    Rpc.make('Fixture.RuntimeProviderRpc', {
+      payload: Schema.Struct({ cursor: Schema.Number }),
+      success: Schema.String,
+    }),
+  ),
+)
 const inspectorDescriptors = makeRpcDescriptors(InspectorRpcGroup)
 const captureDescriptorsByTag = new Map(
   [...descriptors, ...inspectorDescriptors].map(
@@ -115,9 +125,12 @@ const makeInspectorClient = ({
       observeTerminal({ requestId: requestId, value: result })
       return result
     },
-    watch: (afterRevision) => ({
+    watch: ({ afterRevision, descriptorRevision }) => ({
       async *[Symbol.asyncIterator]() {
-        const payload = afterRevision === undefined ? {} : { afterRevision }
+        const payload = {
+          ...(afterRevision === undefined ? {} : { afterRevision }),
+          ...(descriptorRevision === undefined ? {} : { descriptorRevision }),
+        }
         const requestId = observeRequest({ tag: 'RpcExplorer.Watch', payload: payload })
         const handler = await Effect.runPromise(
           inspector.group.accessHandler('RpcExplorer.Watch').pipe(Effect.provide(inspector.layer)),
@@ -161,6 +174,10 @@ const requestAfterClear: RequestIdentity = {
   ...request,
   requestId: { _tag: 'String', value: 'live-active-after-clear' },
 }
+const runtimeRequest: RequestIdentity = {
+  ...request,
+  requestId: { _tag: 'String', value: 'live-runtime-provider-request' },
+}
 
 const dispatch = ({
   store,
@@ -176,6 +193,10 @@ const dispatch = ({
 export interface LiveCoreFixture {
   readonly client: ExplorerClient
   readonly emitLifecycle: () => void
+  /** Registers the runtime provider group and observes one of its requests. */
+  readonly mountRuntimeProvider: () => void
+  /** Releases the runtime provider group's descriptor registration. */
+  readonly unmountRuntimeProvider: () => void
 }
 
 /**
@@ -218,7 +239,9 @@ export const makeLiveCoreFixture = (): LiveCoreFixture => {
     },
   })
 
-  const inspector = makeInspectorGroup({ store, descriptors })
+  const descriptorSet = makeDescriptorSet(descriptors)
+  const inspector = makeInspectorGroup({ store, descriptors: descriptorSet })
+  let releaseRuntimeProvider: (() => void) | undefined
   let observerMillis = 1_795_027_201_100
   const observer = makeProtocolObserver(
     {
@@ -261,6 +284,28 @@ export const makeLiveCoreFixture = (): LiveCoreFixture => {
           observations: [],
         },
       })
+    },
+    mountRuntimeProvider: () => {
+      if (releaseRuntimeProvider !== undefined) return
+      releaseRuntimeProvider = descriptorSet.register({
+        owner: 'fixture/runtime-provider',
+        descriptors: runtimeDescriptors,
+      })
+      dispatch({
+        store,
+        event: {
+          _tag: 'RequestObserved',
+          at: timestamp(1_795_027_201_050),
+          request: runtimeRequest,
+          descriptorId: runtimeDescriptors[0]!.descriptorId,
+          notification: false,
+          observations: [],
+        },
+      })
+    },
+    unmountRuntimeProvider: () => {
+      releaseRuntimeProvider?.()
+      releaseRuntimeProvider = undefined
     },
   }
 }

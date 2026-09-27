@@ -1,6 +1,7 @@
 import { Effect, type Layer, Queue, Schema, Stream } from 'effect'
 import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 
+import type { DescriptorSet } from './descriptor-set.ts'
 import type { RpcDescriptor } from './descriptor.ts'
 import { RpcExplorerObserve } from './descriptor.ts'
 import {
@@ -11,7 +12,7 @@ import {
   RetentionCounters,
   RpcRecord,
 } from './model.ts'
-import type { SnapshotFrame, WatchFrame } from './model.ts'
+import type { SnapshotFrame } from './model.ts'
 import type { ExplorerStore } from './store.ts'
 
 const DescriptorChannelWire = Schema.Struct({
@@ -49,6 +50,7 @@ export const InspectorSnapshotFrame = Schema.TaggedStruct('Snapshot', {
   protocolVersion: ProtocolVersion,
   instanceId: Schema.NonEmptyString,
   revision: Schema.Natural,
+  descriptorRevision: Schema.Natural,
   descriptors: Schema.Array(RpcDescriptorWire),
   active: Schema.Array(RpcRecord),
   completed: Schema.Array(RpcRecord),
@@ -77,9 +79,15 @@ export const GetSnapshot = Rpc.make('RpcExplorer.GetSnapshot', {
   success: InspectorSnapshotFrame,
 }).annotate(RpcExplorerObserve, false)
 
-/** Streams an atomic snapshot/replay prefix followed by future store frames. */
+/**
+ * Streams an atomic snapshot/replay prefix followed by future store frames. A descriptor-set
+ * change, or a `descriptorRevision` older than the current one, adds a fresh Snapshot.
+ */
 export const Watch = Rpc.make('RpcExplorer.Watch', {
-  payload: { afterRevision: Schema.optionalKey(Schema.Natural) },
+  payload: {
+    afterRevision: Schema.optionalKey(Schema.Natural),
+    descriptorRevision: Schema.optionalKey(Schema.Natural),
+  },
   success: InspectorWatchFrame,
   stream: true,
 }).annotate(RpcExplorerObserve, false)
@@ -118,44 +126,73 @@ const toWireDescriptor = (descriptor: RpcDescriptor): RpcDescriptorWire => ({
   terminal: descriptor.terminal,
 })
 
+interface WireDescriptorSet {
+  readonly revision: number
+  readonly descriptors: ReadonlyArray<RpcDescriptorWire>
+}
+
+/** Projects each descriptor-set revision onto the wire once, however many viewers read it. */
+const makeWireDescriptors = (descriptors: DescriptorSet): (() => WireDescriptorSet) => {
+  let cached: { readonly source: object; readonly wire: WireDescriptorSet } | undefined
+  return () => {
+    const current = descriptors.current()
+    if (cached?.source !== current) {
+      cached = {
+        source: current,
+        wire: {
+          revision: current.revision,
+          descriptors: current.descriptors.map(toWireDescriptor),
+        },
+      }
+    }
+    return cached.wire
+  }
+}
+
 const withDescriptors = ({
   snapshot,
   descriptors,
 }: {
   readonly snapshot: SnapshotFrame
-  readonly descriptors: ReadonlyArray<RpcDescriptorWire>
-}): InspectorSnapshotFrame => ({ ...snapshot, descriptors })
-
-const toInspectorFrame = ({
-  frame,
-  descriptors,
-}: {
-  readonly frame: WatchFrame
-  readonly descriptors: ReadonlyArray<RpcDescriptorWire>
-}): InspectorWatchFrame =>
-  frame._tag === 'Snapshot' ? withDescriptors({ snapshot: frame, descriptors }) : frame
+  readonly descriptors: WireDescriptorSet
+}): InspectorSnapshotFrame => ({
+  ...snapshot,
+  descriptorRevision: descriptors.revision,
+  descriptors: descriptors.descriptors,
+})
 
 const watchStore = ({
   store,
   descriptors,
   afterRevision,
+  descriptorRevision,
 }: {
   readonly store: ExplorerStore
-  readonly descriptors: ReadonlyArray<RpcDescriptorWire>
+  readonly descriptors: DescriptorSet
   readonly afterRevision?: number | undefined
+  readonly descriptorRevision?: number | undefined
 }): Stream.Stream<InspectorWatchFrame> =>
   Stream.unwrap(
     Effect.gen(function* () {
       // A single pending signal is sufficient: draining transfers every queued frame.
       const signal = yield* Queue.dropping<void>(1)
+      const wireDescriptors = makeWireDescriptors(descriptors)
       const subscription = yield* Effect.acquireRelease(
         Effect.sync(() => {
           const onFrames = (): void => {
             Queue.offerUnsafe(signal, undefined)
           }
-          return store.watch(
+          const unsubscribe = descriptors.subscribe(onFrames)
+          const watch = store.watch(
             afterRevision === undefined ? { onFrames } : { afterRevision, onFrames },
           )
+          return {
+            drain: watch.drain,
+            close: () => {
+              unsubscribe()
+              watch.close()
+            },
+          }
         }),
         (current) =>
           Effect.sync(() => current.close()).pipe(
@@ -163,8 +200,22 @@ const watchStore = ({
             Effect.asVoid,
           ),
       )
-      const drain = (): ReadonlyArray<InspectorWatchFrame> =>
-        subscription.drain().map((frame) => toInspectorFrame({ frame, descriptors }))
+      // Store frames drained together are contiguous up to the store's current revision, so a
+      // Snapshot synthesized right after draining neither skips nor repeats a later Delta.
+      let sentDescriptorRevision = descriptorRevision ?? wireDescriptors().revision
+      const drain = (): ReadonlyArray<InspectorWatchFrame> => {
+        const current = wireDescriptors()
+        const frames: Array<InspectorWatchFrame> = subscription.drain().map((frame) => {
+          if (frame._tag !== 'Snapshot') return frame
+          sentDescriptorRevision = current.revision
+          return withDescriptors({ snapshot: frame, descriptors: current })
+        })
+        if (sentDescriptorRevision !== current.revision) {
+          sentDescriptorRevision = current.revision
+          frames.push(withDescriptors({ snapshot: store.snapshot(), descriptors: current }))
+        }
+        return frames
+      }
 
       return Stream.concat(
         Stream.fromIterable(drain()),
@@ -173,10 +224,10 @@ const watchStore = ({
     }),
   )
 
-/** Store and logical RPC descriptors bound to an inspector implementation. */
+/** Store and logical RPC descriptor set bound to an inspector implementation. */
 export interface MakeInspectorGroupOptions {
   readonly store: ExplorerStore
-  readonly descriptors: ReadonlyArray<RpcDescriptor>
+  readonly descriptors: DescriptorSet
 }
 
 /** Public inspector declarations and their server handler layer. */
@@ -190,15 +241,15 @@ export const makeInspectorGroup = ({
   store,
   descriptors,
 }: MakeInspectorGroupOptions): InspectorGroup => {
-  const wireDescriptors = descriptors.map(toWireDescriptor)
+  const wireDescriptors = makeWireDescriptors(descriptors)
   const layer = InspectorRpcGroup.toLayer(
     InspectorRpcGroup.of({
       'RpcExplorer.GetSnapshot': () =>
         Effect.sync(() =>
-          withDescriptors({ snapshot: store.snapshot(), descriptors: wireDescriptors }),
+          withDescriptors({ snapshot: store.snapshot(), descriptors: wireDescriptors() }),
         ),
-      'RpcExplorer.Watch': ({ afterRevision }) =>
-        watchStore({ store, descriptors: wireDescriptors, afterRevision }),
+      'RpcExplorer.Watch': ({ afterRevision, descriptorRevision }) =>
+        watchStore({ store, descriptors, afterRevision, descriptorRevision }),
       'RpcExplorer.ClearHistory': () =>
         Effect.sync(() => ({ clearedRevision: store.clearHistory() })),
     }),

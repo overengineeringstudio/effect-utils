@@ -4,8 +4,9 @@ import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
 import { Rpc, RpcGroup, RpcMessage } from 'effect/unstable/rpc'
 import { describe, expect, it } from 'vitest'
 
+import { makeDescriptorSet, staticDescriptorSet } from './descriptor-set.ts'
 import { makeRpcDescriptors } from './descriptor.ts'
-import type { InspectorGroup } from './inspector.ts'
+import type { InspectorGroup, InspectorWatchFrame } from './inspector.ts'
 import {
   encodeWatchFrameNdjson,
   isSupportedInspectorProtocolVersion,
@@ -58,16 +59,18 @@ const terminal = (time: number): ExplorerEventInput => ({
   observations: [],
 })
 
-const applicationDescriptors = makeRpcDescriptors(
-  RpcGroup.make(
-    Rpc.make('ApplicationRpc', {
-      payload: Schema.String,
-      success: Schema.String,
-    })
-      .annotate(OpenApi.Title, 'Application operation')
-      .annotate(OpenApi.Summary, 'Inspects the application.')
-      .annotate(OpenApi.Description, 'Returns the public application result.')
-      .annotate(OpenApi.Deprecated, false),
+const applicationDescriptors = staticDescriptorSet(
+  makeRpcDescriptors(
+    RpcGroup.make(
+      Rpc.make('ApplicationRpc', {
+        payload: Schema.String,
+        success: Schema.String,
+      })
+        .annotate(OpenApi.Title, 'Application operation')
+        .annotate(OpenApi.Summary, 'Inspects the application.')
+        .annotate(OpenApi.Description, 'Returns the public application result.')
+        .annotate(OpenApi.Deprecated, false),
+    ),
   ),
 )
 
@@ -98,7 +101,7 @@ const runSnapshot = (inspector: InspectorGroup) => {
 
 const collectWatch = (
   inspector: InspectorGroup,
-  payload: { readonly afterRevision?: number },
+  payload: { readonly afterRevision?: number; readonly descriptorRevision?: number },
   count: number,
 ) => {
   const effect = Effect.gen(function* () {
@@ -174,6 +177,43 @@ describe('RPC explorer inspector', () => {
     expect(reset.map((frame) => frame._tag)).toEqual(['Reset', 'Snapshot'])
     expect(reset[0]).toMatchObject({ _tag: 'Reset', reason: 'behind', revision: 2 })
     expect(reset[1]).toMatchObject({ _tag: 'Snapshot', revision: 2 })
+  })
+
+  it('streams a fresh snapshot when the descriptor set changes and after a stale watch', async () => {
+    const store = makeExplorerStore({ instanceId: 'descriptor-set', bounds: bounds() })
+    store.dispatch(requestObserved(1))
+    const descriptors = makeDescriptorSet(applicationDescriptors.current().descriptors)
+    const inspector = makeInspectorGroup({ store, descriptors })
+    const mounted = makeRpcDescriptors(
+      RpcGroup.make(Rpc.make('MountedRpc', { payload: Schema.String, success: Schema.String })),
+    )
+    const tagsOf = (frame: InspectorWatchFrame | undefined) =>
+      frame?._tag === 'Snapshot' ? frame.descriptors.map((descriptor) => descriptor.tag) : []
+
+    let release: (() => void) | undefined
+    const live = await Effect.gen(function* () {
+      const handler = yield* inspector.group.accessHandler('RpcExplorer.Watch')
+      return yield* resolveStream(handler({}, handlerOptions)).pipe(
+        Stream.tap(() =>
+          Effect.sync(() => {
+            release ??= descriptors.register({ owner: 'app/provider', descriptors: mounted })
+          }),
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+      )
+    }).pipe(Effect.provide(inspector.layer), Effect.runPromise)
+    expect(live.map((frame) => frame._tag)).toEqual(['Snapshot', 'Snapshot'])
+    expect(live[0]).toMatchObject({ descriptorRevision: 0, revision: 1 })
+    expect(live[1]).toMatchObject({ descriptorRevision: 1, revision: 1 })
+    expect(tagsOf(live[1])).toEqual(['ApplicationRpc', 'MountedRpc'])
+
+    release?.()
+    const [resumed] = await collectWatch(inspector, { afterRevision: 1, descriptorRevision: 1 }, 1)
+    expect(resumed).toMatchObject({ _tag: 'Snapshot', descriptorRevision: 2, revision: 1 })
+    expect(tagsOf(resumed)).toEqual(['ApplicationRpc'])
+    const snapshot = await runSnapshot(inspector)
+    expect(snapshot.descriptorRevision).toBe(2)
   })
 
   it('publishes clear reset and snapshot while preserving active records', async () => {
