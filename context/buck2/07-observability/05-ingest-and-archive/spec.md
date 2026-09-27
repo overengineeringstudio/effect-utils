@@ -176,7 +176,7 @@ latency target.
   spans/               the span spool, unchanged
   buck2-events/        raw *_events.pb.zst, unchanged
 <evidence-prefix>/<repository>/YYYY/MM/DD/run-<run-id>/attempt-<n>/
-  attempt-close.json  optional CI roster/conclusions, content-addressed
+  attempt-close.json  CI or local roster/conclusions, content-addressed
 index.sqlite           job records: (repo, run, attempt, job) -> digest,
                        bytes, sealed VCS fields, per-view ids and status;
                        attempts: close digest, expected jobs/conclusions,
