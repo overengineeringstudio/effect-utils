@@ -202,7 +202,7 @@ fn compare(
                     "classification":"baseline unavailable"}));
                 continue;
             }
-            let median = if n % 2 == 0 {
+            let median = if n.is_multiple_of(2) {
                 (baseline[n / 2 - 1] + baseline[n / 2]) / 2.0
             } else {
                 baseline[n / 2]

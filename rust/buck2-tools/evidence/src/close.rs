@@ -302,8 +302,10 @@ fn root_body(
         "scopeSpans":[{"scope":{"name":"buck2-evidence.close"},"spans":spans}]}]})
 }
 
+type PendingClose = (String, String, i64, bool, bool, i64);
+
 /// Retry until all records finish, or close has waited six hours; mark pushed only after OTLP success.
-fn pending_closes(cfg: &Config) -> Result<Vec<(String, String, i64, bool, bool, i64)>> {
+fn pending_closes(cfg: &Config) -> Result<Vec<PendingClose>> {
     let conn = crate::index::open(&cfg.index_path())?;
     // Idle CI attempts without a finalizer still get one incomplete root after six hours.
     let mut idle = conn.prepare(
