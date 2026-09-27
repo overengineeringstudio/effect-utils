@@ -234,7 +234,7 @@ source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDG
       runtimeKind = \"elf-dynamic\";
       repositorySource = exported;
       capabilities = pkgs.runCommand \"fixture-buck-capabilities\" {
-        passthru = { input = projectionInput; platform = \"x86_64-linux\"; src = repo; };
+        passthru = { input = projectionInput; platform = \"x86_64-linux\"; src = flake.outPath; };
       } \"mkdir \$out\";
       pnpmArchives = pkgs.runCommand \"empty-pnpm-archives\" { } \"mkdir \$out\";
       producerCommit = \"0000000000000000000000000000000000000000\";
