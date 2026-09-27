@@ -367,17 +367,16 @@ impl Svc {
             .await
             .map_err(buck2_evidence::transient)?;
         for i in 0..summary.chunks {
-            if done.contains(&(i as i64)) {
-                self.m.push_skipped.fetch_add(1, Relaxed);
-                continue;
-            }
+            // A checkpoint means the push was acknowledged, not that every
+            // span survived in Tempo. Probe it again after failed readback.
             if pipeline::push_chunk(
                 &self.client,
                 &self.cfg,
                 digest,
                 i,
-                (attempts > 1 || status.as_deref() == Some("missing_spans"))
-                    && self.common.probe_repush,
+                done.contains(&(i as i64))
+                    || status.as_deref() == Some("missing_spans")
+                    || (attempts > 1 && self.common.probe_repush),
             )
             .await?
             {
