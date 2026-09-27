@@ -790,6 +790,30 @@ describe('defineCatalog', () => {
       expect(prereleaseCatalog.peers(...names)).toEqual(expected)
     })
 
+    it('pins an inherited caret prerelease peer and keeps other inherited ranges', () => {
+      // A hand-authored workspace package: its peers bypass the catalog rule.
+      const shared = {
+        data: {
+          name: '@test/shared',
+          version: '1.0.0',
+          peerDependencies: { effect: '^4.0.0-rc.113', react: '^18.0.0 || ^19.0.0-rc.1' },
+        },
+        meta: {
+          workspace: { repoName: repo.repoName, memberPath: 'packages/utils', deps: [] },
+        },
+      }
+
+      const composed = catalog.compose({
+        workspace: workspace({ repoName: repo.repoName, memberPath: 'packages/app' }),
+        peerDependencies: { workspace: [shared] },
+      })
+
+      expect(composed.peerDependencies).toEqual({
+        effect: '4.0.0-rc.113',
+        react: '^18.0.0 || ^19.0.0-rc.1',
+      })
+    })
+
     it('returns empty workspace metadata when no workspace packages are provided', () => {
       const composed = catalog.compose({
         workspace: workspace({

@@ -222,6 +222,9 @@ const createPickFn =
     return result
   }
 
+/** A single (optionally caret-prefixed) prerelease version; group 1 is the exact version. */
+const singlePrereleasePeer = /^\^?(\d+\.\d+\.\d+-[0-9A-Za-z.-]+)$/
+
 /**
  * Peer range for a catalog version: `^version` for a release, the exact version for a
  * prerelease (a caret on an authored prerelease is dropped). pnpm's peer check accepts
@@ -231,9 +234,9 @@ const createPickFn =
  * A release range already carrying `^` is kept as authored.
  */
 const peerRangeFromCatalogVersion = (version: string) => {
-  const bare = version.startsWith('^') === true ? version.slice(1) : version
-  if (/^\d+\.\d+\.\d+-/.test(bare) === true) return bare
-  return `^${bare}`
+  const prerelease = singlePrereleasePeer.exec(version)?.[1]
+  if (prerelease !== undefined) return prerelease
+  return version.startsWith('^') === true ? version : `^${version}`
 }
 
 /** Creates a peers function for a catalog object (see `peerRangeFromCatalogVersion`) */
@@ -320,7 +323,13 @@ const resolvePeerDependencies = <
 }) =>
   Object.fromEntries(
     [
-      ...packages.flatMap((pkg) => Object.entries(pkg.data.peerDependencies ?? {})),
+      // Inherited peers keep their authored range, except that a caret prerelease is
+      // pinned exactly so it cannot reintroduce a permissive cohort range.
+      ...packages.flatMap((pkg) =>
+        Object.entries(pkg.data.peerDependencies ?? {}).map(
+          ([name, range]) => [name, singlePrereleasePeer.exec(range)?.[1] ?? range] as const,
+        ),
+      ),
       ...Object.entries(external).map(
         ([name, version]) => [name, peerRangeFromCatalogVersion(version)] as const,
       ),
