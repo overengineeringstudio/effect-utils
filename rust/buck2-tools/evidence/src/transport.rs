@@ -57,10 +57,8 @@ async fn upload_with_credential(
     let marker = spool.join("upload-pending");
     let endpoint_hash = crate::sha256_hex(url.as_bytes());
     let was_pending = marker.exists();
-    if was_pending {
-        if fs::read_to_string(&marker)? != endpoint_hash {
-            bail!("pending evidence belongs to a different upload endpoint");
-        }
+    if was_pending && fs::read_to_string(&marker)? != endpoint_hash {
+        bail!("pending evidence belongs to a different upload endpoint");
     }
     let (client, base) = if let Some(socket) = url.strip_prefix("unix://") {
         (
