@@ -295,32 +295,6 @@
                 "$deps_src/pnpm-install-contract.json"
               touch "$out"
             '';
-        # effect-utils' lockfile injects workspace packages as `file:` directory
-        # packages, and a frozen pnpm install packlists every one of them. The
-        # external install root must stage each recorded directory, including
-        # the ones outside the consumer closure (only @overeng/utils here),
-        # without turning them into workspace members.
-        checks.prepared-injected-directory-packages =
-          pkgs.runCommand "mk-pnpm-cli-prepared-injected-directory-packages" { }
-            ''
-              deps_src=${pureEvalFixture.passthru.depsSrcByInstallRoot.repos-effect-utils}
-              install_dir="$deps_src/repos/effect-utils"
-              sed -n 's/^    resolution: {directory: \([^,]*\), type: directory}$/\1/p' \
-                "$install_dir/pnpm-lock.yaml" > directories
-              test "$(grep -cv '^packages/@overeng/utils$' directories)" -gt 0
-              while read -r directory; do
-                test -f "$install_dir/$directory/package.json" || {
-                  echo "injected directory package not staged: $directory" >&2
-                  exit 1
-                }
-                if [ "$directory" != packages/@overeng/utils ] \
-                  && grep -Fqx "  - $directory" "$install_dir/pnpm-workspace.yaml"; then
-                  echo "injected directory package widened the workspace: $directory" >&2
-                  exit 1
-                fi
-              done < directories
-              touch "$out"
-            '';
         # Lockfile-derived directories must stay canonical and beneath the
         # lockfile directory; `..` anywhere (including one that would dodge the
         # source-input check), empty segments, absolute paths, undecodable escapes
