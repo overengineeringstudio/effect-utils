@@ -29,8 +29,8 @@ fn validate(record: &CloseRecord) -> Result<()> {
     if record.schema != "buck2-attempt-close/v1"
         || !(record.pipeline_run_id.starts_with("ci/") || local)
         || record.root_in_record != local
-        || (local && (record.pipeline_run_id.split('/').count() != 2
-            || record.expected_jobs.len() != 1))
+        || (local
+            && (record.pipeline_run_id.split('/').count() != 2 || record.expected_jobs.len() != 1))
         || record.repository.split('/').count() != 2
     {
         bail!("invalid attempt close identity");
@@ -156,7 +156,8 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         (parts.get(1).context("invalid local run")?.to_string(), 1)
     } else {
         (
-            parts.get(parts.len().saturating_sub(2))
+            parts
+                .get(parts.len().saturating_sub(2))
                 .context("invalid CI run")?
                 .to_string(),
             parts.last().context("invalid CI attempt")?.parse()?,
@@ -226,6 +227,8 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         fs::rename(&tmp, &archived)?;
     }
     let manifest_json = String::from_utf8(bytes)?;
+    let synthetic_root =
+        (!record.root_in_record).then(|| ids::run_root_span(&record.pipeline_run_id));
     if synthetic {
         conn.execute(
             "update closes set digest=?1,repo=?2,manifest_json=?3,received_at=?4,
@@ -255,8 +258,7 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
             &record.pipeline_run_id,
             &record.repository,
             &ids::run_trace(&record.pipeline_run_id),
-            &ids::run_root_span(&record.pipeline_run_id),
-            record.root_in_record,
+            synthetic_root.as_deref(),
             &[],
             incomplete,
         )?;
@@ -267,8 +269,7 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         &record.pipeline_run_id,
         &record.repository,
         &ids::run_trace(&record.pipeline_run_id),
-        &ids::run_root_span(&record.pipeline_run_id),
-        record.root_in_record,
+        synthetic_root.as_deref(),
         &[],
         existing.as_ref().is_some_and(|(_, _, pushed, _)| *pushed),
     )?;
@@ -457,8 +458,7 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
                 &close.pipeline_run_id,
                 &close.repository,
                 &id,
-                &root,
-                close.root_in_record,
+                (!close.root_in_record).then_some(root.as_str()),
                 &missing,
                 incomplete,
             )?;
@@ -843,7 +843,11 @@ mod tests {
     }
     #[tokio::test]
     async fn local_close_verifies_carried_root_without_publishing_another() {
-        use axum::{extract::State, routing::{get, post}, Json, Router};
+        use axum::{
+            extract::State,
+            routing::{get, post},
+            Json, Router,
+        };
         use std::sync::Arc;
         use tokio::sync::Mutex;
 
@@ -860,7 +864,8 @@ mod tests {
         conn.execute(
             "insert into expected_spans(trace_id,digest,span_id) values (?1,?2,?3), (?1,?2,?4)",
             params![ids::run_trace(run), digest, root, job],
-        ).unwrap();
+        )
+        .unwrap();
         let close = CloseRecord {
             schema: "buck2-attempt-close/v1".into(),
             pipeline_run_id: run.into(),
@@ -884,15 +889,22 @@ mod tests {
             for resource in body["resourceSpans"].as_array().into_iter().flatten() {
                 for scope in resource["scopeSpans"].as_array().into_iter().flatten() {
                     for span in scope["spans"].as_array().into_iter().flatten() {
-                        observed.lock().await.push(span["spanId"].as_str().unwrap().into());
+                        observed
+                            .lock()
+                            .await
+                            .push(span["spanId"].as_str().unwrap().into());
                     }
                 }
             }
             Json(json!({}))
         }
         async fn readback(State(observed): State<Arc<Mutex<Vec<String>>>>) -> Json<Value> {
-            let spans = observed.lock().await.iter()
-                .map(|id| json!({"spanId":id})).collect::<Vec<_>>();
+            let spans = observed
+                .lock()
+                .await
+                .iter()
+                .map(|id| json!({"spanId":id}))
+                .collect::<Vec<_>>();
             Json(json!({"trace":{"resourceSpans":[{"scopeSpans":[{"spans":spans}]}]}}))
         }
         let app = Router::new()
@@ -904,21 +916,45 @@ mod tests {
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         cfg.tempo = cfg.otlp.clone();
         let client = reqwest::Client::new();
-        client.post(format!("{}/v1/traces", cfg.otlp))
+        client
+            .post(format!("{}/v1/traces", cfg.otlp))
             .json(&json!({"resourceSpans":[{"scopeSpans":[{"spans":[
                 {"spanId":root},{"spanId":job}
             ]}]}]}))
-            .send().await.unwrap().error_for_status().unwrap();
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
         assert_eq!(reconcile(&cfg, &client).await.unwrap(), 1);
         assert_eq!(reconcile(&cfg, &client).await.unwrap(), 0);
-        let response: Value = client.get(format!("{}/api/v2/traces/{}", cfg.tempo, ids::run_trace(run)))
-            .send().await.unwrap().json().await.unwrap();
-        let spans = response["trace"]["resourceSpans"][0]["scopeSpans"][0]["spans"].as_array().unwrap();
-        assert_eq!(spans.iter().filter(|span| span["spanId"] == root).count(), 1);
+        let response: Value = client
+            .get(format!(
+                "{}/api/v2/traces/{}",
+                cfg.tempo,
+                ids::run_trace(run)
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let spans = response["trace"]["resourceSpans"][0]["scopeSpans"][0]["spans"]
+            .as_array()
+            .unwrap();
+        assert_eq!(
+            spans.iter().filter(|span| span["spanId"] == root).count(),
+            1
+        );
         assert_eq!(spans.len(), 2, "close must not publish another copy");
-        let verified: Option<i64> = conn.query_row(
-            "select verified_at from run_traces where run_id=?1", [run], |r| r.get(0)
-        ).unwrap();
+        let verified: Option<i64> = conn
+            .query_row(
+                "select verified_at from run_traces where run_id=?1",
+                [run],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert!(verified.is_some());
         server.abort();
         fs::remove_dir_all(cfg.state).unwrap();
