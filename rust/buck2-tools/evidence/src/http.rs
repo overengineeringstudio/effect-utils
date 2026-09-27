@@ -72,7 +72,7 @@ async fn upload(
         &body,
         "buck2-run-record/v1",
     ) {
-        return response;
+        return *response;
     }
     let cfg = st.cfg.clone();
     let d = digest.clone();
@@ -133,7 +133,7 @@ async fn upload_close(
         &body,
         "buck2-attempt-close/v1",
     ) {
-        return response;
+        return *response;
     }
     let cfg = st.cfg.clone();
     let d = digest.clone();
@@ -165,45 +165,44 @@ fn authorize_upload(
     digest: &str,
     body: &[u8],
     schema: &str,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let role = if allow_local {
         None
     } else {
-        Some(upload_capability(headers).ok_or_else(|| StatusCode::FORBIDDEN.into_response())?)
+        Some(
+            upload_capability(headers)
+                .ok_or_else(|| Box::new(StatusCode::FORBIDDEN.into_response()))?,
+        )
     };
-    let run = store::preview_run_id(digest, body, schema).map_err(|e| match e {
-        UploadError::Rejected(message) => (StatusCode::BAD_REQUEST, message).into_response(),
-        UploadError::Io(message) => db_err(message),
+    let run = store::preview_run_id(digest, body, schema).map_err(|e| {
+        Box::new(match e {
+            UploadError::Rejected(message) => (StatusCode::BAD_REQUEST, message).into_response(),
+            UploadError::Io(message) => db_err(message),
+        })
     })?;
     let expected = if run.starts_with("ci/") {
         "ci-runner"
     } else if run.starts_with("local/") {
         "dev-host"
     } else {
-        return Err(StatusCode::BAD_REQUEST.into_response());
+        return Err(Box::new(StatusCode::BAD_REQUEST.into_response()));
     };
     if role.is_some_and(|role| role != expected) {
-        return Err(StatusCode::FORBIDDEN.into_response());
+        return Err(Box::new(StatusCode::FORBIDDEN.into_response()));
     }
     Ok(())
 }
 
 fn upload_capability(headers: &HeaderMap) -> Option<&str> {
-    let Some(raw) = headers
+    let raw = headers
         .get("tailscale-app-capabilities")
-        .and_then(|h| h.to_str().ok())
-    else {
-        return None;
-    };
+        .and_then(|h| h.to_str().ok())?;
     let Ok(doc) = serde_json::from_str::<serde_json::Value>(raw) else {
         return None;
     };
-    let Some(entries) = doc
+    let entries = doc
         .get("schickling.dev/cap/buck2-evidence-upload")
-        .and_then(|v| v.as_array())
-    else {
-        return None;
-    };
+        .and_then(|v| v.as_array())?;
     if entries.len() != 1 {
         return None;
     }
