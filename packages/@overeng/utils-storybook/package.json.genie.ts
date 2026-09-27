@@ -86,7 +86,10 @@ export default packageJson(
         './config': { types: './dist/src/config/mod.d.ts', default: './dist/src/config/mod.js' },
         './gate': { types: './dist/src/gate/mod.d.ts', default: './dist/src/gate/mod.js' },
         './gate/cli': { types: './dist/src/gate/cli.d.ts', default: './dist/src/gate/cli.js' },
-        './gate/setup': { types: './dist/src/gate/setup.d.ts', default: './dist/src/gate/setup.js' },
+        './gate/setup': {
+          types: './dist/src/gate/setup.d.ts',
+          default: './dist/src/gate/setup.js',
+        },
       },
     },
     peerDependenciesMeta: Object.fromEntries(
