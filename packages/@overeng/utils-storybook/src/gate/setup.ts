@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * Vitest setup file that installs the gate's project annotations.
  *
