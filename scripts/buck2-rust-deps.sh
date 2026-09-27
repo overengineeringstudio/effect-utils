@@ -191,7 +191,11 @@ for (const source of [...sources.values()].toSorted((a, b) => (`${a.repo} ${a.re
   const sha256 = new Bun.CryptoHasher("sha256").update(tarball).digest("hex");
   const previous = pinned?.archives?.find((pin) => pin.repo === source.repo && pin.rev === source.rev);
   if (previous !== undefined && previous.sha256 !== sha256)
-    fail(`${url} no longer matches its pinned sha256 ${previous.sha256} (fetched ${sha256})`);
+    fail(
+      `${url} no longer matches its pinned sha256 ${previous.sha256} (fetched ${sha256}). ` +
+        `GitHub re-rendered the tarball or the rev was rewritten: review the new tarball, ` +
+        `delete this pin from ${sidecarPath}, then re-run generate to pin the reviewed digest`,
+    );
   archives.push({ repo: source.repo, rev: source.rev, url, sha256, strip_prefix: topLevelPrefix(tarball) });
 }
 if (archives.length > 0)
