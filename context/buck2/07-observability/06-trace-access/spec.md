@@ -84,9 +84,9 @@ that the tested PR merges into (`HEAD^1` of a CI merge checkout), not the
 git merge-base of the PR head and a later-moving branch. Select the latest
 **k=7** indexed main-branch pipeline runs whose revisions are at or before
 that base revision, never after it. This reflects the main state at merge
-time. Compare like-for-like matrix-qualified job keys and task names. For each task,
-calculate the median of its eligible main-run durations; display their
-observed minimum to maximum as the main spread. A PR duration inside that
+time. Compare like-for-like matrix-qualified job keys and task names. For
+each task, calculate the median of its eligible main-run durations; display
+their observed minimum to maximum as the main spread. A PR duration inside that
 closed band is marked
 `noise`; outside it, show the signed delta from the median and mark it beyond
 spread. Show the sample count per task, including when fewer than seven runs
