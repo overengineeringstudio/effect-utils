@@ -2,7 +2,7 @@
 use crate::store::Manifest;
 use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
-use std::{fs, path::Path, time::Duration};
+use std::{fs, io::ErrorKind, path::Path, time::Duration};
 
 pub fn bundle(spool: &Path) -> Result<(String, Vec<u8>)> {
     let manifest_bytes = fs::read(spool.join("manifest.json")).context("seal before upload")?;
@@ -32,11 +32,21 @@ pub fn bundle(spool: &Path) -> Result<(String, Vec<u8>)> {
     Ok((digest, tar.into_inner()?))
 }
 
+/// A marker exists before the first byte is sent. Its presence means offline
+/// ingest cannot safely run: the service may have accepted a lost response.
 pub async fn upload(spool: &Path, url: Option<&str>) -> Result<String> {
-    let (digest, body) = bundle(spool)?;
     let credential = std::env::var("BUCK2_EVIDENCE_UPLOAD_TOKEN")
         .ok()
         .filter(|s| !s.is_empty());
+    upload_with_credential(spool, url, credential.as_deref()).await
+}
+
+async fn upload_with_credential(
+    spool: &Path,
+    url: Option<&str>,
+    credential: Option<&str>,
+) -> Result<String> {
+    let (digest, body) = bundle(spool)?;
     let is_close =
         serde_json::from_slice::<serde_json::Value>(&fs::read(spool.join("manifest.json"))?)?
             ["schema"]
@@ -44,6 +54,12 @@ pub async fn upload(spool: &Path, url: Option<&str>) -> Result<String> {
     let Some(url) = url else {
         return Ok(format!("spool-only sha256:{digest}"));
     };
+    let marker = spool.join("upload-pending");
+    let endpoint_hash = crate::sha256_hex(url.as_bytes());
+    let was_pending = marker.exists();
+    if was_pending && fs::read_to_string(&marker)? != endpoint_hash {
+        bail!("pending evidence belongs to a different upload endpoint");
+    }
     let (client, base) = if let Some(socket) = url.strip_prefix("unix://") {
         (
             reqwest::Client::builder()
@@ -60,9 +76,7 @@ pub async fn upload(spool: &Path, url: Option<&str>) -> Result<String> {
                     .nth(2)
                     .is_some_and(|host| host.ends_with(".ts.net")))
         {
-            return Ok(format!(
-                "spool-only sha256:{digest} (no authenticated transport)"
-            ));
+            bail!("upload URL is configured but no authenticated transport is available");
         }
         (
             reqwest::Client::builder()
@@ -71,33 +85,405 @@ pub async fn upload(spool: &Path, url: Option<&str>) -> Result<String> {
             url.trim_end_matches('/').to_owned(),
         )
     };
-    let endpoint = format!(
+    let endpoint = reqwest::Url::parse(&format!(
         "{base}/v1/{}/sha256/{digest}",
         if is_close { "attempt-close" } else { "records" }
-    );
+    ))?;
+    if !matches!(endpoint.scheme(), "http" | "https") {
+        bail!("upload URL uses an unsupported scheme");
+    }
+    if !was_pending {
+        let tmp = spool.join("upload-pending.tmp");
+        fs::write(&tmp, &endpoint_hash)?;
+        fs::rename(tmp, &marker)?;
+    }
+    let mut ambiguous = was_pending;
     for attempt in 0..5u32 {
         let mut request = client
-            .put(&endpoint)
+            .put(endpoint.clone())
             .header("if-none-match", "*")
             .body(body.clone());
-        if let Some(token) = &credential {
+        if let Some(token) = credential {
             request = request.bearer_auth(token);
         }
         let response = request.send().await;
         match response {
             Ok(r) if r.status().is_success() || r.status() == reqwest::StatusCode::CONFLICT => {
-                // A remote acknowledgement is not permission to discard the spool.
                 let (verified, _) = bundle(spool)?;
                 if verified != digest {
                     bail!("local seal changed during upload");
                 }
+                // A concurrent replay may confirm the request while its original
+                // caller is still awaiting a response. Preserve that proof before
+                // clearing the pending marker.
+                fs::write(spool.join("upload-confirmed"), &endpoint_hash)?;
+                fs::remove_file(&marker)?;
                 return Ok(format!("uploaded sha256:{digest}"));
             }
-            Ok(r) if r.status().is_client_error() => bail!("upload rejected: {}", r.status()),
-            Err(e) if attempt == 4 => return Err(e.into()),
-            Ok(r) if attempt == 4 => bail!("upload failed: {}", r.status()),
-            _ => tokio::time::sleep(Duration::from_millis(500 * (1 << attempt))).await,
+            Ok(r) if r.status().is_client_error() => {
+                if !ambiguous {
+                    fs::remove_file(&marker)?;
+                }
+                bail!("upload rejected: {}", r.status());
+            }
+            Err(e) => {
+                if !definitely_not_sent(&e) {
+                    ambiguous = true;
+                }
+                if attempt == 4 {
+                    if !ambiguous {
+                        fs::remove_file(&marker)?;
+                    }
+                    return Err(e.into());
+                }
+            }
+            Ok(r) => {
+                ambiguous = true;
+                if attempt == 4 {
+                    bail!("upload failed: {}", r.status());
+                }
+            }
         }
+        tokio::time::sleep(Duration::from_millis(500 * (1 << attempt))).await;
     }
     unreachable!()
+}
+
+fn definitely_not_sent(error: &reqwest::Error) -> bool {
+    if !error.is_connect() {
+        return false;
+    }
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(cause) = source {
+        if let Some(io) = cause.downcast_ref::<std::io::Error>() {
+            return matches!(
+                io.kind(),
+                ErrorKind::ConnectionRefused | ErrorKind::NotFound
+            );
+        }
+        source = cause.source();
+    }
+    false
+}
+
+pub async fn upload_pending(root: &Path, url: &str) -> Result<usize> {
+    let mut runs = match fs::read_dir(root) {
+        Ok(entries) => entries.collect::<std::io::Result<Vec<_>>>()?,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e.into()),
+    };
+    runs.sort_by_key(|entry| entry.file_name());
+    let mut uploaded = 0;
+    let mut failed = 0;
+    let mut first_error = None;
+    for run in runs {
+        if !run.file_type()?.is_dir() {
+            continue;
+        }
+        let job = run.path();
+        let replay: Result<usize> = async {
+            let close = job.join("attempt-close");
+            let close_pending = close.join("upload-pending").exists();
+            let close_confirmed = close.join("upload-confirmed").exists();
+            if close_confirmed
+                && fs::read_to_string(close.join("upload-confirmed"))?
+                    != crate::sha256_hex(url.as_bytes())
+            {
+                bail!("confirmed close belongs to a different upload endpoint");
+            }
+            let mut count = 0;
+            if close_pending {
+                upload(&close, Some(url)).await?;
+                count += 1;
+            }
+            // A lost close acknowledgement occurs before the job PUT is attempted.
+            // A confirmed close with an unconfirmed job is also service-owned,
+            // even when that job's last attempt was definitively refused.
+            if !job.join("upload-confirmed").exists()
+                && (job.join("upload-pending").exists() || close_pending || close_confirmed)
+                && job.join("manifest.json").exists()
+            {
+                upload(&job, Some(url)).await?;
+                count += 1;
+            }
+            Ok(count)
+        }
+        .await;
+        match replay {
+            Ok(count) => uploaded += count,
+            Err(err) => {
+                eprintln!(
+                    "pending evidence replay failed for {}: {err:#}",
+                    job.display()
+                );
+                failed += 1;
+                if first_error.is_none() {
+                    first_error = Some(err.context(format!("replaying {}", job.display())));
+                }
+            }
+        }
+    }
+    if let Some(err) = first_error {
+        return Err(err.context(format!("{failed} pending run(s) failed to replay")));
+    }
+    Ok(uploaded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    const RECORD: &[u8] = br#"{"schema":"buck2-run-record/v1","producer":{},"run":{"repository":"owner/repo","pipelineRunId":"local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1","runId":"local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1","attempt":1,"jobKey":"worker/local"},"files":[]}"#;
+
+    #[tokio::test]
+    async fn accepted_request_with_lost_response_replays_without_offline_ingest() {
+        let root = std::env::temp_dir().join(format!(
+            "buck2-upload-{}-{}",
+            std::process::id(),
+            crate::now_ms()
+        ));
+        let spool = root.join("run");
+        fs::create_dir_all(&spool).unwrap();
+        fs::write(spool.join("manifest.json"), RECORD).unwrap();
+        let socket = root.join("service.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let respond = Arc::new(AtomicBool::new(false));
+        let requests = Arc::new(AtomicUsize::new(0));
+        let server = tokio::spawn({
+            let respond = Arc::clone(&respond);
+            let requests = Arc::clone(&requests);
+            async move {
+                loop {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let mut received = Vec::new();
+                    let mut buffer = [0u8; 4096];
+                    loop {
+                        let n = stream.read(&mut buffer).await.unwrap();
+                        if n == 0 {
+                            break;
+                        }
+                        received.extend_from_slice(&buffer[..n]);
+                        if let Some(headers_end) =
+                            received.windows(4).position(|v| v == b"\r\n\r\n")
+                        {
+                            let headers = String::from_utf8_lossy(&received[..headers_end])
+                                .to_ascii_lowercase();
+                            let len = headers
+                                .lines()
+                                .find_map(|line| line.strip_prefix("content-length: "))
+                                .and_then(|n| n.parse::<usize>().ok())
+                                .unwrap();
+                            if received.len() >= headers_end + 4 + len {
+                                requests.fetch_add(1, Ordering::SeqCst);
+                                if respond.load(Ordering::SeqCst) {
+                                    stream
+                                        .write_all(
+                                            b"HTTP/1.1 409 Conflict\r\nContent-Length: 0\r\n\r\n",
+                                        )
+                                        .await
+                                        .unwrap();
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let url = format!("unix://{}", socket.display());
+        assert!(upload(&spool, Some(&url)).await.is_err());
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            5,
+            "all failed replies followed accepted bodies"
+        );
+        assert!(
+            spool.join("upload-pending").exists(),
+            "offline ingest must be withheld"
+        );
+        respond.store(true, Ordering::SeqCst);
+        assert_eq!(upload_pending(&root, &url).await.unwrap(), 1);
+        assert!(
+            !spool.join("upload-pending").exists(),
+            "409 confirms the replay"
+        );
+        let next = root.join("next");
+        let next_close = next.join("attempt-close");
+        fs::create_dir_all(&next_close).unwrap();
+        fs::write(next.join("manifest.json"), RECORD).unwrap();
+        fs::write(
+            next_close.join("manifest.json"),
+            br#"{"schema":"buck2-attempt-close/v1"}"#,
+        )
+        .unwrap();
+        fs::write(
+            next_close.join("upload-pending"),
+            crate::sha256_hex(url.as_bytes()),
+        )
+        .unwrap();
+        assert_eq!(
+            upload_pending(&root, &url).await.unwrap(),
+            2,
+            "a lost close reply must replay both close and never-attempted job"
+        );
+        assert!(!next_close.join("upload-pending").exists());
+        assert_eq!(requests.load(Ordering::SeqCst), 8);
+        server.abort();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn definite_refusal_allows_offline_only_without_prior_ambiguity() {
+        let root = std::env::temp_dir().join(format!(
+            "buck2-refused-{}-{}",
+            std::process::id(),
+            crate::now_ms()
+        ));
+        let spool = root.join("run");
+        fs::create_dir_all(&spool).unwrap();
+        fs::write(spool.join("manifest.json"), RECORD).unwrap();
+        let url = format!("unix://{}", root.join("missing.sock").display());
+        assert!(upload(&spool, Some(&url)).await.is_err());
+        assert!(
+            !spool.join("upload-pending").exists(),
+            "a never-connected service cannot already own this record"
+        );
+        fs::write(
+            spool.join("upload-pending"),
+            crate::sha256_hex(url.as_bytes()),
+        )
+        .unwrap();
+        assert!(upload(&spool, Some(&url)).await.is_err());
+        assert!(
+            spool.join("upload-pending").exists(),
+            "prior ambiguous acceptance stays pending even after later refusal"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn invalid_transport_does_not_mark_unsent_upload_pending() {
+        let root = std::env::temp_dir().join(format!(
+            "buck2-invalid-transport-{}-{}",
+            std::process::id(),
+            crate::now_ms()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("manifest.json"), RECORD).unwrap();
+        let url = "http://127.0.0.1:1";
+        let err = upload_with_credential(&root, Some(url), None)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no authenticated transport"),
+            "{err:#}"
+        );
+        assert!(
+            !root.join("upload-pending").exists(),
+            "no byte can be sent from this configuration"
+        );
+        let hash = crate::sha256_hex(url.as_bytes());
+        fs::write(root.join("upload-pending"), &hash).unwrap();
+        assert!(upload_with_credential(&root, Some(url), None)
+            .await
+            .is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("upload-pending")).unwrap(),
+            hash,
+            "an earlier ambiguous attempt cannot be cleared by invalid config"
+        );
+        let unsupported = root.join("unsupported");
+        fs::create_dir(&unsupported).unwrap();
+        fs::write(unsupported.join("manifest.json"), RECORD).unwrap();
+        let err = upload_with_credential(&unsupported, Some("ftp://127.0.0.1"), Some("token"))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("unsupported scheme"), "{err:#}");
+        assert!(!unsupported.join("upload-pending").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn rejected_pending_run_does_not_starve_later_runs() {
+        let root = std::env::temp_dir().join(format!(
+            "buck2-pending-runs-{}-{}",
+            std::process::id(),
+            crate::now_ms()
+        ));
+        let bad_close = root.join("a-bad/attempt-close");
+        let good = root.join("b-good");
+        fs::create_dir_all(&bad_close).unwrap();
+        fs::create_dir_all(&good).unwrap();
+        fs::write(
+            bad_close.join("manifest.json"),
+            br#"{"schema":"buck2-attempt-close/v1"}"#,
+        )
+        .unwrap();
+        fs::write(good.join("manifest.json"), RECORD).unwrap();
+        let socket = root.join("service.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let url = format!("unix://{}", socket.display());
+        let hash = crate::sha256_hex(url.as_bytes());
+        fs::write(bad_close.join("upload-pending"), &hash).unwrap();
+        fs::write(good.join("upload-pending"), &hash).unwrap();
+        let server = tokio::spawn(async move {
+            let mut requested = Vec::new();
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut received = Vec::new();
+                let mut buffer = [0u8; 4096];
+                loop {
+                    let n = stream.read(&mut buffer).await.unwrap();
+                    assert_ne!(n, 0, "request body ended early");
+                    received.extend_from_slice(&buffer[..n]);
+                    if let Some(end) = received.windows(4).position(|v| v == b"\r\n\r\n") {
+                        let headers =
+                            String::from_utf8_lossy(&received[..end]).to_ascii_lowercase();
+                        let len = headers
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .and_then(|n| n.parse::<usize>().ok())
+                            .unwrap();
+                        if received.len() >= end + 4 + len {
+                            break;
+                        }
+                    }
+                }
+                let path = String::from_utf8_lossy(&received)
+                    .lines()
+                    .next()
+                    .unwrap()
+                    .to_owned();
+                if path.contains("/attempt-close/") {
+                    stream
+                        .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+                        .await
+                        .unwrap();
+                } else {
+                    stream
+                        .write_all(b"HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\n\r\n")
+                        .await
+                        .unwrap();
+                }
+                requested.push(path);
+            }
+            requested
+        });
+        let err = upload_pending(&root, &url).await.unwrap_err();
+        assert!(
+            err.to_string().contains("1 pending run(s) failed"),
+            "{err:#}"
+        );
+        let requested = server.await.unwrap();
+        assert!(requested[0].contains("/attempt-close/"));
+        assert!(requested[1].contains("/records/"));
+        assert!(bad_close.join("upload-pending").exists());
+        assert!(!good.join("upload-pending").exists());
+        assert!(good.join("upload-confirmed").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
 }

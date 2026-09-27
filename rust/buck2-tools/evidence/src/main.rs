@@ -42,6 +42,8 @@ enum Cmd {
         spool: PathBuf,
         #[arg(long, env = "BUCK2_EVIDENCE_UPLOAD_URL")]
         url: Option<String>,
+        #[arg(long)]
+        pending: bool,
     },
     Ingest {
         #[command(flatten)]
@@ -482,11 +484,25 @@ async fn main() -> anyhow::Result<()> {
             );
             return Ok(());
         }
-        Cmd::Upload { spool, url } => {
-            println!(
-                "{}",
-                buck2_evidence::transport::upload(&spool, url.as_deref()).await?
-            );
+        Cmd::Upload {
+            spool,
+            url,
+            pending,
+        } => {
+            if pending {
+                let url = url
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("pending upload needs URL"))?;
+                println!(
+                    "replayed {} pending uploads",
+                    buck2_evidence::transport::upload_pending(&spool, url).await?
+                );
+            } else {
+                println!(
+                    "{}",
+                    buck2_evidence::transport::upload(&spool, url.as_deref()).await?
+                );
+            }
             return Ok(());
         }
         Cmd::Retention {
