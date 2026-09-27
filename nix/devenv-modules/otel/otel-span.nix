@@ -692,9 +692,9 @@ pkgs.writeShellScriptBin "otel-span" ''
         export PIPELINE_RUN_ID="$run_id" PIPELINE_TASK_KEY="$job_key"
         export PIPELINE_TRACE_ID="$trace_id" PIPELINE_ROOT_SPAN_ID="$root_id" PIPELINE_TASK_SPAN_ID="$job_id"
         if (( owner )); then export PIPELINE_ROOT_OWNER=entrypoint; fi
-        # A nested task stays beneath its active span, not a second job/root.
-        if (( ! owner )) && [[ "''${PIPELINE_ENTRYPOINT_ACTIVE:-}" == 1 ]] &&
-          _valid_traceparent "$inherited" && [[ "''${BASH_REMATCH[1]}" == "$trace_id" ]]; then
+        # The active entrypoint owns its spool even when another wrapper
+        # replaces the ambient trace between two nested invocations.
+        if (( ! owner )) && [[ "''${PIPELINE_ENTRYPOINT_ACTIVE:-}" == 1 ]]; then
           nested=1
         fi
         export PIPELINE_ENTRYPOINT_ACTIVE=1
@@ -702,7 +702,8 @@ pkgs.writeShellScriptBin "otel-span" ''
           outer="$inherited"
         fi
         unset OTEL_TASK_TRACEPARENT
-        if (( nested )); then
+        if (( nested )) && _valid_traceparent "$inherited" &&
+          [[ "''${BASH_REMATCH[1]}" == "$trace_id" ]]; then
           export TRACEPARENT="$inherited"
         else
           export TRACEPARENT="00-$trace_id-$job_id-01"
@@ -722,14 +723,22 @@ pkgs.writeShellScriptBin "otel-span" ''
           fi
         fi
 
-        if (( owner )) || [[ -z "''${PIPELINE_SPOOL_DIR:-}" ]]; then
-          export PIPELINE_SPOOL_DIR="''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records/$trace_id-$job_id"
-        fi
-        if ${pkgs.coreutils}/bin/mkdir -p "$PIPELINE_SPOOL_DIR/spans" "$PIPELINE_SPOOL_DIR/buck2" 2>/dev/null; then
-          export OTEL_SPAN_SPOOL_DIR="$PIPELINE_SPOOL_DIR/spans"
-          export OTEL_SPOOL_MULTI_WRITER=1
+        # Never divert OTLP away from a working HTTP endpoint when there is
+        # no evidence consumer to drain the spool.
+        local evidence_available=0
+        if command -v buck2-evidence >/dev/null 2>&1; then evidence_available=1; fi
+        if (( evidence_available )); then
+          if (( owner )) || [[ -z "''${PIPELINE_SPOOL_DIR:-}" ]]; then
+            export PIPELINE_SPOOL_DIR="''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records/$trace_id-$job_id"
+          fi
+          if ${pkgs.coreutils}/bin/mkdir -p "$PIPELINE_SPOOL_DIR/spans" "$PIPELINE_SPOOL_DIR/buck2" 2>/dev/null; then
+            export OTEL_SPAN_SPOOL_DIR="$PIPELINE_SPOOL_DIR/spans"
+            export OTEL_SPOOL_MULTI_WRITER=1
+          else
+            echo "otel-span pipeline-run: cannot create evidence spool; continuing" >&2
+            unset PIPELINE_SPOOL_DIR OTEL_SPAN_SPOOL_DIR
+          fi
         else
-          echo "otel-span pipeline-run: cannot create evidence spool; continuing" >&2
           unset PIPELINE_SPOOL_DIR OTEL_SPAN_SPOOL_DIR
         fi
         if (( owner )) && [[ -n "$outer" && -n "''${OTEL_SPAN_FORWARD_LINK_FILE:-}" ]]; then
@@ -747,8 +756,8 @@ pkgs.writeShellScriptBin "otel-span" ''
         wait "$child" || rc=$?
         if [[ -n "$signal" ]]; then
           trap ':' INT TERM
-          wait "$child" 2>/dev/null || true
-          if [[ "$signal" == INT ]]; then rc=130; else rc=143; fi
+          rc=0
+          wait "$child" || rc=$?
         fi
         trap - INT TERM
         end_ns="$(${pkgs.coreutils}/bin/date +%s%N)"
@@ -770,7 +779,7 @@ pkgs.writeShellScriptBin "otel-span" ''
               --attr-int "exit.code=$rc" "''${link_args[@]}" || true
           )
         fi
-        if (( ! nested )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" ]] && command -v buck2-evidence >/dev/null 2>&1; then
+        if (( ! nested && evidence_available )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" ]]; then
           if ${pkgs.coreutils}/bin/timeout -k 2 15 buck2-evidence seal \
             --spool "$PIPELINE_SPOOL_DIR" --run-id "$run_id" --task-key "$job_key"; then
             if [[ -n "''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" ]]; then

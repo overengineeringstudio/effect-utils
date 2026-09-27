@@ -548,11 +548,13 @@ let
       cd "$root"
       ${standaloneBuckCachePosture}
 
-      # The pipeline entrypoint owns seal/ingest after the whole task graph,
-      # so command evidence remains writable while siblings run concurrently.
+      # The pipeline owner seals its shared spool after the task graph.
+      # Standalone Buck tasks retain their bounded native ingest path.
+      pipeline_spool=0
       spool=""
       if [ -n "''${PIPELINE_SPOOL_DIR:-}" ]; then
         spool="$PIPELINE_SPOOL_DIR/buck2"
+        pipeline_spool=1
         ${pkgs.coreutils}/bin/mkdir -p "$spool" || spool=""
       elif ${pkgs.coreutils}/bin/mkdir -p "$root/.devenv/otel/buck2-events"; then
         spool="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/otel/buck2-events/${taskName}.XXXXXXXX")" || spool=""
@@ -588,6 +590,12 @@ let
           --end-time-ns "$command_end_ns" \
           --status-code "$command_status" \
           --attr-int "exit.code=$buck_exit" || true
+      fi
+      if (( ! pipeline_spool )) && [ -n "$spool" ] && [ -s "$event_log" ] &&
+        [ -n "''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" ]; then
+        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+          ${pkgs.coreutils}/bin/timeout -k 5 60 \
+          ${repoPackages.buck2-events}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" || true
       fi
       exit "$buck_exit"
     '';

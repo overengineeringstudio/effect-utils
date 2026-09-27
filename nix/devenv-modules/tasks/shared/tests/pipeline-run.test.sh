@@ -8,6 +8,20 @@ unset TRACEPARENT OTEL_TASK_TRACEPARENT OTEL_SPAN_SPOOL_DIR OTEL_SPOOL_MULTI_WRI
   PIPELINE_SPOOL_DIR PIPELINE_TRACE_ID PIPELINE_ROOT_SPAN_ID PIPELINE_TASK_SPAN_ID
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/bin"
+cat > "$tmp/bin/buck2-evidence" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "$PIPELINE_TEST_SEALS"
+SH
+chmod +x "$tmp/bin/buck2-evidence"
+export PATH="$tmp/bin:$PATH" PIPELINE_TEST_SEALS="$tmp/seals"
+
+# Without an evidence consumer, an OTLP endpoint retains direct HTTP delivery.
+# The seed is still available to the child, but must not redirect to disk.
+PATH=/usr/bin:/bin OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:1 \
+  DEVENV_ROOT="$tmp/no-evidence" "$span" pipeline-run -- bash -c \
+  '[[ -z ${OTEL_SPAN_SPOOL_DIR:-} && -z ${PIPELINE_SPOOL_DIR:-} && -n ${TRACEPARENT:-} ]]'
+[[ ! -e "$tmp/no-evidence/.devenv/otel/run-records" ]]
 
 expect_vector() {
   local got
@@ -64,6 +78,17 @@ trace=$(cut -d- -f2 < "$tmp/nested")
 root="$tmp/.devenv/otel/run-records"
 [[ $(find "$root" -name '*.jsonl' | wc -l) == 2 ]]
 [[ $(find "$root" -name '*.jsonl' -exec cat {} + | jq -s --arg trace "$trace" '[.[].resourceSpans[].scopeSpans[].spans[] | select(.traceId == $trace and .name == "cicd.pipeline.run")] | length') == 1 ]]
+[[ $(grep -c '^seal$' "$PIPELINE_TEST_SEALS") == 1 ]]
+# An inner caller may replace its own W3C context. It still cannot seal the
+# active entrypoint's spool before the outer command is finished.
+unset PIPELINE_TEST_SEALS
+export PIPELINE_TEST_SEALS="$tmp/foreign-seals"
+"$span" pipeline-run -- bash -c \
+  'TRACEPARENT=00-11111111111111111111111111111111-2222222222222222-01 \
+    OTEL_TASK_TRACEPARENT=00-11111111111111111111111111111111-2222222222222222-01 \
+    "$OTEL_SPAN_BIN" pipeline-run -- bash -c \
+      '\''[[ "$TRACEPARENT" == 00-"$PIPELINE_TRACE_ID"-* ]]'\'''
+[[ $(grep -c '^seal$' "$PIPELINE_TEST_SEALS") == 1 ]]
 
 # A CI-provided run is seeded but never emits the root locally, and an
 # unrelated inherited task trace must not override either seed.
@@ -88,6 +113,21 @@ rc=0
 wait "$child" || rc=$?
 [[ "$rc" == 143 ]]
 [[ $(find "$tmp/interrupted/.devenv/otel/run-records" -name '*.jsonl' -exec cat {} + | jq -s '[.[].resourceSpans[].scopeSpans[].spans[] | select(.name == "cicd.pipeline.run" and (.attributes | any(.key == "exit.code" and .value.intValue == "143")))] | length') == 1 ]]
+
+# A signal handler that completes cleanup with its own code must determine
+# both the entrypoint exit and the root's recorded exit.code.
+mkfifo "$tmp/handled-ready"
+PIPELINE_TEST_READY="$tmp/handled-ready" DEVENV_ROOT="$tmp/handled" \
+  "$span" pipeline-run -- bash -c \
+    'trap "exit 7" TERM; printf "ready\n" > "$PIPELINE_TEST_READY"; while :; do sleep 1; done' &
+child=$!
+read -r -t 5 marker < "$tmp/handled-ready"
+[[ "$marker" == ready ]]
+kill -TERM "$child"
+rc=0
+wait "$child" || rc=$?
+[[ "$rc" == 7 ]]
+[[ $(find "$tmp/handled/.devenv/otel/run-records" -name '*.jsonl' -exec cat {} + | jq -s '[.[].resourceSpans[].scopeSpans[].spans[] | select(.name == "cicd.pipeline.run" and (.attributes | any(.key == "exit.code" and .value.intValue == "7")))] | length') == 1 ]]
 
 # The new root replaces a caller trace and links back. Its participating
 # otel-span owner writes a forward link before completing its own span.
