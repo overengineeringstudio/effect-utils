@@ -133,6 +133,8 @@ const optInCheckContexts = new Set([
   'devenv-perf',
   'pr-a-inert-buck',
   'trusted-buck2-remote-cache-proof',
+  'evidence-attempt-close',
+  'evidence-pr-link',
 ])
 const mainOnlyCheckContexts: Record<string, true> = {
   'test-integration-notion': true,
