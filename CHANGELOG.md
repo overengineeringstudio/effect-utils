@@ -84,6 +84,17 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **weaver / semconv pins**: OpenTelemetry Weaver 0.24.2 → 0.26.1 and the
+  pinned upstream semantic-convention registry v1.37.0 → v1.44.0, moved in
+  lockstep across `nix/weaver-flake/flake.nix` and
+  `genie/weaver-registry/registry.ts`. The emitted registry is regenerated.
+  Upstream dependencies now carry the `schema_url` that Weaver 0.26 requires.
+  `//:weaver_check`, `weaver:diff`, and the live-check test run in stable
+  policy mode (no `--future`), because semconv v1.44 ships experimental
+  `definition/2` files that `--future` rejects. The pin skips 0.25.x, which
+  dropped the legacy v1 `name` + `registry_path` dependency form (restored in
+  0.26.0).
+
 - **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
   Weaver remap dynamic sandbox paths before compilation, so capability
   manifests retain their strict executable digest across sandbox roots.
