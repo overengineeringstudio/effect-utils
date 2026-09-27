@@ -766,6 +766,62 @@ describe('defineCatalog', () => {
       })
     })
 
+    it('pins prerelease peers exactly and keeps a caret for releases', () => {
+      const prereleaseCatalog = defineCatalog({
+        effect: '4.0.0-rc.113',
+        '@effect/vitest': '^4.0.0-rc.113',
+        '@effect/platform-node': '4.0.0-rc.113+build.5',
+        react: '19.2.3',
+        '@types/react': '^19.2.18',
+      })
+      const names = [
+        'effect',
+        '@effect/vitest',
+        '@effect/platform-node',
+        'react',
+        '@types/react',
+      ] as const
+
+      const composed = prereleaseCatalog.compose({
+        workspace: workspace({ repoName: repo.repoName, memberPath: 'packages/app' }),
+        peerDependencies: { external: prereleaseCatalog.pick(...names) },
+      })
+
+      const expected = {
+        '@effect/platform-node': '4.0.0-rc.113+build.5',
+        '@effect/vitest': '4.0.0-rc.113',
+        '@types/react': '^19.2.18',
+        effect: '4.0.0-rc.113',
+        react: '^19.2.3',
+      }
+      expect(composed.peerDependencies).toEqual(expected)
+      expect(prereleaseCatalog.peers(...names)).toEqual(expected)
+    })
+
+    it('pins an inherited caret prerelease peer and keeps other inherited ranges', () => {
+      // A hand-authored workspace package: its peers bypass the catalog rule.
+      const shared = {
+        data: {
+          name: '@test/shared',
+          version: '1.0.0',
+          peerDependencies: { effect: '^4.0.0-rc.113', react: '^18.0.0 || ^19.0.0-rc.1' },
+        },
+        meta: {
+          workspace: { repoName: repo.repoName, memberPath: 'packages/utils', deps: [] },
+        },
+      }
+
+      const composed = catalog.compose({
+        workspace: workspace({ repoName: repo.repoName, memberPath: 'packages/app' }),
+        peerDependencies: { workspace: [shared] },
+      })
+
+      expect(composed.peerDependencies).toEqual({
+        effect: '4.0.0-rc.113',
+        react: '^18.0.0 || ^19.0.0-rc.1',
+      })
+    })
+
     it('returns empty workspace metadata when no workspace packages are provided', () => {
       const composed = catalog.compose({
         workspace: workspace({

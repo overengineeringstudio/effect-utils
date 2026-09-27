@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking changes
 
+- **Genie exact prerelease peers**: `catalog.compose` peer dependencies and
+  `catalog.peers` now emit a prerelease catalog version exactly
+  (`effect: 4.0.0-rc.113`) instead of with a caret. Release versions keep `^`.
+  Consumers with `strict-peer-dependencies` now reject a mismatched Effect RC.
+  Repin effect-utils only to a merged product-manifest commit, with the
+  consumer's Effect cohort set to the same exact version (decision 0037,
+  Amendment 2).
 - **@overeng/utils-dev**: Effect rc.113 removed fast-check. `Vitest.asProp`
   now takes `{ arbitrary: Arbitrary.CheckOptions }` instead of
   `{ fastCheck: FC.Parameters }` and accepts native `Arbitrary` values. The

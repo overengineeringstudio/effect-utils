@@ -135,13 +135,14 @@ export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
    */
   pick<K extends keyof T>(...keys: K[]): { [P in K]: T[P] }
   /**
-   * Generate peerDependencies object with `^` version prefix.
+   * Generate a peerDependencies object from catalog versions (see
+   * `peerRangeFromCatalogVersion`: `^` for releases, exact for prereleases).
    * Useful for library packages that expose dependencies as peer deps.
    *
    * @example
    * ```ts
-   * peerDependencies: catalog.peers('effect', '@effect/platform'),
-   * // → { effect: '^3.19.14', '@effect/platform': '^0.94.1' }
+   * peerDependencies: catalog.peers('effect', 'react'),
+   * // → { effect: '4.0.0-rc.113', react: '^19.2.8' }
    * ```
    */
   peers<K extends keyof T>(...keys: K[]): { [P in K]: string }
@@ -221,13 +222,33 @@ const createPickFn =
     return result
   }
 
-/** Creates a peers function for a catalog object (versions with ^ prefix) */
+/**
+ * A single (optionally caret-prefixed) prerelease version, with optional build metadata;
+ * group 1 is the exact version.
+ */
+const singlePrereleasePeer = /^\^?(\d+\.\d+\.\d+-[0-9A-Za-z.-]+(?:\+[0-9A-Za-z.-]+)?)$/
+
+/**
+ * Peer range for a catalog version: `^version` for a release, the exact version for a
+ * prerelease (a caret on an authored prerelease is dropped). pnpm's peer check accepts
+ * any prerelease of the same core under a caret (`^4.0.0-rc.113` admits rc.112 and
+ * rc.114), and prerelease cohorts such as Effect RCs break between iterations, so a
+ * consumer on a different prerelease must fail the peer check instead of resolving.
+ * A release range already carrying `^` is kept as authored.
+ */
+const peerRangeFromCatalogVersion = (version: string) => {
+  const prerelease = singlePrereleasePeer.exec(version)?.[1]
+  if (prerelease !== undefined) return prerelease
+  return version.startsWith('^') === true ? version : `^${version}`
+}
+
+/** Creates a peers function for a catalog object (see `peerRangeFromCatalogVersion`) */
 const createPeersFn =
   <T extends CatalogInput>(catalog: T) =>
   <K extends keyof T>(...keys: K[]): { [P in K]: string } => {
     const result = {} as { [P in K]: string }
     for (const key of keys) {
-      result[key] = `^${catalog[key]}`
+      result[key] = peerRangeFromCatalogVersion(`${catalog[key]}`)
     }
     return result
   }
@@ -305,10 +326,15 @@ const resolvePeerDependencies = <
 }) =>
   Object.fromEntries(
     [
-      ...packages.flatMap((pkg) => Object.entries(pkg.data.peerDependencies ?? {})),
+      // Inherited peers keep their authored range, except that a caret prerelease is
+      // pinned exactly so it cannot reintroduce a permissive cohort range.
+      ...packages.flatMap((pkg) =>
+        Object.entries(pkg.data.peerDependencies ?? {}).map(
+          ([name, range]) => [name, singlePrereleasePeer.exec(range)?.[1] ?? range] as const,
+        ),
+      ),
       ...Object.entries(external).map(
-        ([name, version]) =>
-          [name, version.startsWith('^') === true ? version : `^${version}`] as const,
+        ([name, version]) => [name, peerRangeFromCatalogVersion(version)] as const,
       ),
     ].toSorted(([nameA], [nameB]) => nameA.localeCompare(nameB)),
   ) as CatalogInput

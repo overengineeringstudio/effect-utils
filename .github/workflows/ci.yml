@@ -742,6 +742,11 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
+      - name: Check pnpm lockfile matches package specifiers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEVENV_TASK_PASSTHROUGH: '1'
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --frozen-lockfile --lockfile-only --offline --ignore-scripts --config.minimum-release-age=0'
       - name: Format + lint
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2911,7 +2916,7 @@ jobs:
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
   build-products:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'pull_request' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 120
