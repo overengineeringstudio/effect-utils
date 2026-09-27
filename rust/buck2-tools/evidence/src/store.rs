@@ -112,6 +112,125 @@ pub fn read_manifest(dir: &Path) -> StepResult<Manifest> {
     let bytes = std::fs::read(dir.join("manifest.json")).map_err(transient)?;
     serde_json::from_slice(&bytes).map_err(permanent)
 }
+/// Read only the sealed identity before authorization or a duplicate-digest shortcut.
+/// Full archive verification still happens in `accept`.
+pub fn preview_run_id(digest: &str, body: &[u8], schema: &str) -> Result<String, UploadError> {
+    if !is_digest(digest) || body.len() > MAX_BODY {
+        return Err(UploadError::Rejected(
+            "invalid upload digest or size".into(),
+        ));
+    }
+    let mut archive = tar::Archive::new(body);
+    for entry in archive
+        .entries()
+        .map_err(|e| UploadError::Rejected(e.to_string()))?
+    {
+        let mut entry = entry.map_err(|e| UploadError::Rejected(e.to_string()))?;
+        if entry
+            .path()
+            .map_err(|e| UploadError::Rejected(e.to_string()))?
+            .as_ref()
+            != Path::new("manifest.json")
+        {
+            continue;
+        }
+        if entry.size() > 256 * 1024 {
+            return Err(UploadError::Rejected("manifest too large".into()));
+        }
+        let mut bytes = Vec::with_capacity(entry.size() as usize);
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|e| UploadError::Rejected(e.to_string()))?;
+        if sha256_hex(&bytes) != digest {
+            return Err(UploadError::Rejected("manifest digest mismatch".into()));
+        }
+        let doc: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|e| UploadError::Rejected(e.to_string()))?;
+        if doc["schema"] != schema {
+            return Err(UploadError::Rejected("unexpected manifest schema".into()));
+        }
+        let id = if schema == "buck2-run-record/v1" {
+            &doc["run"]["pipelineRunId"]
+        } else {
+            &doc["pipelineRunId"]
+        };
+        return id
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| UploadError::Rejected("missing run identity".into()));
+    }
+    Err(UploadError::Rejected("manifest missing".into()))
+}
+pub fn valid_local_uuid(id: &str) -> bool {
+    let bytes = id.as_bytes();
+    bytes.len() == 36
+        && bytes.iter().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => *byte == b'-',
+            14 => (b'1'..=b'5').contains(byte),
+            19 => matches!(*byte, b'8' | b'9' | b'a' | b'b'),
+            _ => byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase(),
+        })
+}
+
+pub fn validate_identity(manifest: &Manifest) -> Result<(), UploadError> {
+    let run = &manifest.run;
+    let parts: Vec<_> = run.pipeline_run_id.split('/').collect();
+    let valid = if parts.first() == Some(&"local") {
+        parts.len() == 2
+            && valid_local_uuid(parts[1])
+            && run.run_id == run.pipeline_run_id
+            && run.attempt == 1
+    } else if parts.first() == Some(&"ci") {
+        parts.len() == 5
+            && parts[1..4].iter().all(|part| !part.is_empty())
+            && parts[3] == run.run_id
+            && parts[4]
+                .parse::<u32>()
+                .is_ok_and(|attempt| attempt > 0 && attempt == run.attempt)
+    } else {
+        false
+    };
+    if !valid || run.job_key.is_empty() || run.repository.split('/').count() != 2 {
+        return Err(UploadError::Rejected("invalid sealed run identity".into()));
+    }
+    Ok(())
+}
+
+fn verify_local_root(stage: &Path, manifest: &Manifest) -> Result<(), UploadError> {
+    if !manifest.run.pipeline_run_id.starts_with("local/") {
+        return Ok(());
+    }
+    let root = crate::ids::run_root_span(&manifest.run.pipeline_run_id);
+    let trace = crate::ids::run_trace(&manifest.run.pipeline_run_id);
+    let mut count = 0;
+    for file in manifest
+        .files
+        .iter()
+        .filter(|f| f.path.starts_with("spans/"))
+    {
+        let text = std::fs::read_to_string(stage.join(&file.path))
+            .map_err(|e| UploadError::Rejected(e.to_string()))?;
+        for line in text.lines().filter(|line| !line.trim().is_empty()) {
+            let doc: serde_json::Value = serde_json::from_str(line)
+                .map_err(|e| UploadError::Rejected(format!("span JSON: {e}")))?;
+            for resource in doc["resourceSpans"].as_array().into_iter().flatten() {
+                for scope in resource["scopeSpans"].as_array().into_iter().flatten() {
+                    for span in scope["spans"].as_array().into_iter().flatten() {
+                        if span["spanId"] == root && span["traceId"] == trace {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if count != 1 {
+        return Err(UploadError::Rejected(
+            "local sealed record must contain exactly one derived run root".into(),
+        ));
+    }
+    Ok(())
+}
 
 /// Unpacks a tar body, verifies manifest digest + every file digest, then renames into the store.
 /// Blocking: call from `spawn_blocking`.
@@ -194,6 +313,7 @@ pub fn accept(cfg: &Config, digest: &str, body: &[u8]) -> Result<Option<Manifest
         if manifest.schema != "buck2-run-record/v1" {
             return Err(UploadError::Rejected("unknown manifest schema".into()));
         }
+        validate_identity(&manifest)?;
         if seen.len() != manifest.files.len() + 1 {
             return Err(UploadError::Rejected("unlisted archive file".into()));
         }
@@ -217,6 +337,7 @@ pub fn accept(cfg: &Config, digest: &str, body: &[u8]) -> Result<Option<Manifest
                 )));
             }
         }
+        verify_local_root(&stage, &manifest)?;
         Ok(manifest)
     })();
     match result {
@@ -289,4 +410,62 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (yoe + era * 400 + i64::from(m <= 2), m, d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::time::Duration;
+
+    #[test]
+    fn local_record_requires_exactly_one_derived_root_before_storage() {
+        let root =
+            std::env::temp_dir().join(format!("buck2-root-{}-{}", std::process::id(), now_ms()));
+        let cfg = Config {
+            state: root.clone(),
+            otlp: String::new(),
+            tempo: String::new(),
+            readback_timeout: Duration::from_secs(1),
+            close_settle_window: Duration::from_secs(1),
+            grafana: String::new(),
+        };
+        cfg.ensure_dirs().unwrap();
+        let run = "local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1";
+        for count in [0, 1, 2] {
+            let line = json!({"resourceSpans":[{"scopeSpans":[{"spans":
+                (0..count).map(|_| json!({
+                    "traceId":crate::ids::run_trace(run),
+                    "spanId":crate::ids::run_root_span(run)
+                })).collect::<Vec<_>>()
+            }]}]})
+            .to_string();
+            let file = format!("{line}\n");
+            let manifest = json!({
+                "schema":"buck2-run-record/v1", "producer":{},
+                "run":{"repository":"owner/repo","pipelineRunId":run,"runId":run,
+                    "attempt":1,"jobKey":"worker/local"},
+                "files":[{"path":"spans/root.jsonl","bytes":file.len(),"sha256":sha256_hex(file.as_bytes())}]
+            });
+            let manifest = serde_json::to_vec(&manifest).unwrap();
+            let digest = sha256_hex(&manifest);
+            let mut tar = tar::Builder::new(Vec::new());
+            for (name, bytes) in [
+                ("manifest.json", manifest.as_slice()),
+                ("spans/root.jsonl", file.as_bytes()),
+            ] {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(bytes.len() as u64);
+                header.set_cksum();
+                tar.append_data(&mut header, name, bytes).unwrap();
+            }
+            let result = accept(&cfg, &digest, &tar.into_inner().unwrap());
+            if count == 1 {
+                assert!(result.unwrap().is_some());
+            } else {
+                assert!(matches!(result, Err(UploadError::Rejected(_))));
+            }
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

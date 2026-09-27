@@ -139,7 +139,7 @@ pub fn register_close_trace(
     run_id: &str,
     repo: &str,
     trace_id: &str,
-    root_span: &str,
+    synthetic_root: Option<&str>,
     missing_span_ids: &[String],
     incomplete: bool,
 ) -> rusqlite::Result<()> {
@@ -148,7 +148,10 @@ pub fn register_close_trace(
          on conflict(run_id) do update set incomplete=excluded.incomplete",
         params![run_id, repo, trace_id, i64::from(incomplete)],
     )?;
-    for id in std::iter::once(root_span).chain(missing_span_ids.iter().map(String::as_str)) {
+    for id in synthetic_root
+        .into_iter()
+        .chain(missing_span_ids.iter().map(String::as_str))
+    {
         let inserted = conn.execute(
             "insert or ignore into expected_spans(trace_id,digest,span_id) values (?1,?2,?3)",
             params![trace_id, format!("close:{run_id}"), id],
@@ -308,7 +311,7 @@ mod tests {
         let trace = "00112233445566778899aabbccddeeff";
         let run = "ci/github/example/repo/42/1";
         assert_eq!(run_trace_state(&conn, trace).unwrap(), None);
-        register_close_trace(&conn, run, "example/repo", trace, "root", &[], false).unwrap();
+        register_close_trace(&conn, run, "example/repo", trace, Some("root"), &[], false).unwrap();
         assert_eq!(run_trace_state(&conn, trace).unwrap(), Some("pending"));
         for (digest, span) in [("first", "span1"), ("second", "span2")] {
             register_expected(

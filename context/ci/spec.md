@@ -69,6 +69,12 @@ Storybook deploys split by trust. `deploy-storybooks` in the CI workflow is main
 
 The deploy workflow treats the artifact as data: it checks out `github.workflow_sha`, never the PR head, and hands the static files to `netlify deploy --no-build`. PR number and head SHA come from `github.event.workflow_run` and the GitHub API; a closed PR or a head that moved past the triggering run is skipped. Fork PRs are not deployed. `NETLIFY_AUTH_TOKEN` exists only in the deploy step environment, and only `publish-preview-comment` has `pull-requests: write`. Because `workflow_run` workflows run from the default branch, changes to the deploy workflow take effect after they merge.
 
+The deploy target set is the artifact's top-level directory names, not the default branch's Storybook list, so a PR that adds a Storybook package gets its preview on first push. `netlify-staged-targets.sh` admits a name only if it matches `^[a-z0-9][a-z0-9-]{0,62}$` and names a real directory (no symlink, no file), and caps the stage at 32 targets; any rejected entry fails the deploy before the Netlify CLI runs. Every target deploys to the `overeng-utils` site under alias `<name>-pr-<n>`, from an empty scratch directory so the Netlify CLI reads no project config from the checkout or the artifact.
+
+## Storybook plays
+
+`storybook-plays.yml` (workflow `Storybook Plays`) runs its single `test-storybook-plays` job on every pull request and on pushes to `main`, with `contents: read` and no secrets. It executes `storybook:test`: for each package marked `playTests = true` in `devenv.nix`, `storybook:test:<name>` runs that package's `vitest.gate.config.ts` with `OVERENG_STORY_GATE_MODE=plays`. Every story tagged `test` renders through Portable Stories in headless Chromium, and a failing `play` or an accessibility violation fails the lane (`parameters.a11y.test: 'error'`). Plays mode skips the story gate's settle wait and screenshot comparison, so it needs no baseline: pixel captures depend on the host's fonts, so the visual gate stays a same-host local tool. The workflow is separate from `ci.yml` so the lane stays advisory: it is not a `ci.yml` job, so it is absent from `REQUIRED_CI_JOB_NAMES` and the ruleset, and `ci.yml` stays under the GitHub Actions workflow size limit.
+
 ## Gates and no-op actions
 
 A gate decides whether evidence permits progress. It may be expressed by a failing step/job or by a required check in the ruleset.

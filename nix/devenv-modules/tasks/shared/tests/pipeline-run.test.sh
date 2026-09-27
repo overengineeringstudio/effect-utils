@@ -6,7 +6,8 @@ python=${2:-python3}
 unset TRACEPARENT OTEL_TASK_TRACEPARENT OTEL_SPAN_SPOOL_DIR OTEL_SPOOL_MULTI_WRITER \
   OTEL_EXPORTER_OTLP_ENDPOINT OTELITE_HTTP_ENDPOINT OTEL_SPAN_FORWARD_LINK_FILE \
   PIPELINE_RUN_ID PIPELINE_TASK_KEY PIPELINE_ROOT_OWNER PIPELINE_ENTRYPOINT_ACTIVE \
-  PIPELINE_SPOOL_DIR PIPELINE_TRACE_ID PIPELINE_ROOT_SPAN_ID PIPELINE_TASK_SPAN_ID
+  PIPELINE_SEAL_OWNER PIPELINE_SPOOL_DIR PIPELINE_TRACE_ID PIPELINE_ROOT_SPAN_ID \
+  PIPELINE_TASK_SPAN_ID BUCK2_EVIDENCE_UPLOAD_URL
 tmp=$(mktemp -d)
 http_pid=
 cleanup() {
@@ -21,6 +22,16 @@ mkdir -p "$tmp/bin"
 cat > "$tmp/bin/buck2-evidence" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >> "$PIPELINE_TEST_SEALS"
+if [[ ${PIPELINE_TEST_AMBIGUOUS:-} == 1 && $1 == upload && ${2:-} != --pending ]]; then
+  while (($#)); do
+    if [[ $1 == --spool ]]; then
+      mkdir -p "$2"
+      printf 'pending\n' > "$2/upload-pending"
+      exit 1
+    fi
+    shift
+  done
+fi
 SH
 chmod +x "$tmp/bin/buck2-evidence"
 export PATH="$tmp/bin:$PATH" PIPELINE_TEST_SEALS="$tmp/seals"
@@ -149,6 +160,24 @@ PIPELINE_RUN_ID="$ci_id" PIPELINE_TASK_KEY='build[os=linux]' \
 [[ $(cut -d- -f2 < "$tmp/ci-child") == "$ci_trace" ]]
 [[ $(find "$tmp/ci/.devenv/otel/run-records" -name '*.jsonl' | wc -l) == 0 ]]
 
+# The adapter owns one spool across retries. Both attempts contribute evidence,
+# and only the post-step may seal it after the final attempt.
+export PIPELINE_TEST_SEALS="$tmp/adapter-seals"
+for attempt in 1 2; do
+  PIPELINE_RUN_ID="$ci_id" PIPELINE_TASK_KEY='build[os=linux]' \
+    PIPELINE_SEAL_OWNER=adapter BUCK2_EVIDENCE_UPLOAD_URL=https://example.invalid/ \
+    DEVENV_ROOT="$tmp/ci-adapter" \
+    "$span" pipeline-run -- bash -c \
+      'printf "%s\n" "$1" > "$OTEL_SPAN_SPOOL_DIR/attempt-$1.jsonl"' _ "$attempt"
+done
+adapter_spool="$tmp/ci-adapter/.devenv/otel/run-records/$ci_trace-375a82ccc85b7720"
+[[ $(< "$adapter_spool/spans/attempt-1.jsonl") == 1 ]]
+[[ $(< "$adapter_spool/spans/attempt-2.jsonl") == 2 ]]
+[[ ! -e "$PIPELINE_TEST_SEALS" ]]
+PIPELINE_SPOOL_DIR="$adapter_spool" buck2-evidence seal --spool "$adapter_spool" \
+  --run-id "$ci_id" --task-key 'build[os=linux]'
+[[ $(grep -c '^seal$' "$PIPELINE_TEST_SEALS") == 1 ]]
+
 # Cancellation must write the one local root with a signal exit status.
 mkfifo "$tmp/ready"
 PIPELINE_TEST_READY="$tmp/ready" DEVENV_ROOT="$tmp/interrupted" \
@@ -186,4 +215,17 @@ DEVENV_ROOT="$tmp/linked" OTEL_SPAN_SPOOL_DIR="$tmp" \
   "$span" run test outer -- "$span" pipeline-run -- bash -c ':'
 [[ $(find "$tmp/linked/.devenv/otel/run-records" -name '*.jsonl' -exec cat {} + | jq -s --arg id "$outer_trace" '[.[].resourceSpans[].scopeSpans[].spans[] | select(.name == "cicd.pipeline.run" and .traceId != $id and (.links | any(.traceId == $id)))] | length') == 1 ]]
 [[ $(jq -s '[.[].resourceSpans[].scopeSpans[].spans[] | select(.name == "outer" and (.links | length == 1))] | length' "$tmp/spans.jsonl") == 1 ]]
+# A lost upload acknowledgement must not launch a competing local ingester.
+# The real transport marks pending before sending; this fake models its failed exit.
+: > "$tmp/ambiguous-seals"
+rc=0
+PIPELINE_TEST_AMBIGUOUS=1 PIPELINE_TEST_SEALS="$tmp/ambiguous-seals" \
+  BUCK2_EVIDENCE_UPLOAD_URL=unix:///tmp/unreachable-evidence.sock \
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:1 \
+  DEVENV_ROOT="$tmp/ambiguous" "$span" pipeline-run -- bash -c 'exit 7' || rc=$?
+[[ $rc == 7 ]]
+[[ $(grep -c '^upload$' "$tmp/ambiguous-seals") == 2 ]]
+[[ $(grep -c '^ingest$' "$tmp/ambiguous-seals" || true) == 0 ]]
+[[ $(find "$tmp/ambiguous/.devenv/otel/run-records" -name upload-pending | wc -l) == 1 ]]
+
 printf 'pipeline-run vectors, context parity, and nested root passed: %s\n' "$trace"

@@ -370,7 +370,7 @@ export const runDevenvTasksBeforeWithOptions = (
 ) =>
   withCiSourceRoot(
     withAppendedNixConfig({
-      command: `DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${devenvBinRef} tasks run ${args.join(' ')}`,
+      command: `DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false \${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }${devenvBinRef} tasks run ${args.join(' ')}`,
       opts,
     }),
   )

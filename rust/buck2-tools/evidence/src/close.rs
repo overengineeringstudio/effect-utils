@@ -1,4 +1,4 @@
-//! A separately sealed CI roster closes a run; local runs already contain their root.
+//! A separately sealed roster closes a run; local job records carry their own root.
 use crate::{ids, now_ms, Config};
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection};
@@ -20,14 +20,32 @@ pub struct CloseRecord {
     pub repository: String,
     pub sealed_at: String,
     pub expected_jobs: Vec<ExpectedJob>,
+    #[serde(default)]
+    pub root_in_record: bool,
 }
 
 fn validate(record: &CloseRecord) -> Result<()> {
+    let parts: Vec<_> = record.pipeline_run_id.split('/').collect();
+    let local = parts.first() == Some(&"local");
+    let ci = parts.first() == Some(&"ci");
     if record.schema != "buck2-attempt-close/v1"
-        || !record.pipeline_run_id.starts_with("ci/")
+        || !(ci || local)
+        || record.root_in_record != local
+        || (local
+            && (parts.len() != 2
+                || !crate::store::valid_local_uuid(parts[1])
+                || record.expected_jobs.len() != 1))
+        || (ci
+            && (parts.len() != 5
+                || parts[1..4].iter().any(|part| part.is_empty())
+                || parts[4]
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|attempt| *attempt > 0)
+                    .is_none()))
         || record.repository.split('/').count() != 2
     {
-        bail!("invalid CI close identity");
+        bail!("invalid attempt close identity");
     }
     let mut keys = HashSet::new();
     if record.expected_jobs.iter().any(|j| {
@@ -58,6 +76,7 @@ pub fn seal_close(spool: &Path, run: &str, repository: &str, jobs_json: &Path) -
         repository: repository.into(),
         sealed_at: String::from_utf8(output.stdout)?.trim().into(),
         expected_jobs: jobs,
+        root_in_record: run.starts_with("local/"),
     };
     validate(&record)?;
     fs::create_dir_all(spool)?;
@@ -145,17 +164,24 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
     }
     // Archive first: an index row must never claim a close whose raw roster is lost.
     let parts: Vec<_> = record.pipeline_run_id.split('/').collect();
-    let run_id = parts
-        .get(parts.len().saturating_sub(2))
-        .context("invalid CI run")?;
-    let attempt: u32 = parts.last().context("invalid CI attempt")?.parse()?;
+    let (run_id, attempt) = if record.root_in_record {
+        (parts.get(1).context("invalid local run")?.to_string(), 1)
+    } else {
+        (
+            parts
+                .get(parts.len().saturating_sub(2))
+                .context("invalid CI run")?
+                .to_string(),
+            parts.last().context("invalid CI attempt")?.parse()?,
+        )
+    };
     let manifest = crate::store::Manifest {
         schema: "buck2-run-record/v1".into(),
         producer: json!({}),
         run: crate::store::RunBlock {
             repository: record.repository.clone(),
             pipeline_run_id: record.pipeline_run_id.clone(),
-            run_id: (*run_id).into(),
+            run_id,
             attempt,
             job_key: String::new(),
             event: String::new(),
@@ -213,6 +239,8 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         fs::rename(&tmp, &archived)?;
     }
     let manifest_json = String::from_utf8(bytes)?;
+    let synthetic_root =
+        (!record.root_in_record).then(|| ids::run_root_span(&record.pipeline_run_id));
     if synthetic {
         conn.execute(
             "update closes set digest=?1,repo=?2,manifest_json=?3,received_at=?4,
@@ -242,7 +270,7 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
             &record.pipeline_run_id,
             &record.repository,
             &ids::run_trace(&record.pipeline_run_id),
-            &ids::run_root_span(&record.pipeline_run_id),
+            synthetic_root.as_deref(),
             &[],
             incomplete,
         )?;
@@ -253,7 +281,7 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         &record.pipeline_run_id,
         &record.repository,
         &ids::run_trace(&record.pipeline_run_id),
-        &ids::run_root_span(&record.pipeline_run_id),
+        synthetic_root.as_deref(),
         &[],
         existing.as_ref().is_some_and(|(_, _, pushed, _)| *pushed),
     )?;
@@ -334,6 +362,7 @@ fn pending_closes(cfg: &Config) -> Result<Vec<PendingClose>> {
             repository: repo,
             sealed_at: "timeout".into(),
             expected_jobs: Vec::new(),
+            root_in_record: false,
         };
         let digest = hex::encode(Sha256::digest(run.as_bytes()));
         conn.execute("insert or ignore into closes (digest,run_id,repo,manifest_json,received_at,incomplete,last_write_at) values (?1,?2,?3,?4,?5,1,?5)",
@@ -424,7 +453,7 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
         }
         let id = ids::run_trace(&close.pipeline_run_id);
         let root = ids::run_root_span(&close.pipeline_run_id);
-        let missing: Vec<String> = if root_pushed && incomplete {
+        let missing: Vec<String> = if close.root_in_record || (root_pushed && incomplete) {
             Vec::new()
         } else {
             close
@@ -441,7 +470,7 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
                 &close.pipeline_run_id,
                 &close.repository,
                 &id,
-                &root,
+                (!close.root_in_record).then_some(root.as_str()),
                 &missing,
                 incomplete,
             )?;
@@ -450,34 +479,45 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
             let counts = crate::pipeline::tempo_span_counts(client, &cfg.tempo, &id)
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?;
-            let mut absent = missing
-                .iter()
-                .filter(|span| !counts.contains_key(*span))
-                .count();
-            absent += usize::from(!counts.contains_key(&root));
-            if absent > 0 {
-                let mut body = root_body(&close, &jobs, received, closed, incomplete);
-                for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"]
-                    .as_array_mut()
-                    .into_iter()
-                    .flatten()
-                {
-                    let span_id = span["spanId"].as_str().unwrap_or_default();
-                    if counts.contains_key(span_id) {
-                        *span = Value::Null;
-                    }
+            if close.root_in_record {
+                // Local roots arrive only in the sealed job record. Never publish a
+                // second copy from the close, even if Tempo temporarily loses it.
+                if counts.get(&root).copied().unwrap_or(0) != 1 {
+                    crate::pipeline::verify_run_trace(client, cfg, &close.pipeline_run_id)
+                        .await
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    continue;
                 }
-                body["resourceSpans"][0]["scopeSpans"][0]["spans"]
-                    .as_array_mut()
-                    .expect("root spans")
-                    .retain(|span| !span.is_null());
-                let response = client
-                    .post(format!("{}/v1/traces", cfg.otlp.trim_end_matches('/')))
-                    .json(&body)
-                    .send()
-                    .await?;
-                if !response.status().is_success() {
-                    bail!("close OTLP response {}", response.status());
+            } else {
+                let mut absent = missing
+                    .iter()
+                    .filter(|span| !counts.contains_key(*span))
+                    .count();
+                absent += usize::from(!counts.contains_key(&root));
+                if absent > 0 {
+                    let mut body = root_body(&close, &jobs, received, closed, incomplete);
+                    for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+                        .as_array_mut()
+                        .into_iter()
+                        .flatten()
+                    {
+                        let span_id = span["spanId"].as_str().unwrap_or_default();
+                        if counts.contains_key(span_id) {
+                            *span = Value::Null;
+                        }
+                    }
+                    body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+                        .as_array_mut()
+                        .expect("root spans")
+                        .retain(|span| !span.is_null());
+                    let response = client
+                        .post(format!("{}/v1/traces", cfg.otlp.trim_end_matches('/')))
+                        .json(&body)
+                        .send()
+                        .await?;
+                    if !response.status().is_success() {
+                        bail!("close OTLP response {}", response.status());
+                    }
                 }
             }
             let deadline = std::time::Instant::now() + cfg.readback_timeout;
@@ -588,6 +628,7 @@ mod tests {
                 key: "build".into(),
                 conclusion: "success".into(),
             }],
+            root_in_record: false,
         };
         let bytes = serde_json::to_vec(&late).unwrap();
         let digest = hex::encode(Sha256::digest(&bytes));
@@ -623,6 +664,7 @@ mod tests {
                     conclusion: "skipped".into(),
                 })
                 .collect(),
+            root_in_record: false,
         };
         let bytes = serde_json::to_vec(&close).unwrap();
         let digest = hex::encode(Sha256::digest(&bytes));
@@ -647,6 +689,7 @@ mod tests {
                     conclusion: "failure".into(),
                 },
             ],
+            root_in_record: false,
         };
         let hour = 60 * 60 * 1000;
         let jobs = vec![(
@@ -699,6 +742,7 @@ mod tests {
             repository: "owner/repo".into(),
             sealed_at: "2026-09-27T12:00:00Z".into(),
             expected_jobs: Vec::new(),
+            root_in_record: false,
         };
         let bytes = serde_json::to_vec(&close).unwrap();
         let digest = hex::encode(Sha256::digest(&bytes));
@@ -810,6 +854,125 @@ mod tests {
         fs::remove_dir_all(cfg.state).unwrap();
     }
     #[tokio::test]
+    async fn local_close_verifies_carried_root_without_publishing_another() {
+        use axum::{
+            extract::State,
+            routing::{get, post},
+            Json, Router,
+        };
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let (mut cfg, conn) = fixture();
+        let run = "local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1";
+        let root = ids::run_root_span(run);
+        let job = ids::job_span(run, "worker/local");
+        let digest = "a".repeat(64);
+        conn.execute(
+            "insert into records (digest,repo,run_id,attempt,job,manifest_json,bytes,status,uploaded_at)
+             values (?1,'owner/repo',?2,1,'worker/local','{}',0,'ingested',?3)",
+            params![digest, run, now_ms()],
+        ).unwrap();
+        conn.execute(
+            "insert into expected_spans(trace_id,digest,span_id) values (?1,?2,?3), (?1,?2,?4)",
+            params![ids::run_trace(run), digest, root, job],
+        )
+        .unwrap();
+        let close = CloseRecord {
+            schema: "buck2-attempt-close/v1".into(),
+            pipeline_run_id: run.into(),
+            repository: "owner/repo".into(),
+            sealed_at: "2026-09-27T12:00:00Z".into(),
+            expected_jobs: vec![ExpectedJob {
+                key: "worker/local".into(),
+                conclusion: "success".into(),
+            }],
+            root_in_record: true,
+        };
+        let bytes = serde_json::to_vec(&close).unwrap();
+        let close_digest = hex::encode(Sha256::digest(&bytes));
+        assert!(accept(&cfg, &conn, &close_digest, &tar_close(&bytes)).unwrap());
+
+        let observed = Arc::new(Mutex::new(Vec::<String>::new()));
+        async fn push(
+            State(observed): State<Arc<Mutex<Vec<String>>>>,
+            Json(body): Json<Value>,
+        ) -> Json<Value> {
+            for resource in body["resourceSpans"].as_array().into_iter().flatten() {
+                for scope in resource["scopeSpans"].as_array().into_iter().flatten() {
+                    for span in scope["spans"].as_array().into_iter().flatten() {
+                        observed
+                            .lock()
+                            .await
+                            .push(span["spanId"].as_str().unwrap().into());
+                    }
+                }
+            }
+            Json(json!({}))
+        }
+        async fn readback(State(observed): State<Arc<Mutex<Vec<String>>>>) -> Json<Value> {
+            let spans = observed
+                .lock()
+                .await
+                .iter()
+                .map(|id| json!({"spanId":id}))
+                .collect::<Vec<_>>();
+            Json(json!({"trace":{"resourceSpans":[{"scopeSpans":[{"spans":spans}]}]}}))
+        }
+        let app = Router::new()
+            .route("/v1/traces", post(push))
+            .route("/api/v2/traces/{id}", get(readback))
+            .with_state(Arc::clone(&observed));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        cfg.otlp = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        cfg.tempo = cfg.otlp.clone();
+        let client = reqwest::Client::new();
+        client
+            .post(format!("{}/v1/traces", cfg.otlp))
+            .json(&json!({"resourceSpans":[{"scopeSpans":[{"spans":[
+                {"spanId":root},{"spanId":job}
+            ]}]}]}))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+        assert_eq!(reconcile(&cfg, &client).await.unwrap(), 1);
+        assert_eq!(reconcile(&cfg, &client).await.unwrap(), 0);
+        let response: Value = client
+            .get(format!(
+                "{}/api/v2/traces/{}",
+                cfg.tempo,
+                ids::run_trace(run)
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let spans = response["trace"]["resourceSpans"][0]["scopeSpans"][0]["spans"]
+            .as_array()
+            .unwrap();
+        assert_eq!(
+            spans.iter().filter(|span| span["spanId"] == root).count(),
+            1
+        );
+        assert_eq!(spans.len(), 2, "close must not publish another copy");
+        let verified: Option<i64> = conn
+            .query_row(
+                "select verified_at from run_traces where run_id=?1",
+                [run],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(verified.is_some());
+        server.abort();
+        fs::remove_dir_all(cfg.state).unwrap();
+    }
+
+    #[tokio::test]
     async fn settled_close_does_not_query_tempo_on_ticks() {
         use axum::{extract::State, routing::get, Json, Router};
         use std::sync::{
@@ -825,6 +988,7 @@ mod tests {
             repository: "owner/repo".into(),
             sealed_at: "2026-09-27T12:00:00Z".into(),
             expected_jobs: Vec::new(),
+            root_in_record: false,
         };
         let bytes = serde_json::to_vec(&close).unwrap();
         let digest = hex::encode(Sha256::digest(&bytes));

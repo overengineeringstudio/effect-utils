@@ -13,14 +13,19 @@ import { setProjectAnnotations } from '@storybook/react-vite'
 import { getProjectAnnotations } from 'virtual:/@storybook/builder-vite/project-annotations.js'
 import { beforeAll, inject } from 'vitest'
 
-import { createStoryGateAnnotations } from './annotations.ts'
-import { initialGlobalsProvideKey, projectNameProvideKey } from './constants.ts'
+import { createStoryGateAnnotations, storyPlayAnnotations } from './annotations.ts'
+import {
+  initialGlobalsProvideKey,
+  playsOnlyProvideKey,
+  projectNameProvideKey,
+} from './constants.ts'
 import { composeGateProjectAnnotations } from './project-annotations.ts'
 
 declare module 'vitest' {
   interface ProvidedContext {
     'overeng/story-gate-initial-globals': Record<string, unknown>
     'overeng/story-gate-project-name': string
+    'overeng/story-gate-plays-only': boolean
   }
 }
 
@@ -76,13 +81,18 @@ freezeMotion()
 /**
  * Portable Stories does not install project annotations implicitly. Compose the
  * consumer preview and addon annotations with the gate layer, plus the globals
- * carried by this Vitest project (one distinct value for each theme).
+ * carried by this Vitest project (one distinct value for each theme). A
+ * plays-only run keeps the accessibility escalation and drops the settle wait
+ * and screenshot assertion.
  */
 const annotations = setProjectAnnotations([
   ...composeGateProjectAnnotations({
     base: getProjectAnnotations(),
     initialGlobals: inject(initialGlobalsProvideKey),
-    gate: createStoryGateAnnotations({ projectName: inject(projectNameProvideKey) }),
+    gate:
+      inject(playsOnlyProvideKey) === true
+        ? storyPlayAnnotations
+        : createStoryGateAnnotations({ projectName: inject(projectNameProvideKey) }),
   }),
 ])
 

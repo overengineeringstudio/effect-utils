@@ -55,11 +55,34 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **CI `build-products` lane**: Every pull request now builds all published
+- **Storybook play tests in CI** (#1392): The shared storybook task module
+  adds `storybook:test:<name>` for packages marked `playTests = true` and a
+  `storybook:test` aggregate. Each runs the package's `vitest.gate.config.ts`
+  with `OVERENG_STORY_GATE_MODE=plays`, a new `@overeng/utils-storybook/gate`
+  mode (`storyGateModeEnvVar`) that runs every story's `play` and
+  accessibility check in headless Chromium without the settle wait,
+  screenshot, or derived baseline. The gate config also honours
+  `VITE_CACHE_DIR` and renders stories under `NODE_ENV=development`, as
+  Storybook does. Under Vitest's `test` value, react-aria's virtualizer read
+  `process.env` in the browser and crashed every virtualized story. CI runs
+  `storybook:test` for `effect-rpc-explorer-react` and
+  `effect-schema-form-aria` in the advisory `Storybook Plays` workflow
+  (`storybook-plays.yml`, pull requests and `main`, no secrets), kept out of
+  `ci.yml` and its required checks.
+
+- **Local Buck2 evidence upload**: `otel-span pipeline-run` sends sealed
+  local records and their one-job close to the configured evidence service.
+  The service verifies their single carried root and binds upload roles
+  to CI/local identities. Definitive upload rejection falls back to
+  `ingest --local`; ambiguous lost responses keep an `upload-pending`
+  spool for idempotent retry on the next run without exporting another root.
+
+- **CI `build-products` lane**: Every pull request builds all published
   `.#buck-product-*-from-source` attrs (derived from
-  `nix/buck2-products/cache-targets.json`, same as `publish-products`) without
-  Cachix credentials or a push, so a PR cannot break post-merge publication.
-  It is a required status check.
+  `nix/buck2-products/cache-targets.json`, same as `publish-products`) and
+  `.#buck2-evidence` without Cachix credentials or a push, so a PR cannot
+  break post-merge publication or the evidence consumer. It is a required
+  status check.
 
 - **Genie Netlify split build/deploy for PR previews**: Add
   `netlifyPreviewBuildSteps` (uncredentialed `pull_request` job: builds via the
@@ -81,6 +104,12 @@ All notable changes to this project will be documented in this file.
   prune lockfile importers whose manifests were intentionally omitted by
   staging, satisfying pnpm 12.7's stricter frozen-lockfile validation while
   picking up pnpm/pnpm#15455's single-writer package import.
+
+- **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
+  Weaver remap dynamic sandbox paths before compilation, so capability
+  manifests retain their strict executable digest across sandbox roots.
+  Run `devenv tasks run buck2:capabilities:reproducibility` to compare an
+  archive-tool rebuild under an alternate sandbox root with its normal output.
 - **Pipeline run tracing:** `otel-span pipeline-run -- devenv tasks run <verb>`
   now seeds one deterministic run/job trace, records local roots even on
   interruption, and seals Buck command evidence into a per-run spool.
@@ -98,6 +127,33 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/buck2-tools portable farm on Darwin** (#1450): a bundle action
+  intermittently failed with "symlink target escapes every declared closure
+  root" naming a file inside its own `portable-farm/.closure` tree. Bun's
+  `realpathSync` asks the kernel for an open descriptor's path, and Darwin's
+  `F_GETPATH` may answer with any hard link of a file — including the farm
+  image the assembly had just hardlinked. Farm assembly now follows link
+  chains with `readlink` and canonicalizes only directories, and a target
+  already inside the farm (compared against the farm root's canonical form)
+  keeps its place instead of being rejected.
+- **Storybook story gate**: Load consumer Vitest gate configs with the Vite
+  runner so installed `@overeng/utils-storybook` TypeScript imports under
+  `node_modules` work without Node's unsupported type stripping. Baseline
+  worktrees with a different `pnpm-lock.yaml` use their own installed
+  `node_modules` instead of borrowing incompatible dependencies from HEAD.
+- **Netlify staged PR previews deploy new targets**: `netlify:deploy-staged`
+  deployed only the targets configured in the deploying revision, which for
+  the trusted `workflow_run` deploy is the default branch, so a PR adding a
+  Storybook package staged its output but never got a preview. The task now
+  deploys every top-level directory of the staged artifact as data, each under
+  alias `<name>-pr-<n>` on the configured site. Names must match
+  `^[a-z0-9][a-z0-9-]{0,62}$`, entries must be real directories (no symlinks
+  or files), and at most 32 targets are accepted; any rejected entry fails the
+  deploy before a credentialed call. Each deploy runs from an empty scratch
+  directory, so the Netlify CLI reads no project config from the repository or
+  the artifact, and staged deploys no longer pass `--workspace-filter`. The
+  per-target `netlify:deploy-staged:<name>` tasks are removed.
+
 - **mk-pnpm-cli external install roots**: Stage every injected `file:`
   directory package the install root's lockfile records
   (`injectWorkspacePackages`), not only the consumer's workspace closure
@@ -110,7 +166,6 @@ All notable changes to this project will be documented in this file.
 - **notion-md product publication**: Declare Node types in its own package
   dependencies so the isolated Buck typecheck resolves `types: ["node"]` and
   the from-source Nix product can be published.
-
 - **Storybook and Playwright task caches**: The shared `storybook:build:<name>`
   tasks, Storybook dev processes, and Playwright test tasks now export
   `CACHE_DIR` (and `VITE_CACHE_DIR` for Playwright) as
@@ -155,6 +210,30 @@ All notable changes to this project will be documented in this file.
 - **Cargo Buck projection**: Rust binaries declare their non-root `src/`
   module files as `srcs`, so editing a module such as `buck2-product`'s
   `npm_manifest.rs` invalidates the cached binary.
+- **Buck2 Cargo projector**: `defineCargoBuck2PackageProjection` discovers
+  Cargo's implicit targets (`src/lib.rs`, empty or path-only `[lib]`,
+  `src/main.rs`, `src/bin/*.rs`, `src/bin/<name>/main.rs`, `[[bin]]` without
+  `path`) and honors `autolib`/`autobins = false`. It resolves
+  `[workspace.dependencies]` `path` entries inherited with `workspace = true`,
+  path dependencies on Buck-projected packages outside the workspace declared
+  through `foreignPackageManifestPaths` (label `//<package path>:lib`), and
+  renamed registry dependencies (`package = "..."`) through `named_deps`.
+  Explicit-target projections are unchanged.
+- **Buck2 Cargo projector**: `buildProducts: [{ name, binary?, entrypoint? }]`
+  emits one `rust_product_executable` + `build_product` pair per named Cargo
+  binary, so one package can ship several products (for example
+  `tailnet-relay` and `devnet-edge`). `buildProduct: true` output is unchanged.
+- **Buck2 Cargo projector**: Cargo features. `[features]`, optional
+  dependencies, `dep:`/`dep/feature`/`dep?/feature` items and implicit
+  optional-dependency features are unified across the workspace like
+  `cargo build --workspace` (every member a root with its defaults, plus each
+  dependent's requested features), since each member has one `:lib`. Enabled
+  features render as `features = [...]` and activate their optional deps; a
+  binary whose `required-features` stay disabled is omitted. Feature-free
+  packages render unchanged. Feature requests that one `:lib` cannot honor
+  are rejected: features on foreign path dependencies (direct or through
+  `dep/feature` items) and feature requests or optional activation on
+  target-specific edges to workspace members.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it

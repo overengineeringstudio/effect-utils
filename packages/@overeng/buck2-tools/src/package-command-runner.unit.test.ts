@@ -1,4 +1,5 @@
 import {
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -29,6 +30,7 @@ import {
   requireNormalizedRelativePath,
   verifyExternalSurface,
 } from './package-command-runner.ts'
+import { realpathThroughName } from './real-path.ts'
 
 const scratchDirectories: string[] = []
 const fingerprintTool =
@@ -211,6 +213,110 @@ describe('the realpath-closed hardlink farm', () => {
     expect(() =>
       assemblePortableFarm({ closureRoots: [], gatedPackages: [], packageTree, root: farmRoot }),
     ).toThrow('escapes every declared closure root')
+  })
+
+  it('keeps a target already inside the farm, reached through an aliased farm root', () => {
+    const { closureRoots, packageTree } = createViewFixture(scratch('farm-inside-'))
+    // Darwin reaches its scratch directory through `/var` -> `/private/var`:
+    // the farm root the runner receives and a canonical path beneath it spell
+    // the same directory differently.
+    const canonicalScratch = scratch('farm-inside-out-')
+    const alias = join(scratch('farm-inside-alias-'), 'var')
+    symlinkSync(canonicalScratch, alias)
+    const right = closureRoots.find((root) => root.name === 'cell/deps/entry_right/entry')!.path
+    mkdirSync(join(right, 'node_modules', '.bin'))
+    // `right` is imaged after `left`, so this canonical target is the
+    // in-progress `.closure` image of left's entrypoint when it is reached.
+    symlinkSync(
+      join(
+        canonicalScratch,
+        'farm',
+        '.closure',
+        'cell/deps/entry_left/entry',
+        'node_modules',
+        'left',
+        'index.js',
+      ),
+      join(right, 'node_modules', '.bin', 'left'),
+    )
+
+    const farm = assemblePortableFarm({
+      closureRoots,
+      gatedPackages: [],
+      packageTree,
+      root: join(alias, 'farm'),
+    })
+
+    const bin = join(
+      farm,
+      '.closure',
+      'cell/deps/entry_right/entry',
+      'node_modules',
+      '.bin',
+      'left',
+    )
+    expect(lstatSync(bin).isSymbolicLink()).toBe(true)
+    expect(realpathSync(bin)).toBe(realpathSync(join(farm, 'node_modules', 'left', 'index.js')))
+  })
+
+  it('rejects a link into a sibling of the farm that merely shares its name prefix', () => {
+    const { closureRoots, packageTree } = createViewFixture(scratch('farm-prefix-'))
+    const out = scratch('farm-prefix-out-')
+    const farmRoot = join(out, 'farm')
+    mkdirSync(join(out, 'farm-sibling'))
+    writeFileSync(join(out, 'farm-sibling', 'host.js'), 'export default 1\n')
+    const left = closureRoots.find((root) => root.name === 'cell/deps/entry_left/entry')!.path
+    symlinkSync(join(out, 'farm-sibling', 'host.js'), join(left, 'node_modules', 'host.js'))
+
+    expect(() =>
+      assemblePortableFarm({ closureRoots, gatedPackages: [], packageTree, root: farmRoot }),
+    ).toThrow('escapes every declared closure root')
+  })
+})
+
+describe('realpathThroughName', () => {
+  it('names a hard-linked file through the link chain, never through its farm image', () => {
+    const root = scratch('real-path-')
+    mkdirSync(join(root, 'store', 'pkg'), { recursive: true })
+    mkdirSync(join(root, 'farm', 'pkg'), { recursive: true })
+    mkdirSync(join(root, 'consumer', '.bin'), { recursive: true })
+    writeFileSync(join(root, 'store', 'pkg', 'build-test.js'), 'x\n')
+    linkSync(
+      join(root, 'store', 'pkg', 'build-test.js'),
+      join(root, 'farm', 'pkg', 'build-test.js'),
+    )
+    // Two hops: a directory link, then a file link through it.
+    symlinkSync('../store/pkg', join(root, 'consumer', 'pkg'))
+    symlinkSync('../pkg/build-test.js', join(root, 'consumer', '.bin', 'test'))
+
+    expect(realpathThroughName(join(root, 'consumer', '.bin', 'test'))).toBe(
+      join(root, 'store', 'pkg', 'build-test.js'),
+    )
+  })
+
+  it('canonicalizes a parent reached through a symlinked alias', () => {
+    const root = scratch('real-path-alias-')
+    mkdirSync(join(root, 'private', 'var'), { recursive: true })
+    writeFileSync(join(root, 'private', 'var', 'file.js'), 'x\n')
+    symlinkSync(join(root, 'private', 'var'), join(root, 'var'))
+
+    expect(realpathThroughName(join(root, 'var', 'file.js'))).toBe(
+      join(root, 'private', 'var', 'file.js'),
+    )
+  })
+
+  it('fails on a dangling link and on a cycle', () => {
+    const root = scratch('real-path-broken-')
+    symlinkSync('missing.js', join(root, 'dangling'))
+    symlinkSync('b', join(root, 'a'))
+    symlinkSync('a', join(root, 'b'))
+
+    expect(() => realpathThroughName(join(root, 'dangling'))).toThrow(
+      expect.objectContaining({ code: 'ENOENT' }),
+    )
+    expect(() => realpathThroughName(join(root, 'a'))).toThrow(
+      expect.objectContaining({ code: 'ELOOP' }),
+    )
   })
 })
 

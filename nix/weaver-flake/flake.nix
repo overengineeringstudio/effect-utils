@@ -128,6 +128,7 @@
             };
 
             preBuild = ''
+              export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$NIX_BUILD_TOP=/build"
               pushd ui
               pnpm build
               popd

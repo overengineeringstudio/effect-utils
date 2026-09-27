@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -10,7 +10,10 @@ import otelScrapeBuck from '../../packages/@overeng/otel-scrape/BUCK.genie.ts'
 import oteliteBuck from '../../packages/@overeng/otelite/BUCK.genie.ts'
 import archiveToolBuck from '../../rust/buck2-tools/archive-tool/BUCK.genie.ts'
 import coreBuck from '../../rust/buck2-tools/core/BUCK.genie.ts'
-import { defineCargoBuck2PackageProjection } from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
+import {
+  type CargoBuck2PackageProjectionOptions,
+  defineCargoBuck2PackageProjection,
+} from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
 import productBuck from '../../rust/buck2-tools/product/BUCK.genie.ts'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
@@ -140,5 +143,916 @@ describe('Cargo Buck2 package projection', () => {
         cargoLockPath: 'components/rust/Cargo.lock\n# injected',
       }),
     ).toThrow('cargoLockPath must be a normalized repository-relative path')
+  })
+})
+
+type CargoFixtureMember = {
+  readonly manifest: string
+  readonly files: readonly string[]
+}
+
+/**
+ * Render one member of a throwaway `rust/` Cargo workspace through the projector. Member `.`
+ * is the workspace root package, declared in `rust/Cargo.toml` itself.
+ */
+const renderCargoFixture = ({
+  members,
+  edition = '2024',
+  workspaceDependencies = '',
+  registryPackages = ['serde'],
+  thirdPartyTargets = ['serde'],
+  foreignPackages = {},
+  projectOptions = {},
+  render,
+}: {
+  readonly members: Readonly<Record<string, CargoFixtureMember>>
+  readonly edition?: string
+  readonly workspaceDependencies?: string
+  readonly registryPackages?: readonly string[]
+  readonly thirdPartyTargets?: readonly string[]
+  /** Repository-relative package paths of Cargo packages outside `rust/`; `projected` adds BUCK.genie.ts. */
+  readonly foreignPackages?: Readonly<
+    Record<string, CargoFixtureMember & { readonly projected: boolean }>
+  >
+  readonly render: string
+  readonly projectOptions?: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>
+}): string => {
+  const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
+  const write = (relativePath: string, content: string) => {
+    mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true })
+    writeFileSync(path.join(root, relativePath), content)
+  }
+  const memberManifest = (memberPath: string, manifest: string) => {
+    const [header, ...rest] = manifest.split('\n[')
+    const workspaceKey =
+      memberPath === '.'
+        ? ''
+        : `workspace = "${memberPath
+            .split('/')
+            .map(() => '..')
+            .join('/')}"\n`
+    return [
+      `${header}\nversion.workspace = true\nedition.workspace = true\n${workspaceKey}`,
+      ...rest.map((section) => `[${section}`),
+    ].join('\n')
+  }
+  const rootMember = members['.']
+  try {
+    write('megarepo.kdl', '')
+    write(
+      'rust/Cargo.toml',
+      `[workspace]\nresolver = "2"\nmembers = [${Object.keys(members)
+        .map((member) => JSON.stringify(member))
+        .join(
+          ', ',
+        )}]\n\n[workspace.package]\nversion = "0.1.0"\nedition = "${edition}"\n\n[workspace.dependencies]\nserde = "1"\n${workspaceDependencies}${
+        rootMember === undefined ? '' : `\n${memberManifest('.', rootMember.manifest)}`
+      }`,
+    )
+    write(
+      'rust/Cargo.lock',
+      `version = 4\n${registryPackages
+        .map(
+          (name) =>
+            `\n[[package]]\nname = "${name}"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n`,
+        )
+        .join('')}`,
+    )
+    write('rust/reindeer.toml', 'vendor = false\nthird_party_dir = "third-party"\n')
+    write(
+      'rust/third-party/BUCK',
+      thirdPartyTargets
+        .map((name) => `alias(\n    name = "${name}",\n    actual = ":${name}-1.0.0",\n)\n`)
+        .join('\n'),
+    )
+    for (const [packagePath, foreign] of Object.entries(foreignPackages)) {
+      write(`${packagePath}/Cargo.toml`, foreign.manifest)
+      for (const file of foreign.files) write(`${packagePath}/${file}`, '// fixture\n')
+      if (foreign.projected === true) write(`${packagePath}/BUCK.genie.ts`, '// projected\n')
+    }
+    for (const [memberPath, member] of Object.entries(members)) {
+      if (memberPath !== '.') {
+        write(`rust/${memberPath}/Cargo.toml`, memberManifest(memberPath, member.manifest))
+      }
+      for (const file of member.files) write(`rust/${memberPath}/${file}`, '// fixture\n')
+      write(`rust/${memberPath}/BUCK.genie.ts`, '// Runtime-only projection fixture.\n')
+    }
+    const project = defineCargoBuck2PackageProjection({
+      repoName: 'discovery-fixture',
+      repoImportMetaUrl: pathToFileURL(path.join(root, 'projection.ts')).href,
+      workspaceRoot: 'rust',
+      workspaceMemberManifestPaths: Object.keys(members).map((memberPath) =>
+        memberPath === '.' ? 'rust/Cargo.toml' : `rust/${memberPath}/Cargo.toml`,
+      ),
+      foreignPackageManifestPaths: Object.keys(foreignPackages).map(
+        (packagePath) => `${packagePath}/Cargo.toml`,
+      ),
+      generatorSourcePaths: [],
+    })
+    return project({
+      ...projectOptions,
+      sourceUrl: pathToFileURL(path.join(root, 'rust', render, 'BUCK.genie.ts')).href,
+    }).stringify({ cwd: root, location: '' })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
+/** The rendered `native.*` rule blocks keyed by target name. */
+const renderedRules = (rendered: string): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    [
+      ...rendered.matchAll(
+        /^native\.(rust_library|rust_binary)\(\n {4}name = "([^"]+)",\n([\s\S]*?)^\)$/gm,
+      ),
+    ].map((match) => [match[2], `${match[1]}\n${match[3]}`]),
+  )
+
+describe('Cargo target discovery', () => {
+  it('discovers src/lib.rs, src/main.rs, src/bin/*.rs, and src/bin/<name>/main.rs', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          'my-tool': {
+            manifest: '[package]\nname = "my-tool"',
+            files: [
+              'src/lib.rs',
+              'src/util.rs',
+              'src/main.rs',
+              'src/bin/extra.rs',
+              'src/bin/multi/main.rs',
+              'src/bin/multi/args.rs',
+            ],
+          },
+        },
+        render: 'my-tool',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['lib', 'extra', 'multi', 'my-tool'])
+    expect(rules.lib).toContain('crate = "my_tool",\n    crate_root = "src/lib.rs",')
+    // Every src/ file, binary roots included, can be a library module (`mod main;`).
+    expect(rules.lib).toContain(
+      'srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+    )
+    expect(rules['my-tool']).toContain('crate = "my_tool",\n    crate_root = "src/main.rs",')
+    expect(rules['my-tool']).toContain('deps = [\n        ":lib",\n    ],')
+    expect(rules.extra).toContain(
+      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+    )
+    expect(rules.multi).toContain(
+      'crate_root = "src/bin/multi/main.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+    )
+  })
+
+  it('lets flat src/bin binaries load every src/bin module', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          kit: {
+            manifest: '[package]\nname = "kit"',
+            files: [
+              'src/bin/tool.rs',
+              'src/bin/helper.rs',
+              'src/bin/dir/main.rs',
+              'src/bin/dir/x.rs',
+            ],
+          },
+        },
+        render: 'kit',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['dir', 'helper', 'tool'])
+    expect(rules.tool).toContain(
+      'crate_root = "src/bin/tool.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
+    )
+    expect(rules.dir).toContain(
+      'crate_root = "src/bin/dir/main.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
+    )
+  })
+
+  it('rejects binary names that collide with generated Buck targets', () => {
+    const render = (files: readonly string[]) =>
+      renderCargoFixture({
+        members: { pkg: { manifest: '[package]\nname = "pkg"', files } },
+        render: 'pkg',
+      })
+    expect(() => render(['src/lib.rs', 'src/bin/lib.rs'])).toThrow(
+      'Cargo binary names collide with generated Buck targets in rust/pkg/Cargo.toml: lib',
+    )
+    expect(() => render(['src/bin/static_sources.rs'])).toThrow(
+      'Cargo binary names collide with generated Buck targets in rust/pkg/Cargo.toml: static_sources',
+    )
+    expect(Object.keys(renderedRules(render(['src/bin/lib.rs'])))).toEqual(['lib'])
+  })
+
+  it('lets a binary load a peer binary root as a module', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          app: {
+            manifest: '[package]\nname = "app"\n\n[[bin]]\nname = "tool"\npath = "src/tool.rs"',
+            files: ['src/main.rs', 'src/tool.rs'],
+          },
+        },
+        render: 'app',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['tool', 'app'])
+    expect(rules.app).toContain(
+      'crate_root = "src/main.rs",\n    srcs = [\n        "src/main.rs",\n        "src/tool.rs",\n    ],',
+    )
+  })
+
+  it('keeps binary sources the library can load as modules', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest: '[package]\nname = "pkg"\n\n[[bin]]\nname = "tool"\npath = "src/tool.rs"',
+            files: ['src/lib.rs', 'src/tool.rs', 'src/bin/mod.rs', 'src/bin/helper.rs'],
+          },
+        },
+        render: 'pkg',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['lib', 'tool', 'helper', 'mod'])
+    expect(rules.lib).toContain(
+      'srcs = [\n        "src/bin/helper.rs",\n        "src/bin/mod.rs",\n        "src/lib.rs",\n        "src/tool.rs",\n    ],',
+    )
+  })
+
+  it('lets a package binary load src/bin/mod.rs as a module', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          app: { manifest: '[package]\nname = "app"', files: ['src/main.rs', 'src/bin/mod.rs'] },
+        },
+        render: 'app',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['app', 'mod'])
+    expect(rules.app).toContain(
+      'crate_root = "src/main.rs",\n    srcs = [\n        "src/bin/mod.rs",\n        "src/main.rs",\n    ],',
+    )
+  })
+
+  it('keeps targets that share a crate root', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n\n[lib]\npath = "src/shared.rs"\n\n[[bin]]\nname = "one"\npath = "src/shared.rs"\n\n[[bin]]\nname = "two"\npath = "src/shared.rs"',
+            files: ['src/shared.rs'],
+          },
+        },
+        render: 'pkg',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['lib', 'one', 'two'])
+    expect(rules.lib).toContain(
+      'crate_root = "src/shared.rs",\n    srcs = [\n        "src/shared.rs",\n    ],',
+    )
+    expect(rules.two).toContain(
+      'crate_root = "src/shared.rs",\n    srcs = [\n        "src/shared.rs",\n    ],',
+    )
+  })
+
+  it('skips hidden paths in automatic binary discovery', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          solo: {
+            manifest: '[package]\nname = "solo"',
+            files: [
+              'src/main.rs',
+              'src/cli.rs',
+              'src/bin/tool.rs',
+              'src/bin/.scratch.rs',
+              'src/bin/.hidden/main.rs',
+            ],
+          },
+        },
+        render: 'solo',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['solo', 'tool'])
+    expect(rules.solo).toContain('crate_root = "src/main.rs",')
+    expect(rules.tool).toContain('crate_root = "src/bin/tool.rs",')
+  })
+
+  it('names empty and path-only [lib] tables after the package', () => {
+    const emptyLib = renderedRules(
+      renderCargoFixture({
+        members: {
+          'cli-version': {
+            manifest: '[package]\nname = "cli-version"\n\n[lib]',
+            files: ['src/lib.rs'],
+          },
+        },
+        render: 'cli-version',
+      }),
+    )
+    expect(emptyLib.lib).toContain('crate = "cli_version",\n    crate_root = "src/lib.rs",')
+    const pathOnlyLib = renderedRules(
+      renderCargoFixture({
+        members: {
+          'nix-trace': {
+            manifest: '[package]\nname = "nix-trace"\n\n[lib]\npath = "src/trace.rs"',
+            files: ['src/trace.rs', 'src/main.rs'],
+          },
+        },
+        render: 'nix-trace',
+      }),
+    )
+    expect(Object.keys(pathOnlyLib)).toEqual(['lib', 'nix-trace'])
+    expect(pathOnlyLib.lib).toContain('crate = "nix_trace",\n    crate_root = "src/trace.rs",')
+  })
+
+  it('honors autolib and autobins = false and infers explicit binary paths', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          quiet: {
+            manifest:
+              '[package]\nname = "quiet"\nautolib = false\nautobins = false\n\n[[bin]]\nname = "chosen"',
+            files: ['src/lib.rs', 'src/main.rs', 'src/bin/chosen.rs', 'src/bin/ignored.rs'],
+          },
+        },
+        render: 'quiet',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['chosen'])
+    expect(rules.chosen).toContain('crate_root = "src/bin/chosen.rs",')
+    expect(rules.chosen).toContain('deps = [\n    ],')
+  })
+
+  it('lets an explicit binary replace the inferred target of the same name', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          app: {
+            manifest: '[package]\nname = "app"\n\n[[bin]]\nname = "app"\npath = "src/cli.rs"',
+            files: ['src/cli.rs', 'src/main.rs', 'src/bin/helper.rs'],
+          },
+        },
+        render: 'app',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['app', 'helper'])
+    expect(rules.app).toContain('crate_root = "src/cli.rs",')
+  })
+
+  it('rejects conflicting, ambiguous, missing, and absent targets', () => {
+    const renderSingle = (manifest: string, files: readonly string[]) =>
+      renderCargoFixture({
+        members: { pkg: { manifest: `[package]\nname = "pkg"${manifest}`, files } },
+        render: 'pkg',
+      })
+    expect(() => renderSingle('', ['src/bin/twin.rs', 'src/bin/twin/main.rs'])).toThrow(
+      'Cargo binary target discovery is ambiguous in rust/pkg/Cargo.toml: twin',
+    )
+    expect(() => renderSingle('', ['src/main.rs', 'src/bin/pkg.rs'])).toThrow(
+      'Cargo binary target discovery is ambiguous in rust/pkg/Cargo.toml: pkg',
+    )
+    expect(() => renderSingle('\n\n[lib]', ['src/main.rs'])).toThrow(
+      'Cargo [lib] without path needs src/lib.rs in rust/pkg/Cargo.toml',
+    )
+    expect(() => renderSingle('\n\n[[bin]]\nname = "ghost"', ['src/lib.rs'])).toThrow(
+      'bin[0].path (no src/bin/ghost.rs, src/bin/ghost/main.rs, or src/main.rs for the package binary)',
+    )
+    expect(() =>
+      renderSingle('\nautolib = false\nautobins = false', ['src/lib.rs', 'src/main.rs']),
+    ).toThrow('Cargo package rust/pkg has no library or binary target')
+    expect(() => renderSingle('\nautobins = "no"', ['src/main.rs'])).toThrow(
+      'Cargo autobins must be a boolean in rust/pkg/Cargo.toml',
+    )
+  })
+})
+
+describe('Cargo binary ambiguity', () => {
+  const binaryNames = (manifest: string, files: readonly string[]) =>
+    Object.keys(
+      renderedRules(
+        renderCargoFixture({
+          members: { pkg: { manifest: `[package]\nname = "pkg"${manifest}`, files } },
+          render: 'pkg',
+        }),
+      ),
+    )
+
+  it('ignores inferred binaries claimed by an explicit name or path', () => {
+    expect(
+      binaryNames('\n\n[[bin]]\nname = "pkg"\npath = "src/main.rs"', [
+        'src/main.rs',
+        'src/bin/pkg.rs',
+      ]),
+    ).toEqual(['pkg'])
+    expect(
+      binaryNames('\n\n[[bin]]\nname = "twin"\npath = "src/bin/twin.rs"', [
+        'src/lib.rs',
+        'src/bin/twin.rs',
+        'src/bin/twin/main.rs',
+      ]),
+    ).toEqual(['lib', 'twin'])
+  })
+
+  it('ignores duplicate inferable binaries when autobins is off', () => {
+    expect(
+      binaryNames('\nautobins = false', ['src/lib.rs', 'src/bin/twin.rs', 'src/bin/twin/main.rs']),
+    ).toEqual(['lib'])
+  })
+
+  it('rejects a path-less explicit binary with several candidate roots', () => {
+    expect(() =>
+      binaryNames('\n\n[[bin]]\nname = "twin"', ['src/bin/twin.rs', 'src/bin/twin/main.rs']),
+    ).toThrow('Cargo binary target discovery is ambiguous in rust/pkg/Cargo.toml: twin')
+  })
+
+  it('rejects edition 2015 target inference', () => {
+    expect(() =>
+      renderCargoFixture({
+        members: { pkg: { manifest: '[package]\nname = "pkg"', files: ['src/main.rs'] } },
+        edition: '2015',
+        render: 'pkg',
+      }),
+    ).toThrow('Cargo edition 2015 is unsupported in rust/Cargo.toml')
+  })
+})
+
+describe('Cargo workspace path dependencies', () => {
+  it('resolves [workspace.dependencies] path entries inherited with workspace = true', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          'crates/core': { manifest: '[package]\nname = "core"', files: ['src/lib.rs'] },
+          'crates/app': {
+            manifest:
+              '[package]\nname = "app"\n\n[dependencies]\ncore = { workspace = true }\nserde.workspace = true',
+            files: ['src/main.rs'],
+          },
+        },
+        workspaceDependencies: 'core = { path = "crates/core" }\n',
+        render: 'crates/app',
+      }),
+    )
+    expect(rules.app).toContain(
+      'deps = [\n        "//rust/crates/core:lib",\n        "//rust/third-party:serde",\n    ],',
+    )
+  })
+
+  it('rejects inherited paths outside the workspace or without a library', () => {
+    expect(() =>
+      renderCargoFixture({
+        members: {
+          'crates/app': {
+            manifest: '[package]\nname = "app"\n\n[dependencies]\nghost.workspace = true',
+            files: ['src/main.rs'],
+          },
+        },
+        workspaceDependencies: 'ghost = { path = "crates/ghost" }\n',
+        render: 'crates/app',
+      }),
+    ).toThrow(
+      'Cargo path dependency at dependencies.ghost is neither a workspace member nor a declared foreign package: rust/crates/ghost',
+    )
+    expect(() =>
+      renderCargoFixture({
+        members: {
+          'crates/tool': { manifest: '[package]\nname = "tool"', files: ['src/main.rs'] },
+          'crates/app': {
+            manifest: '[package]\nname = "app"\n\n[dependencies]\ntool.workspace = true',
+            files: ['src/main.rs'],
+          },
+        },
+        workspaceDependencies: 'tool = { path = "crates/tool" }\n',
+        render: 'crates/app',
+      }),
+    ).toThrow(
+      'Cargo path dependency at dependencies.tool does not expose the contracted :lib target',
+    )
+  })
+})
+
+describe('Cargo cross-workspace path dependencies', () => {
+  const sharedLibrary = (projected: boolean) => ({
+    'shared/otel-bootstrap': {
+      manifest:
+        '[package]\nname = "otel-bootstrap"\nversion = "0.1.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n',
+      files: ['src/lib.rs'],
+      projected,
+    },
+  })
+  const consumer = {
+    app: {
+      manifest:
+        '[package]\nname = "app"\n\n[dependencies]\notel-bootstrap = { path = "../../shared/otel-bootstrap" }',
+      files: ['src/main.rs'],
+    },
+  }
+
+  it('labels a declared, projected foreign package by its package path', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: consumer,
+        foreignPackages: sharedLibrary(true),
+        render: 'app',
+      }),
+    )
+    expect(rules.app).toContain('deps = [\n        "//shared/otel-bootstrap:lib",\n    ],')
+  })
+
+  it('rejects undeclared and unprojected foreign packages', () => {
+    expect(() => renderCargoFixture({ members: consumer, render: 'app' })).toThrow(
+      'Cargo path dependency at dependencies.otel-bootstrap is neither a workspace member nor a declared foreign package: shared/otel-bootstrap',
+    )
+    expect(() =>
+      renderCargoFixture({
+        members: consumer,
+        foreignPackages: sharedLibrary(false),
+        render: 'app',
+      }),
+    ).toThrow(
+      'Foreign Cargo package must itself be Buck-projected (no BUCK.genie.ts): shared/otel-bootstrap',
+    )
+  })
+})
+
+describe('Cargo renamed dependencies', () => {
+  const renamed = (dependency: string) => ({
+    relay: {
+      manifest: `[package]\nname = "relay"\n\n[dependencies]\n${dependency}\nserde.workspace = true`,
+      files: ['src/main.rs'],
+    },
+  })
+
+  it('binds the request name to the rename-named alias of a root package', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        '.': {
+          manifest:
+            '[package]\nname = "relay"\n\n[dependencies]\nwebpki = { package = "rustls-webpki", version = "0.103" }\nserde.workspace = true',
+          files: ['src/main.rs'],
+        },
+      },
+      registryPackages: ['rustls-webpki', 'serde'],
+      thirdPartyTargets: ['serde', 'webpki'],
+      render: '.',
+    })
+    expect(renderedRules(rendered).relay).toContain(
+      'deps = [\n        "//rust/third-party:serde",\n    ],\n    named_deps = {\n        "webpki": "//rust/third-party:webpki",\n    },',
+    )
+  })
+
+  it('falls back to the package-named alias of a virtual workspace graph', () => {
+    const rendered = renderCargoFixture({
+      members: renamed('webpki.workspace = true'),
+      workspaceDependencies: 'webpki = { package = "rustls-webpki", version = "0.103" }\n',
+      registryPackages: ['rustls-webpki', 'serde'],
+      thirdPartyTargets: ['rustls-webpki', 'serde'],
+      render: 'relay',
+    })
+    expect(renderedRules(rendered).relay).toContain(
+      'named_deps = {\n        "webpki": "//rust/third-party:rustls-webpki",\n    },',
+    )
+  })
+
+  it('never binds a rename to an unrelated crate named like the request', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        ...renamed('webpki = { package = "rustls-webpki", version = "0.103" }'),
+        other: {
+          manifest: '[package]\nname = "other"\n\n[dependencies]\nwebpki = "0.22"',
+          files: ['src/lib.rs'],
+        },
+      },
+      registryPackages: ['rustls-webpki', 'serde', 'webpki'],
+      thirdPartyTargets: ['rustls-webpki', 'serde', 'webpki'],
+      render: 'relay',
+    })
+    expect(renderedRules(rendered).relay).toContain(
+      'named_deps = {\n        "webpki": "//rust/third-party:rustls-webpki",\n    },',
+    )
+  })
+
+  it('ignores a root rename of the same request name to another package', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        '.': {
+          manifest:
+            '[package]\nname = "root"\n\n[dependencies]\nwebpki = { package = "crate-a", version = "1" }',
+          files: ['src/lib.rs'],
+        },
+        ...renamed('webpki = { package = "rustls-webpki", version = "0.103" }'),
+      },
+      registryPackages: ['crate-a', 'rustls-webpki', 'serde'],
+      thirdPartyTargets: ['rustls-webpki', 'serde', 'webpki'],
+      render: 'relay',
+    })
+    expect(renderedRules(rendered).relay).toContain(
+      'named_deps = {\n        "webpki": "//rust/third-party:rustls-webpki",\n    },',
+    )
+  })
+
+  it('rejects renames of path dependencies and unlocked packages', () => {
+    expect(() =>
+      renderCargoFixture({
+        members: renamed('webpki = { package = "rustls-webpki", version = "0.103" }'),
+        thirdPartyTargets: ['serde', 'webpki'],
+        render: 'relay',
+      }),
+    ).toThrow('Cargo.lock has no package for dependency rustls-webpki at dependencies.webpki')
+    expect(() =>
+      renderCargoFixture({
+        members: renamed('webpki = { package = "rustls-webpki", path = "../vendored" }'),
+        render: 'relay',
+      }),
+    ).toThrow('Unsupported renamed Cargo path or workspace dependency at dependencies.webpki')
+  })
+})
+
+describe('Cargo multi-product packages', () => {
+  const renderPackage = (
+    projectOptions: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>,
+    files: readonly string[] = ['src/main.rs', 'src/bin/devnet-edge.rs'],
+  ) =>
+    renderCargoFixture({
+      members: { relay: { manifest: '[package]\nname = "tailnet-relay"', files } },
+      render: 'relay',
+      projectOptions,
+    })
+  /** The product rule blocks, in emission order. */
+  const productBlocks = (rendered: string): readonly string[] =>
+    [...rendered.matchAll(/^(?:rust_product_executable|build_product)\([\s\S]*?^\)$/gm)].map(
+      (match) => match[0],
+    )
+
+  it('emits one executable/product pair per named binary', () => {
+    const rendered = renderPackage({
+      buildProducts: [
+        { name: 'tailnet-relay' },
+        { name: 'edge', binary: 'devnet-edge', entrypoint: 'libexec/devnet-edge' },
+      ],
+    })
+    expect(productBlocks(rendered)).toEqual([
+      'rust_product_executable(\n    name = "tailnet-relay-product-executable",\n    binary = ":tailnet-relay",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
+      'build_product(\n    name = "tailnet-relay-product",\n    entrypoint = "bin/tailnet-relay",\n    executable = ":tailnet-relay-product-executable",\n    product_name = "tailnet-relay",\n    target_platform = host_platform_label(),\n)',
+      'rust_product_executable(\n    name = "edge-product-executable",\n    binary = ":devnet-edge",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
+      'build_product(\n    name = "edge-product",\n    entrypoint = "libexec/devnet-edge",\n    executable = ":edge-product-executable",\n    product_name = "edge",\n    target_platform = host_platform_label(),\n)',
+    ])
+    expect(rendered).toContain('"build_product")')
+  })
+
+  it('renders a one-entry buildProducts like buildProduct', () => {
+    const single = ['src/main.rs']
+    const withoutHeader = (rendered: string) =>
+      rendered.replace(/^# Semantic fingerprint: .*$/m, '')
+    expect(
+      withoutHeader(renderPackage({ buildProducts: [{ name: 'tailnet-relay' }] }, single)),
+    ).toBe(withoutHeader(renderPackage({ buildProduct: true }, single)))
+  })
+
+  it('rejects ambiguous, unknown, repeated, unsafe, and colliding products', () => {
+    expect(() => renderPackage({ buildProduct: true })).toThrow(
+      'BuildProduct projection requires exactly one binary in rust/relay/Cargo.toml',
+    )
+    expect(() =>
+      renderPackage({ buildProduct: true, buildProducts: [{ name: 'tailnet-relay' }] }),
+    ).toThrow('buildProduct and buildProducts are mutually exclusive in rust/relay/Cargo.toml')
+    expect(() => renderPackage({ buildProducts: [] })).toThrow(
+      'buildProducts must name at least one product in rust/relay/Cargo.toml',
+    )
+    expect(() => renderPackage({ buildProducts: [{ name: 'ghost' }] })).toThrow(
+      'buildProducts[0] packages unknown Cargo binary ghost in rust/relay/Cargo.toml (binaries: devnet-edge, tailnet-relay)',
+    )
+    expect(() =>
+      renderPackage({
+        buildProducts: [
+          { name: 'tailnet-relay' },
+          { name: 'tailnet-relay', binary: 'devnet-edge' },
+        ],
+      }),
+    ).toThrow('buildProducts names repeat in rust/relay/Cargo.toml: tailnet-relay')
+    expect(() =>
+      renderPackage({ buildProducts: [{ name: 'a")\nrule(', binary: 'devnet-edge' }] }),
+    ).toThrow('buildProducts[0].name is not a Buck target-safe product name')
+    expect(() =>
+      renderPackage({ buildProducts: [{ name: 'tailnet-relay', entrypoint: '../escape' }] }),
+    ).toThrow('buildProducts[0].entrypoint must be a normalized relative path: ../escape')
+    expect(() =>
+      renderPackage({ buildProducts: [{ name: 'x', binary: 'tailnet-relay' }] }, [
+        'src/main.rs',
+        'src/bin/x-product.rs',
+      ]),
+    ).toThrow(
+      'Cargo binary names collide with generated Buck targets in rust/relay/Cargo.toml: x-product',
+    )
+  })
+})
+
+describe('Cargo features', () => {
+  const tokenlens = (cliDependency: string) => ({
+    lib: {
+      manifest:
+        '[package]\nname = "lib"\n\n[features]\ndefault = []\nsqlite = ["dep:hostname", "dep:rusqlite"]\n\n[dependencies]\nserde.workspace = true\nhostname = { workspace = true, optional = true }\nrusqlite = { workspace = true, optional = true }',
+      files: ['src/lib.rs'],
+    },
+    cli: {
+      manifest: `[package]\nname = "cli"\n\n[dependencies]\n${cliDependency}`,
+      files: ['src/main.rs'],
+    },
+  })
+  const renderTokenlens = (cliDependency: string) =>
+    renderCargoFixture({
+      members: tokenlens(cliDependency),
+      workspaceDependencies: 'hostname = "0.4"\nrusqlite = "0.39"\n',
+      registryPackages: ['serde', 'hostname', 'rusqlite'],
+      thirdPartyTargets: ['serde', 'hostname', 'rusqlite'],
+      render: 'lib',
+    })
+
+  it('unifies a dependent-enabled feature into the library and its dep: edges', () => {
+    const rules = renderedRules(renderTokenlens('lib = { path = "../lib", features = ["sqlite"] }'))
+    expect(rules.lib).toContain(
+      'deps = [\n        "//rust/third-party:hostname",\n        "//rust/third-party:rusqlite",\n        "//rust/third-party:serde",\n    ],',
+    )
+    expect(rules.lib).toContain('features = [\n        "default",\n        "sqlite",\n    ],')
+  })
+
+  it('leaves inactive optional dependencies out and the default-only feature set', () => {
+    const rules = renderedRules(renderTokenlens('lib = { path = "../lib" }'))
+    expect(rules.lib).toContain('deps = [\n        "//rust/third-party:serde",\n    ],')
+    expect(rules.lib).toContain('features = [\n        "default",\n    ],')
+  })
+
+  it('follows default, implicit, dep/feature, and weak dep?/feature items', () => {
+    const render = (appFeatures: string) =>
+      renderedRules(
+        renderCargoFixture({
+          members: {
+            core: {
+              manifest:
+                '[package]\nname = "core"\n\n[features]\ndefault = ["std"]\nstd = []\nturbo = ["serde?/derive", "util/fast"]\n\n[dependencies]\nserde = { version = "1", optional = true }\nutil = { path = "../util" }',
+              files: ['src/lib.rs'],
+            },
+            util: {
+              manifest: '[package]\nname = "util"\n\n[features]\nfast = []',
+              files: ['src/lib.rs'],
+            },
+            app: {
+              manifest: `[package]\nname = "app"\n\n[dependencies]\ncore = { path = "../core", features = [${appFeatures}] }`,
+              files: ['src/main.rs'],
+            },
+          },
+          render: 'core',
+        }),
+      ).lib
+    // A weak item never activates `serde`; only the implicit `serde` feature does.
+    expect(render('"turbo"')).toContain(
+      'deps = [\n        "//rust/util:lib",\n    ],\n    edition = "2024",\n    features = [\n        "default",\n        "std",\n        "turbo",\n    ],',
+    )
+    expect(render('"turbo", "serde"')).toContain(
+      'deps = [\n        "//rust/third-party:serde",\n        "//rust/util:lib",\n    ],\n    edition = "2024",\n    features = [\n        "default",\n        "serde",\n        "std",\n        "turbo",\n    ],',
+    )
+  })
+
+  it('propagates dep/feature items into another member', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        core: {
+          manifest:
+            '[package]\nname = "core"\n\n[features]\nturbo = ["util/fast"]\n\n[dependencies]\nutil = { path = "../util" }',
+          files: ['src/lib.rs'],
+        },
+        util: {
+          manifest: '[package]\nname = "util"\n\n[features]\nfast = []',
+          files: ['src/lib.rs'],
+        },
+        app: {
+          manifest:
+            '[package]\nname = "app"\n\n[dependencies]\ncore = { path = "../core", features = ["turbo"] }',
+          files: ['src/main.rs'],
+        },
+      },
+      render: 'util',
+    })
+    expect(renderedRules(rendered).lib).toContain('features = [\n        "fast",\n    ],')
+  })
+
+  it('omits a binary until its required-features are enabled', () => {
+    const render = (features: string) =>
+      Object.keys(
+        renderedRules(
+          renderCargoFixture({
+            members: {
+              forge: {
+                manifest: `[package]\nname = "forge"\n\n[features]\n${features}refresh-fixtures = []\n\n[[bin]]\nname = "refresh-fixtures"\npath = "src/bin/refresh_fixtures.rs"\nrequired-features = ["refresh-fixtures"]`,
+                files: ['src/lib.rs', 'src/bin/refresh_fixtures.rs'],
+              },
+            },
+            render: 'forge',
+          }),
+        ),
+      )
+    expect(render('')).toEqual(['lib'])
+    expect(render('default = ["refresh-fixtures"]\n')).toEqual(['lib', 'refresh-fixtures'])
+  })
+
+  it('rejects undefined, misplaced, and unprojectable feature requests', () => {
+    expect(() => renderTokenlens('lib = { path = "../lib", features = ["postgres"] }')).toThrow(
+      'Cargo feature postgres is not defined in rust/lib/Cargo.toml',
+    )
+    const single = (manifest: string, files: readonly string[] = ['src/lib.rs']) =>
+      renderCargoFixture({
+        members: { pkg: { manifest: `[package]\nname = "pkg"${manifest}`, files } },
+        render: 'pkg',
+      })
+    expect(() =>
+      single('\n\n[dev-dependencies]\nserde = { version = "1", optional = true }'),
+    ).toThrow('Cargo dev-dependencies cannot be optional at dev-dependencies.serde')
+    expect(() =>
+      single('\n\n[features]\nx = ["dep:serde"]\n\n[dependencies]\nserde = "1"'),
+    ).toThrow('Cargo feature dep:serde in rust/pkg/Cargo.toml names a non-optional dependency')
+    expect(() => single('\n\n[features]\ndefault = ["ghost/x"]')).toThrow(
+      'Cargo feature ghost/x in rust/pkg/Cargo.toml names no dependency ghost',
+    )
+    expect(() =>
+      single(
+        '\n\n[features]\nx = []\n\n[[bin]]\nname = "tool"\npath = "src/main.rs"\nrequired-features = ["y"]',
+        ['src/main.rs'],
+      ),
+    ).toThrow('Cargo binary tool requires undefined features in rust/pkg/Cargo.toml: y')
+    expect(() =>
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared", features = ["x"] }',
+            files: ['src/lib.rs'],
+          },
+        },
+        foreignPackages: {
+          shared: {
+            manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+            files: ['src/lib.rs'],
+            projected: true,
+          },
+        },
+        render: 'pkg',
+      }),
+    ).toThrow(
+      'Cargo features on a foreign path dependency are unsupported at dependencies.shared: x',
+    )
+    // The same request written as a [features] item, strong or weak, even when disabled.
+    for (const [dependency, item] of [
+      ['shared = { path = "../../shared" }', 'shared/x'],
+      ['shared = { path = "../../shared", optional = true }', 'shared?/x'],
+    ] as const) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            pkg: {
+              manifest: `[package]\nname = "pkg"\n\n[features]\nturbo = ["${item}"]\n\n[dependencies]\n${dependency}`,
+              files: ['src/lib.rs'],
+            },
+          },
+          foreignPackages: {
+            shared: {
+              manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+              files: ['src/lib.rs'],
+              projected: true,
+            },
+          },
+          render: 'pkg',
+        }),
+      ).toThrow(
+        `Cargo features on a foreign path dependency are unsupported at rust/pkg/Cargo.toml features.turbo: ${item}`,
+      )
+    }
+  })
+
+  it('rejects feature requests and optional activation on target-specific member edges', () => {
+    for (const request of [
+      '{ path = "../lib", features = ["sqlite"] }',
+      '{ path = "../lib", optional = true }',
+    ]) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            ...tokenlens('serde.workspace = true'),
+            cli: {
+              manifest: `[package]\nname = "cli"\n\n[target.'cfg(target_os = "linux")'.dependencies]\nlib = ${request}`,
+              files: ['src/main.rs'],
+            },
+          },
+          workspaceDependencies: 'hostname = "0.4"\nrusqlite = "0.39"\n',
+          registryPackages: ['serde', 'hostname', 'rusqlite'],
+          thirdPartyTargets: ['serde', 'hostname', 'rusqlite'],
+          render: 'lib',
+        }),
+      ).toThrow(
+        'Target-specific Cargo dependencies on workspace members cannot request features or be optional in rust/cli/Cargo.toml: lib',
+      )
+    }
   })
 })

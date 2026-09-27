@@ -48,8 +48,11 @@ seal -> upload socket -> verify -> durable record -> index.sqlite
    daemon wait in the batch, and derives critical/full views plus bounded
    metrics (04). It stamps `cicd.*`/`vcs.*`,
    lane-owned `buck2.vcs.merge.revision`, and `ci.provider`; untrusted
-   runs also carry `ci.pr.fork=true`. Local `ingest` uses the same converter
-   and uploader path as the service, with endpoints provided by configuration.
+   runs also carry `ci.pr.fork=true`. Local runs upload the sealed job and
+   one-job attempt-close through the same authenticated service as CI
+   when its endpoint is configured. Without a service, one-shot
+   `ingest --local` uses the same converter and uploader path, but cannot
+   provide the service's periodic reconciliation.
 3. Persist a plan of expected `(trace_id, span_id)` and OTLP chunks below
    ~3.5 MB; checkpoint each successful chunk. On retry, before re-pushing
    any uncheckpointed/in-flight chunk, read its trace by deterministic id,
@@ -85,6 +88,28 @@ seal -> upload socket -> verify -> durable record -> index.sqlite
    queue dead-letter and last error are separate failure details. Only a
    view verified as `ingested` redirects as complete; the shared trace
    cannot inherit a completed job view's status.
+
+Local close carries `rootInRecord=true`, one expected job and its
+conclusion; the entrypoint's sealed spool contains the sole local root.
+The service validates that the sealed local job actually carries exactly
+one derived root before accepting it, indexes the close, and verifies the
+root by trace id without emitting another. Upload authorization binds
+`ci-runner` exclusively to `ci/*` identities and `dev-host` exclusively
+to `local/*`, on both record and close routes.
+
+The opt-in `BUCK2_EVIDENCE_UPLOAD_URL` points at the tailnet upload Service;
+its default URL should be configured only when that Service is deployed.
+Only a confirmed connection refusal/unreachable endpoint before sending,
+or an explicit HTTP 4xx rejection, permits offline `ingest --local` when
+OTLP is available. An accepted request with a lost response or timeout
+is ambiguous: the spool remains marked `upload-pending` and local ingest
+is withheld. `buck2-evidence upload --pending --spool <run-records-root>`
+replays such records (close first, then job) against the same endpoint;
+the next local pipeline run invokes that replay automatically. The
+content-addressed service treats an already accepted digest's 409 as
+completion. Neither path changes the child exit status or discards the
+spool. Offline ingest is best-effort against later Tempo loss, unlike
+the service's active two-hour reconciliation window.
 
 ## Attempt Completion (BUCK.OBS.ING-R10)
 
@@ -159,7 +184,7 @@ latency target.
   spans/               the span spool, unchanged
   buck2-events/        raw *_events.pb.zst, unchanged
 <evidence-prefix>/<repository>/YYYY/MM/DD/run-<run-id>/attempt-<n>/
-  attempt-close.json  optional CI roster/conclusions, content-addressed
+  attempt-close.json  optional CI/local roster, content-addressed
 index.sqlite           job records: (repo, run, attempt, job) -> digest,
                        bytes, sealed VCS fields, per-view ids and status;
                        attempts: close digest, expected jobs/conclusions,
@@ -198,14 +223,16 @@ unmeasured both-views Tempo cost.
   gaps and verifying the same repro against fleet Tempo; this does not
   replace readback and selective deterministic repair for longer gaps.
   When repair cannot converge, preserve `missing_spans` and its count.
-  The isolated reproduction is filed as [Tempo issue 8002](https://github.com/grafana/tempo/issues/8002).
+  The isolated reproduction is filed as [Tempo issue 8002](https://github.com/grafana/tempo/issues/8002);
+  [the critical-trace E2E triage](./.experiments/2026-09-27-local-tempo-live-store-loss.md)
+  shows why a one-shot local ingester is insufficient for tailnet runs.
 
 ## Service and Dotfiles Contract (BUCK.OBS.ING-R07/R08)
 
 ```text
 effect-utils: rust/buck2-tools/buck2-evidence (Buck BuildProduct)
   seal | upload | ingest | serve | drain | backfill | retention
-  in-process event adapter; same ingest path on laptop and fleet
+  shared ingester: service for tailnet uploads, one-shot laptop fallback offline
 dotfiles: one hardened service + two Unix sockets
   upload socket   -> OIDC-gated managed Tailscale upload Service
   resolver socket -> read-only managed Tailscale resolver Service
@@ -243,6 +270,11 @@ continues to explain expired evidence.
   `incomplete`, never a duplicate root.
 - Incomplete backend readback never redirects as complete; missing ids are
   selectively repushed and persistent loss shows `missing_spans`.
+- Local owner: a close with `rootInRecord=true` and one expected job
+  verifies the root carried by the sealed record without publishing a
+  second root; by-id readback contains exactly one copy of its span id.
+  A failed or absent upload keeps the spool and falls back to offline
+  `ingest --local` without masking the child command's exit status.
 - Future fork ingest, when separately authorized: an untrusted-tagged record
   decodes under caps and carries `ci.pr.fork=true`; queries can filter it.
 - Evidence: [replay baseline](./.experiments/2026-09-25-ci-to-tempo-replay-baseline.md),
