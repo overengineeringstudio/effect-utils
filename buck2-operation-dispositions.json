@@ -65,6 +65,10 @@
       "operation": "test-integration-restate"
     },
     {
+      "disposition": "outside-by-policy:nix-realization",
+      "operation": "build-products"
+    },
+    {
       "disposition": "outside-by-policy:github-review-thread-gate",
       "operation": "pr-reviews-resolved"
     },

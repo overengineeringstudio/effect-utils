@@ -31,6 +31,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **CI `build-products` lane**: Every pull request now builds all published
+  `.#buck-product-*-from-source` attrs (derived from
+  `nix/buck2-products/cache-targets.json`, same as `publish-products`) without
+  Cachix credentials or a push, so a PR cannot break post-merge publication.
+  It is a required status check.
+
 - **Genie Netlify split build/deploy for PR previews**: Add
   `netlifyPreviewBuildSteps` (uncredentialed `pull_request` job: builds via the
   new `netlify:stage` task and uploads the static output) and

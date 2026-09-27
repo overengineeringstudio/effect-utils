@@ -762,6 +762,44 @@ const extraJobs: Record<string, any> = {
       },
     ],
   },
+  /**
+   * Credential-free twin of `publish-products`: realizes every published from-source
+   * product on each PR (and push) with the same attr derivation, but never receives a
+   * Cachix token, never pushes, and never proposes a manifest. The public cache is a
+   * read-only substituter only.
+   */
+  'build-products': {
+    if: normalCiIf,
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': 120,
+    permissions: { contents: 'read' },
+    defaults: bashShellDefaults,
+    env: githubTokenEnv(),
+    steps: [
+      checkoutStep(),
+      installNixStep({ binaryCaches: [binaryCache] }),
+      {
+        name: 'Build every published from-source product',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          [
+            'set -euo pipefail',
+            "mapfile -t product_names < <(jq -r '.products[].name' nix/buck2-products/cache-targets.json)",
+            'product_refs=()',
+            'for name in "${product_names[@]}"; do',
+            `  safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"`,
+            '  product_refs+=(".#buck-product-$safe_name-from-source")',
+            'done',
+            'echo "Building ${#product_refs[@]} from-source products"',
+            'nix build --no-link --print-build-logs "${product_refs[@]}"',
+          ].join('\n'),
+        ),
+      },
+    ],
+  },
   'publish-products': {
     if: trustedSecretCiIf,
     'runs-on': namespaceRunner({
