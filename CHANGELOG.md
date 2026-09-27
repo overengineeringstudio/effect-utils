@@ -23,6 +23,18 @@ All notable changes to this project will be documented in this file.
   `packages/@overeng/utils-storybook/patches/`; genie-projected
   `patchedDependencies` pick up the new path on regeneration.
 
+- **@overeng/effect-rpc-explorer**: The explorer's application descriptors are
+  now a live set. `ExplorerServices.descriptors` is a `DescriptorSet`
+  (`current()` returns `{ revision, descriptors }`; `subscribe` notifies on
+  change), and `makeInspectorGroup` takes `descriptors: DescriptorSet`; wrap a
+  fixed array with `staticDescriptorSet(descriptors)`. `InspectorSnapshotFrame`
+  gains a required `descriptorRevision`, so hand-built snapshot fixtures add
+  `descriptorRevision: 0`.
+- **@overeng/effect-rpc-explorer-react**: `ExplorerClient.watch` takes one
+  `ExplorerWatchCursor` (`{ afterRevision?, descriptorRevision? }`) instead of
+  a positional `afterRevision`; forward both fields to the `RpcExplorer.Watch`
+  payload.
+
 - **Genie exact prerelease peers**: `catalog.compose` peer dependencies and
   `catalog.peers` now emit a prerelease catalog version exactly
   (`effect: 4.0.0-rc.113`) instead of with a caret. Release versions keep `^`.
@@ -55,6 +67,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/effect-rpc-explorer runtime descriptors**:
+  `registerDescriptors({ group, owner })` registers a group mounted after construction, such as an app-local
+  provider, for the caller's Scope. Registering the same owner again replaces
+  its descriptors, so a remount never duplicates them; a tag held by several
+  owners stays resolvable until the last one releases it. Watch sends a fresh
+  Snapshot when the set changes, and accepts `descriptorRevision` so a viewer
+  that subscribed across a change catches up. The React projection passes its
+  descriptor revision through `ExplorerClient.watch`, so filters and schema
+  views cover runtime RPCs.
 - **Storybook play tests in CI** (#1392): The shared storybook task module
   adds `storybook:test:<name>` for packages marked `playTests = true` and a
   `storybook:test` aggregate. Each runs the package's `vitest.gate.config.ts`
