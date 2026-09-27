@@ -89,8 +89,16 @@ if grep -F 'nix/buck2-products/publish.sh --proposal "$proposal" --product' "$wo
   echo "buck2-cache-products-test: publication workflow still selects a hand-maintained product subset" >&2
   exit 1
 fi
-if grep -F 'product_refs' "$workflow" >/dev/null; then
+if grep -F 'product_refs' <<<"$publish_job" >/dev/null; then
   echo "buck2-cache-products-test: publication workflow still prebuilds the complete inventory" >&2
+  exit 1
+fi
+# The PR-time inventory build is the credential-free twin: it builds every product but
+# must never see a publication secret or push to the cache.
+build_job="$(sed -n '/^  build-products:/,/^  [a-z][a-z0-9-]*:$/p' "$workflow")"
+grep -F 'product_refs+=(".#buck-product-$safe_name-from-source")' <<<"$build_job" >/dev/null
+if grep -E 'secrets\.|cachix push|authToken|contents: write' <<<"$build_job" >/dev/null; then
+  echo "buck2-cache-products-test: build-products must stay credential-free and must not push" >&2
   exit 1
 fi
 if grep -E '(^|[[:space:]])set[[:space:]]+-[^[:space:]]*x' "$publisher" >/dev/null; then
