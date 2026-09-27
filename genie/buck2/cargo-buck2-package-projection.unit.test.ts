@@ -849,3 +849,210 @@ describe('Cargo multi-product packages', () => {
     )
   })
 })
+
+describe('Cargo features', () => {
+  const tokenlens = (cliDependency: string) => ({
+    lib: {
+      manifest:
+        '[package]\nname = "lib"\n\n[features]\ndefault = []\nsqlite = ["dep:hostname", "dep:rusqlite"]\n\n[dependencies]\nserde.workspace = true\nhostname = { workspace = true, optional = true }\nrusqlite = { workspace = true, optional = true }',
+      files: ['src/lib.rs'],
+    },
+    cli: {
+      manifest: `[package]\nname = "cli"\n\n[dependencies]\n${cliDependency}`,
+      files: ['src/main.rs'],
+    },
+  })
+  const renderTokenlens = (cliDependency: string) =>
+    renderCargoFixture({
+      members: tokenlens(cliDependency),
+      workspaceDependencies: 'hostname = "0.4"\nrusqlite = "0.39"\n',
+      registryPackages: ['serde', 'hostname', 'rusqlite'],
+      thirdPartyTargets: ['serde', 'hostname', 'rusqlite'],
+      render: 'lib',
+    })
+
+  it('unifies a dependent-enabled feature into the library and its dep: edges', () => {
+    const rules = renderedRules(renderTokenlens('lib = { path = "../lib", features = ["sqlite"] }'))
+    expect(rules.lib).toContain(
+      'deps = [\n        "//rust/third-party:hostname",\n        "//rust/third-party:rusqlite",\n        "//rust/third-party:serde",\n    ],',
+    )
+    expect(rules.lib).toContain('features = [\n        "default",\n        "sqlite",\n    ],')
+  })
+
+  it('leaves inactive optional dependencies out and the default-only feature set', () => {
+    const rules = renderedRules(renderTokenlens('lib = { path = "../lib" }'))
+    expect(rules.lib).toContain('deps = [\n        "//rust/third-party:serde",\n    ],')
+    expect(rules.lib).toContain('features = [\n        "default",\n    ],')
+  })
+
+  it('follows default, implicit, dep/feature, and weak dep?/feature items', () => {
+    const render = (appFeatures: string) =>
+      renderedRules(
+        renderCargoFixture({
+          members: {
+            core: {
+              manifest:
+                '[package]\nname = "core"\n\n[features]\ndefault = ["std"]\nstd = []\nturbo = ["serde?/derive", "util/fast"]\n\n[dependencies]\nserde = { version = "1", optional = true }\nutil = { path = "../util" }',
+              files: ['src/lib.rs'],
+            },
+            util: {
+              manifest: '[package]\nname = "util"\n\n[features]\nfast = []',
+              files: ['src/lib.rs'],
+            },
+            app: {
+              manifest: `[package]\nname = "app"\n\n[dependencies]\ncore = { path = "../core", features = [${appFeatures}] }`,
+              files: ['src/main.rs'],
+            },
+          },
+          render: 'core',
+        }),
+      ).lib
+    // A weak item never activates `serde`; only the implicit `serde` feature does.
+    expect(render('"turbo"')).toContain(
+      'deps = [\n        "//rust/util:lib",\n    ],\n    edition = "2024",\n    features = [\n        "default",\n        "std",\n        "turbo",\n    ],',
+    )
+    expect(render('"turbo", "serde"')).toContain(
+      'deps = [\n        "//rust/third-party:serde",\n        "//rust/util:lib",\n    ],\n    edition = "2024",\n    features = [\n        "default",\n        "serde",\n        "std",\n        "turbo",\n    ],',
+    )
+  })
+
+  it('propagates dep/feature items into another member', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        core: {
+          manifest:
+            '[package]\nname = "core"\n\n[features]\nturbo = ["util/fast"]\n\n[dependencies]\nutil = { path = "../util" }',
+          files: ['src/lib.rs'],
+        },
+        util: {
+          manifest: '[package]\nname = "util"\n\n[features]\nfast = []',
+          files: ['src/lib.rs'],
+        },
+        app: {
+          manifest:
+            '[package]\nname = "app"\n\n[dependencies]\ncore = { path = "../core", features = ["turbo"] }',
+          files: ['src/main.rs'],
+        },
+      },
+      render: 'util',
+    })
+    expect(renderedRules(rendered).lib).toContain('features = [\n        "fast",\n    ],')
+  })
+
+  it('omits a binary until its required-features are enabled', () => {
+    const render = (features: string) =>
+      Object.keys(
+        renderedRules(
+          renderCargoFixture({
+            members: {
+              forge: {
+                manifest: `[package]\nname = "forge"\n\n[features]\n${features}refresh-fixtures = []\n\n[[bin]]\nname = "refresh-fixtures"\npath = "src/bin/refresh_fixtures.rs"\nrequired-features = ["refresh-fixtures"]`,
+                files: ['src/lib.rs', 'src/bin/refresh_fixtures.rs'],
+              },
+            },
+            render: 'forge',
+          }),
+        ),
+      )
+    expect(render('')).toEqual(['lib'])
+    expect(render('default = ["refresh-fixtures"]\n')).toEqual(['lib', 'refresh-fixtures'])
+  })
+
+  it('rejects undefined, misplaced, and unprojectable feature requests', () => {
+    expect(() => renderTokenlens('lib = { path = "../lib", features = ["postgres"] }')).toThrow(
+      'Cargo feature postgres is not defined in rust/lib/Cargo.toml',
+    )
+    const single = (manifest: string, files: readonly string[] = ['src/lib.rs']) =>
+      renderCargoFixture({
+        members: { pkg: { manifest: `[package]\nname = "pkg"${manifest}`, files } },
+        render: 'pkg',
+      })
+    expect(() =>
+      single('\n\n[dev-dependencies]\nserde = { version = "1", optional = true }'),
+    ).toThrow('Cargo dev-dependencies cannot be optional at dev-dependencies.serde')
+    expect(() =>
+      single('\n\n[features]\nx = ["dep:serde"]\n\n[dependencies]\nserde = "1"'),
+    ).toThrow('Cargo feature dep:serde in rust/pkg/Cargo.toml names a non-optional dependency')
+    expect(() => single('\n\n[features]\ndefault = ["ghost/x"]')).toThrow(
+      'Cargo feature ghost/x in rust/pkg/Cargo.toml names no dependency ghost',
+    )
+    expect(() =>
+      single(
+        '\n\n[features]\nx = []\n\n[[bin]]\nname = "tool"\npath = "src/main.rs"\nrequired-features = ["y"]',
+        ['src/main.rs'],
+      ),
+    ).toThrow('Cargo binary tool requires undefined features in rust/pkg/Cargo.toml: y')
+    expect(() =>
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared", features = ["x"] }',
+            files: ['src/lib.rs'],
+          },
+        },
+        foreignPackages: {
+          shared: {
+            manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+            files: ['src/lib.rs'],
+            projected: true,
+          },
+        },
+        render: 'pkg',
+      }),
+    ).toThrow(
+      'Cargo features on a foreign path dependency are unsupported at dependencies.shared: x',
+    )
+    // The same request written as a [features] item, strong or weak, even when disabled.
+    for (const [dependency, item] of [
+      ['shared = { path = "../../shared" }', 'shared/x'],
+      ['shared = { path = "../../shared", optional = true }', 'shared?/x'],
+    ] as const) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            pkg: {
+              manifest: `[package]\nname = "pkg"\n\n[features]\nturbo = ["${item}"]\n\n[dependencies]\n${dependency}`,
+              files: ['src/lib.rs'],
+            },
+          },
+          foreignPackages: {
+            shared: {
+              manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+              files: ['src/lib.rs'],
+              projected: true,
+            },
+          },
+          render: 'pkg',
+        }),
+      ).toThrow(
+        `Cargo features on a foreign path dependency are unsupported at rust/pkg/Cargo.toml features.turbo: ${item}`,
+      )
+    }
+  })
+
+  it('rejects feature requests and optional activation on target-specific member edges', () => {
+    for (const request of [
+      '{ path = "../lib", features = ["sqlite"] }',
+      '{ path = "../lib", optional = true }',
+    ]) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            ...tokenlens('serde.workspace = true'),
+            cli: {
+              manifest: `[package]\nname = "cli"\n\n[target.'cfg(target_os = "linux")'.dependencies]\nlib = ${request}`,
+              files: ['src/main.rs'],
+            },
+          },
+          workspaceDependencies: 'hostname = "0.4"\nrusqlite = "0.39"\n',
+          registryPackages: ['serde', 'hostname', 'rusqlite'],
+          thirdPartyTargets: ['serde', 'hostname', 'rusqlite'],
+          render: 'lib',
+        }),
+      ).toThrow(
+        'Target-specific Cargo dependencies on workspace members cannot request features or be optional in rust/cli/Cargo.toml: lib',
+      )
+    }
+  })
+})
