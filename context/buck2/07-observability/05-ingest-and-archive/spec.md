@@ -97,10 +97,11 @@ The opt-in `BUCK2_EVIDENCE_UPLOAD_URL` points at the tailnet upload Service;
 its default URL should be configured only when that Service is deployed.
 The upload uses the existing tailnet `dev-host` capability, not a new
 role. A bounded upload failure logs clearly and falls back to local
-ingest without changing the child command's exit status; neither upload
-nor local ingest discards the sealed spool. Offline local ingest is
-best-effort against transient Tempo live-store loss, unlike the service's
-active two-hour reconciliation window.
+ingest when an OTLP endpoint exists, otherwise retaining the sealed
+spool. Neither path changes the child command's exit status or discards
+the spool. Offline local ingest is best-effort against transient Tempo
+live-store loss, unlike the service's active two-hour reconciliation
+window.
 
 ## Attempt Completion (BUCK.OBS.ING-R10)
 
