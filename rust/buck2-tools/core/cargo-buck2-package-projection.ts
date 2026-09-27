@@ -401,11 +401,14 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   const binaryRuleSources = new Map(
-    binaries.map((binary) => [binary.name, binaryTargetSources({ binaries, binary, sources })]),
+    binaries.map((binary) => [binary.name, binaryTargetSources({ binary, sources })]),
   )
   const binaryOwnedSources = new Set([...binaryRuleSources.values()].flat())
   const srcSources = sources.filter((source) => source.startsWith('src/'))
-  const librarySources = srcSources.filter((source) => binaryOwnedSources.has(source) === false)
+  // Cargo lets targets share a crate root, so the library keeps its root even when a binary uses it.
+  const librarySources = srcSources.filter(
+    (source) => source === library?.path || binaryOwnedSources.has(source) === false,
+  )
   // A binary crate's `mod` files are compile inputs: each binary declares its
   // own sources plus every shared non-root `src/` module, so a module-only edit
   // changes the rule's action key instead of reusing a stale cached binary.
@@ -951,7 +954,7 @@ const resolveDependency = ({
   // declares that rename; otherwise (and always in virtual workspaces) it carries the package name.
   const targetName =
     effectiveRequest.package === undefined ||
-    rootPackageDeclaresRename({ context, dependencyName }) === true
+    rootPackageDeclaresRename({ context, dependencyName, packageName }) === true
       ? dependencyName
       : packageName
   return {
@@ -966,13 +969,15 @@ const resolveDependency = ({
   }
 }
 
-/** Whether the workspace root package declares `dependencyName` as a renamed dependency. */
+/** Whether the workspace root package renames `packageName` to `dependencyName`. */
 const rootPackageDeclaresRename = ({
   context,
   dependencyName,
+  packageName,
 }: {
   readonly context: ProjectionContext
   readonly dependencyName: string
+  readonly packageName: string
 }): boolean => {
   const rootManifest = context.memberByPath.get(context.workspaceRoot)?.manifest
   if (rootManifest === undefined) return false
@@ -989,13 +994,13 @@ const rootPackageDeclaresRename = ({
   return tables.some((table) => {
     const request = table?.[dependencyName]
     if (request === undefined || typeof request === 'string') return false
-    if (request.package !== undefined) return true
+    if (request.package !== undefined) return request.package === packageName
     const inherited = context.workspace.dependencies?.[dependencyName]
     return (
       request.workspace === true &&
       inherited !== undefined &&
       typeof inherited !== 'string' &&
-      inherited.package !== undefined
+      inherited.package === packageName
     )
   })
 }
@@ -1190,44 +1195,25 @@ const discoverCargoTargets = ({
   if (new Set(binaries.map((binary) => binary.name)).size !== binaries.length) {
     throw new Error(`Cargo package ${member.packagePath} has duplicate binary names`)
   }
-  const crateRoots = [
-    ...(library === undefined ? [] : [library.path]),
-    ...binaries.map((binary) => binary.crateRoot),
-  ]
-  const sharedRoots = crateRoots.filter((root, index) => crateRoots.indexOf(root) !== index)
-  if (sharedRoots.length > 0) {
-    throw new Error(
-      `Cargo targets share a crate root in ${member.manifestPath}: ${sorted(sharedRoots).join(', ')}`,
-    )
-  }
   return library === undefined ? { binaries } : { binaries, library }
 }
 
 /**
  * A `src/bin/<name>/main.rs` binary owns its directory's modules. A flat `src/bin/<name>.rs`
- * binary resolves `mod` declarations beside its root, so it also declares the `src/bin/`
- * sources outside other binaries' directories. Any other binary owns its root.
+ * binary resolves `mod` declarations beside its root (including `src/bin/<dir>/mod.rs` of a
+ * directory binary), so it declares every `src/bin/` source. Any other binary owns its root.
  */
 const binaryTargetSources = ({
-  binaries,
   binary,
   sources,
 }: {
-  readonly binaries: readonly CargoBinaryTarget[]
   readonly binary: CargoBinaryTarget
   readonly sources: readonly string[]
 }): readonly string[] => {
   const directoryMatch = binary.crateRoot.match(/^(src\/bin\/[^/]+\/)main\.rs$/)
   if (directoryMatch === null) {
     if (/^src\/bin\/[^/]+\.rs$/.test(binary.crateRoot) === false) return [binary.crateRoot]
-    const binaryDirectories = binaries.flatMap(
-      (candidate) => candidate.crateRoot.match(/^(src\/bin\/[^/]+\/)main\.rs$/)?.[1] ?? [],
-    )
-    return sources.filter(
-      (source) =>
-        source.startsWith('src/bin/') === true &&
-        binaryDirectories.every((directory) => source.startsWith(directory) === false),
-    )
+    return sources.filter((source) => source.startsWith('src/bin/') === true)
   }
   const directory = requireValue({
     value: directoryMatch[1],

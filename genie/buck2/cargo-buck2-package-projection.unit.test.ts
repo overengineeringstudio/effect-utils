@@ -288,14 +288,14 @@ describe('Cargo target discovery', () => {
     expect(rules['my-tool']).toContain('crate = "my_tool",\n    crate_root = "src/main.rs",')
     expect(rules['my-tool']).toContain('deps = [\n        ":lib",\n    ],')
     expect(rules.extra).toContain(
-      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/util.rs",\n    ],',
+      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/util.rs",\n    ],',
     )
     expect(rules.multi).toContain(
       'crate_root = "src/bin/multi/main.rs",\n    srcs = [\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/util.rs",\n    ],',
     )
   })
 
-  it('lets flat src/bin binaries load sibling modules outside binary directories', () => {
+  it('lets flat src/bin binaries load every src/bin module', () => {
     const rules = renderedRules(
       renderCargoFixture({
         members: {
@@ -314,7 +314,7 @@ describe('Cargo target discovery', () => {
     )
     expect(Object.keys(rules)).toEqual(['dir', 'helper', 'tool'])
     expect(rules.tool).toContain(
-      'crate_root = "src/bin/tool.rs",\n    srcs = [\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
+      'crate_root = "src/bin/tool.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
     )
     expect(rules.dir).toContain(
       'crate_root = "src/bin/dir/main.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n    ],',
@@ -334,6 +334,28 @@ describe('Cargo target discovery', () => {
       'Cargo binary names collide with generated Buck targets in rust/pkg/Cargo.toml: static_sources',
     )
     expect(Object.keys(renderedRules(render(['src/bin/lib.rs'])))).toEqual(['lib'])
+  })
+
+  it('keeps targets that share a crate root', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n\n[lib]\npath = "src/shared.rs"\n\n[[bin]]\nname = "one"\npath = "src/shared.rs"\n\n[[bin]]\nname = "two"\npath = "src/shared.rs"',
+            files: ['src/shared.rs'],
+          },
+        },
+        render: 'pkg',
+      }),
+    )
+    expect(Object.keys(rules)).toEqual(['lib', 'one', 'two'])
+    expect(rules.lib).toContain(
+      'crate_root = "src/shared.rs",\n    srcs = [\n        "src/shared.rs",\n    ],',
+    )
+    expect(rules.two).toContain(
+      'crate_root = "src/shared.rs",\n    srcs = [\n        "src/shared.rs",\n    ],',
+    )
   })
 
   it('skips hidden paths in automatic binary discovery', () => {
@@ -427,12 +449,6 @@ describe('Cargo target discovery', () => {
         members: { pkg: { manifest: `[package]\nname = "pkg"${manifest}`, files } },
         render: 'pkg',
       })
-    expect(() => renderSingle('\n\n[lib]\npath = "src/main.rs"', ['src/main.rs'])).toThrow(
-      'Cargo targets share a crate root in rust/pkg/Cargo.toml: src/main.rs',
-    )
-    expect(() =>
-      renderSingle('\n\n[[bin]]\nname = "other"\npath = "src/lib.rs"', ['src/lib.rs']),
-    ).toThrow('Cargo targets share a crate root')
     expect(() => renderSingle('', ['src/bin/twin.rs', 'src/bin/twin/main.rs'])).toThrow(
       'Cargo binary target discovery is ambiguous in rust/pkg/Cargo.toml: twin',
     )
@@ -651,6 +667,25 @@ describe('Cargo renamed dependencies', () => {
         },
       },
       registryPackages: ['rustls-webpki', 'serde', 'webpki'],
+      thirdPartyTargets: ['rustls-webpki', 'serde', 'webpki'],
+      render: 'relay',
+    })
+    expect(renderedRules(rendered).relay).toContain(
+      'named_deps = {\n        "webpki": "//rust/third-party:rustls-webpki",\n    },',
+    )
+  })
+
+  it('ignores a root rename of the same request name to another package', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        '.': {
+          manifest:
+            '[package]\nname = "root"\n\n[dependencies]\nwebpki = { package = "crate-a", version = "1" }',
+          files: ['src/lib.rs'],
+        },
+        ...renamed('webpki = { package = "rustls-webpki", version = "0.103" }'),
+      },
+      registryPackages: ['crate-a', 'rustls-webpki', 'serde'],
       thirdPartyTargets: ['rustls-webpki', 'serde', 'webpki'],
       render: 'relay',
     })
