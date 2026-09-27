@@ -811,6 +811,7 @@ const extraJobs: Record<string, any> = {
             'for name in "${product_names[@]}"; do',
             `  safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"`,
             '  product_refs+=(".#buck-product-$safe_name-from-source")',
+            'done',
             'product_refs+=(".#buck2-evidence")',
             'echo "Building ${#product_refs[@]} from-source products and evidence"',
             'nix build --no-link --print-build-logs "${product_refs[@]}"',
