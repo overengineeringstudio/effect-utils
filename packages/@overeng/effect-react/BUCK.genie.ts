@@ -13,11 +13,6 @@ export const buck2TypeScriptAdmission = {
       packagePath: 'packages/@overeng/otel-contract',
       distTarget: '//packages/@overeng/otel-contract:dist',
     },
-    {
-      packageName: '@overeng/utils',
-      packagePath: 'packages/@overeng/utils',
-      distTarget: '//packages/@overeng/utils:dist',
-    },
   ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
   tests: [

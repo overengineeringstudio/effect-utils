@@ -8,7 +8,7 @@ import {
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
-import utilsPkg from '../utils/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
 const workspaceDeps = catalog.compose({
@@ -17,7 +17,7 @@ const workspaceDeps = catalog.compose({
     workspace: [otelContractPkg],
   },
   devDependencies: {
-    workspace: [utilsPkg],
+    workspace: [utilsStorybookPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,

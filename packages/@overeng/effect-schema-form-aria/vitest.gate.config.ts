@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config'
 
-import { createStoryGateConfig } from '@overeng/utils/node/storybook/gate'
+import { createStoryGateConfig } from '@overeng/utils-storybook/gate'
 import { createStylexVitePlugins } from '@overeng/utils/node/stylex'
 
 // Run through `runStoryGate`, not directly: baselines are derived from a git ref

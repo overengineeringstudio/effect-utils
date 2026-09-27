@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs'
 
 import { expect } from 'vitest'
 
+import { shouldNeverHappen } from '@overeng/utils'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { shouldNeverHappen } from '../../../isomorphic/core.ts'
 import { createDomStorybookConfig, createTuiStorybookConfig } from './mod.ts'
 
 const runViteFinal = async () => {

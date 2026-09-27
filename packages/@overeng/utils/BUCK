@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:f29d8b1333f5a31e23dd57f243e19344124244de91dfb2e2ba9242876d38c44d
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/patches/**/*.patch, packages/@overeng/utils/src/**/*.css, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.js, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.spec.cjs, packages/@overeng/utils/src/**/*.spec.jsx, packages/@overeng/utils/src/**/*.spec.mjs, packages/@overeng/utils/src/**/*.test.cjs, packages/@overeng/utils/src/**/*.test.jsx, packages/@overeng/utils/src/**/*.test.mjs, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/src/**/__snapshots__/*.snap, packages/@overeng/utils/tsconfig.json.genie.ts
+# Semantic fingerprint: sha256:d165c0c230950712f9159ffd6e158bc32ccfaacf48592fc147e8697d0de27b8b
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-storybook/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.css, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.js, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.spec.cjs, packages/@overeng/utils/src/**/*.spec.jsx, packages/@overeng/utils/src/**/*.spec.mjs, packages/@overeng/utils/src/**/*.test.cjs, packages/@overeng/utils/src/**/*.test.jsx, packages/@overeng/utils/src/**/*.test.mjs, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/src/**/__snapshots__/*.snap, packages/@overeng/utils/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -18,12 +18,6 @@ load("//buck2:package_tools.bzl", "npm_package_archive")
 export_file(
     name = "package.json",
     src = "package.json",
-    visibility = ["PUBLIC"],
-)
-
-export_file(
-    name = "patches/@storybook__builder-vite@10.6.0.patch",
-    src = "patches/@storybook__builder-vite@10.6.0.patch",
     visibility = ["PUBLIC"],
 )
 
@@ -106,28 +100,6 @@ export_materialization_inputs([
     "src/node/playwright/test.ts",
     "src/node/playwright/wait.ts",
     "src/node/semaphore.contract.ts",
-    "src/node/storybook/builder-vite-patch.unit.test.ts",
-    "src/node/storybook/config/mod.ts",
-    "src/node/storybook/config/mod.unit.test.ts",
-    "src/node/storybook/gate/annotations.ts",
-    "src/node/storybook/gate/cli.ts",
-    "src/node/storybook/gate/completion-reporter.ts",
-    "src/node/storybook/gate/constants.ts",
-    "src/node/storybook/gate/mod.ts",
-    "src/node/storybook/gate/portable-stories.ts",
-    "src/node/storybook/gate/portable-stories.unit.test.ts",
-    "src/node/storybook/gate/project-annotations.ts",
-    "src/node/storybook/gate/project-annotations.unit.test.ts",
-    "src/node/storybook/gate/project.ts",
-    "src/node/storybook/gate/project.unit.test.ts",
-    "src/node/storybook/gate/run.ts",
-    "src/node/storybook/gate/run.unit.test.ts",
-    "src/node/storybook/gate/settle.ts",
-    "src/node/storybook/gate/settle.unit.test.ts",
-    "src/node/storybook/gate/setup.ts",
-    "src/node/storybook/gate/virtual-modules.d.ts",
-    "src/node/storybook/mod.ts",
-    "src/node/storybook/opentui-stub.ts",
     "src/node/stylex/focus-order.ts",
     "src/node/stylex/focus-order.unit.test.ts",
     "src/node/stylex/mod-types.d.ts",
@@ -260,28 +232,6 @@ package_view(
         "src/node/playwright/test.ts": "src/node/playwright/test.ts",
         "src/node/playwright/wait.ts": "src/node/playwright/wait.ts",
         "src/node/semaphore.contract.ts": "src/node/semaphore.contract.ts",
-        "src/node/storybook/builder-vite-patch.unit.test.ts": "src/node/storybook/builder-vite-patch.unit.test.ts",
-        "src/node/storybook/config/mod.ts": "src/node/storybook/config/mod.ts",
-        "src/node/storybook/config/mod.unit.test.ts": "src/node/storybook/config/mod.unit.test.ts",
-        "src/node/storybook/gate/annotations.ts": "src/node/storybook/gate/annotations.ts",
-        "src/node/storybook/gate/cli.ts": "src/node/storybook/gate/cli.ts",
-        "src/node/storybook/gate/completion-reporter.ts": "src/node/storybook/gate/completion-reporter.ts",
-        "src/node/storybook/gate/constants.ts": "src/node/storybook/gate/constants.ts",
-        "src/node/storybook/gate/mod.ts": "src/node/storybook/gate/mod.ts",
-        "src/node/storybook/gate/portable-stories.ts": "src/node/storybook/gate/portable-stories.ts",
-        "src/node/storybook/gate/portable-stories.unit.test.ts": "src/node/storybook/gate/portable-stories.unit.test.ts",
-        "src/node/storybook/gate/project-annotations.ts": "src/node/storybook/gate/project-annotations.ts",
-        "src/node/storybook/gate/project-annotations.unit.test.ts": "src/node/storybook/gate/project-annotations.unit.test.ts",
-        "src/node/storybook/gate/project.ts": "src/node/storybook/gate/project.ts",
-        "src/node/storybook/gate/project.unit.test.ts": "src/node/storybook/gate/project.unit.test.ts",
-        "src/node/storybook/gate/run.ts": "src/node/storybook/gate/run.ts",
-        "src/node/storybook/gate/run.unit.test.ts": "src/node/storybook/gate/run.unit.test.ts",
-        "src/node/storybook/gate/settle.ts": "src/node/storybook/gate/settle.ts",
-        "src/node/storybook/gate/settle.unit.test.ts": "src/node/storybook/gate/settle.unit.test.ts",
-        "src/node/storybook/gate/setup.ts": "src/node/storybook/gate/setup.ts",
-        "src/node/storybook/gate/virtual-modules.d.ts": "src/node/storybook/gate/virtual-modules.d.ts",
-        "src/node/storybook/mod.ts": "src/node/storybook/mod.ts",
-        "src/node/storybook/opentui-stub.ts": "src/node/storybook/opentui-stub.ts",
         "src/node/stylex/focus-order.ts": "src/node/stylex/focus-order.ts",
         "src/node/stylex/focus-order.unit.test.ts": "src/node/stylex/focus-order.unit.test.ts",
         "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",
@@ -320,7 +270,6 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_utils_07fe64e7b8ad",
     files = {
         "package.json": "package.json",
-        "patches/@storybook__builder-vite@10.6.0.patch": "patches/@storybook__builder-vite@10.6.0.patch",
         "src/browser/BroadcastLogger.ts": "src/browser/BroadcastLogger.ts",
         "src/browser/__tests__/BroadcastLogger.pw.test.ts": "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/browser/__tests__/fixtures/test-page.ts": "src/browser/__tests__/fixtures/test-page.ts",
@@ -399,28 +348,6 @@ package_view(
         "src/node/playwright/test.ts": "src/node/playwright/test.ts",
         "src/node/playwright/wait.ts": "src/node/playwright/wait.ts",
         "src/node/semaphore.contract.ts": "src/node/semaphore.contract.ts",
-        "src/node/storybook/builder-vite-patch.unit.test.ts": "src/node/storybook/builder-vite-patch.unit.test.ts",
-        "src/node/storybook/config/mod.ts": "src/node/storybook/config/mod.ts",
-        "src/node/storybook/config/mod.unit.test.ts": "src/node/storybook/config/mod.unit.test.ts",
-        "src/node/storybook/gate/annotations.ts": "src/node/storybook/gate/annotations.ts",
-        "src/node/storybook/gate/cli.ts": "src/node/storybook/gate/cli.ts",
-        "src/node/storybook/gate/completion-reporter.ts": "src/node/storybook/gate/completion-reporter.ts",
-        "src/node/storybook/gate/constants.ts": "src/node/storybook/gate/constants.ts",
-        "src/node/storybook/gate/mod.ts": "src/node/storybook/gate/mod.ts",
-        "src/node/storybook/gate/portable-stories.ts": "src/node/storybook/gate/portable-stories.ts",
-        "src/node/storybook/gate/portable-stories.unit.test.ts": "src/node/storybook/gate/portable-stories.unit.test.ts",
-        "src/node/storybook/gate/project-annotations.ts": "src/node/storybook/gate/project-annotations.ts",
-        "src/node/storybook/gate/project-annotations.unit.test.ts": "src/node/storybook/gate/project-annotations.unit.test.ts",
-        "src/node/storybook/gate/project.ts": "src/node/storybook/gate/project.ts",
-        "src/node/storybook/gate/project.unit.test.ts": "src/node/storybook/gate/project.unit.test.ts",
-        "src/node/storybook/gate/run.ts": "src/node/storybook/gate/run.ts",
-        "src/node/storybook/gate/run.unit.test.ts": "src/node/storybook/gate/run.unit.test.ts",
-        "src/node/storybook/gate/settle.ts": "src/node/storybook/gate/settle.ts",
-        "src/node/storybook/gate/settle.unit.test.ts": "src/node/storybook/gate/settle.unit.test.ts",
-        "src/node/storybook/gate/setup.ts": "src/node/storybook/gate/setup.ts",
-        "src/node/storybook/gate/virtual-modules.d.ts": "src/node/storybook/gate/virtual-modules.d.ts",
-        "src/node/storybook/mod.ts": "src/node/storybook/mod.ts",
-        "src/node/storybook/opentui-stub.ts": "src/node/storybook/opentui-stub.ts",
         "src/node/stylex/focus-order.ts": "src/node/stylex/focus-order.ts",
         "src/node/stylex/focus-order.unit.test.ts": "src/node/stylex/focus-order.unit.test.ts",
         "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",
@@ -473,7 +400,6 @@ tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
     declaration_sources = {
-        "src/node/storybook/gate/virtual-modules.d.ts": "src/node/storybook/gate/virtual-modules.d.ts",
         "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",
         "src/node/stylex/next-types.d.ts": "src/node/stylex/next-types.d.ts",
     },

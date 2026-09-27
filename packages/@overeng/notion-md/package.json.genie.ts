@@ -15,6 +15,7 @@ import notionPropertyWritePkg from '../notion-property-write/package.json.genie.
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
@@ -38,7 +39,7 @@ const workspaceDeps = catalog.compose({
     ],
   },
   devDependencies: {
-    workspace: [tuiReactPkg, utilsDevPkg],
+    workspace: [tuiReactPkg, utilsDevPkg, utilsStorybookPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,

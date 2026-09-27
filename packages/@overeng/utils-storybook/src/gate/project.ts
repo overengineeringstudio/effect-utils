@@ -142,7 +142,7 @@ const reactAliasRules = [
 /**
  * Resolve every React specifier against `root` — the consuming package.
  *
- * `@overeng/utils` reaches most consumers as a `link:` into a sibling megarepo
+ * `@overeng/utils-storybook` reaches most consumers as a `link:` into a sibling megarepo
  * checkout that carries its own `node_modules`, and Node resolves from a link's
  * real path. So `@storybook/react-dom-shim` — the thing that actually renders
  * every story — resolves `react`/`react-dom` inside THIS tree, while the
@@ -270,7 +270,7 @@ const createProject = ({
     server: { fs: { strict: false } },
     test: {
       name: projectName,
-      setupFiles: ['@overeng/utils/node/storybook/gate/setup'],
+      setupFiles: ['@overeng/utils-storybook/gate/setup'],
       // Vitest copies visual-diff artifacts into `attachmentsDir` for
       // reporters. Its default `.vitest-attachments` is below the consumer
       // package, so keep that second diagnostic channel in the same owned

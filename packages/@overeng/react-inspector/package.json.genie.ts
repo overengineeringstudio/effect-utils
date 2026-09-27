@@ -7,7 +7,7 @@ import {
   packageJson,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
-import utilsPkg from '../utils/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 
 const catalog = defineCatalog({
   ...repoCatalog.pick(
@@ -39,7 +39,7 @@ const workspaceDeps = catalog.compose({
     },
   },
   devDependencies: {
-    workspace: [utilsPkg],
+    workspace: [utilsStorybookPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,

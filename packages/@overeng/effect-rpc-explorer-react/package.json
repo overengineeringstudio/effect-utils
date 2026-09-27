@@ -10,7 +10,8 @@
       "packages/@overeng/otel-contract",
       "packages/@overeng/stylex-tokens",
       "packages/@overeng/utils",
-      "packages/@overeng/utils-dev"
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
     ]
   },
   "name": "@overeng/effect-rpc-explorer-react",
@@ -37,7 +38,7 @@
     "build": "tsc --build tsconfig.json && vite build",
     "storybook": "storybook dev -p 6017",
     "storybook:build": "storybook build",
-    "gate": "bun node_modules/@overeng/utils/src/node/storybook/gate/cli.ts"
+    "gate": "bun node_modules/@overeng/utils-storybook/src/gate/cli.ts"
   },
   "dependencies": {
     "@overeng/effect-rpc-explorer": "workspace:^",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@overeng/utils": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
     "@storybook/addon-a11y": "10.6.0",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",

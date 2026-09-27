@@ -44,6 +44,7 @@ export const internalPackages = [
   'tui-stories',
   'utils',
   'utils-dev',
+  'utils-storybook',
   'ci-tools',
 ] as const
 

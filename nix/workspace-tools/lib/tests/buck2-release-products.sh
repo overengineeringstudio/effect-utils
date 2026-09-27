@@ -8,11 +8,11 @@ publisher="$repo_root/nix/buck2-products/publish.sh"
 targets="$repo_root/nix/buck2-products/cache-targets.json"
 workflow="$repo_root/.github/workflows/ci.yml"
 
-expected_names='["@overeng/agent-session-ingest","@overeng/content-address","@overeng/effect-ai-claude-cli","@overeng/effect-distributed-lock","@overeng/effect-react","@overeng/genie","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/notion-md","@overeng/notion-property-write","@overeng/notion-react","@overeng/otel-contract","@overeng/restate-effect","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
+expected_names='["@overeng/agent-session-ingest","@overeng/content-address","@overeng/effect-ai-claude-cli","@overeng/effect-distributed-lock","@overeng/effect-react","@overeng/genie","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/notion-md","@overeng/notion-property-write","@overeng/notion-react","@overeng/otel-contract","@overeng/restate-effect","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","@overeng/utils-storybook","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck-cache-targets/v1" and
   [.products[].name] == $expected and
-  (.products | length == 30) and
+  (.products | length == 31) and
   all(.products[];
     (.kind == "javascript" or .kind == "package") and
     (.target | startswith("effect_utils//")) and
@@ -426,5 +426,5 @@ if nix eval --impure --json --expr "$loader_expr" >"$tmp/mismatch.log" 2>&1; the
 fi
 grep -F 'artifact URL does not match its store path and artifact' "$tmp/mismatch.log" >/dev/null
 
-jq -e '.schema == "effect-utils/buck-cache-targets/v1" and (.products | length == 30)' "$targets" >/dev/null
+jq -e '.schema == "effect-utils/buck-cache-targets/v1" and (.products | length == 31)' "$targets" >/dev/null
 echo "buck2-cache-products-test: OK"

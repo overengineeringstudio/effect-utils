@@ -6,9 +6,11 @@ import {
   packageJson,
   privatePackageDefaults,
   type PackageJsonInputData,
+  workspaceClosureReference,
 } from '../../../genie/internal.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 /** Runtime + type peer deps — consumers must have these to use and type-check tui-react's .tsx source exports */
@@ -42,7 +44,7 @@ const runtimeDeps = catalog.compose({
     ),
   },
   devDependencies: {
-    workspace: [utilsDevPkg],
+    workspace: [utilsDevPkg, workspaceClosureReference(utilsStorybookPkg)],
     external: {
       ...catalog.pick(
         ...peerDepNames,

@@ -6,6 +6,23 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking changes
 
+- **@overeng/utils-storybook** (new package): the Storybook config helpers and
+  the story gate move out of `@overeng/utils`, which no longer declares
+  Storybook peers. Under `autoInstallPeers`, pnpm links an optional peer into a
+  package whenever a matching version exists anywhere in the graph
+  (pnpm/pnpm#10046). Utils' optional `storybook` / `@storybook/react-vite` /
+  `@vitest/browser-playwright` peers therefore put a React-less Storybook
+  chain under every non-React consumer of utils, and strict peer checks failed
+  there once the lockfile re-resolved it. Migrate: `@overeng/utils/node/storybook[/config]`
+  → `@overeng/utils-storybook[/config]`, `@overeng/utils/node/storybook/gate[/cli|/setup]`
+  → `@overeng/utils-storybook/gate[/cli|/setup]`, gate scripts
+  `node_modules/@overeng/utils/src/node/storybook/gate/cli.ts` →
+  `node_modules/@overeng/utils-storybook/src/gate/cli.ts`, and add
+  `@overeng/utils-storybook` as a devDependency. The
+  `@storybook/builder-vite@10.6.0` patch moves to
+  `packages/@overeng/utils-storybook/patches/`; genie-projected
+  `patchedDependencies` pick up the new path on regeneration.
+
 - **Genie exact prerelease peers**: `catalog.compose` peer dependencies and
   `catalog.peers` now emit a prerelease catalog version exactly
   (`effect: 4.0.0-rc.113`) instead of with a caret. Release versions keep `^`.

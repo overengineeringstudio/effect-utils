@@ -346,6 +346,11 @@
       "description": "@overeng/utils-dev package · Set: manual"
     },
     {
+      "name": "system:utils-storybook",
+      "color": "a371f7",
+      "description": "@overeng/utils-storybook package · Set: manual"
+    },
+    {
       "name": "type:agent-tooling",
       "color": "1f8fb8",
       "description": "Agent, automation, AI workflow, or developer-agent tooling · Set: manual"

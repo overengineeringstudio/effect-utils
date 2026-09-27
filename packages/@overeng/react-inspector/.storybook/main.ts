@@ -1,4 +1,4 @@
-import { createDomStorybookConfig } from '@overeng/utils/node/storybook/config'
+import { createDomStorybookConfig } from '@overeng/utils-storybook/config'
 
 /* `disableMinify` preserves component function names for the inspector display.
  * The shared factory also applies the standard server binding (0.0.0.0) and the

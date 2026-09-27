@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 
-import { createTuiStorybookConfig } from '@overeng/utils/node/storybook/config'
+import { createTuiStorybookConfig } from '@overeng/utils-storybook/config'
 
 const effectUtilsRoot = resolve(import.meta.dirname, '..', '..', '..', '..')
 
