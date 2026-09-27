@@ -11,14 +11,16 @@
   authority for that set; `file:` tarballs are not directory packages and are
   ignored.
 
-  Paths are relative to the lockfile directory. Directories under
-  `sourceInputStagePath` are owned by the source-input projection contract and
-  are excluded. A directory outside the lockfile directory cannot be staged
-  under the install root and is rejected.
+  Paths are relative to the lockfile directory. A directory outside the
+  lockfile directory cannot be staged under the install root and is rejected.
+  So is a directory under `sourceInputStagePath`: that projection is only
+  materialized for the aggregate root, whose lockfile this reader is not used
+  for, so such an entry could never be staged.
 
   The parser is line-based over pnpm's canonical lockfile layout (as the
-  `patchedDependencies` reader in mk-pnpm-cli.nix is) and accepts pnpm 12's
-  multi-document lockfiles.
+  `patchedDependencies` reader in mk-pnpm-cli.nix is), accepts pnpm 12's
+  multi-document lockfiles, and reads plain, single-quoted and double-quoted
+  YAML scalars (a path containing `,` is always quoted in the flow mapping).
 */
 { lib }:
 {
@@ -29,8 +31,23 @@ let
   lines = lib.splitString "\n" lockfileContent;
 
   topLevelKey = line: builtins.match "([A-Za-z][A-Za-z0-9]*):.*" line;
+  resolutionPattern = scalar: "    resolution: \\{directory: ${scalar}, type: directory}";
+  singleQuoted = builtins.match (resolutionPattern "'((''|[^'])*)'");
+  doubleQuoted = builtins.match (resolutionPattern "\"(([^\"\\\\]|\\\\.)*)\"");
+  plain = builtins.match (resolutionPattern "([^'\" ,{}][^,{}]*)");
   directoryResolution =
-    line: builtins.match "    resolution: \\{directory: ['\"]?([^,'\"]+)['\"]?, type: directory}" line;
+    line:
+    let
+      single = singleQuoted line;
+      double = doubleQuoted line;
+      unquoted = plain line;
+    in
+    if single != null then
+      [ (builtins.replaceStrings [ "''" ] [ "'" ] (builtins.head single)) ]
+    else if double != null then
+      [ (builtins.replaceStrings [ "\\\"" "\\\\" ] [ "\"" "\\" ] (builtins.head double)) ]
+    else
+      unquoted;
 
   step =
     state: line:
@@ -54,8 +71,10 @@ let
     path:
     if path == ".." || lib.hasPrefix "../" path || lib.hasPrefix "/" path then
       throw "pnpm-lock-injected-dirs: injected directory package escapes the lockfile directory: ${path}"
+    else if isSourceInput path then
+      throw "pnpm-lock-injected-dirs: injected directory package under ${sourceInputStagePath} cannot be staged for this install root: ${path}"
     else
       path
-  ) (builtins.filter (path: !(isSourceInput path)) (map normalize parsed.directories));
+  ) (map normalize parsed.directories);
 in
 lib.sort (left: right: left < right) (lib.unique checked)
