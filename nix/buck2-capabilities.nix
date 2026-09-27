@@ -33,17 +33,9 @@ let
   platform =
     if pkgs.stdenv.hostPlatform.isDarwin then "aarch64-macos" else pkgs.stdenv.hostPlatform.system;
 in
-pkgs.runCommand "buck2-capabilities"
-  {
-    nativeBuildInputs = [ pkgs.bun ];
-    # Consumers materialize these inputs against their own realized tool bytes.
-    passthru = {
-      inherit input platform src;
-    };
-  }
-  ''
-    bun ${src}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
-      --input ${input} \
-      --output "$out" \
-      --platform ${platform}
-  ''
+pkgs.runCommand "buck2-capabilities" { nativeBuildInputs = [ pkgs.bun ]; } ''
+  bun ${src}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
+    --input ${input} \
+    --output "$out" \
+    --platform ${platform}
+''

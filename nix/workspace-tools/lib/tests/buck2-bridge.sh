@@ -207,13 +207,6 @@ dynamic_import="$(build_expr "$dynamic_import_expr")"
 # substitute a descriptor-bearing attrset for the source Buck derivation.
 source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
   descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
-  projectionPackage = pkgs.hello;
-  projectionClosure = pkgs.closureInfo { rootPaths = [ projectionPackage ]; };
-  projectionInput = pkgs.writeText \"fixture-capability-input.json\" (builtins.toJSON [{
-    capability = { toolId = \"fixture-hello\"; protocol = \"fixture/v1\"; flakePackage = \"hello\"; executable = \"bin/hello\"; };
-    nixOutputPath = projectionPackage;
-    closurePathsFile = \"\${projectionClosure}/store-paths\";
-  }]);
   builder = import (repo + \"/nix/buck2-products/from-source.nix\") {
     inherit pkgs;
     buck2 = pkgs.writeShellScriptBin \"buck2\" \"exit 1\";
@@ -233,9 +226,7 @@ source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDG
       expectedPlatform = descriptor.platform;
       runtimeKind = \"elf-dynamic\";
       repositorySource = exported;
-      capabilities = pkgs.runCommand \"fixture-buck-capabilities\" {
-        passthru = { input = projectionInput; platform = \"x86_64-linux\"; src = flake.outPath; };
-      } \"mkdir \$out\";
+      capabilities = pkgs.runCommand \"empty-buck-capabilities\" { } \"mkdir \$out\";
       pnpmArchives = pkgs.runCommand \"empty-pnpm-archives\" { } \"mkdir \$out\";
       producerCommit = \"0000000000000000000000000000000000000000\";
       product = {

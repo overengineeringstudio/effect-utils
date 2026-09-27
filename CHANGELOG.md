@@ -77,11 +77,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- **Buck capability realizations:** Nix-packaged Rust tools remap dynamic
-  sandbox paths before compilation. From-source Buck products and evidence
-  materialize capability manifests and Buck definitions from the executable
-  bytes in their own build sandbox, preserving executable digest enforcement
-  with mixed substituters.
+- **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
+  Weaver remap dynamic sandbox paths before compilation, so capability
+  manifests retain their strict executable digest across sandbox roots.
+  Run `devenv tasks run buck2:capabilities:reproducibility` to compare an
+  archive-tool rebuild under an alternate sandbox root with its normal output.
 
 - **Pipeline run tracing:** `otel-span pipeline-run -- devenv tasks run <verb>`
   now seeds one deterministic run/job trace, records local roots even on

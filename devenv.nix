@@ -1127,6 +1127,22 @@ in
     exec = trace.exec "nix:flake:eval" "${pkgs.nix}/bin/nix flake check --no-build";
   };
 
+  # Explicit, costly cross-sandbox proof; intentionally not a quick CI gate.
+  tasks."buck2:capabilities:reproducibility" = {
+    description = "Rebuild archive-tool under an alternate Nix sandbox root and compare executable bytes";
+    exec = trace.exec "buck2:capabilities:reproducibility" ''
+      set -euo pipefail
+      tool="$(${pkgs.nix}/bin/nix build --no-link --print-out-paths .#buck2-archive-tool)"
+      original="$(${pkgs.coreutils}/bin/sha256sum "$tool/bin/buck2-archive-tool" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+      ${pkgs.nix}/bin/nix build --rebuild --no-link \
+        --option sandbox-build-dir /nix/var/nix/builds/nix-remap-check \
+        .#buck2-archive-tool
+      rebuilt="$(${pkgs.coreutils}/bin/sha256sum "$tool/bin/buck2-archive-tool" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+      test "$original" = "$rebuilt"
+      printf 'archive-tool executable SHA-256 identical across sandbox roots: %s\n' "$rebuilt"
+    '';
+  };
+
   tasks."buck2:nix-bridge:check" = {
     description = "Check the cache publisher and retained Megarepo from-source fallback";
     after = lib.mkForce [ "genie:check" ];
