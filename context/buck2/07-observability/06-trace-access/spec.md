@@ -102,6 +102,11 @@ orders eligible runs by position. A shallow checkout cannot seal a complete
 ancestry and therefore cannot claim a baseline. A timestamp or CI run number
 alone does not establish ancestry, especially across a force-push.
 
+Each indexed job contributes at most one duration sample per `task.name`:
+the sum of its `devenv.task.exec` span durations, including repeated
+executions of that task within the job. Samples remain indexed after raw
+archive expiry for lineage, but only ingested records enter comparisons.
+
 ## CI Publication
 
 ```text
