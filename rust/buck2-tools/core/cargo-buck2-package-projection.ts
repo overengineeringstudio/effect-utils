@@ -405,20 +405,15 @@ const cargoBuck2PackageProjectionFor = ({
   )
   const binaryOwnedSources = new Set([...binaryRuleSources.values()].flat())
   const srcSources = sources.filter((source) => source.startsWith('src/'))
-  // The library can load any `src/` file as a module except binary-only trees: `src/main.rs`
-  // and, unless the library declares `mod bin;` through `src/bin.rs` or `src/bin/mod.rs`,
-  // the sources owned by `src/bin/` binaries. Extra srcs only widen the action inputs.
-  const libraryReachesBin = sources.includes('src/bin.rs') || sources.includes('src/bin/mod.rs')
-  const librarySources = srcSources.filter(
-    (source) =>
-      source === library?.path ||
-      binaryOwnedSources.has(source) === false ||
-      (source.startsWith('src/bin/') === true ? libraryReachesBin : source !== 'src/main.rs'),
-  )
   // A binary crate's `mod` files are compile inputs: each binary declares its
   // own sources plus every shared non-root `src/` module, so a module-only edit
   // changes the rule's action key instead of reusing a stale cached binary.
-  const binaryModuleSources = librarySources.filter((source) => source !== library?.path)
+  const binaryModuleSources = srcSources.filter(
+    (source) => source !== library?.path && binaryOwnedSources.has(source) === false,
+  )
+  // Any `src/` file can be a library module (even a binary root), so a library declares them
+  // all; extra srcs only widen the action inputs.
+  const librarySources = library === undefined ? binaryModuleSources : srcSources
   // A binary root outside `src/bin/` can double as a `mod` of a peer binary (Cargo compiles
   // it both ways), so peers declare those roots too.
   const peerBinaryRoots = binaries

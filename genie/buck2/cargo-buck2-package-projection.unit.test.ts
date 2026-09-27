@@ -284,7 +284,10 @@ describe('Cargo target discovery', () => {
     )
     expect(Object.keys(rules)).toEqual(['lib', 'extra', 'multi', 'my-tool'])
     expect(rules.lib).toContain('crate = "my_tool",\n    crate_root = "src/lib.rs",')
-    expect(rules.lib).toContain('srcs = [\n        "src/lib.rs",\n        "src/util.rs",\n    ],')
+    // Every src/ file, binary roots included, can be a library module (`mod main;`).
+    expect(rules.lib).toContain(
+      'srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+    )
     expect(rules['my-tool']).toContain('crate = "my_tool",\n    crate_root = "src/main.rs",')
     expect(rules['my-tool']).toContain('deps = [\n        ":lib",\n    ],')
     expect(rules.extra).toContain(
