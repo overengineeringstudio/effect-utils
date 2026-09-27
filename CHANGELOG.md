@@ -107,6 +107,15 @@ All notable changes to this project will be documented in this file.
 - **Cargo Buck projection**: Rust binaries declare their non-root `src/`
   module files as `srcs`, so editing a module such as `buck2-product`'s
   `npm_manifest.rs` invalidates the cached binary.
+- **Buck2 Cargo projector**: `defineCargoBuck2PackageProjection` discovers
+  Cargo's implicit targets (`src/lib.rs`, empty or path-only `[lib]`,
+  `src/main.rs`, `src/bin/*.rs`, `src/bin/<name>/main.rs`, `[[bin]]` without
+  `path`) and honors `autolib`/`autobins = false`. It resolves
+  `[workspace.dependencies]` `path` entries inherited with `workspace = true`,
+  path dependencies on Buck-projected packages outside the workspace declared
+  through `foreignPackageManifestPaths` (label `//<package path>:lib`), and
+  renamed registry dependencies (`package = "..."`) through `named_deps`.
+  Explicit-target projections are unchanged.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
