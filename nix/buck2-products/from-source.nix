@@ -76,9 +76,9 @@ let
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
     lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
   }${
-    lib.optionalString (cliBuildStamp != null) " --config ${
-      lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"
-    }"
+    lib.optionalString (
+      cliBuildStamp != null
+    ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"
   } --local-only --no-remote-cache --console simple --show-simple-output";
 in
 assert lib.assertMsg (
