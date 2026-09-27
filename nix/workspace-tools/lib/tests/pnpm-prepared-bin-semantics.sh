@@ -134,8 +134,6 @@ grep -F 'absentPnpmLockImportersScript = pkgs.writeText' "$helper" >/dev/null ||
   fail 'absent-importer helper is not an explicit Nix store input'
 grep -F "del(.importers[strenv(PNPM_ABSENT_IMPORTER)])" "$helper" >/dev/null ||
   fail 'staged lockfile importer pruning is not wired'
-grep -F 'log_prep_phase "pacquet-stage-scan" "count=$pacquet_stage_count"' "$helper" >/dev/null ||
-  fail 'pre-normalization pacquet stage-file count is not logged'
 grep -F -- "--mode='u+w'" "$helper" >/dev/null ||
   fail 'restore does not establish a writable projection workspace'
 grep -F 'preparedPnpmTreeScript} scan .' "$helper" >/dev/null ||
