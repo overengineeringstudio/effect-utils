@@ -526,31 +526,37 @@ pub async fn verify_run_trace(
             }
         }
     }
-    let conn = index::open(&cfg.index_path()).map_err(transient)?;
+    let mut conn = index::open(&cfg.index_path()).map_err(transient)?;
+    let tx = conn.transaction().map_err(transient)?;
+    if !missing_records.is_empty() || missing_root {
+        tx.execute("update run_traces set verified_at=null where run_id=?1", [run_id])
+            .map_err(transient)?;
+    }
     for digest in &missing_records {
-        let changed = conn.execute(
+        let changed = tx.execute(
             "update records set status='missing_spans',last_error='cumulative trace readback lost spans'
              where digest=?1 and status='ingested'", [digest],
         ).map_err(transient)?;
         if changed != 0 {
-            conn.execute("update jobs set state='queued',attempts=0,next_at=?2 where digest=?1",
+            tx.execute("update jobs set state='queued',attempts=0,next_at=?2 where digest=?1",
                 rusqlite::params![digest, now_ms()]).map_err(transient)?;
-            conn.execute("delete from pushes where digest=?1", [digest]).map_err(transient)?;
+            tx.execute("delete from pushes where digest=?1", [digest]).map_err(transient)?;
         }
     }
     if missing_root && state.is_some() {
-        conn.execute("update closes set root_pushed=0 where run_id=?1", [run_id]).map_err(transient)?;
+        tx.execute("update closes set root_pushed=0 where run_id=?1", [run_id]).map_err(transient)?;
     }
     let complete = missing_records.is_empty() && !missing_root && state == Some((1, 0));
-    let published = conn.execute(
+    let published = tx.execute(
         "update run_traces set verified_at=?3 where run_id=?1 and ?2
          and incomplete=0 and (select root_pushed from closes where run_id=?1)=1
          and (select count(*) from expected_spans where trace_id=?4)=?5",
         rusqlite::params![run_id, complete, now_ms(), trace, expected.len()],
     ).map_err(transient)? != 0;
     if !published {
-        conn.execute("update run_traces set verified_at=null where run_id=?1", [run_id]).map_err(transient)?;
+        tx.execute("update run_traces set verified_at=null where run_id=?1", [run_id]).map_err(transient)?;
     }
+    tx.commit().map_err(transient)?;
     Ok(published)
 }
 
