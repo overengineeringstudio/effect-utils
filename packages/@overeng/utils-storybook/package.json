@@ -1,6 +1,109 @@
 {
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
   "name": "@overeng/utils-storybook",
   "version": "0.1.0",
   "type": "module",
-  "private": true
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./config": {
+      "types": "./dist/src/config/mod.d.ts",
+      "default": "./src/config/mod.ts"
+    },
+    "./gate": {
+      "types": "./dist/src/gate/mod.d.ts",
+      "default": "./src/gate/mod.ts"
+    },
+    "./gate/cli": {
+      "types": "./dist/src/gate/cli.d.ts",
+      "default": "./src/gate/cli.ts"
+    },
+    "./gate/setup": {
+      "types": "./dist/src/gate/setup.d.ts",
+      "default": "./src/gate/setup.ts"
+    }
+  },
+  "dependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.113",
+    "@effect/vitest": "4.0.0-rc.113",
+    "@playwright/test": "1.63.0",
+    "effect": "4.0.0-rc.113",
+    "vitest": "4.1.9"
+  },
+  "devDependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.113",
+    "@effect/vitest": "4.0.0-rc.113",
+    "@overeng/utils": "workspace:^",
+    "@overeng/utils-dev": "workspace:^",
+    "@storybook/addon-a11y": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@vitest/browser": "4.1.9",
+    "@vitest/browser-playwright": "4.1.9",
+    "effect": "4.0.0-rc.113",
+    "playwright": "1.63.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "storybook": "10.6.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.9"
+  },
+  "peerDependencies": {
+    "@storybook/react-vite": "^10.6.0",
+    "@vitest/browser-playwright": "^4.1.9",
+    "storybook": "^10.6.0",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.9"
+  },
+  "peerDependenciesMeta": {
+    "@vitest/browser-playwright": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./config": {
+        "types": "./dist/src/config/mod.d.ts",
+        "default": "./dist/src/config/mod.js"
+      },
+      "./gate": {
+        "types": "./dist/src/gate/mod.d.ts",
+        "default": "./dist/src/gate/mod.js"
+      },
+      "./gate/cli": {
+        "types": "./dist/src/gate/cli.d.ts",
+        "default": "./dist/src/gate/cli.js"
+      },
+      "./gate/setup": {
+        "types": "./dist/src/gate/setup.d.ts",
+        "default": "./dist/src/gate/setup.js"
+      }
+    }
+  }
 }

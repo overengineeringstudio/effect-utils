@@ -14,7 +14,8 @@
       "packages/@overeng/tui-react",
       "packages/@overeng/tui-stories",
       "packages/@overeng/utils",
-      "packages/@overeng/utils-dev"
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
     ]
   },
   "name": "@overeng/tui-stories",
@@ -51,6 +52,7 @@
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
     "storybook": "10.6.0",
+    "vite": "8.2.2",
     "vitest": "4.1.9"
   },
   "dependenciesMeta": {
@@ -63,6 +65,7 @@
     "@effect/vitest": "4.0.0-rc.113",
     "@overeng/megarepo": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",

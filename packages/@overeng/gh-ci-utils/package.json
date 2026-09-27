@@ -10,7 +10,8 @@
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
       "packages/@overeng/utils",
-      "packages/@overeng/utils-dev"
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
     ]
   },
   "name": "@overeng/gh-ci-utils",
@@ -41,6 +42,7 @@
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
     "storybook": "10.6.0",
+    "vite": "8.2.2",
     "vitest": "4.1.9"
   },
   "dependenciesMeta": {
@@ -53,6 +55,7 @@
     "@effect/vitest": "4.0.0-rc.113",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
+    "@overeng/utils-storybook": "workspace:^",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/bun": "1.4.2",

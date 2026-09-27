@@ -56,7 +56,8 @@ repository_static_checks(
     "packages/@overeng/tui-react",
     "packages/@overeng/tui-stories",
     "packages/@overeng/utils",
-    "packages/@overeng/utils-dev"
+    "packages/@overeng/utils-dev",
+    "packages/@overeng/utils-storybook"
 ],
     source_sets = [
     "//:static_sources",
@@ -100,6 +101,7 @@ repository_static_checks(
     "//packages/@overeng/tui-react:static_sources",
     "//packages/@overeng/tui-stories:static_sources",
     "//packages/@overeng/utils-dev:static_sources",
+    "//packages/@overeng/utils-storybook:static_sources",
     "//packages/@overeng/utils:static_sources"
 ],
     nix_source_sets = [
@@ -144,6 +146,7 @@ repository_static_checks(
     "//packages/@overeng/tui-react:nix_sources",
     "//packages/@overeng/tui-stories:nix_sources",
     "//packages/@overeng/utils-dev:nix_sources",
+    "//packages/@overeng/utils-storybook:nix_sources",
     "//packages/@overeng/utils:nix_sources"
 ],
     repository_source_sets = [
@@ -192,6 +195,7 @@ repository_static_checks(
     "//packages/@overeng/tui-react:repository_validation_sources",
     "//packages/@overeng/tui-stories:repository_validation_sources",
     "//packages/@overeng/utils-dev:repository_validation_sources",
+    "//packages/@overeng/utils-storybook:repository_validation_sources",
     "//packages/@overeng/utils:repository_validation_sources",
     "//rust/buck2-tools/archive-tool:static_sources",
     "//rust/buck2-tools/core:static_sources",

@@ -9,7 +9,8 @@
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
       "packages/@overeng/utils",
-      "packages/@overeng/utils-dev"
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
     ]
   },
   "name": "@overeng/tui-react",
@@ -57,6 +58,7 @@
     "effect": "4.0.0-rc.113",
     "storybook": "10.6.0",
     "string-width": "8.2.2",
+    "vite": "8.2.2",
     "vitest": "4.1.9",
     "yoga-layout": "3.2.1"
   },
@@ -69,6 +71,7 @@
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "@overeng/utils-dev": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
     "@playwright/test": "1.63.0",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
