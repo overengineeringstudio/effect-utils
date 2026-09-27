@@ -13,8 +13,21 @@ import {
   type RepoContext,
 } from '../../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 
+/** One Buck product emitted from a named Cargo binary of the projected package. */
+export type CargoBuck2ProductOptions = {
+  /** Product name; emits `<name>-product-executable` and `<name>-product`. */
+  readonly name: string
+  /** Cargo binary target packaged by the product; defaults to `name`. */
+  readonly binary?: string
+  /** Payload-relative executable path; defaults to `bin/<name>`. */
+  readonly entrypoint?: string
+}
+
 export type CargoBuck2PackageProjectionOptions = {
+  /** One product named after the package from its only binary. Exclusive with `buildProducts`. */
   readonly buildProduct?: boolean
+  /** Several products from one package, one per named Cargo binary. */
+  readonly buildProducts?: readonly CargoBuck2ProductOptions[]
   readonly cliBuildStamp?: boolean
   readonly sourceUrl: string
 }
@@ -246,6 +259,7 @@ export const defineCargoBuck2PackageProjection = ({
 const cargoBuck2PackageProjectionFor = ({
   definition,
   buildProduct = false,
+  buildProducts,
   cliBuildStamp = false,
   sourceUrl,
 }: CargoBuck2PackageProjectionOptions & {
@@ -385,12 +399,20 @@ const cargoBuck2PackageProjectionFor = ({
   }
   const sources = discoverRustSources({ packagePath, repo })
   const { binaries, library } = discoverCargoTargets({ member, packageName, sources })
+  const products = resolveProducts({
+    binaries,
+    buildProduct,
+    buildProducts,
+    manifestPath: member.manifestPath,
+    packageName,
+  })
   const reservedTargetNames = new Set([
     'static_sources',
     ...(library === undefined ? [] : ['lib']),
-    ...(buildProduct === true
-      ? [`${packageName}-product-executable`, `${packageName}-product`]
-      : []),
+    ...products.flatMap((product) => [
+      `${product.name}-product-executable`,
+      `${product.name}-product`,
+    ]),
   ])
   const collidingBinaries = binaries.filter((binary) => reservedTargetNames.has(binary.name))
   if (collidingBinaries.length > 0) {
@@ -464,6 +486,8 @@ const cargoBuck2PackageProjectionFor = ({
     packagePath,
     sources,
     version,
+    // Absent unless requested so single-product fingerprints stay byte-identical.
+    ...(buildProducts === undefined ? {} : { products }),
     buildProduct,
   }
   const fingerprint = buck2SemanticFingerprint({
@@ -557,33 +581,27 @@ const cargoBuck2PackageProjectionFor = ({
       }),
     )
   }
-  if (buildProduct === true) {
-    // A product package in another cell than the rules must name the rules
-    // cell: a label attribute resolves in the calling package's cell.
-    const rulesCell = buck2LoadLabelPrefix.match(/^@([A-Za-z0-9][A-Za-z0-9._-]*)\/\//)?.[1]
-    const hostPlatform =
-      rulesCell === undefined
-        ? 'host_platform_label()'
-        : `host_platform_label(cell = ${starlarkString(rulesCell)})`
-    if (binaries.length !== 1) {
-      throw new Error(
-        `BuildProduct projection requires exactly one binary in ${member.manifestPath}`,
-      )
-    }
-    const binary = requireValue({ value: binaries[0], field: `${member.manifestPath} binary` })
+  // A product package in another cell than the rules must name the rules
+  // cell: a label attribute resolves in the calling package's cell.
+  const rulesCell = buck2LoadLabelPrefix.match(/^@([A-Za-z0-9][A-Za-z0-9._-]*)\/\//)?.[1]
+  const hostPlatform =
+    rulesCell === undefined
+      ? 'host_platform_label()'
+      : `host_platform_label(cell = ${starlarkString(rulesCell)})`
+  for (const product of products) {
     rules.push(
       `rust_product_executable(`,
-      `    name = ${starlarkString(`${packageName}-product-executable`)},`,
-      `    binary = ${starlarkString(`:${binary.name}`)},`,
+      `    name = ${starlarkString(`${product.name}-product-executable`)},`,
+      `    binary = ${starlarkString(`:${product.binary}`)},`,
       `    recipe = ${starlarkString(`cargo-workspace:${packageName}@${version}`)},`,
       `    target_platform = ${hostPlatform},`,
       ')',
       '',
       'build_product(',
-      `    name = ${starlarkString(`${packageName}-product`)},`,
-      `    entrypoint = ${starlarkString(`bin/${packageName}`)},`,
-      `    executable = ${starlarkString(`:${packageName}-product-executable`)},`,
-      `    product_name = ${starlarkString(packageName)},`,
+      `    name = ${starlarkString(`${product.name}-product`)},`,
+      `    entrypoint = ${starlarkString(product.entrypoint)},`,
+      `    executable = ${starlarkString(`:${product.name}-product-executable`)},`,
+      `    product_name = ${starlarkString(product.name)},`,
       `    target_platform = ${hostPlatform},`,
       ')',
       '',
@@ -600,7 +618,7 @@ const cargoBuck2PackageProjectionFor = ({
     '',
     'load("@prelude//:prelude.bzl", "native")',
     `load(${starlarkString(`${buck2LoadLabelPrefix}:static_checks.bzl`)}, "static_source_set")`,
-    ...(buildProduct === true
+    ...(products.length > 0
       ? [
           `load(${starlarkString(`${buck2LoadLabelPrefix}/products:defs.bzl`)}, "build_product")`,
           `load(${starlarkString(`${buck2LoadLabelPrefix}/platforms:defs.bzl`)}, "host_platform_label")`,
@@ -1316,6 +1334,75 @@ const renderDependencies = ({
 }
 
 const crateIdentifier = (value: string): string => value.replaceAll(/[^A-Za-z0-9_]/g, '_')
+
+type ResolvedProduct = {
+  readonly binary: string
+  readonly entrypoint: string
+  readonly name: string
+}
+
+/**
+ * The products a package emits: `buildProduct` packages its only binary under the package
+ * name; `buildProducts` names each product and the Cargo binary it packages.
+ */
+const resolveProducts = ({
+  binaries,
+  buildProduct,
+  buildProducts,
+  manifestPath,
+  packageName,
+}: {
+  readonly binaries: readonly CargoBinaryTarget[]
+  readonly buildProduct: boolean
+  readonly buildProducts: readonly CargoBuck2ProductOptions[] | undefined
+  readonly manifestPath: string
+  readonly packageName: string
+}): readonly ResolvedProduct[] => {
+  if (buildProducts === undefined) {
+    if (buildProduct === false) return []
+    const binary = binaries.length === 1 ? binaries[0] : undefined
+    if (binary === undefined) {
+      throw new Error(`BuildProduct projection requires exactly one binary in ${manifestPath}`)
+    }
+    return [{ binary: binary.name, entrypoint: `bin/${packageName}`, name: packageName }]
+  }
+  if (buildProduct === true) {
+    throw new Error(`buildProduct and buildProducts are mutually exclusive in ${manifestPath}`)
+  }
+  if (buildProducts.length === 0) {
+    throw new Error(`buildProducts must name at least one product in ${manifestPath}`)
+  }
+  const binaryNames = new Set(binaries.map((binary) => binary.name))
+  const products = buildProducts.map((product, index) => {
+    const field = `buildProducts[${index}]`
+    if (/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(product.name) === false) {
+      throw new Error(`${field}.name is not a Buck target-safe product name: ${product.name}`)
+    }
+    const binary = product.binary ?? product.name
+    if (binaryNames.has(binary) === false) {
+      throw new Error(
+        `${field} packages unknown Cargo binary ${binary} in ${manifestPath} (binaries: ${sorted([...binaryNames]).join(', ')})`,
+      )
+    }
+    const entrypoint = product.entrypoint ?? `bin/${product.name}`
+    if (
+      /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(entrypoint) === false ||
+      entrypoint.split('/').some((segment) => segment === '.' || segment === '..') === true
+    ) {
+      throw new Error(`${field}.entrypoint must be a normalized relative path: ${entrypoint}`)
+    }
+    return { binary, entrypoint, name: product.name }
+  })
+  const duplicateNames = products
+    .map((product) => product.name)
+    .filter((name, index, names) => names.indexOf(name) !== index)
+  if (duplicateNames.length > 0) {
+    throw new Error(
+      `buildProducts names repeat in ${manifestPath}: ${sorted(duplicateNames).join(', ')}`,
+    )
+  }
+  return products
+}
 
 const effectUtilsWorkspaceMemberManifestPaths = [
   'packages/@overeng/otel-scrape/Cargo.toml',
