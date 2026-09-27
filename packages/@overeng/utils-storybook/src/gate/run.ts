@@ -743,7 +743,7 @@ export const prepareBaselineNodeModules = ({
   repoRoot: string
   worktreeDir: string
   baselineRef: string
-}): void => {
+}): boolean => {
   const lockPath = 'pnpm-lock.yaml'
   if (
     readFileSync(join(repoRoot, lockPath), 'utf8') !==
@@ -755,9 +755,10 @@ export const prepareBaselineNodeModules = ({
         `[story-gate] ${lockPath} differs between HEAD and ${baselineRef}, so the derived worktree cannot borrow the installed dependencies. Install in ${worktreeDir} and re-run.`,
       )
     }
-    return
+    return false
   }
   linkNodeModules({ repoRoot, worktreeDir })
+  return true
 }
 
 interface ProcessSignalControl {
@@ -1590,6 +1591,39 @@ const assertTreeUnchanged = ({
   )
 }
 
+/** Include the main tree only when the baseline borrows its dependencies. */
+export const readBaselinePairIdentity = ({
+  repoRoot,
+  packageRoot,
+  worktreeDir,
+  sourceRoots,
+  borrowedDependencies,
+}: {
+  repoRoot: string
+  packageRoot: string
+  worktreeDir: string
+  sourceRoots: readonly string[]
+  borrowedDependencies: boolean
+}): TreeIdentity => {
+  const worktree = readTreeIdentity({
+    repoRoot: worktreeDir,
+    packageRoot: join(worktreeDir, relative(repoRoot, packageRoot)),
+    sourceRoots,
+  })
+  if (borrowedDependencies === false) return worktree
+
+  const linked = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
+  return {
+    head: worktree.head,
+    digest: createHash('sha1').update(`${worktree.digest}\n${linked.digest}`).digest('hex'),
+    scope: `${worktree.scope}; plus the linked main tree: ${linked.scope}`,
+    entries: Object.fromEntries([
+      ...Object.entries(worktree.entries).map(([key, value]) => [`worktree/${key}`, value]),
+      ...Object.entries(linked.entries).map(([key, value]) => [`linked/${key}`, value]),
+    ]),
+  }
+}
+
 /**
  * Run the gate for one package against one git ref.
  *
@@ -1646,31 +1680,6 @@ export const runStoryGate = async ({
   const captureEvidencePath = join(baselineDir, 'capture-evidence.json')
   const scratchDir = mkdtempSync(join(tmpdir(), 'story-gate-'))
 
-  /**
-   * The baseline pair's identity covers BOTH trees, not just the worktree it
-   * renders from. With matching lockfiles the derived worktree borrows the main
-   * tree's `node_modules` by symlink, so a main-tree workspace edit can reach
-   * the baseline capture through that link. With different lockfiles, the
-   * derived tree uses its own install instead.
-   */
-  const baselinePairIdentity = (): TreeIdentity => {
-    const worktree = readTreeIdentity({
-      repoRoot: worktreeDir,
-      packageRoot: join(worktreeDir, relative(repoRoot, packageRoot)),
-      sourceRoots,
-    })
-    const linked = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
-    return {
-      head: worktree.head,
-      digest: createHash('sha1').update(`${worktree.digest}\n${linked.digest}`).digest('hex'),
-      scope: `${worktree.scope}; plus the linked main tree: ${linked.scope}`,
-      entries: Object.fromEntries([
-        ...Object.entries(worktree.entries).map(([key, value]) => [`worktree/${key}`, value]),
-        ...Object.entries(linked.entries).map(([key, value]) => [`linked/${key}`, value]),
-      ]),
-    }
-  }
-
   if (refresh === true) {
     rmSync(baselineDir, { recursive: true, force: true })
     clearStoryGateArtifacts(baselineDir)
@@ -1718,7 +1727,15 @@ export const runStoryGate = async ({
       })
     }
 
-    prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef })
+    const borrowedDependencies = prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef })
+    const baselinePairIdentity = (): TreeIdentity =>
+      readBaselinePairIdentity({
+        repoRoot,
+        packageRoot,
+        worktreeDir,
+        sourceRoots,
+        borrowedDependencies,
+      })
 
     // The baseline tree is captured `baselineCaptures` times — THREE by default
     // — and the LAST capture is the one kept. Three reasons, all measured.

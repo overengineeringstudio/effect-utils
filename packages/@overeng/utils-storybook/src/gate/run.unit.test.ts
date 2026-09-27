@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import {
   chmodSync,
@@ -27,6 +28,7 @@ import {
   hasCompleteReferenceCoverage,
   linkNodeModules,
   prepareBaselineNodeModules,
+  readBaselinePairIdentity,
   parseSettleRecords,
   referenceStoryKeys,
   isStoryGateOk,
@@ -754,7 +756,7 @@ describe('prepareBaselineNodeModules', () => {
       writeFileSync(join(worktreeDir, 'pnpm-lock.yaml'), 'baseline')
       writeFileSync(join(worktreeDir, 'node_modules', 'sentinel'), 'baseline install')
 
-      prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef: 'main' })
+      expect(prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef: 'main' })).toBe(false)
 
       expect(readFileSync(join(worktreeDir, 'node_modules', 'sentinel'), 'utf8')).toBe(
         'baseline install',
@@ -798,9 +800,82 @@ describe('prepareBaselineNodeModules', () => {
       writeFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'same')
       writeFileSync(join(worktreeDir, 'pnpm-lock.yaml'), 'same')
 
-      prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef: 'main' })
+      expect(prepareBaselineNodeModules({ repoRoot, worktreeDir, baselineRef: 'main' })).toBe(true)
 
       expect(readlinkSync(join(worktreeDir, 'node_modules'))).toBe(join(repoRoot, 'node_modules'))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('readBaselinePairIdentity', () => {
+  it('ignores main-tree edits with an own install but observes them through borrowed dependencies', () => {
+    const root = mkdtempSync(join(tmpdir(), 'story-gate-identity-'))
+    const repoRoot = join(root, 'repo')
+    const worktreeDir = join(root, 'baseline')
+    const packageRoot = join(repoRoot, 'packages', 'widget')
+    const sourceFile = join(packageRoot, 'src', 'view.ts')
+    const git = (...args: string[]): void => {
+      execFileSync('git', ['-C', repoRoot, ...args])
+    }
+    try {
+      mkdirSync(join(packageRoot, 'src'), { recursive: true })
+      git('init', '-q')
+      writeFileSync(sourceFile, 'original')
+      writeFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'same')
+      git('add', '.')
+      git(
+        '-c',
+        `core.hooksPath=${join(root, 'hooks')}`,
+        '-c',
+        'user.name=Story Gate',
+        '-c',
+        'user.email=gate@example.test',
+        'commit',
+        '-qm',
+        'initial',
+      )
+      git('worktree', 'add', '--detach', worktreeDir, 'HEAD')
+      mkdirSync(join(repoRoot, 'node_modules'))
+
+      const options = { repoRoot, packageRoot, worktreeDir, sourceRoots: ['src'] }
+      const borrowedDependencies = prepareBaselineNodeModules({
+        repoRoot,
+        worktreeDir,
+        baselineRef: 'HEAD',
+      })
+      expect(borrowedDependencies).toBe(true)
+      const borrowedBefore = readBaselinePairIdentity({ ...options, borrowedDependencies })
+
+      rmSync(join(worktreeDir, 'node_modules'))
+      mkdirSync(join(worktreeDir, 'node_modules'))
+      writeFileSync(join(worktreeDir, 'pnpm-lock.yaml'), 'different')
+      const independentDependencies = prepareBaselineNodeModules({
+        repoRoot,
+        worktreeDir,
+        baselineRef: 'HEAD',
+      })
+      expect(independentDependencies).toBe(false)
+      const independentBefore = readBaselinePairIdentity({
+        ...options,
+        borrowedDependencies: independentDependencies,
+      })
+
+      writeFileSync(sourceFile, 'edited during capture')
+      const borrowedAfter = readBaselinePairIdentity({ ...options, borrowedDependencies })
+      const independentAfter = readBaselinePairIdentity({
+        ...options,
+        borrowedDependencies: independentDependencies,
+      })
+      expect(independentAfter).toEqual(independentBefore)
+      expect(borrowedAfter.digest).not.toBe(borrowedBefore.digest)
+      expect(Object.keys(independentAfter.entries)).not.toContain(
+        'linked/tracked:packages/widget/src/view.ts',
+      )
+      expect(Object.keys(borrowedAfter.entries)).toContain(
+        'linked/tracked:packages/widget/src/view.ts',
+      )
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
