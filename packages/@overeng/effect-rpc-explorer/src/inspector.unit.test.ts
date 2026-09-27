@@ -59,20 +59,16 @@ const terminal = (time: number): ExplorerEventInput => ({
   observations: [],
 })
 
-const applicationDescriptors = staticDescriptorSet(
-  makeRpcDescriptors(
-    RpcGroup.make(
-      Rpc.make('ApplicationRpc', {
-        payload: Schema.String,
-        success: Schema.String,
-      })
-        .annotate(OpenApi.Title, 'Application operation')
-        .annotate(OpenApi.Summary, 'Inspects the application.')
-        .annotate(OpenApi.Description, 'Returns the public application result.')
-        .annotate(OpenApi.Deprecated, false),
-    ),
-  ),
-)
+const applicationDescriptors = RpcGroup.make(
+  Rpc.make('ApplicationRpc', {
+    payload: Schema.String,
+    success: Schema.String,
+  })
+    .annotate(OpenApi.Title, 'Application operation')
+    .annotate(OpenApi.Summary, 'Inspects the application.')
+    .annotate(OpenApi.Description, 'Returns the public application result.')
+    .annotate(OpenApi.Deprecated, false),
+).pipe(makeRpcDescriptors, staticDescriptorSet)
 
 const handlerOptions = {
   client: new Rpc.ServerClient(1),
