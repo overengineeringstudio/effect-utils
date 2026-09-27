@@ -802,7 +802,11 @@ pkgs.writeShellScriptBin "otel-span" ''
                 ${pkgs.coreutils}/bin/timeout -k 2 45 buck2-evidence upload --spool "$PIPELINE_SPOOL_DIR"; then
                 uploaded=1
               else
-                echo "otel-span pipeline-run: evidence upload failed; attempting offline local ingest" >&2
+                if [[ -n "$effective_endpoint" ]]; then
+                  echo "otel-span pipeline-run: evidence upload failed; attempting offline local ingest" >&2
+                else
+                  echo "otel-span pipeline-run: upload failed and no OTLP endpoint is configured; sealed spool retained" >&2
+                fi
               fi
             fi
             if (( ! uploaded )); then
@@ -810,8 +814,6 @@ pkgs.writeShellScriptBin "otel-span" ''
                 ${pkgs.coreutils}/bin/timeout -k 2 60 buck2-evidence ingest --local \
                   --spool "$PIPELINE_SPOOL_DIR" ||
                   echo "otel-span pipeline-run: local ingest failed; sealed spool retained" >&2
-              else
-                echo "otel-span pipeline-run: no OTLP endpoint for local ingest; sealed spool retained" >&2
               fi
             fi
           else
