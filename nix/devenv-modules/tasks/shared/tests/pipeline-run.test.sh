@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-span=${1:?pass otel-span executable}
+span=${1:-$(command -v otel-span)}
 python=${2:-python3}
 # Runs inside a seeded task: start from no ambient trace or run identity.
 unset TRACEPARENT OTEL_TASK_TRACEPARENT OTEL_SPAN_SPOOL_DIR OTEL_SPOOL_MULTI_WRITER \
