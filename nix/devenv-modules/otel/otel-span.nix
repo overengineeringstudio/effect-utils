@@ -686,6 +686,10 @@ pkgs.writeShellScriptBin "otel-span" ''
           "$@"
           return $?
         fi
+        # Devenv-native OTelite is the preferred local collector. Resolve the
+        # endpoint once for child spans, root emission and local ingestion.
+        local effective_endpoint="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}"
+        export OTEL_EXPORTER_OTLP_ENDPOINT="$effective_endpoint"
         trace_id="$(_derive_pipeline_id buck2.pipeline-run.trace/v1 32 "$run_id")"
         root_id="$(_derive_pipeline_id buck2.pipeline-run.root/v1 16 "$run_id")"
         job_id="$(_derive_pipeline_id buck2.pipeline-run.job/v1 16 "$run_id" "$job_key")"
@@ -782,10 +786,9 @@ pkgs.writeShellScriptBin "otel-span" ''
         if (( ! nested && evidence_available )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" ]]; then
           if ${pkgs.coreutils}/bin/timeout -k 2 15 buck2-evidence seal \
             --spool "$PIPELINE_SPOOL_DIR" --run-id "$run_id" --task-key "$job_key"; then
-            if [[ -n "''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" ]]; then
-              OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-$OTEL_EXPORTER_OTLP_ENDPOINT}" \
-                ${pkgs.coreutils}/bin/timeout -k 2 60 buck2-evidence ingest --local \
-                  --spool "$PIPELINE_SPOOL_DIR" ||
+            if [[ -n "$effective_endpoint" ]]; then
+              ${pkgs.coreutils}/bin/timeout -k 2 60 buck2-evidence ingest --local \
+                --spool "$PIPELINE_SPOOL_DIR" ||
                 echo "otel-span pipeline-run: local ingest failed" >&2
             fi
           else

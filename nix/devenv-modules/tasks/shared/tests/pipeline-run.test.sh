@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 span=${1:?pass otel-span executable}
+python=${2:-python3}
 # Runs inside a seeded task: start from no ambient trace or run identity.
 unset TRACEPARENT OTEL_TASK_TRACEPARENT OTEL_SPAN_SPOOL_DIR OTEL_SPOOL_MULTI_WRITER \
   OTEL_EXPORTER_OTLP_ENDPOINT OTELITE_HTTP_ENDPOINT OTEL_SPAN_FORWARD_LINK_FILE \
   PIPELINE_RUN_ID PIPELINE_TASK_KEY PIPELINE_ROOT_OWNER PIPELINE_ENTRYPOINT_ACTIVE \
   PIPELINE_SPOOL_DIR PIPELINE_TRACE_ID PIPELINE_ROOT_SPAN_ID PIPELINE_TASK_SPAN_ID
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+http_pid=
+cleanup() {
+  if [[ -n "$http_pid" ]]; then
+    kill "$http_pid" 2>/dev/null || true
+    wait "$http_pid" 2>/dev/null || true
+  fi
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/buck2-evidence" <<'SH'
 #!/usr/bin/env bash
@@ -22,6 +31,45 @@ PATH=/usr/bin:/bin OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:1 \
   DEVENV_ROOT="$tmp/no-evidence" "$span" pipeline-run -- "$BASH" -c \
   '[[ -z ${OTEL_SPAN_SPOOL_DIR:-} && -z ${PIPELINE_SPOOL_DIR:-} && -n ${TRACEPARENT:-} ]]'
 [[ ! -e "$tmp/no-evidence/.devenv/otel/run-records" ]]
+# OTelite-only shells set OTELITE_HTTP_ENDPOINT rather than the generic
+# exporter variable. A real HTTP receiver proves both local root and job
+# spans arrive even without buck2-evidence to drain a spool.
+mkfifo "$tmp/http-ready"
+"$python" -u - "$tmp/http-ready" "$tmp/http-spans.jsonl" <<'PY' &
+import http.server
+import sys
+
+ready, output = sys.argv[1:]
+
+class Receiver(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.path != "/v1/traces":
+            self.send_error(404)
+            return
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        with open(output, "ab") as spans:
+            spans.write(body + b"\n")
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, *_):
+        pass
+
+server = http.server.HTTPServer(("127.0.0.1", 0), Receiver)
+with open(ready, "w") as pipe:
+    pipe.write(str(server.server_port) + "\n")
+server.serve_forever()
+PY
+http_pid=$!
+read -r -t 5 http_port < "$tmp/http-ready"
+PATH=/usr/bin:/bin OTELITE_HTTP_ENDPOINT="http://127.0.0.1:$http_port" \
+  DEVENV_ROOT="$tmp/otelite-only" "$span" pipeline-run -- "$BASH" -c \
+  '[[ $OTEL_EXPORTER_OTLP_ENDPOINT == "$OTELITE_HTTP_ENDPOINT" ]]'
+[[ $(jq -s '[.[].resourceSpans[].scopeSpans[].spans[] | select(.name == "cicd.pipeline.run" or .name == "cicd.pipeline.task.run")] | length' "$tmp/http-spans.jsonl") == 2 ]]
+[[ ! -e "$tmp/otelite-only/.devenv/otel/run-records" ]]
+kill "$http_pid"
+wait "$http_pid" 2>/dev/null || true
+http_pid=
 
 expect_vector() {
   local got

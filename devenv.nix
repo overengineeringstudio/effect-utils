@@ -1331,7 +1331,8 @@ in
     description = "Check deterministic run identity and interruption handling";
     exec = trace.exec "otel:pipeline-run:test" ''
       PATH=${lib.makeBinPath [ pkgs.jq pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.gnugrep ]}:$PATH \
-        bash ${./nix/devenv-modules/tasks/shared/tests/pipeline-run.test.sh} ${otelSpan}/bin/otel-span
+        bash ${./nix/devenv-modules/tasks/shared/tests/pipeline-run.test.sh} \
+          ${otelSpan}/bin/otel-span ${pkgs.python3}/bin/python3
     '';
   };
 
