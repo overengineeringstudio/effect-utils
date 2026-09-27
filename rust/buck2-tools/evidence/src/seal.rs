@@ -195,7 +195,10 @@ pub fn seal(spool: &Path, pipeline_run_id: &str, task_key: &str) -> Result<Strin
         vcs_change_id: env("VCS_CHANGE_ID"),
         vcs_head_position: head.as_deref().and_then(first_parent_position),
         vcs_base_position: base.as_deref().and_then(first_parent_position),
-        vcs_base_ancestors: base.as_deref().map(first_parent_ancestors).unwrap_or_default(),
+        vcs_base_ancestors: base
+            .as_deref()
+            .map(first_parent_ancestors)
+            .unwrap_or_default(),
         vcs_head: head,
         vcs_base: base,
         vcs_merge: merge,
@@ -224,8 +227,16 @@ mod tests {
 
     #[test]
     fn merge_checkout_never_substitutes_tested_commit_for_pr_head() {
-        assert!(!git_head_fallback_allowed("ci/o/r/42/1", "pull_request", Some("merge")));
-        assert!(!git_head_fallback_allowed("ci/o/r/42/1", "pull_request", None));
+        assert!(!git_head_fallback_allowed(
+            "ci/o/r/42/1",
+            "pull_request",
+            Some("merge")
+        ));
+        assert!(!git_head_fallback_allowed(
+            "ci/o/r/42/1",
+            "pull_request",
+            None
+        ));
         assert!(!git_head_fallback_allowed("ci/o/r/42/1", "unknown", None));
         assert!(git_head_fallback_allowed("ci/o/r/42/1", "push", None));
         assert!(git_head_fallback_allowed("local/run", "local", None));

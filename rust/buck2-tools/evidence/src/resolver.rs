@@ -109,7 +109,12 @@ fn compare(
     change: Option<&str>,
     runs: &[Value],
 ) -> rusqlite::Result<(Value, String)> {
-    let unavailable = || (json!({"baselineCount":0,"tasks":[]}), "Evidence indexed; baseline unavailable".into());
+    let unavailable = || {
+        (
+            json!({"baselineCount":0,"tasks":[]}),
+            "Evidence indexed; baseline unavailable".into(),
+        )
+    };
     if change.is_none() {
         return Ok(unavailable());
     }
@@ -122,7 +127,8 @@ fn compare(
     let Some(position) = latest["jobs"][0]["vcs.ref.base.position"].as_i64() else {
         return Ok(unavailable());
     };
-    let Some(ancestors) = latest["jobs"][0]["vcs.ref.base.first_parent_ancestors"].as_array() else {
+    let Some(ancestors) = latest["jobs"][0]["vcs.ref.base.first_parent_ancestors"].as_array()
+    else {
         return Ok(unavailable());
     };
     if ancestors.first().and_then(Value::as_str) != Some(base) {
@@ -160,7 +166,11 @@ fn compare(
     for run_id in &main_runs {
         let mut seen = BTreeSet::new();
         for sample in samples.query_map(rusqlite::params![repo, run_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, f64>(2)?,
+            ))
         })? {
             let (job, task, duration) = sample?;
             if seen.insert((job.clone(), task.clone())) {
@@ -214,11 +224,17 @@ fn compare(
         }
     }
     let verdict = if main_runs.len() < 7 {
-        format!("Incomplete main baseline ({}/7 runs); {faster} faster, {slower} slower beyond spread", main_runs.len())
+        format!(
+            "Incomplete main baseline ({}/7 runs); {faster} faster, {slower} slower beyond spread",
+            main_runs.len()
+        )
     } else {
         format!("{faster} faster, {slower} slower beyond main spread")
     };
-    Ok((json!({"baselineCount":main_runs.len(),"tasks":comparison}), verdict))
+    Ok((
+        json!({"baselineCount":main_runs.len(),"tasks":comparison}),
+        verdict,
+    ))
 }
 
 fn document(
@@ -249,7 +265,9 @@ fn document(
     let mut runs: Vec<_> = runs.into_iter().collect();
     runs.sort_by(|(a_id, a_jobs), (b_id, b_jobs)| {
         let latest = |jobs: &Vec<Value>| jobs.iter().filter_map(|j| j["uploadedAt"].as_i64()).max();
-        latest(b_jobs).cmp(&latest(a_jobs)).then_with(|| b_id.cmp(a_id))
+        latest(b_jobs)
+            .cmp(&latest(a_jobs))
+            .then_with(|| b_id.cmp(a_id))
     });
     let runs: Vec<Value> = runs
         .into_iter()
@@ -263,9 +281,11 @@ fn document(
             } else {
                 "pending"
             };
-            Ok(json!({"runId":run_id,"attempt":jobs[0]["attempt"],"status":status,
+            Ok(
+                json!({"runId":run_id,"attempt":jobs[0]["attempt"],"status":status,
                 "trace":{"id":trace,"url":format!("/t/{trace}")},
-                "buck2.vcs.merge.revision":jobs[0]["buck2.vcs.merge.revision"],"jobs":jobs}))
+                "buck2.vcs.merge.revision":jobs[0]["buck2.vcs.merge.revision"],"jobs":jobs}),
+            )
         })
         .collect::<rusqlite::Result<_>>()?;
     let status = if runs.iter().any(|r| r["status"] == "incomplete") {
@@ -276,10 +296,12 @@ fn document(
         "pending"
     };
     let (comparison, verdict) = compare(conn, repo, change, &runs)?;
-    Ok(json!({"schema":"buck2-trace-access/v1","repository":repo,"changeId":change.unwrap_or(""),
+    Ok(
+        json!({"schema":"buck2-trace-access/v1","repository":repo,"changeId":change.unwrap_or(""),
         "status":status,"verdict":{"text": if runs.is_empty() {"Not yet uploaded"} else {&verdict},
             "criticalChainKind":"task-spans","criticalChain":[]},
-        "runs":runs,"comparison":comparison}))
+        "runs":runs,"comparison":comparison}),
+    )
 }
 const CSS: &str = r#":root{font:15px/1.5 system-ui,-apple-system,sans-serif;color-scheme:light dark;background:#fafafa;color:#171717}*{box-sizing:border-box}body{margin:0}main{max-width:1080px;margin:auto;padding:28px 24px 80px}.eyebrow{letter-spacing:.17em;font-size:11px;font-weight:700;color:#747474}h1{font-size:clamp(26px,4vw,42px);margin:6px 0 26px;overflow-wrap:anywhere}h2{font-size:17px;margin:32px 0 14px}h3{font-size:17px;margin:0 0 14px;overflow-wrap:anywhere}h4{margin:0;font-size:15px}small{font-size:12px;color:#777;margin-left:8px}p{margin:6px 0;color:#626262}.verdict{background:#171717;color:#fff;border-radius:12px;padding:20px 24px}.verdict strong{font-size:18px}.verdict p{color:#c8c8c8}section{border:1px solid #ddd;background:#fff;border-radius:12px;padding:20px;margin:12px 0}.jobs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}article{border:1px solid #e5e5e5;border-radius:8px;padding:14px;min-width:0}.links{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}a{color:#175fc2;text-decoration:none}a:hover{text-decoration:underline}.links a{font-size:12px;border:1px solid #d7dce5;border-radius:6px;padding:5px 8px}aside{padding:10px 16px;border-left:3px solid #b4b4b4}.freeze{margin-top:28px}code{overflow-wrap:anywhere}@media(max-width:600px){main{padding:16px 14px 60px}section{padding:14px}.jobs{grid-template-columns:1fr}small{display:block;margin:0}}"#;
 fn render(doc: &Value) -> String {
@@ -339,7 +361,9 @@ fn render(doc: &Value) -> String {
         ) {
             html.push_str(&format!("<p>{job} · {name}: {classification}; {n} samples, median {median:.0} ms, spread {low:.0}–{high:.0} ms, Δ {delta:+.0} ms</p>"));
         } else {
-            html.push_str(&format!("<p>{job} · {name}: baseline unavailable (0 samples)</p>"));
+            html.push_str(&format!(
+                "<p>{job} · {name}: baseline unavailable (0 samples)</p>"
+            ));
         }
     }
     html.push_str(&format!("</aside><p class=\"freeze\"><code>gh-ci-utils traces {} --freeze</code></p></main></body></html>", html_escape(doc["changeId"].as_str().unwrap_or_default())));
@@ -512,8 +536,11 @@ mod tests {
         assert!(html.contains("7/7 eligible main runs"));
         assert!(html.contains("median 120 ms, spread 90–150 ms"));
 
-        conn.execute("update task_samples set duration_ms=120 where digest='pr'", [])
-            .unwrap();
+        conn.execute(
+            "update task_samples set duration_ms=120 where digest='pr'",
+            [],
+        )
+        .unwrap();
         let within = document(&conn, "o/r", Some("42"), None).unwrap();
         assert_eq!(within["comparison"]["tasks"][0]["classification"], "noise");
         assert!(render(&within).contains("compile: noise"));
@@ -532,13 +559,19 @@ mod tests {
             .unwrap();
         assert_eq!(absent["sampleCount"], 0);
         assert_eq!(absent["classification"], "baseline unavailable");
-        conn.execute("update records set status='missing_spans' where digest='main-7'", [])
-            .unwrap();
+        conn.execute(
+            "update records set status='missing_spans' where digest='main-7'",
+            [],
+        )
+        .unwrap();
         let lost = document(&conn, "o/r", Some("42"), None).unwrap();
         assert_eq!(lost["comparison"]["baselineCount"], 6);
         assert_eq!(lost["comparison"]["tasks"][0]["sampleCount"], 6);
-        conn.execute("update records set status='ingested' where digest='main-7'", [])
-            .unwrap();
+        conn.execute(
+            "update records set status='ingested' where digest='main-7'",
+            [],
+        )
+        .unwrap();
 
         conn.execute(
             "update records set manifest_json=?1 where digest='pr'",

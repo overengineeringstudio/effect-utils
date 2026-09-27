@@ -53,7 +53,11 @@ pub struct Manifest {
         default
     )]
     pub vcs_base_position: Option<i64>,
-    #[serde(rename = "vcs.ref.base.first_parent_ancestors", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "vcs.ref.base.first_parent_ancestors",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub vcs_base_ancestors: Vec<String>,
     pub files: Vec<FileEntry>,
 }

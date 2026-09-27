@@ -48,10 +48,14 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     )?;
     for column in ["span_start_ms", "span_end_ms"] {
         let mut stmt = conn.prepare("pragma table_info(records)")?;
-        let names = stmt.query_map([], |r| r.get::<_, String>(1))?
+        let names = stmt
+            .query_map([], |r| r.get::<_, String>(1))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         if !names.iter().any(|name| name == column) {
-            conn.execute(&format!("alter table records add column {column} integer"), [])?;
+            conn.execute(
+                &format!("alter table records add column {column} integer"),
+                [],
+            )?;
         }
     }
     Ok(())
@@ -103,7 +107,6 @@ pub struct TraceRow {
     pub spans: usize,
 }
 
-
 /// Register every expected ID durably before advertising ingestion. Other jobs
 /// sharing a run trace remain in the union after their plans are discarded.
 pub fn register_expected(
@@ -121,7 +124,10 @@ pub fn register_expected(
             )? != 0;
         }
         if grew {
-            tx.execute("update run_traces set verified_at=null where trace_id=?1", [&trace.trace_id])?;
+            tx.execute(
+                "update run_traces set verified_at=null where trace_id=?1",
+                [&trace.trace_id],
+            )?;
         }
     }
     tx.commit()
@@ -148,7 +154,10 @@ pub fn register_close_trace(
             params![trace_id, format!("close:{run_id}"), id],
         )?;
         if inserted != 0 {
-            conn.execute("update run_traces set verified_at=null where run_id=?1", [run_id])?;
+            conn.execute(
+                "update run_traces set verified_at=null where run_id=?1",
+                [run_id],
+            )?;
         }
     }
     Ok(())
@@ -224,17 +233,26 @@ pub fn trace_status(conn: &Connection, trace_id: &str) -> rusqlite::Result<Vec<T
     })?;
     rows.collect()
 }
-pub fn run_trace_state(conn: &Connection, trace_id: &str) -> rusqlite::Result<Option<&'static str>> {
+pub fn run_trace_state(
+    conn: &Connection,
+    trace_id: &str,
+) -> rusqlite::Result<Option<&'static str>> {
     conn.query_row(
         "select case when incomplete=1 then 'incomplete'
                      when verified_at is not null then 'ingested'
                      else 'pending' end from run_traces where trace_id=?1",
-        [trace_id], |r| r.get::<_, String>(0),
-    ).optional().map(|state| state.map(|s| match s.as_str() {
-        "incomplete" => "incomplete", "ingested" => "ingested", _ => "pending",
-    }))
+        [trace_id],
+        |r| r.get::<_, String>(0),
+    )
+    .optional()
+    .map(|state| {
+        state.map(|s| match s.as_str() {
+            "incomplete" => "incomplete",
+            "ingested" => "ingested",
+            _ => "pending",
+        })
+    })
 }
-
 
 pub fn record_json(conn: &Connection, digest: &str) -> rusqlite::Result<Option<serde_json::Value>> {
     conn.query_row(
@@ -286,27 +304,60 @@ mod tests {
         register_close_trace(&conn, run, "example/repo", trace, "root", &[], false).unwrap();
         assert_eq!(run_trace_state(&conn, trace).unwrap(), Some("pending"));
         for (digest, span) in [("first", "span1"), ("second", "span2")] {
-            register_expected(&mut conn, digest, &[crate::pipeline::PlanTrace {
-                trace_id: trace.into(), view: "critical".into(), span_ids: vec![span.into()],
-            }]).unwrap();
+            register_expected(
+                &mut conn,
+                digest,
+                &[crate::pipeline::PlanTrace {
+                    trace_id: trace.into(),
+                    view: "critical".into(),
+                    span_ids: vec![span.into()],
+                }],
+            )
+            .unwrap();
         }
-        let mut stmt = conn.prepare("select digest,span_id from expected_spans where trace_id=?1 order by span_id").unwrap();
-        let ids: Vec<(String,String)> = stmt.query_map([trace], |r| Ok((r.get(0)?,r.get(1)?)))
-            .unwrap().collect::<rusqlite::Result<_>>().unwrap();
-        assert_eq!(ids, vec![
-            ("close:ci/github/example/repo/42/1".into(), "root".into()),
-            ("first".into(), "span1".into()),
-            ("second".into(), "span2".into()),
-        ]);
+        let mut stmt = conn
+            .prepare("select digest,span_id from expected_spans where trace_id=?1 order by span_id")
+            .unwrap();
+        let ids: Vec<(String, String)> = stmt
+            .query_map([trace], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            ids,
+            vec![
+                ("close:ci/github/example/repo/42/1".into(), "root".into()),
+                ("first".into(), "span1".into()),
+                ("second".into(), "span2".into()),
+            ]
+        );
         drop(stmt);
-        conn.execute("update run_traces set verified_at=123 where run_id=?1", [run]).unwrap();
-        register_expected(&mut conn, "first", &[crate::pipeline::PlanTrace {
-            trace_id: trace.into(), view: "critical".into(), span_ids: vec!["span1".into()],
-        }]).unwrap();
+        conn.execute(
+            "update run_traces set verified_at=123 where run_id=?1",
+            [run],
+        )
+        .unwrap();
+        register_expected(
+            &mut conn,
+            "first",
+            &[crate::pipeline::PlanTrace {
+                trace_id: trace.into(),
+                view: "critical".into(),
+                span_ids: vec!["span1".into()],
+            }],
+        )
+        .unwrap();
         assert_eq!(run_trace_state(&conn, trace).unwrap(), Some("ingested"));
-        register_expected(&mut conn, "third", &[crate::pipeline::PlanTrace {
-            trace_id: trace.into(), view: "critical".into(), span_ids: vec!["span3".into()],
-        }]).unwrap();
+        register_expected(
+            &mut conn,
+            "third",
+            &[crate::pipeline::PlanTrace {
+                trace_id: trace.into(),
+                view: "critical".into(),
+                span_ids: vec!["span3".into()],
+            }],
+        )
+        .unwrap();
         assert_eq!(run_trace_state(&conn, trace).unwrap(), Some("pending"));
     }
 }

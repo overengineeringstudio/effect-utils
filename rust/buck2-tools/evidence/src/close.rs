@@ -87,7 +87,9 @@ pub fn seal_close(spool: &Path, run: &str, repository: &str, jobs_json: &Path) -
 pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("create table if not exists closes (digest text primary key, run_id text not null unique, repo text not null, manifest_json text not null, received_at integer not null, root_pushed integer not null default 0, incomplete integer not null default 0, archive_path text, error text);")?;
     let mut columns = conn.prepare("pragma table_info(closes)")?;
-    let names: Vec<String> = columns.query_map([], |r| r.get(1))?.collect::<rusqlite::Result<_>>()?;
+    let names: Vec<String> = columns
+        .query_map([], |r| r.get(1))?
+        .collect::<rusqlite::Result<_>>()?;
     if !names.iter().any(|name| name == "incomplete") {
         conn.execute_batch("alter table closes add column incomplete integer not null default 0")?;
     }
@@ -126,15 +128,20 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         )
         .optional()?;
     let synthetic = existing.as_ref().is_some_and(|(_, manifest, _, _)| {
-        serde_json::from_str::<CloseRecord>(manifest)
-            .is_ok_and(|old| old.sealed_at == "timeout")
+        serde_json::from_str::<CloseRecord>(manifest).is_ok_and(|old| old.sealed_at == "timeout")
     });
-    if existing.as_ref().is_some_and(|(old, _, _, _)| old != digest) && !synthetic {
+    if existing
+        .as_ref()
+        .is_some_and(|(old, _, _, _)| old != digest)
+        && !synthetic
+    {
         bail!("conflicting close for run");
     }
     // Archive first: an index row must never claim a close whose raw roster is lost.
     let parts: Vec<_> = record.pipeline_run_id.split('/').collect();
-    let run_id = parts.get(parts.len().saturating_sub(2)).context("invalid CI run")?;
+    let run_id = parts
+        .get(parts.len().saturating_sub(2))
+        .context("invalid CI run")?;
     let attempt: u32 = parts.last().context("invalid CI attempt")?.parse()?;
     let manifest = crate::store::Manifest {
         schema: "buck2-run-record/v1".into(),
@@ -160,22 +167,36 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         vcs_base_position: None,
         vcs_base_ancestors: Vec::new(),
     };
-    let job_path: Option<(Option<String>, i64)> = conn.query_row(
-        "select archive_path,uploaded_at from records where run_id=?1
+    let job_path: Option<(Option<String>, i64)> = conn
+        .query_row(
+            "select archive_path,uploaded_at from records where run_id=?1
          order by archive_path is null, uploaded_at desc limit 1",
-        [&record.pipeline_run_id], |r| Ok((r.get(0)?, r.get(1)?)),
-    ).optional()?;
+            [&record.pipeline_run_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
     let archived = if let Some((_, _, _, Some(path))) = &existing {
         Path::new(path).to_path_buf()
     } else if let Some((Some(path), _)) = &job_path {
-        Path::new(path).parent().context("invalid job archive path")?.join("attempt-close.json")
-    } else {
-        crate::store::archive_path(cfg, &manifest, job_path.map_or_else(now_ms, |(_, uploaded)| uploaded))
+        Path::new(path)
             .parent()
-            .context("invalid close archive path")?
+            .context("invalid job archive path")?
             .join("attempt-close.json")
+    } else {
+        crate::store::archive_path(
+            cfg,
+            &manifest,
+            job_path.map_or_else(now_ms, |(_, uploaded)| uploaded),
+        )
+        .parent()
+        .context("invalid close archive path")?
+        .join("attempt-close.json")
     };
-    fs::create_dir_all(archived.parent().context("invalid close archive directory")?)?;
+    fs::create_dir_all(
+        archived
+            .parent()
+            .context("invalid close archive directory")?,
+    )?;
     if archived.exists() {
         if fs::read(&archived)? != bytes {
             bail!("conflicting archived close for run");
@@ -190,7 +211,14 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
         conn.execute(
             "update closes set digest=?1,repo=?2,manifest_json=?3,received_at=?4,
              incomplete=case when root_pushed=1 then 1 else 0 end,archive_path=?5 where run_id=?6",
-            params![digest,record.repository,manifest_json,now_ms(),archived.to_string_lossy(),record.pipeline_run_id],
+            params![
+                digest,
+                record.repository,
+                manifest_json,
+                now_ms(),
+                archived.to_string_lossy(),
+                record.pipeline_run_id
+            ],
         )?;
     } else {
         let inserted = conn.execute(
@@ -198,23 +226,43 @@ pub fn accept(cfg: &Config, conn: &Connection, digest: &str, body: &[u8]) -> Res
             params![digest,record.pipeline_run_id,record.repository,manifest_json,now_ms(),archived.to_string_lossy()],
         )? != 0;
         let incomplete: bool = conn.query_row(
-            "select incomplete from closes where run_id=?1", [&record.pipeline_run_id], |r| r.get(0),
+            "select incomplete from closes where run_id=?1",
+            [&record.pipeline_run_id],
+            |r| r.get(0),
         )?;
-        crate::index::register_close_trace(conn, &record.pipeline_run_id, &record.repository,
-            &ids::run_trace(&record.pipeline_run_id), &ids::run_root_span(&record.pipeline_run_id),
-            &[], incomplete)?;
+        crate::index::register_close_trace(
+            conn,
+            &record.pipeline_run_id,
+            &record.repository,
+            &ids::run_trace(&record.pipeline_run_id),
+            &ids::run_root_span(&record.pipeline_run_id),
+            &[],
+            incomplete,
+        )?;
         return Ok(inserted);
     }
-    crate::index::register_close_trace(conn, &record.pipeline_run_id, &record.repository,
-        &ids::run_trace(&record.pipeline_run_id), &ids::run_root_span(&record.pipeline_run_id),
-        &[], existing.as_ref().is_some_and(|(_, _, pushed, _)| *pushed))?;
+    crate::index::register_close_trace(
+        conn,
+        &record.pipeline_run_id,
+        &record.repository,
+        &ids::run_trace(&record.pipeline_run_id),
+        &ids::run_root_span(&record.pipeline_run_id),
+        &[],
+        existing.as_ref().is_some_and(|(_, _, pushed, _)| *pushed),
+    )?;
     Ok(true)
 }
 use rusqlite::OptionalExtension;
 
 type JobStatus = (String, String, i64, Option<i64>, Option<i64>);
 
-fn root_body(close: &CloseRecord, jobs: &[JobStatus], received: i64, closed: i64, incomplete: bool) -> Value {
+fn root_body(
+    close: &CloseRecord,
+    jobs: &[JobStatus],
+    received: i64,
+    closed: i64,
+    incomplete: bool,
+) -> Value {
     let trace = ids::run_trace(&close.pipeline_run_id);
     let mut spans = Vec::new();
     let started = jobs
@@ -286,17 +334,29 @@ fn pending_closes(cfg: &Config) -> Result<Vec<(String, String, i64, bool, bool, 
          from closes",
     )?;
     let rows = stmt
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        })?
         .collect::<rusqlite::Result<_>>()?;
     Ok(rows)
 }
 
 fn jobs_for(cfg: &Config, run: &str) -> Result<Vec<JobStatus>> {
     let conn = crate::index::open(&cfg.index_path())?;
-    let mut stmt =
-        conn.prepare("select job,status,uploaded_at,span_start_ms,span_end_ms from records where run_id=?1")?;
+    let mut stmt = conn.prepare(
+        "select job,status,uploaded_at,span_start_ms,span_end_ms from records where run_id=?1",
+    )?;
     let rows = stmt
-        .query_map([run], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+        .query_map([run], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })?
         .collect::<rusqlite::Result<_>>()?;
     Ok(rows)
 }
@@ -311,7 +371,11 @@ fn jobs_complete(close: &CloseRecord, jobs: &[JobStatus]) -> bool {
 }
 
 fn ready_to_close(close: &CloseRecord, jobs: &[JobStatus], received: i64, now: i64) -> bool {
-    let last_upload = jobs.iter().map(|(_, _, uploaded, _, _)| *uploaded).max().unwrap_or(received);
+    let last_upload = jobs
+        .iter()
+        .map(|(_, _, uploaded, _, _)| *uploaded)
+        .max()
+        .unwrap_or(received);
     jobs_complete(close, jobs) || now - last_upload >= 6 * 60 * 60 * 1000
 }
 
@@ -323,8 +387,11 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
         let close: CloseRecord = serde_json::from_str(&manifest)?;
         let db = cfg.clone();
         let run = close.pipeline_run_id.clone();
-        let current = crate::index::open(&cfg.index_path())?
-            .query_row("select digest from closes where run_id=?1", [&close.pipeline_run_id], |r| r.get::<_, String>(0))?;
+        let current = crate::index::open(&cfg.index_path())?.query_row(
+            "select digest from closes where run_id=?1",
+            [&close.pipeline_run_id],
+            |r| r.get::<_, String>(0),
+        )?;
         if current != digest {
             continue;
         }
@@ -334,7 +401,10 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
         }
         if !root_pushed && !incomplete && !jobs_complete(&close, &jobs) {
             let conn = crate::index::open(&cfg.index_path())?;
-            conn.execute("update closes set incomplete=1 where digest=?1 and root_pushed=0", [&digest])?;
+            conn.execute(
+                "update closes set incomplete=1 where digest=?1 and root_pushed=0",
+                [&digest],
+            )?;
             incomplete = true;
         }
         let id = ids::run_trace(&close.pipeline_run_id);
@@ -342,33 +412,55 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
         let missing: Vec<String> = if root_pushed && incomplete {
             Vec::new()
         } else {
-            close.expected_jobs.iter()
+            close
+                .expected_jobs
+                .iter()
                 .filter(|j| !jobs.iter().any(|(k, _, _, _, _)| k == &j.key))
                 .map(|j| ids::job_span(&close.pipeline_run_id, &j.key))
                 .collect()
         };
         {
             let conn = crate::index::open(&cfg.index_path())?;
-            crate::index::register_close_trace(&conn, &close.pipeline_run_id, &close.repository,
-                &id, &root, &missing, incomplete)?;
+            crate::index::register_close_trace(
+                &conn,
+                &close.pipeline_run_id,
+                &close.repository,
+                &id,
+                &root,
+                &missing,
+                incomplete,
+            )?;
         }
         if !root_pushed {
             let counts = crate::pipeline::tempo_span_counts(client, &cfg.tempo, &id)
-                .await.map_err(|e| anyhow::anyhow!(e))?;
-            let mut absent = missing.iter().filter(|span| !counts.contains_key(*span)).count();
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?;
+            let mut absent = missing
+                .iter()
+                .filter(|span| !counts.contains_key(*span))
+                .count();
             absent += usize::from(!counts.contains_key(&root));
             if absent > 0 {
                 let mut body = root_body(&close, &jobs, received, closed, incomplete);
-                for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"].as_array_mut().into_iter().flatten() {
+                for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+                    .as_array_mut()
+                    .into_iter()
+                    .flatten()
+                {
                     let span_id = span["spanId"].as_str().unwrap_or_default();
                     if counts.contains_key(span_id) {
                         *span = Value::Null;
                     }
                 }
-                body["resourceSpans"][0]["scopeSpans"][0]["spans"].as_array_mut()
-                    .expect("root spans").retain(|span| !span.is_null());
-                let response = client.post(format!("{}/v1/traces", cfg.otlp.trim_end_matches('/')))
-                    .json(&body).send().await?;
+                body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+                    .as_array_mut()
+                    .expect("root spans")
+                    .retain(|span| !span.is_null());
+                let response = client
+                    .post(format!("{}/v1/traces", cfg.otlp.trim_end_matches('/')))
+                    .json(&body)
+                    .send()
+                    .await?;
                 if !response.status().is_success() {
                     bail!("close OTLP response {}", response.status());
                 }
@@ -376,8 +468,11 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
             let deadline = std::time::Instant::now() + cfg.readback_timeout;
             loop {
                 let counts = crate::pipeline::tempo_span_counts(client, &cfg.tempo, &id)
-                    .await.map_err(|e| anyhow::anyhow!(e))?;
-                if counts.contains_key(&root) && missing.iter().all(|span| counts.contains_key(span)) {
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e))?;
+                if counts.contains_key(&root)
+                    && missing.iter().all(|span| counts.contains_key(span))
+                {
                     break;
                 }
                 if std::time::Instant::now() >= deadline {
@@ -385,12 +480,18 @@ pub async fn reconcile(cfg: &Config, client: &reqwest::Client) -> Result<usize> 
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(250)).await;
             }
-            let conn = crate::index::open(&cfg.index_path())?;
-            conn.execute("update closes set root_pushed=1,error=null where digest=?1", [&digest])?;
+            {
+                let conn = crate::index::open(&cfg.index_path())?;
+                conn.execute(
+                    "update closes set root_pushed=1,error=null where digest=?1",
+                    [&digest],
+                )?;
+            }
             done += 1;
         }
         crate::pipeline::verify_run_trace(client, cfg, &close.pipeline_run_id)
-            .await.map_err(|e| anyhow::anyhow!(e))?;
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
     }
     Ok(done)
 }
@@ -401,9 +502,13 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn fixture() -> (Config, Connection) {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let cfg = Config {
-            state: std::env::temp_dir().join(format!("evidence-close-{}-{nonce}", std::process::id())),
+            state: std::env::temp_dir()
+                .join(format!("evidence-close-{}-{nonce}", std::process::id())),
             otlp: String::new(),
             tempo: String::new(),
             readback_timeout: std::time::Duration::from_secs(1),
@@ -423,7 +528,8 @@ mod tests {
         header.set_size(bytes.len() as u64);
         header.set_mode(0o644);
         header.set_cksum();
-        tar.append_data(&mut header, "manifest.json", bytes).unwrap();
+        tar.append_data(&mut header, "manifest.json", bytes)
+            .unwrap();
         tar.finish().unwrap();
         drop(tar);
         body
@@ -441,29 +547,47 @@ mod tests {
         ).unwrap();
         let pending = pending_closes(&cfg).unwrap();
         assert_eq!(pending.len(), 1);
-        assert!(pending[0].3, "timeout must remain incomplete even with every known job ingested");
+        assert!(
+            pending[0].3,
+            "timeout must remain incomplete even with every known job ingested"
+        );
         let synthetic: CloseRecord = serde_json::from_str(&pending[0].1).unwrap();
         let body = root_body(&synthetic, &jobs_for(&cfg, run).unwrap(), old, old, true);
-        let root = body["resourceSpans"][0]["scopeSpans"][0]["spans"].as_array().unwrap().last().unwrap();
+        let root = body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap();
         assert_eq!(root["status"]["code"], 2);
         assert_eq!(root["attributes"][3]["value"]["boolValue"], true);
-        conn.execute("update closes set root_pushed=1 where run_id=?1", [run]).unwrap();
+        conn.execute("update closes set root_pushed=1 where run_id=?1", [run])
+            .unwrap();
 
         let late = CloseRecord {
             schema: "buck2-attempt-close/v1".into(),
             pipeline_run_id: run.into(),
             repository: "owner/repo".into(),
             sealed_at: "2026-09-27T12:00:00Z".into(),
-            expected_jobs: vec![ExpectedJob { key: "build".into(), conclusion: "success".into() }],
+            expected_jobs: vec![ExpectedJob {
+                key: "build".into(),
+                conclusion: "success".into(),
+            }],
         };
         let bytes = serde_json::to_vec(&late).unwrap();
         let digest = hex::encode(Sha256::digest(&bytes));
         assert!(accept(&cfg, &conn, &digest, &tar_close(&bytes)).unwrap());
         let (persisted, incomplete, pushed, archived): (String, bool, bool, String) = conn
-            .query_row("select digest,incomplete,root_pushed,archive_path from closes where run_id=?1",
-                [run], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap();
+            .query_row(
+                "select digest,incomplete,root_pushed,archive_path from closes where run_id=?1",
+                [run],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
         assert_eq!(persisted, digest);
-        assert!(incomplete && pushed, "late close cannot retroactively rewrite the published root");
+        assert!(
+            incomplete && pushed,
+            "late close cannot retroactively rewrite the published root"
+        );
         assert_eq!(fs::read(archived).unwrap(), bytes);
         fs::remove_dir_all(cfg.state).unwrap();
     }
@@ -476,9 +600,13 @@ mod tests {
             pipeline_run_id: "ci/owner/repo/321/1".into(),
             repository: "owner/repo".into(),
             sealed_at: "2026-09-27T12:00:00Z".into(),
-            expected_jobs: ["a", "b", "a"].into_iter().map(|key| ExpectedJob {
-                key: key.into(), conclusion: "skipped".into()
-            }).collect(),
+            expected_jobs: ["a", "b", "a"]
+                .into_iter()
+                .map(|key| ExpectedJob {
+                    key: key.into(),
+                    conclusion: "skipped".into(),
+                })
+                .collect(),
         };
         let bytes = serde_json::to_vec(&close).unwrap();
         let digest = hex::encode(Sha256::digest(&bytes));
@@ -494,24 +622,43 @@ mod tests {
             repository: "owner/repo".into(),
             sealed_at: "2026-09-27T12:00:00Z".into(),
             expected_jobs: vec![
-                ExpectedJob { key: "uploaded".into(), conclusion: "success".into() },
-                ExpectedJob { key: "absent".into(), conclusion: "failure".into() },
+                ExpectedJob {
+                    key: "uploaded".into(),
+                    conclusion: "success".into(),
+                },
+                ExpectedJob {
+                    key: "absent".into(),
+                    conclusion: "failure".into(),
+                },
             ],
         };
         let hour = 60 * 60 * 1000;
-        let jobs = vec![("uploaded".into(), "ingested".into(), 5 * hour, Some(100), Some(500))];
+        let jobs = vec![(
+            "uploaded".into(),
+            "ingested".into(),
+            5 * hour,
+            Some(100),
+            Some(500),
+        )];
         assert!(!ready_to_close(&close, &jobs, 0, 6 * hour));
         assert!(!ready_to_close(&close, &jobs, 0, 10 * hour));
         assert!(ready_to_close(&close, &jobs, 0, 11 * hour));
-        assert!(ready_to_close(&close, &jobs, 10 * hour, 11 * hour),
-            "late close receipt cannot reset the last-upload deadline");
+        assert!(
+            ready_to_close(&close, &jobs, 10 * hour, 11 * hour),
+            "late close receipt cannot reset the last-upload deadline"
+        );
         let skipped = CloseRecord {
-            expected_jobs: vec![ExpectedJob { key: "absent".into(), conclusion: "skipped".into() }],
+            expected_jobs: vec![ExpectedJob {
+                key: "absent".into(),
+                conclusion: "skipped".into(),
+            }],
             ..close
         };
         assert!(ready_to_close(&skipped, &jobs, 0, 0));
         let body = root_body(&skipped, &jobs, 200, 600, false);
-        let spans = body["resourceSpans"][0]["scopeSpans"][0]["spans"].as_array().unwrap();
+        let spans = body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+            .as_array()
+            .unwrap();
         let root = spans.last().unwrap();
         assert_eq!(root["startTimeUnixNano"], "100000000");
         assert_eq!(root["endTimeUnixNano"], "600000000");
@@ -520,7 +667,11 @@ mod tests {
 
     #[tokio::test]
     async fn empty_roster_publishes_one_verified_run_root() {
-        use axum::{extract::State, routing::{get, post}, Json, Router};
+        use axum::{
+            extract::State,
+            routing::{get, post},
+            Json, Router,
+        };
         use std::sync::Arc;
         use tokio::sync::Mutex;
 
@@ -536,11 +687,23 @@ mod tests {
         let bytes = serde_json::to_vec(&close).unwrap();
         let digest = hex::encode(Sha256::digest(&bytes));
         assert!(accept(&cfg, &conn, &digest, &tar_close(&bytes)).unwrap());
-        let trace: String = conn.query_row("select trace_id from run_traces where run_id=?1",
-            [run], |r| r.get(0)).unwrap();
-        assert_eq!(trace, ids::run_trace(run), "close alone must index its run trace");
+        let trace: String = conn
+            .query_row(
+                "select trace_id from run_traces where run_id=?1",
+                [run],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            trace,
+            ids::run_trace(run),
+            "close alone must index its run trace"
+        );
         let spans = Arc::new(Mutex::new(Vec::<String>::new()));
-        async fn push(State(spans): State<Arc<Mutex<Vec<String>>>>, Json(body): Json<Value>) -> Json<Value> {
+        async fn push(
+            State(spans): State<Arc<Mutex<Vec<String>>>>,
+            Json(body): Json<Value>,
+        ) -> Json<Value> {
             let mut out = spans.lock().await;
             for resource in body["resourceSpans"].as_array().into_iter().flatten() {
                 for scope in resource["scopeSpans"].as_array().into_iter().flatten() {
@@ -552,7 +715,12 @@ mod tests {
             Json(json!({}))
         }
         async fn readback(State(spans): State<Arc<Mutex<Vec<String>>>>) -> Json<Value> {
-            let spans = spans.lock().await.iter().map(|id| json!({"spanId":id})).collect::<Vec<_>>();
+            let spans = spans
+                .lock()
+                .await
+                .iter()
+                .map(|id| json!({"spanId":id}))
+                .collect::<Vec<_>>();
             Json(json!({"trace":{"resourceSpans":[{"scopeSpans":[{"spans":spans}]}]}}))
         }
         let app = Router::new()
@@ -578,8 +746,14 @@ mod tests {
         let timed_out = CloseRecord {
             pipeline_run_id: timed_out_run.into(),
             expected_jobs: vec![
-                ExpectedJob { key: "done".into(), conclusion: "success".into() },
-                ExpectedJob { key: "late".into(), conclusion: "failure".into() },
+                ExpectedJob {
+                    key: "done".into(),
+                    conclusion: "success".into(),
+                },
+                ExpectedJob {
+                    key: "late".into(),
+                    conclusion: "failure".into(),
+                },
             ],
             ..close
         };
@@ -595,17 +769,27 @@ mod tests {
         let (incomplete, verified): (bool, Option<i64>) = conn.query_row(
             "select c.incomplete,rt.verified_at from closes c join run_traces rt on rt.run_id=c.run_id where c.run_id=?1",
             [timed_out_run], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
-        assert!(incomplete && verified.is_none(), "timed-out roster cannot be published as complete");
+        assert!(
+            incomplete && verified.is_none(),
+            "timed-out roster cannot be published as complete"
+        );
         conn.execute(
             "insert into records (digest,repo,run_id,attempt,job,manifest_json,bytes,status,uploaded_at)
              values (?1,'owner/repo',?2,1,'late','{}',0,'uploaded',?3)",
             params!["c".repeat(64), timed_out_run, now_ms()],
         ).unwrap();
         assert_eq!(reconcile(&cfg, &client).await.unwrap(), 0);
-        let still_incomplete: bool = conn.query_row(
-            "select incomplete from closes where run_id=?1", [timed_out_run], |r| r.get(0)
-        ).unwrap();
-        assert!(still_incomplete, "late upload must not rewrite the already-published root");
+        let still_incomplete: bool = conn
+            .query_row(
+                "select incomplete from closes where run_id=?1",
+                [timed_out_run],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            still_incomplete,
+            "late upload must not rewrite the already-published root"
+        );
         server.abort();
         fs::remove_dir_all(cfg.state).unwrap();
     }
