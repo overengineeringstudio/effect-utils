@@ -1,4 +1,14 @@
-import { type Cause, Deferred, Duration, Effect, Fiber, type Queue, Schema, Stream } from 'effect'
+import {
+  type Cause,
+  Deferred,
+  Duration,
+  Effect,
+  Fiber,
+  pipe,
+  type Queue,
+  Schema,
+  Stream,
+} from 'effect'
 import { Headers } from 'effect/unstable/http'
 import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
 import { Rpc, RpcGroup, RpcMessage } from 'effect/unstable/rpc'
@@ -59,16 +69,20 @@ const terminal = (time: number): ExplorerEventInput => ({
   observations: [],
 })
 
-const applicationDescriptors = RpcGroup.make(
-  Rpc.make('ApplicationRpc', {
-    payload: Schema.String,
-    success: Schema.String,
-  })
-    .annotate(OpenApi.Title, 'Application operation')
-    .annotate(OpenApi.Summary, 'Inspects the application.')
-    .annotate(OpenApi.Description, 'Returns the public application result.')
-    .annotate(OpenApi.Deprecated, false),
-).pipe(makeRpcDescriptors, staticDescriptorSet)
+const applicationDescriptors = pipe(
+  RpcGroup.make(
+    Rpc.make('ApplicationRpc', {
+      payload: Schema.String,
+      success: Schema.String,
+    })
+      .annotate(OpenApi.Title, 'Application operation')
+      .annotate(OpenApi.Summary, 'Inspects the application.')
+      .annotate(OpenApi.Description, 'Returns the public application result.')
+      .annotate(OpenApi.Deprecated, false),
+  ),
+  makeRpcDescriptors,
+  staticDescriptorSet,
+)
 
 const handlerOptions = {
   client: new Rpc.ServerClient(1),

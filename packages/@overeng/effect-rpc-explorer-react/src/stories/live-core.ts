@@ -32,7 +32,7 @@ const descriptors = makeRpcDescriptors(applicationGroup)
 const runtimeDescriptors = makeRpcDescriptors(
   RpcGroup.make(
     Rpc.make('Fixture.RuntimeProviderRpc', {
-      payload: Schema.Struct({ cursor: Schema.Number }),
+      payload: Schema.Struct({ cursor: Schema.Finite }),
       success: Schema.String,
     }),
   ),
