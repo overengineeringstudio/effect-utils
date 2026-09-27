@@ -101,9 +101,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **Storybook story gate**: Load consumer Vitest gate configs with the Vite
-  runner so installed `@overeng/utils` TypeScript imports under `node_modules`
-  work without Node's unsupported type stripping.
-  Baseline worktrees with a different `pnpm-lock.yaml` use their own installed
+  runner so installed `@overeng/utils-storybook` TypeScript imports under
+  `node_modules` work without Node's unsupported type stripping. Baseline
+  worktrees with a different `pnpm-lock.yaml` use their own installed
   `node_modules` instead of borrowing incompatible dependencies from HEAD.
 
 - **mk-pnpm-cli external install roots**: Stage every injected `file:`
