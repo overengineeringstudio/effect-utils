@@ -36,6 +36,7 @@ in
 pkgs.runCommand "buck2-capabilities"
   {
     nativeBuildInputs = [ pkgs.bun ];
+    # Consumers materialize these inputs against their own realized tool bytes.
     passthru = {
       inherit input platform src;
     };

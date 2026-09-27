@@ -11,10 +11,21 @@ trap 'rm -rf "$tmp"' EXIT
 # Model the former bytes without mutating the store, then project the current
 # bytes using the same CLI that runs inside both from-source derivations.
 printf '%s\n' "$archive_tool" > "$tmp/closure"
-"$bun" -e 'import { writeFileSync } from "node:fs"; writeFileSync(process.argv[1], JSON.stringify([{capability:{toolId:"archive-tool",protocol:"effect-utils/buck2-archive-tool/v2",flakePackage:"buck2-archive-tool",executable:"bin/buck2-archive-tool"},nixOutputPath:process.argv[2],closurePathsFile:process.argv[3]}]))' "$tmp/input.json" "$archive_tool" "$tmp/closure"
+jq -n --arg output "$archive_tool" --arg closure "$tmp/closure" '[
+  {
+    capability: {
+      toolId: "archive-tool",
+      protocol: "effect-utils/buck2-archive-tool/v2",
+      flakePackage: "buck2-archive-tool",
+      executable: "bin/buck2-archive-tool"
+    },
+    nixOutputPath: $output,
+    closurePathsFile: $closure
+  }
+]' > "$tmp/input.json"
 case "$(uname -s)" in
   Linux) platform="$(uname -m)-linux" ;;
-  Darwin) platform="$(uname -m)-macos" ;;
+  Darwin) platform="aarch64-macos" ;;
   *) echo 'unsupported capability test platform' >&2; exit 1 ;;
 esac
 "$bun" "$repo_root/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts" \

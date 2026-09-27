@@ -2946,7 +2946,7 @@ jobs:
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
-      - name: Build every published from-source product
+      - name: Build every published from-source product and Buck evidence
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -2956,8 +2956,8 @@ jobs:
           for name in "${product_names[@]}"; do
             safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
             product_refs+=(".#buck-product-$safe_name-from-source")
-          done
-          echo "Building ${#product_refs[@]} from-source products"
+          product_refs+=(".#buck2-evidence")
+          echo "Building ${#product_refs[@]} from-source products and evidence"
           nix build --no-link --print-build-logs "${product_refs[@]}"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-build-products"
@@ -3035,6 +3035,7 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
           nix/buck2-products/publish.sh --proposal "$proposal"
+          nix build --no-link --print-out-paths .#buck2-evidence | cachix push overeng-effect-utils
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
             echo "changed=false" >> "$GITHUB_OUTPUT"
