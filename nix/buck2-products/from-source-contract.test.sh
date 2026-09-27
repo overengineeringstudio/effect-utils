@@ -44,5 +44,8 @@ source="$(jq -r .source <<<"$contract")"
 [[ -f "$source/buck2/dependencies/BUCK" ]]
 
 nix build "$repo_root#buck-product-megarepo-from-source" --no-link
+archive_tool="$(nix build "$repo_root#buck2-archive-tool" --no-link --print-out-paths)"
+bash "$repo_root/nix/buck2-products/capability-realization.test.sh" \
+  "$repo_root" "$archive_tool" "${BUCK2_PRODUCTS_BUN:-bun}"
 
 printf 'buck2 from-source contracts passed\n'

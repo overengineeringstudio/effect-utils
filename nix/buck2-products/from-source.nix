@@ -100,6 +100,7 @@ let
     nativeBuildInputs = [
       buck2
       pkgs.cacert
+      pkgs.bun
       pkgs.jq
     ];
 
@@ -112,8 +113,11 @@ let
       export XDG_CACHE_HOME="$TMPDIR/cache"
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-      mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
-      cp -R ${capabilities}/. .buck2/capabilities
+      mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2
+      bun ${capabilities.src}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
+        --input ${capabilities.input} \
+        --output .buck2/capabilities \
+        --platform ${capabilities.platform}
 
       artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg target})"
       test -f "$artifact"

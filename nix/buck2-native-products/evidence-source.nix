@@ -44,6 +44,7 @@ pkgs.stdenv.mkDerivation {
   src = source;
   nativeBuildInputs = [
     buck2
+    pkgs.bun
     pkgs.cacert
   ]
   ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.autoPatchelfHook;
@@ -55,8 +56,11 @@ pkgs.stdenv.mkDerivation {
   buildPhase = ''
     runHook preBuild
     export HOME="$TMPDIR/home" XDG_CACHE_HOME="$TMPDIR/cache" XDG_RUNTIME_DIR="$TMPDIR/runtime"
-    mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
-    cp -R ${capabilities}/. .buck2/capabilities
+    mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2
+    bun ${capabilities.src}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
+      --input ${capabilities.input} \
+      --output .buck2/capabilities \
+      --platform ${capabilities.platform}
     # The bundled prelude emits `#!/usr/bin/env bash` scripts, but Nix's Linux
     # sandbox has no /usr/bin/env. Keep Buck's bundled prelude as the source of
     # truth and patch only the interpreter of scripts it generates here.
