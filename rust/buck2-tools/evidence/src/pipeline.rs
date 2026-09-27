@@ -522,28 +522,29 @@ pub async fn verify_run_trace(
     run_id: &str,
 ) -> StepResult<bool> {
     let trace = ids::run_trace(run_id);
-    let conn = index::open(&cfg.index_path()).map_err(transient)?;
-    let state: Option<(i64, i64)> = conn
-        .query_row(
-            "select c.root_pushed,c.incomplete from closes c
+    let (state, expected) = {
+        let conn = index::open(&cfg.index_path()).map_err(transient)?;
+        let state: Option<(i64, i64)> = conn
+            .query_row(
+                "select c.root_pushed,c.incomplete from closes c
          join run_traces rt on rt.run_id=c.run_id where c.run_id=?1",
-            [run_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional()
-        .map_err(transient)?;
-    let mut stmt = conn
-        .prepare("select digest,span_id from expected_spans where trace_id=?1")
-        .map_err(transient)?;
-    let expected = stmt
-        .query_map([&trace], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        })
-        .map_err(transient)?
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(transient)?;
-    drop(stmt);
-    drop(conn);
+                [run_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(transient)?;
+        let mut stmt = conn
+            .prepare("select digest,span_id from expected_spans where trace_id=?1")
+            .map_err(transient)?;
+        let expected = stmt
+            .query_map([&trace], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(transient)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(transient)?;
+        (state, expected)
+    };
     let counts = tempo_span_counts(client, &cfg.tempo, &trace).await?;
     let mut missing_records = HashSet::new();
     let mut missing_root = false;
