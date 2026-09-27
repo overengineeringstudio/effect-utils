@@ -681,6 +681,11 @@ in
                   -prune -exec rm -rf {} +
                 rm -f .pnpm-install-roots.txt
 
+                pacquet_stage_count=$(
+                  find . -name '*_pacquet-stage_*' -print | wc -l | tr -d ' '
+                )
+                log_prep_phase "pacquet-stage-scan" "count=$pacquet_stage_count"
+
                 # Projection state is never part of immutable prepared dependency
                 # data. Normalize it away, then scan independently so any future
                 # normalizer regression fails closed before the archive boundary.
