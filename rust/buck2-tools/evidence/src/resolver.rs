@@ -92,7 +92,7 @@ fn listed(
         }
         let trace = ids::run_trace(&run_id);
         result.push(json!({"digest": digest, "runId":run_id,"attempt":attempt,"key":job,"status":status,
-            "ingestedAt":ingested_at,"vcs.ref.head.revision":m["vcs.ref.head.revision"],
+            "uploadedAt":uploaded,"ingestedAt":ingested_at,"vcs.ref.head.revision":m["vcs.ref.head.revision"],
             "vcs.ref.base.revision":m["vcs.ref.base.revision"],
             "buck2.vcs.merge.revision":m["buck2.vcs.merge.revision"],
             "trace":{"id":trace,"url":format!("/t/{trace}")},
@@ -114,9 +114,13 @@ fn document(
             .or_default()
             .push(job);
     }
+    let mut runs: Vec<_> = runs.into_iter().collect();
+    runs.sort_by(|(a_id, a_jobs), (b_id, b_jobs)| {
+        let latest = |jobs: &Vec<Value>| jobs.iter().filter_map(|j| j["uploadedAt"].as_i64()).max();
+        latest(b_jobs).cmp(&latest(a_jobs)).then_with(|| b_id.cmp(a_id))
+    });
     let runs: Vec<Value> = runs
         .into_iter()
-        .rev()
         .map(|(run_id, jobs)| {
             let status = if jobs.iter().all(|j| j["status"] == "ingested") {
                 "ingested"
@@ -261,4 +265,26 @@ pub fn routes(state: AppState) -> Router {
         .route("/pr/{owner}/{repo}/{number}", get(pr))
         .route("/run/{run}", get(run))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pr_runs_follow_latest_indexed_upload_not_lexical_run_id() {
+        let conn = Connection::open_in_memory().unwrap();
+        index::init(&conn).unwrap();
+        for (id, uploaded) in [("ci/github/o/r/9/1", 9), ("ci/github/o/r/10/1", 10)] {
+            conn.execute(
+                "insert into records (digest,repo,run_id,attempt,job,manifest_json,bytes,status,uploaded_at)
+                 values (?1,'o/r',?1,1,'build',?2,0,'ingested',?3)",
+                rusqlite::params![id, r#"{"vcs.change.id":"42"}"#, uploaded],
+            )
+            .unwrap();
+        }
+        let doc = document(&conn, "o/r", Some("42"), None).unwrap();
+        assert_eq!(doc["runs"][0]["runId"], "ci/github/o/r/10/1");
+        assert_eq!(doc["runs"][1]["runId"], "ci/github/o/r/9/1");
+    }
 }
