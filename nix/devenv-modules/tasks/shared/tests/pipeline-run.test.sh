@@ -22,6 +22,16 @@ mkdir -p "$tmp/bin"
 cat > "$tmp/bin/buck2-evidence" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >> "$PIPELINE_TEST_SEALS"
+if [[ ${PIPELINE_TEST_AMBIGUOUS:-} == 1 && $1 == upload && ${2:-} != --pending ]]; then
+  while (($#)); do
+    if [[ $1 == --spool ]]; then
+      mkdir -p "$2"
+      printf 'pending\n' > "$2/upload-pending"
+      exit 1
+    fi
+    shift
+  done
+fi
 SH
 chmod +x "$tmp/bin/buck2-evidence"
 export PATH="$tmp/bin:$PATH" PIPELINE_TEST_SEALS="$tmp/seals"
@@ -187,4 +197,17 @@ DEVENV_ROOT="$tmp/linked" OTEL_SPAN_SPOOL_DIR="$tmp" \
   "$span" run test outer -- "$span" pipeline-run -- bash -c ':'
 [[ $(find "$tmp/linked/.devenv/otel/run-records" -name '*.jsonl' -exec cat {} + | jq -s --arg id "$outer_trace" '[.[].resourceSpans[].scopeSpans[].spans[] | select(.name == "cicd.pipeline.run" and .traceId != $id and (.links | any(.traceId == $id)))] | length') == 1 ]]
 [[ $(jq -s '[.[].resourceSpans[].scopeSpans[].spans[] | select(.name == "outer" and (.links | length == 1))] | length' "$tmp/spans.jsonl") == 1 ]]
+# A lost upload acknowledgement must not launch a competing local ingester.
+# The real transport marks pending before sending; this fake models its failed exit.
+: > "$tmp/ambiguous-seals"
+rc=0
+PIPELINE_TEST_AMBIGUOUS=1 PIPELINE_TEST_SEALS="$tmp/ambiguous-seals" \
+  BUCK2_EVIDENCE_UPLOAD_URL=unix:///tmp/unreachable-evidence.sock \
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:1 \
+  DEVENV_ROOT="$tmp/ambiguous" "$span" pipeline-run -- bash -c 'exit 7' || rc=$?
+[[ $rc == 7 ]]
+[[ $(grep -c '^upload$' "$tmp/ambiguous-seals") == 2 ]]
+[[ $(grep -c '^ingest$' "$tmp/ambiguous-seals" || true) == 0 ]]
+[[ $(find "$tmp/ambiguous/.devenv/otel/run-records" -name upload-pending | wc -l) == 1 ]]
+
 printf 'pipeline-run vectors, context parity, and nested root passed: %s\n' "$trace"

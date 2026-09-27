@@ -56,10 +56,11 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **Local Buck2 evidence upload**: `otel-span pipeline-run` sends sealed
-  local records and their one-job close to the configured evidence service,
-  which verifies the root already carried in the record and periodically
-  reconciles missing trace spans. Failed uploads log the fallback to
-  `ingest --local`; offline runs retain their sealed evidence.
+  local records and their one-job close to the configured evidence service.
+  The service verifies their single carried root and binds upload roles
+  to CI/local identities. Definitive upload rejection falls back to
+  `ingest --local`; ambiguous lost responses keep an `upload-pending`
+  spool for idempotent retry on the next run without exporting another root.
 
 - **CI `build-products` lane**: Every pull request builds all published
   `.#buck-product-*-from-source` attrs (derived from

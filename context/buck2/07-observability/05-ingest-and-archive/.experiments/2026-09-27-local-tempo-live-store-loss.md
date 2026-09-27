@@ -31,11 +31,12 @@ attempt-close. The entrypoint writes the local root only into its job
 spool. The service treats the close as a declaration that the root is
 carried by that record, ingests it once, then periodically verifies the
 whole run trace and repairs missing record spans. It must never
-independently synthesize a second root. If upload fails, log it; if no
-service is configured or upload fails, use one-shot local ingest when
-an OTLP endpoint is available. Otherwise retain the spool. This offline
-path remains best-effort against later Tempo loss; neither path changes
-the child command's exit status.
+independently synthesize a second root. A definitive unreachable
+endpoint or explicit rejection permits one-shot local ingest if OTLP
+is available; a lost response or timeout instead preserves a
+`upload-pending` spool for idempotent service replay on the next run.
+Either path keeps the child exit status. Offline ingest remains
+best-effort against later Tempo loss.
 
 This evidence describes observed behavior, not a guarantee that every
 loss is caused by `max_trace_idle`. The scratch replay audited HTTP

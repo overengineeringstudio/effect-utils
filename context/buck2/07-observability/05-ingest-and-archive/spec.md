@@ -91,17 +91,25 @@ seal -> upload socket -> verify -> durable record -> index.sqlite
 
 Local close carries `rootInRecord=true`, one expected job and its
 conclusion; the entrypoint's sealed spool contains the sole local root.
-The service indexes the close and verifies the carried root by trace id,
-but neither registers a second expected root nor emits another root.
+The service validates that the sealed local job actually carries exactly
+one derived root before accepting it, indexes the close, and verifies the
+root by trace id without emitting another. Upload authorization binds
+`ci-runner` exclusively to `ci/*` identities and `dev-host` exclusively
+to `local/*`, on both record and close routes.
+
 The opt-in `BUCK2_EVIDENCE_UPLOAD_URL` points at the tailnet upload Service;
 its default URL should be configured only when that Service is deployed.
-The upload uses the existing tailnet `dev-host` capability, not a new
-role. A bounded upload failure logs clearly and falls back to local
-ingest when an OTLP endpoint exists, otherwise retaining the sealed
-spool. Neither path changes the child command's exit status or discards
-the spool. Offline local ingest is best-effort against transient Tempo
-live-store loss, unlike the service's active two-hour reconciliation
-window.
+Only a confirmed connection refusal/unreachable endpoint before sending,
+or an explicit HTTP 4xx rejection, permits offline `ingest --local` when
+OTLP is available. An accepted request with a lost response or timeout
+is ambiguous: the spool remains marked `upload-pending` and local ingest
+is withheld. `buck2-evidence upload --pending --spool <run-records-root>`
+replays such records (close first, then job) against the same endpoint;
+the next local pipeline run invokes that replay automatically. The
+content-addressed service treats an already accepted digest's 409 as
+completion. Neither path changes the child exit status or discards the
+spool. Offline ingest is best-effort against later Tempo loss, unlike
+the service's active two-hour reconciliation window.
 
 ## Attempt Completion (BUCK.OBS.ING-R10)
 

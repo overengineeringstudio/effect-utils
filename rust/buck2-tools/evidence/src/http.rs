@@ -65,8 +65,14 @@ async fn upload(
     Path(digest): Path<String>,
     body: Bytes,
 ) -> Response {
-    if !st.allow_local_upload && !upload_capability(&headers) {
-        return StatusCode::FORBIDDEN.into_response();
+    if let Err(response) = authorize_upload(
+        st.allow_local_upload,
+        &headers,
+        &digest,
+        &body,
+        "buck2-run-record/v1",
+    ) {
+        return response;
     }
     let cfg = st.cfg.clone();
     let d = digest.clone();
@@ -120,8 +126,14 @@ async fn upload_close(
     Path(digest): Path<String>,
     body: Bytes,
 ) -> Response {
-    if !st.allow_local_upload && !upload_capability(&headers) {
-        return StatusCode::FORBIDDEN.into_response();
+    if let Err(response) = authorize_upload(
+        st.allow_local_upload,
+        &headers,
+        &digest,
+        &body,
+        "buck2-attempt-close/v1",
+    ) {
+        return response;
     }
     let cfg = st.cfg.clone();
     let d = digest.clone();
@@ -147,29 +159,59 @@ async fn upload_close(
 }
 /// Tailscale Serve forwards app capabilities, but does not enforce them.
 /// Reject spoofed/absent/ambiguous capability objects at the upload boundary.
-fn upload_capability(headers: &HeaderMap) -> bool {
+fn authorize_upload(
+    allow_local: bool,
+    headers: &HeaderMap,
+    digest: &str,
+    body: &[u8],
+    schema: &str,
+) -> Result<(), Response> {
+    let role = if allow_local {
+        None
+    } else {
+        Some(upload_capability(headers).ok_or_else(|| StatusCode::FORBIDDEN.into_response())?)
+    };
+    let run = store::preview_run_id(digest, body, schema).map_err(|e| match e {
+        UploadError::Rejected(message) => (StatusCode::BAD_REQUEST, message).into_response(),
+        UploadError::Io(message) => db_err(message),
+    })?;
+    let expected = if run.starts_with("ci/") {
+        "ci-runner"
+    } else if run.starts_with("local/") {
+        "dev-host"
+    } else {
+        return Err(StatusCode::BAD_REQUEST.into_response());
+    };
+    if role.is_some_and(|role| role != expected) {
+        return Err(StatusCode::FORBIDDEN.into_response());
+    }
+    Ok(())
+}
+
+fn upload_capability(headers: &HeaderMap) -> Option<&str> {
     let Some(raw) = headers
         .get("tailscale-app-capabilities")
         .and_then(|h| h.to_str().ok())
     else {
-        return false;
+        return None;
     };
     let Ok(doc) = serde_json::from_str::<serde_json::Value>(raw) else {
-        return false;
+        return None;
     };
     let Some(entries) = doc
         .get("schickling.dev/cap/buck2-evidence-upload")
         .and_then(|v| v.as_array())
     else {
-        return false;
+        return None;
     };
     if entries.len() != 1 {
-        return false;
+        return None;
     }
-    matches!(
-        entries[0].get("role").and_then(|v| v.as_str()),
-        Some("ci-runner" | "dev-host")
-    )
+    match entries[0].get("role").and_then(|v| v.as_str()) {
+        Some("ci-runner") => Some("ci-runner"),
+        Some("dev-host") => Some("dev-host"),
+        _ => None,
+    }
 }
 async fn record(State(st): State<AppState>, Path(digest): Path<String>) -> Response {
     let cfg = st.cfg.clone();
@@ -371,4 +413,81 @@ pub async fn serve_unix(socket: &std::path::Path, app: Router) -> anyhow::Result
     let listener = tokio::net::UnixListener::bind(socket)?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest_upload(schema: &str, run: &str) -> (String, Vec<u8>) {
+        let manifest = if schema == "buck2-run-record/v1" {
+            json!({"schema":schema,"run":{"pipelineRunId":run}})
+        } else {
+            json!({"schema":schema,"pipelineRunId":run})
+        };
+        let bytes = serde_json::to_vec(&manifest).unwrap();
+        let digest = crate::sha256_hex(&bytes);
+        let mut archive = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_cksum();
+        archive
+            .append_data(&mut header, "manifest.json", bytes.as_slice())
+            .unwrap();
+        (digest, archive.into_inner().unwrap())
+    }
+
+    #[test]
+    fn upload_capability_cannot_cross_local_and_ci_boundaries() {
+        for (schema, run, own_role, other_role) in [
+            (
+                "buck2-run-record/v1",
+                "ci/github/owner%2Frepo/7/1",
+                "ci-runner",
+                "dev-host",
+            ),
+            (
+                "buck2-run-record/v1",
+                "local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1",
+                "dev-host",
+                "ci-runner",
+            ),
+            (
+                "buck2-attempt-close/v1",
+                "ci/github/owner%2Frepo/7/1",
+                "ci-runner",
+                "dev-host",
+            ),
+            (
+                "buck2-attempt-close/v1",
+                "local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1",
+                "dev-host",
+                "ci-runner",
+            ),
+        ] {
+            let (digest, body) = manifest_upload(schema, run);
+            let headers_for = |role| {
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    "tailscale-app-capabilities",
+                    axum::http::HeaderValue::from_str(
+                        &json!({"schickling.dev/cap/buck2-evidence-upload":[{"role":role}]})
+                            .to_string(),
+                    )
+                    .unwrap(),
+                );
+                headers
+            };
+            assert_eq!(
+                authorize_upload(false, &headers_for(other_role), &digest, &body, schema)
+                    .unwrap_err()
+                    .status(),
+                StatusCode::FORBIDDEN,
+                "{schema} {run} must reject {other_role}",
+            );
+            assert!(
+                authorize_upload(false, &headers_for(own_role), &digest, &body, schema).is_ok()
+            );
+        }
+    }
 }

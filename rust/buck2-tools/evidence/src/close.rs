@@ -25,12 +25,24 @@ pub struct CloseRecord {
 }
 
 fn validate(record: &CloseRecord) -> Result<()> {
-    let local = record.pipeline_run_id.starts_with("local/");
+    let parts: Vec<_> = record.pipeline_run_id.split('/').collect();
+    let local = parts.first() == Some(&"local");
+    let ci = parts.first() == Some(&"ci");
     if record.schema != "buck2-attempt-close/v1"
-        || !(record.pipeline_run_id.starts_with("ci/") || local)
+        || !(ci || local)
         || record.root_in_record != local
         || (local
-            && (record.pipeline_run_id.split('/').count() != 2 || record.expected_jobs.len() != 1))
+            && (parts.len() != 2
+                || !crate::store::valid_local_uuid(parts[1])
+                || record.expected_jobs.len() != 1))
+        || (ci
+            && (parts.len() != 5
+                || parts[1..4].iter().any(|part| part.is_empty())
+                || parts[4]
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|attempt| *attempt > 0)
+                    .is_none()))
         || record.repository.split('/').count() != 2
     {
         bail!("invalid attempt close identity");
