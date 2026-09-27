@@ -456,8 +456,10 @@ const descriptorOptionNames = async (canvasElement: HTMLElement): Promise<Array<
   if (canvas.queryByRole('button', { name: /^All descriptors Descriptor/ }) === null)
     await userEvent.click(canvas.getByRole('button', { name: /^Filters and actions/ }))
   await userEvent.click(canvas.getByRole('button', { name: /^All descriptors Descriptor/ }))
-  const body = within(document.body)
-  const listbox = await body.findByRole('listbox', { name: 'Descriptor' })
+  // The Select popover names its listbox after the trigger, so anchor on the
+  // popover-only "All descriptors" option instead of an accessible name.
+  const allOption = await within(document.body).findByRole('option', { name: 'All descriptors' })
+  const listbox = allOption.closest<HTMLElement>('[role="listbox"]')!
   const names = within(listbox)
     .getAllByRole('option')
     .map((option) => option.textContent ?? '')
