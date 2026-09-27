@@ -63,19 +63,27 @@ For the worker/job span, seed `TRACEPARENT` as
 `00-<derived-trace-id>-<derived-job-span-id>-01`. The run identity owner
 alone writes the root: locally the generic `devenv tasks run <verb>`
 entrypoint records start/end around the child and writes both root and
-worker span at exit (including best-effort SIGINT and SIGTERM without
-masking the child's exit status); nested invocations inheriting that id
-do not emit another root. In CI the ingester writes the root after 02's
-attempt-close record arrives and every listed job is ingested or marked
-missing, using its roster/conclusions and run/job bounds. It synthesizes
-deterministic error spans for missing jobs. If close never arrives or listed
-jobs remain unaccounted for, a persisted deadline about six hours after the
-last upload writes one root and labels the attempt `incomplete`; late
-evidence cannot rewrite the root (05).
-Ingest also reconstructs a missing local root after SIGKILL/crash when a
-record is recovered. A first-job root would freeze incorrect bounds;
-spans cannot be updated and duplicate root ids persist in Tempo. Until
-the late root arrives, the index-backed resolver serves the run as pending.
+worker span into the sealed job spool at exit (including best-effort SIGINT
+and SIGTERM without masking the child's exit status); nested invocations
+inheriting that id do not emit another root. The entrypoint never exports
+that root directly to OTLP when evidence capture is available. With a
+configured evidence upload endpoint, it uploads a local attempt-close with
+its single job's conclusion and the sealed job record; the service owns
+ingestion and periodic reconciliation. The close declares that the root is
+**carried in the job record**: the service verifies it but never synthesizes
+or publishes a second root. If upload fails or no service is configured,
+the entrypoint logs the fallback and uses one-shot `ingest --local`; this
+offline path has no service-owned later reconciliation and is best-effort.
+In CI the ingester writes the root after 02's attempt-close record arrives
+and every listed job is ingested or marked missing, using its
+roster/conclusions and run/job bounds. It synthesizes deterministic error
+spans for missing jobs. If CI close never arrives or listed jobs remain
+unaccounted for, a persisted deadline about six hours after the last upload
+writes one root and labels the attempt `incomplete`; late evidence cannot
+rewrite the root (05). A local SIGKILL before spool sealing may lack a root;
+the service must not guess one because duplicate root ids persist in Tempo.
+Until the root is verified, the index-backed resolver serves the run as
+pending.
 
 The same generic entrypoint runs locally and from the CI adapter. With a
 valid outer W3C context, it replaces rather than parents the new run under

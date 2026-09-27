@@ -788,10 +788,31 @@ pkgs.writeShellScriptBin "otel-span" ''
         if (( ! nested && evidence_available )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" ]]; then
           if ${pkgs.coreutils}/bin/timeout -k 2 15 buck2-evidence seal \
             --spool "$PIPELINE_SPOOL_DIR" --run-id "$run_id" --task-key "$job_key"; then
-            if [[ -n "$effective_endpoint" ]]; then
-              ${pkgs.coreutils}/bin/timeout -k 2 60 buck2-evidence ingest --local \
-                --spool "$PIPELINE_SPOOL_DIR" ||
-                echo "otel-span pipeline-run: local ingest failed" >&2
+            local uploaded=0 close_dir="$PIPELINE_SPOOL_DIR/attempt-close" conclusion=success
+            if (( owner )) && [[ -n "''${BUCK2_EVIDENCE_UPLOAD_URL:-}" ]]; then
+              (( rc == 0 )) || conclusion=failure
+              if [[ -n "$signal" ]]; then conclusion=cancelled; fi
+              if ${pkgs.jq}/bin/jq -cn --arg key "$job_key" --arg conclusion "$conclusion" \
+                '[{key:$key,conclusion:$conclusion}]' > "$PIPELINE_SPOOL_DIR/close-jobs.json" &&
+                ${pkgs.coreutils}/bin/timeout -k 2 15 buck2-evidence seal-close \
+                  --spool "$close_dir" --run-id "$run_id" \
+                  --repository "''${PIPELINE_REPOSITORY:-local/unknown}" \
+                  --jobs-json "$PIPELINE_SPOOL_DIR/close-jobs.json" &&
+                ${pkgs.coreutils}/bin/timeout -k 2 45 buck2-evidence upload --spool "$close_dir" &&
+                ${pkgs.coreutils}/bin/timeout -k 2 45 buck2-evidence upload --spool "$PIPELINE_SPOOL_DIR"; then
+                uploaded=1
+              else
+                echo "otel-span pipeline-run: evidence upload failed; attempting offline local ingest" >&2
+              fi
+            fi
+            if (( ! uploaded )); then
+              if [[ -n "$effective_endpoint" ]]; then
+                ${pkgs.coreutils}/bin/timeout -k 2 60 buck2-evidence ingest --local \
+                  --spool "$PIPELINE_SPOOL_DIR" ||
+                  echo "otel-span pipeline-run: local ingest failed; sealed spool retained" >&2
+              else
+                echo "otel-span pipeline-run: no OTLP endpoint for local ingest; sealed spool retained" >&2
+              fi
             fi
           else
             echo "otel-span pipeline-run: evidence seal failed" >&2

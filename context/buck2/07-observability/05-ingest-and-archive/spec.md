@@ -48,8 +48,11 @@ seal -> upload socket -> verify -> durable record -> index.sqlite
    daemon wait in the batch, and derives critical/full views plus bounded
    metrics (04). It stamps `cicd.*`/`vcs.*`,
    lane-owned `buck2.vcs.merge.revision`, and `ci.provider`; untrusted
-   runs also carry `ci.pr.fork=true`. Local `ingest` uses the same converter
-   and uploader path as the service, with endpoints provided by configuration.
+   runs also carry `ci.pr.fork=true`. Local runs upload the sealed job and
+   one-job attempt-close through the same authenticated service as CI
+   when its endpoint is configured. Without a service, one-shot
+   `ingest --local` uses the same converter and uploader path, but cannot
+   provide the service's periodic reconciliation.
 3. Persist a plan of expected `(trace_id, span_id)` and OTLP chunks below
    ~3.5 MB; checkpoint each successful chunk. On retry, before re-pushing
    any uncheckpointed/in-flight chunk, read its trace by deterministic id,
@@ -85,6 +88,19 @@ seal -> upload socket -> verify -> durable record -> index.sqlite
    queue dead-letter and last error are separate failure details. Only a
    view verified as `ingested` redirects as complete; the shared trace
    cannot inherit a completed job view's status.
+
+Local close carries `rootInRecord=true`, one expected job and its
+conclusion; the entrypoint's sealed spool contains the sole local root.
+The service indexes the close and verifies the carried root by trace id,
+but neither registers a second expected root nor emits another root.
+The opt-in `BUCK2_EVIDENCE_UPLOAD_URL` points at the tailnet upload Service;
+its default URL should be configured only when that Service is deployed.
+The upload uses the existing tailnet `dev-host` capability, not a new
+role. A bounded upload failure logs clearly and falls back to local
+ingest without changing the child command's exit status; neither upload
+nor local ingest discards the sealed spool. Offline local ingest is
+best-effort against transient Tempo live-store loss, unlike the service's
+active two-hour reconciliation window.
 
 ## Attempt Completion (BUCK.OBS.ING-R10)
 
@@ -198,14 +214,16 @@ unmeasured both-views Tempo cost.
   gaps and verifying the same repro against fleet Tempo; this does not
   replace readback and selective deterministic repair for longer gaps.
   When repair cannot converge, preserve `missing_spans` and its count.
-  The isolated reproduction is filed as [Tempo issue 8002](https://github.com/grafana/tempo/issues/8002).
+  The isolated reproduction is filed as [Tempo issue 8002](https://github.com/grafana/tempo/issues/8002);
+  [the critical-trace E2E triage](./.experiments/2026-09-27-local-tempo-live-store-loss.md)
+  shows why a one-shot local ingester is insufficient for tailnet runs.
 
 ## Service and Dotfiles Contract (BUCK.OBS.ING-R07/R08)
 
 ```text
 effect-utils: rust/buck2-tools/buck2-evidence (Buck BuildProduct)
   seal | upload | ingest | serve | drain | backfill | retention
-  in-process event adapter; same ingest path on laptop and fleet
+  shared ingester: service for tailnet uploads, one-shot laptop fallback offline
 dotfiles: one hardened service + two Unix sockets
   upload socket   -> OIDC-gated managed Tailscale upload Service
   resolver socket -> read-only managed Tailscale resolver Service
@@ -243,6 +261,11 @@ continues to explain expired evidence.
   `incomplete`, never a duplicate root.
 - Incomplete backend readback never redirects as complete; missing ids are
   selectively repushed and persistent loss shows `missing_spans`.
+- Local owner: a close with `rootInRecord=true` and one expected job
+  verifies the root carried by the sealed record without publishing a
+  second root; by-id readback contains exactly one copy of its span id.
+  A failed or absent upload keeps the spool and falls back to offline
+  `ingest --local` without masking the child command's exit status.
 - Future fork ingest, when separately authorized: an untrusted-tagged record
   decodes under caps and carries `ci.pr.fork=true`; queries can filter it.
 - Evidence: [replay baseline](./.experiments/2026-09-25-ci-to-tempo-replay-baseline.md),

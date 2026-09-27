@@ -60,9 +60,7 @@ pub async fn upload(spool: &Path, url: Option<&str>) -> Result<String> {
                     .nth(2)
                     .is_some_and(|host| host.ends_with(".ts.net")))
         {
-            return Ok(format!(
-                "spool-only sha256:{digest} (no authenticated transport)"
-            ));
+            bail!("upload URL is configured but no authenticated transport is available");
         }
         (
             reqwest::Client::builder()

@@ -55,6 +55,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Local Buck2 evidence upload**: `otel-span pipeline-run` sends sealed
+  local records and their one-job close to the configured evidence service,
+  which verifies the root already carried in the record and periodically
+  reconciles missing trace spans. Failed uploads log the fallback to
+  `ingest --local`; offline runs retain their sealed evidence.
+
 - **CI `build-products` lane**: Every pull request builds all published
   `.#buck-product-*-from-source` attrs (derived from
   `nix/buck2-products/cache-targets.json`, same as `publish-products`) and
