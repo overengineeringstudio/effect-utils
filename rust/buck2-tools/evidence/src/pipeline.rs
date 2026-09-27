@@ -507,9 +507,6 @@ pub async fn verify_run_trace(
          join run_traces rt on rt.run_id=c.run_id where c.run_id=?1",
         [run_id], |r| Ok((r.get(0)?, r.get(1)?)),
     ).optional().map_err(transient)?;
-    if state.is_none() {
-        return Ok(false);
-    }
     let mut stmt = conn.prepare(
         "select digest,span_id from expected_spans where trace_id=?1",
     ).map_err(transient)?;
@@ -531,13 +528,17 @@ pub async fn verify_run_trace(
     }
     let conn = index::open(&cfg.index_path()).map_err(transient)?;
     for digest in &missing_records {
-        conn.execute("update records set status='missing_spans',last_error='cumulative trace readback lost spans'
-            where digest=?1 and status='ingested'", [digest]).map_err(transient)?;
-        conn.execute("update jobs set state='queued',attempts=0,next_at=?2 where digest=?1",
-            rusqlite::params![digest, now_ms()]).map_err(transient)?;
-        conn.execute("delete from pushes where digest=?1", [digest]).map_err(transient)?;
+        let changed = conn.execute(
+            "update records set status='missing_spans',last_error='cumulative trace readback lost spans'
+             where digest=?1 and status='ingested'", [digest],
+        ).map_err(transient)?;
+        if changed != 0 {
+            conn.execute("update jobs set state='queued',attempts=0,next_at=?2 where digest=?1",
+                rusqlite::params![digest, now_ms()]).map_err(transient)?;
+            conn.execute("delete from pushes where digest=?1", [digest]).map_err(transient)?;
+        }
     }
-    if missing_root {
+    if missing_root && state.is_some() {
         conn.execute("update closes set root_pushed=0 where run_id=?1", [run_id]).map_err(transient)?;
     }
     let complete = missing_records.is_empty() && !missing_root && state == Some((1, 0));
@@ -678,5 +679,52 @@ mod tests {
         assert!(!retain_missing_spans(&mut chunk, &HashMap::from([
             ("a".to_owned(), HashMap::from([("lost".to_owned(), 1)]))
         ])));
+    }
+
+    #[tokio::test]
+    async fn later_job_repairs_lost_earlier_span_before_close() {
+        let run = "ci/github/example%2Frepo/42/1";
+        let trace = ids::run_trace(run);
+        let state = std::env::temp_dir().join(format!(
+            "evidence-union-{}-{}", std::process::id(), now_ms()
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().route("/api/v2/traces/{id}", axum::routing::get(
+            || async { axum::Json(json!({"trace":{"resourceSpans":[{"scopeSpans":[{"spans":[{"spanId":"second"}]}]}]}})) }
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let cfg = Config {
+            state: state.clone(), otlp: String::new(), tempo: url,
+            readback_timeout: Duration::from_secs(1), grafana: String::new(),
+        };
+        cfg.ensure_dirs().unwrap();
+        let mut conn = index::open(&cfg.index_path()).unwrap();
+        index::init(&conn).unwrap();
+        conn.execute_batch("create table jobs(digest text primary key, state text not null, attempts integer not null, next_at integer not null);
+            create table pushes(digest text, chunk integer);").unwrap();
+        for (digest, span) in [("first", "first"), ("second", "second")] {
+            conn.execute(
+                "insert into records(digest,repo,run_id,attempt,job,manifest_json,bytes,status,uploaded_at)
+                 values (?1,'example/repo',?2,1,?1,'{}',0,'ingested',0)",
+                rusqlite::params![digest, run],
+            ).unwrap();
+            conn.execute("insert into jobs values (?1,'done',3,0)", [digest]).unwrap();
+            index::register_expected(&mut conn, digest, &[PlanTrace {
+                trace_id: trace.clone(), view: "critical".into(), span_ids: vec![span.into()],
+            }]).unwrap();
+        }
+        drop(conn);
+        assert!(!verify_run_trace(&http_client(), &cfg, run).await.unwrap());
+        let conn = index::open(&cfg.index_path()).unwrap();
+        assert_eq!(index::status_of(&conn, "first").unwrap().as_deref(), Some("missing_spans"));
+        assert_eq!(index::status_of(&conn, "second").unwrap().as_deref(), Some("ingested"));
+        let state: (String, i64) = conn.query_row(
+            "select state,attempts from jobs where digest='first'", [], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!(state, ("queued".into(), 0));
+        server.abort();
+        drop(conn);
+        std::fs::remove_dir_all(&cfg.state).unwrap();
     }
 }

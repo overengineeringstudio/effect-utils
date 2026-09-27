@@ -300,10 +300,12 @@ impl Svc {
                     .fetch_add(started.elapsed().as_millis() as u64, Relaxed);
                 self.blocking(move |_, c| {
                     c.execute(
-                        "update jobs set state='done', last_error=null where digest=?1",
+                        "update jobs set state='done', last_error=null where digest=?1
+                         and exists (select 1 from records where digest=?1 and status='ingested')",
                         [&d],
                     )?;
-                    c.execute("delete from pushes where digest=?1", [&d])
+                    c.execute("delete from pushes where digest=?1 and exists
+                        (select 1 from records where digest=?1 and status='ingested')", [&d])
                 })
                 .await
                 .map(|_| ())
@@ -394,11 +396,16 @@ impl Svc {
             .map_err(buck2_evidence::transient)?;
         }
         let rb = pipeline::readback(&self.client, &self.cfg, digest).await?;
+        let run_id = pipeline::load_plan(&self.cfg, digest)?
+            .map(|plan| plan.manifest.run.pipeline_run_id);
         let cfg = self.cfg.clone();
         let d = digest.to_string();
         tokio::task::spawn_blocking(move || pipeline::finalize(&cfg, &d, &rb))
             .await
             .unwrap()?;
+        if let Some(run_id) = run_id.filter(|id| id.starts_with("ci/")) {
+            pipeline::verify_run_trace(&self.client, &self.cfg, &run_id).await?;
+        }
         Ok(())
     }
 
