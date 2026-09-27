@@ -76,6 +76,43 @@ fn revision(name: &str) -> Result<Option<String>> {
     }
 }
 
+fn git_head_fallback_allowed(run: &str, event: &str, merge: Option<&str>) -> bool {
+    merge.is_none() && (!run.starts_with("ci/") || event == "push")
+}
+
+fn full_history() -> bool {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--is-shallow-repository"])
+        .output()
+        .is_ok_and(|output| output.status.success() && output.stdout == b"false\n")
+}
+
+fn first_parent_position(revision: &str) -> Option<i64> {
+    if !full_history() {
+        return None;
+    }
+    let output = std::process::Command::new("git")
+        .args(["rev-list", "--first-parent", "--count", revision])
+        .output()
+        .ok()?;
+    output.status.success().then_some(())?;
+    String::from_utf8(output.stdout).ok()?.trim().parse().ok()
+}
+
+fn first_parent_ancestors(revision: &str) -> Vec<String> {
+    if !full_history() {
+        return Vec::new();
+    }
+    std::process::Command::new("git")
+        .args(["rev-list", "--first-parent", revision])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|lines| lines.lines().map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
 /// Return the manifest digest; writing the manifest is the seal's last operation.
 pub fn seal(spool: &Path, pipeline_run_id: &str, task_key: &str) -> Result<String> {
     if pipeline_run_id.is_empty() || task_key.is_empty() {
@@ -127,11 +164,16 @@ pub fn seal(spool: &Path, pipeline_run_id: &str, task_key: &str) -> Result<Strin
         attempt,
         job_key: task_key.into(),
         event: env("PIPELINE_EVENT").unwrap_or_else(|| "local".into()),
+        branch: env("GITHUB_REF_NAME").unwrap_or_default(),
         worker: json!({"os": std::env::consts::OS, "arch": std::env::consts::ARCH}),
         fork: env("PIPELINE_FORK").as_deref() == Some("true"),
         trusted: env("PIPELINE_TRUSTED").as_deref() != Some("false"),
     };
+    let merge = revision("BUCK2_VCS_MERGE_REVISION")?;
     let head = revision("VCS_REF_HEAD_REVISION")?.or_else(|| {
+        if !git_head_fallback_allowed(pipeline_run_id, &run.event, merge.as_deref()) {
+            return None;
+        }
         std::process::Command::new("git")
             .args(["rev-parse", "HEAD"])
             .output()
@@ -144,15 +186,19 @@ pub fn seal(spool: &Path, pipeline_run_id: &str, task_key: &str) -> Result<Strin
                 .then_some(sha)
             })
     });
+    let base = revision("VCS_REF_BASE_REVISION")?;
     let manifest = Manifest {
         schema: "buck2-run-record/v1".into(),
         producer: json!({"converter": env!("CARGO_PKG_VERSION"), "sealedAt": now_rfc3339()?}),
         run,
         files,
         vcs_change_id: env("VCS_CHANGE_ID"),
+        vcs_head_position: head.as_deref().and_then(first_parent_position),
+        vcs_base_position: base.as_deref().and_then(first_parent_position),
+        vcs_base_ancestors: base.as_deref().map(first_parent_ancestors).unwrap_or_default(),
         vcs_head: head,
-        vcs_base: revision("VCS_REF_BASE_REVISION")?,
-        vcs_merge: revision("BUCK2_VCS_MERGE_REVISION")?,
+        vcs_base: base,
+        vcs_merge: merge,
     };
     let bytes = serde_json::to_vec(&manifest)?;
     let digest = hex::encode(Sha256::digest(&bytes));
@@ -170,4 +216,18 @@ fn now_rfc3339() -> Result<String> {
         bail!("UTC timestamp unavailable");
     }
     Ok(String::from_utf8(output.stdout)?.trim().into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::git_head_fallback_allowed;
+
+    #[test]
+    fn merge_checkout_never_substitutes_tested_commit_for_pr_head() {
+        assert!(!git_head_fallback_allowed("ci/o/r/42/1", "pull_request", Some("merge")));
+        assert!(!git_head_fallback_allowed("ci/o/r/42/1", "pull_request", None));
+        assert!(!git_head_fallback_allowed("ci/o/r/42/1", "unknown", None));
+        assert!(git_head_fallback_allowed("ci/o/r/42/1", "push", None));
+        assert!(git_head_fallback_allowed("local/run", "local", None));
+    }
 }
