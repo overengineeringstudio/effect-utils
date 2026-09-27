@@ -75,6 +75,10 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+- **pnpm 12.6.0:** the megarepo pnpm pin (`nix/pnpm.nix`, genie's default
+  `packageManager`, the Buck `tool_pnpm` protocol and the lock-mutator
+  allowlist) moves from 12.4.1 to 12.6.0, picking up the 12.4.2 fix for
+  spurious missing-peer failures when installing against a stale lockfile.
 - **Pipeline run tracing:** `otel-span pipeline-run -- devenv tasks run <verb>`
   now seeds one deterministic run/job trace, records local roots even on
   interruption, and seals Buck command evidence into a per-run spool.
