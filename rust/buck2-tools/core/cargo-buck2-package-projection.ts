@@ -13,6 +13,7 @@ import {
   type RepoContext,
 } from '../../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 
+/** One Buck product emitted from a named Cargo binary of the projected package. */
 export type CargoBuck2ProductOptions = {
   /** Product name; emits `<name>-product-executable` and `<name>-product`. */
   readonly name: string
