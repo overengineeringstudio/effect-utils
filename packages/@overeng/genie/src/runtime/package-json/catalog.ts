@@ -224,15 +224,17 @@ const createPickFn =
 
 /**
  * Peer range for a catalog version: `^version` for a release, the exact version for a
- * prerelease. A caret on a prerelease (`^4.0.0-rc.113`) admits every later prerelease of
- * the same core, and prerelease cohorts such as Effect RCs break between iterations, so a
+ * prerelease (a caret on an authored prerelease is dropped). pnpm's peer check accepts
+ * any prerelease of the same core under a caret (`^4.0.0-rc.113` admits rc.112 and
+ * rc.114), and prerelease cohorts such as Effect RCs break between iterations, so a
  * consumer on a different prerelease must fail the peer check instead of resolving.
- * An explicit range already carrying `^` is kept as authored.
+ * A release range already carrying `^` is kept as authored.
  */
-const peerRangeFromCatalogVersion = (version: string) =>
-  version.startsWith('^') === true || /^\d+\.\d+\.\d+-/.test(version) === true
-    ? version
-    : `^${version}`
+const peerRangeFromCatalogVersion = (version: string) => {
+  const bare = version.startsWith('^') === true ? version.slice(1) : version
+  if (/^\d+\.\d+\.\d+-/.test(bare) === true) return bare
+  return `^${bare}`
+}
 
 /** Creates a peers function for a catalog object (see `peerRangeFromCatalogVersion`) */
 const createPeersFn =
@@ -240,7 +242,7 @@ const createPeersFn =
   <K extends keyof T>(...keys: K[]): { [P in K]: string } => {
     const result = {} as { [P in K]: string }
     for (const key of keys) {
-      result[key] = peerRangeFromCatalogVersion(catalog[key])
+      result[key] = peerRangeFromCatalogVersion(`${catalog[key]}`)
     }
     return result
   }

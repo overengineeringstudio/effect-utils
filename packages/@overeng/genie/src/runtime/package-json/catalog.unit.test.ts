@@ -769,20 +769,25 @@ describe('defineCatalog', () => {
     it('pins prerelease peers exactly and keeps a caret for releases', () => {
       const prereleaseCatalog = defineCatalog({
         effect: '4.0.0-rc.113',
+        '@effect/vitest': '^4.0.0-rc.113',
         react: '19.2.3',
         '@types/react': '^19.2.18',
       })
+      const names = ['effect', '@effect/vitest', 'react', '@types/react'] as const
 
       const composed = prereleaseCatalog.compose({
         workspace: workspace({ repoName: repo.repoName, memberPath: 'packages/app' }),
-        peerDependencies: {
-          external: prereleaseCatalog.pick('effect', 'react', '@types/react'),
-        },
+        peerDependencies: { external: prereleaseCatalog.pick(...names) },
       })
 
-      const expected = { '@types/react': '^19.2.18', effect: '4.0.0-rc.113', react: '^19.2.3' }
+      const expected = {
+        '@effect/vitest': '4.0.0-rc.113',
+        '@types/react': '^19.2.18',
+        effect: '4.0.0-rc.113',
+        react: '^19.2.3',
+      }
       expect(composed.peerDependencies).toEqual(expected)
-      expect(prereleaseCatalog.peers('effect', 'react', '@types/react')).toEqual(expected)
+      expect(prereleaseCatalog.peers(...names)).toEqual(expected)
     })
 
     it('returns empty workspace metadata when no workspace packages are provided', () => {
