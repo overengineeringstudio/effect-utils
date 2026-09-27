@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config'
 
-import { createStoryGateConfig } from '@overeng/utils/node/storybook/gate'
+import { createStoryGateConfig } from '@overeng/utils-storybook/gate'
 import { createStylexVitePlugins } from '@overeng/utils/node/stylex'
 
 export default defineConfig(

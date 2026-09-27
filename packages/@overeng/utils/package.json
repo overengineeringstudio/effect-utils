@@ -61,26 +61,6 @@
       "types": "./dist/src/node/playwright/config/mod.d.ts",
       "default": "./src/node/playwright/config/mod.ts"
     },
-    "./node/storybook": {
-      "types": "./dist/src/node/storybook/mod.d.ts",
-      "default": "./src/node/storybook/mod.ts"
-    },
-    "./node/storybook/config": {
-      "types": "./dist/src/node/storybook/config/mod.d.ts",
-      "default": "./src/node/storybook/config/mod.ts"
-    },
-    "./node/storybook/gate": {
-      "types": "./dist/src/node/storybook/gate/mod.d.ts",
-      "default": "./src/node/storybook/gate/mod.ts"
-    },
-    "./node/storybook/gate/cli": {
-      "types": "./dist/src/node/storybook/gate/cli.d.ts",
-      "default": "./src/node/storybook/gate/cli.ts"
-    },
-    "./node/storybook/gate/setup": {
-      "types": "./dist/src/node/storybook/gate/setup.d.ts",
-      "default": "./src/node/storybook/gate/setup.ts"
-    },
     "./node/stylex": {
       "types": "./src/node/stylex/mod-types.d.ts",
       "default": "./src/node/stylex/mod.js"
@@ -121,45 +101,26 @@
     "@opentelemetry/semantic-conventions": "1.43.0",
     "@overeng/utils-dev": "workspace:^",
     "@playwright/test": "1.63.0",
-    "@storybook/addon-a11y": "10.6.0",
-    "@storybook/react-vite": "10.6.0",
     "@stylexjs/babel-plugin": "0.19.0",
     "@stylexjs/postcss-plugin": "0.19.0",
     "@stylexjs/stylex": "0.19.0",
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
-    "@vitest/browser": "4.1.9",
-    "@vitest/browser-playwright": "4.1.9",
     "babel-loader": "10.1.1",
     "effect": "4.0.0-rc.113",
     "next": "16.2.6",
     "playwright": "1.63.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "storybook": "10.6.0",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "^4.0.0-rc.113",
-    "@effect/platform-node": "^4.0.0-rc.113",
+    "@effect/opentelemetry": "4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.113",
     "@playwright/test": "^1.63.0",
-    "@storybook/react-vite": "^10.6.0",
-    "@vitest/browser-playwright": "^4.1.9",
-    "effect": "^4.0.0-rc.113",
-    "storybook": "^10.6.0"
-  },
-  "peerDependenciesMeta": {
-    "@storybook/react-vite": {
-      "optional": true
-    },
-    "@vitest/browser-playwright": {
-      "optional": true
-    },
-    "storybook": {
-      "optional": true
-    }
+    "effect": "4.0.0-rc.113"
   },
   "publishConfig": {
     "access": "public",
@@ -207,26 +168,6 @@
       "./node/stylex/focus-order": {
         "types": "./dist/src/node/stylex/focus-order.d.ts",
         "default": "./dist/src/node/stylex/focus-order.js"
-      },
-      "./node/storybook": {
-        "types": "./dist/src/node/storybook/mod.d.ts",
-        "default": "./dist/src/node/storybook/mod.js"
-      },
-      "./node/storybook/config": {
-        "types": "./dist/src/node/storybook/config/mod.d.ts",
-        "default": "./dist/src/node/storybook/config/mod.js"
-      },
-      "./node/storybook/gate": {
-        "types": "./dist/src/node/storybook/gate/mod.d.ts",
-        "default": "./dist/src/node/storybook/gate/mod.js"
-      },
-      "./node/storybook/gate/cli": {
-        "types": "./dist/src/node/storybook/gate/cli.d.ts",
-        "default": "./dist/src/node/storybook/gate/cli.js"
-      },
-      "./node/storybook/gate/setup": {
-        "types": "./dist/src/node/storybook/gate/setup.d.ts",
-        "default": "./dist/src/node/storybook/gate/setup.js"
       },
       "./lock": {
         "types": "./dist/src/lock/mod.d.ts",

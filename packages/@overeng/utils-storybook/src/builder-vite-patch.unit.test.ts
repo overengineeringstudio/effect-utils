@@ -42,7 +42,7 @@ const sha256 = (source: string): string => createHash('sha256').update(source).d
 Vitest.describe('Storybook builder-vite pnpm patch bridge', () => {
   Vitest.it('pins the published bundle and moves only the Vite server port', () => {
     const patchSource = readFileSync(
-      new URL('../../../patches/@storybook__builder-vite@10.6.0.patch', import.meta.url),
+      new URL('../patches/@storybook__builder-vite@10.6.0.patch', import.meta.url),
       'utf8',
     )
     expect(patchSource).toBe(expectedPatch)

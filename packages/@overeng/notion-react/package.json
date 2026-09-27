@@ -15,7 +15,8 @@
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
       "packages/@overeng/utils",
-      "packages/@overeng/utils-dev"
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
     ]
   },
   "name": "@overeng/notion-react",
@@ -73,23 +74,20 @@
     "@overeng/otel-contract": "workspace:^",
     "@playwright/test": "1.63.0",
     "@storybook/react": "10.6.0",
-    "@storybook/react-vite": "10.6.0",
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
-    "@vitest/browser-playwright": "4.1.9",
     "effect": "4.0.0-rc.113",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
-    "storybook": "10.6.0",
     "vitest": "4.1.9"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.0-rc.113",
     "@opentelemetry/api": "1.9.1",
     "@overeng/notion-md": "workspace:^",
-    "@overeng/utils": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",
@@ -109,7 +107,7 @@
   },
   "peerDependencies": {
     "@opentelemetry/api": "^1.9.1",
-    "effect": "^4.0.0-rc.113",
+    "effect": "4.0.0-rc.113",
     "katex": "^0.18.7",
     "react": "^19.2.8",
     "react-reconciler": "^0.33.0",

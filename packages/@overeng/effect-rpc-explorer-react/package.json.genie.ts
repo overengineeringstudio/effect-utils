@@ -9,6 +9,7 @@ import {
 } from '../../../genie/internal.ts'
 import corePkg from '../effect-rpc-explorer/package.json.genie.ts'
 import stylexTokensPkg from '../stylex-tokens/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
@@ -19,7 +20,7 @@ const runtimeDeps = catalog.compose({
     external: catalog.pick('@stylexjs/stylex'),
   },
   devDependencies: {
-    workspace: [utilsPkg],
+    workspace: [utilsPkg, utilsStorybookPkg],
     external: catalog.pick(
       ...peerDepNames,
       '@storybook/react',
@@ -78,7 +79,7 @@ export default packageJson(
       build: 'tsc --build tsconfig.json && vite build',
       storybook: 'storybook dev -p 6017',
       'storybook:build': 'storybook build',
-      gate: 'bun node_modules/@overeng/utils/src/node/storybook/gate/cli.ts',
+      gate: 'bun node_modules/@overeng/utils-storybook/src/gate/cli.ts',
     },
   } satisfies PackageJsonInputData,
   runtimeDeps,

@@ -79,6 +79,11 @@ rec {
         mkBuckProductFromSource = import ./nix/buck2-products/from-source.nix {
           inherit pkgs buck2;
         };
+        buck2Evidence = import ./nix/buck2-native-products/evidence-source.nix {
+          inherit pkgs buck2;
+          capabilities = buck2Capabilities;
+          repositoryRoot = ./.;
+        };
         pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { inherit pkgs; };
         buckProductsFromSource = import ./nix/buck2-products/source-recipes.nix {
           inherit
@@ -202,6 +207,7 @@ rec {
           // nativeProductPackages
           // capabilityPackages
           // {
+            buck2-evidence = buck2Evidence;
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
             buck2-pnpm-archives = pnpmArchives;

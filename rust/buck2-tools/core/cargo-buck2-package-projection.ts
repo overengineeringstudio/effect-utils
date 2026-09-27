@@ -1370,6 +1370,7 @@ const effectUtilsWorkspaceMemberManifestPaths = [
   'packages/@overeng/otelite/Cargo.toml',
   'rust/buck2-tools/archive-tool/Cargo.toml',
   'rust/buck2-tools/core/Cargo.toml',
+  'rust/buck2-tools/evidence/Cargo.toml',
   'rust/buck2-tools/events/Cargo.toml',
   'rust/buck2-tools/product/Cargo.toml',
 ] as const

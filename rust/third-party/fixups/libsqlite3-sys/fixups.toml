@@ -1,0 +1,6 @@
+# The bundled build script compiles SQLite and generates bindings. Opt in to
+# forwarding its native link directives; Buck disables them by default.
+cargo_env = ["CARGO_MANIFEST_DIR"]
+[buildscript.run]
+rustc_link_lib = true
+rustc_link_search = true

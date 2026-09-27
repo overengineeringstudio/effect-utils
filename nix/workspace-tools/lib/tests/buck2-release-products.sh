@@ -8,11 +8,11 @@ publisher="$repo_root/nix/buck2-products/publish.sh"
 targets="$repo_root/nix/buck2-products/cache-targets.json"
 workflow="$repo_root/.github/workflows/ci.yml"
 
-expected_names='["@overeng/agent-session-ingest","@overeng/content-address","@overeng/effect-ai-claude-cli","@overeng/effect-distributed-lock","@overeng/effect-react","@overeng/genie","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/notion-md","@overeng/notion-property-write","@overeng/notion-react","@overeng/otel-contract","@overeng/restate-effect","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
+expected_names='["@overeng/agent-session-ingest","@overeng/content-address","@overeng/effect-ai-claude-cli","@overeng/effect-distributed-lock","@overeng/effect-react","@overeng/genie","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/notion-md","@overeng/notion-property-write","@overeng/notion-react","@overeng/otel-contract","@overeng/restate-effect","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","@overeng/utils-storybook","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck-cache-targets/v1" and
   [.products[].name] == $expected and
-  (.products | length == 30) and
+  (.products | length == 31) and
   all(.products[];
     (.kind == "javascript" or .kind == "package") and
     (.target | startswith("effect_utils//")) and
@@ -89,8 +89,16 @@ if grep -F 'nix/buck2-products/publish.sh --proposal "$proposal" --product' "$wo
   echo "buck2-cache-products-test: publication workflow still selects a hand-maintained product subset" >&2
   exit 1
 fi
-if grep -F 'product_refs' "$workflow" >/dev/null; then
+if grep -F 'product_refs' <<<"$publish_job" >/dev/null; then
   echo "buck2-cache-products-test: publication workflow still prebuilds the complete inventory" >&2
+  exit 1
+fi
+# The PR-time inventory build is the credential-free twin: it builds every product but
+# must never see a publication secret or push to the cache.
+build_job="$(sed -n '/^  build-products:/,/^  [a-z][a-z0-9-]*:$/p' "$workflow")"
+grep -F 'product_refs+=(".#buck-product-$safe_name-from-source")' <<<"$build_job" >/dev/null
+if grep -E 'secrets\.|cachix push|authToken|contents: write' <<<"$build_job" >/dev/null; then
+  echo "buck2-cache-products-test: build-products must stay credential-free and must not push" >&2
   exit 1
 fi
 if grep -E '(^|[[:space:]])set[[:space:]]+-[^[:space:]]*x' "$publisher" >/dev/null; then
@@ -418,5 +426,5 @@ if nix eval --impure --json --expr "$loader_expr" >"$tmp/mismatch.log" 2>&1; the
 fi
 grep -F 'artifact URL does not match its store path and artifact' "$tmp/mismatch.log" >/dev/null
 
-jq -e '.schema == "effect-utils/buck-cache-targets/v1" and (.products | length == 30)' "$targets" >/dev/null
+jq -e '.schema == "effect-utils/buck-cache-targets/v1" and (.products | length == 31)' "$targets" >/dev/null
 echo "buck2-cache-products-test: OK"

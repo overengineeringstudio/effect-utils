@@ -17,7 +17,8 @@
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
       "packages/@overeng/utils",
-      "packages/@overeng/utils-dev"
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
     ]
   },
   "name": "@overeng/notion-cli",
@@ -56,15 +57,12 @@
     "@overeng/utils": "workspace:^",
     "@playwright/test": "1.63.0",
     "@storybook/react": "10.6.0",
-    "@storybook/react-vite": "10.6.0",
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
-    "@vitest/browser-playwright": "4.1.9",
     "effect": "4.0.0-rc.113",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
-    "storybook": "10.6.0",
     "vitest": "4.1.9"
   },
   "dependenciesMeta": {
@@ -76,6 +74,7 @@
     "@effect/atom-react": "4.0.0-rc.113",
     "@effect/vitest": "4.0.0-rc.113",
     "@overeng/utils-dev": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",
@@ -87,9 +86,9 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/atom-react": "^4.0.0-rc.113",
-    "@effect/opentelemetry": "^4.0.0-rc.113",
-    "@effect/platform-node": "^4.0.0-rc.113",
+    "@effect/atom-react": "4.0.0-rc.113",
+    "@effect/opentelemetry": "4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.113",
     "@opentui/core": "^0.5.11",
     "@opentui/react": "^0.5.11",
     "@playwright/test": "^1.63.0",
@@ -98,7 +97,7 @@
     "@types/react": "^19.2.18",
     "@types/react-reconciler": "^0.33.0",
     "@vitest/browser-playwright": "^4.1.9",
-    "effect": "^4.0.0-rc.113",
+    "effect": "4.0.0-rc.113",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-reconciler": "^0.33.0",

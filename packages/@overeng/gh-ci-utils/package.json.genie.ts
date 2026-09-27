@@ -5,9 +5,11 @@ import {
   packageJson,
   privatePackageDefaults,
   workspaceMember,
+  workspaceClosureReference,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
@@ -27,6 +29,7 @@ const composition = catalog.compose({
     workspace: [otelContractPkg, tuiReactPkg, utilsPkg],
   },
   devDependencies: {
+    workspace: [workspaceClosureReference(utilsStorybookPkg)],
     external: catalog.pick(
       ...peerDepNames,
       '@effect/vitest',

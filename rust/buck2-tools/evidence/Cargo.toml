@@ -1,0 +1,32 @@
+[package]
+name = "buck2-evidence"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "buck2_evidence"
+path = "src/lib.rs"
+
+[[bin]]
+name = "buck2-evidence"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+base64 = "0.22"
+buck2-events = { path = "../events" }
+bytes = "1"
+clap = { version = "4", features = ["derive", "env"] }
+hex = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar = "0.4"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

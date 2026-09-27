@@ -8,7 +8,8 @@
       "packages/@overeng/effect-react",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
-      "packages/@overeng/utils-dev"
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
     ]
   },
   "name": "@overeng/effect-react",
@@ -33,7 +34,7 @@
     "@overeng/otel-contract": "workspace:^"
   },
   "devDependencies": {
-    "@overeng/utils": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",
@@ -50,7 +51,7 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "^4.0.0-rc.113",
+    "effect": "4.0.0-rc.113",
     "react": "^19.2.8",
     "react-aria-components": "^1.21.1",
     "react-dom": "^19.2.8"

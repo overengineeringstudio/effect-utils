@@ -19,12 +19,6 @@ const peerDepNames = [
   '@playwright/test',
   'effect',
 ] as const
-/* Storybook gate entries are optional; the consumer supplies its own Storybook runtime. */
-const storybookGatePeers = [
-  '@storybook/react-vite',
-  '@vitest/browser-playwright',
-  'storybook',
-] as const
 
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils' }),
@@ -50,16 +44,6 @@ const runtimeDeps = catalog.compose({
         ...otelSdkDeps,
         '@effect/vitest',
         '@types/node',
-        'storybook',
-        '@storybook/react-vite',
-        // Story-gate stack. These stay devDependencies for the same reason
-        // Storybook itself does: a consumer that runs the gate necessarily owns
-        // its own Storybook install, and making them real dependencies would
-        // put Storybook in the closure of everything that depends on utils.
-        // The browser packages pin Vitest exactly, so the three move together.
-        '@storybook/addon-a11y',
-        '@vitest/browser',
-        '@vitest/browser-playwright',
         'playwright',
         'typescript',
         'vite',
@@ -80,7 +64,7 @@ const runtimeDeps = catalog.compose({
     },
   },
   peerDependencies: {
-    external: catalog.pick(...peerDepNames, ...storybookGatePeers),
+    external: catalog.pick(...peerDepNames),
   },
   mode: 'install',
 })
@@ -164,40 +148,6 @@ export default packageJson(
         },
         { environment: 'node' },
       ),
-      './node/storybook': exportEntry(
-        { types: './dist/src/node/storybook/mod.d.ts', default: './src/node/storybook/mod.ts' },
-        { environment: 'node' },
-      ),
-      './node/storybook/config': exportEntry(
-        {
-          types: './dist/src/node/storybook/config/mod.d.ts',
-          default: './src/node/storybook/config/mod.ts',
-        },
-        { environment: 'node' },
-      ),
-      './node/storybook/gate': exportEntry(
-        {
-          types: './dist/src/node/storybook/gate/mod.d.ts',
-          default: './src/node/storybook/gate/mod.ts',
-        },
-        { environment: 'node' },
-      ),
-      './node/storybook/gate/cli': exportEntry(
-        {
-          types: './dist/src/node/storybook/gate/cli.d.ts',
-          default: './src/node/storybook/gate/cli.ts',
-        },
-        { environment: 'node' },
-      ),
-      // Referenced by path from the gate's `test.setupFiles`, never imported
-      // from Node: it runs inside the Vitest browser environment.
-      './node/storybook/gate/setup': exportEntry(
-        {
-          types: './dist/src/node/storybook/gate/setup.d.ts',
-          default: './src/node/storybook/gate/setup.ts',
-        },
-        { environment: 'browser' },
-      ),
       './lock': exportEntry(
         { types: './dist/src/lock/mod.d.ts', default: './src/lock/mod.ts' },
         { environment: 'node' },
@@ -255,26 +205,6 @@ export default packageJson(
           types: './dist/src/node/stylex/focus-order.d.ts',
           default: './dist/src/node/stylex/focus-order.js',
         },
-        './node/storybook': {
-          types: './dist/src/node/storybook/mod.d.ts',
-          default: './dist/src/node/storybook/mod.js',
-        },
-        './node/storybook/config': {
-          types: './dist/src/node/storybook/config/mod.d.ts',
-          default: './dist/src/node/storybook/config/mod.js',
-        },
-        './node/storybook/gate': {
-          types: './dist/src/node/storybook/gate/mod.d.ts',
-          default: './dist/src/node/storybook/gate/mod.js',
-        },
-        './node/storybook/gate/cli': {
-          types: './dist/src/node/storybook/gate/cli.d.ts',
-          default: './dist/src/node/storybook/gate/cli.js',
-        },
-        './node/storybook/gate/setup': {
-          types: './dist/src/node/storybook/gate/setup.d.ts',
-          default: './dist/src/node/storybook/gate/setup.js',
-        },
         './lock': { types: './dist/src/lock/mod.d.ts', default: './dist/src/lock/mod.js' },
         './browser': { types: './dist/src/browser/mod.d.ts', default: './dist/src/browser/mod.js' },
         './cuid': {
@@ -285,9 +215,6 @@ export default packageJson(
         },
       },
     },
-    peerDependenciesMeta: Object.fromEntries(
-      storybookGatePeers.map((name) => [name, { optional: true }]),
-    ),
   } satisfies PackageJsonInputData,
   runtimeDeps,
 )

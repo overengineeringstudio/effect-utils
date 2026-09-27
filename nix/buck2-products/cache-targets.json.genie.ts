@@ -52,6 +52,7 @@ const packageProducts = [
   '@overeng/tui-react',
   '@overeng/utils',
   '@overeng/utils-dev',
+  '@overeng/utils-storybook',
 ] as const
 
 const packageEntries = packageProducts.map((name) => {

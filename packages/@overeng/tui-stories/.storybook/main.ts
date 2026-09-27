@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 
-import { createTuiStorybookConfig } from '@overeng/utils/node/storybook/config'
+import { createTuiStorybookConfig } from '@overeng/utils-storybook/config'
 
 const config = createTuiStorybookConfig({
   stories: ['../src/**/*.stories.@(ts|tsx)'],

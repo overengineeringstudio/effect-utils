@@ -410,6 +410,22 @@ const nativeDepPolicyAuditStep = {
   ),
 } as const
 
+/**
+ * Genie freshness does not prove that `pnpm-lock.yaml` still matches every
+ * regenerated `package.json` specifier (#1409, #1427 both slipped a stale lock past
+ * PR CI). A frozen, lockfile-only, offline install fails with
+ * ERR_PNPM_OUTDATED_LOCKFILE on any drift, without resolving or fetching anything.
+ * `minimum-release-age=0` skips only the release-age policy pass, which needs registry
+ * metadata a cold runner cache lacks offline; real installs still enforce it.
+ */
+const frozenLockfileStep = {
+  name: 'Check pnpm lockfile matches package specifiers',
+  env: { ...githubTokenEnv(), DEVENV_TASK_PASSTHROUGH: '1' },
+  run: withCiSourceRoot(
+    '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --frozen-lockfile --lockfile-only --offline --ignore-scripts --config.minimum-release-age=0',
+  ),
+} as const
+
 // Core product jobs keyed by the shared Genie CI source of truth.
 const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
   // Buck's quick aggregate is the single TypeScript check authority.
@@ -429,6 +445,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       // execIfModified filter remains only a local fast path.
       run: runDevenvTasksBefore('genie:check', 'lint:check'),
     },
+    extraSteps: [frozenLockfileStep],
   }),
   // Bounded unit-test execution is Buck-owned: `test:run` waits on the single `test:buck2:unit`
   // invocation, source-only packages, and each lane's exact unbounded complement. Explicit
@@ -759,6 +776,45 @@ const extraJobs: Record<string, any> = {
           BUCK2_ARCHIVE_CAS_TIER: '${{ steps.archive-origin.outputs.tier }}',
         },
         run: runDevenvTasksBefore('buck2:archives:seed'),
+      },
+    ],
+  },
+  /**
+   * Credential-free twin of `publish-products`: realizes every published from-source
+   * product on each PR with the same attr derivation, but never receives a Cachix
+   * token, never pushes, and never proposes a manifest. The public cache is a
+   * read-only substituter only. PR-only: on `main`, `publish-products` builds the
+   * same inventory.
+   */
+  'build-products': {
+    if: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.event_name == 'pull_request' }}`,
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': 120,
+    permissions: { contents: 'read' },
+    defaults: bashShellDefaults,
+    env: githubTokenEnv(),
+    steps: [
+      checkoutStep(),
+      installNixStep({ binaryCaches: [binaryCache] }),
+      {
+        name: 'Build every published from-source product',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          [
+            'set -euo pipefail',
+            "mapfile -t product_names < <(jq -r '.products[].name' nix/buck2-products/cache-targets.json)",
+            'product_refs=()',
+            'for name in "${product_names[@]}"; do',
+            `  safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"`,
+            '  product_refs+=(".#buck-product-$safe_name-from-source")',
+            'done',
+            'echo "Building ${#product_refs[@]} from-source products"',
+            'nix build --no-link --print-build-logs "${product_refs[@]}"',
+          ].join('\n'),
+        ),
       },
     ],
   },

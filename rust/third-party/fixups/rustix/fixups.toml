@@ -1,0 +1,2 @@
+# The build script selects target-platform system-call cfgs.
+buildscript.run = true

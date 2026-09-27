@@ -8,6 +8,7 @@ import {
 } from '../../../genie/internal.ts'
 import schemaFormPkg from '../effect-schema-form/package.json.genie.ts'
 import stylexTokensPkg from '../stylex-tokens/package.json.genie.ts'
+import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['react-aria-components', 'react-dom'] as const
@@ -18,11 +19,11 @@ const runtimeDeps = catalog.compose({
     external: catalog.pick('@stylexjs/stylex'),
   },
   devDependencies: {
-    workspace: [utilsPkg],
+    workspace: [utilsPkg, utilsStorybookPkg],
     external: catalog.pick(
       'effect',
       '@storybook/react',
-      // Story-gate stack; see @overeng/utils/node/storybook/gate.
+      // Story-gate stack; see @overeng/utils-storybook/gate.
       '@storybook/addon-a11y',
       '@vitest/browser',
       '@vitest/browser-playwright',
@@ -67,7 +68,7 @@ export default packageJson(
       'storybook:build': 'storybook build',
       // Reaches past `exports` on purpose: this runs the workspace source, and
       // the published `dist` entry is for consumers rather than for this script.
-      gate: 'bun node_modules/@overeng/utils/src/node/storybook/gate/cli.ts',
+      gate: 'bun node_modules/@overeng/utils-storybook/src/gate/cli.ts',
     },
   },
   runtimeDeps,

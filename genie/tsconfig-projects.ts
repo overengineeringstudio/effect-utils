@@ -42,6 +42,7 @@ import tuiCoreTsconfig from '../packages/@overeng/tui-core/tsconfig.json.genie.t
 import tuiReactTsconfig from '../packages/@overeng/tui-react/tsconfig.json.genie.ts'
 import tuiStoriesTsconfig from '../packages/@overeng/tui-stories/tsconfig.json.genie.ts'
 import utilsDevTsconfig from '../packages/@overeng/utils-dev/tsconfig.json.genie.ts'
+import utilsStorybookTsconfig from '../packages/@overeng/utils-storybook/tsconfig.json.genie.ts'
 import utilsTsconfig from '../packages/@overeng/utils/tsconfig.json.genie.ts'
 import { authoritativeBuck2TypeScriptProjects } from './buck2/typescript-admissions.ts'
 
@@ -144,6 +145,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/tui-stories': { tsconfig: tuiStoriesTsconfig },
     'packages/@overeng/utils': { tsconfig: utilsTsconfig },
     'packages/@overeng/utils-dev': { tsconfig: utilsDevTsconfig },
+    'packages/@overeng/utils-storybook': { tsconfig: utilsStorybookTsconfig },
   }
   const rootWorkspacePackagePaths = rootWorkspacePackages.map(
     (pkg) => pkg.meta.workspace.memberPath,
