@@ -19,7 +19,7 @@ export PATH="$tmp/bin:$PATH" PIPELINE_TEST_SEALS="$tmp/seals"
 # Without an evidence consumer, an OTLP endpoint retains direct HTTP delivery.
 # The seed is still available to the child, but must not redirect to disk.
 PATH=/usr/bin:/bin OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:1 \
-  DEVENV_ROOT="$tmp/no-evidence" "$span" pipeline-run -- bash -c \
+  DEVENV_ROOT="$tmp/no-evidence" "$span" pipeline-run -- "$BASH" -c \
   '[[ -z ${OTEL_SPAN_SPOOL_DIR:-} && -z ${PIPELINE_SPOOL_DIR:-} && -n ${TRACEPARENT:-} ]]'
 [[ ! -e "$tmp/no-evidence/.devenv/otel/run-records" ]]
 
