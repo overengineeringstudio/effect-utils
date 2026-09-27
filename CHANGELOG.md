@@ -55,11 +55,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **CI `build-products` lane**: Every pull request now builds all published
+- **CI `build-products` lane**: Every pull request builds all published
   `.#buck-product-*-from-source` attrs (derived from
-  `nix/buck2-products/cache-targets.json`, same as `publish-products`) without
-  Cachix credentials or a push, so a PR cannot break post-merge publication.
-  It is a required status check.
+  `nix/buck2-products/cache-targets.json`, same as `publish-products`) and
+  `.#buck2-evidence` without Cachix credentials or a push, so a PR cannot
+  break post-merge publication or the evidence consumer. It is a required
+  status check.
 
 - **Genie Netlify split build/deploy for PR previews**: Add
   `netlifyPreviewBuildSteps` (uncredentialed `pull_request` job: builds via the
@@ -75,6 +76,13 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+
+- **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
+  Weaver remap dynamic sandbox paths before compilation, so capability
+  manifests retain their strict executable digest across sandbox roots.
+  Run `devenv tasks run buck2:capabilities:reproducibility` to compare an
+  archive-tool rebuild under an alternate sandbox root with its normal output.
+
 - **Pipeline run tracing:** `otel-span pipeline-run -- devenv tasks run <verb>`
   now seeds one deterministic run/job trace, records local roots even on
   interruption, and seals Buck command evidence into a per-run spool.

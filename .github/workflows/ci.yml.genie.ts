@@ -781,10 +781,11 @@ const extraJobs: Record<string, any> = {
   },
   /**
    * Credential-free twin of `publish-products`: realizes every published from-source
-   * product on each PR with the same attr derivation, but never receives a Cachix
-   * token, never pushes, and never proposes a manifest. The public cache is a
-   * read-only substituter only. PR-only: on `main`, `publish-products` builds the
-   * same inventory.
+   * product on each PR with the same attr derivation, plus the independent
+   * native evidence consumer. This job never receives a Cachix token, never
+   * pushes, and never proposes a manifest. The public cache is a read-only
+   * substituter only. On `main`, `publish-products` publishes the product
+   * inventory and evidence package.
    */
   'build-products': {
     if: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.event_name == 'pull_request' }}`,
@@ -800,7 +801,7 @@ const extraJobs: Record<string, any> = {
       checkoutStep(),
       installNixStep({ binaryCaches: [binaryCache] }),
       {
-        name: 'Build every published from-source product',
+        name: 'Build every published from-source product and Buck evidence',
         env: githubTokenEnv(),
         run: withCiSourceRoot(
           [
@@ -811,7 +812,8 @@ const extraJobs: Record<string, any> = {
             `  safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"`,
             '  product_refs+=(".#buck-product-$safe_name-from-source")',
             'done',
-            'echo "Building ${#product_refs[@]} from-source products"',
+            'product_refs+=(".#buck2-evidence")',
+            'echo "Building ${#product_refs[@]} from-source products and evidence"',
             'nix build --no-link --print-build-logs "${product_refs[@]}"',
           ].join('\n'),
         ),
@@ -875,6 +877,7 @@ const extraJobs: Record<string, any> = {
               'set -euo pipefail',
               'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
               'nix/buck2-products/publish.sh --proposal "$proposal"',
+              'nix build --no-link --print-out-paths .#buck2-evidence | cachix push overeng-effect-utils',
               'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
               '  echo "::notice::The v2 product manifest is already current"',
               '  echo "changed=false" >> "$GITHUB_OUTPUT"',
