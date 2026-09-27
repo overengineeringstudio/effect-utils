@@ -65,6 +65,15 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **mk-pnpm-cli external install roots**: Stage every injected `file:`
+  directory package the install root's lockfile records
+  (`injectWorkspacePackages`), not only the consumer's workspace closure
+  members. A frozen pnpm 12 install packlists each of them, so consumers of a
+  composed `repos/effect-utils` root failed with `ERR_PNPM_FS_PACKLIST_IO`
+  once the lockfile injected packages outside their closure. The extra
+  directories are staged as packages, not workspace members; affected
+  external-root deps FOD hashes change.
+
 - **notion-md product publication**: Declare Node types in its own package
   dependencies so the isolated Buck typecheck resolves `types: ["node"]` and
   the from-source Nix product can be published.

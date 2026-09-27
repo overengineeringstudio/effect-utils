@@ -32,6 +32,7 @@ let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs pnpm; };
   dependencyProfile = import ./dependency-materialization-profile.nix { inherit lib; };
+  pnpmLockInjectedDirs = import ./pnpm-lock-injected-dirs.nix { inherit lib; };
   # Closure-completeness guardrail (#807). Partially applied with the shared
   # native-optional-families detector source; each install root gets a check
   # derivation exposed via passthru.nativeBindingClosureChecks.<attrName>.
@@ -759,11 +760,23 @@ let
           hasWorkspaceYaml = builtins.pathExists (evalInstallSourceRoot + "/pnpm-workspace.yaml");
           sourcePnpmWorkspaceYaml =
             if hasWorkspaceYaml then builtins.readFile (evalInstallSourceRoot + "/pnpm-workspace.yaml") else "";
+          memberDirs = lib.unique (map (item: item.memberDir) items);
+          # Injected `file:` directory packages the install root's lockfile
+          # records beyond the consumer closure. pnpm packlists every one of
+          # them during a frozen install, so they are staged as package
+          # directories (not workspace members) next to the closure members.
+          injectedDirs = builtins.filter (dir: dir != installDir && !(lib.elem dir memberDirs)) (
+            map (relDir: if relDir == "." then installDir else "${installDir}/${relDir}") (
+              pnpmLockInjectedDirs {
+                lockfileContent = builtins.readFile (evalInstallSourceRoot + "/pnpm-lock.yaml");
+                sourceInputStagePath = canonicalSourceInputStagePath;
+              }
+            )
+          );
         in
         {
           inherit installDir installSourceRoot;
-          inherit sourcePnpmWorkspaceYaml;
-          memberDirs = lib.unique (map (item: item.memberDir) items);
+          inherit sourcePnpmWorkspaceYaml memberDirs injectedDirs;
           sourceRelMemberDirs = lib.unique (map (item: item.sourceRelMemberDir) items);
           filteredPnpmWorkspaceYaml =
             if hasWorkspaceYaml then
@@ -867,7 +880,8 @@ let
       (map scopedFile rootWorkspaceFiles)
       ++ existingSourceFiles (map scopedFile optionalRootWorkspaceFiles)
       ++ [ (scopedFile "pnpm-workspace.yaml") ]
-      ++ memberPackageJsons;
+      ++ memberPackageJsons
+      ++ (map (dir: "${dir}/package.json") (root.injectedDirs or [ ]));
   rootPatchedDependenciesSection =
     lockfileContent:
     let
@@ -1206,6 +1220,10 @@ let
           mkdir -p "$out"
         ''
         + stageExternalInstallRootManifestOnlyCmd root
+        + "\n"
+        + builtins.concatStringsSep "\n" (
+          map (dir: copyFileCmd "${dir}/package.json") root.injectedDirs
+        )
         + copyResolvedPatchFilesCmd {
           sourcePrefix = "";
           workspaceYamlContent = rootPnpmWorkspaceYaml;
@@ -1383,14 +1401,16 @@ let
                 (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
                 ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
                 ++ (map (dir: copyFileCmd "${dir}/package.json") (
-                  builtins.filter (dir: dir != root.installDir) root.memberDirs
+                  builtins.filter (dir: dir != root.installDir) (root.memberDirs ++ root.injectedDirs)
                 ))
               else if lib.elem root.installDir root.memberDirs then
                 [ (copyDirCmd root.installDir) ]
               else
                 (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
                 ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
-                ++ (map copyDirCmd (builtins.filter (dir: dir != root.installDir) root.memberDirs))
+                ++ (map copyDirCmd (
+                  builtins.filter (dir: dir != root.installDir) (root.memberDirs ++ root.injectedDirs)
+                ))
             )
             ++ [
               (writeWorkspaceYamlCmd root.installDir root.filteredPnpmWorkspaceYaml)

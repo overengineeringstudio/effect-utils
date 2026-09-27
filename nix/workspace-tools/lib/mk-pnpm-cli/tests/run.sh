@@ -264,6 +264,11 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-source-input-manifest-aliases"
 
+  echo "Check: external install roots stage every injected directory package in the lockfile"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-injected-directory-packages"
+
   echo "Check: non-canonical source-input stage paths fail evaluation"
   nix build --no-link --no-write-lock-file \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
