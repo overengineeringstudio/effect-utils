@@ -11,7 +11,8 @@ set -euo pipefail
 #      is adopted by the nearest ancestor workspace: the ancestor's lockfile is
 #      written instead of the nested one and the nested dependency graph is
 #      resolved against the wrong root, after which a frozen install fails with
-#      ERR_PNPM_NO_LOCKFILE. `--ignore-workspace` does NOT prevent this.
+#      ERR_PNPM_NO_LOCKFILE. Since pnpm 12.4.2 `--ignore-workspace` keeps the
+#      nested root, but the repository's installs do not pass it.
 #      Covered: the raw behavior (so the test fails if pnpm ever changes it),
 #      and pnpmInstallPolicy.nestedWorkspaceBoundaryShell in both modes.
 #   2. SOURCE-INPUT SPECIFIER RELATIVITY. pnpm resolves a `file:` specifier
@@ -99,11 +100,23 @@ make_parent_workspace() {
 raw="$tmpdir/raw"
 mkdir -p "$raw/home"
 make_parent_workspace "$raw"
-pnpm_run "$raw/nested" "$raw" install --ignore-workspace --no-frozen-lockfile || true
+pnpm_run "$raw/nested" "$raw" install --no-frozen-lockfile || true
 if [ ! -f "$raw/nested/pnpm-lock.yaml" ] && [ -f "$raw/pnpm-lock.yaml" ]; then
   ok
 else
   fail "pnpm $pnpm_version no longer hijacks a boundary-less nested root; this test's premise (and the shared boundary helper) needs revisiting"
+fi
+
+# (1a') `--ignore-workspace` scopes the nested root since pnpm 12.4.2 (12.4.1
+#       still wrote the ancestor lockfile). Pinned so a regression is visible.
+ignored="$tmpdir/ignored"
+mkdir -p "$ignored/home"
+make_parent_workspace "$ignored"
+pnpm_run "$ignored/nested" "$ignored" install --ignore-workspace --no-frozen-lockfile || true
+if [ -f "$ignored/nested/pnpm-lock.yaml" ] && [ ! -f "$ignored/pnpm-lock.yaml" ]; then
+  ok
+else
+  fail "pnpm $pnpm_version --ignore-workspace no longer scopes a boundary-less nested root"
 fi
 
 # (1b) WITH the boundary the nested root owns its install.

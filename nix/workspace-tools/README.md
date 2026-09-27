@@ -92,7 +92,8 @@ root without its own `pnpm-workspace.yaml` is adopted by the nearest ancestor
 workspace: the ancestor's lockfile is written instead of the nested one, the
 ancestor's `overrides` apply, and the nested root's `node_modules` never
 appears — after which a frozen install fails with `ERR_PNPM_NO_LOCKFILE`.
-`--ignore-workspace` and a `cd`/`--dir` into the root do not prevent this.
+A `cd`/`--dir` into the root does not prevent this. Since pnpm 12.4.2,
+`--ignore-workspace` does, but the installs here do not pass it.
 
 `pnpmInstallPolicy.nestedWorkspaceBoundaryShell` is the one encoding. It
 asserts the boundary by default (a staged root that lacks one is a builder

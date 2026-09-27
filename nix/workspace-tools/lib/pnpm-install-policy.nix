@@ -20,8 +20,8 @@ rec {
   # An install root is only isolated from an enclosing workspace when it is a
   # workspace boundary itself, i.e. it owns a `pnpm-workspace.yaml`.
   #
-  # `--ignore-workspace` and a `cd`/`--dir` into the root are NOT sufficient.
-  # pnpm 12 discovers the workspace by walking up from the install root, so a
+  # A `cd`/`--dir` into the root is NOT sufficient (`--ignore-workspace` scopes
+  # the root since pnpm 12.4.2, but installs do not pass it). pnpm 12 discovers the workspace by walking up from the install root, so a
   # nested root without its own boundary file is adopted by the first ancestor
   # that has one: the ancestor's lockfile is written instead of the nested one,
   # the ancestor's `overrides` apply, and the nested root's own dependencies are
