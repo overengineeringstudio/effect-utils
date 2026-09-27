@@ -1405,9 +1405,11 @@ let
               else
                 (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
                 ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
-                ++ (map copyDirCmd (
-                  builtins.filter (dir: dir != root.installDir) (root.memberDirs ++ root.injectedDirs)
-                ))
+                ++ (map copyDirCmd (builtins.filter (dir: dir != root.installDir) root.memberDirs))
+                # Injected packages outside the closure are never imported by the
+                # consumer; their manifests satisfy the prepared tree's relinks
+                # without widening the source invalidation boundary.
+                ++ (map (dir: copyFileCmd "${dir}/package.json") root.injectedDirs)
             )
             ++ [
               (writeWorkspaceYamlCmd root.installDir root.filteredPnpmWorkspaceYaml)

@@ -71,8 +71,8 @@ All notable changes to this project will be documented in this file.
   members. A frozen pnpm 12 install packlists each of them, so consumers of a
   composed `repos/effect-utils` root failed with `ERR_PNPM_FS_PACKLIST_IO`
   once the lockfile injected packages outside their closure. The extra
-  directories are staged as packages, not workspace members; affected
-  external-root deps FOD hashes change.
+  directories are staged manifest-only as packages, not workspace members;
+  affected external-root deps FOD hashes change.
 
 - **notion-md product publication**: Declare Node types in its own package
   dependencies so the isolated Buck typecheck resolves `types: ["node"]` and
