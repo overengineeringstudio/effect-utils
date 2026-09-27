@@ -77,6 +77,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv**: bump the pinned devenv input from `v2.2.1` to `v2.4.0` and raise
+  `require_version` to `>=2.3`. Only the `devenv` subtree of `devenv.lock` is
+  relocked; the root `nixpkgs`, `git-hooks`, `tsgo`, and `playwright` pins are
+  untouched (the root `nixpkgs` node is renamed `nixpkgs_3` -> `nixpkgs_2`
+  because `cachix` now follows devenv's own nixpkgs, removing one duplicate
+  node). CI reads `DEVENV_REV` out of `devenv.lock`, so it runs the 2.4.0 CLI.
+  2.3 fixes [cachix/devenv#3038](https://github.com/cachix/devenv/issues/3038)
+  (explicit `showOutput` was swallowed by AI-agent auto-quiet), so the caveat
+  in `nix/devenv-modules/tasks/README.md` now records it as fixed.
+
 - **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
   Weaver remap dynamic sandbox paths before compilation, so capability
   manifests retain their strict executable digest across sandbox roots.
