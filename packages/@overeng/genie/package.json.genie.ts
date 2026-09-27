@@ -5,6 +5,7 @@ import {
   exportEntry,
   packageJson,
   privatePackageDefaults,
+  workspaceClosureReference,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
@@ -19,7 +20,7 @@ const supportDeps = catalog.compose({
     external: catalog.pick('jsonc-parser', 'typescript'),
   },
   devDependencies: {
-    workspace: [utilsDevPkg, utilsStorybookPkg],
+    workspace: [utilsDevPkg, workspaceClosureReference(utilsStorybookPkg)],
     external: {
       ...catalog.pick(
         '@effect/platform-node',
@@ -34,6 +35,7 @@ const supportDeps = catalog.compose({
         '@types/react',
         '@types/react-reconciler',
         'prettier',
+        'vite',
       ),
     },
   },

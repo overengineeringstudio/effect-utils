@@ -6,6 +6,7 @@ import {
   packageJson,
   publishedSourceExport,
   privatePackageDefaults,
+  workspaceClosureReference,
 } from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
 import notionDatasourceSyncPkg from '../notion-datasource-sync/package.json.genie.ts'
@@ -35,7 +36,7 @@ const runtimeDeps = catalog.compose({
     ],
   },
   devDependencies: {
-    workspace: [utilsDevPkg, utilsStorybookPkg],
+    workspace: [utilsDevPkg, workspaceClosureReference(utilsStorybookPkg)],
     external: {
       ...catalog.pick(
         '@effect/atom-react',

@@ -6,6 +6,7 @@ import {
   packageJson,
   privatePackageDefaults,
   type PackageJsonInputData,
+  workspaceClosureReference,
 } from '../../../genie/internal.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -43,7 +44,7 @@ const runtimeDeps = catalog.compose({
     ),
   },
   devDependencies: {
-    workspace: [utilsDevPkg, utilsStorybookPkg],
+    workspace: [utilsDevPkg, workspaceClosureReference(utilsStorybookPkg)],
     external: {
       ...catalog.pick(
         ...peerDepNames,

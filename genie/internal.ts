@@ -40,6 +40,7 @@ export {
   privatePackageDefaults,
   reactJsx,
   tsconfigJson,
+  workspaceClosureReference,
   type AggregatePackageJsonData,
   type ExportEnvironmentContract,
   type ExportEnvironmentContractCoverage,

@@ -6,6 +6,7 @@ import {
   packageJson,
   privatePackageDefaults,
   type PackageJsonInputData,
+  workspaceClosureReference,
 } from '../../../genie/internal.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
@@ -23,7 +24,7 @@ const workspaceDeps = catalog.compose({
     workspace: [notionEffectClientPkg, notionEffectSchemaPkg, otelContractPkg],
   },
   devDependencies: {
-    workspace: [notionMdPkg, utilsDevPkg, utilsStorybookPkg],
+    workspace: [notionMdPkg, utilsDevPkg, workspaceClosureReference(utilsStorybookPkg)],
     external: {
       ...catalog.pick(
         ...peerDepNames,

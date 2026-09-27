@@ -6,6 +6,7 @@ import {
   packageJson,
   publishedSourceExport,
   privatePackageDefaults,
+  workspaceClosureReference,
 } from '../../../genie/internal.ts'
 import megarepoPkg from '../megarepo/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
@@ -21,7 +22,7 @@ const runtimeDeps = catalog.compose({
     workspace: [tuiReactPkg, utilsPkg],
   },
   devDependencies: {
-    workspace: [megarepoPkg, utilsDevPkg, utilsStorybookPkg],
+    workspace: [megarepoPkg, utilsDevPkg, workspaceClosureReference(utilsStorybookPkg)],
     external: {
       ...catalog.pick(
         ...ownPeerDepNames,
@@ -33,6 +34,7 @@ const runtimeDeps = catalog.compose({
         '@types/react',
         'storybook',
         'typescript',
+        'vite',
         'vitest',
       ),
     },

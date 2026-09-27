@@ -33,6 +33,7 @@ const deps = catalog.compose({
         '@effect/opentelemetry',
         '@effect/platform-node',
         '@effect/vitest',
+        '@playwright/test',
         '@storybook/addon-a11y',
         '@types/node',
         '@types/react',
@@ -48,7 +49,6 @@ const deps = catalog.compose({
   peerDependencies: {
     external: catalog.pick(...requiredPeerNames, ...gatePeerNames),
   },
-  mode: 'install',
 })
 
 export default packageJson(

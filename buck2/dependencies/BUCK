@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:12000d56d4b549498e25953ba7055a32d163066e36a7712139a5e3b7d178d201
+# Store fingerprint: sha256:fc3f2fb3d4f36a3fca762662ad827e0d9dba9611f1b4b9f7ba953f2fff76ebb9
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -24317,7 +24317,6 @@ pnpm_store_view(
         "@types/node": "@types+node@26.5.0",
         "@types/react": "@types+react@19.2.18",
         "@types/react-reconciler": "@types+react-reconciler@0.33.0_@types+react@19.2.18",
-        "@vitest/browser-playwright": "@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "effect": "effect@4.0.0-rc.113",
         "jsonc-parser": "jsonc-parser@3.3.1",
         "prettier": "prettier@3.9.6",
@@ -25402,7 +25401,6 @@ pnpm_store_view(
         "@types/react": "@types+react@19.2.18",
         "@types/react-reconciler": "@types+react-reconciler@0.33.0_@types+react@19.2.18",
         "@vitejs/plugin-react": "@vitejs+plugin-react@6.1.1_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0",
-        "@vitest/browser-playwright": "@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "effect": "effect@4.0.0-rc.113",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",
@@ -33006,7 +33004,6 @@ pnpm_store_view(
         "@types/react": "@types+react@19.2.18",
         "@types/react-dom": "@types+react-dom@19.2.7_@types+react@19.2.18",
         "@types/react-reconciler": "@types+react-reconciler@0.33.0_@types+react@19.2.18",
-        "@vitest/browser-playwright": "@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "effect": "effect@4.0.0-rc.113",
         "katex": "katex@0.18.7",
         "react": "react@19.2.8",
@@ -38266,7 +38263,6 @@ pnpm_store_view(
         "@types/react": "@types+react@19.2.18",
         "@types/react-reconciler": "@types+react-reconciler@0.33.0_@types+react@19.2.18",
         "@vitejs/plugin-react": "@vitejs+plugin-react@6.1.1_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0",
-        "@vitest/browser-playwright": "@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "@xterm/addon-fit": "@xterm+addon-fit@0.11.0",
         "@xterm/addon-webgl": "@xterm+addon-webgl@0.19.0",
         "@xterm/headless": "@xterm+headless@6.0.0",

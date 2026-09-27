@@ -6,6 +6,7 @@ import {
   packageJson,
   publishedSourceExport,
   privatePackageDefaults,
+  workspaceClosureReference,
 } from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
 import kdlEffectPkg from '../kdl-effect/package.json.genie.ts'
@@ -26,7 +27,7 @@ const runtimeDeps = catalog.compose({
     external: catalog.pick('react'),
   },
   devDependencies: {
-    workspace: [tuiCorePkg, utilsDevPkg, utilsStorybookPkg],
+    workspace: [tuiCorePkg, utilsDevPkg, workspaceClosureReference(utilsStorybookPkg)],
     external: {
       ...catalog.pick(
         ...peerDepNames,

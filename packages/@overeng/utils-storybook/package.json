@@ -37,20 +37,13 @@
       "default": "./src/gate/setup.ts"
     }
   },
-  "dependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.113",
-    "@effect/platform-node": "4.0.0-rc.113",
-    "@effect/vitest": "4.0.0-rc.113",
-    "@playwright/test": "1.63.0",
-    "effect": "4.0.0-rc.113",
-    "vitest": "4.1.9"
-  },
   "devDependencies": {
     "@effect/opentelemetry": "4.0.0-rc.113",
     "@effect/platform-node": "4.0.0-rc.113",
     "@effect/vitest": "4.0.0-rc.113",
     "@overeng/utils": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
+    "@playwright/test": "1.63.0",
     "@storybook/addon-a11y": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",
