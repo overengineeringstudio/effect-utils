@@ -41,6 +41,20 @@ pub struct Manifest {
         default
     )]
     pub vcs_merge: Option<String>,
+    #[serde(
+        rename = "vcs.ref.head.position",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub vcs_head_position: Option<i64>,
+    #[serde(
+        rename = "vcs.ref.base.position",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub vcs_base_position: Option<i64>,
+    #[serde(rename = "vcs.ref.base.first_parent_ancestors", default, skip_serializing_if = "Vec::is_empty")]
+    pub vcs_base_ancestors: Vec<String>,
     pub files: Vec<FileEntry>,
 }
 
@@ -56,6 +70,8 @@ pub struct RunBlock {
     pub job_key: String,
     #[serde(default)]
     pub event: String,
+    #[serde(default)]
+    pub branch: String,
     #[serde(default)]
     pub worker: serde_json::Value,
     #[serde(default)]

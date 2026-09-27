@@ -369,14 +369,19 @@ impl Svc {
                 self.m.push_skipped.fetch_add(1, Relaxed);
                 continue;
             }
-            if attempts > 1
-                && self.common.probe_repush
-                && pipeline::chunk_visible(&self.client, &self.cfg, digest, i).await?
+            if pipeline::push_chunk(
+                &self.client,
+                &self.cfg,
+                digest,
+                i,
+                (attempts > 1 || status.as_deref() == Some("missing_spans"))
+                    && self.common.probe_repush,
+            )
+            .await?
             {
-                self.m.push_skipped.fetch_add(1, Relaxed);
-            } else {
-                pipeline::push_chunk(&self.client, &self.cfg, digest, i).await?;
                 self.m.pushes.fetch_add(1, Relaxed);
+            } else {
+                self.m.push_skipped.fetch_add(1, Relaxed);
             }
             let d = digest.to_string();
             self.blocking(move |_, c| {

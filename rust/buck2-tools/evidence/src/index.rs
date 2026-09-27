@@ -24,14 +24,37 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
            status text not null,
            uploaded_at integer not null, started_at integer, ingested_at integer,
            attempts integer not null default 0,
-           last_error text, archive_path text, spans integer, dup_spans integer);
+           last_error text, archive_path text, spans integer, dup_spans integer,
+           span_start_ms integer, span_end_ms integer);
          create index if not exists records_run on records(repo, run_id, attempt, job);
          create index if not exists records_status on records(status);
          create table if not exists traces (
            trace_id text not null, digest text not null references records(digest),
            view text not null, spans integer not null,
-           primary key (trace_id, digest, view));",
-    )
+           primary key (trace_id, digest, view));
+         create table if not exists expected_spans (
+           trace_id text not null, digest text not null, span_id text not null,
+           primary key (trace_id, digest, span_id));
+         create table if not exists run_traces (
+           run_id text primary key, repo text not null, trace_id text not null,
+           verified_at integer, incomplete integer not null default 0);
+         create table if not exists task_samples (
+           digest text not null references records(digest), repo text not null,
+           run_id text not null, job text not null, task text not null,
+           duration_ms real not null, revision text not null,
+           position integer, indexed_at integer not null,
+           primary key (digest, task));
+         create index if not exists task_samples_base on task_samples(repo,position,run_id);",
+    )?;
+    for column in ["span_start_ms", "span_end_ms"] {
+        let mut stmt = conn.prepare("pragma table_info(records)")?;
+        let names = stmt.query_map([], |r| r.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        if !names.iter().any(|name| name == column) {
+            conn.execute(&format!("alter table records add column {column} integer"), [])?;
+        }
+    }
+    Ok(())
 }
 
 pub fn status_of(conn: &Connection, digest: &str) -> rusqlite::Result<Option<String>> {
@@ -80,6 +103,56 @@ pub struct TraceRow {
     pub spans: usize,
 }
 
+
+/// Register every expected ID durably before advertising ingestion. Other jobs
+/// sharing a run trace remain in the union after their plans are discarded.
+pub fn register_expected(
+    conn: &mut Connection,
+    digest: &str,
+    traces: &[crate::pipeline::PlanTrace],
+) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    for trace in traces {
+        let mut grew = false;
+        for id in &trace.span_ids {
+            grew |= tx.execute(
+                "insert or ignore into expected_spans(trace_id,digest,span_id) values (?1,?2,?3)",
+                params![trace.trace_id, digest, id],
+            )? != 0;
+        }
+        if grew {
+            tx.execute("update run_traces set verified_at=null where trace_id=?1", [&trace.trace_id])?;
+        }
+    }
+    tx.commit()
+}
+
+/// Root and synthetic missing-job spans belong to the same cumulative union.
+pub fn register_close_trace(
+    conn: &Connection,
+    run_id: &str,
+    repo: &str,
+    trace_id: &str,
+    root_span: &str,
+    missing_span_ids: &[String],
+    incomplete: bool,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "insert into run_traces(run_id,repo,trace_id,incomplete) values (?1,?2,?3,?4)
+         on conflict(run_id) do update set incomplete=excluded.incomplete",
+        params![run_id, repo, trace_id, i64::from(incomplete)],
+    )?;
+    for id in std::iter::once(root_span).chain(missing_span_ids.iter().map(String::as_str)) {
+        let inserted = conn.execute(
+            "insert or ignore into expected_spans(trace_id,digest,span_id) values (?1,?2,?3)",
+            params![trace_id, format!("close:{run_id}"), id],
+        )?;
+        if inserted != 0 {
+            conn.execute("update run_traces set verified_at=null where run_id=?1", [run_id])?;
+        }
+    }
+    Ok(())
+}
 pub fn mark_ingested(
     conn: &mut Connection,
     digest: &str,
@@ -151,6 +224,17 @@ pub fn trace_status(conn: &Connection, trace_id: &str) -> rusqlite::Result<Vec<T
     })?;
     rows.collect()
 }
+pub fn run_trace_state(conn: &Connection, trace_id: &str) -> rusqlite::Result<Option<&'static str>> {
+    conn.query_row(
+        "select case when incomplete=1 then 'incomplete'
+                     when verified_at is not null then 'ingested'
+                     else 'pending' end from run_traces where trace_id=?1",
+        [trace_id], |r| r.get::<_, String>(0),
+    ).optional().map(|state| state.map(|s| match s.as_str() {
+        "incomplete" => "incomplete", "ingested" => "ingested", _ => "pending",
+    }))
+}
+
 
 pub fn record_json(conn: &Connection, digest: &str) -> rusqlite::Result<Option<serde_json::Value>> {
     conn.query_row(
@@ -186,4 +270,42 @@ pub fn oldest_pending_age_ms(conn: &Connection, now: i64) -> rusqlite::Result<i6
         [now],
         |r| r.get(0),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cumulative_run_union_and_close_without_jobs() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        let trace = "00112233445566778899aabbccddeeff";
+        let run = "ci/github/example/repo/42/1";
+        assert_eq!(run_trace_state(&conn, trace).unwrap(), None);
+        register_close_trace(&conn, run, "example/repo", trace, "root", &[], false).unwrap();
+        assert_eq!(run_trace_state(&conn, trace).unwrap(), Some("pending"));
+        for (digest, span) in [("first", "span1"), ("second", "span2")] {
+            register_expected(&mut conn, digest, &[crate::pipeline::PlanTrace {
+                trace_id: trace.into(), view: "critical".into(), span_ids: vec![span.into()],
+            }]).unwrap();
+        }
+        let mut stmt = conn.prepare("select digest,span_id from expected_spans where trace_id=?1 order by span_id").unwrap();
+        let ids: Vec<(String,String)> = stmt.query_map([trace], |r| Ok((r.get(0)?,r.get(1)?)))
+            .unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(ids, vec![
+            ("close:ci/github/example/repo/42/1".into(), "root".into()),
+            ("first".into(), "span1".into()),
+            ("second".into(), "span2".into()),
+        ]);
+        conn.execute("update run_traces set verified_at=123 where run_id=?1", [run]).unwrap();
+        register_expected(&mut conn, "first", &[crate::pipeline::PlanTrace {
+            trace_id: trace.into(), view: "critical".into(), span_ids: vec!["span1".into()],
+        }]).unwrap();
+        assert_eq!(run_trace_state(&conn, trace).unwrap(), Some("ingested"));
+        register_expected(&mut conn, "third", &[crate::pipeline::PlanTrace {
+            trace_id: trace.into(), view: "critical".into(), span_ids: vec!["span3".into()],
+        }]).unwrap();
+        assert_eq!(run_trace_state(&conn, trace).unwrap(), Some("pending"));
+    }
 }

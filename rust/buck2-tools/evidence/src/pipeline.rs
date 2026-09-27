@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use base64::Engine;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -78,9 +79,16 @@ pub async fn prepare(cfg: &Config, digest: &str) -> StepResult<PlanSummary> {
     if let Some(plan) = load_plan(cfg, digest)? {
         return Ok(plan.summary());
     }
-    let dir = store::record_dir(cfg, digest);
+    let mut dir = store::record_dir(cfg, digest);
     if !dir.exists() {
-        return Err(permanent(format!("record {digest} not in store")));
+        let conn = index::open(&cfg.index_path()).map_err(transient)?;
+        let archived: Option<String> = conn
+            .query_row("select archive_path from records where digest=?1", [digest], |r| r.get(0))
+            .map_err(transient)?;
+        dir = archived.ok_or_else(|| permanent(format!("record {digest} not in store")))?.into();
+        if !dir.exists() {
+            return Err(permanent(format!("record {digest} archive missing")));
+        }
     }
     let manifest = store::read_manifest(&dir)?;
     let tmp = cfg.work().join(format!("{digest}.tmp"));
@@ -143,6 +151,9 @@ pub async fn prepare(cfg: &Config, digest: &str) -> StepResult<PlanSummary> {
             let mut doc: Value = serde_json::from_slice(&std::fs::read(&path).map_err(transient)?)
                 .map_err(permanent)?;
             for rs in doc["resourceSpans"].as_array_mut().into_iter().flatten() {
+                if let Some(attrs) = rs["resource"]["attributes"].as_array_mut() {
+                    attrs.push(json!({"key":"ci.pr.fork","value":{"boolValue":manifest.run.fork}}));
+                }
                 let uuid = rs["resource"]["attributes"]
                     .as_array()
                     .and_then(|a| a.iter().find(|kv| kv["key"] == "buck2.build_id"))
@@ -234,6 +245,7 @@ fn shape_spool(
                 &m.attempt.to_string(),
             ));
             attrs.push(str_attr("cicd.pipeline.task.name", &m.job_key));
+            attrs.push(json!({"key":"ci.pr.fork","value":{"boolValue":m.fork}}));
             attrs.push(str_attr("vcs.repository.name", &m.repository));
             if let Some(head) = &manifest.vcs_head {
                 attrs.push(str_attr("vcs.ref.head.revision", head));
@@ -287,25 +299,62 @@ pub fn http_client() -> reqwest::Client {
         .expect("reqwest client")
 }
 
-/// Pushes chunk `i` of the plan. Driver checkpoints after Ok.
+fn retain_missing_spans(doc: &mut Value, counts: &HashMap<String, HashMap<String, usize>>) -> bool {
+    for rs in doc["resourceSpans"].as_array_mut().into_iter().flatten() {
+        for ss in rs["scopeSpans"].as_array_mut().into_iter().flatten() {
+            if let Some(spans) = ss["spans"].as_array_mut() {
+                spans.retain(|span| {
+                    let trace = span["traceId"].as_str().unwrap_or_default();
+                    let id = span["spanId"].as_str().unwrap_or_default();
+                    !counts.get(trace).is_some_and(|seen| seen.contains_key(id))
+                });
+            }
+        }
+        if let Some(scopes) = rs["scopeSpans"].as_array_mut() {
+            scopes.retain(|ss| ss["spans"].as_array().is_some_and(|spans| !spans.is_empty()));
+        }
+    }
+    if let Some(resources) = doc["resourceSpans"].as_array_mut() {
+        resources.retain(|rs| rs["scopeSpans"].as_array().is_some_and(|scopes| !scopes.is_empty()));
+        return !resources.is_empty();
+    }
+    false
+}
+
+/// Probe each span before a retry: Tempo does not deduplicate accepted spans.
+/// A partially visible chunk is resent with only its absent span IDs.
 pub async fn push_chunk(
     client: &reqwest::Client,
     cfg: &Config,
     digest: &str,
     i: usize,
-) -> StepResult<()> {
+    probe: bool,
+) -> StepResult<bool> {
     let path = work_dir(cfg, digest)
         .join("chunks")
         .join(format!("{i:04}.json"));
-    let body = tokio::fs::read(&path).await.map_err(transient)?;
+    let mut doc: Value = serde_json::from_slice(&tokio::fs::read(&path).await.map_err(transient)?)
+        .map_err(transient)?;
+    if probe {
+        let mut counts = HashMap::new();
+        for rs in doc["resourceSpans"].as_array().into_iter().flatten() {
+            for ss in rs["scopeSpans"].as_array().into_iter().flatten() {
+                for span in ss["spans"].as_array().into_iter().flatten() {
+                    let trace = span["traceId"].as_str().unwrap_or_default();
+                    if !counts.contains_key(trace) {
+                        counts.insert(trace.to_owned(), tempo_span_counts(client, &cfg.tempo, trace).await?);
+                    }
+                }
+            }
+        }
+        if !retain_missing_spans(&mut doc, &counts) {
+            return Ok(false);
+        }
+    }
+    let body = serde_json::to_vec(&doc).map_err(transient)?;
     let url = format!("{}/v1/traces", cfg.otlp.trim_end_matches('/'));
-    let resp = client
-        .post(url)
-        .header("content-type", "application/json")
-        .body(body)
-        .send()
-        .await
-        .map_err(|e| transient(format!("otlp push: {e}")))?;
+    let resp = client.post(url).header("content-type", "application/json")
+        .body(body).send().await.map_err(|e| transient(format!("otlp push: {e}")))?;
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
     if status.is_success() {
@@ -315,7 +364,7 @@ pub async fn push_chunk(
         {
             return Err(transient(format!("otlp partial rejection: {text}")));
         }
-        Ok(())
+        Ok(true)
     } else if status.as_u16() == 429 || status.is_server_error() {
         Err(transient(format!("otlp {status}: {text}")))
     } else {
@@ -385,38 +434,6 @@ pub async fn tempo_span_counts(
     Ok(counts)
 }
 
-/// Retry guard: Tempo 3 does not dedup a re-push that lands within ~5 s of the first push
-/// (measured, results/tempo-dedup-probe.jsonl), so a retried chunk is probed by id first.
-pub async fn chunk_visible(
-    client: &reqwest::Client,
-    cfg: &Config,
-    digest: &str,
-    i: usize,
-) -> StepResult<bool> {
-    let path = work_dir(cfg, digest)
-        .join("chunks")
-        .join(format!("{i:04}.json"));
-    let doc: Value = serde_json::from_slice(&tokio::fs::read(&path).await.map_err(transient)?)
-        .map_err(transient)?;
-    let mut by_trace: HashMap<String, Vec<String>> = HashMap::new();
-    for rs in doc["resourceSpans"].as_array().into_iter().flatten() {
-        for ss in rs["scopeSpans"].as_array().into_iter().flatten() {
-            for s in ss["spans"].as_array().into_iter().flatten() {
-                by_trace
-                    .entry(s["traceId"].as_str().unwrap_or_default().to_string())
-                    .or_default()
-                    .push(s["spanId"].as_str().unwrap_or_default().to_string());
-            }
-        }
-    }
-    for (trace, span_ids) in by_trace {
-        let counts = tempo_span_counts(client, &cfg.tempo, &trace).await?;
-        if span_ids.iter().any(|id| !counts.contains_key(id)) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Readback {
@@ -476,6 +493,115 @@ pub async fn readback(
     }
 }
 
+/// Check the entire shared trace, not just the most recently ingested record.
+/// Lost job spans re-enter the queue; the retry sends only IDs missing in Tempo.
+pub async fn verify_run_trace(
+    client: &reqwest::Client,
+    cfg: &Config,
+    run_id: &str,
+) -> StepResult<bool> {
+    let trace = ids::run_trace(run_id);
+    let conn = index::open(&cfg.index_path()).map_err(transient)?;
+    let state: Option<(i64, i64)> = conn.query_row(
+        "select c.root_pushed,c.incomplete from closes c
+         join run_traces rt on rt.run_id=c.run_id where c.run_id=?1",
+        [run_id], |r| Ok((r.get(0)?, r.get(1)?)),
+    ).optional().map_err(transient)?;
+    if state.is_none() {
+        return Ok(false);
+    }
+    let mut stmt = conn.prepare(
+        "select digest,span_id from expected_spans where trace_id=?1",
+    ).map_err(transient)?;
+    let expected = stmt.query_map([&trace], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map_err(transient)?.collect::<rusqlite::Result<Vec<_>>>().map_err(transient)?;
+    let counts = tempo_span_counts(client, &cfg.tempo, &trace).await?;
+    let mut missing_records = HashSet::new();
+    let mut missing_root = false;
+    for (digest, id) in &expected {
+        if !counts.contains_key(id) {
+            if digest.starts_with("close:") {
+                missing_root = true;
+            } else {
+                missing_records.insert(digest.as_str());
+            }
+        }
+    }
+    let conn = index::open(&cfg.index_path()).map_err(transient)?;
+    for digest in &missing_records {
+        conn.execute("update records set status='missing_spans',last_error='cumulative trace readback lost spans'
+            where digest=?1 and status='ingested'", [digest]).map_err(transient)?;
+        conn.execute("update jobs set state='queued',attempts=0,next_at=?2 where digest=?1",
+            rusqlite::params![digest, now_ms()]).map_err(transient)?;
+        conn.execute("delete from pushes where digest=?1", [digest]).map_err(transient)?;
+    }
+    if missing_root {
+        conn.execute("update closes set root_pushed=0 where run_id=?1", [run_id]).map_err(transient)?;
+    }
+    let verified = missing_records.is_empty() && !missing_root && state == Some((1, 0));
+    conn.execute("update run_traces set verified_at=case when ?2 then ?3 else null end
+        where run_id=?1", rusqlite::params![run_id, verified, now_ms()]).map_err(transient)?;
+    Ok(verified)
+}
+
+fn index_span_metadata(
+    conn: &rusqlite::Connection,
+    cfg: &Config,
+    digest: &str,
+    plan: &Plan,
+    indexed_at: i64,
+) -> StepResult<()> {
+    let mut bounds: Option<(i64, i64)> = None;
+    let mut tasks: HashMap<String, f64> = HashMap::new();
+    for chunk in &plan.chunks {
+        let body = std::fs::read(work_dir(cfg, digest).join("chunks").join(chunk)).map_err(transient)?;
+        let doc: Value = serde_json::from_slice(&body).map_err(transient)?;
+        for rs in doc["resourceSpans"].as_array().into_iter().flatten() {
+            for scope in rs["scopeSpans"].as_array().into_iter().flatten() {
+                for span in scope["spans"].as_array().into_iter().flatten() {
+                    let millis = |name: &str| span[name].as_str()
+                        .and_then(|s| s.parse::<i64>().ok()).map(|n| n / 1_000_000);
+                    let (Some(start), Some(end)) =
+                        (millis("startTimeUnixNano"), millis("endTimeUnixNano")) else { continue };
+                    bounds = Some(match bounds {
+                        Some((lo, hi)) => (lo.min(start), hi.max(end)),
+                        None => (start, end),
+                    });
+                    if span["name"] != "devenv.task.exec" {
+                        continue;
+                    }
+                    let task = span["attributes"].as_array().into_iter().flatten()
+                        .find(|a| a["key"] == "task.name")
+                        .and_then(|a| a["value"]["stringValue"].as_str());
+                    if let Some(task) = task {
+                        *tasks.entry(task.to_owned()).or_default() += (end - start).max(0) as f64;
+                    }
+                }
+            }
+        }
+    }
+    if let Some((start, end)) = bounds {
+        conn.execute("update records set span_start_ms=?2,span_end_ms=?3 where digest=?1",
+            rusqlite::params![digest,start,end]).map_err(transient)?;
+    }
+    let m = &plan.manifest;
+    let position = if m.run.event == "push" && m.run.branch == "main" {
+        m.vcs_head_position
+    } else {
+        None
+    };
+    for (task, duration) in tasks {
+        conn.execute(
+            "insert or replace into task_samples
+             (digest,repo,run_id,job,task,duration_ms,revision,position,indexed_at)
+             values (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            rusqlite::params![digest,m.run.repository,m.run.pipeline_run_id,m.run.job_key,
+                task,duration,m.vcs_head.as_deref().unwrap_or(""),position,indexed_at],
+        ).map_err(transient)?;
+    }
+    Ok(())
+}
+
 /// Archive + index flip. Idempotent: replay after a crash converges to the same row.
 pub fn finalize(cfg: &Config, digest: &str, rb: &Readback) -> StepResult<String> {
     let plan = load_plan(cfg, digest)?;
@@ -499,6 +625,8 @@ pub fn finalize(cfg: &Config, digest: &str, rb: &Readback) -> StepResult<String>
     };
     let path = store::archive(cfg, digest, &plan.manifest, uploaded_at)?;
     let summary = plan.summary();
+    index_span_metadata(&conn, cfg, digest, &plan, now_ms())?;
+    index::register_expected(&mut conn, digest, &plan.traces).map_err(transient)?;
     index::mark_ingested(
         &mut conn,
         digest,
@@ -515,4 +643,28 @@ pub fn finalize(cfg: &Config, digest: &str, rb: &Readback) -> StepResult<String>
 
 pub fn is_permanent(e: &StepError) -> bool {
     matches!(e, StepError::Permanent(_))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn partial_chunk_retry_preserves_only_absent_ids() {
+        let mut chunk = json!({"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"ci"}}]},
+            "scopeSpans":[{"spans":[{"traceId":"a","spanId":"present"},{"traceId":"a","spanId":"lost"}]},
+                          {"spans":[{"traceId":"b","spanId":"present"}]}]}]});
+        let seen = HashMap::from([
+            ("a".to_owned(), HashMap::from([("present".to_owned(), 1)])),
+            ("b".to_owned(), HashMap::from([("present".to_owned(), 1)])),
+        ]);
+        assert!(retain_missing_spans(&mut chunk, &seen));
+        assert_eq!(chunk["resourceSpans"][0]["scopeSpans"][0]["spans"],
+            json!([{"traceId":"a","spanId":"lost"}]));
+        assert_eq!(chunk["resourceSpans"][0]["scopeSpans"].as_array().unwrap().len(), 1);
+        assert_eq!(chunk["resourceSpans"][0]["resource"]["attributes"][0]["key"], "service.name");
+        assert!(!retain_missing_spans(&mut chunk, &HashMap::from([
+            ("a".to_owned(), HashMap::from([("lost".to_owned(), 1)]))
+        ])));
+    }
 }

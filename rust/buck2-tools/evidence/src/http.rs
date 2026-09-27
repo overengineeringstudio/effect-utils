@@ -127,7 +127,7 @@ async fn upload_close(
     let d = digest.clone();
     match tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {
         let conn = index::open(&cfg.index_path())?;
-        crate::close::accept(&conn, &d, &body)
+        crate::close::accept(&cfg, &conn, &d, &body)
     })
     .await
     {
@@ -186,43 +186,38 @@ async fn record(State(st): State<AppState>, Path(digest): Path<String>) -> Respo
     }
 }
 
-/// Resolver: stable link that redirects once ingested and says "pending" before.
+/// A shared run trace is publishable only after its close and cumulative readback.
 async fn resolve_trace(State(st): State<AppState>, Path(trace_id): Path<String>) -> Response {
     if !valid_trace(&trace_id) {
         return error_trace(StatusCode::BAD_REQUEST, "invalid trace id");
     }
     let cfg = st.cfg.clone();
     let id = trace_id.clone();
-    let rows = tokio::task::spawn_blocking(move || {
+    let result = tokio::task::spawn_blocking(move || {
         let conn = index::open(&cfg.index_path())?;
-        index::trace_status(&conn, &id)
-    })
-    .await
-    .unwrap();
-    match rows {
-        Err(e) => db_err(e),
-        Ok(rows) if rows.is_empty() => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"traceId": trace_id, "status": "unknown"})),
-        )
-            .into_response(),
-        Ok(rows) if rows.iter().any(|r| r.status == "ingested") => {
-            let left = format!(
-                r#"{{"datasource":"tempo","queries":[{{"refId":"A","queryType":"traceql","query":"{trace_id}"}}]}}"#
-            );
-            let url = format!(
-                "{}/explore?left={}",
-                st.cfg.grafana.trim_end_matches('/'),
-                urlencode(&left)
-            );
-            (StatusCode::FOUND, [(header::LOCATION, url)]).into_response()
-        }
-        Ok(rows) => (
-            StatusCode::ACCEPTED,
-            Json(json!({"traceId": trace_id, "status": "pending", "records": rows})),
-        )
-            .into_response(),
+        Ok::<_, rusqlite::Error>((index::trace_status(&conn, &id)?, index::run_trace_state(&conn, &id)?))
+    }).await.unwrap();
+    let (rows, run_state) = match result {
+        Ok(v) => v,
+        Err(e) => return db_err(e),
+    };
+    if rows.is_empty() && run_state.is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({"traceId":trace_id,"status":"unknown"}))).into_response();
     }
+    if run_state == Some("incomplete") {
+        return (StatusCode::OK, Json(json!({"traceId":trace_id,"status":"incomplete","records":rows}))).into_response();
+    }
+    if rows.iter().any(|r| r.status == "expired") && !rows.iter().any(|r| r.status == "ingested") {
+        return (StatusCode::GONE, Json(json!({"traceId":trace_id,"status":"expired","records":rows}))).into_response();
+    }
+    if run_state == Some("ingested") || (run_state.is_none() && rows.iter().any(|r| r.status == "ingested")) {
+        let left = format!(
+            r#"{{"datasource":"tempo","queries":[{{"refId":"A","queryType":"traceql","query":"{trace_id}"}}]}}"#
+        );
+        let url = format!("{}/explore?left={}", st.cfg.grafana.trim_end_matches('/'), urlencode(&left));
+        return (StatusCode::FOUND, [(header::LOCATION, url)]).into_response();
+    }
+    (StatusCode::ACCEPTED, Json(json!({"traceId":trace_id,"status":"pending","records":rows}))).into_response()
 }
 fn valid_trace(id: &str) -> bool {
     id.len() == 32
@@ -239,11 +234,11 @@ async fn chrome_trace(State(st): State<AppState>, Path(trace_id): Path<String>) 
     let id = trace_id.clone();
     let indexed = tokio::task::spawn_blocking(move || -> rusqlite::Result<bool> {
         let conn = index::open(&cfg.index_path())?;
-        Ok(index::trace_status(&conn, &id)?
-            .iter()
-            .any(|r| r.status == "ingested"))
-    })
-    .await;
+        let rows = index::trace_status(&conn, &id)?;
+        let state = index::run_trace_state(&conn, &id)?;
+        Ok(state == Some("ingested") ||
+            (state.is_none() && rows.iter().any(|r| r.status == "ingested")))
+    }).await;
     if !matches!(indexed, Ok(Ok(true))) {
         return error_trace(StatusCode::ACCEPTED, "trace pending");
     }
