@@ -76,6 +76,9 @@ let
       buildAndTestSubdir = "rust";
       cargoLock.lockFile = workspaceRoot + "/Cargo.lock";
       nativeBuildInputs = [ pkgs.gawk ];
+      preBuild = ''
+        export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$NIX_BUILD_TOP=/build"
+      '';
       cargoBuildFlags = [
         "--package"
         package
