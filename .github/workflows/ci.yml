@@ -742,6 +742,11 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
+      - name: Check pnpm lockfile matches package specifiers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEVENV_TASK_PASSTHROUGH: '1'
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --frozen-lockfile --lockfile-only --offline --ignore-scripts'
       - name: Format + lint
         env:
           GITHUB_TOKEN: ${{ github.token }}
