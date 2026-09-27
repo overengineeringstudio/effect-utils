@@ -769,8 +769,13 @@ const assertKnownKeys = ({
 type CargoDependencyRequest =
   | string
   | {
+      readonly branch?: string
       readonly 'default-features'?: boolean
       readonly features?: readonly string[]
+      /** A git source; Reindeer resolves it to the third-party graph like a registry crate. */
+      readonly git?: string
+      readonly rev?: string
+      readonly tag?: string
       readonly optional?: boolean
       readonly package?: string
       readonly path?: string
@@ -883,11 +888,15 @@ const normalizeDependencyRequest = ({
   assertKnownKeys({
     value: request,
     allowed: [
+      'branch',
       'default-features',
       'features',
+      'git',
       'optional',
       'package',
       'path',
+      'rev',
+      'tag',
       'version',
       'workspace',
     ],
@@ -901,8 +910,24 @@ const normalizeDependencyRequest = ({
   if (request.workspace === true && request.path !== undefined) {
     throw new Error(`Cargo dependency at ${field} cannot combine workspace and path`)
   }
-  if (request.workspace !== true && request.path === undefined && request.version === undefined) {
-    throw new Error(`Cargo dependency at ${field} has no version, path, or workspace inheritance`)
+  if (request.git !== undefined && (request.path !== undefined || request.workspace === true)) {
+    throw new Error(`Cargo dependency at ${field} cannot combine git with path or workspace`)
+  }
+  if (
+    request.git === undefined &&
+    (request.branch !== undefined || request.rev !== undefined || request.tag !== undefined)
+  ) {
+    throw new Error(`Cargo dependency at ${field} sets branch, rev, or tag without git`)
+  }
+  if (
+    request.workspace !== true &&
+    request.path === undefined &&
+    request.version === undefined &&
+    request.git === undefined
+  ) {
+    throw new Error(
+      `Cargo dependency at ${field} has no version, git, path, or workspace inheritance`,
+    )
   }
   return {
     defaultFeatures: request['default-features'] ?? true,

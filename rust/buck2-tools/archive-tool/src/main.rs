@@ -23,6 +23,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     ExtractCrate(ExtractCrateArgs),
+    /// A GitHub commit tarball (`git archive`): a pax global header, then one
+    /// `<repo>-<rev>/` tree that may hold repository-contained symlinks.
+    ExtractGitArchive(ExtractCrateArgs),
     ExtractNpm(ExtractNpmArgs),
 }
 
@@ -139,6 +142,10 @@ fn extract_prefixed_archive(
                 format!("could not read {archive_kind} entry: {error}"),
             )
         })?;
+        // Archive-wide pax metadata (`git archive` records the commit id there); it names no file.
+        if entry.header().entry_type() == tar::EntryType::XGlobalHeader {
+            continue;
+        }
         let path = entry
             .path()
             .map_err(|error| {
@@ -409,6 +416,16 @@ fn extract_prefixed_archive(
 
 fn extract_crate(args: &ExtractCrateArgs) -> ToolResult<()> {
     extract_prefixed_archive(&args.archive, &args.out, &args.strip_prefix, "crate", false)
+}
+
+fn extract_git_archive(args: &ExtractCrateArgs) -> ToolResult<()> {
+    extract_prefixed_archive(
+        &args.archive,
+        &args.out,
+        &args.strip_prefix,
+        "git archive",
+        true,
+    )
 }
 
 fn parse_patch_range(value: &str) -> ToolResult<(usize, usize)> {
@@ -686,6 +703,7 @@ fn run() -> ToolResult<()> {
     )?;
     match cli.command {
         Command::ExtractCrate(args) => extract_crate(&args),
+        Command::ExtractGitArchive(args) => extract_git_archive(&args),
         Command::ExtractNpm(args) => extract_npm(&args),
     }
 }
@@ -754,6 +772,69 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(error.code, "BUCK2_ARCHIVE_PREFIX");
+    }
+
+    #[test]
+    fn extracts_a_github_commit_tarball_with_global_header_and_contained_symlink() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let encoder = GzEncoder::new(file.reopen().unwrap(), Compression::default());
+        let mut builder = Builder::new(encoder);
+        // `git archive` leads with a pax global header naming the commit.
+        let comment = b"52 comment=0123456789abcdef0123456789abcdef01234567\n";
+        let mut global = Header::new_ustar();
+        global.set_entry_type(EntryType::XGlobalHeader);
+        global.set_mode(0o644);
+        global.set_size(comment.len() as u64);
+        global.set_cksum();
+        builder
+            .append_data(&mut global, "pax_global_header", comment.as_slice())
+            .unwrap();
+        let mut source = Header::new_gnu();
+        source.set_entry_type(EntryType::Regular);
+        source.set_mode(0o644);
+        source.set_size(4);
+        source.set_cksum();
+        builder
+            .append_data(
+                &mut source,
+                "repo-abc/crates/demo/src/lib.rs",
+                b"lib\n".as_slice(),
+            )
+            .unwrap();
+        let mut link = Header::new_gnu();
+        link.set_entry_type(EntryType::Symlink);
+        link.set_size(0);
+        builder
+            .append_link(&mut link, "repo-abc/crates/demo/README.md", "src/lib.rs")
+            .unwrap();
+        builder
+            .into_inner()
+            .unwrap()
+            .finish()
+            .unwrap()
+            .flush()
+            .unwrap();
+
+        let output_parent = tempfile::tempdir().unwrap();
+        let output = output_parent.path().join("repo");
+        let args = ExtractCrateArgs {
+            archive: file.path().to_owned(),
+            out: output.clone(),
+            strip_prefix: "repo-abc".into(),
+        };
+        extract_git_archive(&args).unwrap();
+        assert_eq!(
+            fs::read(output.join("crates/demo/README.md")).unwrap(),
+            b"lib\n"
+        );
+        // A crate archive never admits symlinks.
+        let crate_output = output_parent.path().join("crate");
+        let error = extract_crate(&ExtractCrateArgs {
+            out: crate_output,
+            ..args
+        })
+        .unwrap_err();
+        assert_eq!(error.code, "BUCK2_ARCHIVE_ENTRY_TYPE");
     }
 
     #[test]
