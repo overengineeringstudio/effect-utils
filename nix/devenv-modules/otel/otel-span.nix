@@ -790,7 +790,9 @@ pkgs.writeShellScriptBin "otel-span" ''
               --attr-int "exit.code=$rc" "''${link_args[@]}" || true
           )
         fi
-        if (( ! nested && evidence_available )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" ]]; then
+        # An outer adapter may retry this command against the same spool. Its
+        # post-step owns sealing and upload after the final attempt.
+        if (( ! nested && evidence_available )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" && -z "''${PIPELINE_SEAL_OWNER:-}" ]]; then
           if ${pkgs.coreutils}/bin/timeout -k 2 15 buck2-evidence seal \
             --spool "$PIPELINE_SPOOL_DIR" --run-id "$run_id" --task-key "$job_key"; then
             local skip_local_ingest=0 close_dir="$PIPELINE_SPOOL_DIR/attempt-close" conclusion=success
