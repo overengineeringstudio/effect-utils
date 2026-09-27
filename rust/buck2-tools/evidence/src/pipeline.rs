@@ -540,10 +540,17 @@ pub async fn verify_run_trace(
     if missing_root {
         conn.execute("update closes set root_pushed=0 where run_id=?1", [run_id]).map_err(transient)?;
     }
-    let verified = missing_records.is_empty() && !missing_root && state == Some((1, 0));
-    conn.execute("update run_traces set verified_at=case when ?2 then ?3 else null end
-        where run_id=?1", rusqlite::params![run_id, verified, now_ms()]).map_err(transient)?;
-    Ok(verified)
+    let complete = missing_records.is_empty() && !missing_root && state == Some((1, 0));
+    let published = conn.execute(
+        "update run_traces set verified_at=?3 where run_id=?1 and ?2
+         and incomplete=0 and (select root_pushed from closes where run_id=?1)=1
+         and (select count(*) from expected_spans where trace_id=?4)=?5",
+        rusqlite::params![run_id, complete, now_ms(), trace, expected.len()],
+    ).map_err(transient)? != 0;
+    if !published {
+        conn.execute("update run_traces set verified_at=null where run_id=?1", [run_id]).map_err(transient)?;
+    }
+    Ok(published)
 }
 
 fn index_span_metadata(

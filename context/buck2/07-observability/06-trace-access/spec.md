@@ -95,6 +95,14 @@ exist or a task is absent in a run; with no matching samples display
 `baseline unavailable` instead of a fabricated delta. The run selector must
 use recorded revision ancestry/order, not wall-clock proximity alone.
 
+The uploader seals the first-parent ancestry of the base revision together
+with its first-parent position; main-branch push records carry their head
+revision and position. The resolver does not invoke Git: it admits a main
+sample only when its revision belongs to the sealed base ancestry, then
+orders eligible runs by position. A shallow checkout cannot seal a complete
+ancestry and therefore cannot claim a baseline. A timestamp or CI run number
+alone does not establish ancestry, especially across a force-push.
+
 ## CI Publication
 
 ```text
