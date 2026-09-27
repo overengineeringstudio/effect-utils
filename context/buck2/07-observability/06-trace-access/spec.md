@@ -84,16 +84,28 @@ that the tested PR merges into (`HEAD^1` of a CI merge checkout), not the
 git merge-base of the PR head and a later-moving branch. Select the latest
 **k=7** indexed main-branch pipeline runs whose revisions are at or before
 that base revision, never after it. This reflects the main state at merge
-time and needs no extra git history beyond the recorded parent. Compare
-like-for-like matrix-qualified job keys and task names. For each task,
-calculate the median of its eligible main-run durations; display their
-observed minimum to maximum as the main spread. A PR duration inside that
+time. Compare like-for-like matrix-qualified job keys and task names. For
+each task, calculate the median of its eligible main-run durations; display
+their observed minimum to maximum as the main spread. A PR duration inside that
 closed band is marked
 `noise`; outside it, show the signed delta from the median and mark it beyond
 spread. Show the sample count per task, including when fewer than seven runs
 exist or a task is absent in a run; with no matching samples display
 `baseline unavailable` instead of a fabricated delta. The run selector must
 use recorded revision ancestry/order, not wall-clock proximity alone.
+
+The uploader seals the first-parent ancestry of the base revision together
+with its first-parent position; main-branch push records carry their head
+revision and position. The resolver does not invoke Git: it admits a main
+sample only when its revision belongs to the sealed base ancestry, then
+orders eligible runs by position. A shallow checkout cannot seal a complete
+ancestry and therefore cannot claim a baseline. A timestamp or CI run number
+alone does not establish ancestry, especially across a force-push.
+
+Each indexed job contributes at most one duration sample per `task.name`:
+the sum of its `devenv.task.exec` span durations, including repeated
+executions of that task within the job. Samples remain indexed after raw
+archive expiry for lineage, but only ingested records enter comparisons.
 
 ## CI Publication
 

@@ -77,8 +77,7 @@ impl RunningReceiver {
             tokio::net::TcpListener::bind(("127.0.0.1", grpc_port.unwrap_or(0))).await?;
         let grpc_addr: SocketAddr = grpc_listener.local_addr()?;
         let grpc_incoming =
-            tonic::transport::server::TcpIncoming::from_listener(grpc_listener, true, None)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            tonic::transport::server::TcpIncoming::from(grpc_listener).with_nodelay(Some(true));
 
         let http_endpoint = format!("http://{http_addr}");
         let grpc_endpoint = format!("http://{grpc_addr}");

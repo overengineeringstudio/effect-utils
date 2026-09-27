@@ -74,7 +74,11 @@ seal -> upload socket -> verify -> durable record -> index.sqlite
    complete readback, under the job-end ≤30 s p95 plus upload target; the
    shared run trace remains explicitly pending until attempt closure and
    cumulative readback. A missing job is reported even if its trace has
-   synthetic error spans.
+   synthetic error spans. Periodic by-id checks cover only active attempts:
+   unpushed roots and pushed traces within the configurable two-hour window
+   since their last write. The index persists `settled_at` after that window;
+   settled attempts are not probed by the tick. A later job write reopens the
+   window and still performs its immediate cumulative verification.
 
    Resolver-facing states include `pending`, `sealed`, `uploaded`,
    `ingesting`, `ingested`, `missing_spans`, `incomplete`, `expired`. The

@@ -1295,6 +1295,17 @@ in
     '';
   };
 
+  tasks."buck2:evidence:faults" = {
+    description = "Exercise evidence queue fault recovery and dead-lettering";
+    exec = trace.exec "buck2:evidence:faults" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      cd "$root"
+      binary=$(nix build --no-link --print-out-paths .#buck2-evidence)/bin/buck2-evidence
+      exec ${pkgs.python3}/bin/python3 "$root/scripts/buck2-evidence-faults.py" "$binary"
+    '';
+  };
+
   tasks."buck2:quick" = {
     description = "Build the admitted quick Buck aggregate";
     after = [ "buck2:providers:check" ];
