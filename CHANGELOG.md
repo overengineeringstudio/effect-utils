@@ -105,6 +105,18 @@ All notable changes to this project will be documented in this file.
   `node_modules` work without Node's unsupported type stripping. Baseline
   worktrees with a different `pnpm-lock.yaml` use their own installed
   `node_modules` instead of borrowing incompatible dependencies from HEAD.
+- **Netlify staged PR previews deploy new targets**: `netlify:deploy-staged`
+  deployed only the targets configured in the deploying revision, which for
+  the trusted `workflow_run` deploy is the default branch, so a PR adding a
+  Storybook package staged its output but never got a preview. The task now
+  deploys every top-level directory of the staged artifact as data, each under
+  alias `<name>-pr-<n>` on the configured site. Names must match
+  `^[a-z0-9][a-z0-9-]{0,62}$`, entries must be real directories (no symlinks
+  or files), and at most 32 targets are accepted; any rejected entry fails the
+  deploy before a credentialed call. Each deploy runs from an empty scratch
+  directory, so the Netlify CLI reads no project config from the repository or
+  the artifact, and staged deploys no longer pass `--workspace-filter`. The
+  per-target `netlify:deploy-staged:<name>` tasks are removed.
 
 - **mk-pnpm-cli external install roots**: Stage every injected `file:`
   directory package the install root's lockfile records
