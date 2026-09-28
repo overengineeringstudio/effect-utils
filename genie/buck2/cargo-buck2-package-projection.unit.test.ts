@@ -162,6 +162,7 @@ const renderCargoFixture = ({
   registryPackages = ['serde'],
   thirdPartyTargets = ['serde'],
   foreignPackages = {},
+  extraFiles = [],
   projectOptions = {},
   render,
 }: {
@@ -174,6 +175,8 @@ const renderCargoFixture = ({
   readonly foreignPackages?: Readonly<
     Record<string, CargoFixtureMember & { readonly projected: boolean }>
   >
+  /** Repository-relative files outside any member (for example build script inputs). */
+  readonly extraFiles?: readonly string[]
   readonly render: string
   readonly projectOptions?: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>
 }): string => {
@@ -230,6 +233,7 @@ const renderCargoFixture = ({
       for (const file of foreign.files) write(`${packagePath}/${file}`, '// fixture\n')
       if (foreign.projected === true) write(`${packagePath}/BUCK.genie.ts`, '// projected\n')
     }
+    for (const file of extraFiles) write(file, '// fixture\n')
     for (const [memberPath, member] of Object.entries(members)) {
       if (memberPath !== '.') {
         write(`rust/${memberPath}/Cargo.toml`, memberManifest(memberPath, member.manifest))
@@ -1093,6 +1097,151 @@ describe('Cargo git dependencies', () => {
     )
     expect(() => render('agent-spec = { version = "1", rev = "abc" }')).toThrow(
       'Cargo dependency at dependencies.agent-spec sets branch, rev, or tag without git',
+    )
+  })
+})
+
+describe('Cargo build scripts', () => {
+  const render = ({
+    manifest = '',
+    files = ['src/lib.rs', 'build.rs'],
+    buildScriptInputs,
+  }: {
+    readonly manifest?: string
+    readonly files?: readonly string[]
+    readonly buildScriptInputs?: CargoBuck2PackageProjectionOptions['buildScriptInputs']
+  }) =>
+    renderCargoFixture({
+      members: { axe: { manifest: `[package]\nname = "axe"${manifest}`, files } },
+      extraFiles: ['feedback/feedback-contract.json'],
+      render: 'axe',
+      projectOptions: buildScriptInputs === undefined ? {} : { buildScriptInputs },
+    })
+
+  it('runs build.rs with its build dependencies and declared cross-package inputs', () => {
+    const rendered = render({
+      manifest: '\n\n[build-dependencies]\nserde.workspace = true',
+      files: ['src/lib.rs', 'build.rs', 'data/table.txt'],
+      buildScriptInputs: [
+        { path: 'feedback/feedback-contract.json', label: '//feedback:feedback-contract.json' },
+        { path: 'rust/axe/data/table.txt' },
+      ],
+    })
+    expect(rendered).toContain(
+      'load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")\nload("//buck2/rust:defs.bzl", "cargo_build_script")\n',
+    )
+    expect(rendered).toContain(
+      [
+        'native.rust_binary(',
+        '    name = "axe-build-script-build",',
+        '    crate = "build_script_build",',
+        '    crate_root = "build.rs",',
+        '    srcs = [',
+        '        "build.rs",',
+        '    ],',
+        '    deps = [',
+        '        "//rust/third-party:serde",',
+        '    ],',
+        '    edition = "2024",',
+        '    env = {',
+        '        "CARGO_PKG_NAME": "axe",',
+        '        "CARGO_PKG_VERSION": "0.1.0",',
+        '    },',
+        ')',
+        '',
+        'cargo_build_script(',
+        '    name = "axe-build-script",',
+        '    build_script = ":axe-build-script-build",',
+        '    package_path = "rust/axe",',
+        '    srcs = {',
+        '        "feedback/feedback-contract.json": "//feedback:feedback-contract.json",',
+        '        "rust/axe/Cargo.toml": "Cargo.toml",',
+        '        "rust/axe/build.rs": "build.rs",',
+        '        "rust/axe/data/table.txt": "data/table.txt",',
+        '        "rust/axe/src/lib.rs": "src/lib.rs",',
+        '    },',
+        ')',
+        '',
+        'buildscript_run(',
+        '    name = "axe-build-script-run",',
+        '    package_name = "axe",',
+        '    buildscript_rule = ":axe-build-script",',
+        '    manifest_dir = ":axe-build-script",',
+        '    env = {',
+        '        "CARGO_PKG_VERSION_MAJOR": "0",',
+        '        "CARGO_PKG_VERSION_MINOR": "1",',
+        '        "CARGO_PKG_VERSION_PATCH": "0",',
+        '        "CARGO_PKG_VERSION_PRE": "",',
+        '        "DEBUG": "false",',
+        '        "NUM_JOBS": "1",',
+        '        "PROFILE": "debug",',
+        '    },',
+        '    version = "0.1.0",',
+        ')',
+      ].join('\n'),
+    )
+    expect(renderedRules(rendered).lib).toContain(
+      '    env = {\n        "CARGO_PKG_NAME": "axe",\n        "CARGO_PKG_VERSION": "0.1.0",\n        "OUT_DIR": "$(location :axe-build-script-run[out_dir])",\n    },\n    rustc_flags = ["@$(location :axe-build-script-run[rustc_flags])"],',
+    )
+    expect(rendered).toMatch(/"build\.rs",\n {8}"data\/table\.txt",/)
+  })
+
+  it('rejects inputs repeating package files and feature requests on member build deps', () => {
+    expect(() => render({ buildScriptInputs: [{ path: 'rust/axe/src/lib.rs' }] })).toThrow(
+      'buildScriptInputs repeat files the build script already sees (Cargo.toml, the build script, Rust sources) in rust/axe/Cargo.toml: rust/axe/src/lib.rs',
+    )
+    for (const request of ['features = ["x"]', 'default-features = false']) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            axe: {
+              manifest: `[package]\nname = "axe"\n\n[build-dependencies]\ncodegen = { path = "../codegen", ${request} }`,
+              files: ['src/lib.rs', 'build.rs'],
+            },
+            codegen: {
+              manifest: '[package]\nname = "codegen"\n\n[features]\nx = []',
+              files: ['src/lib.rs'],
+            },
+          },
+          render: 'axe',
+        }),
+      ).toThrow(
+        'Cargo build dependencies on first-party packages cannot request features or disable default features in rust/axe/Cargo.toml: codegen',
+      )
+    }
+  })
+
+  it('honors package.build paths and ignores build dependencies without a script', () => {
+    expect(
+      render({ manifest: '\nbuild = "tools/gen.rs"', files: ['src/lib.rs', 'tools/gen.rs'] }),
+    ).toContain('    crate_root = "tools/gen.rs",')
+    const scriptless = render({
+      manifest: '\nbuild = false\n\n[build-dependencies]\nserde.workspace = true',
+    })
+    expect(scriptless).not.toContain('build-script')
+  })
+
+  it('rejects undeclared, mislabeled, and unsupported build script inputs', () => {
+    expect(() =>
+      render({ files: ['src/lib.rs'], buildScriptInputs: [{ path: 'rust/axe/src/lib.rs' }] }),
+    ).toThrow('buildScriptInputs needs a Cargo build script in rust/axe/Cargo.toml')
+    expect(() =>
+      render({ buildScriptInputs: [{ path: 'feedback/feedback-contract.json' }] }),
+    ).toThrow(
+      'buildScriptInputs[0] outside rust/axe needs the Buck label providing it: feedback/feedback-contract.json',
+    )
+    expect(() =>
+      render({ buildScriptInputs: [{ path: 'rust/axe/build.rs', label: '//rust/axe:build.rs' }] }),
+    ).toThrow('buildScriptInputs[0] is inside rust/axe and takes no label: rust/axe/build.rs')
+    expect(() => render({ manifest: '\nbuild = true', files: ['src/lib.rs'] })).toThrow(
+      'Cargo package.build = true needs build.rs in rust/axe/Cargo.toml',
+    )
+    expect(() =>
+      render({
+        manifest: '\n\n[build-dependencies]\nser = { package = "serde", version = "1" }',
+      }),
+    ).toThrow(
+      'Optional and renamed Cargo build dependencies are unsupported in rust/axe/Cargo.toml: ser',
     )
   })
 })

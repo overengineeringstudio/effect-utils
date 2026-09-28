@@ -23,6 +23,9 @@
 let
   lib = pkgs.lib;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
+  # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
+  cliBuildStamp = product.cliBuildStamp or null;
   source =
     if repositorySource == null then
       lib.fileset.toSource {
@@ -72,6 +75,10 @@ let
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
     lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
+  }${
+    lib.optionalString (
+      cliBuildStamp != null
+    ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"
   } --local-only --no-remote-cache --console simple --show-simple-output";
 in
 assert lib.assertMsg (
@@ -91,6 +98,14 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   !importNative || product.kind == "native"
 ) "buck2-products: importNative requires a native product";
+assert lib.assertMsg (
+  cliBuildStamp == null
+  || (
+    builtins.isString cliBuildStamp
+    && cliBuildStamp != ""
+    && builtins.match ".*[\n\r].*" cliBuildStamp == null
+  )
+) "buck2-products: cliBuildStamp must be a non-empty single-line string";
 let
   sourceProduct = pkgs.stdenv.mkDerivation {
     pname = "${safeName}-buck2-from-source";

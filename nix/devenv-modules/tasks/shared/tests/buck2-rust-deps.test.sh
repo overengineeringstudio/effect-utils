@@ -200,6 +200,7 @@ if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_RE
   fail "gate accepted a git archive whose fetched digest drifted from its pin"
 fi
 grep -Fq 'no longer matches its pinned sha256' "$TEMP_ROOT/git-drift-error" || fail "git archive drift was not diagnosed"
+grep -Fq 'delete this pin from' "$TEMP_ROOT/git-drift-error" || fail "git archive drift error does not name the remedy"
 
 export FAKE_REINDEER_BEHAVIOR=git-fetch
 if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/git-fetch-error"; then
