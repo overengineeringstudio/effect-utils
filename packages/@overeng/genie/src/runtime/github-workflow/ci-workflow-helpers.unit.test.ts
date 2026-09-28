@@ -299,19 +299,24 @@ describe('CI evidence upload isolation', () => {
     const seal = 'name: Seal and publish pipeline evidence'
     for (const [index, jobKey] of jobKeys.entries()) {
       const start = generatedCiWorkflowYamlSource.indexOf(`  ${jobKey}:\n`)
-      const end = index + 1 < jobKeys.length
-        ? generatedCiWorkflowYamlSource.indexOf(`  ${jobKeys[index + 1]}:\n`, start + 1)
-        : generatedCiWorkflowYamlSource.length
+      const end =
+        index + 1 < jobKeys.length
+          ? generatedCiWorkflowYamlSource.indexOf(`  ${jobKeys[index + 1]}:\n`, start + 1)
+          : generatedCiWorkflowYamlSource.length
       const job = generatedCiWorkflowYamlSource.slice(start, end)
-      if (!job.includes(seal)) continue
+      if (job.includes(seal) === false) continue
       const joinIndex = job.indexOf(join)
       expect(joinIndex, `${jobKey}: missing tailnet join`).toBeGreaterThan(-1)
       const lastBuildTask = job.lastIndexOf('tasks run ')
       if (lastBuildTask >= 0) {
-        expect(joinIndex, `${jobKey}: build task must finish before joining`).toBeGreaterThan(lastBuildTask)
+        expect(joinIndex, `${jobKey}: build task must finish before joining`).toBeGreaterThan(
+          lastBuildTask,
+        )
       }
-      expect(job.slice(joinIndex).match(/      - name: /g), `${jobKey}: join is not the last pre-seal step`)
-        .toHaveLength(1)
+      expect(
+        job.slice(joinIndex).match(/      - name: /g),
+        `${jobKey}: join is not the last pre-seal step`,
+      ).toHaveLength(1)
       expect(job.indexOf(seal), `${jobKey}: evidence must follow join`).toBeGreaterThan(joinIndex)
       expect(job.slice(joinIndex, job.indexOf(seal))).toContain('continue-on-error: true')
       expect(job.slice(joinIndex, job.indexOf(seal))).toContain('args: --accept-dns=true')
@@ -330,8 +335,9 @@ describe('CI evidence upload isolation', () => {
     expect(closeJob.indexOf('name: Prepare evidence uploader')).toBeLessThan(closeJob.indexOf(join))
     expect(closeJob.slice(closeJob.indexOf(join))).not.toContain('nix build')
     expect(closeJob.indexOf(join)).toBeLessThan(closeJob.indexOf('name: Close pipeline attempt'))
-    expect(closeJob.slice(closeJob.indexOf(join), closeJob.indexOf('name: Close pipeline attempt')))
-      .toContain('continue-on-error: true')
+    expect(
+      closeJob.slice(closeJob.indexOf(join), closeJob.indexOf('name: Close pipeline attempt')),
+    ).toContain('continue-on-error: true')
   })
 })
 
