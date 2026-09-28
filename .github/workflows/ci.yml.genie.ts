@@ -359,14 +359,23 @@ const job = ({
   ],
 })
 
+/** Build and `--help`-smoke every compiled-executable product (genie/ci-scripts/compiled-products.sh). */
+const compiledProductsSmokeStep = {
+  name: 'Build and smoke compiled products',
+  env: githubTokenEnv(),
+  run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh'),
+} as const
+
 const multiPlatformJob = ({
   timeoutMinutes = jobTimeoutMinutes,
+  afterSteps = [],
   ...step
 }: {
   name: string
   run: string
   env?: Record<string, string>
   timeoutMinutes?: number
+  afterSteps?: readonly any[]
 }) => ({
   if: normalCiIf,
   strategy: {
@@ -384,6 +393,7 @@ const multiPlatformJob = ({
   steps: [
     ...baseSteps,
     step,
+    ...afterSteps,
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -458,6 +468,10 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     name: 'Unit tests',
     env: githubTokenEnv(),
     run: runDevenvTasksBefore('test:run'),
+    // Darwin leg of the compiled-executable proof; `build-products` covers Linux x86_64.
+    afterSteps: [
+      { ...compiledProductsSmokeStep, if: "matrix.runner == 'namespace-profile-macos-arm64'" },
+    ],
   }),
   'test-playwright-utils': job({
     timeoutMinutes: longJobTimeoutMinutes,
@@ -741,113 +755,6 @@ const extraJobs: Record<string, any> = {
     ],
   },
   /**
-   * Prove the compiled-executable fixture on native Linux and Darwin runners.
-   * PRs build and run it without any cache write credentials; `publish-compiled-products`
-   * is the protected-main writer. The same `build_product` descriptor and Nix
-   * runtime inspector run on both platforms.
-   */
-  'compiled-products': {
-    if: normalCiIf,
-    strategy: { 'fail-fast': false, matrix: { runner: [...RUNNER_PROFILES] } },
-    'runs-on': namespaceRunner({
-      profile: '${{ matrix.runner }}' as RunnerProfile,
-      runId: '${{ github.run_id }}',
-    }),
-    'timeout-minutes': 120,
-    permissions: { contents: 'read' },
-    defaults: bashShellDefaults,
-    steps: [
-      checkoutStep(),
-      installNixStep({ binaryCaches: [binaryCache] }),
-      trustedCachixStep,
-      {
-        name: 'Build and smoke compiled Bun product',
-        run: withCiSourceRoot(
-          [
-            'set -euo pipefail',
-            'out=$(nix build --no-link --print-out-paths .#ci-tools-compiled)',
-            'test -f "$out/bin/ci-tools"',
-            '"$out/bin/ci-tools" --help',
-          ].join('\n'),
-        ),
-      },
-    ],
-  },
-  /**
-   * Compiled products are platform-specific store paths. The protected main
-   * writer builds and pushes each native import on the matching runner; it
-   * does not propose a platform-agnostic JS/package manifest row. In particular
-   * the macOS lane publishes ad-hoc signed, unmodified Mach-O bytes.
-   */
-  'publish-compiled-products': {
-    if: trustedSecretCiIf,
-    strategy: { 'fail-fast': false, matrix: { runner: [...RUNNER_PROFILES] } },
-    'runs-on': namespaceRunner({
-      profile: '${{ matrix.runner }}' as RunnerProfile,
-      runId: '${{ github.run_id }}',
-    }),
-    'timeout-minutes': 120,
-    permissions: { contents: 'read' },
-    defaults: bashShellDefaults,
-    steps: [
-      checkoutStep(),
-      installNixStep({ binaryCaches: [binaryCache] }),
-      cachixCliBuildStep,
-      trustedCachixStep,
-      cachixPushStep({
-        jobIf: trustedSecretCiIf,
-        triggers: ['push', 'workflow_dispatch'],
-        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
-        step: {
-          name: 'Publish compiled Bun product',
-          run: withCiSourceRoot(
-            [
-              'set -euo pipefail',
-              'out=$(nix build --no-link --print-out-paths .#ci-tools-compiled)',
-              'test -f "$out/bin/ci-tools"',
-              '"$out/bin/ci-tools" --help',
-              'cachix push overeng-effect-utils "$out"',
-            ].join('\n'),
-          ),
-        },
-      }),
-    ],
-  },
-  /**
-   * Native aarch64 Linux publication runs on dev4's fleet runner. Namespace's
-   * standard product matrix exposes only Linux x86_64 and Darwin arm64.
-   */
-  'publish-compiled-products-linux-arm64': {
-    if: trustedSecretCiIf,
-    'runs-on': ['sh-linux-arm64', 'nix'],
-    'timeout-minutes': 120,
-    permissions: { contents: 'read' },
-    defaults: bashShellDefaults,
-    steps: [
-      checkoutStep(),
-      installNixStep({ binaryCaches: [binaryCache] }),
-      cachixCliBuildStep,
-      trustedCachixStep,
-      cachixPushStep({
-        jobIf: trustedSecretCiIf,
-        triggers: ['push', 'workflow_dispatch'],
-        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
-        step: {
-          name: 'Publish aarch64 Linux compiled Bun product',
-          run: withCiSourceRoot(
-            [
-              'set -euo pipefail',
-              'out=$(nix build --no-link --print-out-paths .#ci-tools-compiled)',
-              'test -f "$out/bin/ci-tools"',
-              '"$out/bin/ci-tools" --help',
-              'cachix push overeng-effect-utils "$out"',
-            ].join('\n'),
-          ),
-        },
-      }),
-    ],
-  },
-  /**
    * Archive publication is a protected-main effect. Pull requests can read the
    * configured tier but never receive its write credential or execute this job.
    */
@@ -890,7 +797,9 @@ const extraJobs: Record<string, any> = {
   /**
    * Credential-free twin of `publish-products`: realizes every published from-source
    * product on each PR with the same attr derivation, plus the independent
-   * native evidence consumer. This job never receives a Cachix token, never
+   * native evidence consumer, and builds plus `--help`-smokes every compiled-executable
+   * product (compiled-targets.json) for Linux x86_64 (Darwin: the macOS `test` leg;
+   * publication: compiled-products.yml). This job never receives a Cachix token, never
    * pushes, and never proposes a manifest. The public cache is a read-only
    * substituter only. On `main`, `publish-products` publishes the product
    * inventory and evidence package.
@@ -926,6 +835,7 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
+      compiledProductsSmokeStep,
     ],
   },
   'publish-products': {

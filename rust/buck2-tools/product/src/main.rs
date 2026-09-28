@@ -1292,22 +1292,18 @@ mod tests {
             mach_o_signing_policy(&ad_hoc, 0, ad_hoc.len()).unwrap(),
             "adhoc/v1"
         );
-        let bun_ad_hoc = [
-            0xfade_0cc0u32, 36, 1, 0, 20, 0xfade_0c02, 16, 0, 0x2,
-        ]
-        .into_iter()
-        .flat_map(u32::to_be_bytes)
-        .collect::<Vec<_>>();
+        let bun_ad_hoc = [0xfade_0cc0u32, 36, 1, 0, 20, 0xfade_0c02, 16, 0, 0x2]
+            .into_iter()
+            .flat_map(u32::to_be_bytes)
+            .collect::<Vec<_>>();
         assert_eq!(
             mach_o_signing_policy(&bun_ad_hoc, 0, bun_ad_hoc.len()).unwrap(),
             "adhoc/v1"
         );
-        let unsigned = [
-            0xfade_0cc0u32, 36, 1, 0, 20, 0xfade_0c02, 16, 0, 0,
-        ]
-        .into_iter()
-        .flat_map(u32::to_be_bytes)
-        .collect::<Vec<_>>();
+        let unsigned = [0xfade_0cc0u32, 36, 1, 0, 20, 0xfade_0c02, 16, 0, 0]
+            .into_iter()
+            .flat_map(u32::to_be_bytes)
+            .collect::<Vec<_>>();
         assert!(mach_o_signing_policy(&unsigned, 0, unsigned.len()).is_err());
 
         let embedded = signature_with_cms(0, 16);

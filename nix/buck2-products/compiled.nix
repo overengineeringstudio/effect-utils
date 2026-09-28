@@ -19,14 +19,15 @@ let
   validProduct =
     product:
     builtins.isAttrs product
-    && builtins.attrNames product == [
-      "kind"
-      "name"
-      "outputName"
-      "packagePath"
-      "target"
-      "version"
-    ]
+    &&
+      builtins.attrNames product == [
+        "kind"
+        "name"
+        "outputName"
+        "packagePath"
+        "target"
+        "version"
+      ]
     && product.kind == "compiled-executable"
     && builtins.isString product.name
     && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" product.name != null
@@ -37,12 +38,14 @@ let
     && builtins.isString product.version
     && product.version != "";
   names = map (product: product.name) inventory.products;
-  uniqueNames = builtins.attrNames (builtins.listToAttrs (
-    map (name: {
-      inherit name;
-      value = true;
-    }) names
-  ));
+  uniqueNames = builtins.attrNames (
+    builtins.listToAttrs (
+      map (name: {
+        inherit name;
+        value = true;
+      }) names
+    )
+  );
 in
 assert
   builtins.attrNames inventory == [
