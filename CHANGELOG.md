@@ -155,6 +155,13 @@ All notable changes to this project will be documented in this file.
   staging, satisfying pnpm 12.7's stricter frozen-lockfile validation while
   picking up pnpm/pnpm#15455's single-writer package import.
 
+- **nix/provider-clis/vercel-cli**: update the pinned Vercel CLI from 54.18.5
+  to 60.1.3, regenerate `package-lock.json`, and refresh `npmDepsHash`. The
+  derivation no longer omits optional dependencies, because
+  `@vercel/static-config` loads the platform-specific Oxc parser binding
+  (`@oxc-parser/binding-*`) at runtime. The wrapper entrypoint is unchanged:
+  60.1.3 still publishes both `vercel` and `vc` as `dist/vc.js`.
+
 - **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
   Weaver remap dynamic sandbox paths before compilation, so capability
   manifests retain their strict executable digest across sandbox roots.
