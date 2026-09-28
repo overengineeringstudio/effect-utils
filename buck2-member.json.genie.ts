@@ -21,6 +21,14 @@ const manifestProjection = {
           flakePackage: 'bun',
           executable: 'bin/bun',
         },
+        // Official release binary embedded by `bun build --compile`; never executed by
+        // actions (nix/bun-compile-runtime.nix).
+        {
+          toolId: 'bun-compile-runtime',
+          protocol: 'effect-utils/buck2-bun-compile-runtime/v1',
+          flakePackage: 'buck2-bun-compile-runtime',
+          executable: 'bin/bun',
+        },
       ],
     },
     {

@@ -168,6 +168,12 @@
       "toolchain": "bun",
       "provides": [
         {
+          "toolId": "bun-compile-runtime",
+          "protocol": "effect-utils/buck2-bun-compile-runtime/v1",
+          "flakePackage": "buck2-bun-compile-runtime",
+          "executable": "bin/bun"
+        },
+        {
           "toolId": "bun",
           "protocol": "effect-utils/buck2-bun/v1",
           "flakePackage": "bun",

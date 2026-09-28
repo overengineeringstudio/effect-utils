@@ -359,14 +359,23 @@ const job = ({
   ],
 })
 
+/** Build and `--help`-smoke every compiled-executable product (genie/ci-scripts/compiled-products.sh). */
+const compiledProductsSmokeStep = {
+  name: 'Build and smoke compiled products',
+  env: githubTokenEnv(),
+  run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh'),
+} as const
+
 const multiPlatformJob = ({
   timeoutMinutes = jobTimeoutMinutes,
+  afterSteps = [],
   ...step
 }: {
   name: string
   run: string
   env?: Record<string, string>
   timeoutMinutes?: number
+  afterSteps?: readonly any[]
 }) => ({
   if: normalCiIf,
   strategy: {
@@ -384,6 +393,7 @@ const multiPlatformJob = ({
   steps: [
     ...baseSteps,
     step,
+    ...afterSteps,
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -458,6 +468,10 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     name: 'Unit tests',
     env: githubTokenEnv(),
     run: runDevenvTasksBefore('test:run'),
+    // Darwin leg of the compiled-executable proof; `build-products` covers Linux x86_64.
+    afterSteps: [
+      { ...compiledProductsSmokeStep, if: "matrix.runner == 'namespace-profile-macos-arm64'" },
+    ],
   }),
   'test-playwright-utils': job({
     timeoutMinutes: longJobTimeoutMinutes,
@@ -712,7 +726,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|pnpm-archives\\.nix|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|compiled\\.nix|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|pnpm-archives\\.nix|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
             'if [ -n "$tracked_editor$tracked_product" ]; then',
             '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
             '  exit 1',
@@ -783,7 +797,9 @@ const extraJobs: Record<string, any> = {
   /**
    * Credential-free twin of `publish-products`: realizes every published from-source
    * product on each PR with the same attr derivation, plus the independent
-   * native evidence consumer. This job never receives a Cachix token, never
+   * native evidence consumer, and builds plus `--help`-smokes every compiled-executable
+   * product (compiled-targets.json) for Linux x86_64 (Darwin: the macOS `test` leg;
+   * publication: compiled-products.yml). This job never receives a Cachix token, never
    * pushes, and never proposes a manifest. The public cache is a read-only
    * substituter only. On `main`, `publish-products` publishes the product
    * inventory and evidence package.
@@ -819,6 +835,7 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
+      compiledProductsSmokeStep,
     ],
   },
   'publish-products': {
