@@ -1,7 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: compiled-products.yml.genie.ts
 
-name: Compiled Products
+name: Native and Compiled Products
 
 permissions:
   contents: read
@@ -64,7 +64,7 @@ jobs:
         with:
           name: overeng-effect-utils
           skipPush: true
-      - name: Publish compiled products
+      - name: Publish native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
@@ -55,16 +54,6 @@ const requireStrings = (
   return value
 }
 
-const canonicalJson = (value: unknown): string => {
-  if (Array.isArray(value) === true) return `[${value.map(canonicalJson).join(',')}]`
-  if (typeof value === 'object' && value !== null) {
-    return `{${Object.entries(value)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(value)
-}
 
 const requireExactFields = ({
   value,
@@ -204,15 +193,6 @@ const checkNixSource = ({
   return { checkedFiles: nixPaths.length }
 }
 
-const platformKey = ({
-  abi,
-  architecture,
-  os,
-}: {
-  readonly abi: string
-  readonly architecture: string
-  readonly os: string
-}): string => `${architecture}-${os}-${abi}`
 
 const checkWorkspaceContract = ({
   sourceRoot,
@@ -431,215 +411,58 @@ const checkWorkspaceContract = ({
       throw new Error(`${memberPath}/BUCK must stay product-free`)
   }
 
-  const targets = requireRecord(
-    readJson(sourceRoot, 'nix/buck2-native-products/targets.json'),
+  const inventory = requireRecord(
+    readJson(sourceRoot, 'nix/buck2-products/native-targets.json'),
     'native product targets',
   )
   requireExactFields({
-    value: targets,
-    fields: ['platforms', 'products', 'schema'],
+    value: inventory,
+    fields: ['products', 'schema', 'schemaVersion'],
     subject: 'native product targets',
   })
-  if (targets.schema !== 'effect-utils/buck2-native-release-targets/v1') {
+  if (inventory.schema !== 'effect-utils/buck-native-targets/v1' || inventory.schemaVersion !== 1)
     throw new Error('native product target schema changed')
-  }
-  if (Array.isArray(targets.products) === false) {
-    throw new Error('targets.products must be an array')
-  }
-  const targetEntries = targets.products.map((rawEntry, index) => {
-    const entry = requireRecord(rawEntry, `targets.products[${index}]`)
+  if (Array.isArray(inventory.products) === false)
+    throw new Error('native products must be an array')
+
+  const nativeProducts = inventory.products.map((rawEntry, index) => {
+    const entry = requireRecord(rawEntry, `native products[${index}]`)
+    const name = requireString(entry.name, `native products[${index}].name`)
+    const rust = name === 'otelite' || name === 'otel-scrape'
     requireExactFields({
       value: entry,
-      fields: ['name', 'target'],
-      subject: `targets.products[${index}]`,
+      fields: [
+        'kind',
+        'name',
+        'outputName',
+        'target',
+        'version',
+        ...(rust ? ['cargoWorkspaceRoot'] : []),
+      ],
+      subject: `native products[${index}]`,
     })
-    const name = requireString(entry.name, `targets.products[${index}].name`)
-    const target = requireString(entry.target, `targets.products[${index}].target`)
-    if (/^[A-Za-z0-9][A-Za-z0-9._+-]*$/u.test(name) === false) {
-      throw new Error(`targets.products[${index}].name is malformed`)
-    }
+    const target = requireString(entry.target, `native products[${index}].target`)
+    const packagePath = rust ? name : 'genie'
     if (
-      /^(?:[A-Za-z0-9_]+)?\/\/.+:.+$/u.test(target) === false ||
-      /[\s[\]]/u.test(target) === true
+      entry.kind !== 'native' ||
+      entry.outputName !== 'artifact.tar' ||
+      entry.version !== '0.0.0' ||
+      (rust && entry.cargoWorkspaceRoot !== 'rust') ||
+      target !== `effect_utils//packages/@overeng/${packagePath}:${name}-product`
     ) {
-      throw new Error(`targets.products[${index}].target is malformed`)
+      throw new Error(`native products[${index}] does not match its Buck target`)
     }
-    return { name, target }
+    return name
   })
-  const targetNames = targetEntries.map(({ name }) => name)
-  const targetLabels = targetEntries.map(({ target }) => target)
-  requireUnique(targetNames, 'native product names')
-  requireUnique(targetLabels, 'native product labels')
-  if (
-    JSON.stringify(sorted(targetNames)) !==
-    JSON.stringify(['otel-scrape', 'otelite', 'typescript-api-server'])
-  ) {
+  requireUnique(nativeProducts, 'native products')
+  if (JSON.stringify(sorted(nativeProducts)) !== JSON.stringify(['otel-scrape', 'otelite', 'typescript-api-server']))
     throw new Error('native product target census changed')
-  }
-  const targetByName = new Map(targetEntries.map(({ name, target }) => [name, target]))
-
-  if (Array.isArray(targets.platforms) === false) {
-    throw new Error('targets.platforms must be an array')
-  }
-  const platformEntries = targets.platforms.map((rawEntry, index) => {
-    const entry = requireRecord(rawEntry, `targets.platforms[${index}]`)
-    requireExactFields({
-      value: entry,
-      fields: ['abi', 'architecture', 'os', 'system'],
-      subject: `targets.platforms[${index}]`,
-    })
-    return {
-      abi: requireString(entry.abi, `targets.platforms[${index}].abi`),
-      architecture: requireString(entry.architecture, `targets.platforms[${index}].architecture`),
-      os: requireString(entry.os, `targets.platforms[${index}].os`),
-      system: requireString(entry.system, `targets.platforms[${index}].system`),
-    }
-  })
-  const platformKeys = platformEntries.map(platformKey)
-  requireUnique(platformKeys, 'native platform tuples')
-  requireUnique(
-    platformEntries.map(({ system }) => system),
-    'native platform systems',
-  )
-
-  const nativeManifest = requireRecord(
-    readJson(sourceRoot, 'nix/buck2-native-products/manifest.json'),
-    'native product manifest',
-  )
-  requireExactFields({
-    value: nativeManifest,
-    fields: ['products', 'schema'],
-    subject: 'native product manifest',
-  })
-  if (nativeManifest.schema !== 'effect-utils/buck2-native-release-products/v1') {
-    throw new Error('native product manifest schema changed')
-  }
-  if (Array.isArray(nativeManifest.products) === false) {
-    throw new Error('native product manifest products must be an array')
-  }
-
-  const contractPath = JSON.stringify(
-    path.join(sourceRoot, 'nix/workspace-tools/lib/buck2-build-product-contract.nix'),
-  )
-  const nativeManifestPath = JSON.stringify(
-    path.join(sourceRoot, 'nix/buck2-native-products/manifest.json'),
-  )
-  run({
-    command: requireString(tools.get('nix'), 'nix tool'),
-    args: [
-      'eval',
-      '--raw',
-      '--impure',
-      '--expr',
-      `let
-  contract = import (builtins.toPath ${contractPath});
-  manifest = builtins.fromJSON (builtins.readFile (builtins.toPath ${nativeManifestPath}));
-  checked = map (entry: contract.verifyDescriptor {
-    descriptor = entry.descriptor;
-    expectedDescriptorDigest = entry.descriptorSha256;
-  }) manifest.products;
-in builtins.deepSeq checked "validated"`,
-    ],
-    cwd: sourceRoot,
-  })
-
-  const expectedMatrixKeys = platformEntries.flatMap((platform) =>
-    targetNames.map((name) => `${name}/${platformKey(platform)}`),
-  )
-  const actualMatrixKeys: string[] = []
-  for (const [index, rawEntry] of nativeManifest.products.entries()) {
-    const entry = requireRecord(rawEntry, `manifest.products[${index}]`)
-    requireExactFields({
-      value: entry,
-      fields: ['descriptor', 'descriptorSha256', 'release'],
-      subject: `manifest.products[${index}]`,
-    })
-    const expectedDescriptorDigest = requireString(
-      entry.descriptorSha256,
-      `manifest.products[${index}].descriptorSha256`,
-    )
-    if (/^sha256:[0-9a-f]{64}$/u.test(expectedDescriptorDigest) === false) {
-      throw new Error(`manifest.products[${index}] has an invalid descriptorSha256`)
-    }
-    const descriptor = requireRecord(entry.descriptor, `manifest.products[${index}].descriptor`)
-    const actualDescriptorDigest = `sha256:${createHash('sha256')
-      .update(canonicalJson(descriptor))
-      .digest('hex')}`
-    if (actualDescriptorDigest !== expectedDescriptorDigest) {
-      throw new Error(`manifest.products[${index}] descriptor digest does not match`)
-    }
-    const name = requireString(descriptor.name, `manifest.products[${index}].descriptor.name`)
-    const platform = requireRecord(
-      descriptor.platform,
-      `manifest.products[${index}].descriptor.platform`,
-    )
-    requireExactFields({
-      value: platform,
-      fields: ['abi', 'architecture', 'os'],
-      subject: `manifest.products[${index}].descriptor.platform`,
-    })
-    const platformValue = {
-      abi: requireString(platform.abi, 'descriptor.platform.abi'),
-      architecture: requireString(platform.architecture, 'descriptor.platform.architecture'),
-      os: requireString(platform.os, 'descriptor.platform.os'),
-    }
-    const key = `${name}/${platformKey(platformValue)}`
-    actualMatrixKeys.push(key)
-    if (platformKeys.includes(platformKey(platformValue)) === false) {
-      throw new Error(`manifest.products[${index}] platform is not admitted`)
-    }
-    const payload = requireRecord(
-      descriptor.payload,
-      `manifest.products[${index}].descriptor.payload`,
-    )
-    const digest = requireRecord(
-      payload.digest,
-      `manifest.products[${index}].descriptor.payload.digest`,
-    )
-    if (digest.algorithm !== 'sha256')
-      throw new Error(`manifest.products[${index}] digest is not sha256`)
-    const release = requireRecord(entry.release, `manifest.products[${index}].release`)
-    requireExactFields({
-      value: release,
-      fields: ['hash', 'name', 'tag', 'url'],
-      subject: `manifest.products[${index}].release`,
-    })
-    if (release.hash !== digest.sri) {
-      throw new Error(`manifest.products[${index}] release hash disagrees with payload`)
-    }
-    const provenance = requireRecord(
-      descriptor.semanticProvenance,
-      `manifest.products[${index}].descriptor.semanticProvenance`,
-    )
-    if (targetByName.get(name) !== provenance.target) {
-      throw new Error(`manifest.products[${index}] has no matching target declaration`)
-    }
-    const tag = requireString(release.tag, `manifest.products[${index}].release.tag`)
-    const tagMatch = new RegExp(
-      `^buck2-native-product-v1-${name}-${platformValue.os}-${platformValue.architecture}-${platformValue.abi}-([0-9a-f]{64})$`,
-      'u',
-    ).exec(tag)
-    if (tagMatch === null) throw new Error(`manifest.products[${index}] release tag is malformed`)
-    const payloadDigest = tagMatch[1]!
-    const releaseName = `${payloadDigest}-${name}-${platformValue.os}-${platformValue.architecture}-${platformValue.abi}.tar`
-    if (release.name !== releaseName) {
-      throw new Error(`manifest.products[${index}] release name disagrees with tag`)
-    }
-    const releaseUrl = `https://github.com/overengineeringstudio/effect-utils/releases/download/${tag}/${releaseName}`
-    if (release.url !== releaseUrl) {
-      throw new Error(`manifest.products[${index}] release URL disagrees with tag and name`)
-    }
-  }
-  requireUnique(actualMatrixKeys, 'native product manifest matrix')
-  if (JSON.stringify(sorted(actualMatrixKeys)) !== JSON.stringify(sorted(expectedMatrixKeys))) {
-    throw new Error('native product manifest does not exactly cover the declared product matrix')
-  }
 
   checkRustToolchainShadows({ sourceRoot, memberPaths: cargoMemberPaths })
 
   return {
     cargoMembers: cargoMemberPaths.length,
-    nativeProducts: nativeManifest.products.length,
+    nativeProducts: nativeProducts.length,
     workspacePackages: packageWorkspaces.length,
   }
 }

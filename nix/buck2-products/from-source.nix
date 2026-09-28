@@ -56,7 +56,7 @@ let
             (repositoryRoot + "/buck2")
             (repositoryRoot + "/packages/@overeng")
           ]
-          ++ lib.optionals (product.kind == "native") [
+          ++ lib.optionals (cargoWorkspaceRoot != null) [
             (repositoryRoot + "/${cargoWorkspaceRoot}")
           ]
         );
@@ -78,6 +78,8 @@ let
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+    lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"
+  }${
     lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
   }${
     lib.optionalString (
@@ -92,13 +94,13 @@ assert lib.assertMsg (
   !isBuildProduct || outputName == "artifact.tar"
 ) "buck2-products: ${product.kind} products must name the build_product payload artifact.tar";
 assert lib.assertMsg (
-  product.kind != "native"
+  cargoWorkspaceRoot == null
   || (
-    cargoWorkspaceRoot != null
+    product.kind == "native"
     && builtins.match "[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*" cargoWorkspaceRoot != null
     && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" cargoWorkspaceRoot)
   )
-) "buck2-products: native products must declare a relative cargoWorkspaceRoot";
+) "buck2-products: cargoWorkspaceRoot must be a safe relative path on a native product";
 assert lib.assertMsg (
   !importNative || isBuildProduct
 ) "buck2-products: importNative requires a native or compiled-executable product";
@@ -133,6 +135,19 @@ let
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
+      ${lib.optionalString (cargoWorkspaceRoot != null) ''
+        # Buck's bundled Rust prelude emits /usr/bin/env bash scripts, which
+        # cannot run inside the Nix sandbox. Patch only its extracted copy.
+        ${buck2}/bin/buck2 ${buckGlobalArgs} expand-external-cell prelude
+        substituteInPlace prelude/utils/cmd_script.bzl prelude/rust/cargo_buildscript.bzl \
+          --replace-fail '#!/usr/bin/env bash' '#!${pkgs.bash}/bin/bash'
+        ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+          # Build scripts link against the portable FHS loader, absent in Nix.
+          substituteInPlace prelude/rust/tools/buildscript_run.py \
+            --replace-fail '            os.path.abspath(buildscript),' \
+            '            ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.stdenv.cc.cc.lib}/lib", os.path.abspath(buildscript)],'
+        ''}
+      ''}
 
       artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg target})"
       test -f "$artifact"

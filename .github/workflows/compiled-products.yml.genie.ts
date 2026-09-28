@@ -22,21 +22,16 @@ const binaryCache = readBinaryCacheDescriptors(
 const protectedMainIf =
   "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
 
-// Protected-main publisher for compiled-executable products
-// (nix/buck2-products/compiled-targets.json). Compiled products are
-// platform-specific store paths, not cache-manifest rows: each lane builds the
-// `.#<name>-compiled` native import on the matching native runner, smokes
-// `--help`, and pushes it to Cachix. The macOS lane publishes ad-hoc signed,
-// unmodified Mach-O bytes. No runner serves aarch64 Linux for this repository,
-// so nothing is published for it: aarch64 Linux consumers build compiled
-// products from source (`.#<name>-compiled` on their own builder).
-// PR proof is in ci.yml (`build-products` for Linux x86_64, the macOS `test`
-// leg for Darwin). A workflow of its own because ci.yml sits at the GitHub
-// Actions workflow size limit.
+// Protected-main publisher for compiled-executable and native products.
+// These are platform-specific imported store paths, not cache-manifest rows:
+// each matching runner builds and smokes the product before publishing it.
+// There is no aarch64 Linux publisher, so its consumers build from source.
+// PR proof uses the same script in ci.yml (`build-products` on Linux x86_64,
+// `test` on Darwin). A separate workflow avoids ci.yml's Actions size limit.
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
 export default ciWorkflow({
   trustTier: 'public',
-  name: 'Compiled Products',
+  name: 'Native and Compiled Products',
   on: {
     push: { branches: ['main'] },
     workflow_dispatch: {},
@@ -71,7 +66,7 @@ export default ciWorkflow({
           triggers: ['push', 'workflow_dispatch'],
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
           step: {
-            name: 'Publish compiled products',
+            name: 'Publish native and compiled products',
             env: githubTokenEnv(),
             run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh --push'),
           },

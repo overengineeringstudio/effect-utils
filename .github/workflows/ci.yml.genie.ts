@@ -363,9 +363,9 @@ const job = ({
   ],
 })
 
-/** Build and `--help`-smoke every compiled-executable product (genie/ci-scripts/compiled-products.sh). */
+/** Build and `--help`-smoke compiled-executable and native products. */
 const compiledProductsSmokeStep = {
-  name: 'Build and smoke compiled products',
+  name: 'Build and smoke native and compiled products',
   env: githubTokenEnv(),
   run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh'),
 } as const

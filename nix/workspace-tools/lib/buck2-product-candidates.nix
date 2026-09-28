@@ -8,7 +8,7 @@
 {
   pkgs,
   products,
-  nativeProducts ? (import ../../buck2-native-products { inherit pkgs; }).products,
+  nativeProducts,
   typeProofCompilerBin,
   oxfmtPkg ? pkgs.oxfmt,
   gitRev ? "unknown",

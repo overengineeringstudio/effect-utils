@@ -71,10 +71,19 @@ rec {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
           netlify-cli = import ./nix/provider-clis/netlify-cli { inherit pkgs; };
         };
-        # Buck is the sole producer for shipped Rust CLIs. Nix imports the exact
-        # reviewed per-tuple release assets and revalidates their descriptors,
-        # payloads, native runtime contracts, and entrypoints.
-        nativeProductPackages = (import ./nix/buck2-native-products { inherit pkgs; }).products;
+        # Native products are built from this pinned source revision, imported
+        # with descriptor/runtime validation and substituted from Cachix.
+        # Cache misses rebuild through the same Buck graph.
+        nativeProductPackages = import ./nix/buck2-products/native.nix {
+          inherit
+            pkgs
+            mkBuckProductFromSource
+            pnpmArchives
+            ;
+          capabilities = buck2Capabilities;
+          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
+          repositoryRoot = ./.;
+        };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
         mkBuckProductFromSource = import ./nix/buck2-products/from-source.nix {
           inherit pkgs buck2;
@@ -199,6 +208,7 @@ rec {
             dirty
             ;
           products = trackedBuck2Products.products;
+          nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
         cliPackages = buck2ProductCandidates // {
@@ -278,7 +288,12 @@ rec {
       devenvModules = {
         # Lightweight native-devenv + effect-utils capture, optionally composed
         # with the full Collector/Tempo/Grafana stack.
-        observability = import ./nix/devenv-modules/observability.nix;
+        observability =
+          args:
+          { pkgs, ... }@moduleArgs:
+          (import ./nix/devenv-modules/observability.nix (
+            { otelite = self.packages.${pkgs.stdenv.hostPlatform.system}.otelite; } // args
+          )) moduleArgs;
         # OpenTelemetry observability stack (Collector + Tempo + Grafana)
         otel = import ./nix/devenv-modules/otel.nix;
         # Shared task modules (parameterized) - meant for reuse in other repos
@@ -363,6 +378,7 @@ rec {
         args:
         import ./nix/workspace-tools/lib/buck2-product-candidates.nix (
           {
+            nativeProducts = self.packages.${args.pkgs.stdenv.hostPlatform.system};
             products = self.buckProducts.${args.pkgs.stdenv.hostPlatform.system}.products;
             typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
           }
@@ -394,6 +410,7 @@ rec {
         args:
         import ./nix/workspace-tools/lib/mk-cli-packages.nix (
           {
+            nativeProducts = self.packages.${args.pkgs.stdenv.hostPlatform.system};
             products = self.buckProducts.${args.pkgs.stdenv.hostPlatform.system}.products;
             typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
           }

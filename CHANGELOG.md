@@ -149,6 +149,14 @@ All notable changes to this project will be documented in this file.
   with exact string equality rather than inline snapshots. Vitest's inline
   snapshot stack-frame inference fails for these async tests under Bun on macOS;
   the expected JSON bytes remain unchanged.
+- **Native Buck product distribution:** `otelite`, `otel-scrape`, and
+  `typescript-api-server` now build from pinned Buck sources through
+  `mkBuckProductFromSource`/`importNative`; protected main publishes the
+  validated Linux x86_64 and Darwin arm64 store paths to Cachix.
+  Linux arm64 builds from source. Flake packages, Genie’s
+  `GENIE_TYPESCRIPT_API_SERVER`, and the observability module consume the
+  source-backed imports. The native GitHub-release manifest, target matrix,
+  and release-asset fetch path are removed.
 - **genie pnpm peer rules:** `commonPnpmPolicySettings` and
   `genie/internal.ts` no longer carry `peerDependencyRules.allowedVersions`
   `eslint: '>=10.0.0'`. Every eslint peer in the lockfile accepts the catalog's
