@@ -69,13 +69,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -450,6 +443,14 @@ jobs:
           process.exit(1)
           NODE
         shell: bash
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -517,13 +518,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -697,6 +691,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -767,13 +769,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -935,6 +930,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -1008,13 +1011,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1176,6 +1172,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -1246,13 +1250,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1409,6 +1406,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -1479,13 +1484,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1642,6 +1640,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -1712,13 +1718,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1875,6 +1874,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -1945,13 +1952,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2158,6 +2158,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -2228,13 +2236,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2392,6 +2393,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -2462,13 +2471,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2625,6 +2627,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -2695,13 +2705,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2858,6 +2861,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -2928,13 +2939,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3098,6 +3102,14 @@ jobs:
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -3152,13 +3164,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -3277,6 +3282,14 @@ jobs:
               effect_utils//packages/@overeng/ci-tools:ci-tools-candidate \
               effect_utils//:editor_view_inputs
           '
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -3312,13 +3325,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -3374,6 +3380,14 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:archives:seed' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:archives:seed'
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -3427,13 +3441,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -3464,6 +3471,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -3509,13 +3524,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - id: publication-scope
         name: Check publication scope
         run: |
@@ -3622,6 +3630,14 @@ jobs:
               --title 'chore(buck2): update product cache manifest' \
               --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'
           fi
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -3666,13 +3682,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -3733,6 +3742,14 @@ jobs:
           export BUCK2_CACHE_WRITE_BASIC_AUTH
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash scripts/buck2-remote-cache-proof.sh
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -3784,13 +3801,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3906,6 +3916,14 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -3989,13 +4007,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -4749,6 +4760,14 @@ jobs:
             !${{ github.workspace }}/tmp/devenv-perf-ci/baseline/**
           if-no-files-found: error
           retention-days: 7
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -4879,13 +4898,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -5475,6 +5487,14 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -5529,13 +5549,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: 'Measure source shape: effect-utils'
         shell: bash
         env:
@@ -5764,6 +5777,14 @@ jobs:
             !tmp/source-shape-ci/baseline/**
           if-no-files-found: error
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -5815,13 +5836,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -8340,6 +8354,14 @@ jobs:
             !tmp/ci-measurement-report/baseline/**
           if-no-files-found: error
           retention-days: 14
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -8391,13 +8413,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -8518,6 +8533,14 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -8583,13 +8606,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -8705,6 +8721,14 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -8767,13 +8791,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -8941,6 +8958,14 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -9003,13 +9028,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -9199,6 +9217,14 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -9343,13 +9369,20 @@ jobs:
           persist-credentials: false
       - name: Prepare Nix
         uses: cachix/install-nix-action@v31
-      - if: ${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
+      - name: Prepare evidence uploader
+        shell: bash
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cli=$(nix build --no-link --print-out-paths .#buck2-evidence) || exit; echo "BUCK2_EVIDENCE_CLI=$cli/bin/buck2-evidence" >> "$GITHUB_ENV"'
+      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
           oauth-client-id: ${{ env.TS_EVIDENCE_CLIENT_ID }}
           audience: ${{ env.TS_EVIDENCE_AUDIENCE }}
           tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
       - name: Close pipeline attempt
         shell: bash
         env:
