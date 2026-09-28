@@ -35,6 +35,25 @@ printf 'invoked\n' >>"$FAKE_REINDEER_CALL_LOG"
 if [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = mutate-lock ]; then
   printf 'rewritten lock bytes\n' >Cargo.lock
 fi
+if [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = git-fetch ] || [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = git-archive ]; then
+  rule=git_fetch
+  [ "$FAKE_REINDEER_BEHAVIOR" = git-fetch ] || rule=git_archive
+  cat <<GRAPH
+crate_archive(
+    name = "example-1.0.0",
+    sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    urls = ["https://static.crates.io/crates/example/example-1.0.0.crate"],
+)
+
+$rule(
+    name = "demo-0123456789abcdef.git",
+    repo = "https://github.com/owner/demo",
+    rev = "0123456789abcdef0123456789abcdef01234567",
+    visibility = [],
+)
+GRAPH
+  exit 0
+fi
 if [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = unpinned ]; then
   cat <<'UNPINNED'
 http_archive(
@@ -159,5 +178,45 @@ export FAKE_REINDEER_BEHAVIOR=generate
 printf "vendor = false\nthird_party_dir = '../../vendor/cargo'\n" >"$WORKSPACE/reindeer.toml"
 "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+
+# Git sources: pinned by a fetched GitHub commit tarball digest in git-archives.json.
+github_archive="$TEMP_ROOT/github/owner/demo/archive/0123456789abcdef0123456789abcdef01234567.tar.gz"
+mkdir -p "$(dirname "$github_archive")" "$TEMP_ROOT/tree/demo-0123456789abcdef0123456789abcdef01234567/src"
+printf 'pub fn demo() {}\n' >"$TEMP_ROOT/tree/demo-0123456789abcdef0123456789abcdef01234567/src/lib.rs"
+tar -C "$TEMP_ROOT/tree" -czf "$github_archive" demo-0123456789abcdef0123456789abcdef01234567
+export BUCK2_RUST_DEPS_GITHUB_ORIGIN="file://$TEMP_ROOT/github"
+export FAKE_REINDEER_BEHAVIOR=git-archive
+"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+git_archives="$THIRD_PARTY/git-archives.json"
+expected_digest="$(sha256sum "$github_archive" | cut -d' ' -f1)"
+grep -Fq "\"sha256\": \"$expected_digest\"" "$git_archives" || fail "generate did not pin the fetched tarball digest"
+grep -Fq '"strip_prefix": "demo-0123456789abcdef0123456789abcdef01234567"' "$git_archives" || fail "generate did not record the tarball prefix"
+grep -Fq '"url": "https://github.com/owner/demo/archive/0123456789abcdef0123456789abcdef01234567.tar.gz"' "$git_archives" || fail "generate did not record the canonical archive url"
+"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+
+printf 'pub fn drifted() {}\n' >"$TEMP_ROOT/tree/demo-0123456789abcdef0123456789abcdef01234567/src/lib.rs"
+tar -C "$TEMP_ROOT/tree" -czf "$github_archive" demo-0123456789abcdef0123456789abcdef01234567
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/git-drift-error"; then
+  fail "gate accepted a git archive whose fetched digest drifted from its pin"
+fi
+grep -Fq 'no longer matches its pinned sha256' "$TEMP_ROOT/git-drift-error" || fail "git archive drift was not diagnosed"
+grep -Fq 'delete this pin from' "$TEMP_ROOT/git-drift-error" || fail "git archive drift error does not name the remedy"
+
+export FAKE_REINDEER_BEHAVIOR=git-fetch
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/git-fetch-error"; then
+  fail "gate accepted an unpinned git_fetch"
+fi
+grep -Fq 'git_fetch = "git_archive"' "$TEMP_ROOT/git-fetch-error" || fail "unpinned git_fetch was not diagnosed"
+
+cp "$git_archives" "$TEMP_ROOT/git-archives.json"
+export FAKE_REINDEER_BEHAVIOR=generate
+"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+[ ! -e "$git_archives" ] || fail "generate kept git pins for a graph without git sources"
+cp "$TEMP_ROOT/git-archives.json" "$git_archives"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/git-stale-error"; then
+  fail "gate accepted git pins for a graph without git sources"
+fi
+grep -Fq 'pins git sources the graph no longer has' "$TEMP_ROOT/git-stale-error" || fail "stale git pins were not diagnosed"
+rm "$git_archives"
 
 echo "Buck2 Rust dependency gate tests passed."

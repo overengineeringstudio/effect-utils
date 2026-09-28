@@ -48,6 +48,7 @@ const snapshot: InspectorSnapshotFrame = {
   protocolVersion: 'rpc-explorer.v1',
   instanceId: 'projection-test',
   revision: 4,
+  descriptorRevision: 0,
   descriptors: [],
   active: [record],
   completed: [],

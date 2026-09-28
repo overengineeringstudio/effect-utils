@@ -21,16 +21,17 @@
 
 [buck2]
   file_watcher = notify
-  default_allow_cache_upload = true
+  allow_cache_uploads = false
   digest_algorithms = SHA256
 
+# Public cache tier (decision 0033): anonymous TLS reads. The posture script
+# adds the protected publisher's writer overlay to `.buckconfig.local`.
 [buck2_re_client]
-  action_cache_address = grpc://dev3:41045
-  cas_address = grpc://dev3:41045
-  engine_address = grpc://dev3:41045
-  http_headers = authorization: Basic $BUCK2_REMOTE_CACHE_BASIC_AUTH
+  action_cache_address = grpc://dev3.tail8108.ts.net:8443
+  cas_address = grpc://dev3.tail8108.ts.net:8443
+  engine_address = grpc://dev3.tail8108.ts.net:8443
   instance_name = effect-utils
-  tls = false
+  tls = true
 
 [archive_origin]
   # Source of truth for trusted local and protected-main seeding. The

@@ -190,7 +190,7 @@ export const packageAllowed = ({
 export const platformGatedPackageNames = (metadata: PnpmLockMetadata): readonly string[] => {
   const gated = new Set<string>()
   for (const [packageKey, packageMetadata] of sortedEntries(metadata.packages)) {
-    if (packageMetadata.resolution !== 'registry') continue
+    if (packageMetadata.resolution === 'workspace') continue
     if (packageAllowed({ metadata, packageKey, platform: portablePnpmPlatform })) continue
     gated.add(packageMetadata.name)
   }
@@ -275,7 +275,7 @@ const isStorePackage = ({
   if (snapshot === undefined) return fail(`unknown snapshot ${snapshotKey}`)
   const packageMetadata = metadata.packages[snapshot.package]
   if (packageMetadata === undefined) return fail(`snapshot ${snapshotKey} has unknown package`)
-  return packageMetadata.resolution === 'registry'
+  return packageMetadata.resolution !== 'workspace'
 }
 
 /**
@@ -319,7 +319,7 @@ const typesCompanionSnapshots = ({
   for (const [snapshotKey, snapshot] of sortedEntries(metadata.snapshots)) {
     const packageMetadata = metadata.packages[snapshot.package]
     if (packageMetadata === undefined) return fail(`snapshot ${snapshotKey} has unknown package`)
-    if (packageMetadata.resolution !== 'registry') continue
+    if (packageMetadata.resolution === 'workspace') continue
     if (packageMetadata.name.startsWith('@types/') === false) continue
     const forName = candidates.get(packageMetadata.name) ?? []
     forName.push(snapshotKey)

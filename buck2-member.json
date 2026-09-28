@@ -69,7 +69,7 @@
     },
     {
       "toolId": "pnpm",
-      "protocol": "pnpm/pnpm/v12.4.1",
+      "protocol": "pnpm/pnpm/v12.7.0",
       "flakePackage": "pnpm",
       "executable": "bin/pnpm"
     },
@@ -167,6 +167,12 @@
       "_tag": "ToolchainAuthority",
       "toolchain": "bun",
       "provides": [
+        {
+          "toolId": "bun-compile-runtime",
+          "protocol": "effect-utils/buck2-bun-compile-runtime/v1",
+          "flakePackage": "buck2-bun-compile-runtime",
+          "executable": "bin/bun"
+        },
         {
           "toolId": "bun",
           "protocol": "effect-utils/buck2-bun/v1",

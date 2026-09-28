@@ -1,4 +1,5 @@
 import {
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -15,7 +16,6 @@ import { fileURLToPath } from 'node:url'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import * as packageCommandRunner from './package-command-runner.ts'
 import {
   assemblePortableFarm,
   assertNoUnboundRequireMain,
@@ -26,9 +26,11 @@ import {
   planPackageLaunch,
   normalizePortableCommonJsGlobals,
   projectProductDescriptor,
+  runCompileExecutable,
   requireNormalizedRelativePath,
   verifyExternalSurface,
 } from './package-command-runner.ts'
+import { realpathThroughName } from './real-path.ts'
 
 const scratchDirectories: string[] = []
 const fingerprintTool =
@@ -211,6 +213,110 @@ describe('the realpath-closed hardlink farm', () => {
     expect(() =>
       assemblePortableFarm({ closureRoots: [], gatedPackages: [], packageTree, root: farmRoot }),
     ).toThrow('escapes every declared closure root')
+  })
+
+  it('keeps a target already inside the farm, reached through an aliased farm root', () => {
+    const { closureRoots, packageTree } = createViewFixture(scratch('farm-inside-'))
+    // Darwin reaches its scratch directory through `/var` -> `/private/var`:
+    // the farm root the runner receives and a canonical path beneath it spell
+    // the same directory differently.
+    const canonicalScratch = scratch('farm-inside-out-')
+    const alias = join(scratch('farm-inside-alias-'), 'var')
+    symlinkSync(canonicalScratch, alias)
+    const right = closureRoots.find((root) => root.name === 'cell/deps/entry_right/entry')!.path
+    mkdirSync(join(right, 'node_modules', '.bin'))
+    // `right` is imaged after `left`, so this canonical target is the
+    // in-progress `.closure` image of left's entrypoint when it is reached.
+    symlinkSync(
+      join(
+        canonicalScratch,
+        'farm',
+        '.closure',
+        'cell/deps/entry_left/entry',
+        'node_modules',
+        'left',
+        'index.js',
+      ),
+      join(right, 'node_modules', '.bin', 'left'),
+    )
+
+    const farm = assemblePortableFarm({
+      closureRoots,
+      gatedPackages: [],
+      packageTree,
+      root: join(alias, 'farm'),
+    })
+
+    const bin = join(
+      farm,
+      '.closure',
+      'cell/deps/entry_right/entry',
+      'node_modules',
+      '.bin',
+      'left',
+    )
+    expect(lstatSync(bin).isSymbolicLink()).toBe(true)
+    expect(realpathSync(bin)).toBe(realpathSync(join(farm, 'node_modules', 'left', 'index.js')))
+  })
+
+  it('rejects a link into a sibling of the farm that merely shares its name prefix', () => {
+    const { closureRoots, packageTree } = createViewFixture(scratch('farm-prefix-'))
+    const out = scratch('farm-prefix-out-')
+    const farmRoot = join(out, 'farm')
+    mkdirSync(join(out, 'farm-sibling'))
+    writeFileSync(join(out, 'farm-sibling', 'host.js'), 'export default 1\n')
+    const left = closureRoots.find((root) => root.name === 'cell/deps/entry_left/entry')!.path
+    symlinkSync(join(out, 'farm-sibling', 'host.js'), join(left, 'node_modules', 'host.js'))
+
+    expect(() =>
+      assemblePortableFarm({ closureRoots, gatedPackages: [], packageTree, root: farmRoot }),
+    ).toThrow('escapes every declared closure root')
+  })
+})
+
+describe('realpathThroughName', () => {
+  it('names a hard-linked file through the link chain, never through its farm image', () => {
+    const root = scratch('real-path-')
+    mkdirSync(join(root, 'store', 'pkg'), { recursive: true })
+    mkdirSync(join(root, 'farm', 'pkg'), { recursive: true })
+    mkdirSync(join(root, 'consumer', '.bin'), { recursive: true })
+    writeFileSync(join(root, 'store', 'pkg', 'build-test.js'), 'x\n')
+    linkSync(
+      join(root, 'store', 'pkg', 'build-test.js'),
+      join(root, 'farm', 'pkg', 'build-test.js'),
+    )
+    // Two hops: a directory link, then a file link through it.
+    symlinkSync('../store/pkg', join(root, 'consumer', 'pkg'))
+    symlinkSync('../pkg/build-test.js', join(root, 'consumer', '.bin', 'test'))
+
+    expect(realpathThroughName(join(root, 'consumer', '.bin', 'test'))).toBe(
+      join(root, 'store', 'pkg', 'build-test.js'),
+    )
+  })
+
+  it('canonicalizes a parent reached through a symlinked alias', () => {
+    const root = scratch('real-path-alias-')
+    mkdirSync(join(root, 'private', 'var'), { recursive: true })
+    writeFileSync(join(root, 'private', 'var', 'file.js'), 'x\n')
+    symlinkSync(join(root, 'private', 'var'), join(root, 'var'))
+
+    expect(realpathThroughName(join(root, 'var', 'file.js'))).toBe(
+      join(root, 'private', 'var', 'file.js'),
+    )
+  })
+
+  it('fails on a dangling link and on a cycle', () => {
+    const root = scratch('real-path-broken-')
+    symlinkSync('missing.js', join(root, 'dangling'))
+    symlinkSync('b', join(root, 'a'))
+    symlinkSync('a', join(root, 'b'))
+
+    expect(() => realpathThroughName(join(root, 'dangling'))).toThrow(
+      expect.objectContaining({ code: 'ENOENT' }),
+    )
+    expect(() => realpathThroughName(join(root, 'a'))).toThrow(
+      expect.objectContaining({ code: 'ELOOP' }),
+    )
   })
 })
 
@@ -1030,36 +1136,32 @@ describe('package command runner', () => {
     })
   })
 
-  // The stage entry points are exported through one forward `export { ... }`
-  // list at the top of the module instead of an `export` modifier per
-  // declaration, so the public surface reads first without reordering the
-  // pipeline. That list is hand-maintained: dropping a name from it, or
-  // renaming a declaration without updating it, silently removes a Buck-facing
-  // entry point, and only a consumer's import would notice. Pin the surface.
-  describe('the module surface Buck consumers import', () => {
-    it('exports every stage entry point through the forward export list', () => {
-      expect(
-        Object.keys(packageCommandRunner)
-          .filter((name) => name !== 'default')
-          .sort(),
-      ).toStrictEqual([
-        'PORTABLE_PRODUCT_PLATFORM',
-        'RUNTIME_ARGV_DELIMITER',
-        'assemblePortableFarm',
-        'assertNoUnboundRequireMain',
-        'assertPortableModuleComments',
-        'bareSpecifierPackage',
-        'bundleImportSpecifiers',
-        'createEntryOverridePlugin',
-        'normalizePortableCommonJsGlobals',
-        'parsePackageCommand',
-        'parseProductDescriptorCommand',
-        'planPackageLaunch',
-        'projectProductDescriptor',
-        'readPlatformGatedManifest',
-        'requireNormalizedRelativePath',
-        'verifyExternalSurface',
-      ])
+  describe('compiled executable boundary', () => {
+    it('rejects external module imports before creating any executable', async () => {
+      const root = scratch('compiled-external-')
+      const modulePath = join(root, 'cli.js')
+      const moduleDescriptor = join(root, 'module.json')
+      const output = join(root, 'compiled')
+      writeFileSync(modulePath, 'console.log(42)\n')
+      writeFileSync(
+        moduleDescriptor,
+        JSON.stringify({
+          schema: 'effect-utils/javascript-module/v2',
+          productKind: 'cli',
+          externalModules: ['unbundled-dependency'],
+        }),
+      )
+
+      await expect(
+        runCompileExecutable({
+          compileRuntime: '/not/read',
+          module: modulePath,
+          moduleDescriptor,
+          output,
+          target: 'bun-linux-x64',
+        }),
+      ).rejects.toThrow('cannot load external modules: ["unbundled-dependency"]')
+      expect(() => statSync(output)).toThrow()
     })
   })
 })

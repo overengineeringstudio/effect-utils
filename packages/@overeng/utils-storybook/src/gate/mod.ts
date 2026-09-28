@@ -12,6 +12,7 @@ export {
   baselineDirEnvVar,
   createStoryGateConfig,
   manifestEnvVar,
+  storyGateModeEnvVar,
   type StoryGateConfigOptions,
   type StoryGateTheme,
 } from './project.ts'

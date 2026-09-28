@@ -46,7 +46,7 @@ support_tool(
 # Contained fixture installs use the repo-pinned pnpm, not ambient Corepack.
 support_tool(
     name = "tool_pnpm",
-    protocol = "pnpm/pnpm/v12.4.1",
+    protocol = "pnpm/pnpm/v12.7.0",
     tool_id = "pnpm",
     visibility = ["PUBLIC"],
 )
@@ -58,6 +58,16 @@ support_tool(
     name = "tool_bun",
     protocol = "effect-utils/buck2-bun/v1",
     tool_id = "bun",
+    visibility = ["PUBLIC"],
+)
+
+# The official Bun release a compiled product embeds (`bun build --compile
+# --compile-executable-path`). Actions only read its bytes; see
+# nix/bun-compile-runtime.nix.
+support_tool(
+    name = "bun_compile_runtime",
+    protocol = "effect-utils/buck2-bun-compile-runtime/v1",
+    tool_id = "bun-compile-runtime",
     visibility = ["PUBLIC"],
 )
 

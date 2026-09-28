@@ -1,4 +1,4 @@
-import { Duration, Effect, Layer, Metric, Queue, Schema, Tracer } from 'effect'
+import { Duration, Effect, Exit, Layer, Metric, Queue, Schema, Scope, Tracer } from 'effect'
 import { Headers } from 'effect/unstable/http'
 import {
   Rpc,
@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest'
 import { RpcExplorerCapture } from './descriptor.ts'
 import { makeExplorer } from './explorer.ts'
 import { ClearHistory, GetSnapshot, Watch } from './inspector.ts'
+import { UnknownDescriptorId } from './model.ts'
 import type { ExplorerBounds, Timestamp } from './model.ts'
 import { defaultNormalizationBounds } from './policy.ts'
 import type {
@@ -188,7 +189,7 @@ describe('explorer composition', () => {
         remoteSnapshot,
         afterRemoteInspector,
         afterSeparateMiddleware,
-        descriptors: explorer.descriptors,
+        descriptors: explorer.descriptors.current().descriptors,
         gauge: retainedGauge?.observe(),
       }
     }).pipe(
@@ -402,5 +403,90 @@ describe('explorer composition', () => {
     ])
     expect(JSON.stringify(result)).not.toContain('secret-host')
     expect(JSON.stringify(result)).not.toContain('reply-HostOverride')
+  })
+
+  it('resolves runtime-registered groups for their Scope and replaces a remounted owner', async () => {
+    const mounted = Rpc.make('MountedRead', { payload: Schema.String, success: Schema.String })
+    const MountedGroup = RpcGroup.make(mounted)
+    const selected: Array<string> = []
+    const result = await Effect.gen(function* () {
+      const explorer = yield* makeExplorer({
+        group: Application,
+        config: {
+          instanceId: 'runtime-descriptors',
+          bounds,
+          capture: ({ tag }) => {
+            selected.push(tag)
+            return undefined
+          },
+          telemetry: {
+            registerRetainedGauge: () => () => {},
+            registerNormalizationHistogram: () => () => {},
+          },
+        },
+      })
+      let requestIndex = 0
+      const observeMounted = Effect.gen(function* () {
+        requestIndex += 1
+        yield* explorer
+          .middleware(Effect.die('handler-outcome-irrelevant'), {
+            client: new Rpc.ServerClient(3),
+            requestId: RpcMessage.RequestId(`mounted-${requestIndex}`),
+            rpc: mounted,
+            payload: 'cursor',
+            headers: Headers.empty,
+          })
+          .pipe(Effect.exit)
+        const events = explorer.store.snapshot().events
+        const observed = events.findLast((event) => event._tag === 'RequestObserved')
+        return observed?._tag === 'RequestObserved' ? observed.descriptorId : undefined
+      })
+      const tagsAt = () => ({
+        revision: explorer.descriptors.current().revision,
+        tags: explorer.descriptors.current().descriptors.map((descriptor) => descriptor.tag),
+      })
+
+      const beforeMount = yield* observeMounted
+      const firstMount = yield* Scope.make()
+      yield* explorer
+        .registerDescriptors({ group: MountedGroup, owner: 'app/v1/provider' })
+        .pipe(Scope.provide(firstMount))
+      const afterMount = yield* observeMounted
+      const mountedSet = tagsAt()
+
+      const remount = yield* Scope.make()
+      yield* explorer
+        .registerDescriptors({ group: MountedGroup, owner: 'app/v1/provider' })
+        .pipe(Scope.provide(remount))
+      yield* Scope.close(firstMount, Exit.void)
+      const afterReplacedClose = yield* observeMounted
+      const remountedSet = tagsAt()
+
+      yield* Scope.close(remount, Exit.void)
+      const afterUnmount = yield* observeMounted
+      return {
+        beforeMount,
+        afterMount,
+        mountedSet,
+        afterReplacedClose,
+        remountedSet,
+        afterUnmount,
+        unmountedSet: tagsAt(),
+      }
+    }).pipe(
+      Effect.scoped,
+      Effect.provideService(Metric.MetricRegistry, new Map()),
+      Effect.runPromise,
+    )
+
+    expect(result.beforeMount).toBe(UnknownDescriptorId)
+    expect(result.afterMount).toMatch(/\/Rpc\/MountedRead$/)
+    expect(result.mountedSet).toEqual({ revision: 1, tags: ['SecretEcho', 'MountedRead'] })
+    expect(result.afterReplacedClose).toBe(result.afterMount)
+    expect(result.remountedSet).toEqual({ revision: 2, tags: ['SecretEcho', 'MountedRead'] })
+    expect(result.afterUnmount).toBe(UnknownDescriptorId)
+    expect(result.unmountedSet).toEqual({ revision: 3, tags: ['SecretEcho'] })
+    // Host capture resolves once per descriptor instance: construction, then each registration.
+    expect(selected.filter((tag) => tag === 'MountedRead')).toHaveLength(2)
   })
 })

@@ -2,7 +2,8 @@
 # Source: BUCK.genie.ts
 
 load("//buck2:package_tools.bzl", "package_bin_artifact")
-load("//buck2/products:defs.bzl", "javascript_product")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
+load("//buck2/products:defs.bzl", "build_product", "bun_compiled_product_executable", "javascript_product")
 
 # Projection source: packages/@overeng/ci-tools/BUCK.genie.ts
 # Projection schema version: 12
@@ -256,5 +257,22 @@ javascript_product(
     module = ":ci-tools-candidate-module",
     product_kind = "cli",
     product_name = "ci-tools",
+    visibility = ["PUBLIC"],
+)
+
+bun_compiled_product_executable(
+    name = "ci-tools-compiled-executable",
+    module = ":ci-tools-candidate-module",
+    product_name = "ci-tools",
+    recipe = "bun-compile:bin/ci-tools.ts",
+    target_platform = host_platform_label(),
+)
+
+build_product(
+    name = "ci-tools-compiled-product",
+    entrypoint = "bin/ci-tools",
+    executable = ":ci-tools-compiled-executable",
+    product_name = "ci-tools",
+    target_platform = host_platform_label(),
     visibility = ["PUBLIC"],
 )

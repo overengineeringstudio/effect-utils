@@ -185,6 +185,7 @@
       "packagePath": "packages/@overeng/effect-rpc-explorer",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/descriptor-set.unit.test.ts",
         "src/descriptor.unit.test.ts",
         "src/explorer.unit.test.ts",
         "src/inspector.unit.test.ts",
@@ -198,6 +199,7 @@
       "target": "effect_utils//packages/@overeng/effect-rpc-explorer:test",
       "taskName": "test:effect-rpc-explorer",
       "testFiles": [
+        "src/descriptor-set.unit.test.ts",
         "src/descriptor.unit.test.ts",
         "src/explorer.unit.test.ts",
         "src/inspector.unit.test.ts",

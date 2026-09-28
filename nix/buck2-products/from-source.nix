@@ -9,7 +9,8 @@
   # Offline crate supply for Rust products (`mkBuck2CargoArchives`); null
   # when the product has no third-party crates.
   cargoArchives ? null,
-  # Native import is constructed here from our own Buck derivation.
+  # Native import is constructed here from our own Buck derivation
+  # (`native` and `compiled-executable` products).
   importNative ? false,
   expectedPlatform ? null,
   runtimeKind ? null,
@@ -23,6 +24,9 @@
 let
   lib = pkgs.lib;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
+  # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
+  cliBuildStamp = product.cliBuildStamp or null;
   source =
     if repositorySource == null then
       lib.fileset.toSource {
@@ -64,22 +68,29 @@ let
   productName = product.name;
   outputName = product.outputName;
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
-  # Descriptor-bearing products: JavaScript product-v2 and native build_product.
-  hasDescriptor = builtins.elem product.kind [
-    "javascript"
+  # `build_product` kinds: a Rust `native` executable or a Bun
+  # `compiled-executable` (`bun build --compile` of a CLI module).
+  isBuildProduct = builtins.elem product.kind [
     "native"
+    "compiled-executable"
   ];
+  # Descriptor-bearing products: JavaScript product-v2 and build_product.
+  hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
     lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
+  }${
+    lib.optionalString (
+      cliBuildStamp != null
+    ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"
   } --local-only --no-remote-cache --console simple --show-simple-output";
 in
 assert lib.assertMsg (
   builtins.match "[0-9a-f]{40}" producerCommit != null
 ) "buck2-products: producerCommit must be a full lowercase Git commit";
 assert lib.assertMsg (
-  product.kind != "native" || outputName == "artifact.tar"
-) "buck2-products: native products must name the build_product payload artifact.tar";
+  !isBuildProduct || outputName == "artifact.tar"
+) "buck2-products: ${product.kind} products must name the build_product payload artifact.tar";
 assert lib.assertMsg (
   product.kind != "native"
   || (
@@ -89,8 +100,16 @@ assert lib.assertMsg (
   )
 ) "buck2-products: native products must declare a relative cargoWorkspaceRoot";
 assert lib.assertMsg (
-  !importNative || product.kind == "native"
-) "buck2-products: importNative requires a native product";
+  !importNative || isBuildProduct
+) "buck2-products: importNative requires a native or compiled-executable product";
+assert lib.assertMsg (
+  cliBuildStamp == null
+  || (
+    builtins.isString cliBuildStamp
+    && cliBuildStamp != ""
+    && builtins.match ".*[\n\r].*" cliBuildStamp == null
+  )
+) "buck2-products: cliBuildStamp must be a non-empty single-line string";
 let
   sourceProduct = pkgs.stdenv.mkDerivation {
     pname = "${safeName}-buck2-from-source";
