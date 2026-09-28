@@ -280,6 +280,11 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.invalid-source-input-stage-path"
 
+  echo "Check: declared source inputs need a provided source, then stage at path and alias"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.unsourced-source-input"
+
   echo "Build: downstream pure-eval profile-dedup regression (standalone effect-utils path)"
   nix build --no-link --no-write-lock-file \
     --override-input effect-utils "path:$WORKSPACE_REAL/effect-utils" \

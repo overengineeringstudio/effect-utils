@@ -89,6 +89,37 @@
           };
           smokeTestArgs = [ ];
         };
+        # Declares a source input in a repo the consumer does not import. pnpm
+        # still packlists it, so the manifest must come from `workspaceSources`.
+        # The root is a derivation output, like a consumer's projected
+        # workspace, whose missing paths only surface when the deps src builds.
+        unsourcedWorkspaceRoot = pkgs.runCommand "mk-pnpm-cli-unsourced-workspace-root" { } ''
+          cp -R ${./fixture-workspace-unsourced-source-input} "$out"
+        '';
+        mkUnsourcedSourceInputFixture =
+          workspaceSources:
+          mkPnpmCli {
+            name = "mk-pnpm-cli-unsourced-source-input-fixture";
+            binaryName = "mk-pnpm-cli-unsourced-source-input-fixture";
+            entry = "app/src/mod.ts";
+            packageDir = "app";
+            workspaceRoot = unsourcedWorkspaceRoot;
+            inherit workspaceSources;
+            depsBuilds = {
+              "." = {
+                hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+              };
+            };
+            smokeTestArgs = [ ];
+          };
+        unsourcedSourceInputFixture = mkUnsourcedSourceInputFixture { };
+        foreignSourceInputRepo = pkgs.runCommand "mk-pnpm-cli-foreign-source-input-repo" { } ''
+          mkdir -p "$out/packages/foreign"
+          printf '{"name":"foreign","version":"0.0.0"}\n' > "$out/packages/foreign/package.json"
+        '';
+        sourcedSourceInputFixture = mkUnsourcedSourceInputFixture {
+          "repos/unsourced" = foreignSourceInputRepo;
+        };
         # Two consumers that differ ONLY in `name` but share the same external
         # install-root profile. Their prepared deps for that shared root must
         # collapse to one in-store derivation (profileKey dedup), while their
@@ -345,6 +376,26 @@
           pkgs.runCommand "mk-pnpm-cli-invalid-source-input-stage-path" { } ''
             touch "$out"
           '';
+        # A declared source input whose repo is not among `workspaceSources`
+        # fails evaluation instead of a missing-file copy in the deps FOD; once
+        # the repo is provided, its manifest is staged at the logical path and
+        # the alias.
+        checks.unsourced-source-input =
+          let
+            evaluation = builtins.tryEval unsourcedSourceInputFixture.passthru.depsSrcByInstallRoot.root.drvPath;
+          in
+          assert !evaluation.success;
+          pkgs.runCommand "mk-pnpm-cli-unsourced-source-input"
+            {
+              depsSrc = sourcedSourceInputFixture.passthru.depsSrcByInstallRoot.root;
+            }
+            ''
+              cmp "$depsSrc/repos/unsourced/packages/foreign/package.json" \
+                ${foreignSourceInputRepo}/packages/foreign/package.json
+              cmp "$depsSrc/.devenv/pnpm-source-inputs/current/repos/unsourced/packages/foreign/package.json" \
+                ${foreignSourceInputRepo}/packages/foreign/package.json
+              touch "$out"
+            '';
         checks.pure-eval-profile-dedup = pkgs.runCommand "mk-pnpm-cli-pure-eval-profile-dedup" { } ''
           actual='${
             builtins.toJSON {
