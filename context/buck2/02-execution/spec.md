@@ -110,6 +110,29 @@ Rust admission converges through the same provider and platform contracts;
 complete-lock Nix vendoring remains the transitional packaging boundary until
 products cross the bridge (BUCK-R10, roadmap Phase 5).
 
+## Compiled JavaScript Executables
+
+`bun_compiled_product_executable` refines EXEC-R01, EXEC-R02, EXEC-R06,
+EXEC-R07, and EXEC-R09. It takes one portable `cli` module-v2 artifact,
+its module descriptor, a declared `ProductPlatformInfo`, and the projected Bun
+toolchains. The build action runs the pinned Nix Bun bundler with
+`bun build <module> --compile --target bun-<os>-<arch>
+--compile-executable-path <official-release-bun>` on the **matching native
+execution platform**. The module must have no external module imports; process
+capabilities remain independently declared. The action outputs an executable
+and a `ProductExecutableInfo` with the platform and provenance bound to the
+bundler and release-runtime identities. `build_product` packages it using the
+same descriptor and runtime inspectors as Rust/Go native products.
+
+The compile runtime is the official, hash-pinned Bun release (the same version
+as the Nix bundler), copied verbatim into a Nix capability. Compiling against
+patched `pkgs.bun` instead embeds its `/nix/store` ELF interpreter in the
+product and fails the store-reference scan. The admitted tuples are Linux
+x86_64 and aarch64 under `elf-dynamic/v1`, plus Darwin aarch64 under
+`mach-o-dynamic/v1`. Neither Buck nor Nix strips or patches Mach-O output:
+Bun's embedded ad-hoc signature is part of the executable and macOS refuses
+the altered bytes.
+
 ## Action Lifecycle
 
 ```text

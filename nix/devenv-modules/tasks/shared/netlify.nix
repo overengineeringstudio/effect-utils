@@ -34,6 +34,114 @@ let
   resolvedNetlifyBin =
     if netlifyBin == null then "${defaultNetlifyCliPkg}/bin/netlify" else netlifyBin;
   hasDeployments = deployments != [ ];
+  stagedTargetsScript = pkgs.writeText "netlify-staged-targets.sh" (
+    builtins.readFile ./netlify-staged-targets.sh
+  );
+
+  urlEnvKeyFor =
+    name:
+    "NETLIFY_DEPLOY_URL_${lib.toUpper (builtins.replaceStrings [ "-" "." "/" ] [ "_" "_" "_" ] name)}";
+
+  # `stageDir` is an absolute directory outside the source tree that holds
+  # one `<target>/` subdirectory per deploy target. The build side writes it;
+  # the credentialed side only reads it, so it never runs the build.
+  readStageDir = taskName: ''
+    stage_dir="$(${pkgs.jq}/bin/jq -r '.stageDir // .stage_dir // empty' <<<"''${DEVENV_TASK_INPUT:-"{}"}")"
+    if [ -z "$stage_dir" ]; then
+      echo "Error: ${taskName} requires 'stageDir' input (e.g. --input stageDir=/tmp/netlify-stage)" >&2
+      exit 1
+    fi
+    case "$stage_dir" in
+      /*) ;;
+      *)
+        echo "Error: ${taskName} requires an absolute 'stageDir', got '$stage_dir'" >&2
+        exit 1
+        ;;
+    esac
+  '';
+
+  # Parses the deploy inputs shared by every target of one task run and
+  # defines `deploy_netlify_target <target> <artifact dir> <default url env
+  # key> [workspace filter]`.
+  deployPrelude = ''
+    input="''${DEVENV_TASK_INPUT:-"{}"}"
+    deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "draft"' <<<"$input")"
+    missing_auth_policy="$(${pkgs.jq}/bin/jq -r '.missingAuthPolicy // .missing_auth_policy // "fail"' <<<"$input")"
+    unauthorized_policy="$(${pkgs.jq}/bin/jq -r '.unauthorizedPolicy // .unauthorized_policy // "fail"' <<<"$input")"
+    url_env_key_input="$(${pkgs.jq}/bin/jq -r '.urlEnvKey // .url_env_key // empty' <<<"$input")"
+    case "$deploy_type" in
+      prod|pr|draft) ;;
+      *)
+        echo "Error: Unknown Netlify deploy type '$deploy_type'. Use: prod, pr, draft" >&2
+        exit 1
+        ;;
+    esac
+    case "$missing_auth_policy" in
+      fail|skip) ;;
+      *)
+        echo "Error: Unknown Netlify missing auth policy '$missing_auth_policy'. Use: fail, skip" >&2
+        exit 1
+        ;;
+    esac
+    case "$unauthorized_policy" in
+      fail|skip) ;;
+      *)
+        echo "Error: Unknown Netlify unauthorized policy '$unauthorized_policy'. Use: fail, skip" >&2
+        exit 1
+        ;;
+    esac
+
+    pr_number=""
+    if [ "$deploy_type" = "pr" ]; then
+      pr_number="$(${pkgs.jq}/bin/jq -r '.pr // empty' <<<"$input")"
+      if [ -z "$pr_number" ]; then
+        echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
+        exit 1
+      fi
+    fi
+
+    ${if siteId != null then "export NETLIFY_SITE_ID=${lib.escapeShellArg siteId}" else ""}
+
+    deploy_netlify_target() {
+      local target="$1"
+      local artifact_dir="$2"
+      local url_env_key="''${url_env_key_input:-$3}"
+      local workspace_filter="''${4:-}"
+      local -a args=(
+        deploy netlify
+        --target "$target"
+        --display-name "$target"
+        --artifact-dir "$artifact_dir"
+        --mode "$deploy_type"
+        --site-name ${lib.escapeShellArg siteName}
+        --site-id-env NETLIFY_SITE_ID
+        --auth-token-env NETLIFY_AUTH_TOKEN
+        --netlify-bin ${lib.escapeShellArg resolvedNetlifyBin}
+        --missing-auth-policy "$missing_auth_policy"
+        --unauthorized-policy "$unauthorized_policy"
+      )
+      if [ -n "$pr_number" ]; then
+        args+=(--pr "$pr_number")
+      fi
+      if [ -n "$workspace_filter" ]; then
+        args+=(--workspace-filter "$workspace_filter")
+      fi
+      if [ -n "''${WORKFLOW_REPORT_OUTPUT_FILE:-}" ]; then
+        args+=(--workflow-report-output-file "$WORKFLOW_REPORT_OUTPUT_FILE")
+      fi
+      if [ -n "''${GITHUB_OUTPUT:-}" ]; then
+        args+=(--github-output-file "$GITHUB_OUTPUT")
+      fi
+      if [ -n "''${GITHUB_ENV:-}" ]; then
+        args+=(--github-env-file "$GITHUB_ENV")
+      fi
+      if [ -n "$url_env_key" ]; then
+        args+=(--url-env-key "$url_env_key")
+      fi
+
+      ${lib.escapeShellArg resolvedCiToolsBin} "''${args[@]}"
+    }
+  '';
 
   mkDeployTask =
     deployment:
@@ -43,119 +151,22 @@ let
       afterTask = deployment.afterTask or null;
       workspaceFilter = deployment.workspaceFilter or false;
       packageJsonPath = "${builtins.dirOf staticDir}/package.json";
-      urlEnvKey =
-        deployment.urlEnvKey or "NETLIFY_DEPLOY_URL_${
-          lib.toUpper (builtins.replaceStrings [ "-" "." "/" ] [ "_" "_" "_" ] name)
-        }";
+      urlEnvKey = deployment.urlEnvKey or (urlEnvKeyFor name);
       after = if afterTask == null then [ ] else [ afterTask ];
-      # `stageDir` is an absolute directory outside the source tree that holds
-      # one `<deployment name>/` subdirectory per target. The build side writes
-      # it; the credentialed side only reads it, so it never runs the build.
-      readStageDir = taskName: ''
-        stage_dir="$(${pkgs.jq}/bin/jq -r '.stageDir // .stage_dir // empty' <<<"''${DEVENV_TASK_INPUT:-"{}"}")"
-        if [ -z "$stage_dir" ]; then
-          echo "Error: ${taskName} requires 'stageDir' input (e.g. --input stageDir=/tmp/netlify-stage)" >&2
-          exit 1
-        fi
-        case "$stage_dir" in
-          /*) ;;
-          *)
-            echo "Error: ${taskName} requires an absolute 'stageDir', got '$stage_dir'" >&2
-            exit 1
-            ;;
-        esac
-      '';
-      deployScript = artifactDirSetup: ''
-        set -euo pipefail
-        ${artifactDirSetup}
-
-        input="''${DEVENV_TASK_INPUT:-"{}"}"
-        deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "draft"' <<<"$input")"
-        missing_auth_policy="$(${pkgs.jq}/bin/jq -r '.missingAuthPolicy // .missing_auth_policy // "fail"' <<<"$input")"
-        unauthorized_policy="$(${pkgs.jq}/bin/jq -r '.unauthorizedPolicy // .unauthorized_policy // "fail"' <<<"$input")"
-        url_env_key="$(${pkgs.jq}/bin/jq -r '.urlEnvKey // .url_env_key // ${builtins.toJSON urlEnvKey}' <<<"$input")"
-        case "$deploy_type" in
-          prod|pr|draft) ;;
-          *)
-            echo "Error: Unknown Netlify deploy type '$deploy_type'. Use: prod, pr, draft" >&2
-            exit 1
-            ;;
-        esac
-        case "$missing_auth_policy" in
-          fail|skip) ;;
-          *)
-            echo "Error: Unknown Netlify missing auth policy '$missing_auth_policy'. Use: fail, skip" >&2
-            exit 1
-            ;;
-        esac
-        case "$unauthorized_policy" in
-          fail|skip) ;;
-          *)
-            echo "Error: Unknown Netlify unauthorized policy '$unauthorized_policy'. Use: fail, skip" >&2
-            exit 1
-            ;;
-        esac
-
-        args=(
-          deploy netlify
-          --target ${lib.escapeShellArg name}
-          --display-name ${lib.escapeShellArg name}
-          --artifact-dir "$artifact_dir"
-          --mode "$deploy_type"
-          --site-name ${lib.escapeShellArg siteName}
-          --site-id-env NETLIFY_SITE_ID
-          --auth-token-env NETLIFY_AUTH_TOKEN
-          --netlify-bin ${lib.escapeShellArg resolvedNetlifyBin}
-          --missing-auth-policy "$missing_auth_policy"
-          --unauthorized-policy "$unauthorized_policy"
-        )
-
-        if [ "$deploy_type" = "pr" ]; then
-          pr_number="$(${pkgs.jq}/bin/jq -r '.pr // empty' <<<"$input")"
-          if [ -z "$pr_number" ]; then
-            echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
-            exit 1
-          fi
-          args+=(--pr "$pr_number")
-        fi
-
-        ${if siteId != null then "export NETLIFY_SITE_ID=${lib.escapeShellArg siteId}" else ""}
-
-        ${
-          if workspaceFilter then
-            ''
-              workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' ${lib.escapeShellArg packageJsonPath})"
-              if [ -n "$workspace_filter" ]; then
-                args+=(--workspace-filter "$workspace_filter")
-              fi
-            ''
-          else
-            ""
-        }
-
-        if [ -n "''${WORKFLOW_REPORT_OUTPUT_FILE:-}" ]; then
-          args+=(--workflow-report-output-file "$WORKFLOW_REPORT_OUTPUT_FILE")
-        fi
-        if [ -n "''${GITHUB_OUTPUT:-}" ]; then
-          args+=(--github-output-file "$GITHUB_OUTPUT")
-        fi
-        if [ -n "''${GITHUB_ENV:-}" ]; then
-          args+=(--github-env-file "$GITHUB_ENV")
-        fi
-        if [ -n "$url_env_key" ]; then
-          args+=(--url-env-key "$url_env_key")
-        fi
-
-        ${lib.escapeShellArg resolvedCiToolsBin} "''${args[@]}"
-      '';
     in
     {
       "netlify:deploy:${name}" = {
         description = "Deploy ${name} to Netlify";
         inherit after;
-        exec = trace.exec "netlify:deploy:${name}" (
-          deployScript "artifact_dir=${lib.escapeShellArg staticDir}"
-        );
+        exec = trace.exec "netlify:deploy:${name}" ''
+          set -euo pipefail
+          ${deployPrelude}
+          workspace_filter=""
+          ${lib.optionalString workspaceFilter ''
+            workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' ${lib.escapeShellArg packageJsonPath})"
+          ''}
+          deploy_netlify_target ${lib.escapeShellArg name} ${lib.escapeShellArg staticDir} ${lib.escapeShellArg urlEnvKey} "$workspace_filter"
+        '';
       };
       "netlify:stage:${name}" = {
         description = "Build ${name} and stage its static output for a separate Netlify deploy";
@@ -172,17 +183,6 @@ let
           mkdir -p "$target_dir"
           cp -RL ${lib.escapeShellArg staticDir}/. "$target_dir/"
         '';
-      };
-      "netlify:deploy-staged:${name}" = {
-        description = "Deploy the staged ${name} static output to Netlify without building it";
-        exec = trace.exec "netlify:deploy-staged:${name}" (deployScript ''
-          ${readStageDir "netlify:deploy-staged:${name}"}
-          artifact_dir="$stage_dir/"${lib.escapeShellArg name}
-          if [ ! -d "$artifact_dir" ] || [ -L "$artifact_dir" ]; then
-            echo "Error: staged Netlify output for ${name} is missing at $artifact_dir" >&2
-            exit 1
-          fi
-        '');
       };
     };
 
@@ -212,10 +212,35 @@ in
           exec = null;
           after = if hasDeployments then map (d: "netlify:stage:${d.name}") deployments else [ ];
         };
+        # The credentialed side evaluates only its own (default-branch)
+        # revision, so it cannot know which targets the build side's revision
+        # configured. It deploys the staged directory names as data instead:
+        # `netlify-staged-targets.sh` admits only real directories with
+        # alias-safe names, and each deploy runs from an empty scratch cwd so
+        # the Netlify CLI never reads project config (monorepo workspaces,
+        # `netlify.toml`, `netlify/functions`) from the repo or the artifact.
         "netlify:deploy-staged" = {
-          description = "Deploy all staged targets to Netlify without building them";
-          exec = null;
-          after = if hasDeployments then map (d: "netlify:deploy-staged:${d.name}") deployments else [ ];
+          description = "Deploy every staged target to Netlify without building it";
+          exec = trace.exec "netlify:deploy-staged" ''
+            set -euo pipefail
+            ${readStageDir "netlify:deploy-staged"}
+            targets="$(${pkgs.bash}/bin/bash ${stagedTargetsScript} "$stage_dir")"
+            ${deployPrelude}
+            deploy_cwd="$(${pkgs.coreutils}/bin/mktemp -d)"
+            trap '${pkgs.coreutils}/bin/rm -rf "$deploy_cwd"' EXIT
+            cd "$deploy_cwd"
+            failed=()
+            while IFS= read -r target; do
+              url_key="''${target^^}"
+              if ! deploy_netlify_target "$target" "$stage_dir/$target" "NETLIFY_DEPLOY_URL_''${url_key//-/_}"; then
+                failed+=("$target")
+              fi
+            done <<<"$targets"
+            if [ "''${#failed[@]}" -gt 0 ]; then
+              echo "Error: Netlify deploy failed for staged targets: ''${failed[*]}" >&2
+              exit 1
+            fi
+          '';
         };
       }
     ]
