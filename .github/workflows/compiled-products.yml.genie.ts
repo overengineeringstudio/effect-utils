@@ -1,5 +1,6 @@
 import {
   RUNNER_PROFILES,
+  type RunnerProfile,
   bashShellDefaults,
   cachixCliBuildStep,
   cachixPushStep,
@@ -9,7 +10,6 @@ import {
   type CiWorkflowArgs,
   githubTokenEnv,
   installNixStep,
-  linuxArm64Runner,
   namespaceRunner,
   readBinaryCacheDescriptors,
   withCiSourceRoot,
@@ -27,8 +27,9 @@ const protectedMainIf =
 // platform-specific store paths, not cache-manifest rows: each lane builds the
 // `.#<name>-compiled` native import on the matching native runner, smokes
 // `--help`, and pushes it to Cachix. The macOS lane publishes ad-hoc signed,
-// unmodified Mach-O bytes; aarch64 Linux runs on dev4's fleet runner because
-// Namespace's standard product matrix exposes only Linux x86_64 and Darwin arm64.
+// unmodified Mach-O bytes. No runner serves aarch64 Linux for this repository,
+// so nothing is published for it: aarch64 Linux consumers build compiled
+// products from source (`.#<name>-compiled` on their own builder).
 // PR proof is in ci.yml (`build-products` for Linux x86_64, the macOS `test`
 // leg for Darwin). A workflow of its own because ci.yml sits at the GitHub
 // Actions workflow size limit.
@@ -50,17 +51,12 @@ export default ciWorkflow({
       if: protectedMainIf,
       strategy: {
         'fail-fast': false,
-        matrix: {
-          include: [
-            ...RUNNER_PROFILES.map((runner) => ({
-              runner,
-              'runs-on': namespaceRunner({ profile: runner, runId: '${{ github.run_id }}' }),
-            })),
-            { runner: linuxArm64Runner[0], 'runs-on': [...linuxArm64Runner] },
-          ],
-        },
+        matrix: { runner: [...RUNNER_PROFILES] },
       },
-      'runs-on': '${{ matrix.runs-on }}',
+      'runs-on': namespaceRunner({
+        profile: '${{ matrix.runner }}' as RunnerProfile,
+        runId: '${{ github.run_id }}',
+      }),
       'timeout-minutes': 120,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,

@@ -78,8 +78,10 @@ All notable changes to this project will be documented in this file.
   `compiledExecutable: true` emits `<name>-compiled-product` and a
   `packages.<system>.<name>-compiled` row (fixture: `ci-tools-compiled`). PRs
   build and `--help`-smoke it in `build-products` (Linux) and the macOS `test`
-  leg; `.github/workflows/compiled-products.yml` publishes each platform import
-  to Cachix from protected main. No cache-manifest row: the per-platform store
+  leg; `.github/workflows/compiled-products.yml` publishes the Linux x86_64 and
+  Darwin arm64 imports to Cachix from protected main. aarch64 Linux is admitted
+  but not published (no runner serves this repository): those consumers build
+  compiled products from source. No cache-manifest row: the per-platform store
   path is the distribution unit.
 
 - **@overeng/effect-rpc-explorer runtime descriptors**:

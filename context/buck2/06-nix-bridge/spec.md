@@ -131,7 +131,9 @@ derivation imports its own platform tuple. It has no JS/package cache-manifest
 row: the immutable imported Nix store path is the distribution unit.
 
 On protected main, the compiled-product publisher builds that imported
-derivation on each admitted native runner and pushes it to Cachix. Pull-request
+derivation on the Linux x86_64 and Darwin arm64 runners and pushes it to
+Cachix. aarch64 Linux is admitted but unpublished; its consumers build the
+import from source. Pull-request
 jobs build and smoke the same import without a write credential. Darwin builds
 run on the macOS arm64 runner; the import inspects but does not strip, patch,
 or re-sign Bun's embedded Mach-O ad-hoc signature. The signing inspector
