@@ -70,7 +70,9 @@ All notable changes to this project will be documented in this file.
 - **Buck2 cache products**: Publish `@overeng/effect-rpc-explorer`,
   `@overeng/effect-rpc-explorer-react`, and its runtime dependency
   `@overeng/stylex-tokens` as package archives in the product manifest so
-  external consumers can install the complete explorer package graph.
+  external consumers can install the complete explorer package graph. The
+  React package requires its host's `@stylexjs/stylex` peer rather than
+  installing a second StyleX runtime.
 
 - **Buck2 `compiled-executable` product kind**: `bun_compiled_product_executable`
   (`buck2/products/defs.bzl`) compiles a fully bundled `cli` module with
