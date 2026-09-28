@@ -430,6 +430,21 @@ const cargoBuck2PackageProjectionFor = ({
       ).join(', ')}`,
     )
   }
+  // A member's one `:lib` compiles with the workspace's unified normal-edge features;
+  // a build-dependency request (resolved separately for the host by resolver 2) would
+  // silently not reach it.
+  const memberBuildFeatureRequests = buildDependencies.filter(
+    (dependency) =>
+      dependency.label.startsWith(`${context.thirdPartyPackage}:`) === false &&
+      (dependency.features.length > 0 || dependency.defaultFeatures === false),
+  )
+  if (memberBuildFeatureRequests.length > 0) {
+    throw new Error(
+      `Cargo build dependencies on first-party packages cannot request features or disable default features in ${member.manifestPath}: ${sorted(
+        memberBuildFeatureRequests.map((dependency) => dependency.name),
+      ).join(', ')}`,
+    )
+  }
   const unresolvedProductionDependencies = [
     ...activeNormalDependencies,
     ...activeConditionalNormalDependencies.map((entry) => entry.dependency),
@@ -661,10 +676,25 @@ const cargoBuck2PackageProjectionFor = ({
   if (buildScript !== undefined) {
     const buildScriptBuild = `${packageName}-build-script-build`
     const buildScriptLauncher = `${packageName}-build-script`
+    const semver = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version)
+    if (semver === null) {
+      throw new Error(`Cargo package version ${version} is not semver in ${member.manifestPath}`)
+    }
+    const packageFiles = sorted([...new Set(['Cargo.toml', buildScript.path, ...sources])])
+    const duplicateInputs = buildScript.inputs
+      .filter(
+        (input) =>
+          input.label === undefined &&
+          packageFiles.includes(input.path.slice(packagePath.length + 1)) === true,
+      )
+      .map((input) => input.path)
+    if (duplicateInputs.length > 0) {
+      throw new Error(
+        `buildScriptInputs repeat files the build script already sees (Cargo.toml, the build script, Rust sources) in ${member.manifestPath}: ${duplicateInputs.join(', ')}`,
+      )
+    }
     const manifestEntries: readonly (readonly [string, string])[] = [
-      ...['Cargo.toml', buildScript.path, ...sources].map(
-        (file) => [`${packagePath}/${file}`, file] as const,
-      ),
+      ...packageFiles.map((file) => [`${packagePath}/${file}`, file] as const),
       ...buildScript.inputs.map(
         (input) => [input.path, input.label ?? input.path.slice(packagePath.length + 1)] as const,
       ),
@@ -702,6 +732,19 @@ const cargoBuck2PackageProjectionFor = ({
       // `$CARGO_MANIFEST_DIR/../<pkg>/<file>` reaches the declared inputs.
       `    buildscript_rule = ${starlarkString(`:${buildScriptLauncher}`)},`,
       `    manifest_dir = ${starlarkString(`:${buildScriptLauncher}`)},`,
+      // Cargo always sets these for build scripts; Prelude supplies the rest. Buck
+      // compiles with -Copt-level=0 and no debuginfo, Cargo's `dev` shape without `-g`.
+      '    env = {',
+      ...Object.entries({
+        CARGO_PKG_VERSION_MAJOR: semver[1] ?? '',
+        CARGO_PKG_VERSION_MINOR: semver[2] ?? '',
+        CARGO_PKG_VERSION_PATCH: semver[3] ?? '',
+        CARGO_PKG_VERSION_PRE: semver[4] ?? '',
+        DEBUG: 'false',
+        NUM_JOBS: '1',
+        PROFILE: 'debug',
+      }).map(([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`),
+      '    },',
       ...featureLines,
       `    version = ${starlarkString(version)},`,
       ')',

@@ -1167,6 +1167,15 @@ describe('Cargo build scripts', () => {
         '    package_name = "axe",',
         '    buildscript_rule = ":axe-build-script",',
         '    manifest_dir = ":axe-build-script",',
+        '    env = {',
+        '        "CARGO_PKG_VERSION_MAJOR": "0",',
+        '        "CARGO_PKG_VERSION_MINOR": "1",',
+        '        "CARGO_PKG_VERSION_PATCH": "0",',
+        '        "CARGO_PKG_VERSION_PRE": "",',
+        '        "DEBUG": "false",',
+        '        "NUM_JOBS": "1",',
+        '        "PROFILE": "debug",',
+        '    },',
         '    version = "0.1.0",',
         ')',
       ].join('\n'),
@@ -1175,6 +1184,31 @@ describe('Cargo build scripts', () => {
       '    env = {\n        "CARGO_PKG_NAME": "axe",\n        "CARGO_PKG_VERSION": "0.1.0",\n        "OUT_DIR": "$(location :axe-build-script-run[out_dir])",\n    },\n    rustc_flags = ["@$(location :axe-build-script-run[rustc_flags])"],',
     )
     expect(rendered).toMatch(/"build\.rs",\n {8}"data\/table\.txt",/)
+  })
+
+  it('rejects inputs repeating package files and feature requests on member build deps', () => {
+    expect(() => render({ buildScriptInputs: [{ path: 'rust/axe/src/lib.rs' }] })).toThrow(
+      'buildScriptInputs repeat files the build script already sees (Cargo.toml, the build script, Rust sources) in rust/axe/Cargo.toml: rust/axe/src/lib.rs',
+    )
+    for (const request of ['features = ["x"]', 'default-features = false']) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            axe: {
+              manifest: `[package]\nname = "axe"\n\n[build-dependencies]\ncodegen = { path = "../codegen", ${request} }`,
+              files: ['src/lib.rs', 'build.rs'],
+            },
+            codegen: {
+              manifest: '[package]\nname = "codegen"\n\n[features]\nx = []',
+              files: ['src/lib.rs'],
+            },
+          },
+          render: 'axe',
+        }),
+      ).toThrow(
+        'Cargo build dependencies on first-party packages cannot request features or disable default features in rust/axe/Cargo.toml: codegen',
+      )
+    }
   })
 
   it('honors package.build paths and ignores build dependencies without a script', () => {

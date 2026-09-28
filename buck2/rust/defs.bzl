@@ -94,6 +94,9 @@ def _cargo_build_script_impl(ctx):
             "#!{}".format(shell.store_path),
             "set -eu",
             'here=$(cd -P -- "${0%/*}" && pwd)',
+            # Prelude sets RUSTC relative to the directory it runs the script in; Cargo
+            # promises a RUSTC runnable from the build script, so pin it before moving.
+            'case "${RUSTC:-}" in "" | /*) ;; *) export RUSTC="$PWD/$RUSTC" ;; esac',
             cmd_args(
                 cmd_args(package_dir, relative_to = (launcher, 1), quote = "shell"),
                 format = 'cd -P -- "$here"/{}',
