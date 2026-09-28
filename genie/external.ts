@@ -535,7 +535,6 @@ export const commonPnpmPolicySettings = {
       // TS 7 and raises its own floor to `>=7.0.0` in `genie/internal.ts`, which is what the
       // generated `pnpm-workspace.yaml` carries.
       typescript: '>=6.0.0',
-      eslint: '>=10.0.0',
       vitest: '>=4.0.0',
       // @stylexjs/unplugin@0.19 declares unplugin ^2 but works with v3;
       // proven by the effect-schema-form-aria StyleX pilot (build + storybook).

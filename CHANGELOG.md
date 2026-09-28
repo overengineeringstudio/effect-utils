@@ -119,6 +119,13 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+- **genie pnpm peer rules:** `commonPnpmPolicySettings` and
+  `genie/internal.ts` no longer carry `peerDependencyRules.allowedVersions`
+  `eslint: '>=10.0.0'`. Every eslint peer in the lockfile accepts the catalog's
+  eslint 10.10.0, so the rule masked nothing. The `typescript` and `vitest`
+  entries stay: `bun-ffi-structs@0.3.1` peers `typescript ^5` but resolves
+  TypeScript 7.0.2, and `@effect/vitest` 4.0.0-rc.113 peers `vitest >=5 <6`
+  against the catalog's vitest 4.1.9 (#1468).
 - **Prepared pnpm trees:** remove the pacquet stage-twin rewrite and rejection
   workaround now that pnpm 12.7 serializes package writers within each target
   directory upstream.
