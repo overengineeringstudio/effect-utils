@@ -54,7 +54,6 @@ const requireStrings = (
   return value
 }
 
-
 const requireExactFields = ({
   value,
   fields,
@@ -192,7 +191,6 @@ const checkNixSource = ({
   })
   return { checkedFiles: nixPaths.length }
 }
-
 
 const checkWorkspaceContract = ({
   sourceRoot,
@@ -455,7 +453,10 @@ const checkWorkspaceContract = ({
     return name
   })
   requireUnique(nativeProducts, 'native products')
-  if (JSON.stringify(sorted(nativeProducts)) !== JSON.stringify(['otel-scrape', 'otelite', 'typescript-api-server']))
+  if (
+    JSON.stringify(sorted(nativeProducts)) !==
+    JSON.stringify(['otel-scrape', 'otelite', 'typescript-api-server'])
+  )
     throw new Error('native product target census changed')
 
   checkRustToolchainShadows({ sourceRoot, memberPaths: cargoMemberPaths })
