@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import type { Scope } from 'effect'
 import { Cause, type Duration, Effect, Fiber, Option, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
-import * as Process from 'effect/unstable/process'
+import * as Process from 'effect/process'
 
 import { type OtelAttrEncodeError, type OtelOperationDefinition } from '@overeng/otel-contract'
 

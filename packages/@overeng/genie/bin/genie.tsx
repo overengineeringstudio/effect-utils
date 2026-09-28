@@ -2,7 +2,7 @@
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
 import { runTuiMain } from '@overeng/tui-react/node'

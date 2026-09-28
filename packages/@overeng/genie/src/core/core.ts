@@ -4,7 +4,7 @@ import path from 'node:path'
 import { Effect, FileSystem, Option, Ref } from 'effect'
 import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
-import type * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
+import type * as CommandExecutor from 'effect/process/ChildProcessSpawner'
 
 import { assertNever } from '@overeng/utils'
 

@@ -1,10 +1,10 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
 import { Effect } from 'effect'
-import { formatSocketAddress } from 'effect/unstable/net/NetAddress'
-import type { Socket as SocketType, SocketError } from 'effect/unstable/socket/Socket'
-import { readerString } from 'effect/unstable/socket/Socket'
-import { SocketServer } from 'effect/unstable/socket/SocketServer'
+import { formatSocketAddress } from 'effect/net/NetAddress'
+import type { Socket as SocketType, SocketError } from 'effect/socket/Socket'
+import { readerString } from 'effect/socket/Socket'
+import { SocketServer } from 'effect/socket/SocketServer'
 
 /**
  * Example: WebSocket echo server.

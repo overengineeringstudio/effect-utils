@@ -1,6 +1,6 @@
 import { Duration, Effect, Queue, Schema } from 'effect'
-import { Headers } from 'effect/unstable/http'
-import { Rpc, RpcGroup, RpcMessage, RpcSerialization, type RpcServer } from 'effect/unstable/rpc'
+import { Headers } from 'effect/http'
+import { Rpc, RpcGroup, RpcMessage, RpcSerialization, type RpcServer } from 'effect/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { makeServerExplorerMiddleware } from './middleware.ts'

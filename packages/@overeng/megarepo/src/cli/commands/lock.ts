@@ -5,7 +5,7 @@
  */
 
 import { Effect } from 'effect'
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 
 import { outputOption, resolveOutputOption, verboseOption } from '../context.ts'
 import { runCommand } from './engine.ts'

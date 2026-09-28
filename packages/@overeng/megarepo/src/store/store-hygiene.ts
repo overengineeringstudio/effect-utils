@@ -8,7 +8,7 @@
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import {
   type MegarepoConfig,

@@ -3,7 +3,7 @@
  *
  * Real-time CI debugging — per-job status, log fetching, and structured annotations.
  */
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 
 import { authCommand } from './node/commands/auth.ts'
 import { inspectCommand } from './node/commands/inspect.ts'

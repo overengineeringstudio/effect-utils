@@ -23,15 +23,15 @@
     "@overeng/notion-effect-schema": "workspace:^"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-rc.113",
+    "@effect/vitest": "4.0.0-rc.118",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
-    "effect": "4.0.0-rc.113",
+    "effect": "4.0.0-rc.118",
     "typescript": "7.0.2",
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "4.0.0-rc.113"
+    "effect": "4.0.0-rc.118"
   },
   "publishConfig": {
     "access": "public",

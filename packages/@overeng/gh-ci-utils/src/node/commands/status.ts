@@ -4,7 +4,7 @@ import { Duration, Effect, Option } from 'effect'
  *
  * Single-run CI view with errors/annotations.
  */
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 import React from 'react'
 
 import type { OutputModeValue } from '@overeng/tui-react/node'

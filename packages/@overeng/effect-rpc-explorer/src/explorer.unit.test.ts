@@ -1,13 +1,6 @@
 import { Duration, Effect, Exit, Layer, Metric, Queue, Schema, Scope, Tracer } from 'effect'
-import { Headers } from 'effect/unstable/http'
-import {
-  Rpc,
-  RpcClient,
-  RpcGroup,
-  RpcMessage,
-  RpcSerialization,
-  RpcServer,
-} from 'effect/unstable/rpc'
+import { Headers } from 'effect/http'
+import { Rpc, RpcClient, RpcGroup, RpcMessage, RpcSerialization, RpcServer } from 'effect/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { RpcExplorerCapture } from './descriptor.ts'

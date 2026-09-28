@@ -16,7 +16,7 @@ import { StatusView } from '@megarepo-internal/cli/renderers/StatusOutput/mod.ts
 import * as statusFixtures from '@megarepo-internal/cli/renderers/StatusOutput/stories/_fixtures.ts'
 import { StoreView } from '@megarepo-internal/cli/renderers/StoreOutput/mod.ts'
 import * as storeFixtures from '@megarepo-internal/cli/renderers/StoreOutput/stories/_fixtures.ts'
-import { Atom } from 'effect/unstable/reactivity'
+import { Atom } from 'effect/reactivity'
 
 import { renderViewToLines } from './_render-helper.ts'
 

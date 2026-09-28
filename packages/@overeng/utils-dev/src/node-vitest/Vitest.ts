@@ -14,9 +14,9 @@ import * as inspector from 'node:inspector'
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
 import { type Cause, Effect, identity, Layer, type Schema, type Scope } from 'effect'
-import type * as Arbitrary from 'effect/unstable/arbitrary/Arbitrary'
-import { FetchHttpClient } from 'effect/unstable/http'
-import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
+import type * as Arbitrary from 'effect/Arbitrary'
+import { FetchHttpClient } from 'effect/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/observability'
 
 import { otlpTracesUrl } from '../otelite/otlp-url.ts'
 

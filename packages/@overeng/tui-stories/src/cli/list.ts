@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Command, Flag as Options } from 'effect/unstable/cli'
+import { Command, Flag as Options } from 'effect/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'

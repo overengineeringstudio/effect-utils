@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
-import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
-import { Rpc, RpcGroup, RpcMiddleware } from 'effect/unstable/rpc'
+import * as OpenApi from 'effect/http-api/OpenApi'
+import { Rpc, RpcGroup, RpcMiddleware } from 'effect/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { makeRpcDescriptors, RpcExplorerCapture, RpcExplorerObserve } from './descriptor.ts'

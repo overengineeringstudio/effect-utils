@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Option, Schema, type Scope, Stream } from 'effect'
-import { HttpClient } from 'effect/unstable/http/HttpClient'
+import { HttpClient } from 'effect/http/HttpClient'
 
 import {
   type DatabaseFilter,

@@ -5,10 +5,10 @@
  */
 
 import { Effect, Option } from 'effect'
+import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
-import * as Cli from 'effect/unstable/cli'
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as Command from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'

@@ -288,13 +288,13 @@ export const catalog = defineCatalog({
   // Effect ecosystem
   // Effect 4 RC cohort (see `effectV4Cohort`): platform/cli/rpc/schema/http/
   // socket/process/ai/cluster/workflow/sql and Atom reactivity are merged into
-  // the `effect` core package (mostly under `effect/unstable/*`); only these
+  // the `effect` core package (mostly under `effect/*`); only these
   // packages remain separate.
-  effect: '4.0.0-rc.113',
-  '@effect/platform-node': '4.0.0-rc.113',
-  '@effect/vitest': '4.0.0-rc.113',
-  '@effect/opentelemetry': '4.0.0-rc.113',
-  '@effect/atom-react': '4.0.0-rc.113',
+  effect: '4.0.0-rc.118',
+  '@effect/platform-node': '4.0.0-rc.118',
+  '@effect/vitest': '4.0.0-rc.118',
+  '@effect/opentelemetry': '4.0.0-rc.118',
+  '@effect/atom-react': '4.0.0-rc.118',
 
   // React ecosystem
   react: '19.2.8',
@@ -478,7 +478,7 @@ export const catalog = defineCatalog({
   'is-dom': '1.1.0',
 
   // OpenTUI / Effect Atom (experimental)
-  // Effect 4 moved Atom reactivity into core (`effect/unstable/reactivity`);
+  // Effect 4 moved Atom reactivity into core (`effect/reactivity`);
   // only the React bindings remain a separate package, under the @effect scope.
   '@opentui/core': '0.5.11',
   '@opentui/react': '0.5.11',
@@ -549,7 +549,7 @@ export const commonPnpmPolicySettings = {
   // The Effect 4 RC cohort moves fast; keep minimum-release-age strict
   // globally but let these advance immediately during the coordinated
   // migration window.
-  minimumReleaseAgeExclude: ['@types/node', ...effectV4Cohort],
+  minimumReleaseAgeExclude: ['@types/node', ...effectV4Cohort, '@effect/platform-node-shared'],
   pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,

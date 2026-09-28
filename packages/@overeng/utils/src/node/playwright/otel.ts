@@ -13,8 +13,8 @@
  */
 
 import { Effect, Layer, type Option, Schema, Tracer } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
-import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
+import { FetchHttpClient } from 'effect/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/observability'
 
 /**
  * Minimal parent span context needed to join an existing trace across process boundaries.

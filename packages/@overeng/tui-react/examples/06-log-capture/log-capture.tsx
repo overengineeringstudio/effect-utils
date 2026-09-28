@@ -12,7 +12,7 @@
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
-import { Command } from 'effect/unstable/cli'
+import { Command } from 'effect/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'

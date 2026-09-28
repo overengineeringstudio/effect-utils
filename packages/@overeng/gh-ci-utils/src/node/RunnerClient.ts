@@ -2,7 +2,7 @@ import { Duration, Effect, Schema } from 'effect'
 /**
  * Client for querying runner-scaler /jobs endpoint on self-hosted runners.
  */
-import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
+import { HttpClient, HttpClientRequest } from 'effect/http'
 
 import { RUNNER_SCALER_PORT } from '../isomorphic/lib/constants.ts'
 

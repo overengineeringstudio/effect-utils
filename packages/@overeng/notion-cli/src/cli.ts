@@ -2,7 +2,7 @@
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Cause, Effect, type Exit, Layer, Option, Schema } from 'effect'
-import { CliOutput, Command } from 'effect/unstable/cli'
+import { CliOutput, Command } from 'effect/cli'
 
 import { editorExitCode } from '@overeng/notion-md'
 import { ServiceIdentity } from '@overeng/otel-contract'

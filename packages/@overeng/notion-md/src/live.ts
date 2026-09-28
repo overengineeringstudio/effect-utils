@@ -1,5 +1,5 @@
 import { Effect, Layer, Stream } from 'effect'
-import { HttpClient } from 'effect/unstable/http'
+import { HttpClient } from 'effect/http'
 
 import {
   NotionBlocks,

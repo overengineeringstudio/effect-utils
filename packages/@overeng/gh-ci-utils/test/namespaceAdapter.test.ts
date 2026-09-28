@@ -13,14 +13,14 @@
  */
 import { Effect, Layer, Sink, Stream } from 'effect'
 import * as PlatformError from 'effect/PlatformError'
-import * as ChildProcess from 'effect/unstable/process/ChildProcess'
+import * as ChildProcess from 'effect/process/ChildProcess'
 import {
   ChildProcessSpawner,
   ExitCode,
   ProcessId,
   make as makeSpawner,
   makeHandle,
-} from 'effect/unstable/process/ChildProcessSpawner'
+} from 'effect/process/ChildProcessSpawner'
 import { describe, expect, it } from 'vitest'
 
 import {

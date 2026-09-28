@@ -5,9 +5,9 @@ import { Effect, Option, Schema, Stream } from 'effect'
  * Session management for internal GitHub API access.
  * Opens a Playwright browser for GitHub login, extracts the `user_session` cookie.
  */
-import * as Cli from 'effect/unstable/cli'
-import * as ChildProcess from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as Cli from 'effect/cli'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import {
   type OutputModeValue,

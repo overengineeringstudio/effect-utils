@@ -14,8 +14,8 @@ import {
   Schema,
   Stream,
 } from 'effect'
-import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
-import { FetchHttpClient } from 'effect/unstable/http'
+import { Argument as Args, Command, Flag as Options } from 'effect/cli'
+import { FetchHttpClient } from 'effect/http'
 
 import {
   NMD_SYNC_DIRECTORY,

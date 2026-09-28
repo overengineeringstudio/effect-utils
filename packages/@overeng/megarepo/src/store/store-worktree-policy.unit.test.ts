@@ -1,6 +1,6 @@
 import { describe, it } from '@effect/vitest'
 import { Schema } from 'effect'
-import * as Arbitrary from 'effect/unstable/arbitrary/Arbitrary'
+import * as Arbitrary from 'effect/Arbitrary'
 import { expect } from 'vitest'
 
 import type { StoreGcConfig } from './store-gc-config.ts'

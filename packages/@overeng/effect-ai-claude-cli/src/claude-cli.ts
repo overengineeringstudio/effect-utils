@@ -1,14 +1,14 @@
 import { Effect, Exit, flow, Layer, Ref, Schema, Scope, Stream } from 'effect'
-import type { PlatformError } from 'effect/PlatformError'
 /**
  * Claude CLI LanguageModel provider for Effect AI
  *
  * Implements the LanguageModel interface by delegating to the `claude` CLI,
  * allowing use without API keys by re-using Claude CLI authentication.
  */
-import { AiError, LanguageModel, type Prompt, type Response } from 'effect/unstable/ai'
-import * as Command from 'effect/unstable/process/ChildProcess'
-import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
+import { AiError, LanguageModel, type Prompt, type Response } from 'effect/ai'
+import type { PlatformError } from 'effect/PlatformError'
+import * as Command from 'effect/process/ChildProcess'
+import * as CommandExecutor from 'effect/process/ChildProcessSpawner'
 
 import {
   ClaudeCliAuthError,

@@ -2,7 +2,7 @@
 
 import { NodeHttpClient, NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Cause, Effect, Layer, Logger } from 'effect'
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 
 import { compactFormatError, runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'

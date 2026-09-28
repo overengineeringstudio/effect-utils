@@ -11,7 +11,7 @@
       "unix-dgram": false
     },
     "overrides": {
-      "@effect/platform-node-shared": "4.0.0-rc.113"
+      "@effect/platform-node-shared": "4.0.0-rc.118"
     },
     "packageExtensions": {
       "storybook": {
@@ -34,7 +34,8 @@
       "@effect/platform-node",
       "@effect/vitest",
       "@effect/opentelemetry",
-      "@effect/atom-react"
+      "@effect/atom-react",
+      "@effect/platform-node-shared"
     ],
     "optimisticRepeatInstall": false,
     "packageImportMethod": {

@@ -5,8 +5,8 @@ import { Context, Effect, FileSystem, Schema, Stream } from 'effect'
 /**
  * Configuration service — auto-detects the repo and reads optional runner hosts from config.
  */
-import * as ChildProcess from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { ConfigError } from '../isomorphic/Errors.ts'
 

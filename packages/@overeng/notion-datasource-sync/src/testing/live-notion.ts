@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
-import { HttpClient } from 'effect/unstable/http/HttpClient'
+import { FetchHttpClient } from 'effect/http'
+import { HttpClient } from 'effect/http/HttpClient'
 
 import {
   NOTION_API_VERSION,

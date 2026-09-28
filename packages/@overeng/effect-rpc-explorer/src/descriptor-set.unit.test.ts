@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Rpc, RpcGroup } from 'effect/unstable/rpc'
+import { Rpc, RpcGroup } from 'effect/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { makeDescriptorSet } from './descriptor-set.ts'

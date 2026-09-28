@@ -1,5 +1,5 @@
 import { Context, Duration, Effect, Layer } from 'effect'
-import * as RateLimiter from 'effect/unstable/persistence/RateLimiter'
+import * as RateLimiter from 'effect/persistence/RateLimiter'
 
 import { NotionRateLimitMetricBridges } from './metrics.ts'
 import { annotateNotionRateLimitWaitSpan } from './otel.ts'

@@ -7,7 +7,7 @@
  * Uses megarepo's design system components for consistent styling.
  */
 
-import type { Atom } from 'effect/unstable/reactivity'
+import type { Atom } from 'effect/reactivity'
 import React, { type ReactNode } from 'react'
 import { useMemo } from 'react'
 

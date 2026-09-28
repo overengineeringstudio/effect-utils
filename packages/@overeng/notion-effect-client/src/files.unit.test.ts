@@ -1,6 +1,6 @@
 import { Effect, Fiber, Redacted, Result, Schema } from 'effect'
+import type * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import { adjust as testClockAdjust } from 'effect/testing/TestClock'
-import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

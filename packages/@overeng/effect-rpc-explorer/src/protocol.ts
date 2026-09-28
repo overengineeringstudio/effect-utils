@@ -1,7 +1,7 @@
 import { Effect, Exit } from 'effect'
 import type { Schema } from 'effect'
-import { RpcSchema } from 'effect/unstable/rpc'
-import type { RpcClient, RpcMessage, RpcServer } from 'effect/unstable/rpc'
+import { RpcSchema } from 'effect/rpc'
+import type { RpcClient, RpcMessage, RpcServer } from 'effect/rpc'
 
 import { UnknownDescriptorId } from './model.ts'
 import type {

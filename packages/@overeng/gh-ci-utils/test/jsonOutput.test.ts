@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { Cause, Effect, Exit, FileSystem, Schema } from 'effect'
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 import { describe, expect, it, vi } from 'vitest'
 
 import * as stdoutModule from '@overeng/tui-react/node'

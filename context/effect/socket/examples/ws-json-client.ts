@@ -1,12 +1,12 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { Duration, Effect, Fiber, Schema } from 'effect'
-import type { SocketError } from 'effect/unstable/socket/Socket'
+import type { SocketError } from 'effect/socket/Socket'
 import {
   CloseEvent,
   layerWebSocketConstructorGlobal,
   makeWebSocket,
   readerString,
-} from 'effect/unstable/socket/Socket'
+} from 'effect/socket/Socket'
 
 /**
  * Example: WebSocket JSON client with schema validation.

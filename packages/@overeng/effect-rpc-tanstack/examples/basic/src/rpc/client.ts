@@ -3,7 +3,7 @@
  */
 
 import { Effect } from 'effect'
-import { RpcClient, type RpcClientError } from 'effect/unstable/rpc'
+import { RpcClient, type RpcClientError } from 'effect/rpc'
 
 import { layerClient } from '@overeng/effect-rpc-tanstack/client'
 

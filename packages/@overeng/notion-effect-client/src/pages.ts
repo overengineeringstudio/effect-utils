@@ -1,5 +1,5 @@
 import { Effect, Option, Schema } from 'effect'
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
+import type { HttpClient } from 'effect/http/HttpClient'
 
 import {
   type Page,

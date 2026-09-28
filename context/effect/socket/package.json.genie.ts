@@ -9,7 +9,7 @@ import {
 const composition = catalog.compose({
   workspace: workspaceMember({ memberPath: 'context/effect/socket' }),
   dependencies: {
-    // Effect 4: platform and rpc live in core (`effect` / `effect/unstable/*`);
+    // Effect 4: platform and rpc live in core (`effect` / `effect/*`);
     // only the platform-node runtime package remains separate.
     external: catalog.pick('effect', '@effect/platform-node'),
   },

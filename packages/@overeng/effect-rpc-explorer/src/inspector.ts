@@ -1,5 +1,5 @@
 import { Effect, type Layer, Queue, Schema, Stream } from 'effect'
-import { Rpc, RpcGroup } from 'effect/unstable/rpc'
+import { Rpc, RpcGroup } from 'effect/rpc'
 
 import type { DescriptorSet } from './descriptor-set.ts'
 import type { RpcDescriptor } from './descriptor.ts'

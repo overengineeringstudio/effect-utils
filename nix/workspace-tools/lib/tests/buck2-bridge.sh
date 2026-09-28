@@ -215,6 +215,13 @@ source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDG
     (import (repo + \"/nix/buck2-products/from-source.nix\") {
       inherit pkgs;
       buck2 = pkgs.writeShellScriptBin \"buck2\" ''
+        if [[ \"\$*\" == *'expand-external-cell prelude'* ]]; then
+          mkdir -p prelude/utils prelude/rust/tools
+          printf '%s\\n' '#!/usr/bin/env bash' > prelude/utils/cmd_script.bzl
+          printf '%s\\n' '#!/usr/bin/env bash' > prelude/rust/cargo_buildscript.bzl
+          printf '%s\\n' '            os.path.abspath(buildscript),' > prelude/rust/tools/buildscript_run.py
+          exit 0
+        fi
         if [[ \"\$*\" == *'[descriptor]'* ]]; then
           printf '%s\\n' '\${root}/descriptor.json'
         else

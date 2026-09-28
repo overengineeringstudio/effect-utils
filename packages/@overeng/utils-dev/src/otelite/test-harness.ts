@@ -1,7 +1,7 @@
 import type { Scope } from 'effect'
 import { Context, Effect, Layer, Semaphore } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
-import { Otlp, OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
+import { FetchHttpClient } from 'effect/http'
+import { Otlp, OtlpSerialization, OtlpTracer } from 'effect/observability'
 
 import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './errors.ts'
 import { withOteliteLabelSpan, withOteliteRootSpan } from './otel.ts'

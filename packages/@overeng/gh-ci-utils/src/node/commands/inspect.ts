@@ -9,7 +9,7 @@ import { Effect, Option } from 'effect'
  * unauthenticated or unreadable `nsc` downgrades the verdict to `unknown` and
  * records why, it does not fail the command.
  */
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 import React from 'react'
 
 import { outputModeLayer, outputOption, resolveOutputOption } from '@overeng/tui-react/node'

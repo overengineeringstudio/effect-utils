@@ -1,5 +1,5 @@
 import { Effect, Stream } from 'effect'
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
+import type { HttpClient } from 'effect/http/HttpClient'
 
 import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 

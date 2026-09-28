@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
+import { Rpc, RpcGroup } from 'effect/rpc'
 import * as Stream from 'effect/Stream'
-import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { makeHandler } from './server.ts'

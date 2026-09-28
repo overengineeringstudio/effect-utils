@@ -89,7 +89,7 @@ export {
 // TUI-specific utilities
 // =============================================================================
 
-import { Atom } from 'effect/unstable/reactivity'
+import { Atom } from 'effect/reactivity'
 
 /**
  * Create a pair of atoms for reducer-style state management.

@@ -1,6 +1,6 @@
 import { Context, type JsonSchema, Schema } from 'effect'
-import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
-import { Rpc, type RpcGroup, RpcSchema } from 'effect/unstable/rpc'
+import * as OpenApi from 'effect/http-api/OpenApi'
+import { Rpc, type RpcGroup, RpcSchema } from 'effect/rpc'
 
 import type { CaptureChannel } from './model.ts'
 import type { CapturePolicies } from './policy.ts'

@@ -16,7 +16,7 @@
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Fiber } from 'effect'
-import { Command, Flag as Options } from 'effect/unstable/cli'
+import { Command, Flag as Options } from 'effect/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'

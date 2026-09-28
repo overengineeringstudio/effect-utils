@@ -6,7 +6,7 @@
  * Supports hierarchical display when --all is used.
  */
 
-import type { Atom } from 'effect/unstable/reactivity'
+import type { Atom } from 'effect/reactivity'
 import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols, unicodeSymbols } from '@overeng/tui-react'

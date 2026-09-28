@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import type { Scope } from 'effect'
-import type { RpcClient, RpcGroup, RpcMiddleware, RpcServer } from 'effect/unstable/rpc'
+import type { RpcClient, RpcGroup, RpcMiddleware, RpcServer } from 'effect/rpc'
 
 import { makeDescriptorSet } from './descriptor-set.ts'
 import type { DescriptorSet } from './descriptor-set.ts'

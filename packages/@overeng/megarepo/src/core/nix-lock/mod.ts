@@ -11,8 +11,8 @@
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as Command from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 

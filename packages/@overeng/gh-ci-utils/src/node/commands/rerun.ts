@@ -4,7 +4,7 @@ import { Effect, Option, Schema } from 'effect'
  * gh-ci-utils run [target] [--workflow] [-w] [--watch-mode first-failure|until-done]
  * gh-ci-utils cancel [target]
  */
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 import React from 'react'
 
 import { outputModeLayer, outputOption, resolveOutputOption } from '@overeng/tui-react/node'

@@ -5,7 +5,7 @@
  */
 
 import { Effect } from 'effect'
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'

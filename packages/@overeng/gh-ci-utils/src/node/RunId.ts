@@ -14,7 +14,7 @@ import { Effect, Option, Schema } from 'effect'
  * - GitHub run URL         → run ID + repo from URL
  * - GitHub PR URL          → PR + repo from URL
  */
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 
 import { ConfigError } from '../isomorphic/Errors.ts'
 import type { WorkflowRun } from '../isomorphic/GitHubSchemas.ts'

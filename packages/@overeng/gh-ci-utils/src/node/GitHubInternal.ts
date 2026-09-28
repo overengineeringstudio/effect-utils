@@ -11,7 +11,7 @@ import { Context, Effect, Layer, Option, Schema } from 'effect'
  * - /actions/runs/{run}/job/{restId} (HTML) — extract internal job ID
  * - /commit/{sha}/checks/{restId}/logs/{stepNum} — completed step log redirect
  */
-import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
+import { HttpClient, HttpClientRequest } from 'effect/http'
 
 import { GitHubApiError } from '../isomorphic/Errors.ts'
 import {

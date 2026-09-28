@@ -26,7 +26,7 @@ claude auth
 
 ```ts
 import { NodeServices } from '@effect/platform-node'
-import { Chat } from 'effect/unstable/ai'
+import { Chat } from 'effect/ai'
 import { ClaudeCli } from '@overeng/effect-ai-claude-cli'
 import { Effect, Layer } from 'effect'
 

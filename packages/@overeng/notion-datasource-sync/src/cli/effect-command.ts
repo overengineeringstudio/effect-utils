@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Argument as Args, Command, Completions, Flag as Options } from 'effect/unstable/cli'
+import { Argument as Args, Command, Completions, Flag as Options } from 'effect/cli'
 
 /** Handler used by the import-safe command descriptor for executable leaf commands. */
 export type DatasourceDbCommandHandler = (command: string) => Effect.Effect<void>

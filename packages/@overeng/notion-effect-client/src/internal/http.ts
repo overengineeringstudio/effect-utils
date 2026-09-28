@@ -1,8 +1,8 @@
 import { Cause, Context, Duration, Effect, Layer, Option, Redacted, Schedule, Schema } from 'effect'
-import { HttpClient, TracerHeaderFilter } from 'effect/unstable/http/HttpClient'
-import type { HttpClientError } from 'effect/unstable/http/HttpClientError'
-import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
-import type { HttpClientResponse } from 'effect/unstable/http/HttpClientResponse'
+import { HttpClient, TracerHeaderFilter } from 'effect/http/HttpClient'
+import type { HttpClientError } from 'effect/http/HttpClientError'
+import * as HttpClientRequest from 'effect/http/HttpClientRequest'
+import type { HttpClientResponse } from 'effect/http/HttpClientResponse'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'

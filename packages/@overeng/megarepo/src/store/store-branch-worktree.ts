@@ -2,7 +2,7 @@ import * as NodePath from 'node:path'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 

@@ -5,8 +5,8 @@ import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
-import { type HttpClient } from 'effect/unstable/http/HttpClient'
+import { FetchHttpClient } from 'effect/http'
+import { type HttpClient } from 'effect/http/HttpClient'
 import { describe, expect, it } from 'vitest'
 
 import {

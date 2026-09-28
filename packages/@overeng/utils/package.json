@@ -75,24 +75,24 @@
     }
   },
   "dependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.113",
-    "@effect/platform-node": "4.0.0-rc.113",
-    "@effect/vitest": "4.0.0-rc.113",
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
     "@noble/hashes": "2.4.0",
     "@opentelemetry/api": "1.9.1",
     "@overeng/effect-distributed-lock": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "@stylexjs/unplugin": "0.19.0",
-    "effect": "4.0.0-rc.113",
+    "effect": "4.0.0-rc.118",
     "postcss": "8.5.26",
     "unplugin": "3.3.0",
     "vitest": "4.1.9"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",
-    "@effect/opentelemetry": "4.0.0-rc.113",
-    "@effect/platform-node": "4.0.0-rc.113",
-    "@effect/vitest": "4.0.0-rc.113",
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
     "@opentelemetry/resources": "2.11.0",
     "@opentelemetry/sdk-logs": "0.222.0",
     "@opentelemetry/sdk-metrics": "2.11.0",
@@ -108,7 +108,7 @@
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
     "babel-loader": "10.1.1",
-    "effect": "4.0.0-rc.113",
+    "effect": "4.0.0-rc.118",
     "next": "16.2.6",
     "playwright": "1.63.0",
     "react": "19.2.8",
@@ -118,10 +118,10 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.113",
-    "@effect/platform-node": "4.0.0-rc.113",
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
     "@playwright/test": "^1.63.0",
-    "effect": "4.0.0-rc.113"
+    "effect": "4.0.0-rc.118"
   },
   "publishConfig": {
     "access": "public",

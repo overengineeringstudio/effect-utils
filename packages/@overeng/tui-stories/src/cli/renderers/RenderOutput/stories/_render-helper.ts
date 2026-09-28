@@ -6,8 +6,8 @@
  * actual CLI output.
  */
 
-import type { Atom } from 'effect/unstable/reactivity'
-import { AtomRegistry } from 'effect/unstable/reactivity'
+import type { Atom } from 'effect/reactivity'
+import { AtomRegistry } from 'effect/reactivity'
 import React from 'react'
 
 import {

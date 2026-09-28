@@ -18,7 +18,7 @@ Canonical terms are defined in [ontology.md](./ontology.md).
 ## Assumptions
 
 - **RPCX-A01 Effect 4 surface:** The supported integration surface is the public
-  `effect/unstable/rpc` API. It is version-unstable even though it is publicly
+  `effect/rpc` API. It is version-unstable even though it is publicly
   exported.
 - **RPCX-A02 Host composition:** A host supplies its `RpcGroup` values,
   client/server Protocol services, service identity, and explicit explorer

@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
-import { ChildProcessSpawner } from 'effect/unstable/process'
+import { ChildProcessSpawner } from 'effect/process'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
