@@ -67,6 +67,21 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Buck2 `compiled-executable` product kind**: `bun_compiled_product_executable`
+  (`buck2/products/defs.bzl`) compiles a fully bundled `cli` module with
+  `bun build --compile` against the pinned, unpatched official Bun release
+  (`buck2-bun-compile-runtime` capability) on the matching native platform
+  (Linux x86_64/aarch64 glibc, Darwin arm64). `build_product` packages it and
+  `lib.mkBuckProductFromSource { importNative = true; }` imports it through the
+  native descriptor, archive-scan and ELF/Mach-O inspector path; Bun's embedded
+  ad-hoc Mach-O signature is accepted and never rewritten. A registry flag
+  `compiledExecutable: true` emits `<name>-compiled-product` and a
+  `packages.<system>.<name>-compiled` row (fixture: `ci-tools-compiled`). PRs
+  build and `--help`-smoke it in `build-products` (Linux) and the macOS `test`
+  leg; `.github/workflows/compiled-products.yml` publishes each platform import
+  to Cachix from protected main. No cache-manifest row: the per-platform store
+  path is the distribution unit.
+
 - **@overeng/effect-rpc-explorer runtime descriptors**:
   `registerDescriptors({ group, owner })` registers a group mounted after construction, such as an app-local
   provider, for the caller's Scope. Registering the same owner again replaces
