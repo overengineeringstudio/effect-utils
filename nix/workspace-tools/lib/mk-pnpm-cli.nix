@@ -571,12 +571,31 @@ let
   # lockfile even when the narrowed importer set does not reference them.
   # Stage every declared source-input manifest at both its logical path and the
   # canonical alias, without pulling source-only changes into FOD identity.
+  # A declared source input therefore needs a source even when the consumer's
+  # closure never imports it: fail evaluation with the missing
+  # `workspaceSources` entry instead of a `cp` failure inside the deps FOD.
+  sourceInputManifestFor =
+    sourcePath:
+    let
+      manifest = "${sourcePath}/package.json";
+    in
+    if builtins.pathExists (resolveEvalSourceFor manifest) then
+      absoluteFileSourcePathFor manifest
+    else
+      throw ''
+        mk-pnpm-cli: declared source input ${sourcePath} has no package.json in the provided sources.
+        pnpm-install-contract.json workspaceManifestContract.sourceInputPaths lists it, so the frozen
+        install packlists it even though ${packageDir} does not import it. Pass its repo through
+        `workspaceSources` (and `evalWorkspaceSources` when those differ), e.g.
+          workspaceSources."${lib.concatStringsSep "/" (lib.take 2 (lib.splitString "/" sourcePath))}" = <source>;
+        provided workspaceSources: ${builtins.toJSON (builtins.attrNames workspaceSources)}
+      '';
   stageRootSourceInputManifestsCmd = lib.optionalString hasSourceInputProjectionContract (
     builtins.concatStringsSep "\n" (
       map (
         sourcePath:
         let
-          sourceManifest = absoluteFileSourcePathFor "${sourcePath}/package.json";
+          sourceManifest = sourceInputManifestFor sourcePath;
           logicalManifest = "${sourcePath}/package.json";
           aliasPath = "${declaredSourceInputStagePath}/${sourcePath}";
         in

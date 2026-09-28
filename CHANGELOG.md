@@ -175,6 +175,15 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **mk-pnpm-cli declared source inputs without a source**: pnpm 12.7
+  packlists every declared `sourceInputPaths` package, so each one's manifest
+  is staged even when the consumer does not import it. When no
+  `workspaceSources` entry covered one (e.g. a projected dotfiles workspace
+  given only `repos/effect-utils` while the contract also lists
+  `repos/private-shared` packages), the deps-src derivation failed at build
+  time with `cp: cannot stat .../package.json`. Evaluation now fails, naming
+  the source input and the `workspaceSources` entry to add.
+
 - **@overeng/buck2-tools portable farm on Darwin** (#1450): a bundle action
   intermittently failed with "symlink target escapes every declared closure
   root" naming a file inside its own `portable-farm/.closure` tree. Bun's
