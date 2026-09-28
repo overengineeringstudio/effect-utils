@@ -79,9 +79,7 @@ let
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
     lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"
-  }${
-    lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
-  }${
+  }${lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"}${
     lib.optionalString (
       cliBuildStamp != null
     ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"

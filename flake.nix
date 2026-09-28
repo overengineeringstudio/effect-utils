@@ -293,7 +293,8 @@ rec {
           { pkgs, ... }@moduleArgs:
           (import ./nix/devenv-modules/observability.nix (
             { otelite = self.packages.${pkgs.stdenv.hostPlatform.system}.otelite; } // args
-          )) moduleArgs;
+          ))
+            moduleArgs;
         # OpenTelemetry observability stack (Collector + Tempo + Grafana)
         otel = import ./nix/devenv-modules/otel.nix;
         # Shared task modules (parameterized) - meant for reuse in other repos
