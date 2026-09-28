@@ -575,11 +575,20 @@ let
     builtins.concatStringsSep "\n" (
       map (
         sourcePath:
-        copyFileCmd "${sourcePath}/package.json"
-        + ''
-          alias_dir="$out"/${lib.escapeShellArg "${declaredSourceInputStagePath}/${sourcePath}"}
+        let
+          sourceManifest = absoluteFileSourcePathFor "${sourcePath}/package.json";
+          logicalManifest = "${sourcePath}/package.json";
+          aliasPath = "${declaredSourceInputStagePath}/${sourcePath}";
+        in
+        ''
+          logical_manifest="$out"/${lib.escapeShellArg logicalManifest}
+          if [ ! -f "$logical_manifest" ]; then
+            mkdir -p "$(dirname "$logical_manifest")"
+            cp ${lib.escapeShellArg (toString sourceManifest)} "$logical_manifest"
+          fi
+          alias_dir="$out"/${lib.escapeShellArg aliasPath}
           mkdir -p "$alias_dir"
-          ln -s "$(realpath --relative-to="$alias_dir" "$out"/${lib.escapeShellArg "${sourcePath}/package.json"})" "$alias_dir/package.json"
+          ln -s "$(realpath --relative-to="$alias_dir" "$logical_manifest")" "$alias_dir/package.json"
         ''
       ) declaredSourceInputPathsValidated
     )
