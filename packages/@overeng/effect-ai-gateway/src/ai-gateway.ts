@@ -1,6 +1,7 @@
 import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai-compat'
+import { TypeSafeClient, TypeSafeDecisionModel } from '@effect/ai-typesafe'
 import { Config, Effect, Layer, Option, type Redacted } from 'effect'
-import type { LanguageModel } from 'effect/ai'
+import type { DecisionModel, LanguageModel } from 'effect/ai'
 import type * as AiModel from 'effect/ai/Model'
 import type { HttpClient } from 'effect/http'
 
@@ -15,6 +16,12 @@ type ModelOptions = {
   readonly model: string
   readonly config?: ModelConfig | undefined
 }
+
+type DecisionOptions = {
+  readonly model?: string | undefined
+}
+
+const defaultDecisionModel = 'openrouter/~typesafe/jev-latest'
 
 /** Gateway origin excludes `/v1`; model IDs are passed through without rewriting. */
 export const clientLayer = ({
@@ -64,3 +71,31 @@ export const model = ({
   config,
 }: ModelOptions): AiModel.Model<'openai', LanguageModel.LanguageModel, OpenAiClient.OpenAiClient> =>
   OpenAiLanguageModel.model(modelId, config)
+
+/** Provide Effect's native decision model through the gateway's TypeSafe endpoint. */
+export const decisionLayer = ({
+  url,
+  token,
+  model: modelId = defaultDecisionModel,
+}: ClientOptions & DecisionOptions): Layer.Layer<
+  DecisionModel.DecisionModel,
+  never,
+  HttpClient.HttpClient
+> =>
+  TypeSafeDecisionModel.layer({ model: modelId }).pipe(
+    Layer.provide(TypeSafeClient.layer({ apiUrl: `${url.replace(/\/+$/, '')}/v1`, apiKey: token })),
+  )
+
+/** Read the same gateway URL and optional bearer as chat for native decisions. */
+export const decisionLayerConfig = ({ model: modelId }: DecisionOptions = {}): Layer.Layer<
+  DecisionModel.DecisionModel,
+  Config.ConfigError,
+  HttpClient.HttpClient
+> =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const url = yield* Config.String('AI_GATEWAY_URL')
+      const token = yield* Config.option(Config.Redacted('AI_GATEWAY_TOKEN'))
+      return decisionLayer({ url, token: Option.getOrUndefined(token), model: modelId })
+    }),
+  )

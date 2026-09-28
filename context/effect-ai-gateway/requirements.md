@@ -26,7 +26,7 @@ This document refines [the vision](./vision.md) for a backend-neutral Effect AI 
 ### Must preserve output semantics
 
 - **R05 Structured output:** Requested structured formatting is enforced and validated or rejected; unsupported constraints are never silently discarded.
-- **R06 Decision answers:** Consumers can define schema-encoded input and named classification, probability, and rating decisions, receiving typed, validated answers and available usage.
+- **R06 Decision answers:** Consumers can provide explicit or environment-based gateway settings and optionally select a decision model; a default model is available. Schema-encoded input and named classification, probability, and rating decisions produce typed, validated answers and available usage.
 - **R07 Probability integrity:** Ordinary chat classification is not presented as a calibrated decision probability.
 
 ### Must separate responsibilities

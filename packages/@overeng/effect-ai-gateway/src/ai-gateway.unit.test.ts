@@ -1,6 +1,6 @@
 import { describe, it } from '@effect/vitest'
 import { ConfigProvider, Effect, Layer, Redacted, Schema, Stream } from 'effect'
-import { LanguageModel } from 'effect/ai'
+import { Decision, DecisionModel, LanguageModel } from 'effect/ai'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientResponse from 'effect/http/HttpClientResponse'
 import { expect } from 'vitest'
@@ -23,6 +23,42 @@ const completion = {
   usage,
 }
 
+const triage = Decision.make({
+  input: Schema.Struct({ ticket: Schema.String }),
+  decisions: {
+    department: Decision.classify({
+      instructions: 'Which team should handle this?',
+      criteria: { billing: 'Payments and refunds', technical: 'Bugs and outages' },
+    }),
+    urgent: Decision.probability({ instructions: 'Needs action today?' }),
+    frustration: Decision.rate({
+      instructions: 'How frustrated is the customer?',
+      criteria: ['calm', 'frustrated', 'angry'],
+    }),
+  },
+})
+
+const decisionResponse = {
+  model: 'jev-1.13.0',
+  answers: {
+    department: {
+      type: 'choice',
+      choice: 'billing',
+      probabilities: { billing: 0.9, technical: 0.1 },
+      confidence: 0.8,
+    },
+    urgent: { type: 'noul', noul: 0.7 },
+    frustration: {
+      type: 'score',
+      score: 1.2,
+      probabilities: { '0': 0, '1': 0.8, '2': 0.2 },
+      legend: { '0': 'calm', '1': 'frustrated', '2': 'angry' },
+      confidence: 0.6,
+    },
+  },
+  usage: { input_tokens: 218, output_tokens: 39 },
+}
+
 const event = (choices: readonly unknown[], finalUsage: typeof usage | null = null) =>
   `data: ${encodeJson({ id: 'chatcmpl-test', model: modelId, created: 1_750_000_000, choices, usage: finalUsage })}\n\n`
 
@@ -34,7 +70,7 @@ const streamResponse = [
   'data: [DONE]\n\n',
 ].join('')
 
-const fakeHttp = (requests: Array<RecordedRequest>) =>
+const fakeHttp = (requests: Array<RecordedRequest>, payload: unknown = completion) =>
   Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request, url) =>
@@ -57,7 +93,7 @@ const fakeHttp = (requests: Array<RecordedRequest>) =>
           body.stream === true
         return HttpClientResponse.fromWeb(
           request,
-          new Response(streaming === true ? streamResponse : encodeJson(completion), {
+          new Response(streaming === true ? streamResponse : encodeJson(payload), {
             headers: {
               'content-type': streaming === true ? 'text/event-stream' : 'application/json',
             },
@@ -163,6 +199,105 @@ describe('AiGateway', () => {
       expect(response.text).toBe('Hello!')
       expect(requests[0]?.authorization).toBeUndefined()
       expect(requests[0]).toMatchObject({ body: { model: modelId } })
+    }).pipe(Effect.provide(ai))
+  })
+
+  it.effect('batches typed decisions with a bearer and default model on /v1/systemone', () => {
+    const requests: Array<RecordedRequest> = []
+    const ai = AiGateway.decisionLayer({
+      url: 'http://gateway.test:8080/',
+      token: Redacted.make('decision-token'),
+    }).pipe(Layer.provide(fakeHttp(requests, decisionResponse)))
+    return Effect.gen(function* () {
+      const result = yield* DecisionModel.decide(triage, { input: { ticket: 'Charged twice' } })
+      const department: 'billing' | 'technical' = result.answers.department.label
+      const frustration: 'calm' | 'frustrated' | 'angry' = result.answers.frustration.label
+      expect([department, frustration]).toEqual(['billing', 'frustrated'])
+      expect(result.answers).toEqual({
+        department: {
+          label: 'billing',
+          probabilities: { billing: 0.9, technical: 0.1 },
+          confidence: 0.8,
+        },
+        urgent: { probability: 0.7 },
+        frustration: {
+          rating: 1.2,
+          label: 'frustrated',
+          probabilities: { calm: 0, frustrated: 0.8, angry: 0.2 },
+          confidence: 0.6,
+        },
+      })
+      expect(result.usage.inputTokens).toBe(218)
+      expect(result.usage.outputTokens).toBe(39)
+      expect(requests).toEqual([
+        {
+          url: 'http://gateway.test:8080/v1/systemone',
+          authorization: 'Bearer decision-token',
+          body: {
+            model: 'openrouter/~typesafe/jev-latest',
+            state: { ticket: 'Charged twice' },
+            questions: {
+              department: {
+                type: 'choice',
+                instructions: 'Which team should handle this?',
+                criteria: { billing: 'Payments and refunds', technical: 'Bugs and outages' },
+              },
+              urgent: { type: 'noul', instructions: 'Needs action today?' },
+              frustration: {
+                type: 'score',
+                instructions: 'How frustrated is the customer?',
+                criteria: ['calm', 'frustrated', 'angry'],
+              },
+            },
+          },
+        },
+      ])
+    }).pipe(Effect.provide(ai))
+  })
+
+  it.effect('reads decision config with an explicit model and redacted env bearer', () => {
+    const requests: Array<RecordedRequest> = []
+    const ai = AiGateway.decisionLayerConfig({ model: 'typesafe/alternate' }).pipe(
+      Layer.provide(fakeHttp(requests, decisionResponse)),
+      Layer.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromUnknown({
+            AI_GATEWAY_URL: 'http://gateway.test/',
+            AI_GATEWAY_TOKEN: 'env-decision-token',
+          }),
+        ),
+      ),
+    )
+    return Effect.gen(function* () {
+      yield* DecisionModel.decide(triage, { input: { ticket: 'Charged twice' } })
+      expect(requests[0]).toMatchObject({
+        url: 'http://gateway.test/v1/systemone',
+        authorization: 'Bearer env-decision-token',
+        body: { model: 'typesafe/alternate' },
+      })
+    }).pipe(Effect.provide(ai))
+  })
+
+  it.effect('rejects a provider label outside the declared classification', () => {
+    const requests: Array<RecordedRequest> = []
+    const invalidResponse = {
+      ...decisionResponse,
+      answers: {
+        ...decisionResponse.answers,
+        department: { ...decisionResponse.answers.department, choice: 'unexpected' },
+      },
+    }
+    const ai = AiGateway.decisionLayer({ url: 'http://gateway.test' }).pipe(
+      Layer.provide(fakeHttp(requests, invalidResponse)),
+    )
+    return Effect.gen(function* () {
+      const error = yield* DecisionModel.decide(triage, {
+        input: { ticket: 'Charged twice' },
+      }).pipe(Effect.flip)
+      expect(error._tag).toBe('AiError')
+      expect(error.reason._tag).toBe('InvalidOutputError')
+      expect(requests).toHaveLength(1)
+      expect(requests[0]?.authorization).toBeUndefined()
     }).pipe(Effect.provide(ai))
   })
 })
