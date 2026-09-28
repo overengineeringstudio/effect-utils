@@ -26,6 +26,10 @@
   # Materialization Root. Each path is staged once under root-owned `.devenv`
   # state before pnpm realizes Package Instances from it.
   sourceInputPaths ? [ ],
+  # Nix-realized private product tarballs (`effect-utils.lib.mkPrivateProductTarballs`
+  # `stage`, decision 0037). Linked at `.devenv/pnpm-product-tarballs` before pnpm runs, so
+  # manifests reach them as digest-named root-relative `file:` dependencies.
+  productTarballStage ? null,
   preInstall ? "",
   # Root-owned immutable projections that must be part of the authoritative
   # materialized topology. Runs after pnpm and its base health oracle, before
@@ -274,6 +278,16 @@ let
       ${lib.escapeShellArg workspaceRootAbs} \
       ${lib.escapeShellArg sourceStagePath} \
       ${lib.escapeShellArgs normalizedSourceInputPaths}
+  '';
+  productTarballStagePath = ".devenv/pnpm-product-tarballs";
+  stageProductTarballs = lib.optionalString (productTarballStage != null) ''
+    ${pkgs.coreutils}/bin/mkdir -p .devenv
+    product_stage_link=".devenv/.pnpm-product-tarballs-$$"
+    ${pkgs.coreutils}/bin/ln -sfn ${lib.escapeShellArg "${productTarballStage}"} "$product_stage_link"
+    ${pkgs.coreutils}/bin/mv -Tf "$product_stage_link" ${productTarballStagePath}
+  '';
+  checkProductTarballs = ''
+    [ "$(${pkgs.coreutils}/bin/readlink ${productTarballStagePath})" = ${lib.escapeShellArg "${productTarballStage}"} ]
   '';
   checkSourceInputs = lib.optionalString (normalizedSourceInputPaths != [ ]) ''
     ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stageSourceInputsScript} \
@@ -572,6 +586,7 @@ let
         ${computeInstallStateHashFn}
         ${computeProjectionStateHashFn}
         ${stageSourceInputs}
+        ${stageProductTarballs}
         ${preInstall}
         ${runPnpmInstallFn}
 
@@ -673,6 +688,14 @@ let
             exit 1
           fi
         ''}
+        ${lib.optionalString (productTarballStage != null) ''
+          if ! (
+            ${checkProductTarballs}
+          ); then
+            emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "product_tarballs"
+            exit 1
+          fi
+        ''}
 
         current_storage_state="$(printf '%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD")"
         if [ "$current_storage_state" != "$(cat "$storage_state_file")" ]; then
@@ -727,6 +750,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${managedPnpmMutationPrologue}
         ${stageSourceInputs}
+        ${stageProductTarballs}
         ${runPnpmLockMutatorFn}
         ${lib.optionalString (workspaceRoot == ".") ''
           # Projection can change the catalog that the lockfile must satisfy.
@@ -756,6 +780,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${managedPnpmMutationPrologue}
         ${stageSourceInputs}
+        ${stageProductTarballs}
         pnpm dedupe${lockfileOnlyFlag} ${liveRealizationPolicyFlagsString} \
           --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
           --config.store-dir="$npm_config_store_dir"

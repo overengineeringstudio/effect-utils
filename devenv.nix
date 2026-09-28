@@ -1152,6 +1152,8 @@ in
       set -euo pipefail
       BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
         ${pkgs.bash}/bin/bash nix/buck2-products/from-source-contract.test.sh "$PWD"
+      BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
+        ${pkgs.bash}/bin/bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
     '';
   };

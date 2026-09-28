@@ -241,6 +241,39 @@ const archiveUrl = ({ name, version }: { name: string; version: string }): strin
   return `https://registry.npmjs.org/${name}/-/${tarballName}-${version}.tgz`
 }
 
+/**
+ * Validates the consumer lock identity of a Nix-realized private product tarball: a
+ * normalized, root-relative `file:` path whose file name ends in the product SHA-256, so
+ * the lock identity changes whenever the product bytes change.
+ */
+export const productTarballSpecifier = ({
+  value,
+  location,
+}: {
+  value: string
+  location: string
+}): string => {
+  const relative = value.startsWith('file:') === true ? value.slice('file:'.length) : undefined
+  if (
+    relative === undefined ||
+    relative.length === 0 ||
+    path.posix.isAbsolute(relative) === true ||
+    relative.includes('\\') === true ||
+    path.posix.normalize(relative) !== relative ||
+    relative === '..' ||
+    relative.startsWith('../') === true ||
+    /-[a-f0-9]{64}\.tgz$/.test(relative) === false
+  ) {
+    return fail(
+      `${location} must be a root-relative file: tarball whose name ends in -<sha256>.tgz`,
+    )
+  }
+  return value
+}
+
+/** SHA-256 hex digest encoded in a validated product tarball specifier. */
+const productTarballDigest = (specifier: string): string => specifier.slice(-68, -4)
+
 /** Deterministic, collision-resistant Buck target name for one generated identity. */
 export const pnpmTargetName = ({
   prefix,
@@ -271,8 +304,13 @@ export type PnpmPackageMetadata = {
   readonly name: string
   readonly os: readonly string[]
   readonly patch?: PnpmPatchMetadata
-  readonly resolution: 'registry' | 'workspace'
+  /**
+   * `registry`: public HTTPS archive; `product`: Nix-realized private product tarball staged
+   * as a `file:` dependency; `workspace`: live workspace directory.
+   */
+  readonly resolution: 'registry' | 'product' | 'workspace'
   readonly target: string
+  /** HTTPS archive URL (`registry`) or `file:` tarball identity (`product`). */
   readonly url?: string
   readonly version: string
   readonly workspacePath?: string
@@ -314,16 +352,35 @@ export type PnpmLockMetadata = {
 /** Trust classification for a registry archive. Public tiers reject private rows. */
 export type PnpmArchiveClassification = 'public' | 'private'
 
-/** Reviewed archive metadata bound to one canonical package identity. */
-export type PnpmSha256Entry = {
+type PnpmSha256EntryFields = {
   readonly bins: Readonly<Record<string, string>>
-  readonly classification: PnpmArchiveClassification
   readonly integrity: string
   readonly packageIdentity: string
-  readonly registryUrl: string
   readonly sha256: string
   readonly sizeBytes: number
 }
+
+/** Reviewed public-registry archive metadata bound to one canonical package identity. */
+export type PnpmRegistrySha256Entry = PnpmSha256EntryFields & {
+  readonly classification: PnpmArchiveClassification
+  readonly registryUrl: string
+}
+
+/**
+ * Private product tarball bound to one package identity. Its bytes come only from the
+ * producer's Nix substitution (`mkPrivateProductTarballs`), never from a network fetch.
+ */
+export type PnpmProductSha256Entry = PnpmSha256EntryFields & {
+  readonly classification: 'private'
+  readonly productTarball: string
+}
+
+/** Reviewed archive metadata bound to one canonical package identity. */
+export type PnpmSha256Entry = PnpmRegistrySha256Entry | PnpmProductSha256Entry
+
+/** Whether a sidecar row is a Nix-realized private product tarball. */
+export const isProductSha256Entry = (entry: PnpmSha256Entry): entry is PnpmProductSha256Entry =>
+  'productTarball' in entry
 
 /** Freshness-gated, generated archive metadata consumed by Buck and the seeder. */
 export type PnpmSha256Sidecar = {
@@ -574,9 +631,15 @@ export const translatePnpmLock = ({
     })
     integrityBytes({ integrity, location: `${location}.resolution.integrity` })
     let url: string
+    let archiveResolution: 'registry' | 'product' = 'registry'
     if (tarball === undefined) {
       if (entry.version !== undefined) return fail(`${location}.version requires a tarball resolution`)
       url = archiveUrl({ name, version })
+    } else if (typeof tarball === 'string' && tarball.startsWith('file:') === true) {
+      stringField({ record: entry, field: 'version', location })
+      url = productTarballSpecifier({ value: tarball, location: `${location}.resolution.tarball` })
+      if (version !== url) return fail(`${location} key must name its product tarball ${url}`)
+      archiveResolution = 'product'
     } else {
       stringField({ record: entry, field: 'version', location })
       url = publicArchiveUrl({
@@ -593,7 +656,7 @@ export const translatePnpmLock = ({
       name,
       os,
       ...(patch === undefined ? {} : { patch }),
-      resolution: 'registry',
+      resolution: archiveResolution,
       target: pnpmTargetName({ prefix: 'package', identity: key }),
       url,
       version,
@@ -800,6 +863,7 @@ const decodeSidecarEntry = ({
   location: string
 }): PnpmSha256Entry => {
   const entry = recordAt({ value, location })
+  const isProduct = 'productTarball' in entry
   rejectUnknownFields({
     record: entry,
     allowed: [
@@ -807,7 +871,7 @@ const decodeSidecarEntry = ({
       'classification',
       'integrity',
       'packageIdentity',
-      'registryUrl',
+      isProduct === true ? 'productTarball' : 'registryUrl',
       'sha256',
       'sizeBytes',
     ],
@@ -820,16 +884,35 @@ const decodeSidecarEntry = ({
   const integrity = stringField({ record: entry, field: 'integrity', location })
   integrityBytes({ integrity, location: `${location}.integrity` })
   const packageIdentity = stringField({ record: entry, field: 'packageIdentity', location })
-  const registryUrl = publicArchiveUrl({
-    url: stringField({ record: entry, field: 'registryUrl', location }),
-    location: `${location}.registryUrl`,
-  })
   const digest = stringField({ record: entry, field: 'sha256', location })
   if (sha256Pattern.test(digest) === false)
     return fail(`${location}.sha256 must be lowercase sha256`)
   const sizeBytes = entry.sizeBytes
   if (typeof sizeBytes !== 'number' || Number.isSafeInteger(sizeBytes) === false || sizeBytes <= 0)
     return fail(`${location}.sizeBytes must be a positive safe integer`)
+  if (isProduct === true) {
+    if (classification !== 'private')
+      return fail(`${location}.classification must be private for a product tarball`)
+    const productTarball = productTarballSpecifier({
+      value: stringField({ record: entry, field: 'productTarball', location }),
+      location: `${location}.productTarball`,
+    })
+    if (productTarballDigest(productTarball) !== digest)
+      return fail(`${location}.productTarball must name its sha256`)
+    return {
+      bins,
+      classification,
+      integrity,
+      packageIdentity,
+      productTarball,
+      sha256: digest,
+      sizeBytes,
+    }
+  }
+  const registryUrl = publicArchiveUrl({
+    url: stringField({ record: entry, field: 'registryUrl', location }),
+    location: `${location}.registryUrl`,
+  })
   return {
     bins,
     classification,
@@ -930,7 +1013,7 @@ export const validatePnpmSha256Sidecar = ({
     )
   }
   const expectedPackages = sortedEntries(metadata.packages)
-    .filter(([, packageMetadata]) => packageMetadata.resolution === 'registry')
+    .filter(([, packageMetadata]) => packageMetadata.resolution !== 'workspace')
     .map(([key]) => key)
   const actualPackages = Object.keys(sidecar.packages).toSorted((left, right) =>
     compareStrings({ left, right }),
@@ -950,11 +1033,17 @@ export const validatePnpmSha256Sidecar = ({
     if (entry.packageIdentity !== key) {
       return fail(`stale sha256 sidecar package identity for ${key}`)
     }
-    if (packageMetadata.url !== entry.registryUrl) {
-      return fail(`stale sha256 sidecar registry URL for ${key}`)
-    }
-    if (entry.classification !== 'public') {
-      return fail(`registry.npmjs.org archive ${key} must be classified public`)
+    if (packageMetadata.resolution === 'product') {
+      if (isProductSha256Entry(entry) === false || packageMetadata.url !== entry.productTarball) {
+        return fail(`stale sha256 sidecar product tarball for ${key}`)
+      }
+    } else {
+      if (isProductSha256Entry(entry) === true || packageMetadata.url !== entry.registryUrl) {
+        return fail(`stale sha256 sidecar registry URL for ${key}`)
+      }
+      if (entry.classification !== 'public') {
+        return fail(`registry.npmjs.org archive ${key} must be classified public`)
+      }
     }
     if (packageMetadata.hasBin !== Object.keys(entry.bins).length > 0) {
       return fail(`stale sha256 sidecar bin metadata for ${key}`)
@@ -1057,6 +1146,12 @@ const npmArchiveBins = async ({
 /** Fetch seam used to retrieve integrity-pinned npm archives during generation. */
 export type ArchiveFetcher = (url: string) => Promise<Uint8Array>
 
+/**
+ * Reads a staged private product tarball by its lock-root-relative path. Product bytes
+ * are staged by Nix before generation; the generator never fetches them.
+ */
+export type ProductTarballReader = (relativePath: string) => Promise<Uint8Array>
+
 /** Downloads missing archives with bounded concurrency and derives a fresh sha256 sidecar. */
 export const generatePnpmSha256Sidecar = async ({
   metadata,
@@ -1080,19 +1175,22 @@ export const generatePnpmSha256Sidecar = async ({
     }
     return fail(`archive download exceeded 3 redirects for ${url}`)
   },
+  readProductTarball = async (relativePath) =>
+    fail(`product tarball ${relativePath} requires a staged product tarball reader`),
   concurrency = 16,
 }: {
   metadata: PnpmLockMetadata
   previous?: PnpmSha256Sidecar
   fetchResponse?: typeof fetch
   fetchArchive?: ArchiveFetcher
+  readProductTarball?: ProductTarballReader
   concurrency?: number
 }): Promise<PnpmSha256Sidecar> => {
   if (Number.isInteger(concurrency) === false || concurrency < 1)
     return fail('archive concurrency must be positive')
   const registryPackages = sortedEntries(metadata.packages).filter(
     (entry): entry is [string, PnpmPackageMetadata & { integrity: string; url: string }] =>
-      entry[1].resolution === 'registry' &&
+      entry[1].resolution !== 'workspace' &&
       entry[1].integrity !== undefined &&
       entry[1].url !== undefined,
   )
@@ -1107,13 +1205,17 @@ export const generatePnpmSha256Sidecar = async ({
     const current = registryPackages[index]
     if (current === undefined) return fail(`missing registry package at index ${index}`)
     const [key, packageMetadata] = current
+    const isProduct = packageMetadata.resolution === 'product'
     const cached = previous?.packages[key]
     if (
       cached !== undefined &&
       cached.integrity === packageMetadata.integrity &&
       cached.packageIdentity === key &&
-      cached.registryUrl === packageMetadata.url &&
-      cached.classification === 'public' &&
+      (isProductSha256Entry(cached) === true
+        ? isProduct === true && cached.productTarball === packageMetadata.url
+        : isProduct === false &&
+          cached.registryUrl === packageMetadata.url &&
+          cached.classification === 'public') &&
       Number.isSafeInteger(cached.sizeBytes) &&
       cached.sizeBytes > 0 &&
       sha256Pattern.test(cached.sha256) === true &&
@@ -1122,7 +1224,10 @@ export const generatePnpmSha256Sidecar = async ({
       entries[index] = [key, cached]
       return worker()
     }
-    const bytes = await fetchArchive(packageMetadata.url)
+    const bytes =
+      isProduct === true
+        ? await readProductTarball(packageMetadata.url.slice('file:'.length))
+        : await fetchArchive(packageMetadata.url)
     verifyIntegrity({
       bytes,
       integrity: packageMetadata.integrity,
@@ -1135,17 +1240,31 @@ export const generatePnpmSha256Sidecar = async ({
     if (packageMetadata.hasBin === true && Object.keys(bins).length === 0) {
       return fail(`pnpm-lock marks ${key} hasBin but its archive declares no bins`)
     }
+    const digest = sha256(bytes)
+    if (isProduct === true && productTarballDigest(packageMetadata.url) !== digest) {
+      return fail(`product tarball ${packageMetadata.url} bytes do not match its named sha256`)
+    }
     entries[index] = [
       key,
-      {
-        bins,
-        classification: 'public',
-        integrity: packageMetadata.integrity,
-        packageIdentity: key,
-        registryUrl: packageMetadata.url,
-        sha256: sha256(bytes),
-        sizeBytes: bytes.byteLength,
-      },
+      isProduct === true
+        ? {
+            bins,
+            classification: 'private',
+            integrity: packageMetadata.integrity,
+            packageIdentity: key,
+            productTarball: packageMetadata.url,
+            sha256: digest,
+            sizeBytes: bytes.byteLength,
+          }
+        : {
+            bins,
+            classification: 'public',
+            integrity: packageMetadata.integrity,
+            packageIdentity: key,
+            registryUrl: packageMetadata.url,
+            sha256: digest,
+            sizeBytes: bytes.byteLength,
+          },
     ]
     return worker()
   }

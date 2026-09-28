@@ -324,6 +324,11 @@ rec {
       # Build a materialized standalone Buck root for a consumer checkout.
       lib.mkConsumerBuckRoot = args: import ./nix/buck2-products/consumer-root.nix args;
 
+      # Stage private package products (decision 0037) for pnpm and Buck consumers
+      # from the producer manifest's substituted store paths.
+      # Usage: effectUtils.lib.mkPrivateProductTarballs { inherit pkgs manifest schema; }
+      lib.mkPrivateProductTarballs = args: import ./nix/buck2-products/private-product-tarballs.nix args;
+
       # Rebuild a declared Buck product from source inside the Nix sandbox.
       # For native and compiled-executable products, importNative = true realizes
       # and validates the artifact without a caller-supplied source product.

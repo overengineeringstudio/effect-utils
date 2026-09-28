@@ -1196,6 +1196,56 @@ export const projectPnpmSourceInputs = ({
   }
 }
 
+/** Root-local directory through which pnpm consumes Nix-realized private product tarballs. */
+export const pnpmProductTarballStagePath = '.devenv/pnpm-product-tarballs'
+
+/** One private product row of a producer's cache manifest (`<producer>/buck-cache-products/v1`). */
+export type PrivateProductManifestRow = {
+  readonly name: string
+  readonly version: string
+  readonly sha256: string
+}
+
+/**
+ * Digest-named staged tarball file for one private product. Must match the file names
+ * `effect-utils.lib.mkPrivateProductTarballs` writes into its `stage` directory.
+ */
+export const privateProductTarballFileName = ({ name, version, sha256 }: PrivateProductManifestRow) => {
+  if (/^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(name) === false)
+    throw new Error(`Private product ${name} must be a scoped npm package name`)
+  if (/^[0-9A-Za-z.+-]+$/.test(version) === false)
+    throw new Error(`Private product ${name} has an invalid version ${version}`)
+  if (/^[a-f0-9]{64}$/.test(sha256) === false)
+    throw new Error(`Private product ${name} sha256 must be lowercase hexadecimal`)
+  return `${name.replaceAll('@', '').replaceAll('/', '-')}-${version}-${sha256}.tgz`
+}
+
+/**
+ * Pin private products (decision 0037) to their Nix-staged tarballs. The root-relative
+ * `file:` identity names the product digest, so the lock entry and its integrity change
+ * whenever the product bytes change; no absolute store path enters a manifest.
+ */
+export const projectPrivateProductTarballs = ({
+  products,
+}: {
+  products: readonly PrivateProductManifestRow[]
+}) => {
+  const overrides: Record<string, string> = {}
+  for (const product of products) {
+    if (overrides[product.name] !== undefined)
+      throw new Error(`Private product ${product.name} is listed more than once`)
+    overrides[product.name] =
+      `file:${pnpmProductTarballStagePath}/${privateProductTarballFileName(product)}`
+  }
+  return {
+    overrides: Object.fromEntries(
+      Object.entries(overrides).toSorted(([left], [right]) =>
+        left < right ? -1 : left > right ? 1 : 0,
+      ),
+    ),
+  }
+}
+
 /** Compute the workspace member closure for a package's pnpm install boundary. */
 export const projectPnpmPackageClosure = ({ pkg }: { pkg: WorkspacePackageLike }) => {
   const packageDir = pkg.meta.workspace.memberPath

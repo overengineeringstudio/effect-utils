@@ -188,16 +188,115 @@ automatically and must never be saved.
 
 ## Private pnpm Consumption
 
-Nix realizes a private package product before dependency installation. The
-consumer staging step writes that immutable tarball path into the staged package
-manifest as a `file:` dependency. pnpm receives no cache credential and performs
-no private network fetch. The checked-in source manifest does not contain an
-absolute store path.
+Private package products (decision 0037 clauses 4 and 5) reach pnpm and Buck
+consumers as Nix-realized tarballs. The consumer never evaluates the producer's
+recipe and never holds a cache credential.
 
-The tarball path or filename must change when the product digest changes. The
-consumer lock records that exact `file:` identity and the package integrity.
-TypeScript checks and unit tests run against the staged install; source-workspace
-aliases do not satisfy this conformance lane.
+```text
+producer manifest row (name, version, sha256, size, storePath, provenance)
+  -> effect-utils.lib.mkPrivateProductTarballs { pkgs; manifest; schema; }
+       storePath with string context  -> Nix daemon substitutes it (private cache netrc)
+       fixed-output copy, flat sha256  -> /nix/store/<h>-<sha256>.tgz
+       stage        : <safe-name>-<version>-<sha256>.tgz  (pnpm file: staging)
+       archiveRoot  : <sha256>.tgz                          (Buck nix_store.product_root)
+       archivesByDigest.<sha256>                            (pnpm-archives.nix productArchives)
+  -> consumer pnpm task links stage at .devenv/pnpm-product-tarballs
+  -> package manifests / root overrides: file:.devenv/pnpm-product-tarballs/<file>
+  -> pnpm lock: package key <name>@file:<path>, resolution {integrity, tarball: file:<path>}
+  -> Buck sidecar row: productTarball + sha256 + sizeBytes, classification private
+```
+
+### Substitution identity
+
+The manifest `storePath` is the only identity a consumer realizes. The
+producer's product derivation is input-addressed over the producer's whole
+flake source (`root = self`), its `producerCommit` (`self.rev`), and its locked
+`effect-utils`/`nixpkgs` inputs. Any other evaluation names a different path:
+
+| Evaluation of the producer recipe                               | Store path    |
+| --------------------------------------------------------------- | ------------- |
+| producer flake at `producerCommit`, its own lock                | manifest path |
+| producer flake at the manifest commit (changes `manifest.json`) | different     |
+| consumer input with `follows` overriding producer inputs        | different     |
+
+The manifest commit necessarily differs from the producer commit, so a consumer
+pinned to it can never reproduce the recorded path by evaluating the recipe;
+`follows` overrides diverge further. Consumers therefore do not use the
+producer's flake outputs as product sources.
+
+`mkPrivateProductTarballs` appends store-path string context to the recorded
+path. Instantiating the dependent derivation makes the Nix daemon substitute
+that path from its configured caches: evaluation-time substitution, never a
+build, so it is not import-from-derivation and works without
+`builtins.fetchClosure`. Evaluating a private product therefore requires a
+daemon that can read the private cache; a missing path fails evaluation with
+"no substituter can build it". A fixed-output derivation (flat SHA-256 equal to
+the manifest `sha256`) copies `<safe-name>.tgz` after checking its size and
+that `provenance.json` equals the manifest provenance, so the consumer-visible
+archive is content-addressed by the product digest.
+
+On a substitution miss, building the producer flake at `producerCommit` with
+its own lock (`nix build <producer>/<producerCommit>#<product>`, no `follows`)
+recreates the identical input-addressed path through the same Buck graph
+(BRIDGE-R08); the consumer loader then substitutes it locally.
+
+### Manifest row
+
+The loader accepts exactly `{ cache, products, schema }` with the caller-supplied
+`schema` (for example `private-shared/buck-cache-products/v1`) and rows with
+exactly `name`, `provenance`, `sha256`, `size`, `storePath`, `version`. It
+rejects unscoped names, invalid versions, non-lowercase digests, non-positive
+sizes, invalid store paths, provenance whose `productDigest` differs from
+`sha256`, and duplicate names or digests.
+
+### pnpm staging and lock
+
+The staged file name is `<name without "@", "/" as "-">-<version>-<sha256>.tgz`.
+The Genie helper `projectPrivateProductTarballs` renders
+`file:.devenv/pnpm-product-tarballs/<file>` pins (typically root `overrides`)
+from the same manifest rows; the checked-in manifests carry only this
+root-relative path, never an absolute store path. The shared pnpm task option
+`productTarballStage` links the loader's `stage` at that directory before
+`install`, `update`, and `dedupe`, and treats a stale link as an install miss.
+
+Because the file name carries the digest, a new product changes the `file:`
+identity and the lock entry. The lock records `resolution.tarball` equal to the
+package key's `file:` path plus the pnpm SHA-512 integrity; pnpm rejects a
+staged file whose bytes do not match that integrity. TypeScript checks and unit
+tests run against this staged install; source-workspace aliases do not satisfy
+this conformance lane.
+
+### Buck and sidecar
+
+The lock translator accepts a tarball resolution starting with `file:` only as
+a product: a normalized, root-relative path ending in `-<sha256>.tgz` whose
+package key names the same path. The `effect-utils/buck2-pnpm-sha256/v2`
+sidecar row for it replaces `registryUrl` with `productTarball`:
+
+```json
+{
+  "bins": {},
+  "classification": "private",
+  "integrity": "sha512-…",
+  "packageIdentity": "@overeng/meters@file:.devenv/pnpm-product-tarballs/overeng-meters-0.1.0-0096….tgz",
+  "productTarball": "file:.devenv/pnpm-product-tarballs/overeng-meters-0.1.0-0096….tgz",
+  "sha256": "0096…",
+  "sizeBytes": 43881
+}
+```
+
+The generator reads product bytes only from the staged path, verifies the lock
+integrity and that the SHA-256 equals the digest in the file name, and reuses an
+integrity-matched previous row without reading. It never fetches a product row,
+and the archive seeder never uploads one to a CAS tier.
+
+`pnpm_package` receives the `file:` identity as its `url`. Its fetch action
+resolves product rows only from `nix_store.root` (sandboxed product builds, where
+`pnpm-archives.nix` takes `productArchives = archivesByDigest`) or
+`nix_store.product_root` (live consumer builds; `mkConsumerBuckRoot`
+`privateProductRoot = archiveRoot`) and fails when neither is configured.
+`pnpm-archives.nix` requires each product row's archive to be a flat
+fixed-output derivation whose hash equals the row's `sha256`.
 
 ## Conformance
 

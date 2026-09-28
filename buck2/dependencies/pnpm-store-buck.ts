@@ -2,7 +2,7 @@ import {
   nativeDependencyPolicy,
   nixGraftedStoreOverridePackages,
 } from '../../genie/native-dependency-policy.ts'
-import type { PnpmLockMetadata, PnpmSha256Sidecar } from './pnpm-lock.ts'
+import { isProductSha256Entry, type PnpmLockMetadata, type PnpmSha256Sidecar } from './pnpm-lock.ts'
 import type {
   PnpmStoreEdgeSet,
   PnpmStoreEntry,
@@ -227,18 +227,23 @@ export const renderPnpmPackageTargets = ({
   }
   const lines: string[] = []
   for (const [packageKey, packageMetadata] of sortedEntries(metadata.packages)) {
-    if (packageMetadata.resolution !== 'registry') continue
+    if (packageMetadata.resolution === 'workspace') continue
     const archive = sidecar.packages[packageKey]
     if (archive === undefined || packageMetadata.url === undefined)
       return fail(`missing sidecar entry ${packageKey}`)
-    if (archive.packageIdentity !== packageKey || archive.registryUrl !== packageMetadata.url) {
+    const archiveSource = isProductSha256Entry(archive) ? archive.productTarball : archive.registryUrl
+    if (
+      archive.packageIdentity !== packageKey ||
+      archiveSource !== packageMetadata.url ||
+      isProductSha256Entry(archive) !== (packageMetadata.resolution === 'product')
+    ) {
       return fail(`sidecar archive binding mismatch ${packageKey}`)
     }
     lines.push(
       'pnpm_package(',
       `    name = ${starlarkString(packageMetadata.target)},`,
       `    package_name = ${starlarkString(packageMetadata.name)},`,
-      `    url = ${starlarkString(archive.registryUrl)},`,
+      `    url = ${starlarkString(archiveSource)},`,
       `    sha256 = ${starlarkString(archive.sha256)},`,
       `    size_bytes = ${archive.sizeBytes},`,
       `    bins = ${renderDict({ indent: 4, record: archive.bins })},`,
