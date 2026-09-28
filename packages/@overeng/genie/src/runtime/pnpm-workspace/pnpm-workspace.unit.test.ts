@@ -7,7 +7,12 @@ import { describe, expect, it } from 'vitest'
 import { packageJson, type GenieContext } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
 import type { WorkspacePackage } from '../package-json/mod.ts'
-import { pnpmWorkspaceYaml, projectPnpmPackageClosure, projectPnpmSourceInputs } from './mod.ts'
+import {
+  pnpmWorkspaceYaml,
+  projectPnpmPackageClosure,
+  projectPnpmSourceInputs,
+  projectPrivateProductTarballs,
+} from './mod.ts'
 
 const mockGenieContext: GenieContext = {
   location: '.',
@@ -242,6 +247,36 @@ describe('metadata-based workspace projections', () => {
     })
 
     expect(workspaceRoot.data.workspaces).toEqual(['packages/app', 'packages/utils'])
+  })
+})
+
+describe('private product tarballs', () => {
+  const sha256 = 'b2533339ab5d0a41a36ae71e266e891acd551f9cf054fcd49bfcfdd3d421dca5'
+
+  it('pins each product to a root-relative, digest-named staged tarball', () => {
+    expect(
+      projectPrivateProductTarballs({
+        products: [
+          { name: '@overeng/meters', version: '0.1.0', sha256: 'a'.repeat(64) },
+          { name: '@overeng/geist-design-system', version: '0.1.0', sha256 },
+        ],
+      }).overrides,
+    ).toEqual({
+      '@overeng/geist-design-system': `file:.devenv/pnpm-product-tarballs/overeng-geist-design-system-0.1.0-${sha256}.tgz`,
+      '@overeng/meters': `file:.devenv/pnpm-product-tarballs/overeng-meters-0.1.0-${'a'.repeat(64)}.tgz`,
+    })
+  })
+
+  it('rejects rows that cannot name one immutable staged file', () => {
+    const row = { name: '@overeng/meters', version: '0.1.0', sha256 }
+    for (const [products, message] of [
+      [[row, row], /listed more than once/],
+      [[{ ...row, name: 'meters' }], /scoped npm package name/],
+      [[{ ...row, version: '../0.1.0' }], /invalid version/],
+      [[{ ...row, sha256: sha256.toUpperCase() }], /lowercase hexadecimal/],
+    ] as const) {
+      expect(() => projectPrivateProductTarballs({ products })).toThrow(message)
+    }
   })
 })
 

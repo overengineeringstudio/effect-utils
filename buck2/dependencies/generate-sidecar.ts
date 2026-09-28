@@ -28,6 +28,8 @@ const main = async (): Promise<void> => {
   }
   const sidecar = await generatePnpmSha256Sidecar({
     metadata,
+    // Private product tarballs are staged by Nix at their lock-relative `file:` path.
+    readProductTarball: async (relativePath) => readFileSync(repo.resolve(relativePath)),
     ...(previous === undefined ? {} : { previous }),
   })
   const contents = `${JSON.stringify(sidecar)}\n`

@@ -96,7 +96,7 @@ S3-compatible storage as the agnostic foundation
   publisher with provenance, private-shared product lane, and retirement of
   the GitHub-release import path; ledger rows for publication move from
   GitHub to the cache publisher.
-- Open: private pnpm `file:` variant (unproven), Cachix retention at our volume,
+- Open: Cachix retention at our volume,
   R2 exit criteria, remote execution (04-reuse / 02-execution open questions).
 
 ## Amendment 1 (2026-09-22)
@@ -125,3 +125,24 @@ Repin rule: a consumer repins effect-utils only to a commit that
 Before repinning, move the consumer's catalog `effect` (and its Effect cohort)
 to the exact version in effect-utils' `genie/external.ts` catalog, then
 regenerate. Otherwise the strict peer check fails the install.
+
+## Amendment 3 (2026-09-28)
+
+Principal decision q6 (manual-rebuild-amendment). For private products,
+clause 3's rebuild-on-miss is replaced: a substitution miss fails consumer
+evaluation closed with an actionable error that names the product, its store
+path, the cache, and the producer commit. Recovery is manual: rebuild the
+product at `producerCommit` with the producer's own lock and push that store
+path to the private cache.
+
+The consumer cannot rebuild on its own. A private product's store path is
+input-addressed over the producer's flake source (`self`) and `self.rev`. The
+manifest that records the path is committed after the producer commit, so
+evaluating the recipe from the manifest commit (or with `follows` overrides)
+yields a different path; the recorded path is reproducible only at the
+producer commit. Consumers therefore substitute the recorded path and never
+evaluate the producer recipe (06-nix-bridge "Private pnpm Consumption").
+
+The consequence "Open: private pnpm `file:` variant (unproven)" is closed:
+PR #1472 implements it (`mkPrivateProductTarballs`, the `productTarball`
+sidecar row, and the consumer fixture).
