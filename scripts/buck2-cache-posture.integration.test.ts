@@ -3,11 +3,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { standardCIEnv } from '../genie/ci-workflow/shared.ts'
 import {
   reconcileStandaloneCachePosture,
   standaloneCachePostureConfig,
 } from './buck2-cache-posture.ts'
-import { standardCIEnv } from '../genie/ci-workflow/shared.ts'
 
 const trustedOrigin = {
   tier: 'private',

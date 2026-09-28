@@ -10,7 +10,6 @@ import {
 const buckMemberSchemaVersion = BUCK_MEMBER_MANIFEST_SCHEMA_VERSION
 
 const manifestProjection = {
-
   capabilities: [
     {
       _tag: 'ToolchainAuthority',

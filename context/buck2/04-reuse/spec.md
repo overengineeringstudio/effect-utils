@@ -39,9 +39,9 @@ expands the variable in the daemon, so no credential value is written to a file.
 
 Executor platforms set `remote_enabled = False` and read `remote_cache_enabled`
 and `allow_cache_uploads` from the root config (cache-only: local execution,
-remote reuse). Disable toggle: pointing the client section away (or removing
-it) restores pure-local builds — documented as the outage escape hatch
-(REUSE-R04).
+remote reuse). `BUCK2_NO_REMOTE_CACHE=1` selects a local overlay that sets
+`remote_cache_enabled = false` and disables uploads independently of the
+public read-only and protected publisher postures (REUSE-R04).
 
 ## Reuse Verification
 
