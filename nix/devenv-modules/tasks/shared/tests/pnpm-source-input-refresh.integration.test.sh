@@ -28,7 +28,7 @@ write_source_package() {
 }
 
 write_source_package one
-printf '{"name":"fixture-root","private":true,"packageManager":"pnpm@12.4.1","dependencies":{"source-package":"file:%s"}}\n' \
+printf '{"name":"fixture-root","private":true,"packageManager":"pnpm@12.7.0","dependencies":{"source-package":"file:%s"}}\n' \
   "$stable_stage_path" > "$workspace/package.json"
 
 install_fixture() {

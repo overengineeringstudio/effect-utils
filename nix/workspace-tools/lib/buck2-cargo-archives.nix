@@ -4,7 +4,10 @@
 # pinned by the Cargo.lock sha256) at evaluation — they are source files, not
 # build outputs — and realizes one fixed-output fetch per digest. The Buck rule
 # `@rules//buck2/rust:crates.bzl` copies `<sha256>.tgz` from this tree when
-# `nix_store.crates_root` is set. Acquisition only: nothing is published.
+# `nix_store.crates_root` is set. Git sources come from the graph's sibling
+# `git-archives.json` sidecar (GitHub commit tarballs pinned by sha256, gated by
+# `scripts/buck2-rust-deps.sh`) and share the `<sha256>.tgz` layout.
+# Acquisition only: nothing is published.
 {
   pkgs,
   # Reindeer graph files (`third-party/BUCK`) as paths.
@@ -39,10 +42,39 @@ let
         };
       archives = map parseBlock blocks;
     in
-    assert lib.assertMsg (archives != [ ])
+    assert lib.assertMsg
+      (archives != [ ] || lib.hasInfix "\ngit_archive(\n" ("\n" + builtins.readFile file))
       "buck2-cargo-archives: ${toString file} declares no crate_archive (Reindeer [buck] http_archive = \"crate_archive\")";
     archives;
-  archives = lib.concatMap parseGraph thirdPartyBuckFiles;
+  parseGitArchives =
+    file:
+    let
+      sidecar = dirOf file + "/git-archives.json";
+      pins = builtins.fromJSON (builtins.readFile sidecar);
+      graphText = builtins.readFile file;
+    in
+    if !(builtins.pathExists sidecar) then
+      [ ]
+    else
+      assert lib.assertMsg (
+        pins.schema or null == "effect-utils/buck2-git-archives/v1"
+      ) "buck2-cargo-archives: ${toString sidecar} must carry schema effect-utils/buck2-git-archives/v1";
+      assert lib.assertMsg (lib.hasInfix "\ngit_archive(\n" ("\n" + graphText))
+        "buck2-cargo-archives: ${toString sidecar} pins git sources but ${toString file} declares no git_archive";
+      map (
+        pin:
+        assert lib.assertMsg (
+          builtins.match "[0-9a-f]{64}" pin.sha256 != null
+        ) "buck2-cargo-archives: ${toString sidecar} ${pin.repo} needs a lowercase hex sha256";
+        assert lib.assertMsg (
+          builtins.match "https://github.com/[^\"]+[.]tar[.]gz" pin.url != null
+        ) "buck2-cargo-archives: ${toString sidecar} ${pin.repo} needs a GitHub archive url";
+        {
+          inherit (pin) sha256 url;
+        }
+      ) pins.archives;
+  archives =
+    lib.concatMap parseGraph thirdPartyBuckFiles ++ lib.concatMap parseGitArchives thirdPartyBuckFiles;
   archivesByDigest = builtins.listToAttrs (
     map (archive: {
       name = archive.sha256;

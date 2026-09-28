@@ -149,11 +149,27 @@ pkgs.runCommand "buck2-rules"
     ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
       # Product binaries intentionally use the portable /lib64 interpreter.
       # A Cargo build script is an executable build-time tool, however, and
-      # cannot use that interpreter inside the Nix sandbox. Run it through the
-      # declared loader and libraries without changing the product's ELF.
+      # cannot use that interpreter inside the Nix sandbox. Run ELF build
+      # scripts through the declared loader and libraries without changing the
+      # product's ELF. A first-party `cargo_build_script` launcher
+      # (buck2/rust/defs.bzl) is a shell script: it receives the loader as
+      # BUCK2_RUST_BUILD_SCRIPT_LOADER and applies it to the build script it execs.
       substituteInPlace "$out/prelude/rust/tools/buildscript_run.py" \
+        --replace-fail 'def run_buildscript(' 'BUILD_SCRIPT_LOADER = ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"]
+
+
+      def buildscript_command(buildscript: str) -> list[str]:
+          with open(buildscript, "rb") as f:
+              if f.read(4) == b"\x7fELF":
+                  return [*BUILD_SCRIPT_LOADER, buildscript]
+          return [buildscript]
+
+
+      def run_buildscript(' \
         --replace-fail '            os.path.abspath(buildscript),' \
-        '            ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib", os.path.abspath(buildscript)],'
+          '            buildscript_command(os.path.abspath(buildscript)),' \
+        --replace-fail '    env = dict(os.environ, **env)' \
+          '    env = dict(os.environ, **env, BUCK2_RUST_BUILD_SCRIPT_LOADER=" ".join(BUILD_SCRIPT_LOADER))'
     ''}
 
   ''

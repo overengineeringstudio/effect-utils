@@ -567,16 +567,49 @@ let
   declaredSourceInputPathsValidated =
     assert _validateSourceInputProjectionContract;
     if hasSourceInputProjectionContract then declaredSourceInputPaths else [ ];
-  stageRootSourceInputManifestAliasesCmd = lib.optionalString hasSourceInputProjectionContract (
+  # pnpm 12.7 computes packlists for directory snapshots retained in the
+  # lockfile even when the narrowed importer set does not reference them.
+  # Stage every declared source-input manifest at both its logical path and the
+  # canonical alias, without pulling source-only changes into FOD identity.
+  # A declared source input therefore needs a source even when the consumer's
+  # closure never imports it: fail evaluation with the missing
+  # `workspaceSources` entry instead of a `cp` failure inside the deps FOD.
+  sourceInputManifestFor =
+    sourcePath:
+    let
+      manifest = "${sourcePath}/package.json";
+    in
+    if builtins.pathExists (resolveEvalSourceFor manifest) then
+      absoluteFileSourcePathFor manifest
+    else
+      throw ''
+        mk-pnpm-cli: declared source input ${sourcePath} has no package.json in the provided sources.
+        pnpm-install-contract.json workspaceManifestContract.sourceInputPaths lists it, so the frozen
+        install packlists it even though ${packageDir} does not import it. Pass its repo through
+        `workspaceSources` (and `evalWorkspaceSources` when those differ), e.g.
+          workspaceSources."${lib.concatStringsSep "/" (lib.take 2 (lib.splitString "/" sourcePath))}" = <source>;
+        provided workspaceSources: ${builtins.toJSON (builtins.attrNames workspaceSources)}
+      '';
+  stageRootSourceInputManifestsCmd = lib.optionalString hasSourceInputProjectionContract (
     builtins.concatStringsSep "\n" (
-      map (sourcePath: ''
-        logical_dir="$out"/${lib.escapeShellArg sourcePath}
-        alias_dir="$out"/${lib.escapeShellArg "${declaredSourceInputStagePath}/${sourcePath}"}
-        if [ -f "$logical_dir/package.json" ]; then
+      map (
+        sourcePath:
+        let
+          sourceManifest = sourceInputManifestFor sourcePath;
+          logicalManifest = "${sourcePath}/package.json";
+          aliasPath = "${declaredSourceInputStagePath}/${sourcePath}";
+        in
+        ''
+          logical_manifest="$out"/${lib.escapeShellArg logicalManifest}
+          if [ ! -f "$logical_manifest" ]; then
+            mkdir -p "$(dirname "$logical_manifest")"
+            cp ${lib.escapeShellArg (toString sourceManifest)} "$logical_manifest"
+          fi
+          alias_dir="$out"/${lib.escapeShellArg aliasPath}
           mkdir -p "$alias_dir"
-          ln -s "$(realpath --relative-to="$alias_dir" "$logical_dir/package.json")" "$alias_dir/package.json"
-        fi
-      '') declaredSourceInputPathsValidated
+          ln -s "$(realpath --relative-to="$alias_dir" "$logical_manifest")" "$alias_dir/package.json"
+        ''
+      ) declaredSourceInputPathsValidated
     )
   );
 
@@ -1206,7 +1239,7 @@ let
       targetPrefix = "";
     }
     + builtins.concatStringsSep "\n" (map stageExternalInstallRootManifestOnlyCmd externalInstallRoots)
-    + stageRootSourceInputManifestAliasesCmd
+    + stageRootSourceInputManifestsCmd
   );
 
   # Each external install root gets its own manifest-only derivation and its

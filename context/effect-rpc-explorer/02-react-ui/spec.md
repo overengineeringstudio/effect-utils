@@ -41,8 +41,15 @@ through the core public Schema. Local state is a
 `useSyncExternalStore`-compatible immutable projection keyed by the structured
 record key, not by a stringified request ID.
 
+`watch({ afterRevision, descriptorRevision })` resumes from the projection's
+store revision and descriptor-set revision, so the core can resend a Snapshot
+when the descriptor set changed between `getSnapshot()` and `watch()`.
+
 On `Snapshot`, the client atomically replaces descriptors, records, counters,
-and local revision. On `Delta`, it first requires
+local revision, and descriptor-set revision. A Snapshot in the middle of a
+Watch (for example, after a runtime descriptor registration) replaces the
+projection the same way, so descriptor filters and schema views follow the
+current set. On `Delta`, it first requires
 `frame.fromRevision === state.revision`, applies every operation to a copied
 projection, and sets `toRevision` only after all operations succeed. A mismatch,
 unknown operation target, or malformed frame suspends delta application and

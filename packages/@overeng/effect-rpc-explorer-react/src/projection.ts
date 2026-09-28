@@ -11,10 +11,20 @@ import {
   type RpcRecord,
 } from '@overeng/effect-rpc-explorer'
 
+/** Revisions the projection already holds when it opens a Watch. */
+export interface ExplorerWatchCursor {
+  readonly afterRevision?: number | undefined
+  readonly descriptorRevision?: number | undefined
+}
+
 /** The transport-neutral client consumed by the explorer. Every result is decoded before use. */
 export interface ExplorerClient {
   readonly getSnapshot: () => Promise<unknown>
-  readonly watch: (afterRevision?: number) => AsyncIterable<unknown>
+  /**
+   * Resumes after the projection's store revision; `descriptorRevision` lets the server resend
+   * a Snapshot when the descriptor set changed meanwhile.
+   */
+  readonly watch: (cursor: ExplorerWatchCursor) => AsyncIterable<unknown>
   readonly clearHistory: () => Promise<unknown>
 }
 
@@ -40,6 +50,7 @@ export type RecoveryReason =
 export interface ExplorerProjection {
   readonly instanceId: string | undefined
   readonly revision: number | undefined
+  readonly descriptorRevision: number | undefined
   readonly descriptors: ReadonlyMap<string, RpcDescriptorWire>
   readonly active: ReadonlyMap<string, RpcRecord>
   readonly completed: ReadonlyMap<string, RpcRecord>
@@ -62,6 +73,7 @@ export const emptyRetentionCounters: RetentionCounters = {
 export const initialExplorerProjection: ExplorerProjection = {
   instanceId: undefined,
   revision: undefined,
+  descriptorRevision: undefined,
   descriptors: new Map(),
   active: new Map(),
   completed: new Map(),
@@ -89,6 +101,7 @@ const recordsByIdentity = (records: ReadonlyArray<RpcRecord>): ReadonlyMap<strin
 export const projectionFromSnapshot = (snapshot: InspectorSnapshotFrame): ExplorerProjection => ({
   instanceId: snapshot.instanceId,
   revision: snapshot.revision,
+  descriptorRevision: snapshot.descriptorRevision,
   descriptors: new Map(
     snapshot.descriptors.map((descriptor) => [descriptor.descriptorId, descriptor]),
   ),
@@ -305,7 +318,10 @@ export const createExplorerProjectionStore = (client: ExplorerClient): ExplorerP
     if ((await loadSnapshot(runGeneration)) === false) return
 
     try {
-      const iterable = client.watch(state.revision)
+      const iterable = client.watch({
+        afterRevision: state.revision,
+        descriptorRevision: state.descriptorRevision,
+      })
       iterator = iterable[Symbol.asyncIterator]()
       // eslint-disable-next-line no-unmodified-loop-condition -- generation is changed by subscription teardown and reconnect callbacks.
       while (runGeneration === generation) {
