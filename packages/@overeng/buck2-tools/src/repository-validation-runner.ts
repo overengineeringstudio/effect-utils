@@ -435,17 +435,17 @@ const checkWorkspaceContract = ({
         'outputName',
         'target',
         'version',
-        ...(rust ? ['cargoWorkspaceRoot'] : []),
+        ...(rust === true ? ['cargoWorkspaceRoot'] : []),
       ],
       subject: `native products[${index}]`,
     })
     const target = requireString(entry.target, `native products[${index}].target`)
-    const packagePath = rust ? name : 'genie'
+    const packagePath = rust === true ? name : 'genie'
     if (
       entry.kind !== 'native' ||
       entry.outputName !== 'artifact.tar' ||
       entry.version !== '0.0.0' ||
-      (rust && entry.cargoWorkspaceRoot !== 'rust') ||
+      (rust === true && entry.cargoWorkspaceRoot !== 'rust') ||
       target !== `effect_utils//packages/@overeng/${packagePath}:${name}-product`
     ) {
       throw new Error(`native products[${index}] does not match its Buck target`)
