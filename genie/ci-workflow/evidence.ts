@@ -2,7 +2,8 @@ import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runti
 
 // GitHub-specific expressions and credentials stop here; the task runner sees PIPELINE_*.
 type Job = GitHubWorkflowArgs['jobs'][string]
-export const evidenceMode = "(github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE)"
+export const evidenceMode =
+  "(github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE)"
 export const evidenceEnabled = `${evidenceMode} == 'seal' || ${evidenceMode} == 'upload'`
 const script = 'bash genie/ci-scripts/evidence-job.sh'
 const uploadUrl = '${{ vars.BUCK2_EVIDENCE_UPLOAD_URL }}'
@@ -20,55 +21,89 @@ const joinTailnetStep = {
 } as const
 
 export const withGitHubEvidence = (jobs: Record<string, Job>): Record<string, Job> =>
-  Object.fromEntries(Object.entries(jobs).map(([jobId, job]) => {
-    // Optional baseline checkouts can be skipped; the initial checkout must also have the parent.
-    const steps = job.steps.map((step) =>
-      'uses' in step && step.uses?.startsWith('actions/checkout@')
-        ? { ...step, with: { ...('with' in step && typeof step.with === 'object' && step.with !== null ? step.with : {}), 'fetch-depth': 2 } }
-        : step)
-    const checkout = steps.findLastIndex((step) => 'uses' in step && step.uses?.startsWith('actions/checkout@'))
-    if (checkout < 0) return [jobId, job]
-    const matrix = job.strategy !== undefined && 'matrix' in job.strategy
-    steps.splice(checkout + 1, 0, {
-      name: 'Prepare provider-neutral pipeline identity',
-      if: "\${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}",
-      shell: 'bash',
-      env: {
-        JOB_KEY: jobId,
-        MATRIX_VALUE: matrix ? '${{ matrix.runner }}' : '',
-        PR_HEAD: '${{ github.event.pull_request.head.sha }}',
-        PR_NUMBER: '${{ github.event.pull_request.number }}',
-        PR_FORK: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}",
-      },
-      run: `${script} identity`,
-    })
-    const taskIndex = steps.findLastIndex((step) => 'run' in step && typeof step.run === 'string' && step.run.includes('tasks run '))
-    if (taskIndex >= 0) {
-      const taskStep = steps[taskIndex]
-      steps[taskIndex] = { ...taskStep, env: {
-        ...('env' in taskStep ? taskStep.env : {}),
-        PIPELINE_RUN_PREFIX: "\${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}",
-      } }
-    }
-    // Keep build and test DNS/routes untouched; only the evidence post-step needs the tailnet.
-    steps.push(joinTailnetStep)
-    steps.push({
-      name: 'Seal and publish pipeline evidence',
-      if: "\${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}",
-      shell: 'bash',
-      env: {
-        BUCK2_EVIDENCE_UPLOAD_URL: uploadUrl,
-        BUCK2_EVIDENCE_RESOLVER_URL: '${{ vars.BUCK2_EVIDENCE_RESOLVER_URL }}',
-      },
-      run: `${script} seal || true`,
-    })
-    return [jobId, {
-      ...job,
-      permissions: { contents: 'read', ...(typeof job.permissions === 'object' && job.permissions !== null ? job.permissions : {}), 'id-token': 'write' },
-      env: { ...job.env, EVIDENCE_MODE: `\${{ ${evidenceMode} }}`, TS_EVIDENCE_CLIENT_ID: '${{ vars.TS_EVIDENCE_CLIENT_ID }}', TS_EVIDENCE_AUDIENCE: '${{ vars.TS_EVIDENCE_AUDIENCE }}' },
-      steps,
-    }]
-  }))
+  Object.fromEntries(
+    Object.entries(jobs).map(([jobId, job]) => {
+      // Optional baseline checkouts can be skipped; the initial checkout must also have the parent.
+      const steps = job.steps.map((step) =>
+        'uses' in step && step.uses?.startsWith('actions/checkout@')
+          ? {
+              ...step,
+              with: {
+                ...('with' in step && typeof step.with === 'object' && step.with !== null
+                  ? step.with
+                  : {}),
+                'fetch-depth': 2,
+              },
+            }
+          : step,
+      )
+      const checkout = steps.findLastIndex(
+        (step) => 'uses' in step && step.uses?.startsWith('actions/checkout@'),
+      )
+      if (checkout < 0) return [jobId, job]
+      const matrix = job.strategy !== undefined && 'matrix' in job.strategy
+      steps.splice(checkout + 1, 0, {
+        name: 'Prepare provider-neutral pipeline identity',
+        if: "\${{ env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload' }}",
+        shell: 'bash',
+        env: {
+          JOB_KEY: jobId,
+          MATRIX_VALUE: matrix ? '${{ matrix.runner }}' : '',
+          PR_HEAD: '${{ github.event.pull_request.head.sha }}',
+          PR_NUMBER: '${{ github.event.pull_request.number }}',
+          PR_FORK:
+            "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}",
+        },
+        run: `${script} identity`,
+      })
+      const taskIndex = steps.findLastIndex(
+        (step) => 'run' in step && typeof step.run === 'string' && step.run.includes('tasks run '),
+      )
+      if (taskIndex >= 0) {
+        const taskStep = steps[taskIndex]
+        steps[taskIndex] = {
+          ...taskStep,
+          env: {
+            ...('env' in taskStep ? taskStep.env : {}),
+            PIPELINE_RUN_PREFIX:
+              "\${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}",
+          },
+        }
+      }
+      // Keep build and test DNS/routes untouched; only the evidence post-step needs the tailnet.
+      steps.push(joinTailnetStep)
+      steps.push({
+        name: 'Seal and publish pipeline evidence',
+        if: "\${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}",
+        shell: 'bash',
+        env: {
+          BUCK2_EVIDENCE_UPLOAD_URL: uploadUrl,
+          BUCK2_EVIDENCE_RESOLVER_URL: '${{ vars.BUCK2_EVIDENCE_RESOLVER_URL }}',
+        },
+        run: `${script} seal || true`,
+      })
+      return [
+        jobId,
+        {
+          ...job,
+          permissions: {
+            contents: 'read',
+            ...(typeof job.permissions === 'object' && job.permissions !== null
+              ? job.permissions
+              : {}),
+            'id-token': 'write',
+          },
+          env: {
+            ...job.env,
+            EVIDENCE_MODE: `\${{ ${evidenceMode} }}`,
+            TS_EVIDENCE_CLIENT_ID: '${{ vars.TS_EVIDENCE_CLIENT_ID }}',
+            TS_EVIDENCE_AUDIENCE: '${{ vars.TS_EVIDENCE_AUDIENCE }}',
+          },
+          steps,
+        },
+      ]
+    }),
+  )
 
 export const evidenceCloseJob = (jobs: Record<string, Job>): Job => ({
   'runs-on': 'ubuntu-latest',
@@ -77,25 +112,49 @@ export const evidenceCloseJob = (jobs: Record<string, Job>): Job => ({
   permissions: { contents: 'read', 'id-token': 'write' },
   env: {
     EVIDENCE_MODE: `\${{ ${evidenceMode} }}`,
-    PIPELINE_TRUSTED: "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}",
+    PIPELINE_TRUSTED:
+      "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}",
     TS_EVIDENCE_CLIENT_ID: '${{ vars.TS_EVIDENCE_CLIENT_ID }}',
     TS_EVIDENCE_AUDIENCE: '${{ vars.TS_EVIDENCE_AUDIENCE }}',
   },
   steps: [
     { uses: 'actions/checkout@v6', with: { 'persist-credentials': false } },
     { name: 'Prepare Nix', uses: 'cachix/install-nix-action@v31' },
-    { name: 'Prepare evidence uploader', shell: 'bash', 'continue-on-error': true, run: 'cli=$(nix build --no-link --print-out-paths .#buck2-evidence) || exit; echo "BUCK2_EVIDENCE_CLI=$cli/bin/buck2-evidence" >> "$GITHUB_ENV"' },
+    {
+      name: 'Prepare evidence uploader',
+      shell: 'bash',
+      'continue-on-error': true,
+      env: { GITHUB_TOKEN: '${{ github.token }}' },
+      run: 'cli=$(nix build --no-link --print-out-paths .#buck2-evidence) || exit; echo "BUCK2_EVIDENCE_CLI=$cli/bin/buck2-evidence" >> "$GITHUB_ENV"',
+    },
     joinTailnetStep,
-    { name: 'Close pipeline attempt', shell: 'bash', env: {
-      NEEDS_JSON: '${{ toJSON(needs) }}',
-      EXPECTED_KEYS_JSON: JSON.stringify(Object.entries(jobs).flatMap(([jobId, job]) => {
-        const matrix = job.strategy !== undefined && 'matrix' in job.strategy ? job.strategy.matrix : undefined
-        if (matrix === undefined || typeof matrix !== 'object' || !('runner' in matrix) || !Array.isArray(matrix.runner)) {
-          return [{ job: jobId, key: jobId }]
-        }
-        return matrix.runner.flatMap((runner) => typeof runner === 'string' ? [{ job: jobId, key: `${jobId}[runner=${runner}]` }] : [])
-      })),
-      BUCK2_EVIDENCE_UPLOAD_URL: uploadUrl,
-    }, run: `${script} close || true` },
+    {
+      name: 'Close pipeline attempt',
+      shell: 'bash',
+      env: {
+        NEEDS_JSON: '${{ toJSON(needs) }}',
+        EXPECTED_KEYS_JSON: JSON.stringify(
+          Object.entries(jobs).flatMap(([jobId, job]) => {
+            const matrix =
+              job.strategy !== undefined && 'matrix' in job.strategy
+                ? job.strategy.matrix
+                : undefined
+            if (
+              matrix === undefined ||
+              typeof matrix !== 'object' ||
+              !('runner' in matrix) ||
+              !Array.isArray(matrix.runner)
+            ) {
+              return [{ job: jobId, key: jobId }]
+            }
+            return matrix.runner.flatMap((runner) =>
+              typeof runner === 'string' ? [{ job: jobId, key: `${jobId}[runner=${runner}]` }] : [],
+            )
+          }),
+        ),
+        BUCK2_EVIDENCE_UPLOAD_URL: uploadUrl,
+      },
+      run: `${script} close || true`,
+    },
   ],
 })

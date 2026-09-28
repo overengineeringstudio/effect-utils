@@ -296,6 +296,8 @@ describe('CI evidence upload isolation', () => {
   it('joins the tailnet only after build work, immediately before upload or attempt-close', () => {
     const jobKeys = workflowJobKeys(generatedCiWorkflowYamlSource)
     const join = 'uses: tailscale/github-action@v4'
+    const joinGate =
+      "      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}\n        uses: tailscale/github-action@v4"
     const seal = 'name: Seal and publish pipeline evidence'
     for (const [index, jobKey] of jobKeys.entries()) {
       const start = generatedCiWorkflowYamlSource.indexOf(`  ${jobKey}:\n`)
@@ -320,8 +322,7 @@ describe('CI evidence upload isolation', () => {
       expect(job.indexOf(seal), `${jobKey}: evidence must follow join`).toBeGreaterThan(joinIndex)
       expect(job.slice(joinIndex, job.indexOf(seal))).toContain('continue-on-error: true')
       expect(job.slice(joinIndex, job.indexOf(seal))).toContain('args: --accept-dns=true')
-      expect(job.slice(joinIndex, job.indexOf(seal))).toContain('env.PIPELINE_TRUSTED')
-      expect(job.slice(joinIndex, job.indexOf(seal))).toContain('always()')
+      expect(job.slice(0, job.indexOf(seal))).toContain(joinGate)
     }
     const lintJob = generatedCiWorkflowYamlSource.slice(
       generatedCiWorkflowYamlSource.indexOf('  lint:\n'),
@@ -332,6 +333,7 @@ describe('CI evidence upload isolation', () => {
     const closeJob = generatedCiWorkflowYamlSource.slice(
       generatedCiWorkflowYamlSource.indexOf('  evidence-attempt-close:\n'),
     )
+    expect(closeJob.slice(0, closeJob.indexOf('name: Close pipeline attempt'))).toContain(joinGate)
     expect(closeJob.indexOf('name: Prepare evidence uploader')).toBeLessThan(closeJob.indexOf(join))
     expect(closeJob.slice(closeJob.indexOf(join))).not.toContain('nix build')
     expect(closeJob.indexOf(join)).toBeLessThan(closeJob.indexOf('name: Close pipeline attempt'))

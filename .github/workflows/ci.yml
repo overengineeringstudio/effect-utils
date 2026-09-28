@@ -9372,6 +9372,8 @@ jobs:
       - name: Prepare evidence uploader
         shell: bash
         continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cli=$(nix build --no-link --print-out-paths .#buck2-evidence) || exit; echo "BUCK2_EVIDENCE_CLI=$cli/bin/buck2-evidence" >> "$GITHUB_ENV"'
       - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}
         uses: tailscale/github-action@v4
