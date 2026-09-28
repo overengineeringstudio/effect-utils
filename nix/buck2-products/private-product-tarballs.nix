@@ -28,11 +28,19 @@ let
       # Digest-bearing name: the staged `file:` identity, and therefore the
       # consumer lock entry, changes whenever the product bytes change.
       fileName = "${safeName name}-${entry.version}-${entry.sha256}.tgz";
-      published = builtins.appendContext entry.storePath {
-        ${entry.storePath} = {
-          path = true;
-        };
-      };
+      # A miss fails evaluation closed (decision 0037 amendment 3): the consumer cannot
+      # reproduce the producer's input-addressed path, so recovery is a producer rebuild
+      # and push at its producer commit.
+      published =
+        builtins.addErrorContext
+          "private product ${name} ${entry.version} (${entry.storePath}) is not substitutable from cache ${manifest.cache}; rebuild it at producer commit ${provenance.producerCommit} with the producer's own lock and push that store path to ${manifest.cache}"
+          (
+            builtins.appendContext entry.storePath {
+              ${entry.storePath} = {
+                path = true;
+              };
+            }
+          );
       tarball =
         pkgs.runCommand "${entry.sha256}.tgz"
           {

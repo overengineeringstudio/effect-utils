@@ -229,16 +229,16 @@ path. Instantiating the dependent derivation makes the Nix daemon substitute
 that path from its configured caches: evaluation-time substitution, never a
 build, so it is not import-from-derivation and works without
 `builtins.fetchClosure`. Evaluating a private product therefore requires a
-daemon that can read the private cache; a missing path fails evaluation with
-"no substituter can build it". A fixed-output derivation (flat SHA-256 equal to
+daemon that can read the private cache. A fixed-output derivation (flat SHA-256 equal to
 the manifest `sha256`) copies `<safe-name>.tgz` after checking its size and
 that `provenance.json` equals the manifest provenance, so the consumer-visible
 archive is content-addressed by the product digest.
 
-On a substitution miss, building the producer flake at `producerCommit` with
-its own lock (`nix build <producer>/<producerCommit>#<product>`, no `follows`)
-recreates the identical input-addressed path through the same Buck graph
-(BRIDGE-R08); the consumer loader then substitutes it locally.
+A substitution miss fails evaluation closed (decision 0037 amendment 3); the
+error names the product, store path, cache, and producer commit. Recovery is
+manual: build the producer flake at `producerCommit` with its own lock (no
+`follows`), which recreates the identical input-addressed path through the same
+Buck graph (BRIDGE-R08), and push that path to the private cache.
 
 ### Manifest row
 

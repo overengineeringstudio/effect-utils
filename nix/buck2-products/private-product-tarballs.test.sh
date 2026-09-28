@@ -148,7 +148,7 @@ expect_failure 'wrong manifest digest' 'builder failed|failed with exit code|has
   nix build --impure --no-link --expr "$loader_expr tarballs.stage"
 write_manifest "$sha256" "/nix/store/00000000000000000000000000000000-fixture-private-lib-missing" \
   >"$work/manifest.json"
-expect_failure 'unsubstitutable store path' 'no substituter' \
+expect_failure 'unsubstitutable store path' 'private product @fixture/private-lib 1.2.3 .* is not substitutable from cache fixture-private-cache' \
   nix build --impure --no-link --expr "$loader_expr tarballs.stage"
 
 printf 'private product tarball consumer fixture passed (%s)\n' "$sha256"
