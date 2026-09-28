@@ -1210,7 +1210,7 @@ const runCompileExecutable = async (command: CompileExecutableCommand): Promise<
   const modulePath = resolve(command.module)
   const output = resolve(command.output)
   await mkdir(dirname(output), { recursive: true })
-  const child = Bun.spawn(
+  const compile = Bun.spawn(
     [
       process.execPath,
       'build',
@@ -1225,7 +1225,7 @@ const runCompileExecutable = async (command: CompileExecutableCommand): Promise<
     ],
     { cwd: dirname(modulePath), stdout: 'inherit', stderr: 'inherit' },
   )
-  const exitCode = await child.exited
+  const exitCode = await compile.exited
   if (exitCode !== 0) fail(`bun build --compile exited ${exitCode}`)
 }
 
