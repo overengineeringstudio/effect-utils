@@ -42,8 +42,7 @@
   },
   "dependencies": {
     "@overeng/effect-rpc-explorer": "workspace:^",
-    "@overeng/stylex-tokens": "workspace:^",
-    "@stylexjs/stylex": "0.19.0"
+    "@overeng/stylex-tokens": "workspace:^"
   },
   "devDependencies": {
     "@overeng/utils": "workspace:^",
@@ -51,6 +50,7 @@
     "@storybook/addon-a11y": "10.6.0",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
+    "@stylexjs/stylex": "0.19.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "6.1.1",
@@ -67,6 +67,7 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
+    "@stylexjs/stylex": "^0.19.0",
     "effect": "4.0.0-rc.113",
     "react": "^19.2.8",
     "react-aria-components": "^1.21.1",
