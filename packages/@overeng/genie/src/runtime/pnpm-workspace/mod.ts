@@ -1210,7 +1210,11 @@ export type PrivateProductManifestRow = {
  * Digest-named staged tarball file for one private product. Must match the file names
  * `effect-utils.lib.mkPrivateProductTarballs` writes into its `stage` directory.
  */
-export const privateProductTarballFileName = ({ name, version, sha256 }: PrivateProductManifestRow) => {
+export const privateProductTarballFileName = ({
+  name,
+  version,
+  sha256,
+}: PrivateProductManifestRow) => {
   if (/^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(name) === false)
     throw new Error(`Private product ${name} must be a scoped npm package name`)
   if (/^[0-9A-Za-z.+-]+$/.test(version) === false)

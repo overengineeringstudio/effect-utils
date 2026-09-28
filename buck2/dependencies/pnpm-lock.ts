@@ -604,7 +604,8 @@ export const translatePnpmLock = ({
       const directory = stringField({ record: resolution, field: 'directory', location: location })
       if (version.startsWith('file:') === false)
         return fail(`${location} directory resolution must use file:`)
-      if (entry.version !== undefined) return fail(`${location}.version requires a tarball resolution`)
+      if (entry.version !== undefined)
+        return fail(`${location}.version requires a tarball resolution`)
       packages[key] = {
         cpu,
         hasBin,
@@ -633,7 +634,8 @@ export const translatePnpmLock = ({
     let url: string
     let archiveResolution: 'registry' | 'product' = 'registry'
     if (tarball === undefined) {
-      if (entry.version !== undefined) return fail(`${location}.version requires a tarball resolution`)
+      if (entry.version !== undefined)
+        return fail(`${location}.version requires a tarball resolution`)
       url = archiveUrl({ name, version })
     } else if (typeof tarball === 'string' && tarball.startsWith('file:') === true) {
       stringField({ record: entry, field: 'version', location })
@@ -643,7 +645,11 @@ export const translatePnpmLock = ({
     } else {
       stringField({ record: entry, field: 'version', location })
       url = publicArchiveUrl({
-        url: stringField({ record: resolution, field: 'tarball', location: `${location}.resolution` }),
+        url: stringField({
+          record: resolution,
+          field: 'tarball',
+          location: `${location}.resolution`,
+        }),
         location: `${location}.resolution.tarball`,
       })
     }

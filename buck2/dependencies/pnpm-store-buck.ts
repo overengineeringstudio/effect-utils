@@ -231,7 +231,9 @@ export const renderPnpmPackageTargets = ({
     const archive = sidecar.packages[packageKey]
     if (archive === undefined || packageMetadata.url === undefined)
       return fail(`missing sidecar entry ${packageKey}`)
-    const archiveSource = isProductSha256Entry(archive) ? archive.productTarball : archive.registryUrl
+    const archiveSource = isProductSha256Entry(archive)
+      ? archive.productTarball
+      : archive.registryUrl
     if (
       archive.packageIdentity !== packageKey ||
       archiveSource !== packageMetadata.url ||

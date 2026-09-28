@@ -192,7 +192,9 @@ describe('translatePnpmLock', () => {
         },
       }),
     ).toThrow('approved public HTTPS archive origin')
-    expect(renderPnpmPackageTargets({ metadata, sidecar })).toContain(`    url = ${JSON.stringify(url)},`)
+    expect(renderPnpmPackageTargets({ metadata, sidecar })).toContain(
+      `    url = ${JSON.stringify(url)},`,
+    )
     await expect(
       generatePnpmSha256Sidecar({ metadata, fetchArchive: async () => otherArchive }),
     ).rejects.toThrow('integrity')
@@ -300,9 +302,9 @@ ${packageFields}`,
       ...options,
       lockfileText: explicitFalse,
     }).lockfileFingerprint
-    expect(
-      translatePnpmLock({ ...options, lockfileText: omitted }).lockfileFingerprint,
-    ).toBe(explicitFalseFingerprint)
+    expect(translatePnpmLock({ ...options, lockfileText: omitted }).lockfileFingerprint).toBe(
+      explicitFalseFingerprint,
+    )
     expect(translatePnpmLock({ ...options, lockfileText: lock() }).lockfileFingerprint).not.toBe(
       explicitFalseFingerprint,
     )
@@ -744,7 +746,11 @@ describe('private product tarballs', () => {
     const { productTarball: _productTarball, ...rest } = sidecar.packages[productKey] as {
       productTarball: string
     } & Record<string, unknown>
-    const asRegistry = { ...rest, classification: 'public', registryUrl: 'https://registry.npmjs.org/@overeng/meters/-/meters-0.1.0.tgz' }
+    const asRegistry = {
+      ...rest,
+      classification: 'public',
+      registryUrl: 'https://registry.npmjs.org/@overeng/meters/-/meters-0.1.0.tgz',
+    }
     const registrySidecar = decodePnpmSha256Sidecar(
       JSON.parse(JSON.stringify({ ...sidecar, packages: { [productKey]: asRegistry } })),
     )
