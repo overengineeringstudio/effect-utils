@@ -243,7 +243,7 @@ recreates the identical input-addressed path through the same Buck graph
 ### Manifest row
 
 The loader accepts exactly `{ cache, products, schema }` with the caller-supplied
-`schema` (for example `private-shared/buck-cache-products/v1`) and rows with
+`schema` (for example `<producer>/buck-cache-products/v1`) and rows with
 exactly `name`, `provenance`, `sha256`, `size`, `storePath`, `version`. It
 rejects unscoped names, invalid versions, non-lowercase digests, non-positive
 sizes, invalid store paths, provenance whose `productDigest` differs from
