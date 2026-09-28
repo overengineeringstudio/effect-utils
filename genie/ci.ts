@@ -105,6 +105,15 @@ export const REQUIRED_CI_JOB_NAMES = [
   ...EXTRA_CI_JOB_NAMES,
 ] as const satisfies readonly CIJobName[]
 
+/**
+ * Merge-blocking job keys emitted by workflows other than `ci.yml`.
+ *
+ * Each runs on every pull request with no path filter or job-level `if`, so its check run
+ * always materializes. `test-storybook-plays` lives in `storybook-plays.yml` because `ci.yml`
+ * sits at the GitHub Actions workflow size limit.
+ */
+export const STANDALONE_REQUIRED_CI_JOB_NAMES = ['test-storybook-plays'] as const
+
 const matrixCIJobNames = ['test'] as const
 
 /** GitHub status-check context names emitted by a workflow job key. */
@@ -120,4 +129,7 @@ export const ciJobCheckContexts = (jobName: CIJobName) => {
  * Required status checks for branch protection.
  * Matrix jobs are reported as "job-name (matrix-value)" by GitHub Actions.
  */
-export const requiredCIJobs = REQUIRED_CI_JOB_NAMES.flatMap(ciJobCheckContexts)
+export const requiredCIJobs = [
+  ...REQUIRED_CI_JOB_NAMES.flatMap(ciJobCheckContexts),
+  ...STANDALONE_REQUIRED_CI_JOB_NAMES,
+]

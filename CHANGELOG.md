@@ -104,9 +104,11 @@ All notable changes to this project will be documented in this file.
   Storybook does. Under Vitest's `test` value, react-aria's virtualizer read
   `process.env` in the browser and crashed every virtualized story. CI runs
   `storybook:test` for `effect-rpc-explorer-react` and
-  `effect-schema-form-aria` in the advisory `Storybook Plays` workflow
-  (`storybook-plays.yml`, pull requests and `main`, no secrets), kept out of
-  `ci.yml` and its required checks.
+  `effect-schema-form-aria` in the `Storybook Plays` workflow
+  (`storybook-plays.yml`, pull requests and `main`, no secrets), outside
+  `ci.yml`. Its `test-storybook-plays` check is required on `main` through
+  `STANDALONE_REQUIRED_CI_JOB_NAMES` in `genie/ci.ts` and the generated
+  `.github/repo-settings.json` ruleset.
 
 - **Local Buck2 evidence upload**: `otel-span pipeline-run` sends sealed
   local records and their one-job close to the configured evidence service.
