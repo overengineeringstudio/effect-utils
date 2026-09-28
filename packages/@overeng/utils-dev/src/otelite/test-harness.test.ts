@@ -3,6 +3,7 @@ import { describe, expect, it } from '@effect/vitest'
 import { Effect, FileSystem, Layer, Metric, Schema } from 'effect'
 
 import { TraceJson, writeCaptureDiagnostics } from './diagnostics.ts'
+import { otlpTracesUrl } from './otlp-url.ts'
 import {
   captureInProcessAllSignals,
   captureInProcessTrace,
@@ -149,6 +150,18 @@ describe('OteliteTestHarness', () => {
         expect(process.env.OTELITE_TEST_ENDPOINT).toBe(previousCustomEndpoint)
         expect(process.env.OTELITE_TEST_SERVICE).toBe(previousCustomService)
         expect(process.env.OTELITE_TEST_EXTRA).toBe(previousExtra)
+
+        const previousPerSignalEndpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+        yield* otel.withEnv(
+          Effect.sync(() => {
+            expect(process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBe(
+              otlpTracesUrl(otel.capture.endpoints.http),
+            )
+          }),
+          { endpointVar: 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT' },
+        )
+
+        expect(process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBe(previousPerSignalEndpoint)
       }).pipe(Effect.provide(OteliteTestHarness.layer)),
     30_000,
   )

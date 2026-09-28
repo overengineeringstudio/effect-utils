@@ -97,6 +97,12 @@ CI jobs (each seals/uploads its own run record)
        └─ same uploader -> attempt-close record -> ingest index (05)
 ```
 
+For CI evidence upload, the adapter joins the tailnet only after the job's build
+work, immediately before sealing/uploading evidence; a late, fail-open join
+preserves the build's name resolution and routes (the
+[upload-mode incident](https://github.com/overengineeringstudio/effect-utils/actions/runs/36452247266)
+demonstrated the failure when joining before Buck ran).
+
 The finalizer does not need any job's output artifacts. It reads the CI
 adapter's job inventory and conclusions after all dependencies settle and
 uploads one sealed, content-addressed `buck2-attempt-close/v1` record through

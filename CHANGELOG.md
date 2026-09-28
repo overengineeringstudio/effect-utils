@@ -165,6 +165,12 @@ All notable changes to this project will be documented in this file.
   `definition/2` files that `--future` rejects. The pin skips 0.25.x, which
   dropped the legacy v1 `name` + `registry_path` dependency form (restored in
   0.26.0).
+- **nix/provider-clis/vercel-cli**: update the pinned Vercel CLI from 54.18.5
+  to 60.1.3, regenerate `package-lock.json`, and refresh `npmDepsHash`. The
+  derivation no longer omits optional dependencies, because
+  `@vercel/static-config` loads the platform-specific Oxc parser binding
+  (`@oxc-parser/binding-*`) at runtime. The wrapper entrypoint is unchanged:
+  60.1.3 still publishes both `vercel` and `vc` as `dist/vc.js`.
 
 - **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
   Weaver remap dynamic sandbox paths before compilation, so capability
