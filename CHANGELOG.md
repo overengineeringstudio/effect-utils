@@ -399,6 +399,16 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/otel-contract**: Accept an additive `incremental` counter option
   so OTLP metrics preserve monotonic counter semantics.
+- **Buck2 remote cache**: the standalone effect-utils checkout now points its
+  tracked `.buckconfig` at the public cache tier
+  (`grpc://dev3.tail8108.ts.net:8443`, TLS) instead of the private tailnet
+  endpoint, per decision 0033. Public PR CI reads anonymously over TLS with
+  uploads disabled; `BUCK2_NO_REMOTE_CACHE=1` still disables reads explicitly.
+  Only a job holding `BUCK2_CACHE_WRITE_BASIC_AUTH` gets the publisher posture
+  in `.buckconfig.local`. The trusted remote-cache proof on protected `main`
+  writes with `BUCK2_PUBLIC_CACHE_WRITE_AUTH`, then verifies a fresh reader
+  checkout without the publisher overlay or credential. The Buck member
+  capability manifest has no remote-cache field.
 
 - **Buck2 editor views**: Editor-view publication proves the materialized snapshot
   copy against the admitted pre-copy digests in an owner-resolved link form — plus a

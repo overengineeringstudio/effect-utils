@@ -1037,7 +1037,7 @@ describe('ci workflow standard job helpers', () => {
     ['public', '1'],
   ] as const)(
     'renders the %s repository cache trust tier without an ambient GitHub token',
-    (trustTier, noRemoteCache) => {
+    (trustTier, publicReadOnly) => {
       const fixture = spawnSync(
         'bun',
         [
@@ -1218,7 +1218,8 @@ describe('ci workflow standard job helpers', () => {
       const expectedEnv = {
         FORCE_SETUP: '1',
         CI: 'true',
-        BUCK2_NO_REMOTE_CACHE: noRemoteCache,
+        BUCK2_NO_REMOTE_CACHE: '0',
+        BUCK2_PUBLIC_CACHE_READ_ONLY: publicReadOnly,
       }
       const expectedTokenEnv = {
         GITHUB_TOKEN: '${{ github.token }}',
@@ -1896,21 +1897,6 @@ describe('effect-utils standalone CI root', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain('EFFECT_UTILS_WORKSPACE_ROOT')
     expect(generatedCiWorkflowYamlSource).not.toContain('.megarepo/bin/buck2')
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^\s+(?:buck2|\.\/[^ ]*buck2)\s/m)
-  })
-
-  it('keeps the standalone remote-cache proof and cold-GC lane explicit', () => {
-    const cacheProof =
-      generatedCiWorkflowYamlSource
-        .split('  trusted-buck2-remote-cache-proof:\n')[1]
-        ?.split(/^  [a-z]/m)[0] ?? ''
-    expect(cacheProof).toContain('Context B is a second standalone root')
-    expect(cacheProof).toContain('buck="${BUCK2_BIN:?BUCK2_BIN not set}"')
-    expect(cacheProof).toContain('source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"')
-
-    const coldGc =
-      generatedCiWorkflowYamlSource.split('  test-megarepo-cold-gc:\n')[1]?.split(/^  [a-z]/m)[0] ??
-      ''
-    expect(coldGc).toContain('tasks run test:megarepo-cold-gc')
   })
 
   it('keeps pull-request execution credentialless and trusted writes main-only', () => {

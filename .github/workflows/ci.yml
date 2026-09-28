@@ -460,7 +460,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -709,7 +710,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -946,7 +948,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -1186,7 +1189,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -1418,7 +1422,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -1650,7 +1655,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -1882,7 +1888,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -2164,7 +2171,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -2397,7 +2405,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -2629,7 +2638,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -2861,7 +2871,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -3100,7 +3111,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -3121,6 +3133,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -3371,7 +3384,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -3392,7 +3406,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -3473,7 +3488,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -3631,6 +3647,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -3703,108 +3720,19 @@ jobs:
       - name: Prove fresh-root remote action and test-cache hits
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          BUCK2_REMOTE_CACHE_BASIC_AUTH: ${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}
         run: |
           set -euo pipefail
-          proof_script="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof.sh"
-          trap 'rm -f "$proof_script"' EXIT
-          cat > "$proof_script" <<'BUCK2_REMOTE_CACHE_PROOF'
-          set -euo pipefail
-          if [ -z "${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}" ]; then
-            echo "::error::BUCK2_REMOTE_CACHE_BASIC_AUTH is required for the trusted remote-cache proof"
+          if [ -z "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            echo "::error::BUCK2_PUBLIC_CACHE_WRITE_AUTH is required for the trusted remote-cache proof"
             exit 1
           fi
-          source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"
-          cd "$source_root"
-          buck="${BUCK2_BIN:?BUCK2_BIN not set}"
-          context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"
-          target="effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
-          test_target="effect_utils//packages/@overeng/content-address:test"
-          proof_source="$source_root/packages/@overeng/ci-tools/bin/ci-tools.ts"
-          test_proof_source="$source_root/packages/@overeng/content-address/src/mod.unit.test.ts"
-          printf '%s\n' '' "// trusted remote-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$proof_source"
-          printf '%s\n' '' "// trusted test-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$test_proof_source"
-          evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-a.jsonl"
-          test_evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-a.jsonl"
-          evidence_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-b.jsonl"
-          test_evidence_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-b.jsonl"
-          test_evidence_c="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-c.jsonl"
-          trap 'rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c"; rm -rf "$context_b"' EXIT
-
-          # Context A has run-unique source inputs, executes locally, and uploads to the remote cache.
-          "$buck" kill
-          rm -rf buck-out
-          "$buck" build --local-only "$target"
-          "$buck" log show --recent 1 > "$evidence_a"
-          if ! jq -e 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.execution_kind == "ACTION_EXECUTION_KIND_LOCAL" and $action.cache_upload_result == "UPLOAD_RESULT_UPLOADED")' "$evidence_a" >/dev/null; then
-            echo "::error::Context A did not report a successful upload for a locally executed action"
-            exit 1
-          fi
-          "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
-          "$buck" log show --recent 1 > "$test_evidence_a"
-          if ! jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_a" >/dev/null; then
-            echo "::error::Context A did not execute the representative unit-test lane locally"
-            exit 1
-          fi
-
-          # Context B is a second standalone root with a fresh daemon and materializer over identical inputs.
-          "$buck" kill
-          rm -rf buck-out "$context_b"
-          mkdir -p "$context_b"
-          tar -C "$source_root" \
-            --exclude='./.devenv' \
-            --exclude='./.git' \
-            --exclude='./buck-out' \
-            --exclude='./node_modules' \
-            --exclude='./packages/.editor-view' \
-            --exclude='./target' \
-            --exclude='./tmp' \
-            --exclude='*/__pycache__' \
-            --exclude='*/dist' \
-            --exclude='*/node_modules' \
-            --exclude='*/target' \
-            -cf - . | tar -C "$context_b" -xf -
-          cd "$context_b"
-
-          # Buck event data must classify the independent build as a remote action-cache hit.
-          "$buck" build --local-only "$target"
-          "$buck" log show --recent 1 > "$evidence_b"
-          if ! jq -e 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind == "ACTION_EXECUTION_KIND_ACTION_CACHE")' "$evidence_b" >/dev/null; then
-            echo "::error::Context B did not report a remote action-cache hit"
-            exit 1
-          fi
-          if jq -e 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind as $kind | $kind == "ACTION_EXECUTION_KIND_LOCAL" or $kind == "ACTION_EXECUTION_KIND_REMOTE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_DEP_FILE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_ACTION_CACHE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_WORKER" or $kind == "ACTION_EXECUTION_KIND_REMOTE_WORKER")' "$evidence_b" >/dev/null; then
-            echo "::error::Context B executed an action or reused local action state instead of relying on the remote action cache"
-            exit 1
-          fi
-
-          # The representative unit test must pass from the remote test cache without a local test command.
-          "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
-          "$buck" log show --recent 1 > "$test_evidence_b"
-          if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_b" >/dev/null; then
-            echo "::error::Context B did not report the cached representative unit test as passing"
-            exit 1
-          fi
-          if jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_b" >/dev/null; then
-            echo "::error::Context B executed the representative unit test locally instead of using the remote test cache"
-            exit 1
-          fi
-
-          # A source file outside the representative target graph must not change its test action key.
-          printf '%s\n' '' "// trusted irrelevant-mutation proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> README.md
-          "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
-          "$buck" log show --recent 1 > "$test_evidence_c"
-          if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_c" >/dev/null; then
-            echo "::error::The irrelevant mutation prevented the cached representative unit test from passing"
-            exit 1
-          fi
-          if jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_c" >/dev/null; then
-            echo "::error::The irrelevant mutation changed the representative unit-test action key"
-            exit 1
-          fi
-          echo "Fresh-root remote action and test-cache proof passed"
-          BUCK2_REMOTE_CACHE_PROOF
-          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash "$proof_script"
+          # Buck sends the header verbatim; only the Base64 form reaches the daemon.
+          BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+          echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+          export BUCK2_CACHE_WRITE_BASIC_AUTH
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash scripts/buck2-remote-cache-proof.sh
       - name: Seal and publish pipeline evidence
         if: ${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}
         shell: bash
@@ -3991,7 +3919,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -4015,7 +3944,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '0' }}
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       ARTIFACT_DIR: '${{ github.workspace }}/tmp/devenv-perf-ci'
       OTEL_SERVICE_NAME: devenv-perf-ci
       RUNNER_CLASS: 'nscloud-ubuntu-24.04-amd64-16x64-with-features,namespace-features:github.run-id=${{ github.run_id }}'
@@ -4423,7 +4353,7 @@ jobs:
                 base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
                 base_started="$(date +%s%3N)"
                 set +e
-                (cd "$CI_MEASUREMENT_BASE_DIR" && "${expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+                (cd "$CI_MEASUREMENT_BASE_DIR" && BUCK2_NO_REMOTE_CACHE=1 "${expanded[@]}") >"$base_stdout" 2>"$base_stderr"
                 base_status=$?
                 set -e
                 base_ended="$(date +%s%3N)"
@@ -4454,7 +4384,7 @@ jobs:
                 base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
                 base_started="$(date +%s%3N)"
                 set +e
-                (cd "$CI_MEASUREMENT_BASE_DIR" && "${expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+                (cd "$CI_MEASUREMENT_BASE_DIR" && BUCK2_NO_REMOTE_CACHE=1 "${expanded[@]}") >"$base_stdout" 2>"$base_stderr"
                 base_status=$?
                 set -e
                 base_ended="$(date +%s%3N)"
@@ -4512,7 +4442,7 @@ jobs:
                 base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
                 base_started="$(date +%s%3N)"
                 set +e
-                (cd "$CI_MEASUREMENT_BASE_DIR" && "${expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+                (cd "$CI_MEASUREMENT_BASE_DIR" && BUCK2_NO_REMOTE_CACHE=1 "${expanded[@]}") >"$base_stdout" 2>"$base_stderr"
                 base_status=$?
                 set -e
                 base_ended="$(date +%s%3N)"
@@ -4890,7 +4820,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   nix-closure-sizes:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
     runs-on:
@@ -4906,7 +4837,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -5567,7 +5499,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -5858,7 +5791,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -8597,7 +8531,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -8783,7 +8718,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -9018,7 +8954,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -9272,7 +9209,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
       TS_EVIDENCE_AUDIENCE: ${{ vars.TS_EVIDENCE_AUDIENCE }}
@@ -9312,7 +9250,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   notify-alignment:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
@@ -9351,7 +9290,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   evidence-attempt-close:
     runs-on: ubuntu-latest
     needs:
@@ -9391,7 +9331,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EVIDENCE_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.evidence_mode || vars.CI_EVIDENCE_MODE) }}
       PIPELINE_TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
       TS_EVIDENCE_CLIENT_ID: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
