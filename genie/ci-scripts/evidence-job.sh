@@ -57,7 +57,7 @@ case "${1:?mode required}" in
     spool="${RUNNER_TEMP:-/tmp}/buck2-evidence-close"
     mkdir -p "$spool"
     jq -cn --argjson expected "$EXPECTED_KEYS_JSON" --argjson needs "$NEEDS_JSON" '$expected | map({key: .key, conclusion: ($needs[.job].result // "skipped")})' > "$spool/jobs.json"
-    cli=$(nix build --no-link --print-out-paths .#buck2-evidence)/bin/buck2-evidence
+    cli="${BUCK2_EVIDENCE_CLI:?evidence uploader was not prepared}"
     "$cli" seal-close --spool "$spool" --run-id "$run_id" --repository "$GITHUB_REPOSITORY" --jobs-json "$spool/jobs.json"
     if [ "${EVIDENCE_MODE:-}" = upload ]; then
       if [ "${PIPELINE_TRUSTED:-}" != true ] || [ -z "${BUCK2_EVIDENCE_UPLOAD_URL:-}" ] || ! tailscale status >/dev/null 2>&1; then

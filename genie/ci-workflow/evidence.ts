@@ -8,13 +8,14 @@ const script = 'bash genie/ci-scripts/evidence-job.sh'
 const uploadUrl = '${{ vars.BUCK2_EVIDENCE_UPLOAD_URL }}'
 
 const joinTailnetStep = {
-  if: "\${{ env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}",
+  if: "\${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}",
   uses: 'tailscale/github-action@v4',
   'continue-on-error': true,
   with: {
     'oauth-client-id': '${{ env.TS_EVIDENCE_CLIENT_ID }}',
     audience: '${{ env.TS_EVIDENCE_AUDIENCE }}',
     tags: 'tag:ci-buck2-evidence',
+    args: '--accept-dns=true',
   },
 } as const
 
@@ -40,7 +41,7 @@ export const withGitHubEvidence = (jobs: Record<string, Job>): Record<string, Jo
         PR_FORK: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}",
       },
       run: `${script} identity`,
-    }, joinTailnetStep)
+    })
     const taskIndex = steps.findLastIndex((step) => 'run' in step && typeof step.run === 'string' && step.run.includes('tasks run '))
     if (taskIndex >= 0) {
       const taskStep = steps[taskIndex]
@@ -49,6 +50,8 @@ export const withGitHubEvidence = (jobs: Record<string, Job>): Record<string, Jo
         PIPELINE_RUN_PREFIX: "\${{ (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') && format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) || '' }}",
       } }
     }
+    // Keep build and test DNS/routes untouched; only the evidence post-step needs the tailnet.
+    steps.push(joinTailnetStep)
     steps.push({
       name: 'Seal and publish pipeline evidence',
       if: "\${{ always() && (env.EVIDENCE_MODE == 'seal' || env.EVIDENCE_MODE == 'upload') }}",
@@ -81,6 +84,7 @@ export const evidenceCloseJob = (jobs: Record<string, Job>): Job => ({
   steps: [
     { uses: 'actions/checkout@v6', with: { 'persist-credentials': false } },
     { name: 'Prepare Nix', uses: 'cachix/install-nix-action@v31' },
+    { name: 'Prepare evidence uploader', shell: 'bash', 'continue-on-error': true, run: 'cli=$(nix build --no-link --print-out-paths .#buck2-evidence) || exit; echo "BUCK2_EVIDENCE_CLI=$cli/bin/buck2-evidence" >> "$GITHUB_ENV"' },
     joinTailnetStep,
     { name: 'Close pipeline attempt', shell: 'bash', env: {
       NEEDS_JSON: '${{ toJSON(needs) }}',
