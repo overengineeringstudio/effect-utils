@@ -405,8 +405,8 @@ All notable changes to this project will be documented in this file.
   Only a job holding `BUCK2_CACHE_WRITE_BASIC_AUTH` gets the publisher posture
   in `.buckconfig.local`. The trusted remote-cache proof on protected `main`
   writes with `BUCK2_PUBLIC_CACHE_WRITE_AUTH`, then verifies a fresh reader
-  checkout without the publisher overlay or credential. Composed roots
-  (`buck2-member.json` `remoteCache`) are unchanged.
+  checkout without the publisher overlay or credential. The Buck member
+  capability manifest has no remote-cache field.
 
 - **Buck2 editor views**: Editor-view publication proves the materialized snapshot
   copy against the admitted pre-copy digests in an owner-resolved link form — plus a
