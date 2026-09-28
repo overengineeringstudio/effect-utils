@@ -384,7 +384,7 @@ in
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v21";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v22";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -680,11 +680,6 @@ in
                   \( -type d -name .devenv -o -type d -name '.pnpm-store*' -o -type d -name '.pnpm-home*' \) \
                   -prune -exec rm -rf {} +
                 rm -f .pnpm-install-roots.txt
-
-                pacquet_stage_count=$(
-                  find . -name '*_pacquet-stage_*' -print | wc -l | tr -d ' '
-                )
-                log_prep_phase "pacquet-stage-scan" "count=$pacquet_stage_count"
 
                 # Projection state is never part of immutable prepared dependency
                 # data. Normalize it away, then scan independently so any future

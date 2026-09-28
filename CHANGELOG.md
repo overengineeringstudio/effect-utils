@@ -119,6 +119,9 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+- **Prepared pnpm trees:** remove the pacquet stage-twin rewrite and rejection
+  workaround now that pnpm 12.7 serializes package writers within each target
+  directory upstream.
 - **pnpm 12.7.0:** the megarepo pnpm pin (`nix/pnpm.nix`, genie's default
   `packageManager`, the Buck `tool_pnpm` protocol and the lock-mutator
   allowlist) moves from 12.4.1 to 12.7.0. Prepared dependency workspaces now
