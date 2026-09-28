@@ -19,22 +19,25 @@ let
   validProduct =
     product:
     builtins.isAttrs product
-    && builtins.attrNames product == (
-      pkgs.lib.optional (product ? cargoWorkspaceRoot) "cargoWorkspaceRoot"
-      ++ [
-        "kind"
-        "name"
-        "outputName"
-        "target"
-        "version"
-      ]
-    )
+    &&
+      builtins.attrNames product == (
+        pkgs.lib.optional (product ? cargoWorkspaceRoot) "cargoWorkspaceRoot"
+        ++ [
+          "kind"
+          "name"
+          "outputName"
+          "target"
+          "version"
+        ]
+      )
     && product.kind == "native"
     && builtins.isString product.name
     && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" product.name != null
     && product.outputName == "artifact.tar"
     && builtins.isString product.target
-    && builtins.match "effect_utils//packages/@overeng/[A-Za-z0-9._-]+:[A-Za-z0-9._+-]+" product.target != null
+    &&
+      builtins.match "effect_utils//packages/@overeng/[A-Za-z0-9._-]+:[A-Za-z0-9._+-]+" product.target
+      != null
     && builtins.isString product.version
     && product.version != ""
     && (
