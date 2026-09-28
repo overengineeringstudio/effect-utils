@@ -143,12 +143,12 @@ Semantics the check enforces:
   requires `exclusion`.
 - `net` is recomputed from the merged revision using the repo's path patterns;
   a stored value that disagrees fails the check.
-- A repository closes when it has no `residual`, `legacy`, or `claimed` rows;
-  the platform hub records `hubReady` (revision) at that point, a milestone
-  rather than a close (BUCK-R15 as amended).
-  At every consumer close, that repository's row sum must be negative
-  (BUCK-R15). The check fails on any later change to a closed repository that
-  flips the sign.
+- A consumer closes when it has no `residual`, `legacy`, or `claimed` rows,
+  and its legacy builders, FOD hashes, and `mk-pnpm-cli` glue are deleted.
+  The platform hub records `hubReady` (revision) when its residual list reaches
+  zero, a milestone rather than a close (BUCK-R15 as amended).
+  The consumer's row sum and amortization rationale remain recorded for
+  reporting; neither a negative sum nor a later sign change gates its close.
 - The last reconciliation's cumulative net must be lower than the previous
   one's (BUCK-R15 trajectory); the cumulative sum itself carries no sign test.
 - Rendering is deterministic: the same instance renders the same progress
