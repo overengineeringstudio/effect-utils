@@ -155,6 +155,16 @@ All notable changes to this project will be documented in this file.
   staging, satisfying pnpm 12.7's stricter frozen-lockfile validation while
   picking up pnpm/pnpm#15455's single-writer package import.
 
+- **weaver / semconv pins**: OpenTelemetry Weaver 0.24.2 → 0.26.1 and the
+  pinned upstream semantic-convention registry v1.37.0 → v1.44.0, moved in
+  lockstep across `nix/weaver-flake/flake.nix` and
+  `genie/weaver-registry/registry.ts`. The emitted registry is regenerated.
+  Upstream dependencies now carry the `schema_url` that Weaver 0.26 requires.
+  `//:weaver_check`, `weaver:diff`, and the live-check test run in stable
+  policy mode (no `--future`), because semconv v1.44 ships experimental
+  `definition/2` files that `--future` rejects. The pin skips 0.25.x, which
+  dropped the legacy v1 `name` + `registry_path` dependency form (restored in
+  0.26.0).
 - **nix/provider-clis/vercel-cli**: update the pinned Vercel CLI from 54.18.5
   to 60.1.3, regenerate `package-lock.json`, and refresh `npmDepsHash`. The
   derivation no longer omits optional dependencies, because
