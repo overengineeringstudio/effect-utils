@@ -18,8 +18,9 @@ const LOG_TIME_PATTERN = /^\[\d{2}:\d{2}:\d{2}\.\d{3}\]/gmu
 const LOCAL_SOURCE_SUFFIX_PATTERN = / — running from local source \([^)]+\)/gu
 const EFFECT_CLI_FIBER_PATTERN = /(?<=ERROR \(#)\d+(?=\): ~effect\/cli\/)/gu
 
+// rc.118 relocated CLI internals from dist/unstable/cli to dist/cli; match both layouts.
 const EFFECT_CLI_FRAME_PATTERN =
-  /(?:(?:<repo>|\/[^\s()]*)\/node_modules\/\.pnpm\/effect@4\.0\.0-rc\.\d+\/node_modules\/effect|effect@4\.0\.0-rc\.\d+\/node_modules\/effect|(?:<repo>|\/[^\s()]*)[^\s()]*\/node_modules\/effect)\/dist\/unstable\/cli\/Command\.js:\d+:\d+/gu
+  /(?:(?:<repo>|\/[^\s()]*)\/node_modules\/\.pnpm\/effect@4\.0\.0-rc\.\d+\/node_modules\/effect|effect@4\.0\.0-rc\.\d+\/node_modules\/effect|(?:<repo>|\/[^\s()]*)[^\s()]*\/node_modules\/effect)\/dist\/(?:unstable\/)?cli\/Command\.js:\d+:\d+/gu
 
 /** Replacement token written into the baseline in place of a log timestamp. */
 export const TIME_TOKEN = '[time]'
