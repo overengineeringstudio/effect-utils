@@ -13,6 +13,7 @@ export const internalPackages = [
   'buck2-tools',
   'content-address',
   'effect-ai-claude-cli',
+  'effect-ai-gateway',
   'effect-distributed-lock',
   'effect-path',
   'effect-react',

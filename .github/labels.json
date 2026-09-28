@@ -171,6 +171,11 @@
       "description": "@overeng/effect-ai-claude-cli package · Set: manual"
     },
     {
+      "name": "system:effect-ai-gateway",
+      "color": "a371f7",
+      "description": "@overeng/effect-ai-gateway package · Set: manual"
+    },
+    {
       "name": "system:effect-distributed-lock",
       "color": "a371f7",
       "description": "@overeng/effect-distributed-lock package · Set: manual"

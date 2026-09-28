@@ -29,6 +29,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/effect-ai-gateway",
+      "outputName": "overeng-effect-ai-gateway.tgz",
+      "packagePath": "packages/@overeng/effect-ai-gateway",
+      "packageTreePath": "packages/@overeng/effect-ai-gateway",
+      "target": "effect_utils//packages/@overeng/effect-ai-gateway:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/effect-distributed-lock",
       "outputName": "overeng-effect-distributed-lock.tgz",
       "packagePath": "packages/@overeng/effect-distributed-lock",

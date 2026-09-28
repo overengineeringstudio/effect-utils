@@ -31,6 +31,8 @@
     "minimumReleaseAgeExclude": [
       "@types/node",
       "effect",
+      "@effect/ai-openai-compat",
+      "@effect/ai-typesafe",
       "@effect/platform-node",
       "@effect/vitest",
       "@effect/opentelemetry",
@@ -118,6 +120,7 @@
       "packages/@overeng/ci-tools",
       "packages/@overeng/content-address",
       "packages/@overeng/effect-ai-claude-cli",
+      "packages/@overeng/effect-ai-gateway",
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-path",
       "packages/@overeng/effect-react",

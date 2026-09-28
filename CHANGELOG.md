@@ -85,6 +85,9 @@ All notable changes to this project will be documented in this file.
   Vite fixture loads `node-pty` from a normalized entry, adds a scoped native
   slot, and runs a React build from the imported product.
 
+- **@overeng/effect-ai-gateway**: Add a backend-neutral Effect AI provider for
+  subscription-backed models through an OpenAI-compatible gateway, with optional
+  bearer authentication, env-configured layers, and streaming usage.
 
 - **Buck2 cache products**: Publish `@overeng/effect-rpc-explorer`,
   `@overeng/effect-rpc-explorer-react`, and its runtime dependency

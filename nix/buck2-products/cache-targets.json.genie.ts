@@ -37,6 +37,7 @@ const packageProducts = [
   '@overeng/agent-session-ingest',
   '@overeng/content-address',
   '@overeng/effect-ai-claude-cli',
+  '@overeng/effect-ai-gateway',
   '@overeng/effect-distributed-lock',
   '@overeng/effect-react',
   '@overeng/effect-rpc-explorer',

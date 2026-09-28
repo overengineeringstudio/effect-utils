@@ -7,6 +7,7 @@ import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.g
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
 import effectAiClaudeCliTsconfig from '../packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts'
+import effectAiGatewayTsconfig from '../packages/@overeng/effect-ai-gateway/tsconfig.json.genie.ts'
 import effectDistributedLockTsconfig from '../packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts'
 import effectPathTsconfig from '../packages/@overeng/effect-path/tsconfig.json.genie.ts'
 import effectReactTsconfig from '../packages/@overeng/effect-react/tsconfig.json.genie.ts'
@@ -109,6 +110,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/ci-tools': { tsconfig: ciToolsTsconfig },
     'packages/@overeng/content-address': { tsconfig: contentAddressTsconfig },
     'packages/@overeng/effect-ai-claude-cli': { tsconfig: effectAiClaudeCliTsconfig },
+    'packages/@overeng/effect-ai-gateway': { tsconfig: effectAiGatewayTsconfig },
     'packages/@overeng/effect-distributed-lock': { tsconfig: effectDistributedLockTsconfig },
     'packages/@overeng/effect-path': { tsconfig: effectPathTsconfig },
     'packages/@overeng/effect-react': { tsconfig: effectReactTsconfig },

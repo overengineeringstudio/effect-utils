@@ -7,6 +7,7 @@ import buck2ToolsPkg from './packages/@overeng/buck2-tools/package.json.genie.ts
 import ciToolsPkg from './packages/@overeng/ci-tools/package.json.genie.ts'
 import contentAddressPkg from './packages/@overeng/content-address/package.json.genie.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
+import effectAiGatewayPkg from './packages/@overeng/effect-ai-gateway/package.json.genie.ts'
 import effectDistributedLockPkg from './packages/@overeng/effect-distributed-lock/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
 import effectReactPkg from './packages/@overeng/effect-react/package.json.genie.ts'
@@ -50,6 +51,7 @@ export const rootWorkspacePackages = [
   contentAddressPkg,
   effectSocketPkg,
   effectAiClaudeCliPkg,
+  effectAiGatewayPkg,
   effectDistributedLockPkg,
   effectPathPkg,
   effectReactPkg,
