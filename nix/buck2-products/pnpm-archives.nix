@@ -35,16 +35,19 @@ let
       assert lib.assertMsg (
         archive.classification == "public" || archive.classification == "private"
       ) "buck2-pnpm-archives: invalid classification for ${packageIdentity}";
-      assert lib.assertMsg (isProduct || lib.hasPrefix "https://" archive.registryUrl)
-        "buck2-pnpm-archives: registry URL must use HTTPS for ${packageIdentity}";
       assert lib.assertMsg (
-        !isProduct
-        || (
-          archive.classification == "private"
-          && lib.hasPrefix "file:" archive.productTarball
-          && lib.hasSuffix "-${archive.sha256}.tgz" archive.productTarball
+        isProduct || lib.hasPrefix "https://" archive.registryUrl
+      ) "buck2-pnpm-archives: registry URL must use HTTPS for ${packageIdentity}";
+      assert lib.assertMsg
+        (
+          !isProduct
+          || (
+            archive.classification == "private"
+            && lib.hasPrefix "file:" archive.productTarball
+            && lib.hasSuffix "-${archive.sha256}.tgz" archive.productTarball
+          )
         )
-      ) "buck2-pnpm-archives: product tarball ${packageIdentity} must be a private digest-named file: archive";
+        "buck2-pnpm-archives: product tarball ${packageIdentity} must be a private digest-named file: archive";
       assert lib.assertMsg (lib.hasPrefix "sha512-" archive.integrity)
         "buck2-pnpm-archives: invalid lock integrity for ${packageIdentity}";
       assert lib.assertMsg (
@@ -53,14 +56,16 @@ let
       assert lib.assertMsg (
         builtins.isInt archive.sizeBytes && archive.sizeBytes > 0
       ) "buck2-pnpm-archives: invalid size for ${packageIdentity}";
-      assert lib.assertMsg (
-        !isProduct
-        || (
-          lib.isDerivation productArchive
-          && (productArchive.outputHashMode or null) == "flat"
-          && (productArchive.outputHash or null) == archive.sha256
+      assert lib.assertMsg
+        (
+          !isProduct
+          || (
+            lib.isDerivation productArchive
+            && (productArchive.outputHashMode or null) == "flat"
+            && (productArchive.outputHash or null) == archive.sha256
+          )
         )
-      ) "buck2-pnpm-archives: private product ${packageIdentity} archive is not pinned to its sidecar digest";
+        "buck2-pnpm-archives: private product ${packageIdentity} archive is not pinned to its sidecar digest";
       {
         name = archive.sha256;
         value =
