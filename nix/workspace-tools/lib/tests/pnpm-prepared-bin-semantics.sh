@@ -5,6 +5,7 @@ repo_root="${1:-$(cd "$(dirname "$0")/../../../.." && pwd)}"
 lib_dir="$repo_root/nix/workspace-tools/lib"
 fixture="$lib_dir/tests/fixtures/pnpm-bin-projector"
 prepared_tree="$lib_dir/prepared-pnpm-tree.cjs"
+absent_importers="$lib_dir/absent-pnpm-lock-importers.cjs"
 projector="$lib_dir/pnpm-bin-projector.cjs"
 helper="$lib_dir/mk-pnpm-deps.nix"
 sandbox="$(mktemp -d "${TMPDIR:-/tmp}/pnpm-prepared-bin-semantics.XXXXXX")"
@@ -66,6 +67,27 @@ grep -F 'node_modules/.bin' "$workspace/scan-error" >/dev/null ||
   fail 'strict scan did not identify the surviving projection'
 rm -rf "$workspace/node_modules/.bin"
 node "$prepared_tree" scan "$workspace"
+
+# A staged workspace contains only the selected dependency closure. Report
+# lockfile importers whose manifests were omitted so the Nix builder can prune
+# them before pnpm 12.7's frozen-lockfile validation.
+importer_sandbox="$sandbox/importers"
+mkdir -p "$importer_sandbox/packages/present"
+printf '{}\n' > "$importer_sandbox/package.json"
+printf '{}\n' > "$importer_sandbox/packages/present/package.json"
+touch "$importer_sandbox/pnpm-lock.yaml"
+printf '[".","packages/present","packages/missing"]\n' \
+  | node "$absent_importers" "$importer_sandbox/pnpm-lock.yaml" \
+  > "$importer_sandbox/absent"
+[ "$(cat "$importer_sandbox/absent")" = "packages/missing" ] ||
+  fail 'absent lockfile importer discovery did not match staged manifests'
+if printf '["../outside"]\n' \
+  | node "$absent_importers" "$importer_sandbox/pnpm-lock.yaml" \
+    2>"$importer_sandbox/escape-error"; then
+  fail 'absent lockfile importer discovery accepted an escaping importer'
+fi
+grep -F 'escapes its install root' "$importer_sandbox/escape-error" >/dev/null ||
+  fail 'escaping lockfile importer failure was not explicit'
 
 # pacquet stage twins embed a pid and timestamp. A byte-identical twin of a
 # landed file is dropped; a twin without an identical target fails closed, and
@@ -161,6 +183,12 @@ grep -F 'preparedPnpmTreeScript = pkgs.writeText' "$helper" >/dev/null ||
   fail 'prepared-tree helper is not an explicit Nix store input'
 grep -F 'pnpmBinProjectorScript = pkgs.writeText' "$helper" >/dev/null ||
   fail 'bin projector is not an explicit Nix store input'
+grep -F 'absentPnpmLockImportersScript = pkgs.writeText' "$helper" >/dev/null ||
+  fail 'absent-importer helper is not an explicit Nix store input'
+grep -F "del(.importers[strenv(PNPM_ABSENT_IMPORTER)])" "$helper" >/dev/null ||
+  fail 'staged lockfile importer pruning is not wired'
+grep -F 'log_prep_phase "pacquet-stage-scan" "count=$pacquet_stage_count"' "$helper" >/dev/null ||
+  fail 'pre-normalization pacquet stage-file count is not logged'
 grep -F -- "--mode='u+w'" "$helper" >/dev/null ||
   fail 'restore does not establish a writable projection workspace'
 grep -F 'preparedPnpmTreeScript} scan .' "$helper" >/dev/null ||

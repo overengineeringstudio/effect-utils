@@ -46,7 +46,7 @@ support_tool(
 # Contained fixture installs use the repo-pinned pnpm, not ambient Corepack.
 support_tool(
     name = "tool_pnpm",
-    protocol = "pnpm/pnpm/v12.4.1",
+    protocol = "pnpm/pnpm/v12.7.0",
     tool_id = "pnpm",
     visibility = ["PUBLIC"],
 )

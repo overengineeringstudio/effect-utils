@@ -39,6 +39,9 @@ let
   # advances first. pnpm dependency preparation is build tooling, not the app
   # runtime, and this keeps FOD behavior stable across nixpkgs release bumps.
   pnpmNodejs = pkgs.nodejs_24 or pkgs.nodejs;
+  absentPnpmLockImportersScript = pkgs.writeText "absent-pnpm-lock-importers.cjs" (
+    builtins.readFile ./absent-pnpm-lock-importers.cjs
+  );
   preparedPnpmTreeScript = pkgs.writeText "prepared-pnpm-tree.cjs" (
     builtins.readFile ./prepared-pnpm-tree.cjs
   );
@@ -381,7 +384,7 @@ in
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v19";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v21";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -595,6 +598,22 @@ in
                   # root is written with one, so a missing file is a builder
                   # bug: fail closed rather than produce a wrong tree.
                   ${pnpmInstallPolicy.nestedWorkspaceBoundaryShell { rootRelPath = "$install_root"; }}
+                  # The staged workspace intentionally contains only this
+                  # install root's dependency closure. pnpm 12.7 validates that
+                  # every lockfile importer still has a manifest, so trim
+                  # importers omitted by staging before the frozen install.
+                  absent_importers=$(
+                    ${pkgs.yq-go}/bin/yq eval --output-format=json '.importers | keys' pnpm-lock.yaml \
+                      | ${pnpmNodejs}/bin/node ${lib.escapeShellArg absentPnpmLockImportersScript} pnpm-lock.yaml
+                  )
+                  while IFS= read -r absent_importer; do
+                    [ -n "$absent_importer" ] || continue
+                    PNPM_ABSENT_IMPORTER="$absent_importer" \
+                      ${pkgs.yq-go}/bin/yq eval --inplace \
+                        'del(.importers[strenv(PNPM_ABSENT_IMPORTER)])' \
+                        pnpm-lock.yaml
+                    echo "workspace-prep: pruned absent lockfile importer: $install_root/$absent_importer"
+                  done <<< "$absent_importers"
                   # Keep the frozen invocation literal in-source so downstream
                   # contract checks can verify the strict default install mode:
                   # pnpm install --frozen-lockfile --ignore-scripts
@@ -662,6 +681,11 @@ in
                   -prune -exec rm -rf {} +
                 rm -f .pnpm-install-roots.txt
 
+                pacquet_stage_count=$(
+                  find . -name '*_pacquet-stage_*' -print | wc -l | tr -d ' '
+                )
+                log_prep_phase "pacquet-stage-scan" "count=$pacquet_stage_count"
+
                 # Projection state is never part of immutable prepared dependency
                 # data. Normalize it away, then scan independently so any future
                 # normalizer regression fails closed before the archive boundary.
@@ -719,6 +743,7 @@ in
 
       passthru = {
         inherit
+          absentPnpmLockImportersScript
           pnpmBinProjectorScript
           preparedPnpmTreeScript
           rewritePreparedWorkspaceScript
