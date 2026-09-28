@@ -9,8 +9,10 @@ come only from `buck2-ledger.json` in the private `schickling/megarepo-all` comp
 
 Whole-repository exclusivity is the endgame (BUCK-R01); admission order is by value: expensive,
 high-leverage operations first, cheap operations only when migrating them provably pays. Every authority
-transfer carries its ledger row and deletes the superseded producer in the same change. Each repository
-closes only when its residual list is empty and the BUCK-R15 net-complexity fold passes.
+transfer carries its ledger row and deletes the superseded producer in the same
+change. A consumer closes only when every row is Buck-owned or excluded and its
+legacy builders, FOD hashes, and `mk-pnpm-cli` glue are deleted; the net is
+reported with amortization, not sign-gated.
 
 ## Phase 0 — shared cache foundation
 
@@ -170,8 +172,9 @@ repository identities, order, and status live only in the private ledger.
 
 **Dissolution target:** Delete each consumer's source-mount CLI execution,
 cross-member dependency writers, live branch sharing, and duplicate build
-producers. At a consumer's close, its residual list is empty and its own
-net-complexity sum is negative; the cumulative sum keeps falling from
+producers. A consumer closes when all its ledger rows are Buck-owned or excluded
+and its legacy builders, FOD hashes, and `mk-pnpm-cli` glue are deleted. Its net
+is reported with amortization, while the cumulative sum keeps falling from
 reconciliation to reconciliation.
 
 ## Phase 7 — action-level remote execution (BUCK-R17)
