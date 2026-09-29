@@ -115,8 +115,8 @@ ledger
   repos[]                       every composed member: name, remote, ledger path patterns
                                 (what counts as build machinery: include/exclude globs)
     legacyMarkers               per consumer close: path globs and text markers
-                                (path glob, extended regex); exceptions pair a path
-                                glob with the id of an excluded row
+                                (path glob, extended regex); exceptions pair an
+                                exact path with an excluded row that declares it
   rows[]                        one per (repo, operation, subject)
     id                          "<repo>/<operation>/<subject>"
     operation                   Semantic Operation (typecheck, dist, unit-test, lint, format,
@@ -127,6 +127,8 @@ ledger
     target                      Buck label once buck-owned or claimed
     dissolution                 for residual/legacy: the condition that retires the producer
     exclusion                   for excluded: why it is outside Buck by policy (unbounded, live)
+    excludedPaths               for excluded: exact repository-relative files
+                                exempted from close markers by that row
     transfer                    pr, merged revision, deleted producers (BUCK-R09)
     net                         added, deleted, measured-at revision, measuring command,
                                 amortization rationale when added > deleted (BUCK-R15)
@@ -149,9 +151,10 @@ Semantics the check enforces:
 - A consumer closes when it has no `residual`, `legacy`, or `claimed` rows,
   and its legacy builders, FOD hashes, and `mk-pnpm-cli` glue are deleted.
   At the close revision the check scans tracked paths and text markers declared
-  for that consumer; a match blocks close unless its path has an exception
-  backed by an excluded row in that same repository. Missing marker declarations
-  also block close.
+  for that consumer, plus legacy Nix builder paths derived from row evidence;
+  a match blocks close unless its exact path is declared by an excluded row
+  in the same repository and named in a marker exception. Missing marker
+  declarations and exceptions outside their excluded row paths block close.
   The platform hub records `hubReady` (revision) when its residual list reaches
   zero, a milestone rather than a close (BUCK-R15 as amended).
   The consumer's row sum and amortization rationale remain recorded for
