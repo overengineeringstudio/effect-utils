@@ -5,6 +5,29 @@ load("@prelude//rust:cargo_package.bzl", "cargo")
 load("//buck2/rust:crates.bzl", "crate_archive")
 
 alias(
+    name = "itoa",
+    actual = ":itoa-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "itoa-1.0.18.crate",
+    sha256 = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
+    strip_prefix = "itoa-1.0.18",
+    urls = ["https://static.crates.io/crates/itoa/1.0.18/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "itoa-1",
+    srcs = [":itoa-1.0.18.crate"],
+    crate = "itoa",
+    crate_root = "itoa-1.0.18.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+)
+
+alias(
     name = "memchr",
     actual = ":memchr-2",
     visibility = ["PUBLIC"],

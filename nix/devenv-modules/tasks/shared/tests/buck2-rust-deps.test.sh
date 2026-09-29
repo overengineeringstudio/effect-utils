@@ -5,7 +5,7 @@ TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 GATE=gate
 gate() {
-  "$ROOT/scripts/buck2-rust-deps.sh" "$@" "$ROOT/scripts/buck2-rust-foreign-fixups.ts"
+  "$ROOT/scripts/buck2-rust-deps.sh" "$@" "$ROOT/scripts/buck2-rust-supply-manifest.ts"
 }
 TASK_MODULE="$ROOT/nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
 TEMP_ROOT="$(mktemp -d)"
@@ -236,6 +236,17 @@ if grep -Fq 'foreign-shared' "$fixture_a_graph"; then
   fail "consumer Reindeer graph includes a first-party foreign package"
 fi
 grep -Fq 'name = "memchr"' "$fixture_a_graph" || fail "consumer registry dependency missing"
+grep -Fq 'name = "itoa"' "$fixture_a_graph" || fail "foreign registry dependency missing from consumer"
 grep -Fq 'name = "itoa"' "$fixture_b_graph" || fail "provider registry dependency missing"
+REPO_ROOT="$ROOT" "$BUN" -e '
+  const root = process.env.REPO_ROOT
+  const lock = Bun.TOML.parse(await Bun.file(`${root}/scripts/fixtures/rust-foreign/a/Cargo.lock`).text())
+  const itoa = lock.package.find((entry) => entry.name === "itoa")
+  const graph = await Bun.file(`${root}/scripts/fixtures/rust-foreign/a/third-party/BUCK`).text()
+  if (!itoa?.checksum || !graph.includes(`sha256 = "${itoa.checksum}"`)) {
+    console.error("foreign registry archive is not pinned to the authoritative Cargo.lock")
+    process.exit(1)
+  }
+'
 
 echo "Buck2 Rust dependency gate tests passed."
