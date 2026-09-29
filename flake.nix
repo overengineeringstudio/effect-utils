@@ -88,11 +88,6 @@ rec {
         mkBuckProductFromSource = import ./nix/buck2-products/from-source.nix {
           inherit pkgs buck2;
         };
-        buck2Evidence = import ./nix/buck2-native-products/evidence-source.nix {
-          inherit pkgs buck2;
-          capabilities = buck2Capabilities;
-          repositoryRoot = ./.;
-        };
         pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { inherit pkgs; };
         buckProductsFromSource = import ./nix/buck2-products/source-recipes.nix {
           inherit
@@ -268,11 +263,11 @@ rec {
           // buckCompiledProducts
           // capabilityPackages
           // {
-            buck2-evidence = buck2Evidence;
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
             buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
+            otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
             "megarepo-source-deps-support" = megarepoSourceDepsSupport;
             "megarepo-source-product-pnpm-deps" =
               megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;

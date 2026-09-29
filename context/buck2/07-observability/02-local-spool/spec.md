@@ -25,7 +25,7 @@ job or local invocation
         └─ adapter (03) -> completed OTLP batches -> local retry spool (05)
 ```
 
-Paths are local implementation details, never telemetry identifiers. The parent spool location comes from `OTEL_SPAN_SPOOL_DIR`; path components for run, matrix-qualified job, and command are encoded before use as filesystem names. Different matrix legs and repeated Buck commands do not overwrite one another. The existing span JSONL format stays readable locally; on successful delivery the local native evidence may be cleaned up by normal workspace/spool lifecycle, not an archive retention timer. An unacknowledged OTLP batch stays in the retry spool (05).
+Paths are local implementation details, never telemetry identifiers. The parent spool location comes from `OTEL_SPAN_SPOOL_DIR`; path components for run, matrix-qualified job, and command are encoded before use as filesystem names. Different matrix legs and repeated Buck commands do not overwrite one another. Caller spans and native Buck logs are converted to durable OTLP chunks before export. Once conversion succeeds, native inputs are removed so a retry only sends unacknowledged chunks; conversion failure retains the native inputs. A completed run directory is removed after all chunks are acknowledged. Offline retry directories are capped at seven days and 512 MiB locally, not archived indefinitely.
 
 Each traced caller invokes Buck directly with explicit `--event-log` and `--write-build-id` paths. The latter writes the Buck trace id despite the flag's historical name. The caller passes only a validated `BUCK_WRAPPER_UUID`; its sidecar associates the Buck command and caller command span without consulting a provider API. The adapter sees the event log even if export is disabled. Buck output remains authoritative when decoding fails.
 
@@ -63,7 +63,7 @@ An offline local invocation likewise spools only.
 
 - Repeated commands and matrix legs retain disjoint event-log/trace-id/sidecar files; the adapter can correlate each Buck command to its caller.
 - A PR merge checkout emits separate PR head, base parent, and merge revision attributes even when the CI run API has no PR association; a push omits unavailable base/merge values.
-- A fork or offline local invocation retains telemetry without export; a failed export leaves retryable batches and unchanged native evidence; neither failure changes the build result.
+- A fork or offline local invocation retains telemetry without export; a failed export retains unacknowledged chunks without changing the build result. A failed conversion retains native Buck inputs; completed conversion does not re-ingest acknowledged chunks on retry.
 - The finalizer links started jobs' unverified derived identities once at
   attempt close; skipped/unstarted jobs receive no link, and there is no
   roster record or server-owned root.
