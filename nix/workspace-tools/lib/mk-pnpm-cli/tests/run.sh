@@ -14,6 +14,7 @@ SKIP_DOWNSTREAM=0
 SKIP_DOWNSTREAM_MEGAREPO=0
 WORKSPACE=""
 KEEP=0
+ONLY_LOCKFILE=0
 
 usage() {
   cat <<'USAGE'
@@ -28,6 +29,8 @@ Options:
   --skip-oxlint       Skip the downstream oxlint-npm regression build
   --skip-devenv-shell Skip downstream devenv shell coverage
   --skip-downstream   Skip downstream flake-input regression coverage
+  --only-lockfile-regressions
+                     Run root-patch and injected-directory lockfile regressions
   --skip-downstream-megarepo
                      Skip the downstream megarepo regression build
   --help              Show this help
@@ -72,6 +75,10 @@ while [ $# -gt 0 ]; do
       SKIP_DEVENV_SHELL=1
       shift
       ;;
+    --only-lockfile-regressions)
+      ONLY_LOCKFILE=1
+      shift
+      ;;
     --skip-downstream)
       SKIP_DOWNSTREAM=1
       shift
@@ -108,6 +115,10 @@ copy_repo() {
   local excludes=(
     ".git"
     ".devenv"
+    ".editor-view"
+    ".buck2"
+    "buck-out"
+    ".megarepo"
     ".cache"
     ".turbo"
     ".next"
@@ -264,6 +275,10 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-source-input-manifest-aliases"
 
+  echo "Check: prepared pnpm importer pruning across lockfile documents"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pnpm-prepared-bin-semantics"
 
   echo "Check: injected directory paths are canonical and beneath the lockfile directory"
   nix build --no-link --no-write-lock-file \
@@ -625,6 +640,44 @@ YAML
   grep -q "'foo@1.2.30': patches/existing.patch" "$fixture/target/pnpm-workspace.yaml"
   grep -q "'peer-pkg@2.0.0': .root-patches/patches/peer.patch" "$fixture/target/pnpm-workspace.yaml"
 
+  # The environment-lock document must survive the root-patch rewrite
+  # unchanged; both source and target also carry project graph documents.
+  cp "$fixture/original/authority/"* "$fixture/authority/"
+  cp "$fixture/original/target/"* "$fixture/target/"
+  for location in authority target; do
+    cat >"$fixture/$location/pnpm-lock.yaml" <<'YAML'
+---
+lockfileVersion: '9.0'
+importers:
+  .:
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.7.0
+        version: 12.7.0
+---
+YAML
+    cat "$fixture/original/$location/pnpm-lock.yaml" >>"$fixture/$location/pnpm-lock.yaml"
+  done
+  node "$script" "$fixture/authority" "$fixture/target"
+  node - "$fixture/target/pnpm-lock.yaml" <<'JS'
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const lockfile = fs.readFileSync(process.argv[2], "utf8");
+assert.ok(lockfile.startsWith(`---
+lockfileVersion: '9.0'
+importers:
+  .:
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.7.0
+        version: 12.7.0
+---
+`), "managed-package-manager document changed while inheriting project patches");
+assert.match(lockfile, /---\nlockfileVersion: '9.0'\npatchedDependencies:\n/);
+assert.match(lockfile, /version: 2\.0\.0\(patch_hash=hash-peer\)\(peer@1\.0\.0\)/);
+assert.match(lockfile, /'peer-pkg@2\.0\.0\(patch_hash=hash-peer\)':/);
+JS
+
   local location section
   for location in authority/pnpm-lock.yaml authority/pnpm-workspace.yaml \
     target/pnpm-lock.yaml target/pnpm-workspace.yaml; do
@@ -650,6 +703,19 @@ YAML
 
   echo "Timing: inherit-root-patched-dependencies $(( $(date +%s) - start ))s"
 }
+
+if [ "$ONLY_LOCKFILE" -eq 1 ]; then
+  prepare_downstream_workspace
+  run_inherit_root_patched_dependencies_regression
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pnpm-prepared-bin-semantics"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.injected-directory-path-validation"
+  echo "mk-pnpm-cli lockfile regressions passed"
+  exit 0
+fi
 
 if [ "$SKIP_GENIE" -eq 0 ]; then
   build_and_smoke "genie" "genie"

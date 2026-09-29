@@ -602,8 +602,12 @@ in
                   # install root's dependency closure. pnpm 12.7 validates that
                   # every lockfile importer still has a manifest, so trim
                   # importers omitted by staging before the frozen install.
+                  # pnpm's managed package-manager lock is an earlier YAML
+                  # document; only the last document with importers describes
+                  # the project graph. Keep every document for frozen installs.
                   absent_importers=$(
-                    ${pkgs.yq-go}/bin/yq eval --output-format=json '.importers | keys' pnpm-lock.yaml \
+                    ${pkgs.yq-go}/bin/yq eval-all --output-format=json \
+                      '[select(.importers != null)] | .[-1].importers | keys' pnpm-lock.yaml \
                       | ${pnpmNodejs}/bin/node ${lib.escapeShellArg absentPnpmLockImportersScript} pnpm-lock.yaml
                   )
                   while IFS= read -r absent_importer; do

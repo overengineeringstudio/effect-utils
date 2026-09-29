@@ -204,6 +204,10 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+- **Prepared pnpm locks:** Select project importers from the last YAML
+  document when pnpm records a managed-package-manager environment document
+  before the project graph. Preserve both documents when pruning staged
+  importers and inheriting root patches; single-document locks still work.
 - **Buck2 TypeScript package views:** Strip source-workspace project references
   from both compile and test trees. Consumers can bundle staged TypeScript
   packages with Vite without resolving sibling projects absent from the bounded

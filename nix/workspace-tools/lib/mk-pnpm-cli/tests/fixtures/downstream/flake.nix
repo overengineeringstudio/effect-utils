@@ -326,6 +326,11 @@
                 "$deps_src/pnpm-install-contract.json"
               touch "$out"
             '';
+        checks.pnpm-prepared-bin-semantics =
+          pkgs.runCommand "pnpm-prepared-bin-semantics" { nativeBuildInputs = [ pkgs.nodejs_24 pkgs.yq-go ]; } ''
+            bash ${effectUtilsSource}/nix/workspace-tools/lib/tests/pnpm-prepared-bin-semantics.sh ${effectUtilsSource}
+            touch "$out"
+          '';
         # Lockfile-derived directories must stay canonical and beneath the
         # lockfile directory; `..` anywhere (including one that would dodge the
         # source-input check), empty segments, absolute paths, undecodable escapes
@@ -349,6 +354,25 @@
             pnpmLockInjectedDirs {
               lockfileContent = "packages:\r\n  x@file:x:\r\n    resolution: {directory: packages/a, type: directory}\r\n";
             } == [ "packages/a" ];
+          assert
+            pnpmLockInjectedDirs {
+              lockfileContent = ''
+                ---
+                lockfileVersion: '9.0'
+                importers:
+                  .:
+                    packageManagerDependencies:
+                      pnpm:
+                        version: 12.7.0
+                ---
+                lockfileVersion: '9.0'
+                importers:
+                  .: {}
+                packages:
+                  x@file:x:
+                    resolution: {directory: packages/member, type: directory}
+              '';
+            } == [ "packages/member" ];
           pkgs.runCommand "mk-pnpm-cli-injected-directory-path-validation" { } ''
             touch "$out"
           '';
