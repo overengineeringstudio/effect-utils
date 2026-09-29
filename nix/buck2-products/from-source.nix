@@ -15,9 +15,13 @@
   expectedPlatform ? null,
   runtimeKind ? null,
   product,
-  producerCommit,
+  producerCommit ? null,
   repositoryRoot ? ../..,
   repositorySource ? null,
+  # Committed Genie projection of the Buck input closure, relative to repositoryRoot.
+  sourcePaths ? null,
+  # Consumer Buck root is a separate Nix input, not a copy of the checkout.
+  rootProjection ? null,
   expectedSha256 ? null,
   # Optional Buck tree containing the declared pnpm runtime importer closure.
   runtimeClosureTarget ? null,
@@ -32,7 +36,14 @@ let
   # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
   cliBuildStamp = product.cliBuildStamp or null;
   source =
-    if repositorySource == null then
+    if sourcePaths != null then
+      lib.fileset.toSource {
+        root = repositoryRoot;
+        fileset = lib.fileset.unions (map (path: repositoryRoot + "/${path}") sourcePaths);
+      }
+    else if repositorySource != null then
+      repositorySource
+    else
       lib.fileset.toSource {
         root = repositoryRoot;
         fileset = lib.fileset.unions (
@@ -64,9 +75,8 @@ let
             (repositoryRoot + "/${cargoWorkspaceRoot}")
           ]
         );
-      }
-    else
-      repositorySource;
+      };
+  sourceDigest = builtins.hashString "sha256" (toString source);
 
   target = product.target;
   productName = product.name;
@@ -94,8 +104,28 @@ let
   } --local-only --no-remote-cache --console simple --show-simple-output";
 in
 assert lib.assertMsg (
-  builtins.match "[0-9a-f]{40}" producerCommit != null
+  producerCommit == null || builtins.match "[0-9a-f]{40}" producerCommit != null
 ) "buck2-products: producerCommit must be a full lowercase Git commit";
+assert lib.assertMsg (
+  (producerCommit == null) == (sourcePaths != null)
+) "buck2-products: published recipes require producerCommit; scoped consumer recipes must omit it";
+assert lib.assertMsg (
+  sourcePaths == null
+  || (
+    builtins.isList sourcePaths
+    && sourcePaths != [ ]
+    && lib.all (
+      path:
+      builtins.isString path
+      && builtins.match "[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*" path != null
+      && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" path)
+    ) sourcePaths
+    && repositorySource == null
+  )
+) "buck2-products: sourcePaths must be nonempty safe relative paths and cannot be combined with repositorySource";
+assert lib.assertMsg (
+  (sourcePaths == null) == (rootProjection == null)
+) "buck2-products: scoped sourcePaths require a separate rootProjection";
 assert lib.assertMsg (
   !isBuildProduct || outputName == "artifact.tar"
 ) "buck2-products: ${product.kind} products must name the build_product payload artifact.tar";
@@ -139,6 +169,10 @@ let
       export XDG_CACHE_HOME="$TMPDIR/cache"
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      ${lib.optionalString (rootProjection != null) ''
+        cp -R ${rootProjection}/. .
+        chmod -R u+w .buck2 buck2 BUCK .buckconfig .buckroot
+      ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
@@ -175,13 +209,28 @@ let
       ${lib.optionalString (expectedSha256 != null) ''
         test "$actual_sha256" = ${lib.escapeShellArg expectedSha256}
       ''}
-      jq -nS \
-        --arg schema 'effect-utils/buck-product-provenance/v1' \
-        --arg producerCommit ${lib.escapeShellArg producerCommit} \
-        --arg target ${lib.escapeShellArg target} \
-        --arg productDigest "$actual_sha256" \
-        '{schema:$schema,producerCommit:$producerCommit,target:$target,productDigest:$productDigest}' \
-        > provenance.json
+      ${
+        if producerCommit == null then
+          ''
+            jq -nS \
+              --arg schema 'effect-utils/buck-product-source-provenance/v1' \
+              --arg sourceDigest ${lib.escapeShellArg sourceDigest} \
+              --arg target ${lib.escapeShellArg target} \
+              --arg productDigest "$actual_sha256" \
+              '{schema:$schema,sourceDigest:$sourceDigest,target:$target,productDigest:$productDigest}' \
+              > provenance.json
+          ''
+        else
+          ''
+            jq -nS \
+              --arg schema 'effect-utils/buck-product-provenance/v1' \
+              --arg producerCommit ${lib.escapeShellArg producerCommit} \
+              --arg target ${lib.escapeShellArg target} \
+              --arg productDigest "$actual_sha256" \
+              '{schema:$schema,producerCommit:$producerCommit,target:$target,productDigest:$productDigest}' \
+              > provenance.json
+          ''
+      }
       runHook postBuild
     '';
 
@@ -207,7 +256,10 @@ let
         pnpmArchives
         producerCommit
         repositorySource
+        rootProjection
         source
+        sourceDigest
+        sourcePaths
         target
         runtimeClosureTarget
         ;
