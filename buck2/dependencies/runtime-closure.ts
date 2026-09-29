@@ -167,6 +167,15 @@ export const verifyRuntimeClosure = async (root: string, expectedDigest: string)
     !fields.importers.includes(fields.primary)
   )
     fail('invalid runtime closure descriptor')
+  const importers = fields.importers as string[]
+  if (importers.join('\0') !== [...new Set(importers)].sort(compare).join('\0'))
+    fail('runtime closure importers must be sorted and unique')
+  const primaryView = await realpath(join(root, 'node_modules'))
+  const namedView = await realpath(
+    join(root, 'importers', fields.primary as string, 'node_modules'),
+  )
+  if (!inside(root, primaryView) || primaryView !== namedView)
+    fail('primary importer does not match the node_modules root')
   if ((await digestRuntimeClosure(root)) !== expectedDigest) fail('runtime closure digest mismatch')
 }
 

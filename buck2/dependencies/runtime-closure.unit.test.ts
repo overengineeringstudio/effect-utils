@@ -56,16 +56,18 @@ describe('runtime closure relocation', () => {
     mkdirSync(workspace)
     writeFileSync(join(workspace, 'index.js'), 'module.exports = 7\n')
     symlinkSync(join('..', 'workspace'), join(view, 'blocks'))
+    const cliView = join(root, 'buck-out', 'cli-view')
+    mkdirSync(cliView)
+    symlinkSync(join('..', 'workspace'), join(cliView, 'cli-only'))
     const out = join(root, 'output')
     await assembleRuntimeClosure({
       output: out,
       primary: 'service',
-      importers: { service: view, cli: view },
-      roots: [view, plugin, dependency, workspace],
+      importers: { service: view, cli: cliView },
+      roots: [view, cliView, plugin, dependency, workspace],
     })
-    const descriptor = JSON.parse(readFileSync(join(out, 'descriptor.json'), 'utf8')) as {
-      digest: string
-    }
+    const descriptorContent = readFileSync(join(out, 'descriptor.json'), 'utf8')
+    const descriptor = JSON.parse(descriptorContent) as { digest: string }
     await verifyRuntimeClosure(out, descriptor.digest)
     const relocated = join(root, 'relocated')
     renameSync(out, relocated)
@@ -73,10 +75,21 @@ describe('runtime closure relocation', () => {
     const imported = createRequire(join(relocated, 'entry.js'))
     expect(imported('@vitejs/plugin-react')).toBe('peer resolved')
     expect(imported('blocks')).toBe(7)
+    const cli = createRequire(join(relocated, 'importers', 'cli', 'main.js'))
+    expect(cli('cli-only')).toBe(7)
+    expect(() => imported.resolve('cli-only')).toThrow()
     expect(readlinkSync(join(relocated, 'node_modules')).startsWith('/')).toBe(false)
     expect(readlinkSync(join(relocated, 'importers', 'cli', 'node_modules')).startsWith('/')).toBe(
       false,
     )
+    writeFileSync(
+      join(relocated, 'descriptor.json'),
+      JSON.stringify({ ...descriptor, importers: ['cli', 'service'], primary: 'cli' }),
+    )
+    await expect(verifyRuntimeClosure(relocated, descriptor.digest)).rejects.toThrow(
+      'primary importer does not match',
+    )
+    writeFileSync(join(relocated, 'descriptor.json'), descriptorContent)
     writeFileSync(
       createRequire(imported.resolve('@vitejs/plugin-react')).resolve('@rolldown/pluginutils'),
       'module.exports = "tampered"\n',
