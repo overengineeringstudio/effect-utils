@@ -17,8 +17,8 @@ Draft.
 ```text
 PR attempt close (after build jobs settle)
   ├─ Jobs API: current attempt jobs (all pages)         -> job table + gantt
-  ├─ Workflow Runs API: completed successful main runs  -> candidate run IDs
-  │    └─ Jobs API: each candidate's jobs              -> p50 baseline
+  ├─ Workflow Runs API: newest completed successful main pushes (at most 20)
+  │    └─ Jobs API: each selected run's jobs            -> p50 baseline
   └─ 01 deterministic job trace IDs + Grafana base URL -> Explore links
        -> workflow-report sticky PR comment
 ```
@@ -46,7 +46,7 @@ baseline or trace link; store no provider job ID in trace attributes.
 | Job       | Markdown-escaped job key/name                                                                                                                                             |
 | Status    | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished)                                                                             |
 | Wall time | `completed_at - started_at` when both exist; otherwise `unavailable`                                                                                                      |
-| Delta     | `duration unavailable` when this job lacks both timestamps; otherwise `baseline unavailable` without a sample; otherwise signed duration minus p50 in seconds and percent |
+| Delta     | `duration unavailable` without valid job timing; otherwise `no main baseline` at `n=0`; otherwise signed duration minus p50 in seconds and percent, with `n` |
 | Trace     | deterministic Grafana Explore link for executed jobs, if 01 identity is available                                                                                         |
 
 A failed PR job still has its observed duration and delta when timings
@@ -59,15 +59,19 @@ describes, not the latest attempt of a different run.
 
 List runs for this repository and workflow on `main` using the workflow-runs
 API (`branch=main`, `event=push`), following pagination and sorting newest
-first. Keep only completed runs with conclusion `success`, then fetch their
-Jobs API pages. For each PR job key, walk these candidate runs until seven
-jobs with matching canonical keys, `success` conclusions and both
-timestamps are found, or candidates are exhausted. Retain run IDs and
-sample counts for audit. Compute p50 as the median of the sampled wall
-durations, averaging the two middle values if the sample count is even.
-Report the actual `n`; at `n=0`, display `baseline unavailable`. The baseline
-compares like-for-like matrix-qualified keys rather than provider display
-order or run number. Main runs remain the source even after Tempo retention.
+first. Keep only completed runs with conclusion `success`; inspect at most
+the latest **20** such runs, even if some PR jobs are absent from main. For
+each PR job key, fetch selected runs' Jobs API pages in order until seven
+jobs with matching canonical keys, `success` conclusions and both timestamps
+are found, or the 20-run selection is exhausted. Do not fetch older runs
+solely to fill a sparse or PR-only key. The cap bounds work for PR-only jobs
+without concealing sparse data: report the actual sample count `n` even
+when below seven. Retain selected run IDs for audit. Compute p50 as the
+median of the sampled wall durations, averaging the two middle values if
+the sample count is even. At `n=0`, display `no main baseline` instead
+of a fabricated delta. Compare like-for-like matrix-qualified keys rather
+than provider display order or run number. Main runs remain the source
+even after Tempo retention.
 
 ## Gantt
 
@@ -100,8 +104,9 @@ The existing sticky comment gets one Buck2 observability section, replacing the 
 - Among nine successful, one failed and one cancelled main run, enumerate
   candidates through the workflow-runs API, then select the latest seven
   admissible same-key Jobs API durations and report p50 and `n=7`.
-- A job absent from every admissible main run reports `baseline unavailable`;
-  a finalizer job never appears as a build row.
+- A job absent from all 20 selected successful main runs reports `no main
+  baseline`; a finalizer job never appears as a build row. The collector
+  makes no more than 20 baseline Jobs API run requests for this selection.
 - The same job facts and trace identity produce the exact same Grafana URL;
   malformed IDs produce no URL; an unindexed trace remains an Explore link.
 - The comment generator reads only GitHub Actions workflow-run metadata and

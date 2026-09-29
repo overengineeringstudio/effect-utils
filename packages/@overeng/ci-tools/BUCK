@@ -143,6 +143,7 @@ package_view(
         "bin/ci-tools.ts": "bin/ci-tools.ts",
         "package.json": "package.json",
         "src/__snapshots__/cli.contract.test.ts.snap": "src/__snapshots__/cli.contract.test.ts.snap",
+        "src/__snapshots__/pipeline-report.unit.test.ts.snap": "src/__snapshots__/pipeline-report.unit.test.ts.snap",
         "src/cli-command.ts": "src/cli-command.ts",
         "src/cli.contract.test.ts": "src/cli.contract.test.ts",
         "src/deploy-domain.contract.ts": "src/deploy-domain.contract.ts",
