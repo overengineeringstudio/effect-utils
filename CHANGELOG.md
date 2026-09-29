@@ -205,6 +205,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **StyleX Vite consumers under Bun**: Patch `@stylexjs/babel-plugin@0.19.0`
+  so the media-query parser treats an explicit tokenizer EOF as end-of-input.
+  Without the patch, valid responsive and hover conditions can fail
+  nondeterministically during a packed RPC explorer consumer build with
+  `Invalid media query syntax` ([upstream issue](https://github.com/facebook/stylex/issues/1916)).
+  The pnpm patch registry now projects the fix to downstream consumers.
+
 - **mk-pnpm-cli declared source inputs without a source**: pnpm 12.7
   packlists every declared `sourceInputPaths` package, so each one's manifest
   is staged even when the consumer does not import it. When no

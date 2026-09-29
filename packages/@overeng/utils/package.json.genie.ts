@@ -53,6 +53,7 @@ const runtimeDeps = catalog.compose({
         // package's installed graph. The app, not the shared catalog, selects
         // its own Next.js version.
         'babel-loader',
+        '@babel/core',
         '@stylexjs/babel-plugin',
         '@stylexjs/postcss-plugin',
         '@stylexjs/stylex',
