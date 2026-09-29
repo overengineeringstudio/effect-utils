@@ -244,6 +244,10 @@ All notable changes to this project will be documented in this file.
   `missingAuthPolicy=skip`. Regenerate consumer workflows to pick this up.
 
 ### Fixed
+- **Buck2 rules product**: Ship and export `runtime-closure.ts` in the rules
+  cell so external consumers can analyze `pnpm_runtime_closure` without
+  staging the script into their own cell. The inventory test checks local
+  `.bzl` loads and default tool sources against the shipped rules cell.
 
 - **StyleX Vite consumers under Bun**: Patch `@stylexjs/babel-plugin@0.19.0`
   so the media-query parser treats an explicit tokenizer EOF as end-of-input.
