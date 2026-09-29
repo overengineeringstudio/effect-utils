@@ -25,6 +25,7 @@ export const buck2TypeScriptAdmission = {
     },
   ],
   authorities: [{ declarationEntrypoint: 'src/isomorphic/mod.d.ts', projectFile: 'tsconfig.json' }],
+  testDataRoots: [{ root: 'patches', extensions: ['.patch'] }],
   tests: [
     {
       name: 'test',
