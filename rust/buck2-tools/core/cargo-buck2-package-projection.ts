@@ -131,11 +131,15 @@ export const defineCargoBuck2PackageProjection = ({
   })
   const reindeerConfig = Bun.TOML.parse(repo.readText(reindeerConfigPath)) as {
     readonly third_party_dir?: string
+    readonly cargo_env?: boolean
   }
   const reindeerThirdPartyDir = requireValue({
     value: reindeerConfig.third_party_dir,
     field: `${reindeerConfigPath} third_party_dir`,
   })
+  if (reindeerConfig.cargo_env !== true) {
+    throw new Error(`${reindeerConfigPath} must set root-level cargo_env = true`)
+  }
   if (
     path.posix.isAbsolute(reindeerThirdPartyDir) ||
     reindeerThirdPartyDir.includes('\\') ||
@@ -682,6 +686,7 @@ const cargoBuck2PackageProjectionFor = ({
       ([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`,
     ),
     `        "CARGO_CRATE_NAME": ${starlarkString(crateName)},`,
+    `        "CARGO_MANIFEST_DIR": ${starlarkString(packagePath)},`,
     ...(binName === undefined ? [] : [`        "CARGO_BIN_NAME": ${starlarkString(binName)},`]),
     ...(cliBuildStamp === true
       ? ['        "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),']
@@ -808,14 +813,12 @@ const cargoBuck2PackageProjectionFor = ({
       // `$CARGO_MANIFEST_DIR/../<pkg>/<file>` reaches the declared inputs.
       `    buildscript_rule = ${starlarkString(`:${buildScriptLauncher}`)},`,
       `    manifest_dir = ${starlarkString(`:${buildScriptLauncher}`)},`,
-      // Cargo always sets these for build scripts; Prelude supplies the rest. Buck
-      // compiles with -Copt-level=0 and no debuginfo, Cargo's `dev` shape without `-g`.
+      // Prelude supplies the staged CARGO_MANIFEST_DIR and toolchain variables.
+      // Buck compiles with -Copt-level=0 and no debuginfo, Cargo's `dev` shape without -g.
       '    env = {',
       ...Object.entries({
-        CARGO_PKG_VERSION_MAJOR: semver[1] ?? '',
-        CARGO_PKG_VERSION_MINOR: semver[2] ?? '',
-        CARGO_PKG_VERSION_PATCH: semver[3] ?? '',
-        CARGO_PKG_VERSION_PRE: semver[4] ?? '',
+        ...compileEnv,
+        CARGO_CRATE_NAME: 'build_script_build',
         DEBUG: 'false',
         NUM_JOBS: '1',
         PROFILE: 'debug',

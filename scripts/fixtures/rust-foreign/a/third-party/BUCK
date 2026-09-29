@@ -5,6 +5,170 @@ load("@prelude//rust:cargo_package.bzl", "cargo")
 load("//buck2/rust:crates.bzl", "crate_archive")
 
 alias(
+    name = "autocfg",
+    actual = ":autocfg-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "autocfg-1.5.1.crate",
+    sha256 = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53",
+    strip_prefix = "autocfg-1.5.1",
+    urls = ["https://static.crates.io/crates/autocfg/1.5.1/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "autocfg-1",
+    srcs = [":autocfg-1.5.1.crate"],
+    crate = "autocfg",
+    crate_root = "autocfg-1.5.1.crate/src/lib.rs",
+    edition = "2015",
+    env = {
+        "CARGO_BIN_NAME": "autocfg",
+        "CARGO_CRATE_NAME": "autocfg",
+        "CARGO_MANIFEST_DIR": "autocfg-1.5.1.crate",
+        "CARGO_PKG_AUTHORS": "Josh Stone <cuviper@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Automatic cfg for Rust compiler features",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "autocfg",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/cuviper/autocfg",
+        "CARGO_PKG_RUST_VERSION": "1.0",
+        "CARGO_PKG_VERSION": "1.5.1",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "5",
+        "CARGO_PKG_VERSION_PATCH": "1",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+)
+
+alias(
+    name = "bitflags",
+    actual = ":bitflags-2",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "bitflags-2.13.2.crate",
+    sha256 = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06",
+    strip_prefix = "bitflags-2.13.2",
+    urls = ["https://static.crates.io/crates/bitflags/2.13.2/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "bitflags-2",
+    srcs = [":bitflags-2.13.2.crate"],
+    crate = "bitflags",
+    crate_root = "bitflags-2.13.2.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "bitflags",
+        "CARGO_CRATE_NAME": "bitflags",
+        "CARGO_MANIFEST_DIR": "bitflags-2.13.2.crate",
+        "CARGO_PKG_AUTHORS": "The Rust Project Developers",
+        "CARGO_PKG_DESCRIPTION": "A macro to generate structures which behave like bitflags.\n",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/bitflags/bitflags",
+        "CARGO_PKG_NAME": "bitflags",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/bitflags/bitflags",
+        "CARGO_PKG_RUST_VERSION": "1.56.0",
+        "CARGO_PKG_VERSION": "2.13.2",
+        "CARGO_PKG_VERSION_MAJOR": "2",
+        "CARGO_PKG_VERSION_MINOR": "13",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+)
+
+alias(
+    name = "bytemuck",
+    actual = ":bytemuck-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "bytemuck-1.25.2.crate",
+    sha256 = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797",
+    strip_prefix = "bytemuck-1.25.2",
+    urls = ["https://static.crates.io/crates/bytemuck/1.25.2/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "bytemuck-1",
+    srcs = [":bytemuck-1.25.2.crate"],
+    crate = "bytemuck",
+    crate_root = "bytemuck-1.25.2.crate/src/lib.rs",
+    edition = "2018",
+    env = {
+        "CARGO_BIN_NAME": "bytemuck",
+        "CARGO_CRATE_NAME": "bytemuck",
+        "CARGO_MANIFEST_DIR": "bytemuck-1.25.2.crate",
+        "CARGO_PKG_AUTHORS": "Lokathor <zefria@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "A crate for mucking around with piles of bytes.",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "bytemuck",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/Lokathor/bytemuck",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "1.25.2",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "25",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "aarch64_simd",
+        "wasm_simd",
+    ],
+    visibility = [],
+)
+
+alias(
+    name = "cfg-if",
+    actual = ":cfg-if-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "cfg-if-1.0.5.crate",
+    sha256 = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600",
+    strip_prefix = "cfg-if-1.0.5",
+    urls = ["https://static.crates.io/crates/cfg-if/1.0.5/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "cfg-if-1",
+    srcs = [":cfg-if-1.0.5.crate"],
+    crate = "cfg_if",
+    crate_root = "cfg-if-1.0.5.crate/src/lib.rs",
+    edition = "2018",
+    env = {
+        "CARGO_BIN_NAME": "cfg_if",
+        "CARGO_CRATE_NAME": "cfg_if",
+        "CARGO_MANIFEST_DIR": "cfg-if-1.0.5.crate",
+        "CARGO_PKG_AUTHORS": "Alex Crichton <alex@alexcrichton.com>",
+        "CARGO_PKG_DESCRIPTION": "A macro to ergonomically define an item depending on a large number of #[cfg]\nparameters. Structured like an if-else chain, the first matching branch is the\nitem that gets emitted.\n",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "cfg-if",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/rust-lang/cfg-if",
+        "CARGO_PKG_RUST_VERSION": "1.32",
+        "CARGO_PKG_VERSION": "1.0.5",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "5",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+)
+
+alias(
     name = "renamed_itoa",
     actual = ":itoa-1",
     visibility = ["PUBLIC"],
@@ -24,6 +188,63 @@ rust_library(
     crate = "itoa",
     crate_root = "itoa-1.0.18.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "itoa",
+        "CARGO_CRATE_NAME": "itoa",
+        "CARGO_MANIFEST_DIR": "itoa-1.0.18.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Fast integer primitive to string conversion",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "itoa",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dtolnay/itoa",
+        "CARGO_PKG_RUST_VERSION": "1.68",
+        "CARGO_PKG_VERSION": "1.0.18",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "18",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+)
+
+alias(
+    name = "libm",
+    actual = ":libm-0.2",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "libm-0.2.16.crate",
+    sha256 = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981",
+    strip_prefix = "libm-0.2.16",
+    urls = ["https://static.crates.io/crates/libm/0.2.16/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "libm-0.2",
+    srcs = [":libm-0.2.16.crate"],
+    crate = "libm",
+    crate_root = "libm-0.2.16.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "libm",
+        "CARGO_CRATE_NAME": "libm",
+        "CARGO_MANIFEST_DIR": "libm-0.2.16.crate",
+        "CARGO_PKG_AUTHORS": "Alex Crichton <alex@alexcrichton.com>:Amanieu d'Antras <amanieu@gmail.com>:Jorge Aparicio <japaricious@gmail.com>:Trevor Gross <tg@trevorgross.com>",
+        "CARGO_PKG_DESCRIPTION": "libm in pure Rust",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "libm",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/rust-lang/compiler-builtins",
+        "CARGO_PKG_RUST_VERSION": "1.63",
+        "CARGO_PKG_VERSION": "0.2.16",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "2",
+        "CARGO_PKG_VERSION_PATCH": "16",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     visibility = [],
 )
 
@@ -47,11 +268,155 @@ rust_library(
     crate = "memchr",
     crate_root = "memchr-2.8.3.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "memchr",
+        "CARGO_CRATE_NAME": "memchr",
+        "CARGO_MANIFEST_DIR": "memchr-2.8.3.crate",
+        "CARGO_PKG_AUTHORS": "Andrew Gallant <jamslam@gmail.com>:bluss",
+        "CARGO_PKG_DESCRIPTION": "Provides extremely fast (uses SIMD on x86_64, aarch64 and wasm32) routines for\n1, 2 or 3 byte search and single substring search.\n",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/BurntSushi/memchr",
+        "CARGO_PKG_NAME": "memchr",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/BurntSushi/memchr",
+        "CARGO_PKG_RUST_VERSION": "1.61",
+        "CARGO_PKG_VERSION": "2.8.3",
+        "CARGO_PKG_VERSION_MAJOR": "2",
+        "CARGO_PKG_VERSION_MINOR": "8",
+        "CARGO_PKG_VERSION_PATCH": "3",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     features = [
         "alloc",
         "default",
         "std",
     ],
+    visibility = [],
+)
+
+alias(
+    name = "num-complex",
+    actual = ":num-complex-0.4",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "num-complex-0.4.6.crate",
+    sha256 = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495",
+    strip_prefix = "num-complex-0.4.6",
+    urls = ["https://static.crates.io/crates/num-complex/0.4.6/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "num-complex-0.4",
+    srcs = [":num-complex-0.4.6.crate"],
+    crate = "num_complex",
+    crate_root = "num-complex-0.4.6.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "num_complex",
+        "CARGO_CRATE_NAME": "num_complex",
+        "CARGO_MANIFEST_DIR": "num-complex-0.4.6.crate",
+        "CARGO_PKG_AUTHORS": "The Rust Project Developers",
+        "CARGO_PKG_DESCRIPTION": "Complex numbers implementation for Rust",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/rust-num/num-complex",
+        "CARGO_PKG_NAME": "num-complex",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/rust-num/num-complex",
+        "CARGO_PKG_RUST_VERSION": "1.60",
+        "CARGO_PKG_VERSION": "0.4.6",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "4",
+        "CARGO_PKG_VERSION_PATCH": "6",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["bytemuck"],
+    visibility = [],
+    deps = [
+        ":bytemuck-1",
+        ":num-traits-0.2",
+    ],
+)
+
+alias(
+    name = "num-traits",
+    actual = ":num-traits-0.2",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "num-traits-0.2.19.crate",
+    sha256 = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
+    strip_prefix = "num-traits-0.2.19",
+    urls = ["https://static.crates.io/crates/num-traits/0.2.19/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "num-traits-0.2",
+    srcs = [":num-traits-0.2.19.crate"],
+    crate = "num_traits",
+    crate_root = "num-traits-0.2.19.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "num_traits",
+        "CARGO_CRATE_NAME": "num_traits",
+        "CARGO_MANIFEST_DIR": "num-traits-0.2.19.crate",
+        "CARGO_PKG_AUTHORS": "The Rust Project Developers",
+        "CARGO_PKG_DESCRIPTION": "Numeric traits for generic mathematics",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/rust-num/num-traits",
+        "CARGO_PKG_NAME": "num-traits",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/rust-num/num-traits",
+        "CARGO_PKG_RUST_VERSION": "1.60",
+        "CARGO_PKG_VERSION": "0.2.19",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "2",
+        "CARGO_PKG_VERSION_PATCH": "19",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["i128"],
+    visibility = [],
+)
+
+alias(
+    name = "paste",
+    actual = ":paste-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "paste-1.0.15.crate",
+    sha256 = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a",
+    strip_prefix = "paste-1.0.15",
+    urls = ["https://static.crates.io/crates/paste/1.0.15/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "paste-1",
+    srcs = [":paste-1.0.15.crate"],
+    crate = "paste",
+    crate_root = "paste-1.0.15.crate/src/lib.rs",
+    edition = "2018",
+    env = {
+        "CARGO_BIN_NAME": "paste",
+        "CARGO_CRATE_NAME": "paste",
+        "CARGO_MANIFEST_DIR": "paste-1.0.15.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Macros for all your token pasting needs",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "paste",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dtolnay/paste",
+        "CARGO_PKG_RUST_VERSION": "1.31",
+        "CARGO_PKG_VERSION": "1.0.15",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "15",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    proc_macro = True,
     visibility = [],
 )
 
@@ -75,9 +440,183 @@ rust_library(
     crate = "proc_macro2",
     crate_root = "proc-macro2-1.0.107.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "proc_macro2",
+        "CARGO_CRATE_NAME": "proc_macro2",
+        "CARGO_MANIFEST_DIR": "proc-macro2-1.0.107.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>:Alex Crichton <alex@alexcrichton.com>",
+        "CARGO_PKG_DESCRIPTION": "A substitute implementation of the compiler's `proc_macro` API to decouple token-based libraries from the procedural macro use case.",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "proc-macro2",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dtolnay/proc-macro2",
+        "CARGO_PKG_RUST_VERSION": "1.71",
+        "CARGO_PKG_VERSION": "1.0.107",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "107",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     features = ["proc-macro"],
     visibility = [],
     deps = [":unicode-ident-1"],
+)
+
+alias(
+    name = "pulp",
+    actual = ":pulp-0.22",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "pulp-0.22.3.crate",
+    sha256 = "046aa45b989642ec2e4717c8e72d677b13edd831a4d3b6cf37d9a3e54912496a",
+    strip_prefix = "pulp-0.22.3",
+    urls = ["https://static.crates.io/crates/pulp/0.22.3/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "pulp-0.22",
+    srcs = [":pulp-0.22.3.crate"],
+    crate = "pulp",
+    crate_root = "pulp-0.22.3.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "pulp",
+        "CARGO_CRATE_NAME": "pulp",
+        "CARGO_MANIFEST_DIR": "pulp-0.22.3.crate",
+        "CARGO_PKG_AUTHORS": "sarah quiñones <sarah@veganb.tw>",
+        "CARGO_PKG_DESCRIPTION": "safe generic simd",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "pulp",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/sarah-quinones/pulp/",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.22.3",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "22",
+        "CARGO_PKG_VERSION_PATCH": "3",
+        "CARGO_PKG_VERSION_PRE": "",
+        "OUT_DIR": "$(location :pulp-0.22-build-script-run[out_dir])",
+    },
+    features = [
+        "default",
+        "relaxed-simd",
+        "std",
+        "x86-v3",
+    ],
+    rustc_flags = ["@$(location :pulp-0.22-build-script-run[rustc_flags])"],
+    visibility = [],
+    deps = [
+        ":bytemuck-1",
+        ":cfg-if-1",
+        ":libm-0.2",
+        ":num-complex-0.4",
+        ":paste-1",
+        ":pulp-wasm-simd-flag-0.1",
+        ":raw-cpuid-11",
+        ":reborrow-0.5",
+    ],
+)
+
+rust_binary(
+    name = "pulp-0.22-build-script-build",
+    srcs = [":pulp-0.22.3.crate"],
+    crate = "build_script_build",
+    crate_root = "pulp-0.22.3.crate/build.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "build-script-build",
+        "CARGO_CRATE_NAME": "build_script_build",
+        "CARGO_MANIFEST_DIR": "pulp-0.22.3.crate",
+        "CARGO_PKG_AUTHORS": "sarah quiñones <sarah@veganb.tw>",
+        "CARGO_PKG_DESCRIPTION": "safe generic simd",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "pulp",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/sarah-quinones/pulp/",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.22.3",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "22",
+        "CARGO_PKG_VERSION_PATCH": "3",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "relaxed-simd",
+        "std",
+        "x86-v3",
+    ],
+    visibility = [],
+    deps = [":version_check-0.9"],
+)
+
+buildscript_run(
+    name = "pulp-0.22-build-script-run",
+    package_name = "pulp",
+    buildscript_rule = ":pulp-0.22-build-script-build",
+    env = {
+        "CARGO_PKG_AUTHORS": "sarah quiñones <sarah@veganb.tw>",
+        "CARGO_PKG_DESCRIPTION": "safe generic simd",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/sarah-quinones/pulp/",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "22",
+        "CARGO_PKG_VERSION_PATCH": "3",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "relaxed-simd",
+        "std",
+        "x86-v3",
+    ],
+    version = "0.22.3",
+)
+
+alias(
+    name = "pulp-wasm-simd-flag",
+    actual = ":pulp-wasm-simd-flag-0.1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "pulp-wasm-simd-flag-0.1.1.crate",
+    sha256 = "1d8f70e07b9c3962945a74e59ca1c511bba65b6419468acc217c457d93f3c740",
+    strip_prefix = "pulp-wasm-simd-flag-0.1.1",
+    urls = ["https://static.crates.io/crates/pulp-wasm-simd-flag/0.1.1/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "pulp-wasm-simd-flag-0.1",
+    srcs = [":pulp-wasm-simd-flag-0.1.1.crate"],
+    crate = "pulp_wasm_simd_flag",
+    crate_root = "pulp-wasm-simd-flag-0.1.1.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "pulp_wasm_simd_flag",
+        "CARGO_CRATE_NAME": "pulp_wasm_simd_flag",
+        "CARGO_MANIFEST_DIR": "pulp-wasm-simd-flag-0.1.1.crate",
+        "CARGO_PKG_AUTHORS": "sarah quiñones <sarah@veganb.tw>",
+        "CARGO_PKG_DESCRIPTION": "safe generic simd",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "pulp-wasm-simd-flag",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/sarah-quinones/pulp/",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.1.1",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "1",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["relaxed-simd"],
+    visibility = [],
 )
 
 alias(
@@ -100,9 +639,108 @@ rust_library(
     crate = "quote",
     crate_root = "quote-1.0.47.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "quote",
+        "CARGO_CRATE_NAME": "quote",
+        "CARGO_MANIFEST_DIR": "quote-1.0.47.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Quasi-quoting macro quote!(...)",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "quote",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dtolnay/quote",
+        "CARGO_PKG_RUST_VERSION": "1.71",
+        "CARGO_PKG_VERSION": "1.0.47",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "47",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     features = ["proc-macro"],
     visibility = [],
     deps = [":proc-macro2-1"],
+)
+
+alias(
+    name = "raw-cpuid",
+    actual = ":raw-cpuid-11",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "raw-cpuid-11.6.0.crate",
+    sha256 = "498cd0dc59d73224351ee52a95fee0f1a617a2eae0e7d9d720cc622c73a54186",
+    strip_prefix = "raw-cpuid-11.6.0",
+    urls = ["https://static.crates.io/crates/raw-cpuid/11.6.0/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "raw-cpuid-11",
+    srcs = [":raw-cpuid-11.6.0.crate"],
+    crate = "raw_cpuid",
+    crate_root = "raw-cpuid-11.6.0.crate/src/lib.rs",
+    edition = "2018",
+    env = {
+        "CARGO_BIN_NAME": "raw_cpuid",
+        "CARGO_CRATE_NAME": "raw_cpuid",
+        "CARGO_MANIFEST_DIR": "raw-cpuid-11.6.0.crate",
+        "CARGO_PKG_AUTHORS": "Gerd Zellweger <mail@gerdzellweger.com>",
+        "CARGO_PKG_DESCRIPTION": "A library to parse the x86 CPUID instruction, written in rust with no external dependencies. The implementation closely resembles the Intel CPUID manual description. The library does only depend on libcore.",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/gz/rust-cpuid",
+        "CARGO_PKG_NAME": "raw-cpuid",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/gz/rust-cpuid",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "11.6.0",
+        "CARGO_PKG_VERSION_MAJOR": "11",
+        "CARGO_PKG_VERSION_MINOR": "6",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+    deps = [":bitflags-2"],
+)
+
+alias(
+    name = "reborrow",
+    actual = ":reborrow-0.5",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "reborrow-0.5.5.crate",
+    sha256 = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430",
+    strip_prefix = "reborrow-0.5.5",
+    urls = ["https://static.crates.io/crates/reborrow/0.5.5/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "reborrow-0.5",
+    srcs = [":reborrow-0.5.5.crate"],
+    crate = "reborrow",
+    crate_root = "reborrow-0.5.5.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "reborrow",
+        "CARGO_CRATE_NAME": "reborrow",
+        "CARGO_MANIFEST_DIR": "reborrow-0.5.5.crate",
+        "CARGO_PKG_AUTHORS": "sarah <>",
+        "CARGO_PKG_DESCRIPTION": "Emulate reborrowing for user types.",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "reborrow",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/sarah-ek/reborrow/",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.5.5",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "5",
+        "CARGO_PKG_VERSION_PATCH": "5",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["default"],
+    visibility = [],
 )
 
 alias(
@@ -125,6 +763,23 @@ rust_library(
     crate = "serde_core",
     crate_root = "serde_core-1.0.229.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "serde_core",
+        "CARGO_CRATE_NAME": "serde_core",
+        "CARGO_MANIFEST_DIR": "serde_core-1.0.229.crate",
+        "CARGO_PKG_AUTHORS": "Erick Tryzelaar <erick.tryzelaar@gmail.com>:David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Serde traits only, with no support for derive -- use the `serde` crate instead",
+        "CARGO_PKG_HOMEPAGE": "https://serde.rs",
+        "CARGO_PKG_NAME": "serde_core",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/serde-rs/serde",
+        "CARGO_PKG_RUST_VERSION": "1.56",
+        "CARGO_PKG_VERSION": "1.0.229",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "229",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     features = [
         "alloc",
         "std",
@@ -152,6 +807,23 @@ rust_library(
     crate = "serde_derive",
     crate_root = "serde_derive-1.0.229.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "serde_derive",
+        "CARGO_CRATE_NAME": "serde_derive",
+        "CARGO_MANIFEST_DIR": "serde_derive-1.0.229.crate",
+        "CARGO_PKG_AUTHORS": "Erick Tryzelaar <erick.tryzelaar@gmail.com>:David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Macros 1.1 implementation of #[derive(Serialize, Deserialize)]",
+        "CARGO_PKG_HOMEPAGE": "https://serde.rs",
+        "CARGO_PKG_NAME": "serde_derive",
+        "CARGO_PKG_README": "crates-io.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/serde-rs/serde",
+        "CARGO_PKG_RUST_VERSION": "1.71",
+        "CARGO_PKG_VERSION": "1.0.229",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "229",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     features = ["default"],
     proc_macro = True,
     visibility = [],
@@ -182,6 +854,23 @@ rust_library(
     crate = "syn",
     crate_root = "syn-3.0.6.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "syn",
+        "CARGO_CRATE_NAME": "syn",
+        "CARGO_MANIFEST_DIR": "syn-3.0.6.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Parser for Rust source code",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "syn",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dtolnay/syn",
+        "CARGO_PKG_RUST_VERSION": "1.71",
+        "CARGO_PKG_VERSION": "3.0.6",
+        "CARGO_PKG_VERSION_MAJOR": "3",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "6",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     features = [
         "clone-impls",
         "derive",
@@ -217,6 +906,23 @@ rust_library(
     crate = "toml_datetime",
     crate_root = "toml_datetime-0.6.11.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "toml_datetime",
+        "CARGO_CRATE_NAME": "toml_datetime",
+        "CARGO_MANIFEST_DIR": "toml_datetime-0.6.11.crate",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "A TOML-compatible datetime type",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "toml_datetime",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/toml-rs/toml",
+        "CARGO_PKG_RUST_VERSION": "1.66",
+        "CARGO_PKG_VERSION": "0.6.11",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "6",
+        "CARGO_PKG_VERSION_PATCH": "11",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     visibility = [],
 )
 
@@ -240,6 +946,23 @@ rust_library(
     crate = "toml_datetime",
     crate_root = "toml_datetime-1.1.1+spec-1.1.0.crate/src/lib.rs",
     edition = "2024",
+    env = {
+        "CARGO_BIN_NAME": "toml_datetime",
+        "CARGO_CRATE_NAME": "toml_datetime",
+        "CARGO_MANIFEST_DIR": "toml_datetime-1.1.1+spec-1.1.0.crate",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "A TOML-compatible datetime type",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "toml_datetime",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/toml-rs/toml",
+        "CARGO_PKG_RUST_VERSION": "1.85",
+        "CARGO_PKG_VERSION": "1.1.1+spec-1.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "1",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     features = [
         "alloc",
         "default",
@@ -268,6 +991,23 @@ rust_library(
     crate = "unicode_ident",
     crate_root = "unicode-ident-1.0.26.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "unicode_ident",
+        "CARGO_CRATE_NAME": "unicode_ident",
+        "CARGO_MANIFEST_DIR": "unicode-ident-1.0.26.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Determine whether characters have the XID_Start or XID_Continue properties according to Unicode Standard Annex #31",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "unicode-ident",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dtolnay/unicode-ident",
+        "CARGO_PKG_RUST_VERSION": "1.71",
+        "CARGO_PKG_VERSION": "1.0.26",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "26",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     visibility = [],
 )
 
@@ -291,9 +1031,66 @@ rust_library(
     crate = "unicode_width",
     crate_root = "unicode-width-0.2.2.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "unicode_width",
+        "CARGO_CRATE_NAME": "unicode_width",
+        "CARGO_MANIFEST_DIR": "unicode-width-0.2.2.crate",
+        "CARGO_PKG_AUTHORS": "kwantam <kwantam@gmail.com>:Manish Goregaokar <manishsmail@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Determine displayed width of `char` and `str` types\naccording to Unicode Standard Annex #11 rules.\n",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/unicode-rs/unicode-width",
+        "CARGO_PKG_NAME": "unicode-width",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/unicode-rs/unicode-width",
+        "CARGO_PKG_RUST_VERSION": "1.66",
+        "CARGO_PKG_VERSION": "0.2.2",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "2",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     features = [
         "cjk",
         "default",
     ],
+    visibility = [],
+)
+
+alias(
+    name = "version_check",
+    actual = ":version_check-0.9",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "version_check-0.9.5.crate",
+    sha256 = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a",
+    strip_prefix = "version_check-0.9.5",
+    urls = ["https://static.crates.io/crates/version_check/0.9.5/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "version_check-0.9",
+    srcs = [":version_check-0.9.5.crate"],
+    crate = "version_check",
+    crate_root = "version_check-0.9.5.crate/src/lib.rs",
+    edition = "2015",
+    env = {
+        "CARGO_BIN_NAME": "version_check",
+        "CARGO_CRATE_NAME": "version_check",
+        "CARGO_MANIFEST_DIR": "version_check-0.9.5.crate",
+        "CARGO_PKG_AUTHORS": "Sergio Benitez <sb@sergio.bz>",
+        "CARGO_PKG_DESCRIPTION": "Tiny crate to check the version of the installed/running rustc.",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "version_check",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/SergioBenitez/version_check",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.9.5",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "9",
+        "CARGO_PKG_VERSION_PATCH": "5",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
     visibility = [],
 )

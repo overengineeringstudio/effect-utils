@@ -7,6 +7,9 @@ precise_srcs = true
 license_patterns = ["LICENSE*", "COPYING*", "UNLICENSE*"]
 include_top_level = false
 unresolved_fixup_error = true
+# Reindeer derives Cargo's compile and build-script environment from each
+# resolved package's metadata, including empty optional fields and version parts.
+cargo_env = true
 
 
 [platform.linux-x86_64]

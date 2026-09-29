@@ -28,7 +28,7 @@ fail() {
 }
 
 mkdir -p "$WORKSPACE" "$THIRD_PARTY/fixups/example"
-printf 'vendor = false\nthird_party_dir = "../../vendor/cargo"\n' >"$WORKSPACE/reindeer.toml"
+printf 'vendor = false\ncargo_env = true\nthird_party_dir = "../../vendor/cargo"\n' >"$WORKSPACE/reindeer.toml"
 printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 printf '# old graph\n' >"$THIRD_PARTY/BUCK"
 printf 'buildscript.run = true\n' >"$THIRD_PARTY/fixups/example/fixups.toml"
@@ -158,14 +158,14 @@ invalid_prefix_result="$(
 [ "$invalid_prefix_result" = false ] || fail "task module accepted an unsafe task prefix"
 
 mkdir -p "$FIXTURE/decoy"
-printf 'vendor = false\nthird_party_dir = "../../decoy"\n' >"$WORKSPACE/reindeer.toml"
+printf 'vendor = false\ncargo_env = true\nthird_party_dir = "../../decoy"\n' >"$WORKSPACE/reindeer.toml"
 if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/graph-mismatch-error"; then
   fail "gate accepted a BUCK path that disagrees with reindeer.toml"
 fi
 grep -Fq 'third-party BUCK disagrees' "$TEMP_ROOT/graph-mismatch-error" || fail "third-party graph mismatch was not diagnosed"
 
 # A matching key inside a non-root table must not mask the root setting Reindeer uses.
-printf 'vendor = false\nthird_party_dir = "../../decoy"\n\n[buck]\nthird_party_dir = "../../vendor/cargo"\n' >"$WORKSPACE/reindeer.toml"
+printf 'vendor = false\ncargo_env = true\nthird_party_dir = "../../decoy"\n\n[buck]\nthird_party_dir = "../../vendor/cargo"\n' >"$WORKSPACE/reindeer.toml"
 if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/table-decoy-error"; then
   fail "gate accepted third_party_dir from a non-root table"
 fi
@@ -183,11 +183,23 @@ if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_RE
 fi
 grep -Fq 'must select root-level vendor = false' "$TEMP_ROOT/vendor-nested-error" || fail "non-root vendor setting was not diagnosed"
 
+# Missing or nested cargo_env must not silently omit Cargo package metadata.
+printf 'vendor = false\nthird_party_dir = "../../vendor/cargo"\n' >"$WORKSPACE/reindeer.toml"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/cargo-env-error"; then
+  fail "gate accepted missing cargo_env"
+fi
+grep -Fq 'cargo_env must be the root-level boolean true' "$TEMP_ROOT/cargo-env-error" || fail "missing cargo_env was not diagnosed"
+printf 'vendor = false\nthird_party_dir = "../../vendor/cargo"\n\n[buck]\ncargo_env = true\n' >"$WORKSPACE/reindeer.toml"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/cargo-env-nested-error"; then
+  fail "gate accepted nested cargo_env"
+fi
+grep -Fq 'cargo_env must be the root-level boolean true' "$TEMP_ROOT/cargo-env-nested-error" || fail "nested cargo_env was not diagnosed"
+
 # TOML literal strings are valid Reindeer input.
 printf 'buildscript.run = true\n' >"$THIRD_PARTY/fixups/example/fixups.toml"
 printf 'authoritative lock bytes\n' >"$WORKSPACE/Cargo.lock"
 export FAKE_REINDEER_BEHAVIOR=generate
-printf "vendor = false\nthird_party_dir = '../../vendor/cargo'\n" >"$WORKSPACE/reindeer.toml"
+printf "vendor = false\ncargo_env = true\nthird_party_dir = '../../vendor/cargo'\n" >"$WORKSPACE/reindeer.toml"
 "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
 
@@ -264,6 +276,18 @@ REPO_ROOT="$ROOT" "$BUN" -e '
   if (!itoa?.checksum || !graph.includes(`sha256 = "${itoa.checksum}"`)) {
     console.error("foreign registry archive is not pinned to the authoritative Cargo.lock")
     process.exit(1)
+  }
+  // pulp 0.22.3 is a registry crate whose build.rs unwraps all three parts.
+  // Reindeer must set them for compilation and execution without a per-crate env fixup.
+  for (const [rule, name] of [["rust_binary", "pulp-0.22-build-script-build"], ["buildscript_run", "pulp-0.22-build-script-run"]]) {
+    const blocks = [...graph.matchAll(new RegExp(`^${rule}\\(\\n([\\s\\S]*?)^\\)`, "gm"))]
+    const block = blocks.find(([, body]) => body.includes(`name = "${name}",`))?.[0]
+    if (!block) throw new Error(`missing ${name}`)
+    for (const [part, value] of [["MAJOR", "0"], ["MINOR", "22"], ["PATCH", "3"]]) {
+      if (!block.includes(`"CARGO_PKG_VERSION_${part}": "${value}"`)) {
+        throw new Error(`${name} lacks package version ${part}`)
+      }
+    }
   }
 '
 

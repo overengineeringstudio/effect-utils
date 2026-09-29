@@ -71,10 +71,11 @@ const dir = config.third_party_dir;
 if (typeof dir !== "string" || dir === "") throw new Error("third_party_dir must be a non-empty root-level string");
 if (/[\u0000-\u001f\u007f]/.test(dir)) throw new Error("third_party_dir must not contain control characters");
 if (config.vendor !== false) throw new Error("vendor must be the root-level boolean false");
+if (config.cargo_env !== true) throw new Error("cargo_env must be the root-level boolean true (Cargo package metadata for compilation and build scripts)");
 process.stdout.write(dir);
 ' "$config"
 )"; then
-  echo "buck2-rust-deps: invalid ${config#"$root"/} (must select root-level vendor = false and third_party_dir)" >&2
+  echo "buck2-rust-deps: invalid ${config#"$root"/} (must select root-level vendor = false, cargo_env = true and third_party_dir)" >&2
   exit 1
 fi
 configured_third_party="$(cd "$workspace/$reindeer_third_party" && pwd -P)"
