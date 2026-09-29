@@ -98,13 +98,13 @@ does not gate this design.
 
 ## Fallback and Failure Behavior
 
-| Condition                        | Behavior                                                                    |
-| -------------------------------- | --------------------------------------------------------------------------- |
-| Unknown fields                   | Skip; count bytes/fields per log                                            |
-| Framing damage / schema conflict | Trusted local log: matching-binary `buck2 log show` fallback; warn          |
-| Untrusted fork log               | No external process; retain local log and recorded failure reason          |
-| Truncated log (crash)            | Decode readable prefix; mark truncated; infer end semantics                |
-| Missing sidecar line             | Independent command trace keyed by log UUID                                |
+| Condition                        | Behavior                                                           |
+| -------------------------------- | ------------------------------------------------------------------ |
+| Unknown fields                   | Skip; count bytes/fields per log                                   |
+| Framing damage / schema conflict | Trusted local log: matching-binary `buck2 log show` fallback; warn |
+| Untrusted fork log               | No external process; retain local log and recorded failure reason  |
+| Truncated log (crash)            | Decode readable prefix; mark truncated; infer end semantics        |
+| Missing sidecar line             | Independent command trace keyed by log UUID                        |
 
 ## Conformance
 

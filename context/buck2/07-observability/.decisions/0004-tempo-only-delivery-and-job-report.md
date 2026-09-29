@@ -33,15 +33,15 @@ seven matching main-run task baselines were not demonstrated.
 
 ## Options
 
-| Choice | Benefit | Cost / outcome |
-| --- | --- | --- |
-| Record-first upload and archived raw evidence | Re-ingest, reconcile, one-year history | Rejected: extra service, queue, archive, settle and deployment cost without added dev3 availability |
-| Direct OTLP plus raw archive | Shorter export path and re-ingest inputs | Rejected: two sinks and a service for the archive |
-| Direct OTLP with local retry spool | Same path locally and in CI; no evidence service | Accepted: history ends at Tempo's 30 days; regeneration only while the spool survives |
-| One pipeline-wide trace | One cross-job waterfall | Rejected: spaced-burst loss can be permanent without archive |
-| One trace per job, linked at close | One burst per job; searchable by pipeline run ID | Accepted: no single cross-job waterfall |
-| Job outputs or unrestricted Tempo read for the comment | Task-level columns | Rejected: workflow size/matrix collision or fleet-wide trace exposure |
-| Jobs API-only report | Job timings and baseline without Tempo read or YAML growth | Accepted: task-level columns deferred |
+| Choice                                                 | Benefit                                                    | Cost / outcome                                                                                      |
+| ------------------------------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Record-first upload and archived raw evidence          | Re-ingest, reconcile, one-year history                     | Rejected: extra service, queue, archive, settle and deployment cost without added dev3 availability |
+| Direct OTLP plus raw archive                           | Shorter export path and re-ingest inputs                   | Rejected: two sinks and a service for the archive                                                   |
+| Direct OTLP with local retry spool                     | Same path locally and in CI; no evidence service           | Accepted: history ends at Tempo's 30 days; regeneration only while the spool survives               |
+| One pipeline-wide trace                                | One cross-job waterfall                                    | Rejected: spaced-burst loss can be permanent without archive                                        |
+| One trace per job, linked at close                     | One burst per job; searchable by pipeline run ID           | Accepted: no single cross-job waterfall                                                             |
+| Job outputs or unrestricted Tempo read for the comment | Task-level columns                                         | Rejected: workflow size/matrix collision or fleet-wide trace exposure                               |
+| Jobs API-only report                                   | Job timings and baseline without Tempo read or YAML growth | Accepted: task-level columns deferred                                                               |
 
 ## Decision
 

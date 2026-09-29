@@ -32,7 +32,7 @@ This subsystem owns the PR job report and deterministic Grafana links. The repor
 
 ## Requirement Trace
 
-| Requirements | Refinement |
-| --- | --- |
+| Requirements                 | Refinement        |
+| ---------------------------- | ----------------- |
 | BUCK.OBS.ACCESS-R01–R04, R06 | BUCK.OBS-R03, R08 |
-| BUCK.OBS.ACCESS-R05, R07 | BUCK.OBS-R04, R08 |
+| BUCK.OBS.ACCESS-R05, R07     | BUCK.OBS-R04, R08 |

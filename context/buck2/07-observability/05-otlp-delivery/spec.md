@@ -47,11 +47,11 @@ Tempo keeps traces for 30 days; Mimir keeps bounded trend metrics under fleet po
 
 ## Ownership and Conformance
 
-| Owner | Contract |
-| --- | --- |
-| effect-utils | Buck capture, adapter, views, batch encoder, local pending spool, and direct OTLP retry |
-| dotfiles | Alloy tailnet :4318 ACL/routing and Tempo/Mimir retention |
-| CI adapter | Job-end late join and one export phase; always-run attempt-close trace; no fleet read permission for comment generation |
+| Owner        | Contract                                                                                                                |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| effect-utils | Buck capture, adapter, views, batch encoder, local pending spool, and direct OTLP retry                                 |
+| dotfiles     | Alloy tailnet :4318 ACL/routing and Tempo/Mimir retention                                                               |
+| CI adapter   | Job-end late join and one export phase; always-run attempt-close trace; no fleet read permission for comment generation |
 
 - A trusted PR job that completes Buck then joins the tailnet sends its single job trace (with nested task and command spans) plus linked full views in one bounded burst; a fork sends none and leaves pending bytes locally.
 - Rejecting one chunk does not acknowledge or erase it. A retry resends identical bytes and preserves IDs, and neither rejection nor retry changes the command result.

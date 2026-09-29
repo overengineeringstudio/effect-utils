@@ -42,14 +42,14 @@ A failed decode or export never changes the Buck result (BUCK.OBS-R01–R04).
 
 ## Children
 
-| Child                                              | Owns                                                         |
-| -------------------------------------------------- | ------------------------------------------------------------ |
-| [01-run-identity](./01-run-identity/spec.md)       | pipeline and job identity, caller↔Buck correlation, links    |
-| [02-local-spool](./02-local-spool/spec.md)         | local retryable evidence and span spool                      |
-| [03-event-log-adapter](./03-event-log-adapter/spec.md) | versioned event-log decode and daemon wait               |
-| [04-trace-views](./04-trace-views/spec.md)         | full/critical view selection, cap, bounded metrics          |
-| [05-otlp-delivery](./05-otlp-delivery/spec.md)     | job-end OTLP burst, collector access, retry and retention   |
-| [06-trace-access](./06-trace-access/spec.md)       | Jobs API PR report and deterministic Grafana links          |
+| Child                                                  | Owns                                                      |
+| ------------------------------------------------------ | --------------------------------------------------------- |
+| [01-run-identity](./01-run-identity/spec.md)           | pipeline and job identity, caller↔Buck correlation, links |
+| [02-local-spool](./02-local-spool/spec.md)             | local retryable evidence and span spool                   |
+| [03-event-log-adapter](./03-event-log-adapter/spec.md) | versioned event-log decode and daemon wait                |
+| [04-trace-views](./04-trace-views/spec.md)             | full/critical view selection, cap, bounded metrics        |
+| [05-otlp-delivery](./05-otlp-delivery/spec.md)         | job-end OTLP burst, collector access, retry and retention |
+| [06-trace-access](./06-trace-access/spec.md)           | Jobs API PR report and deterministic Grafana links        |
 
 `02` retains local inputs from `01`; `03` decodes Buck evidence, `04` shapes
 the traces, and `05` delivers them. `06` uses the Jobs API for timings and

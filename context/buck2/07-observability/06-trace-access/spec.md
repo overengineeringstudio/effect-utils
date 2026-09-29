@@ -36,13 +36,13 @@ If the adapter cannot reconstruct a unique key, show the provider job name
 as an unmatched row and omit both baseline and trace link rather than
 guessing. Store no provider job ID in trace attributes.
 
-| Column | Rule |
-| --- | --- |
-| Job | Markdown-escaped job key/name |
-| Status | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished) |
-| Wall time | `completed_at - started_at` when both exist; otherwise `unavailable` |
-| Delta | job wall time minus baseline p50, signed seconds and percentage; `baseline unavailable` without a valid sample |
-| Trace | deterministic Grafana Explore link for executed jobs, if 01 identity is available |
+| Column    | Rule                                                                                                           |
+| --------- | -------------------------------------------------------------------------------------------------------------- |
+| Job       | Markdown-escaped job key/name                                                                                  |
+| Status    | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished)                  |
+| Wall time | `completed_at - started_at` when both exist; otherwise `unavailable`                                           |
+| Delta     | job wall time minus baseline p50, signed seconds and percentage; `baseline unavailable` without a valid sample |
+| Trace     | deterministic Grafana Explore link for executed jobs, if 01 identity is available                              |
 
 A failed PR job still has its observed duration and delta when timings exist; its row keeps `failure`. Skipped or never-started jobs have no duration or delta. The table uses the attempt the comment describes, not the latest attempt of a different run.
 
