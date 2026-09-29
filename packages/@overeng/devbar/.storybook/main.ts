@@ -1,5 +1,6 @@
-import { createDomStorybookConfig } from '@overeng/utils-storybook/config'
 import type { InlineConfig } from 'vite'
+
+import { createDomStorybookConfig } from '@overeng/utils-storybook/config'
 
 export default createDomStorybookConfig<InlineConfig>({
   a11y: true,

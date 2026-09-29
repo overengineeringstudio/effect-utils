@@ -37,7 +37,9 @@ const styles = stylex.create({
     flexDirection: 'column',
     backgroundColor: devbarTokens.canvas,
     color: devbarTokens.text,
-    borderTop: `1px solid ${devbarTokens.border}`,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: devbarTokens.border,
     fontFamily: devbarTokens.fontUi,
     fontSize: '0.75rem',
   },
@@ -50,13 +52,16 @@ const styles = stylex.create({
     paddingInline: '0.5rem',
   },
   toggle: {
-    padding: '0.3rem 0.5rem',
-    backgroundColor: 'transparent',
+    paddingBlock: '0.3rem',
+    paddingInline: '0.5rem',
+    backgroundColor: { default: 'transparent', ':hover': devbarTokens.panel },
     color: devbarTokens.text,
-    border: 0,
+    borderWidth: 0,
     cursor: 'pointer',
-    ':hover': { backgroundColor: devbarTokens.panel },
-    ':focus-visible': { outline: `2px solid ${devbarTokens.focusRing}`, outlineOffset: '-2px' },
+    outlineWidth: { default: 0, ':focus-visible': 2 },
+    outlineStyle: 'solid',
+    outlineColor: devbarTokens.focusRing,
+    outlineOffset: '-2px',
   },
   active: { backgroundColor: devbarTokens.panelActive, color: devbarTokens.text },
   badge: { marginLeft: '0.3rem', color: devbarTokens.mutedText },
@@ -68,9 +73,18 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: devbarTokens.canvas,
-    borderBottom: `1px solid ${devbarTokens.border}`,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: devbarTokens.border,
   },
-  panelBody: { minHeight: 0, flex: '1 1 auto', display: 'flex', flexDirection: 'column' },
+  panelBody: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+  },
   fps: {
     padding: '1rem',
     fontFamily: devbarTokens.fontData,
@@ -79,6 +93,7 @@ const styles = stylex.create({
   },
 })
 
+/** Optional StyleX override for the sampled frame-rate output. */
 export interface FpsMeterProps {
   readonly style?: StyleXStyles
 }
@@ -126,13 +141,13 @@ export const Devbar = ({
 }: DevbarProps): React.ReactNode => {
   const panelId = React.useId()
   const validPanel = React.useCallback(
-    (id: string | undefined) => (panels.some((panel) => panel.id === id) ? id : undefined),
+    (id: string | undefined) => (panels.some((panel) => panel.id === id) === true ? id : undefined),
     [panels],
   )
   const [openPanel, setOpenPanel] = React.useState<string | undefined>(() => {
     const deepLink = validPanel(deepLinkPanel)
     if (deepLink !== undefined) return deepLink
-    if (!persist || typeof window === 'undefined') return undefined
+    if (persist === false || typeof window === 'undefined') return undefined
     try {
       return validPanel(window.localStorage.getItem(storageKey) ?? undefined)
     } catch {
@@ -144,7 +159,7 @@ export const Devbar = ({
     (next: string | undefined) => {
       if (next !== undefined) lastPanel.current = next
       setOpenPanel(next)
-      if (persist) {
+      if (persist === true) {
         try {
           window.localStorage.setItem(storageKey, next ?? '')
         } catch {
@@ -164,15 +179,19 @@ export const Devbar = ({
     const onKey = (event: KeyboardEvent) => {
       if (
         event.code === 'Backquote' &&
-        (event.ctrlKey || event.metaKey) &&
-        !event.altKey &&
-        !event.shiftKey
+        (event.ctrlKey === true || event.metaKey === true) &&
+        event.altKey === false &&
+        event.shiftKey === false
       ) {
         event.preventDefault()
         select(
           openPanel === undefined ? (validPanel(lastPanel.current) ?? panels[0]?.id) : undefined,
         )
-      } else if (event.key === 'Escape' && openPanel !== undefined && !event.defaultPrevented) {
+      } else if (
+        event.key === 'Escape' &&
+        openPanel !== undefined &&
+        event.defaultPrevented === false
+      ) {
         select(undefined)
       }
     }

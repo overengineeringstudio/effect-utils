@@ -17,6 +17,7 @@ export const lightDevbarTheme = stylex.createTheme(devbarTokens, {
   fontData: fonts.mono,
 })
 
+/** Explicit dark theme for a dark host or side-by-side previews. */
 export const darkDevbarTheme = stylex.createTheme(devbarTokens, {
   canvas: colors.gray950,
   panel: colors.gray900,

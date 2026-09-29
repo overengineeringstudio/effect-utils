@@ -18,7 +18,9 @@ const styles = stylex.create({
   sample: {
     position: 'relative',
     height: '18rem',
-    border: `1px solid ${devbarTokens.border}`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: devbarTokens.border,
     backgroundColor: devbarTokens.panel,
     color: devbarTokens.text,
   },
@@ -34,7 +36,7 @@ const Sample = ({
   panel?: string
   dark: boolean
 }): React.ReactNode => (
-  <div {...stylex.props(styles.sample, dark ? darkDevbarTheme : lightDevbarTheme)}>
+  <div {...stylex.props(styles.sample, dark === true ? darkDevbarTheme : lightDevbarTheme)}>
     <p {...stylex.props(styles.label)}>{label}</p>
     <Devbar placement="container" panels={panels} deepLinkPanel={panel} persist={false} />
   </div>

@@ -20,7 +20,9 @@ const ThemePreview = ({
   children: ReactNode
   isDark: boolean
 }): ReactNode => (
-  <div {...stylex.props(styles.page, isDark ? darkDevbarTheme : lightDevbarTheme)}>{children}</div>
+  <div {...stylex.props(styles.page, isDark === true ? darkDevbarTheme : lightDevbarTheme)}>
+    {children}
+  </div>
 )
 
 const preview: Preview = {
@@ -38,6 +40,7 @@ const preview: Preview = {
     },
   },
   decorators: [
+    // oxlint-disable-next-line overeng/named-args -- Storybook decorators receive positional story/context arguments.
     (Story, context) => (
       <ThemePreview isDark={context.globals.theme === 'dark'}>
         <Story />

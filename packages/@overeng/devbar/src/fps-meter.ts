@@ -24,7 +24,7 @@ export const observeFps = ({
 
   const tick: FrameRequestCallback = (now) => {
     frame = undefined
-    if (disposed || clock.visibility.visibilityState !== 'visible') return
+    if (disposed === true || clock.visibility.visibilityState !== 'visible') return
     if (startedAt === undefined) startedAt = now
     frames += 1
     const elapsed = now - startedAt
@@ -42,7 +42,7 @@ export const observeFps = ({
       frame = undefined
       startedAt = undefined
       frames = 0
-    } else if (!disposed && frame === undefined) {
+    } else if (disposed === false && frame === undefined) {
       frame = clock.requestFrame(tick)
     }
   }
