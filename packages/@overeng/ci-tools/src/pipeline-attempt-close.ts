@@ -44,8 +44,7 @@ export const closePayload = ({
   let earliestStart = Number.POSITIVE_INFINITY
   for (const job of jobs) {
     if (job.run_attempt !== attempt) continue
-    if (job.started_at !== null)
-      earliestStart = Math.min(earliestStart, Date.parse(job.started_at))
+    if (job.started_at !== null) earliestStart = Math.min(earliestStart, Date.parse(job.started_at))
     if (job.name !== 'pipeline-attempt-close') counts[job.name] = (counts[job.name] ?? 0) + 1
   }
   const links: OtlpLink[] = jobs.flatMap((row) => {

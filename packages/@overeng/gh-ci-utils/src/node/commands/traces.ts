@@ -92,7 +92,11 @@ export const renderJobTraces = ({
       )
       continue
     }
-    const traceId = deriveJobTraceId(runIdentity, identity.job, identity.dimensions)
+    const traceId = deriveJobTraceId({
+      runId: runIdentity,
+      job: identity.job,
+      dimensions: identity.dimensions,
+    })
     const url = jobTraceUrl({
       grafanaBaseUrl,
       traceId,

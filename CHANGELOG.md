@@ -18,7 +18,9 @@ All notable changes to this project will be documented in this file.
   started job roots as unverified locators. The `buck2-evidence` upload service,
   sealed records, and resolver links are removed. Configure
   `OTEL_EXPORTER_OTLP_ENDPOINT` to send local jobs; CI sends only for trusted
-  runs with `CI_EVIDENCE_MODE=upload` and otherwise spools locally.
+  runs with `CI_EVIDENCE_MODE=upload` and otherwise spools locally. The
+  `gh-ci-utils traces` command derives job links with the same canonical
+  identity as the producer.
 
 - **@overeng/utils-storybook** (new package): the Storybook config helpers and
   the story gate move out of `@overeng/utils`, which no longer declares

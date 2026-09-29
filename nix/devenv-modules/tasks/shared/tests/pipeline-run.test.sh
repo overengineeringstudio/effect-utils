@@ -3,6 +3,8 @@ set -euo pipefail
 span=${1:-${OTEL_SPAN_BIN:?otel-span binary required}}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# CI wraps the test task in a pipeline-run; this probe owns a separate local spool.
+unset PIPELINE_ENTRYPOINT_ACTIVE PIPELINE_SPOOL_DIR
 
 run='ci/github/overengineeringstudio%2Feffect-utils/421/2'
 runner='namespace-profile-linux-x86-64'

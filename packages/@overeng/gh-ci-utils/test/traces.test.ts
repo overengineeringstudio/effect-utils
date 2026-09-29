@@ -104,11 +104,11 @@ describe('Grafana trace URLs', () => {
         }),
       ],
     })
-    const canonical = deriveJobTraceId(
-      'ci/github/overengineeringstudio%2Feffect-utils/421/2',
-      'test',
-      { runner: 'namespace-profile-linux-x86-64' },
-    )
+    const canonical = deriveJobTraceId({
+      runId: 'ci/github/overengineeringstudio%2Feffect-utils/421/2',
+      job: 'test',
+      dimensions: { runner: 'namespace-profile-linux-x86-64' },
+    })
     expect(output).toContain(
       `test (namespace-profile-linux-x86-64): completed (success)\n    ${canonical} https://grafana.example.test/explore?`,
     )
