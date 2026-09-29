@@ -593,7 +593,12 @@ const cargoBuck2PackageProjectionFor = ({
     CARGO_PKG_REPOSITORY: packageField('repository'),
     CARGO_PKG_LICENSE: packageField('license'),
     CARGO_PKG_LICENSE_FILE: packageField('license-file'),
-    CARGO_PKG_README: packageField('readme'),
+    CARGO_PKG_README:
+      packageMetadata.readme === undefined
+        ? (['README.md', 'README.txt', 'README'].find((readme) =>
+            existsSync(repo.resolve(packagePath, readme)),
+          ) ?? '')
+        : packageField('readme'),
     CARGO_PKG_RUST_VERSION: packageField('rust-version'),
   }
 

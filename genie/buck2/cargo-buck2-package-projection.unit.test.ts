@@ -276,7 +276,7 @@ describe('Cargo compile-time package identity', () => {
             'name = "devnet-edge"',
             'path = "src/bin/devnet-edge.rs"',
           ].join('\n'),
-          files: ['src/lib.rs', 'src/main.rs', 'src/bin/devnet-edge.rs', 'build.rs'],
+          files: ['README.md', 'src/lib.rs', 'src/main.rs', 'src/bin/devnet-edge.rs', 'build.rs'],
         },
       },
       render: 'relay',
@@ -316,6 +316,24 @@ describe('Cargo compile-time package identity', () => {
     expect(compileEnvironment(rules['tailnet-relay-build-script-build'])).not.toHaveProperty(
       'CARGO_BIN_NAME',
     )
+  })
+
+  it('selects the first present package README unless the manifest disables it', () => {
+    for (const [files, expected] of [
+      [['README.md', 'README.txt', 'README'], 'README.md'],
+      [['README.txt', 'README'], 'README.txt'],
+      [['README'], 'README'],
+    ] as const) {
+      const rules = renderedRules(
+        renderCargoFixture({
+          members: {
+            cli: { manifest: '[package]\nname = "cli"', files: ['src/main.rs', ...files] },
+          },
+          render: 'cli',
+        }),
+      )
+      expect(compileEnvironment(rules.cli).CARGO_PKG_README).toBe(expected)
+    }
   })
 
   it('supplies empty Cargo metadata variables when the manifest omits them', () => {

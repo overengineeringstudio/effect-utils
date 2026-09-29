@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:eb5163438c5726716873be18a6b085fbfe66e89d12f72ef6b2d9573d2cc04429
+# Semantic fingerprint: sha256:3de0bb2f35a2cb94da97aa1a00e888fcc37250c057f9160269bb1ba9fe04a3d2
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/evidence/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -70,7 +70,7 @@ native.rust_library(
         "CARGO_PKG_REPOSITORY": "",
         "CARGO_PKG_LICENSE": "MIT",
         "CARGO_PKG_LICENSE_FILE": "",
-        "CARGO_PKG_README": "",
+        "CARGO_PKG_README": "README.md",
         "CARGO_PKG_RUST_VERSION": "",
         "CARGO_CRATE_NAME": "otel_scrape",
         "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),
@@ -117,7 +117,7 @@ native.rust_binary(
         "CARGO_PKG_REPOSITORY": "",
         "CARGO_PKG_LICENSE": "MIT",
         "CARGO_PKG_LICENSE_FILE": "",
-        "CARGO_PKG_README": "",
+        "CARGO_PKG_README": "README.md",
         "CARGO_PKG_RUST_VERSION": "",
         "CARGO_CRATE_NAME": "otel_scrape",
         "CARGO_BIN_NAME": "otel-scrape",
