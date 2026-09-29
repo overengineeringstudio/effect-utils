@@ -44,9 +44,9 @@ export type PackageTreeOptions = {
   /**
    * Remove TypeScript project references from the staged root tsconfig.
    *
-   * A bounded test view contains one package, while project references describe the
-   * source-workspace build graph. Oxc follows those references during per-file transforms,
-   * so leaving them in would make the bounded view depend on undeclared sibling checkouts.
+   * Package views contain one package, while references describe the source-workspace
+   * build graph. Bundlers and per-file transforms may follow them into unstaged sibling
+   * projects; Buck typecheck and emit use the package's declared dependency view instead.
    */
   readonly stripProjectReferences: boolean
 }
