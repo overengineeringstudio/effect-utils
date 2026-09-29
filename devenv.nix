@@ -897,7 +897,7 @@ in
 
   # The outer devenv verb preserves stage-zero Genie freshness, then delegates
   # every deterministic repository validation to Buck's static aggregate.
-  tasks."lint:check".after = lib.mkForce [ "genie:check" ];
+  tasks."lint:check".after = lib.mkForce [ "genie:check" "lint:check:no-tailwind" ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check";
     targets = [ "effect_utils//buck2/static:check" ];

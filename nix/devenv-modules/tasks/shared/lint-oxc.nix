@@ -59,6 +59,10 @@
   # Whether to treat warnings as errors. Set to false for repos with many
   # existing warnings that can't be fixed immediately.
   denyWarnings ? true,
+  # Explicit, path-scoped exceptions. Each entry has { path = "examples/**";
+  # reason = "..." ; }. Entire-repository exceptions use path = "**".
+  # No exemptions are inherited merely because a consumer uses this module.
+  tailwindExceptions ? [ ],
   # Real derivation/path backing the formatter guard. Defaults to pkgs.oxfmt but
   # stays injectable so module tests can prove absolute-path execution without
   # depending on PATH shadowing.
@@ -76,6 +80,8 @@ let
   genieTaskEnv = lib.optionalAttrs (megarepoStoreEnv != "") {
     MEGAREPO_STORE = megarepoStoreEnv;
   };
+  noTailwindScript = ../../../../scripts/lint-no-tailwind.mjs;
+  tailwindExceptionsJson = lib.escapeShellArg (builtins.toJSON tailwindExceptions);
   git = "${pkgs.git}/bin/git";
   scanDirsSetup = builtins.concatStringsSep "\n" (
     map (dir: "scan_dir_args+=(${builtins.toJSON dir})") genieCoverageDirs
@@ -374,11 +380,18 @@ let
           --config.store-dir="$store_dir"
       '';
     };
+    "lint:check:no-tailwind" = {
+      description = "Reject Tailwind dependencies, imports, configs, and CSS directives";
+      exec = trace.exec "lint:check:no-tailwind" ''
+        ${pkgs.nodejs}/bin/node ${noTailwindScript} ${tailwindExceptionsJson}
+      '';
+    };
     "lint:check" = {
       description = "Run all lint checks";
       after = [
         "lint:check:format"
         "lint:check:oxlint"
+        "lint:check:no-tailwind"
         "lint:check:genie"
         "lint:check:genie:coverage"
         "lint:check:lockfile"
