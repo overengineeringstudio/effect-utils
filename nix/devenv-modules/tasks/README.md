@@ -80,11 +80,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
     default. It scans tracked and non-ignored untracked package manifests,
     JS/TS imports, Tailwind config filenames, and CSS/Astro/Svelte/Vue style
     directives. Each violation includes a file, line, and StyleX remedy.
-  - Approved exceptions are declared by the consumer:
-    `tailwindExceptions = [ { path = "examples/**"; reason = "Standalone example apps"; } ];`.
+  - Approved exceptions live in a consumer-owned `.no-tailwind-exceptions.json`
+    containing an array of `{ "path": "examples/**", "reason": "Standalone example apps" }`.
+    The file is optional, so existing consumers can declare exceptions before
+    repinning effect-utils; the older lint module does not need to parse them.
     Paths are anchored; `packages/@local/**/example/**` covers nested example
-    apps, while `path = "**"` exempts an entire repository only when explicitly
-    requested. A reason is required; other library paths remain guarded.
+    apps, while `"**"` explicitly exempts an entire repository. A reason is
+    required; other library paths remain guarded.
 - `megarepo.nix` - Megarepo workspace tasks
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`

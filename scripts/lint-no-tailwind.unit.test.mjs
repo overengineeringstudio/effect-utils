@@ -1,7 +1,7 @@
 import { deepStrictEqual, throws } from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { inspectTailwind } from './lint-no-tailwind.mjs'
+import { inspectTailwind, parseTailwindExceptions } from './lint-no-tailwind.mjs'
 
 const fixtures = [
   {
@@ -59,7 +59,15 @@ test('path-scoped exceptions leave library packages guarded', () => {
   ])
 })
 
-test('rejects unreasoned or imprecise exceptions', () => {
+test('reads checked-in exception arrays and rejects malformed declarations', () => {
+  const exceptions = parseTailwindExceptions('[{"path":"docs/**","reason":"Published docs app"}]')
+  deepStrictEqual(
+    inspectTailwind(fixtures, exceptions).some((message) => message.startsWith('docs/')),
+    false,
+  )
+  throws(() => parseTailwindExceptions('{"path":"docs/**"}'), /must contain an array/)
+  throws(() => inspectTailwind([], [null]), /Invalid Tailwind exception/)
+  throws(() => inspectTailwind([], [{ path: 'docs/**', reason: 4 }]), /Invalid Tailwind exception/)
   throws(() => inspectTailwind([], [{ path: 'docs/**', reason: '' }]), /nonempty reason/)
   throws(() => inspectTailwind([], [{ path: 'docs', reason: 'too broad' }]), /path ending/)
 })

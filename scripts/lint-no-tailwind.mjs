@@ -36,11 +36,20 @@ const matchesPath = (pattern, path) => {
   return new RegExp(`^${escaped}$`).test(path)
 }
 
+const exceptionFile = '.no-tailwind-exceptions.json'
+
+export const parseTailwindExceptions = (content) => {
+  const exceptions = JSON.parse(content)
+  if (!Array.isArray(exceptions)) throw new Error(`${exceptionFile} must contain an array`)
+  return exceptions
+}
+
 export const inspectTailwind = (files, exceptions = []) => {
   for (const exception of exceptions) {
     if (
-      !exception.path ||
-      !exception.reason?.trim() ||
+      typeof exception?.path !== 'string' ||
+      typeof exception?.reason !== 'string' ||
+      !exception.reason.trim() ||
       !/^(?:\*\*|[^/]+(?:\/[^/]+)*\/\*\*)$/.test(exception.path)
     ) {
       throw new Error(
@@ -109,7 +118,13 @@ export const inspectTailwind = (files, exceptions = []) => {
   return violations
 }
 
-export const checkRepository = (root, exceptions = []) => {
+export const checkRepository = (root) => {
+  let exceptions = []
+  try {
+    exceptions = parseTailwindExceptions(readFileSync(`${root}/${exceptionFile}`, 'utf8'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
   const files = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
     cwd: root,
     maxBuffer: 16 * 1024 * 1024,
@@ -136,11 +151,10 @@ if (
   realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
 ) {
   try {
-    const exceptions = process.argv[2] ? JSON.parse(process.argv[2]) : []
-    const violations = checkRepository(process.cwd(), exceptions)
+    const violations = checkRepository(process.cwd())
     if (violations.length) {
       console.error(
-        `Tailwind is forbidden by lint:check:no-tailwind (${violations.length} violation(s)):\n${violations.join('\n')}\nMigrate to StyleX; for approved exceptions, declare path-scoped { path, reason } in lint-oxc.tailwindExceptions.`,
+        `Tailwind is forbidden by lint:check:no-tailwind (${violations.length} violation(s)):\n${violations.join('\n')}\nMigrate to StyleX; for approved exceptions, declare path-scoped { path, reason } entries in ${exceptionFile}.`,
       )
       process.exitCode = 1
     } else {

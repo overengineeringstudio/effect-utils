@@ -31,9 +31,9 @@ All notable changes to this project will be documented in this file.
 
 - **Shared lint**: `lint-oxc` now rejects Tailwind dependencies, imports,
   configuration files, and CSS directives by default as part of `lint:check`
-  and `check:quick`. Consumers with approved Tailwind surfaces must declare
-  explicit `{ path, reason }` entries in `tailwindExceptions`; all other paths
-  remain guarded.
+  and `check:quick`. Consumers with approved Tailwind surfaces declare
+  explicit `{ path, reason }` entries in their checked-in
+  `.no-tailwind-exceptions.json` before repinning; all other paths remain guarded.
 
 - **@overeng/utils-storybook** (new package): the Storybook config helpers and
   the story gate move out of `@overeng/utils`, which no longer declares
