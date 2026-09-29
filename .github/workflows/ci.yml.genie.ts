@@ -1,3 +1,4 @@
+import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
@@ -1480,32 +1481,25 @@ const withCiOtelCapture = (jobMap: Record<string, any>) =>
     }),
   )
 
-const evidencePrCommentJob = {
-  if: `\${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (${evidenceEnabled}) }}`,
+const pipelineTracesJob = {
+  needs: ['evidence-attempt-close'],
+  if: `\${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (${evidenceEnabled}) }}`,
   'runs-on': 'ubuntu-latest',
-  permissions: { contents: 'read', 'pull-requests': 'write' },
-  defaults: bashShellDefaults,
+  permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write' },
   steps: [
+    { uses: 'actions/checkout@v4' },
+    { uses: 'cachix/install-nix-action@v31' },
     {
-      name: 'Upsert PR evidence link',
+      name: 'Publish Pipeline traces',
       shell: 'bash',
       'continue-on-error': true,
       env: {
         GH_TOKEN: '${{ github.token }}',
         GH_REPO: '${{ github.repository }}',
         PR_NUMBER: '${{ github.event.pull_request.number }}',
-        BUCK2_EVIDENCE_RESOLVER_URL: '${{ vars.BUCK2_EVIDENCE_RESOLVER_URL }}',
+        GRAFANA_BASE_URL: '${{ vars.GRAFANA_BASE_URL }}',
       },
-      run: [
-        'set -euo pipefail',
-        'marker=\"<!-- workflow-report:pipeline-evidence -->\"',
-        'body=$(mktemp)',
-        'resolver_url="${BUCK2_EVIDENCE_RESOLVER_URL:?BUCK2_EVIDENCE_RESOLVER_URL must be set for PR evidence links}"',
-        'printf "%s\\n### Pipeline evidence\\n\\n[Browse this PR’s pipeline evidence](%s/pr/%s/%s)\\n" "$marker" "${resolver_url%/}" "$GH_REPO" "$PR_NUMBER" > "$body"',
-        'comment_id=$(gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" --paginate --jq \'.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- workflow-report:pipeline-evidence -->"))) | .id\' | sed -n \'1p\')',
-        'if [ -n \"$comment_id\" ]; then gh api --method PATCH \"repos/$GH_REPO/issues/comments/$comment_id\" --field body=@\"$body\" >/dev/null;',
-        'else gh pr comment \"$PR_NUMBER\" --body-file \"$body\"; fi',
-      ].join('\n'),
+      run: 'bash genie/ci-scripts/pipeline-traces-report.sh',
     },
   ],
 } as const
@@ -1525,7 +1519,6 @@ const allCiJobs: Record<string, any> = {
   ...withCiOtelCapture(jobs),
   ...extraJobs,
   ...deployJobs,
-  'evidence-pr-link': evidencePrCommentJob,
   'notify-alignment': notifyAlignmentJob({
     targetRepo: 'schickling/megarepo-all',
     needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
@@ -1535,6 +1528,14 @@ const allCiJobs: Record<string, any> = {
     ],
   }),
 }
+const declaredJobIds = new Set([...Object.keys(allCiJobs), 'evidence-attempt-close', 'pipeline-traces'])
+for (const job of declaredJobIds) {
+  if (!pipelineJobIdentifierSet.has(job)) throw new Error(`CI job ${job} has no Jobs API name mapping`)
+}
+for (const job of pipelineJobIdentifierSet) {
+  if (!declaredJobIds.has(job)) throw new Error(`Jobs API name mapping contains undeclared CI job ${job}`)
+}
+
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
@@ -1579,5 +1580,6 @@ export default ciWorkflow({
   jobs: {
     ...withGitHubEvidence(allCiJobs),
     'evidence-attempt-close': evidenceCloseJob(allCiJobs),
+    'pipeline-traces': pipelineTracesJob,
   },
 } satisfies CiWorkflowArgs)
