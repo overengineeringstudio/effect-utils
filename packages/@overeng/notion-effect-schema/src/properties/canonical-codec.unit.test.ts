@@ -459,8 +459,8 @@ describe('canonical wire baselines (cross-major invariant)', () => {
       }),
     )
 
-    expect(JSON.stringify(decoded)).toMatchInlineSnapshot(
-      `"{"Title":{"_tag":"title","plainText":"Hello 世界"},"Due":{"_tag":"date","start":"2026-05-25T10:15:30.000Z","end":null},"Impossible Date":{"_tag":"date","start":"2026-02-31","end":null},"Absent Date":{"_tag":"empty"},"Select":{"_tag":"select","option":{"_tag":"CanonicalOptionValue","id":"option-id","name":"","color":"blue"}},"Select Without Option Id":{"_tag":"select","option":{"_tag":"CanonicalOptionValue","name":"Backlog"}},"Email":{"_tag":"email","value":null},"File":{"_tag":"files","files":[{"_tag":"CanonicalFileValue","name":"résumé.pdf","identityHash":"sha256:06673ae69feae64882e27bccbd3a018924435dc16321bcf11613cbaad6952dd1","externalUrl":"https://example.com/résumé.pdf"}]}}"`,
+    expect(JSON.stringify(decoded)).toBe(
+      `{"Title":{"_tag":"title","plainText":"Hello 世界"},"Due":{"_tag":"date","start":"2026-05-25T10:15:30.000Z","end":null},"Impossible Date":{"_tag":"date","start":"2026-02-31","end":null},"Absent Date":{"_tag":"empty"},"Select":{"_tag":"select","option":{"_tag":"CanonicalOptionValue","id":"option-id","name":"","color":"blue"}},"Select Without Option Id":{"_tag":"select","option":{"_tag":"CanonicalOptionValue","name":"Backlog"}},"Email":{"_tag":"email","value":null},"File":{"_tag":"files","files":[{"_tag":"CanonicalFileValue","name":"résumé.pdf","identityHash":"sha256:06673ae69feae64882e27bccbd3a018924435dc16321bcf11613cbaad6952dd1","externalUrl":"https://example.com/résumé.pdf"}]}}`,
     )
   })
 
@@ -500,8 +500,8 @@ describe('canonical wire baselines (cross-major invariant)', () => {
       }),
     )
 
-    expect(JSON.stringify(patch)).toMatchInlineSnapshot(
-      `"{"title":{"title":[{"type":"text","text":{"content":"Hello 世界"}}]},"dateWithEnd":{"date":{"start":"2026-05-25T10:15:30.000Z","end":"2026-05-26T10:15:30.000Z"}},"dateWithoutEnd":{"date":{"start":"2026-05-25T00:00:00.000Z"}},"selectFull":{"select":{"id":"option-id","name":"","color":"blue"}},"selectNameOnly":{"select":{"name":"Backlog"}},"selectNull":{"select":null},"multi":{"multi_select":[{"name":"Plain"},{"id":"colored-id","name":"Colored","color":"green"}]},"emailNull":{"email":null},"file":{"files":[{"type":"external","name":"résumé.pdf","external":{"url":"https://example.com/résumé.pdf"}}]}}"`,
+    expect(JSON.stringify(patch)).toBe(
+      `{"title":{"title":[{"type":"text","text":{"content":"Hello 世界"}}]},"dateWithEnd":{"date":{"start":"2026-05-25T10:15:30.000Z","end":"2026-05-26T10:15:30.000Z"}},"dateWithoutEnd":{"date":{"start":"2026-05-25T00:00:00.000Z"}},"selectFull":{"select":{"id":"option-id","name":"","color":"blue"}},"selectNameOnly":{"select":{"name":"Backlog"}},"selectNull":{"select":null},"multi":{"multi_select":[{"name":"Plain"},{"id":"colored-id","name":"Colored","color":"green"}]},"emailNull":{"email":null},"file":{"files":[{"type":"external","name":"résumé.pdf","external":{"url":"https://example.com/résumé.pdf"}}]}}`,
     )
   })
 
@@ -518,14 +518,14 @@ describe('canonical wire baselines (cross-major invariant)', () => {
       })
     }
 
-    expect(await failureJson({ _tag: 'computed', valueHash: 'sha256:abc' })).toMatchInlineSnapshot(
-      `"{"_tag":"Notion.CanonicalEncodeError","tag":"computed","reason":"computed","message":"Computed Notion properties cannot be written"}"`,
+    expect(await failureJson({ _tag: 'computed', valueHash: 'sha256:abc' })).toBe(
+      `{"_tag":"Notion.CanonicalEncodeError","tag":"computed","reason":"computed","message":"Computed Notion properties cannot be written"}`,
     )
-    expect(await failureJson({ _tag: 'files', files: [] })).toMatchInlineSnapshot(
-      `"{"_tag":"Notion.CanonicalEncodeError","tag":"files","reason":"unsupported_remote_shape","message":"Files property writes require explicit external URL or modeled file_upload identity for every file"}"`,
+    expect(await failureJson({ _tag: 'files', files: [] })).toBe(
+      `{"_tag":"Notion.CanonicalEncodeError","tag":"files","reason":"unsupported_remote_shape","message":"Files property writes require explicit external URL or modeled file_upload identity for every file"}`,
     )
-    expect(await failureJson({ _tag: 'empty' })).toMatchInlineSnapshot(
-      `"{"_tag":"Notion.CanonicalEncodeError","tag":"empty","reason":"unsupported_remote_shape","message":"Canonical empty property writes need additional remote shape information"}"`,
+    expect(await failureJson({ _tag: 'empty' })).toBe(
+      `{"_tag":"Notion.CanonicalEncodeError","tag":"empty","reason":"unsupported_remote_shape","message":"Canonical empty property writes need additional remote shape information"}`,
     )
   })
 })

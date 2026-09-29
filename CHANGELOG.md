@@ -145,6 +145,10 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+- **@overeng/notion-effect-schema tests:** assert canonical JSON wire baselines
+  with exact string equality rather than inline snapshots. Vitest's inline
+  snapshot stack-frame inference fails for these async tests under Bun on macOS;
+  the expected JSON bytes remain unchanged.
 - **genie pnpm peer rules:** `commonPnpmPolicySettings` and
   `genie/internal.ts` no longer carry `peerDependencyRules.allowedVersions`
   `eslint: '>=10.0.0'`. Every eslint peer in the lockfile accepts the catalog's
