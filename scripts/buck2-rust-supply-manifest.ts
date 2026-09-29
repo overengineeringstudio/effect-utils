@@ -134,7 +134,15 @@ await Bun.write(
 )
 await Bun.write(path.join(supplyDir, 'src/lib.rs'), '// Dependency-only Reindeer workspace.\n')
 const supplied = cargoMetadata(supplyManifest, false)
-const sourceKey = (pkg: Package) => `${pkg.name}@${pkg.version} ${pkg.source}`
+const sourceKey = (pkg: { readonly name: string; readonly version: string; readonly source?: string | null }) => {
+  const source = pkg.source
+  if (source?.startsWith('git+') === true) {
+    const hash = source.lastIndexOf('#')
+    if (hash < 0) throw new Error(`un-pinned git dependency: ${pkg.name}@${pkg.version}`)
+    return `${pkg.name}@${pkg.version} git+${source.slice(4, hash).split('?')[0]}#${source.slice(hash + 1)}`
+  }
+  return `${pkg.name}@${pkg.version} ${source}`
+}
 const originalSources = selected.map(sourceKey).toSorted()
 const suppliedSources = supplied.packages.filter((pkg) => pkg.source !== null).map(sourceKey).toSorted()
 if (JSON.stringify(originalSources) !== JSON.stringify(suppliedSources)) {
@@ -156,9 +164,7 @@ const originalLock = Bun.TOML.parse(await Bun.file(path.join(workspace, 'Cargo.l
 }
 const derivedLock = Bun.TOML.parse(await Bun.file(path.join(supplyDir, 'Cargo.lock')).text()) as typeof originalLock
 for (const pkg of derivedLock.package.filter((entry) => entry.source !== undefined)) {
-  const original = originalLock.package.find(
-    (entry) => entry.name === pkg.name && entry.version === pkg.version && entry.source === pkg.source,
-  )
+  const original = originalLock.package.find((entry) => sourceKey(entry) === sourceKey(pkg))
   if (original === undefined || original.checksum !== pkg.checksum) {
     throw new Error(`derived Reindeer supply changed authoritative Cargo.lock pin for ${pkg.name}@${pkg.version}`)
   }
