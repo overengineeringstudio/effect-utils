@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { lstatSync, readFileSync } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const tailwindPackage = /^(?:tailwindcss(?:\/|$)|@tailwindcss(?:\/|$))/
@@ -131,7 +131,10 @@ export const checkRepository = (root, exceptions = []) => {
   )
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (
+  process.argv[1] &&
+  realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
+) {
   try {
     const exceptions = process.argv[2] ? JSON.parse(process.argv[2]) : []
     const violations = checkRepository(process.cwd(), exceptions)
