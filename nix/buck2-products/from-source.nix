@@ -142,17 +142,20 @@ let
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
-        # Buck's bundled Rust prelude emits /usr/bin/env bash scripts, which
-        # cannot run inside the Nix sandbox. Patch only its extracted copy.
-        ${buck2}/bin/buck2 ${buckGlobalArgs} expand-external-cell prelude
-        substituteInPlace prelude/utils/cmd_script.bzl prelude/rust/cargo_buildscript.bzl \
-          --replace-fail '#!/usr/bin/env bash' '#!${pkgs.bash}/bin/bash'
-        ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-          # Build scripts link against the portable FHS loader, absent in Nix.
-          substituteInPlace prelude/rust/tools/buildscript_run.py \
-            --replace-fail '            os.path.abspath(buildscript),' \
-            '            ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.stdenv.cc.cc.lib}/lib", os.path.abspath(buildscript)],'
-        ''}
+        # Consumer roots carry the already-patched local prelude from
+        # buck2-rules. Only the producer's bundled external prelude needs
+        # extraction and patching before a sandboxed Rust build.
+        if [ ! -d .buck2/rules/prelude ]; then
+          ${buck2}/bin/buck2 ${buckGlobalArgs} expand-external-cell prelude
+          substituteInPlace prelude/utils/cmd_script.bzl prelude/rust/cargo_buildscript.bzl \
+            --replace-fail '#!/usr/bin/env bash' '#!${pkgs.bash}/bin/bash'
+          ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+            # Build scripts link against the portable FHS loader, absent in Nix.
+            substituteInPlace prelude/rust/tools/buildscript_run.py \
+              --replace-fail '            os.path.abspath(buildscript),' \
+              '            ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.stdenv.cc.cc.lib}/lib", os.path.abspath(buildscript)],'
+          ''}
+        fi
       ''}
 
       artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg target})"

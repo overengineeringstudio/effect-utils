@@ -45,4 +45,7 @@ source="$(jq -r .source <<<"$contract")"
 
 nix build "$repo_root#buck-product-megarepo-from-source" --no-link
 
+# Source products must also build against the exported, local-cell consumer root.
+"$repo_root/nix/buck2-rules/tests/consumer-root-contract.test.sh" "$repo_root"
+
 printf 'buck2 from-source contracts passed\n'
