@@ -545,9 +545,56 @@ const cargoBuck2PackageProjectionFor = ({
             .map((input) => input.path.slice(packagePath.length + 1)),
         ]),
   ])
+  // Cargo exposes these variables at compile time, including empty strings
+  // for missing manifest fields. See the Cargo reference:
+  // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates
+  const packageField = (field: CargoPackageTextField): string => {
+    const value = packageMetadata[field]
+    if (typeof value === 'string') return value
+    if (value === undefined || value === false) return ''
+    if (value.workspace !== true) {
+      throw new Error(`Cargo package.${field} must inherit with workspace = true in ${member.manifestPath}`)
+    }
+    const inherited = requireValue({
+      value: context.workspace.package?.[field],
+      field: `workspace.package.${field}`,
+    })
+    return inherited === false ? '' : inherited
+  }
+  let authors: readonly string[] = []
+  const declaredAuthors = packageMetadata.authors
+  if (declaredAuthors !== undefined) {
+    if ('workspace' in declaredAuthors) {
+      if (declaredAuthors.workspace !== true) {
+        throw new Error(`Cargo package.authors must inherit with workspace = true in ${member.manifestPath}`)
+      }
+      authors = requireValue({
+        value: context.workspace.package?.authors,
+        field: 'workspace.package.authors',
+      })
+    } else {
+      authors = declaredAuthors
+    }
+  }
+  const semver = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version)
+  if (semver === null) {
+    throw new Error(`Cargo package version ${version} is not semver in ${member.manifestPath}`)
+  }
   const compileEnv = {
     CARGO_PKG_NAME: packageName,
     CARGO_PKG_VERSION: version,
+    CARGO_PKG_VERSION_MAJOR: semver[1] ?? '',
+    CARGO_PKG_VERSION_MINOR: semver[2] ?? '',
+    CARGO_PKG_VERSION_PATCH: semver[3] ?? '',
+    CARGO_PKG_VERSION_PRE: semver[4] ?? '',
+    CARGO_PKG_AUTHORS: authors.join(':'),
+    CARGO_PKG_DESCRIPTION: packageField('description'),
+    CARGO_PKG_HOMEPAGE: packageField('homepage'),
+    CARGO_PKG_REPOSITORY: packageField('repository'),
+    CARGO_PKG_LICENSE: packageField('license'),
+    CARGO_PKG_LICENSE_FILE: packageField('license-file'),
+    CARGO_PKG_README: packageField('readme'),
+    CARGO_PKG_RUST_VERSION: packageField('rust-version'),
   }
 
   const semanticInputPaths = sorted([
@@ -602,11 +649,21 @@ const cargoBuck2PackageProjectionFor = ({
   })
 
   const buildScriptRun = `${packageName}-build-script-run`
-  const envLines = (buildScriptOutputs: boolean): readonly string[] => [
+  const envLines = ({
+    buildScriptOutputs,
+    crateName,
+    binName,
+  }: {
+    readonly buildScriptOutputs: boolean
+    readonly crateName: string
+    readonly binName?: string
+  }): readonly string[] => [
     '    env = {',
     ...Object.entries(compileEnv).map(
       ([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`,
     ),
+    `        "CARGO_CRATE_NAME": ${starlarkString(crateName)},`,
+    ...(binName === undefined ? [] : [`        "CARGO_BIN_NAME": ${starlarkString(binName)},`]),
     ...(cliBuildStamp === true
       ? ['        "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),']
       : []),
@@ -622,11 +679,6 @@ const cargoBuck2PackageProjectionFor = ({
   const commonRuleLines = [
     `    edition = ${starlarkString(edition)},`,
     ...featureLines,
-    ...envLines(buildScript !== undefined),
-    // The build script's `cargo:rustc-*` directives (cfgs, link flags) reach every target.
-    ...(buildScript === undefined
-      ? []
-      : [`    rustc_flags = [${starlarkString(`@$(location :${buildScriptRun}[rustc_flags])`)}],`]),
   ]
   const normalConditional = activeConditionalNormalDependencies
   const renderRule = ({
@@ -665,6 +717,15 @@ const cargoBuck2PackageProjectionFor = ({
           '    },',
         ]),
     ...commonRuleLines,
+    ...envLines({
+      buildScriptOutputs: buildScript !== undefined,
+      crateName: crate,
+      ...(rule === 'rust_binary' ? { binName: name } : {}),
+    }),
+    // The build script's `cargo:rustc-*` directives (cfgs, link flags) reach every target.
+    ...(buildScript === undefined
+      ? []
+      : [`    rustc_flags = [${starlarkString(`@$(location :${buildScriptRun}[rustc_flags])`)}],`]),
     ...(visibility === undefined
       ? []
       : renderStringList({ name: 'visibility', values: visibility })),
@@ -676,10 +737,6 @@ const cargoBuck2PackageProjectionFor = ({
   if (buildScript !== undefined) {
     const buildScriptBuild = `${packageName}-build-script-build`
     const buildScriptLauncher = `${packageName}-build-script`
-    const semver = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version)
-    if (semver === null) {
-      throw new Error(`Cargo package version ${version} is not semver in ${member.manifestPath}`)
-    }
     const packageFiles = sorted([...new Set(['Cargo.toml', buildScript.path, ...sources])])
     const duplicateInputs = buildScript.inputs
       .filter(
@@ -711,7 +768,7 @@ const cargoBuck2PackageProjectionFor = ({
       }),
       `    edition = ${starlarkString(edition)},`,
       ...featureLines,
-      ...envLines(false),
+      ...envLines({ buildScriptOutputs: false, crateName: 'build_script_build' }),
       ')',
       '',
       'cargo_build_script(',
@@ -955,8 +1012,41 @@ type CargoTargetDependencies = {
   readonly 'build-dependencies'?: Readonly<Record<string, CargoDependencyRequest>>
 }
 
+type CargoPackageTextField =
+  | 'description'
+  | 'homepage'
+  | 'repository'
+  | 'license'
+  | 'license-file'
+  | 'readme'
+  | 'rust-version'
+
+type CargoInherited<TValue> = TValue | { readonly workspace?: boolean }
+
+type CargoPackageFields = {
+  readonly authors?: CargoInherited<readonly string[]>
+  readonly description?: CargoInherited<string>
+  readonly homepage?: CargoInherited<string>
+  readonly repository?: CargoInherited<string>
+  readonly license?: CargoInherited<string>
+  readonly 'license-file'?: CargoInherited<string>
+  readonly readme?: CargoInherited<string | false>
+  readonly 'rust-version'?: CargoInherited<string>
+}
+
+type CargoWorkspacePackageFields = {
+  readonly authors?: readonly string[]
+  readonly description?: string
+  readonly homepage?: string
+  readonly repository?: string
+  readonly license?: string
+  readonly 'license-file'?: string
+  readonly readme?: string | false
+  readonly 'rust-version'?: string
+}
+
 type CargoManifest = {
-  readonly package?: {
+  readonly package?: CargoPackageFields & {
     readonly name?: string
     readonly workspace?: string
     readonly version?: string | { readonly workspace?: boolean }
@@ -991,7 +1081,7 @@ type CargoWorkspace = {
   readonly workspace?: {
     readonly resolver?: string
     readonly members?: readonly string[]
-    readonly package?: {
+    readonly package?: CargoWorkspacePackageFields & {
       readonly version?: string
       readonly edition?: string
     }

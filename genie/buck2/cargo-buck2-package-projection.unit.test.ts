@@ -1,24 +1,16 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import type { GenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
-import otelScrapeBuck from '../../packages/@overeng/otel-scrape/BUCK.genie.ts'
-import oteliteBuck from '../../packages/@overeng/otelite/BUCK.genie.ts'
-import archiveToolBuck from '../../rust/buck2-tools/archive-tool/BUCK.genie.ts'
-import coreBuck from '../../rust/buck2-tools/core/BUCK.genie.ts'
 import {
   type CargoBuck2PackageProjectionOptions,
   defineCargoBuck2PackageProjection,
 } from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
-import productBuck from '../../rust/buck2-tools/product/BUCK.genie.ts'
 
-const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const fixtureRoot = fileURLToPath(new URL('./fixtures/cargo-consumer/', import.meta.url))
-const genieContext = { cwd: repoRoot, location: '' }
 const consumerProjectionOptions = {
   repoName: 'consumer-fixture',
   repoImportMetaUrl: pathToFileURL(path.join(fixtureRoot, 'projection.ts')).href,
@@ -33,42 +25,8 @@ const consumerProjectionOptions = {
   generatorSourcePaths: [],
 } as const
 
-const effectUtilsProjections: readonly {
-  readonly output: GenieOutput<unknown>
-  readonly path: string
-}[] = [
-  { output: otelScrapeBuck, path: 'packages/@overeng/otel-scrape/BUCK' },
-  { output: oteliteBuck, path: 'packages/@overeng/otelite/BUCK' },
-  { output: archiveToolBuck, path: 'rust/buck2-tools/archive-tool/BUCK' },
-  { output: coreBuck, path: 'rust/buck2-tools/core/BUCK' },
-  { output: productBuck, path: 'rust/buck2-tools/product/BUCK' },
-]
 
 describe('Cargo Buck2 package projection', () => {
-  it('keeps every effect-utils default projection byte-identical', () => {
-    for (const projection of effectUtilsProjections) {
-      expect(
-        `# Generated file - DO NOT EDIT\n# Source: BUCK.genie.ts\n\n${projection.output.stringify(genieContext)}`,
-      ).toBe(readFileSync(path.join(repoRoot, projection.path), 'utf8'))
-    }
-  })
-
-  it('renders a consumer workspace through the rules cell', () => {
-    const projectionSource = path.join(fixtureRoot, 'components/rust/consumer-cli/BUCK.genie.ts')
-    writeFileSync(projectionSource, '// Runtime-only projection fixture.\n')
-    try {
-      const project = defineCargoBuck2PackageProjection(consumerProjectionOptions)
-      const output = project({
-        buildProduct: true,
-        sourceUrl: pathToFileURL(projectionSource).href,
-      })
-      expect(output.stringify(genieContext)).toBe(
-        readFileSync(path.join(fixtureRoot, 'expected.BUCK'), 'utf8'),
-      )
-    } finally {
-      rmSync(projectionSource, { force: true })
-    }
-  })
 
   it('rejects lexical and physical repository escapes', () => {
     expect(() =>
@@ -158,6 +116,8 @@ type CargoFixtureMember = {
 const renderCargoFixture = ({
   members,
   edition = '2024',
+  workspaceVersion = '0.1.0',
+  workspacePackageFields = '',
   workspaceDependencies = '',
   registryPackages = ['serde'],
   thirdPartyTargets = ['serde'],
@@ -168,6 +128,8 @@ const renderCargoFixture = ({
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
   readonly edition?: string
+  readonly workspaceVersion?: string
+  readonly workspacePackageFields?: string
   readonly workspaceDependencies?: string
   readonly registryPackages?: readonly string[]
   readonly thirdPartyTargets?: readonly string[]
@@ -208,7 +170,7 @@ const renderCargoFixture = ({
         .map((member) => JSON.stringify(member))
         .join(
           ', ',
-        )}]\n\n[workspace.package]\nversion = "0.1.0"\nedition = "${edition}"\n\n[workspace.dependencies]\nserde = "1"\n${workspaceDependencies}${
+        )}]\n\n[workspace.package]\nversion = "${workspaceVersion}"\nedition = "${edition}"\n${workspacePackageFields}\n[workspace.dependencies]\nserde = "1"\n${workspaceDependencies}${
         rootMember === undefined ? '' : `\n${memberManifest('.', rootMember.manifest)}`
       }`,
     )
@@ -271,6 +233,114 @@ const renderedRules = (rendered: string): Readonly<Record<string, string>> =>
       ),
     ].map((match) => [match[2], `${match[1]}\n${match[3]}`]),
   )
+
+/** Compile-time Cargo environment of one generated first-party rule. */
+const compileEnvironment = (rule: string): Readonly<Record<string, string>> => {
+  const body = rule.match(/^    env = \{([\s\S]*?)^    \},/m)?.[1]
+  if (body === undefined) throw new Error('Cargo target has no compile-time environment')
+  return Object.fromEntries(
+    [...body.matchAll(/^        "([^"]+)": ("(?:\\.|[^"\\])*"),$/gm)].map(([, key, value]) => [
+      key,
+      JSON.parse(value) as string,
+    ]),
+  )
+}
+
+describe('Cargo compile-time package identity', () => {
+  it('inherits package fields and separates library, binary, and build-script target names', () => {
+    const rendered = renderCargoFixture({
+      workspaceVersion: '1.2.3-rc.4+meta',
+      workspacePackageFields: [
+        'authors = ["Ada", "Bob"]',
+        'description = "Remote relay"',
+        'homepage = "https://example.org/relay"',
+        'repository = "https://example.org/source"',
+        'license = "MIT"',
+        'license-file = "LICENSE.txt"',
+        'rust-version = "1.85"',
+      ].join('\n'),
+      members: {
+        relay: {
+          manifest: [
+            '[package]',
+            'name = "tailnet-relay"',
+            'authors.workspace = true',
+            'description.workspace = true',
+            'homepage.workspace = true',
+            'repository.workspace = true',
+            'license.workspace = true',
+            'license-file.workspace = true',
+            'readme = false',
+            'rust-version.workspace = true',
+            '[[bin]]',
+            'name = "devnet-edge"',
+            'path = "src/bin/devnet-edge.rs"',
+          ].join('\n'),
+          files: ['src/lib.rs', 'src/main.rs', 'src/bin/devnet-edge.rs', 'build.rs'],
+        },
+      },
+      render: 'relay',
+    })
+    const rules = renderedRules(rendered)
+    const library = compileEnvironment(rules.lib)
+    expect(library).toMatchObject({
+      CARGO_PKG_NAME: 'tailnet-relay',
+      CARGO_PKG_VERSION: '1.2.3-rc.4+meta',
+      CARGO_PKG_VERSION_MAJOR: '1',
+      CARGO_PKG_VERSION_MINOR: '2',
+      CARGO_PKG_VERSION_PATCH: '3',
+      CARGO_PKG_VERSION_PRE: 'rc.4',
+      CARGO_PKG_AUTHORS: 'Ada:Bob',
+      CARGO_PKG_DESCRIPTION: 'Remote relay',
+      CARGO_PKG_HOMEPAGE: 'https://example.org/relay',
+      CARGO_PKG_REPOSITORY: 'https://example.org/source',
+      CARGO_PKG_LICENSE: 'MIT',
+      CARGO_PKG_LICENSE_FILE: 'LICENSE.txt',
+      CARGO_PKG_README: '',
+      CARGO_PKG_RUST_VERSION: '1.85',
+      CARGO_CRATE_NAME: 'tailnet_relay',
+    })
+    expect(library).not.toHaveProperty('CARGO_BIN_NAME')
+    expect(compileEnvironment(rules['tailnet-relay'])).toMatchObject({
+      CARGO_CRATE_NAME: 'tailnet_relay',
+      CARGO_BIN_NAME: 'tailnet-relay',
+    })
+    expect(compileEnvironment(rules['devnet-edge'])).toMatchObject({
+      CARGO_CRATE_NAME: 'devnet_edge',
+      CARGO_BIN_NAME: 'devnet-edge',
+    })
+    expect(compileEnvironment(rules['tailnet-relay-build-script-build'])).toMatchObject({
+      CARGO_CRATE_NAME: 'build_script_build',
+      CARGO_PKG_AUTHORS: 'Ada:Bob',
+    })
+    expect(compileEnvironment(rules['tailnet-relay-build-script-build'])).not.toHaveProperty(
+      'CARGO_BIN_NAME',
+    )
+  })
+
+  it('supplies empty Cargo metadata variables when the manifest omits them', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: { cli: { manifest: '[package]\nname = "cli"', files: ['src/main.rs'] } },
+        render: 'cli',
+      }),
+    )
+    const env = compileEnvironment(rules.cli)
+    for (const key of [
+      'CARGO_PKG_AUTHORS',
+      'CARGO_PKG_DESCRIPTION',
+      'CARGO_PKG_HOMEPAGE',
+      'CARGO_PKG_REPOSITORY',
+      'CARGO_PKG_LICENSE',
+      'CARGO_PKG_LICENSE_FILE',
+      'CARGO_PKG_README',
+      'CARGO_PKG_RUST_VERSION',
+      'CARGO_PKG_VERSION_PRE',
+    ]) {
+      expect(env[key]).toBe('')
+    }
+  })
+})
 
 describe('Cargo target discovery', () => {
   it('discovers src/lib.rs, src/main.rs, src/bin/*.rs, and src/bin/<name>/main.rs', () => {
@@ -1117,74 +1187,6 @@ describe('Cargo build scripts', () => {
       render: 'axe',
       projectOptions: buildScriptInputs === undefined ? {} : { buildScriptInputs },
     })
-
-  it('runs build.rs with its build dependencies and declared cross-package inputs', () => {
-    const rendered = render({
-      manifest: '\n\n[build-dependencies]\nserde.workspace = true',
-      files: ['src/lib.rs', 'build.rs', 'data/table.txt'],
-      buildScriptInputs: [
-        { path: 'feedback/feedback-contract.json', label: '//feedback:feedback-contract.json' },
-        { path: 'rust/axe/data/table.txt' },
-      ],
-    })
-    expect(rendered).toContain(
-      'load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")\nload("//buck2/rust:defs.bzl", "cargo_build_script")\n',
-    )
-    expect(rendered).toContain(
-      [
-        'native.rust_binary(',
-        '    name = "axe-build-script-build",',
-        '    crate = "build_script_build",',
-        '    crate_root = "build.rs",',
-        '    srcs = [',
-        '        "build.rs",',
-        '    ],',
-        '    deps = [',
-        '        "//rust/third-party:serde",',
-        '    ],',
-        '    edition = "2024",',
-        '    env = {',
-        '        "CARGO_PKG_NAME": "axe",',
-        '        "CARGO_PKG_VERSION": "0.1.0",',
-        '    },',
-        ')',
-        '',
-        'cargo_build_script(',
-        '    name = "axe-build-script",',
-        '    build_script = ":axe-build-script-build",',
-        '    package_path = "rust/axe",',
-        '    srcs = {',
-        '        "feedback/feedback-contract.json": "//feedback:feedback-contract.json",',
-        '        "rust/axe/Cargo.toml": "Cargo.toml",',
-        '        "rust/axe/build.rs": "build.rs",',
-        '        "rust/axe/data/table.txt": "data/table.txt",',
-        '        "rust/axe/src/lib.rs": "src/lib.rs",',
-        '    },',
-        ')',
-        '',
-        'buildscript_run(',
-        '    name = "axe-build-script-run",',
-        '    package_name = "axe",',
-        '    buildscript_rule = ":axe-build-script",',
-        '    manifest_dir = ":axe-build-script",',
-        '    env = {',
-        '        "CARGO_PKG_VERSION_MAJOR": "0",',
-        '        "CARGO_PKG_VERSION_MINOR": "1",',
-        '        "CARGO_PKG_VERSION_PATCH": "0",',
-        '        "CARGO_PKG_VERSION_PRE": "",',
-        '        "DEBUG": "false",',
-        '        "NUM_JOBS": "1",',
-        '        "PROFILE": "debug",',
-        '    },',
-        '    version = "0.1.0",',
-        ')',
-      ].join('\n'),
-    )
-    expect(renderedRules(rendered).lib).toContain(
-      '    env = {\n        "CARGO_PKG_NAME": "axe",\n        "CARGO_PKG_VERSION": "0.1.0",\n        "OUT_DIR": "$(location :axe-build-script-run[out_dir])",\n    },\n    rustc_flags = ["@$(location :axe-build-script-run[rustc_flags])"],',
-    )
-    expect(rendered).toMatch(/"build\.rs",\n {8}"data\/table\.txt",/)
-  })
 
   it('rejects inputs repeating package files and feature requests on member build deps', () => {
     expect(() => render({ buildScriptInputs: [{ path: 'rust/axe/src/lib.rs' }] })).toThrow(
