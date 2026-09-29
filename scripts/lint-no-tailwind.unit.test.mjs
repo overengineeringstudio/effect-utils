@@ -1,17 +1,30 @@
-import { test } from 'node:test'
 import { deepStrictEqual, throws } from 'node:assert/strict'
+import { test } from 'node:test'
+
 import { inspectTailwind } from './lint-no-tailwind.mjs'
 
 const fixtures = [
-  { path: 'docs/package.json', content: '{\n  "devDependencies": {\n    "@tailwindcss/vite": "4"\n  }\n}' },
-  { path: 'docs/src/site.css', content: '/* @apply ignored; */\n@import "tailwindcss";\n.card { @apply flex; }' },
+  {
+    path: 'docs/package.json',
+    content: '{\n  "devDependencies": {\n    "@tailwindcss/vite": "4"\n  }\n}',
+  },
+  {
+    path: 'docs/src/site.css',
+    content: '/* @apply ignored; */\n@import "tailwindcss";\n.card { @apply flex; }',
+  },
   { path: 'docs/astro.config.ts', content: "import tailwindcss from '@tailwindcss/vite'" },
   { path: 'docs/tailwind.config.mjs', content: 'export default {}' },
   { path: 'packages/core/package.json', content: '{"peerDependencies":{"tailwindcss":"4"}}' },
-  { path: 'packages/core/src/index.ts', content: "// import '@tailwindcss/vite'\nconst x = require('tailwindcss/plugin')" },
+  {
+    path: 'packages/core/src/index.ts',
+    content: "// import '@tailwindcss/vite'\nconst x = require('tailwindcss/plugin')",
+  },
   { path: 'packages/@local/demo/example/src/site.css', content: '@tailwind base;' },
   { path: 'packages/@local/demo/src/site.css', content: '@apply text-red-500;' },
-  { path: 'src/clean.css', content: "/* @import 'tailwindcss'; */\n@import '@overeng/stylex-tokens/preflight.css';" },
+  {
+    path: 'src/clean.css',
+    content: "/* @import 'tailwindcss'; */\n@import '@overeng/stylex-tokens/preflight.css';",
+  },
 ]
 
 test('reports dependency, import, config, and CSS violations with source lines', () => {
