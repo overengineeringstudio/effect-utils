@@ -66,3 +66,15 @@ baseline cutoff is `vcs.ref.base.revision`, the first parent (`HEAD^1`) of
 the tested CI merge checkout, **not** a separately calculated git merge-base.
 It represents the main state the PR merges into, matches the variants
 review's selected base commit, and requires no additional git history.
+
+## Amendment 3 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q63; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+The resolver review page, task-level A/B, critical-chain header, and Vista
+freeze command are retired. The PR comment reports job status, wall time, a
+collapsed Mermaid job gantt, and the delta against p50 of the same job in the
+last seven successful main runs, all from the Jobs API. Task-level baselines
+and critical paths are not shown: seven matching main-run task baselines were
+not demonstrated from Tempo, and unrestricted Tempo read exposed 37 fleet
+services. A future isolated buck2 Tempo tenant with an authenticated,
+restricted read proxy is tracked in the root roadmap.

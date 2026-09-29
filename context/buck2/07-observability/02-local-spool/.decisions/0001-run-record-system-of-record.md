@@ -29,7 +29,7 @@ baseline).
 - CI-provider artifact replay measured 10.4 s/run and 8 API requests after
   trigger but couples the trigger, artifact format, retention, and downloader
   to one provider — the baseline, not the target
-  ([05 experiment](../../05-ingest-and-archive/.experiments/2026-09-25-ci-to-tempo-replay-baseline.md)).
+  ([05 experiment](../../05-otlp-delivery/.experiments/2026-09-25-ci-to-tempo-replay-baseline.md)).
 - The scorecard ranked identical-local/CI-path first, then provider coupling:
   the record scored 5/5 on both; direct OTLP 5/3; replay 1/1.
 
@@ -61,3 +61,17 @@ CI-provider artifact replay is built.
   untrusted runner.
 - The CI span-artifact upload step and any compatibility replay are named
   deletions once the upload path lands (BUCK.OBS.REC-R08).
+
+## Amendment 1 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q58, q60–q62; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+The run record is no longer the system of record or a delivery unit. The
+tailnet ACL grant to dev3 Alloy :4318 removes the missing-header blocker that
+made direct OTLP a later fast path, and a local retry spool covers outages.
+Trusted same-repo PR and main CI jobs, plus tailnet-reachable local runs,
+export OTLP directly at job end; forks only spool. Seal, content-addressed
+upload, ingest, and the raw-evidence archive are retired; native evidence
+stays local as execution truth and adapter input
+([02 spec](../spec.md), [05 spec](../../05-otlp-delivery/spec.md)). The
+CI-provider artifact replay rejection stands. The named deletion now covers
+the record upload path as well as the span-artifact step (BUCK.OBS.REC-R08).

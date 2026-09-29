@@ -47,3 +47,19 @@ outer span to new root is possible only when the outer span's owner is
 otel-span-aware and records that link before its span ends; a W3C context
 alone cannot mutate a foreign or completed span. For such callers the
 links are bidirectional, otherwise the replacement has a one-way backlink.
+
+## Amendment 2 — Job Traces and Attempt-Close Links (q62)
+
+Accepted 2026-09-28. The whole-attempt trace and its size fallback are
+superseded. Each CI job has one deterministic trace containing its task-run
+spans, Buck command spans, and critical views. A local task run is
+job-equivalent. Every job root carries `cicd.pipeline.run.id`. At attempt
+close, a separate pipeline-run trace links the job traces; it does not
+contain their spans. CI joins task spans after the build and before the
+job-end direct OTLP export (#1477).
+
+The CI ingester root writer, completion roster, six-hour timeout, missing-job
+synthetic spans, cumulative shared-trace verification, run index, and resolver
+described above are historical and no longer active. Failed direct delivery
+retains a local retry spool. The [current spec](../spec.md) defines the
+identity domains, links, and root ownership.

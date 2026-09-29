@@ -38,7 +38,7 @@ The ingester finalizes the single root only when the close record arrives and
 every listed job is ingested or marked missing; missing jobs get error spans.
 If closure or a listed job remains outstanding, a six-hour idle timeout after
 the last upload finalizes the attempt as `incomplete`, not silently successful.
-The state and recovery sequence are owned by [05](../../05-ingest-and-archive/spec.md).
+The state and recovery sequence are owned by [05](../../05-otlp-delivery/spec.md).
 
 ## Consequences
 
@@ -46,3 +46,14 @@ The queue/index must distinguish job evidence from attempt closure and retain
 missing-job inventory. Duplicate close uploads are idempotent; conflicting
 rosters for one attempt fail visibly. Local runs retain their entrypoint-owned
 root and do not need a CI attempt-close record.
+
+## Amendment 1 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q62; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+Each job exports its own deterministic trace at job end; there is no shared
+run trace or ingester-owned root. The always-run attempt-close step emits a
+small pipeline-run trace whose root links known job roots
+([01 spec](../../01-run-identity/spec.md)). It does not upload a
+`buck2-attempt-close/v1` roster, synthesize missing-job error spans, or wait
+for a six-hour timeout. Missing or cancelled jobs are visible in the Jobs API
+report ([06](../../06-trace-access/spec.md)), not in fabricated spans.

@@ -57,3 +57,15 @@ upload the persisted sweep emits one root and labels the attempt
 `incomplete`. Without a roster it cannot infer unobserved jobs or overwrite
 that root if closure arrives late. The ≤30-second p95 plus upload target is
 for a completed job's full view, not for a run root still in progress.
+
+## Amendment 2 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q60–q62; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+The `buck2-evidence` upload/serve service, SQLite queue, sweep, readback
+reconciliation, two-hour settle window, attempt roster, six-hour incomplete
+root, and two managed Tailscale Services are retired. Each job exports once
+at job end after the #1477 span join, directly to dev3 Alloy :4318, with a
+local retry spool for unacknowledged chunks. Per-job traces replace the
+shared run trace: the grafana/tempo#8002 repro lost spans only when one trace
+received spaced bursts, and the single-burst control lost none. The Tempo
+live-store tuning note remains fleet guidance, not a correctness mechanism.

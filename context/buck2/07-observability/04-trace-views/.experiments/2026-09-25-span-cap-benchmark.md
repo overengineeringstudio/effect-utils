@@ -66,3 +66,11 @@ unmeasured fleet-scale volume of the both-views choice is
 1,200-span crash or an agreed interactive heap budget (→ 600 default); a
 corpus where >10% of commands lose critical structure at 1,200 (→ revise
 ranking before raising the cap).
+
+## Intent Impact
+
+The measured 1,200-span critical-view knee still informs
+[BUCK.OBS.VIEW-R02](../requirements.md), but the former on-demand full
+archive and always-ingested two-view alternatives are historical: q62's
+job-end single OTLP burst exports the selected views directly, without an
+archive or server-side replay ([delivery R08](../../05-otlp-delivery/requirements.md)).

@@ -45,3 +45,39 @@ is not ruled out for the no-read control. An HTTP-successful push and
 a momentary by-id readback are insufficient completion criteria;
 persisted cumulative readback and explicit missing-span status remain
 necessary.
+
+## Question
+
+Does immediate successful local OTLP ingest and by-ID readback establish that
+Tempo retains the complete trace after the local ingester exits?
+
+## Method
+
+Compare expected span IDs from a successful local `pipeline-run` and one-shot
+`ingest --local` with later by-ID reads of its critical and full views; replay
+spaced bursts against fleet Tempo 3.0.3, including a no-read control and an
+isolated two-minute `max_trace_idle` setting.
+
+## Result
+
+The local critical trace fell from 784 expected spans to 18 on later
+readback, while its full view retained 13,810. The fleet spaced-burst replay
+returned 5,232 of 6,255 spans; the no-read control retained 6,036 of
+6,255. The two-minute idle setting avoided the earlier isolated
+reproduction. The block scans did not establish durable counts, and the
+scratch replay did not audit OTLP `partialSuccess` bodies.
+
+## Conclusion
+
+Immediate by-ID completeness cannot guarantee later Tempo persistence.
+Neither reads nor `max_trace_idle` alone are established as the cause;
+accepted HTTP responses do not rule out partial collector rejection.
+
+## Intent Impact
+
+The loss remains evidence for [BUCK.OBS.ING-T01/R09](../requirements.md):
+report unacknowledged chunks and retry state without claiming durable Tempo
+completeness. q62 supersedes the proposed upload endpoint, service-side
+periodic verification, repair and `upload-pending` handoff; trusted local
+runs send the job-end direct OTLP burst with local retry
+([R03/R07/R08](../requirements.md)).

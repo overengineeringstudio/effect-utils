@@ -75,3 +75,7 @@ Settled [BUCK.OBS.ID-R02..R06](../requirements.md) and
 [decision 0001](../.decisions/0001-otel-span-buck2-mode.md) (q11). The
 concurrent-wait finding seeded the daemon-wait decision in 03 (q23) and the
 editor-publish spans merged in #1382.
+
+## Intent Impact
+
+The correlation and collision evidence supports BUCK.OBS.ID-R02..R06 and decision 0001's caller-parented command trace with per-invocation span-id salting.

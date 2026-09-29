@@ -66,3 +66,12 @@ Settled the critical-view rule and the metrics set
 ([BUCK.OBS.VIEW-R02/R05/R06](../requirements.md)); the cap and the
 both-views policy were settled by the follow-up benchmark and decision q24
 ([0002](../.decisions/0002-both-views-always-ingested.md)).
+
+## Intent Impact
+
+The projection and bounded-label measurements still support
+[BUCK.OBS.VIEW-R02/R05/R06](../requirements.md). The raw-log forensic
+archive and replay premise in the earlier conclusion is superseded by q62:
+the producer derives views from its local spool and sends one job-end OTLP
+burst, with no durable raw-evidence archive
+([delivery R08](../../05-otlp-delivery/requirements.md)).

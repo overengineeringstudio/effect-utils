@@ -1,9 +1,8 @@
 # Event-Log Adapter Spec
 
-This document specifies the adapter's decode pipeline, schema policy, span
-model, and daemon-wait join. It builds on [requirements.md](./requirements.md);
-what it consumes is [02-run-record](../02-run-record/spec.md) and what it
-feeds is [04-trace-views](../04-trace-views/spec.md).
+This document specifies local post-hoc decoding, schema policy, span model,
+and peer-log daemon-wait join. It builds on [requirements.md](./requirements.md)
+and feeds [04-trace-views](../04-trace-views/spec.md).
 
 ## Status
 
@@ -11,12 +10,12 @@ Draft.
 
 ## Scope
 
-**Defines:** decode pipeline and framing, vendored-schema layout and bump
-procedure, fallback, the span model's identity rules, and the daemon-wait
-join algorithm.
+**Defines:** local decode pipeline and framing, vendored-schema layout and
+bump procedure, fallback, the span model's identity rules, and daemon-wait
+attribution over available peer logs.
 
-**Does not define:** view selection rules (04), ingest transport (05), the
-upstream contribution itself (tracked, not gated).
+**Does not define:** view selection rules (04), direct OTLP transport (05),
+or the upstream contribution.
 
 ## Decode Pipeline
 
@@ -45,9 +44,11 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 - **Names (v2):** `buck2.command <subcommand>`, `buck2.action <category>`,
   `buck2.stage <executor stage>`, `buck2.materialization`, plus
   `buck2.critical_path=true` membership attributes and instant error events.
-- **Identity:** OTLP span id = `sha256("<log-uuid>:<buck-span-id>")[:16]`
-  (salting, [01](../01-run-identity/spec.md)); trace id and parent come from
-  the sidecar / task nesting; the adapter never invents identity.
+- **Identity:** OTLP span id is the first 8 bytes of
+  `sha256("<log-uuid>:<buck-span-id>")` (salting,
+  [01](../01-run-identity/spec.md)); local sidecar context supplies the
+  caller's job trace and command parent. Without it the adapter derives an
+  independent command trace from log identity.
 - **Completeness:** the decoded field set is a superset of the `log show`
   JSONL (same bytes, typed); cache-upload results, action digests, execution
   kinds, stage timings, and materialization byte counts all map (per-field
@@ -59,15 +60,15 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 2. Diff field numbers _and declared types_ against the previous pin
    (the 2026-04 → 2026-08 drift was field-number-additive but retagged
    `did_cache_upload: bool → cache_upload_result: enum` at stable numbers).
-3. Decode the cross-version corpus fixtures (older writers' logs; the fleet
-   keeps them in the archive) and the truncation fixtures.
-4. Land regeneration + diff + corpus results as one change.
+3. Decode retained local cross-version fixtures (older writers' logs) and
+   truncation fixtures; no remote archive is required.
+4. Land regeneration + diff + fixture results as one change.
 
 ## Daemon-Wait Join
 
 ```text
-inputs:  all logs in one job-scoped CI record or local invocation record
-scope:   peers = ConcurrentCommands.trace_ids[] from each log (exact,
+inputs:  event logs available in the local job at post-hoc conversion
+scope:   peers = ConcurrentCommands.trace_ids[] among available logs (exact,
          daemon-provided); time-overlap is never the default scope
 exact:   a DiceBlockConcurrentCommand span covering a gap -> emit the wait
          with the event's own current_active_trace_id as owner
@@ -82,12 +83,11 @@ ids:     wait span id derived from waiter command key + gap start
          (deterministic; re-joins idempotent)
 ```
 
-CI jobs have separate records (02), so the batch guarantees complete logs
-only **within** a job, not across the whole Pipeline Run. When a
-daemon-provided peer trace ID is absent from that batch, keep the wait
-unattributed rather than inventing a producer; retain the per-log gap
-summary. No other CI job's record is assumed to be present at this ingest
-step.
+The adapter converts after Buck exits and before job-end OTLP export. A job
+may have multiple commands on one daemon; only locally available logs can
+contribute producer evidence. A daemon-provided peer trace id absent from the
+local batch stays unattributed, with a per-log gap summary. Conversion does
+not await an archived record, other CI jobs, or a server-side ingester.
 
 Measured on a 43-log corpus: precision 0.957 / recall 1.0 at 500 ms; P = R =
 1.0 at 1 s (six true sub-second waits traded away); ms-level cost inside the
@@ -98,19 +98,18 @@ does not gate this design.
 
 ## Fallback and Failure Behavior
 
-| Condition                        | Behavior                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| Unknown fields                   | Skip; count bytes/fields per log (recorded data loss)                          |
-| Framing damage / schema conflict | Trusted record: fall back to `buck2 log show` (matching binary); alert.        |
-|                                  | Untrusted record: no fallback, no external process — quarantine the log with a |
-|                                  | recorded reason (REC-R07)                                                      |
-| Truncated log (crash)            | Decode readable prefix; mark truncated; inferred end semantics                 |
-| Missing sidecar line             | Independent trace keyed by the log's own uuid                                  |
+| Condition                        | Behavior                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| Unknown fields                   | Skip; count bytes/fields per log                                            |
+| Framing damage / schema conflict | Trusted local log: matching-binary `buck2 log show` fallback; warn          |
+| Untrusted fork log               | No external process; retain local log and recorded failure reason          |
+| Truncated log (crash)            | Decode readable prefix; mark truncated; infer end semantics                |
+| Missing sidecar line             | Independent command trace keyed by log UUID                                |
 
 ## Conformance
 
-- Corpus sweep: every archived log decodes with zero errors across writer
-  versions; the 15/15 reader×writer cross-matrix stays green on bumps.
+- Corpus sweep: retained local fixtures decode across writer versions;
+  the 15/15 reader×writer cross-matrix stays green on bumps.
 - Truncation fixtures: cut logs at 60–69% decode every complete record.
 - Join: reproductions for exact (DiceBlock), inferred single-producer,
   multi-producer (causal primary + co-producer link), and negative

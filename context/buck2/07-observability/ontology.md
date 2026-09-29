@@ -26,8 +26,9 @@ It maps to `cicd.pipeline.task.*`; the existing `devenv.task.exec` span
 represents this concept (the naming migration is OQ4).
 
 **Worker** is where a pipeline run executed (a laptop or a CI runner):
-`cicd.worker.*`. The provider (e.g. GitHub Actions) appears only as a resource
-attribute (`ci.provider`), never in control flow or schema shape.
+`cicd.worker.*`. The provider (e.g. GitHub Actions) is a resource
+attribute (`ci.provider`) in telemetry; the separate PR reporter calls its
+provider's Jobs API.
 
 ### Buck layer (upstream words, kept as-is)
 
@@ -68,36 +69,30 @@ process) is a different, scoped sense — see flagged ambiguities.
 
 **Task Span** is the existing `devenv.task.exec` span (a Task Run's span).
 
-**Pipeline Trace** is the per-attempt trace that joins a Pipeline Run, its
-jobs and task runs with Buck Critical Views. Distinct attempts are related
-by links, not parent-child identity.
+**Job Trace** is the trace for one matrix-qualified CI Job Run (or one local
+Task Run), exported in one burst at job end. Its root identifies the Pipeline
+Run with `cicd.pipeline.run.id`.
 
-**Trace Access** is the read-only discovery surface over indexed run records
-and derived traces. Its **Resolver** maps a PR, run, or deterministic trace ID
-to an indexed status and viewer link; it does not search Tempo to discover
-identity. _Avoid_: "trace store" for the resolver — Tempo stores the spans.
+**Pipeline Trace** is the small trace written at attempt close; its root links
+to the Job Traces rather than parenting their spans. Distinct attempts remain
+distinct.
 
-### The portable unit
+**Trace Access** is the PR job report and deterministic Grafana trace links.
+The report reads GitHub Actions job timings; Grafana reads traces from Tempo.
+_Avoid_: "resolver" for a link whose ID is derived without a lookup.
 
-**Run Record** is a sealed unit of telemetry and native evidence. In CI each
-job contributes its own record within one Pipeline Run; locally the invocation
-has one record. Each record contains a manifest, span spool, and native
-evidence. Its lifecycle verbs are **seal** (freeze content digests),
-**upload** (provider-neutral content-addressed PUT), **ingest** (convert,
-export views, archive), and **archive** (retain per policy). _Avoid_:
-"replay" — Buck owns `log replay` (Superconsole re-rendering);
-"evidence bundle" (the anchor is Run Record).
+### The local retry unit
 
-**Attempt-Close Record** is the provider-neutral CI completion signal for a
-Pipeline Run attempt: the expected matrix-qualified jobs and their conclusions.
-It is not another job's native evidence or a second run root.
+**Local Spool** holds caller spans and native Buck evidence until the job-end
+OTLP export completes or can be retried. It is not a durable archive: after
+spool removal, derived traces cannot be regenerated. _Avoid_: "run record",
+"archive", or "upload bundle" for this local retry state.
 
 **Span Spool** is the existing otel-span JSONL spool
-(`OTEL_SPAN_SPOOL_DIR`), reused unchanged as the run record's span part.
+(`OTEL_SPAN_SPOOL_DIR`), retained within the Local Spool for export retry.
 
-**Trust Signal** is the explicit, provider-level authorization that lets an
-untrusted run's record be uploaded (on GitHub: a PR label). One of three
-gates named "trust" — see flagged ambiguities.
+**OTLP Delivery** sends derived traces to the dev3 collector over a tailnet
+ACL grant. Fork jobs keep a Local Spool but do not export.
 
 ### Derived artifacts
 
@@ -106,10 +101,11 @@ decodes event logs directly into the span model — a dedicated Rust crate,
 qualified against otel-scrape's per-tool Adapter contract.
 
 **Trace View** is a deterministic, rule-selected subset of a Buck command's
-spans derived from the run record. **Full View** keeps every span; **Critical
-View** (the default) keeps the critical path, spans at or above the **View
-Threshold**, their ancestors, and command summaries, under the **View Cap**.
-_Avoid_: "slim", "shaping", "projection" (two other senses in the fleet).
+spans derived from native evidence while it remains locally available.
+**Full View** keeps every span; **Critical View** (the default) keeps the
+critical path, spans at or above the **View Threshold**, their ancestors, and
+command summaries, under the **View Cap**. _Avoid_: "slim", "shaping",
+"projection" (two other senses in the fleet).
 
 **Daemon Wait** is time a Buck command spends blocked on work another command
 in the same daemon owns. **Inferred Daemon Wait** is a join-derived span
@@ -127,21 +123,21 @@ identifiers.
 ```text
 partOf ladder:   pipeline run -> job run (CI) -> task run -> Buck command -> action -> executor stage
                  (local task runs may belong directly to the pipeline run)
-unit lifecycle:  run record: write -> seal -> upload -> ingest -> archive
-derivation:      run record --event-log adapter--> span model --trace views--> {full view, critical view} + bounded metrics
-identity:        pipeline run id --framed domain-separated hash--> pipeline trace id;
+delivery:        native evidence + task spans -> local spool -> adapter -> trace views -> job-end OTLP
+derivation:      event-log adapter -> span model -> {full view, critical view} + bounded metrics
+identity:        pipeline run id -> per-job trace id + attempt-close pipeline trace id;
                  wrapper trace id = f(caller trace id, command span id);
-                 salted OTLP span ids = f(log identity, Buck span id)  (Buck ids collide across commands)
-access:          index --resolver--> PR/run/trace links and versioned JSON
-wait:            peer commands on one daemon --join--> daemon wait (exact | inferred)
+                 salted OTLP span ids = f(log identity, Buck span id) (Buck ids collide across commands)
+access:          Jobs API -> job table + gantt + p50 delta; deterministic trace id -> Grafana
+wait:            peer commands on one daemon -> daemon wait (exact | inferred)
 ```
 
 ## Flagged Ambiguities
 
-- **Run Record vs Pipeline Run vs InvocationRecord:** a CI Pipeline Run can
-  contain many job-scoped Run Records plus one Attempt-Close Record; a local
-  invocation has one Run Record. InvocationRecord is an upstream per-command
-  artifact inside a record, never the portable unit.
+- **Local Spool vs Pipeline Run vs InvocationRecord:** CI jobs carry local
+  spools and emit one trace each; attempt close links those traces. A local
+  invocation has one spool. InvocationRecord is an upstream per-command
+  artifact, not a portable delivery unit.
 - **Trace view vs editor view:** "view" also names the materialization
   surface's editor views (03-materialization). "Trace view" is always
   qualified.
@@ -149,13 +145,12 @@ wait:            peer commands on one daemon --join--> daemon wait (exact | infe
   command span; a wrapped process is otel-scrape's scoped "command span"; a CI
   step is a Task Run.
 - **Evidence:** Native Evidence (execution truth) vs. evidence at transfer
-  (BUCK-R12 proof) vs. probe evidence artifacts (context/ci). The run record
-  _carries_ Native Evidence; it is not a proof calculus.
+  (BUCK-R12 proof) vs. probe evidence artifacts (context/ci). The spool holds
+  Native Evidence only until local retry succeeds or the spool expires.
 - **Materialization:** the root triple homograph plus upstream final/input
   materialization — always qualified.
-- **Trust:** three gates — otel-scrape trusted sink (privacy), cache trust
-  tiers (0033), and this lane's trust signal (ingest admission). Always
-  qualified.
+- **Trust:** otel-scrape trusted sink (privacy) and cache trust tiers (0033)
+  are separate from this lane's tailnet collector write ACL.
 - **Adapter:** otel-scrape Adapter (per-tool structured output) vs. this
   lane's event-log adapter (0011's versioned adapter) vs. ci measurement
   producer adapters. The qualified forms are load-bearing.

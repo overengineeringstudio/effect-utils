@@ -58,3 +58,14 @@ is tracked as [OQ4](../../open-questions.md)).
 - One word, three gates: this is _ingest-admission_ trust, distinct from
   otel-scrape's trusted sink (privacy) and 0033's cache tiers (write
   authority).
+
+## Amendment 1 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q58; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+No upload capability or ingest admission exists, so the trust question is
+now export admission. Same-repo PR and main CI jobs export over the tailnet
+ACL; ordinary fork jobs keep telemetry in the local spool and never join the
+tailnet or export. A PR label does not currently authorize fork export; any
+future fork path requires a new decision covering network admission and
+trace isolation. `ci.pr.fork` remains the attribute for fork provenance, and
+the bounded-decoder rule for untrusted native evidence still applies.

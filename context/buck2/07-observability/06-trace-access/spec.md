@@ -1,9 +1,6 @@
 # Trace Access Spec
 
-This document specifies PR trace discovery, the review page, stable trace
-links, and the agent-facing JSON contract. It builds on
-[requirements.md](./requirements.md); [05](../05-ingest-and-archive/spec.md)
-owns the ingest index and the `buck2-evidence` binary that serves this surface.
+This document specifies the PR job report and deterministic Grafana trace links. It builds on [requirements.md](./requirements.md); [01](../01-run-identity/spec.md) owns trace identities and [05](../05-otlp-delivery/spec.md) owns delivery to Tempo.
 
 ## Status
 
@@ -11,224 +8,75 @@ Draft.
 
 ## Scope
 
-**Defines:** read-only resolver routes, review presentation, A/B semantics,
-CI link publication, and agent consumption.
+**Defines:** Jobs API data selection, baseline math, PR comment contents, gantt semantics, and Grafana Explore URLs.
 
-**Does not define:** upload admission or fleet service deployment (dotfiles),
-trace derivation (01/04/05), index writes and retention (05), or GitHub CI
-workflow implementation (genie/workflow-report).
+**Does not define:** Tempo storage, trace delivery, Grafana deployment, task-level Tempo reads, or GitHub workflow generation.
 
-## Resolver and Stable Links
+## Data Flow
 
 ```text
-sealed record ── upload/ingest ──> index.sqlite (05)
-      │                                │ read only
-      └─ seal-time links ──> CI      buck2-evidence resolver
-                               sticky comment ──> /pr/<owner>/<repo>/<number>
-                               step summary            ├─ HTML review page
-                                                       ├─ versioned JSON
-                                                       └─ /t/<trace-id> ──> Grafana / pending
+PR attempt close (after build jobs settle)
+  ├─ GET current run jobs (all pages)                  -> job table + gantt
+  ├─ GET latest successful main CI runs; select 7 samples per job key
+  │    └─ GET jobs for candidate runs                 -> p50 baseline
+  └─ 01 deterministic job trace IDs + Grafana base URL -> Explore links
+       -> workflow-report sticky PR comment
 ```
 
-The tailnet resolver is the canonical entry; it reads indexed IDs and state,
-not Tempo search (fresh attribute search can lag tens of minutes). The PR URL
-is stable before any upload. Routes below use the same index-backed response;
-HTML escapes every evidence-sourced string. Slash-separated `owner` and
-`repo` are repository path components, not arbitrary URLs; `number` is a
-positive decimal PR number. A trace ID is exactly 32 lowercase hexadecimal
-characters (the W3C trace-id shape); reject malformed IDs, never interpolate
-them into an unvalidated upstream URL. This route namespace belongs to the
-private resolver service, not to a globally registered web protocol.
+The workflow-report generator runs in CI and uses the workflow's GitHub token to read Actions job metadata and update the existing sticky comment. The fleet host does not call GitHub; CI does not call Tempo. The finalizer can run after dependent jobs even if one failed or was cancelled. It excludes itself from the build-job rows and the baseline.
 
-| Route                                              | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /pr/<owner>/<repo>/<number>`                  | PR overview, newest indexed runs first; no matching record means an explicit not-yet-uploaded state.                                                                                                                                                                                                                                                                                                                                                                                              |
-| `GET /pr/<owner>/<repo>/<number>.json`             | Same identities, status, verdict, comparison, and links as versioned JSON below; not HTML scraped by agents.                                                                                                                                                                                                                                                                                                                                                                                      |
-| `GET /run/<run-key>` and `.json`                   | One indexed run, its jobs and trace links; the run key is the index's opaque URL-encoded identity, including attempt, not a bare provider run number.                                                                                                                                                                                                                                                                                                                                             |
-| `GET /compare/<owner>/<repo>/<number>` and `.json` | A/B view computed from PR and eligible main runs indexed for that repository.                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `GET /t/<trace-id>`                                | Redirect to Grafana Explore by ID with the indexed time window only after **that view's** by-ID readback; a job's full-view trace may be ready within the job-end target while its distinct shared run/critical trace stays pending until the roster settles and cumulative readback converges. Before readiness display status (`sealed`, `uploaded`, `ingesting`, `missing_spans`, or `pending`) without an empty Grafana result. Unknown ID means no matching sealed record reached the index. |
-| `GET /t/<trace-id>/chrome.json` and `/perfetto`    | Convert the indexed trace for a one-click Perfetto handoff. The browser opens the Perfetto viewer; this is not public resolver access or a public trace export endpoint.                                                                                                                                                                                                                                                                                                                          |
+## Job Facts
 
-No GitHub write token is present on the fleet host. An indexed run and its
-trace IDs remain queryable when Tempo's 30-day window expires, but `/t/` must
-report expired trace data rather than imply that archive identity grants
-live trace retention. Archive re-ingest, if requested, follows 05.
+Read the current workflow run's jobs for its **current attempt**, following
+pagination. The GitHub adapter maps the Jobs API `name` through the same
+generated job-name rule used by the existing producer identity step's
+`JOB_KEY` and `MATRIX_VALUE` (01); a matrix runner value is part of the key.
+Reject duplicate canonical keys rather than assigning two jobs one trace.
+If the adapter cannot reconstruct a unique key, show the provider job name
+as an unmatched row and omit both baseline and trace link rather than
+guessing. Store no provider job ID in trace attributes.
 
-## PR Review Page
+| Column | Rule |
+| --- | --- |
+| Job | Markdown-escaped job key/name |
+| Status | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished) |
+| Wall time | `completed_at - started_at` when both exist; otherwise `unavailable` |
+| Delta | job wall time minus baseline p50, signed seconds and percentage; `baseline unavailable` without a valid sample |
+| Trace | deterministic Grafana Explore link for executed jobs, if 01 identity is available |
+
+A failed PR job still has its observed duration and delta when timings exist; its row keeps `failure`. Skipped or never-started jobs have no duration or delta. The table uses the attempt the comment describes, not the latest attempt of a different run.
+
+## Main Baseline
+
+Select candidate workflow runs on the main branch from the same workflow and repository, newest first. A candidate is admissible only when the workflow run concluded `success` and its job has conclusion `success` with both timestamps. For every PR job key, walk candidates until seven admissible job samples or no more candidates; retain run IDs and sample count for audit. Compute p50 as the median of the sampled wall durations, averaging the two middle values when seven is unavailable and the sample count is even. Report the actual `n`; with `n=0`, do not calculate a delta. The baseline compares like-for-like matrix-qualified job keys, never provider job display order or run number alone. Main runs remain the source even after trace data expires from Tempo.
+
+## Gantt
+
+Render a Mermaid `gantt` inside a collapsed `<details>` block in the comment when at least one job has a start time. Its axis starts at the earliest observed job start in the attempt. Each completed job bar spans `started_at` to `completed_at`; an unfinished job extends to the report generation time with an `unfinished` label; skipped and never-started jobs appear in the table only. Bar labels contain job key and conclusion; external names are sanitized for Mermaid syntax. Show a textual note for omitted rows so a missing bar is not read as zero duration.
+
+## Deterministic Grafana Links
+
+For each executed job with a 01 job trace ID, construct:
 
 ```text
-verdict + slowest-job critical chain
-runs (latest attempt visible) ──> jobs ──> top tasks
-     │                             │         │
-     └──────── Grafana / Perfetto trace buttons ────────┘
-A/B: each task vs median of eligible main runs; main spread = noise band
-freeze for review: copy `gh-ci-utils traces <pr> --freeze` -> own Vista context
+<GRAFANA_BASE_URL>/explore?schemaVersion=1&orgId=1&panes=<percent-encoded JSON>
+{"a":{"datasource":{"type":"tempo","uid":"tempo"},
+      "queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},
+                  "queryType":"traceql","query":"<32-lower-hex job trace ID>"}],
+      "range":{"from":"<started_at-15m epoch ms>","to":"<completed_at+60m epoch ms>"}}}
 ```
 
-The one-line verdict summarizes direction and meaningful task changes; do
-not classify an inside-spread change as a regression or improvement. The
-slowest job's chain initially follows task-span dependencies and is labeled
-as such; when Buck's action critical path is available, use that path rather
-than implying task-span chronology is Buck's action critical path. Runs,
-then their jobs, then top tasks remain navigable at phone width, with trace
-buttons beside the relevant level. The page is an overview, not an automatic
-redirect to Grafana (which is cramped on a phone). The read-only page shows
-a copyable `gh-ci-utils traces <pr> --freeze` command, not a publishing
-endpoint. An agent or operator executes it in their own Vista context:
-the CLI reads the same versioned resolver JSON, constructs and publishes
-the frozen Vista review snapshot under that caller's authority. Page
-loads, index reads, and ingest never trigger publication.
+`GRAFANA_BASE_URL` is configured without a trailing slash, never inferred from runner hostnames. The trace ID must be exactly 32 lowercase hexadecimal characters; malformed or missing identity means no link. JSON is serialized with the key order above and percent-encoded as a URI component. For an unfinished job, use the report time as `completed_at`. The link is stable for fixed job facts. It may open empty if delivery failed, Tempo has not indexed the trace yet, the viewer lacks tailnet access, or retention expired; the comment wording does not claim trace completeness. The pipeline-run link trace from 01 can be listed with the attempt-level window, but it is not required for per-job rows.
 
-For each PR run, use sealed `vcs.ref.base.revision`: the base branch commit
-that the tested PR merges into (`HEAD^1` of a CI merge checkout), not the
-git merge-base of the PR head and a later-moving branch. Select the latest
-**k=7** indexed main-branch pipeline runs whose revisions are at or before
-that base revision, never after it. This reflects the main state at merge
-time. Compare like-for-like matrix-qualified job keys and task names. For
-each task, calculate the median of its eligible main-run durations; display
-their observed minimum to maximum as the main spread. A PR duration inside that
-closed band is marked
-`noise`; outside it, show the signed delta from the median and mark it beyond
-spread. Show the sample count per task, including when fewer than seven runs
-exist or a task is absent in a run; with no matching samples display
-`baseline unavailable` instead of a fabricated delta. The run selector must
-use recorded revision ancestry/order, not wall-clock proximity alone.
+## Comment Contract
 
-The uploader seals the first-parent ancestry of the base revision together
-with its first-parent position; main-branch push records carry their head
-revision and position. The resolver does not invoke Git: it admits a main
-sample only when its revision belongs to the sealed base ancestry, then
-orders eligible runs by position. A shallow checkout cannot seal a complete
-ancestry and therefore cannot claim a baseline. A timestamp or CI run number
-alone does not establish ancestry, especially across a force-push.
-
-Each indexed job contributes at most one duration sample per `task.name`:
-the sum of its `devenv.task.exec` span durations, including repeated
-executions of that task within the job. Samples remain indexed after raw
-archive expiry for lineage, but only ingested records enter comparisons.
-
-## CI Publication
-
-```text
-seal (02) ──> deterministic IDs / PR URL ──> log + provider-neutral summary file
-                                        GitHub CI adapter ──> step summary
-                                        workflow-report ──> existing sticky comment
-```
-
-Seal produces links without waiting for upload; `/t/` can therefore explain
-pending status. The uploader writes the summary file when configured, and a
-GitHub-specific adapter copies it into the job step summary. On PR runs, CI
-adds **one PR-scoped resolver link** to the existing workflow-report sticky
-comment (not a new comment per job); fork PRs keep that workflow's no-write
-guard. Trace IDs may be printed in public CI text, per the corresponding
-fleet observability decision amendment, but the sticky comment needs only
-the PR URL. The build/record path never calls the GitHub API.
-
-## Agent JSON Contract
-
-The resolver's `buck2-trace-access/v1` schema is the agent contract, with
-JSON served under `.json` next to the HTML routes. Required keys are stable
-within v1; optional new fields may be added without changing their meaning.
-Clients reject an unknown major schema with a clear compatibility error.
-The example values are synthetic; never treat URLs as authentication tokens.
-
-```json
-{
-  "schema": "buck2-trace-access/v1",
-  "repository": "example/project",
-  "changeId": "42",
-  "status": "ingested",
-  "verdict": {
-    "text": "One task faster beyond main spread",
-    "criticalChainKind": "task-spans",
-    "criticalChain": ["prepare", "build"]
-  },
-  "runs": [
-    {
-      "runId": "ci/provider/example%2Fproject/123/1",
-      "attempt": 1,
-      "buck2.vcs.merge.revision": "abcdef0123456789abcdef0123456789abcdef01",
-      "status": "ingested",
-      "trace": {
-        "id": "0123456789abcdef0123456789abcdef",
-        "url": "/t/0123456789abcdef0123456789abcdef"
-      },
-      "jobs": [
-        {
-          "key": "build[os=linux]",
-          "status": "ingested",
-          "durationMs": 120000,
-          "traces": [
-            {
-              "kind": "critical",
-              "id": "0123456789abcdef0123456789abcdef",
-              "url": "/t/0123456789abcdef0123456789abcdef"
-            },
-            {
-              "kind": "full",
-              "id": "fedcba9876543210fedcba9876543210",
-              "url": "/t/fedcba9876543210fedcba9876543210"
-            }
-          ],
-          "topTasks": [{ "name": "build", "durationMs": 90000 }]
-        }
-      ]
-    }
-  ],
-  "comparison": {
-    "baselineCount": 7,
-    "tasks": [
-      {
-        "jobKey": "build[os=linux]",
-        "name": "build",
-        "sampleCount": 7,
-        "medianMs": 100000,
-        "spreadMs": [92000, 108000],
-        "prMs": 90000,
-        "deltaMs": -10000,
-        "classification": "beyond-spread"
-      }
-    ]
-  }
-}
-```
-
-`status` distinguishes `pending`, `sealed`, `uploaded`, `ingesting`,
-`ingested`, `missing_spans`, `incomplete`, and `expired` where the index has
-that state. A missing expected job is a job-level error, distinct from spans
-lost by Tempo; an attempt without closure **or** with an unsettled expected
-job is `incomplete` after its six-hour idle timeout. A shared run trace
-must not advertise complete until all expected jobs settle and the
-cumulative expected span-ID union
-passes readback at the published index generation. `trace` and `comparison`
-may be `null` when their inputs are unavailable. HTML and JSON share the
-same indexed run selection and A/B classification. `gh-ci-utils traces <pr>`
-reads this JSON to print runs/jobs, verdict, top deltas and IDs, with next
-`gcx traces get -d tempo <id> --llm -o json` and Perfetto actions.
-`gh-ci-utils traces <pr> --freeze` consumes this JSON and publishes via the
-invoking agent's or operator's Vista context; it does not POST to the
-resolver. The resolver URL is configured, never a hard-coded fleet hostname;
-off-tailnet failure states that tailnet access is required. The agent skill
-points to these commands, not a second bespoke CLI.
+The existing sticky comment gets one Buck2 observability section, replacing the section for the same run attempt. The ci-tools workflow-report table renderer produces the job table; the reporter adds no per-job workflow outputs or other YAML to build jobs. The section shows summary counts, the job table, the collapsed gantt, baseline notes (`n` and selected run IDs), and a statement that task-level durations are not included. It never embeds GitHub tokens, fleet endpoints, or raw Tempo query results. A missing Jobs API response renders an explicit failure note and leaves the Buck result unchanged. Forks keep the workflow's no-write guard.
 
 ## Conformance
 
-- A read-only page exposes the copyable freeze command; executing it as an
-  authorized Vista caller publishes a snapshot from versioned JSON without
-  any resolver mutation or implicit page-load publication.
-- After a second job's write removes a first job's spans from Tempo, the
-  shared run status reverts to `missing_spans`; a missing roster job is
-  displayed as an error span and an absent close eventually shows
-  `incomplete`.
-- An indexed but not yet ingested ID serves pending; complete readback serves
-  a working Grafana link; unknown and expired IDs report distinct states.
-- A main sample above sealed `vcs.ref.base.revision` never enters the A/B
-  baseline; a PR duration within the main spread is noise even when it
-  differs from the median.
-- An HTML and JSON request for one PR present identical IDs, status and
-  comparison; a synthetic evidence field containing markup stays text.
-- Evidence: [PR access prototype](./.experiments/2026-09-25-pr-trace-access.md),
-  [page variants](./.experiments/2026-09-26-pr-page-variants.md), decisions
-  [0001](./.decisions/0001-resolver-and-ci-links.md),
-  [0002](./.decisions/0002-review-page-and-baseline.md), and
-  [0003](./.decisions/0003-versioned-agent-contract.md).
+- Given current jobs with success, failure, cancelled, skipped, and unfinished states, the table preserves each status and never emits a zero-duration success.
+- Given nine successful, one failed, and one cancelled main run, the baseline takes the latest seven admissible successes for the matching job key and reports p50 and `n=7`.
+- A job absent from every admissible main run reports `baseline unavailable`; a finalizer job never appears as a build row.
+- The same job facts and trace identity produce the exact same Grafana URL; malformed IDs produce no URL; an unindexed trace remains an Explore link, not a pending resolver state.
+- The comment generator performs Jobs API and comment operations only: no Tempo, SQLite, resolver, artifact download, or upload request.
+- Historical evidence: [PR access prototype](./.experiments/2026-09-25-pr-trace-access.md), [page variants](./.experiments/2026-09-26-pr-page-variants.md), and amended decisions [0001](./.decisions/0001-resolver-and-ci-links.md), [0002](./.decisions/0002-review-page-and-baseline.md), [0003](./.decisions/0003-versioned-agent-contract.md).

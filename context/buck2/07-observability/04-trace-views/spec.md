@@ -1,10 +1,9 @@
 # Trace Views Spec
 
-This document specifies the view rules, cap mechanics, summaries, and the
-metrics set. It builds on [requirements.md](./requirements.md); its input is
-the span model from [03-event-log-adapter](../03-event-log-adapter/spec.md)
-and its destination is the export in
-[05-ingest-and-archive](../05-ingest-and-archive/spec.md).
+This document specifies view rules, cap mechanics, and command summaries.
+It builds on [requirements.md](./requirements.md), consumes the local span
+model from [03](../03-event-log-adapter/spec.md), and sends completed traces
+through the direct export path in [05](../05-otlp-delivery/spec.md).
 
 ## Status
 
@@ -12,42 +11,42 @@ Draft.
 
 ## Scope
 
-**Defines:** the two views' retention rules, threshold escalation, cap
-behavior, summary attributes, and the bounded metrics.
+**Defines:** both stored views, threshold escalation, cap behavior, command
+summaries, bounded metrics, and trace lookup fields.
 
-**Does not define:** ingest transport and chunking (05), the adapter's span
-model (03).
+**Does not define:** direct OTLP transport (05) or adapter decoding (03).
 
 ## View Selection
 
 ```text
-span model (all spans, salted ids, daemon waits)
-  ├─ critical view (default; always ingested)
+local span model (salted ids, daemon waits)
+  ├─ critical view (default; emitted into job trace beneath task span)
   │    keep: roots + buck2.command
-  │          critical-path actions + their stage children
-  │          spans >= threshold (default 1 s) + all their ancestors
+  │          critical-path actions + stage children
+  │          spans >= threshold (default 1 s) + ancestors
   │          daemon-wait spans
-  │    escalate threshold only until span count <= cap (1,200)
-  │    stamp: dropped_children on kept parents; exact command summaries
-  └─ full view (always ingested; separately identified trace)
-       keep: every span, unmodified
+  │    escalate threshold to span count <= 1,200
+  │    stamp: dropped_children; exact command summaries
+  └─ full view (separate deterministic trace linked to command span)
+       keep: every span
 ```
 
-Both views derive deterministically from the same span model — the same run
-record always yields the same two traces (idempotent re-ingest). Their
-placement differs ([05](../05-ingest-and-archive/spec.md)): with a caller
-context the critical view is parented inside the caller's trace (sidecar),
-and the full view is a separate deterministic trace whose `buck2.command`
-root links to the caller command span.
+Both views derive deterministically from the same local event log and sidecar
+context. The critical view is parented beneath the caller task span in the
+job trace; a local task run uses a job-equivalent trace. The full trace root
+links to the caller command span. Job roots carry `cicd.pipeline.run.id`
+for run lookup. Completed eligible job views export directly to dev3 Alloy;
+an ordinary fork keeps only its local spool. Neither view requires an
+archived run record or read-time projection.
 
 Measured shape on the largest cold-CI command (12,622 spans): full view
 12.70 MB; the 1 s rule yields a **pre-escalation candidate** of ≈ 1,113–1,225
 spans / ~1.6–1.8 MB (91–92% reduction) keeping 15 of 21 critical-path action
 names and 543 actions — the cap then escalates the threshold to land at
 ≤ 1,200 stored spans (the span-cap benchmark's stored result: exactly 1,200 /
-1.81 MB); at corpus scale, 66,948 spans → 5,870 (15 CI logs). The raw record
-for that command is 711 KB — 5.6% of its full-view OTLP bytes — which is why
-the record, not the trace store, is the forensic artifact.
+1.81 MB); at corpus scale, 66,948 spans → 5,870 (15 CI logs). The native
+event log was 711 KB for that command; it remains local conversion evidence,
+not a remotely retained forensic archive.
 
 ## Why 1,200
 
@@ -66,13 +65,22 @@ Every view's command span carries `buck2.action_count`,
 subcommand), so "what was the cache-hit ratio" never depends on child
 retention.
 
+## Trace Lookup
+
+The deterministic job trace id derives from the run id and matrix-qualified
+job key ([01](../01-run-identity/spec.md)); every job root has
+`cicd.pipeline.run.id`. Task spans belong to that job trace, while full-view
+roots link to their critical-view command span. Grafana links can use derived
+trace ids without a resolver, while Tempo search over
+`.cicd.pipeline.run.id` can find exported job roots. Neither query is a
+promise that late or failed exports are already visible.
+
 ## Metrics
 
-Emitted at ingest alongside the views. **Canonical names are the OTel dotted
-forms** (instrumentation emits OTLP); the Prometheus/Mimir translation below
-is the single statement of the backend mapping (unit suffix `_seconds`,
-counter suffix `_total`, dots → underscores) — dashboards and contract tests
-query the Mimir names, and no other file restates them:
+Local conversion emits metrics alongside the completed traces. Canonical
+names are OTel dotted names; Prometheus/Mimir translation adds `_seconds`
+to seconds-valued histograms, `_total` to counters, and replaces dots with
+underscores:
 
 | Canonical (OTel)                      | Mimir / Prometheus                        | Type      | Labels (closed enums)               |
 | ------------------------------------- | ----------------------------------------- | --------- | ----------------------------------- |
@@ -82,14 +90,13 @@ query the Mimir names, and no other file restates them:
 | `buck2.action.execution.duration` (s) | `buck2_action_execution_duration_seconds` | histogram | category                            |
 | `buck2.action.queue.duration` (s)     | `buck2_action_queue_duration_seconds`     | histogram | category                            |
 
-Observed dimensions are bounded by Buck's enums (10–21 categories, 3–5
-execution kinds across the corpus). Generic span-derived RED metrics cannot
-answer queue/cache questions (their dimensions are service/name/kind/status);
-the direct set is the long-term-trends feed for Mimir (05).
+These bounded dimensions support long-term trends independently of Tempo's
+30-day trace retention. No target, digest, run id, trace id, or host label
+enters a metric series.
 
 ## Conformance
 
-- Determinism: same record → byte-identical views (fixture-diffed).
+- Determinism: same local log and sidecar context → byte-identical views.
 - Cap behavior: a 12,622-span command yields exactly ≤ 1,200 spans with the
   mandatory structure intact (121 mandatory spans; escalation documented via
   the effective threshold attribute).

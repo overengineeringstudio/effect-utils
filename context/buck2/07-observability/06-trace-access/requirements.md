@@ -1,76 +1,38 @@
 # Trace Access Requirements
 
-This subsystem owns human and agent discovery of the trace views produced by
-[04-trace-views](../04-trace-views/spec.md) and indexed by
-[05-ingest-and-archive](../05-ingest-and-archive/spec.md). It refines
-BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08, and BUCK.OBS-R01 of the
-[observability requirements](../requirements.md).
+This subsystem owns the PR job report and deterministic Grafana links. The report reads CI job timings from the provider's Jobs API; Grafana reads exported traces directly from Tempo. It refines BUCK.OBS-R03, BUCK.OBS-R04, and BUCK.OBS-R08 of the [observability requirements](../requirements.md).
 
 ## Assumptions
 
-- **BUCK.OBS.ACCESS-A01 Indexed identity:** Sealed records and the ingest index
-  carry PR and revision identity and deterministic trace IDs as specified by
-  [02](../02-run-record/spec.md) and [05](../05-ingest-and-archive/spec.md).
-- **BUCK.OBS.ACCESS-A02 Fleet admission:** The resolver is accessible only on
-  the tailnet; fleet deployment and its read-only service boundary are owned
-  by dotfiles.
+- **BUCK.OBS.ACCESS-A01 Deterministic identity:** [01](../01-run-identity/spec.md) derives the job trace ID from pipeline run identity and matrix-qualified job key before export. A PR comment does not need Tempo access to construct that link.
+- **BUCK.OBS.ACCESS-A02 CI-owned comment:** The existing GitHub workflow-report sticky comment has GitHub write authority. The fleet backend has none; its trace API is not a CI read source.
 
 ## Acceptable Tradeoffs
 
-- **BUCK.OBS.ACCESS-T01 Tailnet access:** A reviewer must join the tailnet to
-  open the resolver or its trace viewers; V1 does not expose traces publicly.
-- **BUCK.OBS.ACCESS-T02 Snapshot cost:** Freezing a review snapshot is an
-  explicit on-demand action, not work on every PR page request.
+- **BUCK.OBS.ACCESS-T01 Job-level report:** The current PR comment shows job status, wall time, baseline delta, and a job gantt. Task-level durations, critical chains and task baselines require a separately authorized Tempo read design and are not inferred from GitHub job timings.
+- **BUCK.OBS.ACCESS-T02 Direct link readiness:** A deterministic Grafana link can precede Tempo visibility or outlive 30-day trace retention; it is a locator, not a completeness or access guarantee.
 
 ## Requirements
 
-### Must make traces discoverable without backend search
+### Must report observable job outcomes
 
-- **BUCK.OBS.ACCESS-R01 Stable PR entry (refines BUCK.OBS-R04):** A PR-scoped
-  resolver URL must identify its runs, jobs, and trace links from the ingest
-  index without Tempo attribute search; links resolve to a pending state
-  before ingestion and to the trace after complete readback.
-- **BUCK.OBS.ACCESS-R02 CI-owned links (refines BUCK.OBS-R03):** Seal-time
-  trace links and a PR-scoped resolver link must be available in a
-  provider-neutral summary sink. The GitHub CI adapter adds the PR link to
-  the existing sticky comment and copies the summary links into its step
-  summary. The fleet host holds no GitHub write credential.
+- **BUCK.OBS.ACCESS-R01 PR job source (refines BUCK.OBS-R03):** The PR comment's job table and gantt come only from the GitHub Actions Jobs API for the current run/attempt. They report each matrix-qualified job's conclusion/status, wall time where both timestamps exist, and missing, skipped, cancelled, or unfinished timings explicitly. A close/finalizer job is not treated as a build job.
+- **BUCK.OBS.ACCESS-R02 CI-owned publication:** The existing workflow-report sticky PR comment is updated by CI at attempt close after dependent build jobs settle. No fleet-host GitHub write credential, run-record service, artifact aggregation, or Tempo read is required; ordinary fork jobs retain the workflow's no-write guard.
 
-### Must make a noisy comparison interpretable
+### Must compare completed jobs fairly
 
-- **BUCK.OBS.ACCESS-R03 Review overview:** The PR page must show a verdict,
-  the slowest job's critical chain, runs then jobs then top tasks, and links
-  to Grafana and Perfetto for the corresponding traces. When a Buck action
-  critical path exists, it replaces the task-span chain.
-- **BUCK.OBS.ACCESS-R04 Main-run baseline:** The A/B view must compare each
-  PR task duration with the median of up to seven main runs at or before the
-  sealed `vcs.ref.base.revision` (the base parent of a merge checkout),
-  displaying the main-run spread as a noise band and distinguishing deltas
-  inside it from those outside it. It must disclose a missing or incomplete
-  baseline rather than present a single run as a stable median.
-- **BUCK.OBS.ACCESS-R05 Frozen review:** The read-only resolver page makes a
-  copyable `gh-ci-utils traces <pr> --freeze` command available. An agent or
-  operator runs it in their own Vista context to publish a frozen snapshot
-  from resolver JSON when a review artifact must outlive Tempo's 30-day
-  window. Resolver page loads and reads do not publish snapshots.
+- **BUCK.OBS.ACCESS-R03 Job baseline:** For each PR job key, compare its wall duration to p50 of that same job among the latest seven **successful completed main-branch workflow runs** with usable job timings. Report signed absolute and percentage deltas and sample count; no matching completed successful samples means `baseline unavailable`. Never present cancelled, skipped, failed, or incomplete main jobs as successful duration samples.
+- **BUCK.OBS.ACCESS-R04 Job gantt:** Show each executed job's started/completed window on one attempt-level time axis, marking unfinished/missing timings and final conclusions separately. The chart must not turn a missing or cancelled job into zero-duration success.
 
-### Must give agents a stable contract
+### Must link traces without a read proxy
 
-- **BUCK.OBS.ACCESS-R06 Versioned JSON (refines BUCK.OBS-R08):** The resolver
-  exposes versioned JSON for the same PR/run/job/trace identities and verdict
-  shown in HTML. `gh-ci-utils traces <pr>` consumes it and reports trace IDs,
-  relevant deltas, and next actions; `--freeze` consumes the same JSON and
-  publishes through the caller's Vista context. An off-tailnet request fails
-  with an explicit access message, not an empty PR result.
-- **BUCK.OBS.ACCESS-R07 Read-only and safe display (refines BUCK.OBS-R01):**
-  Resolver reads cannot mutate ingestion state; untrusted evidence fields
-  render as escaped text, not executable HTML. Trace IDs are locators, not
-  bearer capabilities; access is still governed by the tailnet boundary.
+- **BUCK.OBS.ACCESS-R05 Deterministic Grafana links (refines BUCK.OBS-R04):** Construct each eligible job's Grafana Explore by-ID URL from 01's deterministic trace ID and the configured Grafana base URL/Tempo datasource; no Tempo search, resolver, index, or CI read permission to the fleet is required. A link is not a claim that delivery succeeded.
+- **BUCK.OBS.ACCESS-R06 Scoped API usage (refines BUCK.OBS-R08):** The GitHub-specific Jobs API and comment write remain in the GitHub workflow adapter; telemetry capture, OTLP transport, and identity stay provider-neutral. Another provider supplies equivalent job facts to the report model rather than changing the exporter.
+- **BUCK.OBS.ACCESS-R07 Least-privilege display:** The report escapes externally supplied job names and URLs for Markdown; CI does not receive unrestricted Tempo read access, arbitrary TraceQL permission, or a fleet-wide trace token. Reviewers follow Grafana links under their own tailnet access.
 
 ## Requirement Trace
 
-| Requirements             | Refinement        |
-| ------------------------ | ----------------- |
-| BUCK.OBS.ACCESS-R01, R02 | BUCK.OBS-R04, R03 |
-| BUCK.OBS.ACCESS-R03–R05  | BUCK.OBS-R01      |
-| BUCK.OBS.ACCESS-R06, R07 | BUCK.OBS-R08, R01 |
+| Requirements | Refinement |
+| --- | --- |
+| BUCK.OBS.ACCESS-R01–R04, R06 | BUCK.OBS-R03, R08 |
+| BUCK.OBS.ACCESS-R05, R07 | BUCK.OBS-R04, R08 |

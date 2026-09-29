@@ -33,7 +33,11 @@ Use one run trace per attempt with framed domain-separated deterministic ids, a 
 
 The evidence establishes [BUCK.OBS.ID-R08..R13](../requirements.md) and
 [decision 0002](../.decisions/0002-seeded-pipeline-run-trace.md).
-The run identity precedes the sealed record's
-[VCS metadata](../../02-run-record/spec.md); the Tempo persistence caveat
-requires ingest-side readback and an indexed per-job fallback rather than
-assuming an accepted OTLP batch is complete.
+At the time, run identity preceded the sealed record's VCS metadata; the
+surviving [local trace attributes](../../02-local-spool/spec.md) still do not
+feed trace identity. This experiment's ingest-side readback and indexed
+per-job fallback were superseded by [decision 0002's Amendment 2](../.decisions/0002-seeded-pipeline-run-trace.md#amendment-2-job-traces-and-attempt-close-links-q62).
+
+## Intent Impact
+
+The run-seeding evidence informed BUCK.OBS.ID-R08..R13 and decision 0002; its original whole-attempt trace contract was superseded by Amendment 2's job traces and attempt-close links.

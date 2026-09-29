@@ -1,35 +1,32 @@
 # Trace Views Requirements
 
-This subsystem owns what lands in trace storage and metrics: the trace-view
-family (full view, critical view), the view threshold and cap, command
-summary attributes, and the bounded metrics set. It refines BUCK.OBS-R05 and
-the BUCK.OBS-T02 tradeoff of the
+This subsystem owns the two stored Buck command views, view threshold and cap,
+and exact command summaries. It refines BUCK.OBS-R05 of the
 [07-observability requirements](../requirements.md).
 
 ## Assumptions
 
-- **BUCK.OBS.VIEW-A01 Durable full detail:** the run record (and its archive, 05) always retains full detail; views are conveniences over it, never the
-  only copy.
+- **BUCK.OBS.VIEW-A01 Local native evidence:** the event log remains local
+  evidence for post-hoc conversion; there is no archived run record or
+  on-demand remote regeneration contract.
 - **BUCK.OBS.VIEW-A02 Query semantics:** consumers query stored spans only —
-  a view that was not ingested cannot be searched.
+  a view that was not exported cannot be searched.
 
 ## Acceptable Tradeoffs
 
-- **BUCK.OBS.VIEW-T01 Both views until measured:** ingesting the full view
-  everywhere raises storage volume ~11× vs the critical view alone; accepted
-  by decision q24 ("do this for now, dial in later if issues appear") with
-  the measurement plan in [OQ1](../../open-questions.md).
+- **BUCK.OBS.VIEW-T01 Both views until measured:** exporting the full view
+  everywhere raises Tempo storage volume ~11× versus critical-only; accepted
+  by q24 pending measured volume evidence.
 
 ## Requirements
 
-- **BUCK.OBS.VIEW-R01 Two identified views:** Every ingested Buck command is
-  exported as two separately identified traces: the **critical view** (the
-  default) and the **full view**. Both are always ingested (decision q24);
-  neither is a read-time transformation of the other. With a caller
-  context, the critical view lives in the caller's trace and the full view
-  is a separate deterministic trace whose root links to the caller command
-  span (placement per [05](../05-ingest-and-archive/requirements.md)
-  ING-R02).
+- **BUCK.OBS.VIEW-R01 Two identified views:** Each locally converted Buck
+  command is exported as a critical view in its job trace and a separate
+  deterministic full trace. Both are sent at job end in eligible CI or at
+  local task-run end over the tailnet; an untrusted fork only retains its
+  local retry spool. With caller context, the critical view is parented
+  beneath the caller's task span and the full view root links to its command
+  span. Neither view is a read-time transformation.
 - **BUCK.OBS.VIEW-R02 Critical view rule:** the critical view retains the
   critical path and its stage children, all spans at or above the view
   threshold, all their ancestors, and exact whole-command summary attributes
@@ -39,24 +36,21 @@ the BUCK.OBS-T02 tradeoff of the
 - **BUCK.OBS.VIEW-R03 No read-time caps:** consumers see the same stored
   trace; no per-consumer projection at read time (consumers would disagree
   and unstored spans are unqueryable).
-- **BUCK.OBS.VIEW-R04 Regenerable full detail:** the full view of any
-  archived run can be re-derived from its run record on demand (the record,
-  not the trace store, is forensic truth).
-- **BUCK.OBS.VIEW-R05 Command summaries are exact:** every view carries the
+- **BUCK.OBS.VIEW-R04 Local regenerability:** While its local native event
+  log is retained, a command's full view can be regenerated locally. Tempo
+  retention or spool loss is not repaired by a remote archive.
+- **BUCK.OBS.VIEW-R05 Command summaries are exact:** both views carry the
   command's exact aggregate counts (actions, cache hits, critical-path
   actions); the cache ratio never depends on retained child spans.
-- **BUCK.OBS.VIEW-R06 Bounded metric labels (refines BUCK.OBS-R05):** the
-  canonical metric names are the OTel dotted forms with units —
-  `buck2.command.duration` (s), `buck2.critical_path.duration` (s),
-  `buck2.action.count` (unitless), `buck2.action.execution.duration` (s),
-  `buck2.action.queue.duration` (s) — with closed-enum labels
-  (`subcommand`; `category`, `execution_kind`, `cache_hit`). The
-  Prometheus/Mimir translation (`buck2_command_duration_seconds`,
-  `buck2_critical_path_duration_seconds`, `buck2_action_count_total`,
-  `buck2_action_execution_duration_seconds`,
-  `buck2_action_queue_duration_seconds`) is stated once in the
-  [spec](./spec.md). No target, identifier, digest, run id, trace id, or
-  host label ever appears.
+- **BUCK.OBS.VIEW-R06 Bounded metric labels (refines BUCK.OBS-R05):**
+  Canonical OTel metrics are `buck2.command.duration` (s),
+  `buck2.critical_path.duration` (s), `buck2.action.count` (unitless),
+  `buck2.action.execution.duration` (s), and
+  `buck2.action.queue.duration` (s). Labels are closed enums:
+  `subcommand`, `category`, `execution_kind`, and `cache_hit`.
+  No target, identifier, digest, run id, trace id, or host label appears.
+  Local conversion emits these bounded metrics for long-term Mimir trends;
+  the Prometheus translation is defined once in the [spec](./spec.md).
 - **BUCK.OBS.VIEW-R07 Dropped children are visible:** retained parents carry
   a dropped-children count; the view never pretends omitted spans are
   queryable.
