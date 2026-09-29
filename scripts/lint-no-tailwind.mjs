@@ -8,9 +8,9 @@ const scriptFile = /\.(?:[cm]?[jt]sx?|astro|svelte|vue)$/
 const styleFile = /\.(?:css|scss|sass|less|astro|svelte|vue)$/
 const tailwindConfig = /(?:^|\/)tailwind\.config\.[cm]?[jt]s$/
 const moduleReference =
-  /\b(?:import\s*(?:\(\s*|(?:[^;'"]*?\s+from\s*)?)|export\s+(?:[^;'"]*?\s+from\s*)|require\s*\(\s*)['"]([^'"\n]+)['"]/g
+  /(?<!@)\b(?:import\s*(?:\(\s*|(?:[^;'"]*?\s+from\s*)?)|export\s+(?:[^;'"]*?\s+from\s*)|require\s*\(\s*)['"]([^'"\n]+)['"]/g
 const cssDirective =
-  /(?:^|[;{}])\s*(@(?:import\s+(?:url\(\s*)?['"]([^'"\n]+)['"]|tailwind\b|apply\b))/gm
+  /(?:^|[;{}>])\s*(@(?:import\s+(?:url\(\s*)?['"]([^'"\n]+)['"]|tailwind\b|apply\b))/gm
 const dependencySections = [
   'dependencies',
   'devDependencies',
