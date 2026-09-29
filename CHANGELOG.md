@@ -181,6 +181,10 @@ All notable changes to this project will be documented in this file.
   from both compile and test trees. Consumers can bundle staged TypeScript
   packages with Vite without resolving sibling projects absent from the bounded
   package view; authored tsconfig files remain unchanged.
+- **Buck2 JavaScript products:** normalize Bun's CommonJS `__dirname` and
+  `__filename` paths inside multi-binding `var` declarations (including
+  undici 8's minified entrypoint) without changing adjacent bindings or
+  masking build-root paths in strings and comments.
 - **@overeng/notion-effect-schema tests:** assert canonical JSON wire baselines
   with exact string equality rather than inline snapshots. Vitest's inline
   snapshot stack-frame inference fails for these async tests under Bun on macOS;

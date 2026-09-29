@@ -499,6 +499,66 @@ describe('post-build portability assertions', () => {
       'var __dirname = import.meta.dirname, __filename = import.meta.filename;',
     )
   })
+  it('rewrites Bun undici-style __filename followed by other var declarators', () => {
+    const root = '/tmp/portable-root'
+    const bundle = `var __filename = "${root}/node_modules/@effect/platform-node/node_modules/undici/index.js", Client, Dispatcher;`
+    expect(normalizePortableCommonJsGlobals({ bundle, root })).toBe(
+      'var __filename = import.meta.filename, Client, Dispatcher;',
+    )
+  })
+
+  it('rewrites dirname in the middle of a declaration without changing its siblings', () => {
+    const root = '/tmp/portable-root'
+    const bundle = `var Client = require_client(), __dirname = "${root}/undici", Dispatcher;`
+    expect(normalizePortableCommonJsGlobals({ bundle, root })).toBe(
+      'var Client = require_client(), __dirname = import.meta.dirname, Dispatcher;',
+    )
+  })
+
+  it('rewrites both globals with additional declarators and multiline whitespace', () => {
+    const root = '/tmp/portable-root'
+    const bundle = `var\n  __dirname = "${root}/undici",\n  __filename = "${root}/undici/index.js", Client;`
+    expect(normalizePortableCommonJsGlobals({ bundle, root })).toBe(
+      'var\n  __dirname = import.meta.dirname,\n  __filename = import.meta.filename, Client;',
+    )
+  })
+
+  it('does not mistake punctuation or escaped quotes inside a source path for declarators', () => {
+    const root = '/tmp/portable-root'
+    const source = `${root}/file,semicolon;"quoted".js`
+    const bundle = `var __filename = ${JSON.stringify(source)}, Client;`
+    expect(normalizePortableCommonJsGlobals({ bundle, root })).toBe(
+      'var __filename = import.meta.filename, Client;',
+    )
+  })
+
+  it('does not rewrite declarations embedded in strings or comments', () => {
+    const root = '/tmp/portable-root'
+    for (const bundle of [
+      `const text = 'var __filename = "${root}/x", Client;';`,
+      `// var __filename = "${root}/x", Client;`,
+      `/* var __filename = "${root}/x", Client; */`,
+      `const text = \`var __filename = "${root}/x", Client;\`;`,
+    ]) {
+      expect(() => normalizePortableCommonJsGlobals({ bundle, root })).toThrow(
+        'outside a CommonJS path declaration',
+      )
+    }
+  })
+
+  it('leaves a declaration-looking regular expression untouched', () => {
+    const bundle = 'const pattern = /var __filename = "relative\\\\/x", Client;/;'
+    expect(normalizePortableCommonJsGlobals({ bundle, root: '/tmp/portable-root' })).toBe(bundle)
+  })
+
+  it('rejects foreign-root declarations even when followed by other bindings', () => {
+    expect(() =>
+      normalizePortableCommonJsGlobals({
+        bundle: 'var __filename = "/foreign/undici/index.js", Client;',
+        root: '/tmp/portable-root',
+      }),
+    ).toThrow('__filename path escapes the build root')
+  })
 
   it('accepts lexical and canonical spellings of a symlinked build root', () => {
     const canonicalRoot = realpathSync(scratch('portable-canonical-'))
