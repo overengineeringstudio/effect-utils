@@ -731,12 +731,18 @@ importers:
       '@storybook/react':
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))(typescript@7.0.2)
+      '@storybook/react-vite':
+        specifier: 10.6.0
+        version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       '@types/react':
         specifier: 19.2.18
         version: 19.2.18
       '@types/react-reconciler':
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.18)
+      '@vitest/browser-playwright':
+        specifier: 4.1.9
+        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
       effect:
         specifier: 4.0.0-rc.118
         version: 4.0.0-rc.118
@@ -749,6 +755,9 @@ importers:
       react-reconciler:
         specifier: 0.33.0
         version: 0.33.0(react@19.2.8)
+      storybook:
+        specifier: 10.6.0
+        version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       vitest:
         specifier: 4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
@@ -759,9 +768,6 @@ importers:
       '@overeng/utils-storybook':
         specifier: workspace:^
         version: link:../utils-storybook
-      '@storybook/react-vite':
-        specifier: 10.6.0
-        version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       '@types/bun':
         specifier: 1.4.2
         version: 1.4.2
@@ -771,9 +777,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: 6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
-      storybook:
-        specifier: 10.6.0
-        version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -2935,6 +2938,45 @@ packages:
       react: '>=19.2.0'
       react-devtools-core: ^7.0.1
       ws: ^8.18.0
+
+  '@overeng/ci-tools@file:packages/@overeng/ci-tools':
+    resolution: {directory: packages/@overeng/ci-tools, type: directory}
+    peerDependencies:
+      '@effect/opentelemetry': 4.0.0-rc.113
+      '@effect/platform-node': 4.0.0-rc.113
+      '@playwright/test': ^1.63.0
+      '@storybook/react-vite': ^10.6.0
+      '@vitest/browser-playwright': ^4.1.9
+      effect: 4.0.0-rc.113
+      storybook: ^10.6.0
+    peerDependenciesMeta:
+      '@storybook/react-vite':
+        optional: true
+      '@vitest/browser-playwright':
+        optional: true
+      storybook:
+        optional: true
+
+  '@overeng/content-address@file:packages/@overeng/content-address':
+    resolution: {directory: packages/@overeng/content-address, type: directory}
+
+  '@overeng/effect-distributed-lock@file:packages/@overeng/effect-distributed-lock':
+    resolution: {directory: packages/@overeng/effect-distributed-lock, type: directory}
+    peerDependencies:
+      effect: 4.0.0-rc.113
+
+  '@overeng/otel-contract@file:packages/@overeng/otel-contract':
+    resolution: {directory: packages/@overeng/otel-contract, type: directory}
+    peerDependencies:
+      effect: 4.0.0-rc.113
+
+  '@overeng/utils@file:packages/@overeng/utils':
+    resolution: {directory: packages/@overeng/utils, type: directory}
+    peerDependencies:
+      '@effect/opentelemetry': 4.0.0-rc.113
+      '@effect/platform-node': 4.0.0-rc.113
+      '@playwright/test': ^1.63.0
+      effect: 4.0.0-rc.113
 
   '@oxc-parser/binding-android-arm-eabi@0.127.0':
     resolution: {integrity: sha512-0LC7ye4hvqbIKxAzThzvswgHLFu2AURKzYLeSVvLdu2TBOYWQDmHnTqPLeA597BcUCxiLqLsS4CJ5uoI5WYWCQ==}
@@ -6382,6 +6424,92 @@ snapshots:
     transitivePeerDependencies:
       - typescript
       - web-tree-sitter
+
+  '@overeng/ci-tools@file:packages/@overeng/ci-tools(21a18fc0a53878d63d7b9c0b7df43f8d)':
+    dependencies:
+      '@effect/opentelemetry': 4.0.0-rc.113(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.113)
+      '@effect/platform-node': 4.0.0-rc.113(effect@4.0.0-rc.113)(redis@6.2.1(@opentelemetry/api@1.9.1))
+      '@overeng/otel-contract': file:packages/@overeng/otel-contract(effect@4.0.0-rc.113)
+      '@overeng/utils': file:packages/@overeng/utils(@effect/opentelemetry@4.0.0-rc.113(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.113))(@effect/platform-node@4.0.0-rc.113(effect@4.0.0-rc.113)(redis@6.2.1(@opentelemetry/api@1.9.1)))(@playwright/test@1.63.0)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(effect@4.0.0-rc.113)(esbuild@0.28.2)(happy-dom@20.14.0)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      '@playwright/test': 1.63.0
+      effect: 4.0.0-rc.113
+    optionalDependencies:
+      '@storybook/react-vite': 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      '@vitest/browser-playwright': 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+      storybook: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+    transitivePeerDependencies:
+      - '@edge-runtime/vm'
+      - '@farmfe/core'
+      - '@rspack/core'
+      - '@types/node'
+      - '@vitest/browser-preview'
+      - '@vitest/browser-webdriverio'
+      - '@vitest/coverage-istanbul'
+      - '@vitest/coverage-v8'
+      - '@vitest/ui'
+      - bun-types-no-globals
+      - esbuild
+      - happy-dom
+      - jsdom
+      - msw
+      - rolldown
+      - rollup
+      - supports-color
+      - unloader
+      - vite
+      - webpack
+
+  '@overeng/content-address@file:packages/@overeng/content-address':
+    dependencies:
+      '@noble/hashes': 2.4.0
+      effect: 4.0.0-rc.113
+
+  '@overeng/effect-distributed-lock@file:packages/@overeng/effect-distributed-lock(effect@4.0.0-rc.113)':
+    dependencies:
+      effect: 4.0.0-rc.113
+
+  '@overeng/otel-contract@file:packages/@overeng/otel-contract(effect@4.0.0-rc.113)':
+    dependencies:
+      '@overeng/content-address': file:packages/@overeng/content-address
+      effect: 4.0.0-rc.113
+
+  '@overeng/utils@file:packages/@overeng/utils(@effect/opentelemetry@4.0.0-rc.113(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.113))(@effect/platform-node@4.0.0-rc.113(effect@4.0.0-rc.113)(redis@6.2.1(@opentelemetry/api@1.9.1)))(@playwright/test@1.63.0)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(effect@4.0.0-rc.113)(esbuild@0.28.2)(happy-dom@20.14.0)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))':
+    dependencies:
+      '@effect/opentelemetry': 4.0.0-rc.113(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.113)
+      '@effect/platform-node': 4.0.0-rc.113(effect@4.0.0-rc.113)(redis@6.2.1(@opentelemetry/api@1.9.1))
+      '@effect/vitest': 4.0.0-rc.113(effect@4.0.0-rc.113)(vitest@4.1.9)
+      '@noble/hashes': 2.4.0
+      '@opentelemetry/api': 1.9.1
+      '@overeng/effect-distributed-lock': file:packages/@overeng/effect-distributed-lock(effect@4.0.0-rc.113)
+      '@overeng/otel-contract': file:packages/@overeng/otel-contract(effect@4.0.0-rc.113)
+      '@playwright/test': 1.63.0
+      '@stylexjs/unplugin': 0.19.0(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))
+      effect: 4.0.0-rc.113
+      postcss: 8.5.26
+      unplugin: 3.3.0(esbuild@0.28.2)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+    transitivePeerDependencies:
+      - '@edge-runtime/vm'
+      - '@farmfe/core'
+      - '@rspack/core'
+      - '@types/node'
+      - '@vitest/browser-playwright'
+      - '@vitest/browser-preview'
+      - '@vitest/browser-webdriverio'
+      - '@vitest/coverage-istanbul'
+      - '@vitest/coverage-v8'
+      - '@vitest/ui'
+      - bun-types-no-globals
+      - esbuild
+      - happy-dom
+      - jsdom
+      - msw
+      - rolldown
+      - rollup
+      - supports-color
+      - unloader
+      - vite
+      - webpack
 
   '@oxc-parser/binding-android-arm-eabi@0.127.0':
     optional: true

@@ -26694,12 +26694,14 @@ pnpm_store_view(
         "vitest": "vitest@4.1.9_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@4.1.9_happy-dom@20._f830263be88a0e28\tvitest.mjs",
     },
     workspace_trees = {
+        "workspace_packages_overeng_ci_tools_f38325e49617": "//packages/@overeng/ci-tools:package_tree",
         "workspace_packages_overeng_otel_contract_9f5fb18bc9a6": "//packages/@overeng/otel-contract:package_tree",
         "workspace_packages_overeng_tui_react_075c2d6779ed": "//packages/@overeng/tui-react:package_tree",
         "workspace_packages_overeng_utils_e8a24aadff3a": "//packages/@overeng/utils:package_tree",
         "workspace_packages_overeng_utils_storybook_4017a5070d04": "//packages/@overeng/utils-storybook:package_tree",
     },
     workspace_dependencies = {
+        "@overeng/ci-tools": "workspace_packages_overeng_ci_tools_f38325e49617",
         "@overeng/otel-contract": "workspace_packages_overeng_otel_contract_9f5fb18bc9a6",
         "@overeng/tui-react": "workspace_packages_overeng_tui_react_075c2d6779ed",
         "@overeng/utils": "workspace_packages_overeng_utils_e8a24aadff3a",

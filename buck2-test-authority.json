@@ -58,6 +58,8 @@
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts",
+        "src/pipeline-attempt-close.test.ts",
+        "src/pipeline-trace-identity.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -72,6 +74,8 @@
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts",
+        "src/pipeline-attempt-close.test.ts",
+        "src/pipeline-trace-identity.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -403,6 +407,7 @@
         "test/runSelection.test.ts",
         "test/runnerIdentity.test.ts",
         "test/toolFailure.test.ts",
+        "test/traces.test.ts",
         "test/watchPlan.test.ts"
       ],
       "sourceOwners": {},
@@ -432,6 +437,7 @@
         "test/runSelection.test.ts",
         "test/runnerIdentity.test.ts",
         "test/toolFailure.test.ts",
+        "test/traces.test.ts",
         "test/watchPlan.test.ts"
       ],
       "unboundedAfter": [],

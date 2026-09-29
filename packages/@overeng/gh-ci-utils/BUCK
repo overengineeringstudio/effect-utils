@@ -139,6 +139,7 @@ export_materialization_inputs([
     "test/runSelection.test.ts",
     "test/runnerIdentity.test.ts",
     "test/toolFailure.test.ts",
+    "test/traces.test.ts",
     "test/watchPlan.test.ts",
 ])
 
@@ -295,6 +296,7 @@ package_view(
         "test/runSelection.test.ts": "test/runSelection.test.ts",
         "test/runnerIdentity.test.ts": "test/runnerIdentity.test.ts",
         "test/toolFailure.test.ts": "test/toolFailure.test.ts",
+        "test/traces.test.ts": "test/traces.test.ts",
         "test/watchPlan.test.ts": "test/watchPlan.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
@@ -436,6 +438,7 @@ package_view(
         "test/runSelection.test.ts": "test/runSelection.test.ts",
         "test/runnerIdentity.test.ts": "test/runnerIdentity.test.ts",
         "test/toolFailure.test.ts": "test/toolFailure.test.ts",
+        "test/traces.test.ts": "test/traces.test.ts",
         "test/watchPlan.test.ts": "test/watchPlan.test.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
@@ -488,6 +491,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/ci-tools:package.json",
         "//packages/@overeng/otel-contract:package.json",
         "//packages/@overeng/tui-react:package.json",
         "//packages/@overeng/utils:package.json",
