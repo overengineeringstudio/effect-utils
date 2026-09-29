@@ -34,7 +34,7 @@ diff --git a/lib/index.js b/lib/index.js
  	      this.consumedTokens.push(token);
  	      if (this.tokenIterator.endOfFile()) {
  	        this.isAtEnd = true;
-@@ -9588 +9600,10 @@
+@@ -9576 +9588,10 @@
 +if (process.env.NODE_ENV === 'test') {
 +  Object.defineProperty(styleXTransform, '__parserForTests', {
 +    value: {
