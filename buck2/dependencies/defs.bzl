@@ -849,3 +849,51 @@ def pnpm_store_view(
         workspace_trees = workspace_trees,
         **kwargs
     )
+
+
+def _runtime_closure_impl(ctx):
+    if ctx.attrs.primary not in ctx.attrs.importers:
+        fail("primary must name a declared importer")
+    roots = []
+    views = {}
+    for name in sorted(ctx.attrs.importers.keys()):
+        _require_portable_path(name, "runtime importer")
+        info = ctx.attrs.importers[name][PnpmDeclaredClosureInfo]
+        views[name] = info.node_modules
+        roots.extend(info.read_roots)
+    roots = _unique_artifacts(roots)
+    out = ctx.actions.declare_output("runtime-closure", dir = True)
+    args = cmd_args([
+        ctx.attrs._bun[BunToolchainInfo].executable,
+        ctx.attrs.runtime,
+        "--output",
+        out.as_output(),
+        "--primary",
+        ctx.attrs.primary,
+    ])
+    for name in sorted(views.keys()):
+        args.add("--view", name, views[name])
+    for root in roots:
+        args.add("--root", root)
+    ctx.actions.run(
+        args,
+        category = "pnpm_runtime_closure",
+        identifier = ctx.attrs.name,
+        local_only = True,
+        allow_cache_upload = True,
+    )
+    return [DefaultInfo(default_output = out)]
+
+
+pnpm_runtime_closure = rule(
+    impl = _runtime_closure_impl,
+    attrs = {
+        "importers": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [PnpmDeclaredClosureInfo])),
+        "primary": attrs.string(),
+        "runtime": attrs.source(),
+        "_bun": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:bun",
+            providers = [BunToolchainInfo],
+        )),
+    },
+)

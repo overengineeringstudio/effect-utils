@@ -19,6 +19,8 @@
   repositoryRoot ? ../..,
   repositorySource ? null,
   expectedSha256 ? null,
+  # Optional Buck tree containing the declared pnpm runtime importer closure.
+  runtimeClosureTarget ? null,
 }:
 
 let
@@ -155,6 +157,11 @@ let
         test -f "$descriptor"
         jq -cS . "$descriptor" > descriptor.json
       ''}
+      ${lib.optionalString (runtimeClosureTarget != null) ''
+        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg runtimeClosureTarget})"
+        test -f "$runtime_closure/descriptor.json"
+        cp -R "$runtime_closure" runtime-closure
+      ''}
       actual_sha256="$(sha256sum ${lib.escapeShellArg outputName} | cut -d' ' -f1)"
       ${lib.optionalString (expectedSha256 != null) ''
         test "$actual_sha256" = ${lib.escapeShellArg expectedSha256}
@@ -177,6 +184,9 @@ let
       ${lib.optionalString hasDescriptor ''
         cp descriptor.json "$out/descriptor.json"
       ''}
+      ${lib.optionalString (runtimeClosureTarget != null) ''
+        cp -R runtime-closure "$out/runtime-closure"
+      ''}
       runHook postInstall
     '';
 
@@ -189,6 +199,7 @@ let
         repositorySource
         source
         target
+        runtimeClosureTarget
         ;
       artifactName = outputName;
       inherit productName;
