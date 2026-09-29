@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:81dda2966f53d65c434b523f250657d80a56f50134f13f62d7d9c79c98c3230f
+# Semantic fingerprint: sha256:3de0bb2f35a2cb94da97aa1a00e888fcc37250c057f9160269bb1ba9fe04a3d2
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/evidence/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -60,6 +60,19 @@ native.rust_library(
     env = {
         "CARGO_PKG_NAME": "otel-scrape",
         "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "Process wrapper for command telemetry and profile artifact links",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "otel_scrape",
         "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),
     },
     visibility = [
@@ -94,6 +107,20 @@ native.rust_binary(
     env = {
         "CARGO_PKG_NAME": "otel-scrape",
         "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "Process wrapper for command telemetry and profile artifact links",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "otel_scrape",
+        "CARGO_BIN_NAME": "otel-scrape",
         "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),
     },
     visibility = [

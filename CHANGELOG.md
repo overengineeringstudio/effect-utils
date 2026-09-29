@@ -244,6 +244,14 @@ All notable changes to this project will be documented in this file.
   `missingAuthPolicy=skip`. Regenerate consumer workflows to pick this up.
 
 ### Fixed
+- **Cargo-to-Buck2 Rust projection**: Emit Cargo's compile-time package metadata
+  (`CARGO_PKG_*`), crate name, and binary name for first-party library, binary,
+  and build-script targets. Manifest fields inherited from `[workspace.package]`
+  and unset fields now have the same values as in a Cargo build. An absent
+  `readme` selects the first available `README.md`, `README.txt`, or `README`;
+  `readme = false` disables that default. Consumers using `env!` and
+  `option_env!` compile under Buck2.
+
 - **Buck2 rules product**: Ship and export `runtime-closure.ts` in the rules
   cell so external consumers can analyze `pnpm_runtime_closure` without
   staging the script into their own cell. The inventory test checks local
