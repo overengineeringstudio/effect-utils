@@ -32,8 +32,8 @@ const { transformSync } = createRequire(import.meta.url)('@babel/core') as {
 // This private test-only seam exposes the parser embedded in the published plugin.
 // The tokenizer deliberately returns EOF while endOfFile() still reports false.
 const { TokenList, TokenParser, TokenType } = (
-  stylexPlugin as typeof stylexPlugin & { __parserForTests: ParserForTests }
-).__parserForTests
+  stylexPlugin as typeof stylexPlugin & { parserForTests: ParserForTests }
+).parserForTests
 const eof: Token = [TokenType.EOF]
 const tokenIterator = (tokens: readonly Token[]): TokenIterator => {
   let index = 0

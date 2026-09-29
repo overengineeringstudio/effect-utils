@@ -36,7 +36,7 @@ diff --git a/lib/index.js b/lib/index.js
  	        this.isAtEnd = true;
 @@ -9576 +9588,10 @@
 +if (process.env.NODE_ENV === 'test') {
-+  Object.defineProperty(styleXTransform, '__parserForTests', {
++  Object.defineProperty(styleXTransform, 'parserForTests', {
 +    value: {
 +      TokenList: requireTokenTypes().TokenList,
 +      TokenParser: requireTokenParser().TokenParser,
