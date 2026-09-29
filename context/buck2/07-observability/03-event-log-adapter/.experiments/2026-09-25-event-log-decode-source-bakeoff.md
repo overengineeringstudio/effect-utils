@@ -72,3 +72,7 @@ Settled [BUCK.OBS.ADP-R01..R04](../requirements.md) and
 type-diff bump rule (BUCK.OBS.ADP-R03) exists because of the measured retag.
 What would change it: upstream-native OTLP, a framing change, a diverging
 producer fleet, or a sub-ms live-tailing requirement.
+
+## Intent Impact
+
+The schema drift and complete in-band span data support BUCK.OBS.ADP-R01..R04 and decision 0001's pinned direct decoder with compatibility checks.

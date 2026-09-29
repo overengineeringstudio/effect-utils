@@ -75,7 +75,7 @@ context; do not break its parent/child relationship to implement the full
 view. The run record captures change id and git head/base/merge revisions at
 seal time; the index carries them forward instead of querying a provider
 whose PR-to-run association may be absent. The sibling [run-record
-spec](../../02-run-record/spec.md) owns the sealed field schema.
+spec](../../02-local-spool/spec.md) owns the sealed field schema.
 
 The alternative—changing shipped ids to add repository/run/attempt/job
 again—would require re-ingesting existing traces with no functional
@@ -96,3 +96,14 @@ The upload/worker choice and Tempo repair are recorded separately in
   `ci.pr.fork=true`; the bounded decoder is the poison boundary.
 - Tempo volume under both-views ingest is unmeasured and tracked
   ([OQ1](../../open-questions.md)) with dial-in options.
+
+## Amendment 2 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q58, q60–q62; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+Delivery parity now means one direct OTLP exporter locally and in CI, not one
+ingester over sealed records. Tempo keeps 30 days and Mimir keeps bounded
+trends, but the ~1-year raw-record archive, its index, and retention timer are
+retired: expired or lost local spools cannot be re-ingested. The full-view
+identity from Amendment 1 stands; its trace attributes come from the local
+spool contract ([02 spec](../../02-local-spool/spec.md)). The rejection of
+CI-provider artifact replay stands.

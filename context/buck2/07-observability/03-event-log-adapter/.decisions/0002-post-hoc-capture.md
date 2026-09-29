@@ -63,3 +63,10 @@ trace SLO appears, or a stable machine-readable follow API lands upstream.
 - The revisit prototype sketch (sidecar tailing, completed-children-only
   emission, root held until result) is recorded in the capture-mode
   experiment.
+
+## Amendment 1 — Convert at Job End Locally (q60–q62)
+
+Accepted 2026-09-28. Post-hoc native capture remains the source for the
+adapter, but conversion and view selection happen locally, before job-end
+direct OTLP export. The uploaded run record and server-side conversion
+described above are superseded; failure retains the local retry spool.

@@ -69,3 +69,7 @@ daemon-wait motivation ([03](../../03-event-log-adapter/.decisions/0003-daemon-w
 and the task nesting verified in
 [01](../../01-run-identity/.experiments/2026-09-25-caller-correlation-and-salting.md).
 Findings cross-referenced into the owning subsystems' open questions (q8).
+
+## Intent Impact
+
+The complete cold-CI corpus supports BUCK.OBS.REC-R02's event-log capture and BUCK.OBS-R06's volume constraint while motivating decision 0003's cross-command wait attribution.

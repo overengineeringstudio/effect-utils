@@ -47,3 +47,7 @@ Superseded by [B2b](./2026-09-25-adapter-home-direct-decode-bakeoff.md); no
 surviving requirement. Its durable finding: `otel-scrape` cannot be consumed
 as an exporter library today — the dedicated-crate boundary in
 [decision 0001](../.decisions/0001-direct-decode-rust-crate.md) follows.
+
+## Intent Impact
+
+The JSONL-era TypeScript preference was superseded by decision 0001's direct-decode Rust crate; it imposes no surviving TypeScript-home requirement.

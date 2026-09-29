@@ -72,4 +72,13 @@ medium on backend search behavior (root-caused symptomatically).
 Evidence for [decision 0001](../.decisions/0001-ingest-parity-and-retention.md)
 (q14/q18) and BUCK.OBS.ING-R01/R02/R06 (chunk size, string-typed ids,
 search-independent discovery). The fork findings fed 02's trust-signal
-decision ([0002](../../02-run-record/.decisions/0002-untrusted-run-trust-signal.md)).
+decision ([0002](../../02-local-spool/.decisions/0002-untrusted-run-trust-signal.md)).
+
+## Intent Impact
+
+The measured chunking and by-ID behavior still inform
+[BUCK.OBS.ING-R01/R06](../requirements.md). q62 supersedes artifact
+download, fleet replay and record ingestion: each trusted completed job
+exports a single direct OTLP burst from its local spool
+([R08](../requirements.md)); q63's PR report reads the Jobs API rather
+than the replay index ([access R01/R05](../../06-trace-access/requirements.md)).

@@ -1,14 +1,14 @@
 # Buck2 Observability Requirements
 
 This subsystem owns build telemetry for the Buck2 lane: identity correlating
-pipeline runs and Buck commands, the portable run record, event-log decoding,
-derived trace views and bounded metrics, ingest/archive, and index-backed
-trace access for reviewers and agents. It is a composite node with children
+pipeline and job runs with Buck commands, event-log decoding, derived trace
+views and bounded metrics, OTLP delivery, and PR-facing trace links. It is a
+composite node with children
 [01-run-identity](./01-run-identity/requirements.md),
-[02-run-record](./02-run-record/requirements.md),
+[02-local-spool](./02-local-spool/requirements.md),
 [03-event-log-adapter](./03-event-log-adapter/requirements.md),
 [04-trace-views](./04-trace-views/requirements.md),
-[05-ingest-and-archive](./05-ingest-and-archive/requirements.md), and
+[05-otlp-delivery](./05-otlp-delivery/requirements.md), and
 [06-trace-access](./06-trace-access/requirements.md).
 It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 [buck2 requirements](../requirements.md); the buck2 vision applies unchanged.
@@ -56,14 +56,11 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 
 ### Must keep telemetry subordinate to native evidence
 
-- **BUCK.OBS-R01 Derived, never authoritative (refines BUCK-R13):** Every
-  telemetry artifact this subsystem derives from a run record's native
-  evidence — trace views, daemon-wait spans, bounded metrics — is derived,
-  never authoritative, and can be regenerated from the archived run record.
-  The run record itself is the source of record for those derivations, not
-  something Buck's evidence can regenerate (it also carries the caller's
-  span spool and run metadata). Export, ingest, or decode failure never
-  changes a Buck result and never blocks a build.
+- **BUCK.OBS-R01 Derived, never authoritative (refines BUCK-R13):** Trace
+  views, daemon-wait spans, and bounded metrics are derived from native
+  evidence, never execution truth. Derived views can be regenerated only while
+  the local spool containing their inputs exists. Decode, export, and retry
+  failures never change a Buck result or block a build.
 - **BUCK.OBS-R02 Unknown fields are data loss, not errors:** Fields the pinned
   schema does not know are skipped and counted per log; a decode never fails
   because of unknown content. Only framing damage or schema-type conflicts fall
@@ -76,12 +73,15 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
   environment and configuration; no CI-provider-specific telemetry mechanism
   exists in the delivery path, and coupling to any one CI provider is minimal
   so the setup can be lifted and shifted. The provider appears only as data
-  (resource attributes), never as control flow
+  (resource attributes) in telemetry; the separate GitHub PR report reads
+  the Jobs API but does not affect capture or delivery
   (decision q15, 2026-09-25; audit follow-up tracked in
   [open-questions.md](./open-questions.md)).
-- **BUCK.OBS-R04 Run record is the system of record:** Delivery means sealing
-  and uploading a run record; direct OTLP export is an optional fast path, not
-  the durable path. No CI-provider artifact API is a delivery dependency.
+- **BUCK.OBS-R04 OTLP delivery with local retry:** Delivery exports OTLP to the
+  collector; a local spool retains undelivered telemetry for retry. Same-repo
+  PR jobs and main pushes export, as do local runs with tailnet access; fork
+  jobs spool without exporting. No CI-provider artifact API is a delivery
+  dependency.
 
 ### Must bound volume and cardinality
 
@@ -94,13 +94,10 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
   `vcs.ref.base.revision`, `buck2.vcs.merge.revision`,
   `vcs.repository.url.full`, `vcs.change.id`, `ci.provider`, `ci.pr.fork`,
   and the Buck trace id. None of these ever becomes a metric label.
-- **BUCK.OBS-R06 Retention corridor:** Trace storage holds 30 days; long-term
-  trends come from bounded metrics; raw native evidence is archived for
-  about one year at a bounded budget (**≤150 GiB/yr** at the planning
-  volume, superseding q14's earlier figure per q32, 2026-09-25; measured
-  projection ~125 GiB/yr; re-measured under
-  [OQ1](./open-questions.md)). Widening beyond the corridor requires a
-  measured volume decision.
+- **BUCK.OBS-R06 Retention corridor:** Tempo retains traces for 30 days;
+  long-term trends use bounded metrics. There is no raw evidence archive or
+  guaranteed regeneration after the local spool is removed. Widening
+  retention requires a measured volume decision.
 
 ### Must own identity exactly
 
@@ -111,10 +108,10 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 
 ### Must stay portable
 
-- **BUCK.OBS-R08 Portability hygiene (refines BUCK-R14):** Schemas, manifests,
+- **BUCK.OBS-R08 Portability hygiene (refines BUCK-R14):** Export schemas
   and fixtures carry no hostnames, host paths, usernames, or fleet endpoints.
-  Provider-specific facts appear only as provider-neutral attributes
-  (`cicd.*`, `vcs.*` where the conventions exist).
+  Provider-specific facts in telemetry appear only as provider-neutral
+  attributes (`cicd.*`, `vcs.*` where the conventions exist).
 
 ### Must dissolve superseded paths
 
@@ -125,11 +122,11 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
 
 ## Requirement Trace
 
-| Requirements                                           | Refinement                     |
-| ------------------------------------------------------ | ------------------------------ |
-| BUCK.OBS-R01, BUCK.OBS-R02                             | 03 Event-log Adapter           |
-| BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07               | 01 Run Identity, 02 Run Record |
-| BUCK.OBS-R05, BUCK.OBS-T02                             | 04 Trace Views                 |
-| BUCK.OBS-R03, BUCK.OBS-R06, BUCK.OBS-R08               | 05 Ingest and Archive          |
-| BUCK.OBS-R01, BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08 | 06 Trace Access                |
-| BUCK.OBS-R09                                           | Root + all children            |
+| Requirements                                           | Refinement                      |
+| ------------------------------------------------------ | ------------------------------- |
+| BUCK.OBS-R01, BUCK.OBS-R02                             | 03 Event-log Adapter            |
+| BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R07               | 01 Run Identity, 02 Local Spool |
+| BUCK.OBS-R05, BUCK.OBS-T02                             | 04 Trace Views                  |
+| BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R06, BUCK.OBS-R08 | 05 OTLP Delivery                |
+| BUCK.OBS-R03, BUCK.OBS-R04, BUCK.OBS-R08               | 06 Trace Access                 |
+| BUCK.OBS-R09                                           | Root + all children             |

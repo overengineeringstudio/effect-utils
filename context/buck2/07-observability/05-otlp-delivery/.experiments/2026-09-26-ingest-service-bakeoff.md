@@ -42,3 +42,12 @@ production tailnet upload time and fleet load remain unmeasured.
 The [05 spec](../spec.md) specifies atomic enqueue, one immediately draining
 worker plus recovery sweep, checkpointed export, and complete readback.
 Fleet tuning is owned by the dotfiles observability platform.
+
+## Intent Impact
+
+The measured Tempo loss and duplicate-readback behavior remain evidence
+for best-effort delivery and honest failure reporting
+([BUCK.OBS.ING-T01/R09](../requirements.md)). q62 supersedes the
+SQLite queue, upload service, checkpointed readback and repair design:
+trusted jobs now send a single direct OTLP burst at job end with local retry,
+not a fleet record ingester ([R03/R07/R08](../requirements.md)).

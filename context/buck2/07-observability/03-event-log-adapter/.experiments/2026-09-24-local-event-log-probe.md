@@ -56,3 +56,7 @@ Motivating evidence for the whole lane (q6) and for direct decode
 stage split exists _only_ in raw spans. The upload/materialization latency
 findings are cross-referenced to
 [04-reuse](../../../04-reuse/open-questions.md) (q8).
+
+## Intent Impact
+
+The raw-span stage detail supports decision 0001's direct event-log decoding rather than treating Buck's summary reports as the adapter's source of truth.

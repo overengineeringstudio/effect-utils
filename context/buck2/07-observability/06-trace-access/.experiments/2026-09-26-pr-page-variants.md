@@ -39,3 +39,12 @@ not the everyday 30-day Tempo view.
 
 The [trace access spec](../spec.md) uses the V1 overview with V4's header,
 seven eligible main runs and their spread; a one-run A/B is not the baseline.
+
+## Intent Impact
+
+The seven-sample comparison and misleading single-run deltas inform
+[BUCK.OBS.ACCESS-R03](../requirements.md), but q63 replaces task-level
+Tempo/index page variants with a CI-owned Jobs API report: compare seven
+successful completed main-run jobs by the same job key, not task timings or
+heuristic critical chains ([R01/R02/R03](../requirements.md)). Grafana is
+a deterministic by-ID link rather than the report page ([R05](../requirements.md)).

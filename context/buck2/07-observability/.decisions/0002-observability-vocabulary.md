@@ -66,3 +66,13 @@ The ontology ([ontology.md](../ontology.md)) is normative. In brief:
   migration commitment (open question OQ4), not an immediate rename.
 - Every new doc and attribute in this lane uses the qualified forms; the
   flagged ambiguities in the ontology are load-bearing.
+
+## Amendment 1 — Local spool and linked job traces
+
+Accepted 2026-09-28 (Johannes, q60–q63;
+[decision 0004](./0004-tempo-only-delivery-and-job-report.md)).
+The portable Run Record and its seal/upload/ingest/archive lifecycle are
+retired. The local spool holds native evidence and caller spans for retry; it
+is not an archive. A Job Trace contains one job's exported spans, while a
+small Pipeline Trace links those job traces at attempt close. Trace Access is
+now a Jobs API report with deterministic Grafana links, not a resolver.

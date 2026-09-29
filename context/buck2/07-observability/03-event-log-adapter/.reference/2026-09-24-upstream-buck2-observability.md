@@ -71,3 +71,7 @@ instability warning, the in-band critical path that deletes a second
 subprocess) and the post-hoc capture decision (PR #1370's shape — one
 wide-event span — is not the lane's path). Upstream OTel/BES PRs are watch
 items, not dependencies.
+
+## Intent Impact
+
+The upstream schema instability and lack of a native per-action OTLP sink support adapter decisions 0001 (pinned direct decode) and 0002 (post-hoc capture), not a dependency on upstream PRs.

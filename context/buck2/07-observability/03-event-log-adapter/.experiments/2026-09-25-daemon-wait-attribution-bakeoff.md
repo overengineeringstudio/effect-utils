@@ -83,3 +83,7 @@ Settled [BUCK.OBS.ADP-R07](../requirements.md) and
 reframe demanded this bakeoff). The 62%-wait CI finding is cross-referenced
 to [02-execution](../../../02-execution/open-questions.md); upstream
 acceptance stays open as [OQ2](../../open-questions.md).
+
+## Intent Impact
+
+The exact peer scope but absent same-state wait key supports BUCK.OBS.ADP-R07 and decision 0003's inferred cross-log wait attribution with explicit confidence.

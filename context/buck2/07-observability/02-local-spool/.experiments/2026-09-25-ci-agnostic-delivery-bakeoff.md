@@ -71,3 +71,7 @@ Settled [BUCK.OBS.REC-R01..R05](../requirements.md) and
 the trust-signal design ([decision 0002](../.decisions/0002-untrusted-run-trust-signal.md),
 q13) and the ingest/archive contract (05, q14) build on it. Open lifecycle
 details recorded as [OQ5](../../open-questions.md).
+
+## Intent Impact
+
+The delivery comparison originally supported BUCK.OBS.REC-R01..R05 and decision 0001's portable-record choice; its archive-first conclusion is historical rather than a present delivery requirement.

@@ -40,3 +40,21 @@ separate cross-linked VRS change. One `buck2-evidence` binary may implement
 - The root diagram and ontology include the read-only path after ingest.
 - The protected buck2 root vision and requirements do not change; this
   lane's own requirements may be refined by the accepted decisions.
+
+## Amendment 1 — Jobs API report
+
+Accepted 2026-09-28 (Johannes, q63;
+[decision 0004](./0004-tempo-only-delivery-and-job-report.md)).
+The `06-trace-access` child stays separate, but its current contract is a
+Jobs API-only PR comment and deterministic Grafana trace links. The indexed
+resolver, evidence service, agent JSON, and record-based baselines described
+above are retired. Task-level columns require a separate Tempo buck2 tenant
+and authenticated read proxy; they are roadmap work.
+
+## Amendment 2 — Baseline run enumeration
+
+Clarified 2026-09-29 against the q63 round-5 Jobs API bakeoff. "Jobs API
+only" in Amendment 1 excludes Tempo, job outputs and artifact data, but the
+seven-main-run baseline needs GitHub's workflow-runs metadata endpoint to
+enumerate successful main runs. The Jobs API remains the sole source of job
+timings. No new workflow YAML or fleet read grant is involved.

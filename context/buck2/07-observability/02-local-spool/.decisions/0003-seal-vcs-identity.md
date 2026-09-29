@@ -33,3 +33,13 @@ in the manifest, index, and exported trace. Do not alias the merge commit as
 the PR head. Revisit the vendor key only if OTel semconv gains a matching
 merge-revision attribute. This closes the former DQ1 without claiming a
 nonexistent standard key.
+
+## Amendment 2 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q60–q62; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+No manifest or ingest index exists. The same adapter-supplied change id and
+git-resolved head, base, and `buck2.vcs.merge.revision` values are resolved
+before export and carried as trace attributes; they are omitted when
+unavailable and never recovered from a provider run's PR association. Trace
+identity still derives from pre-delivery pipeline and command identity, not
+from these attributes or any evidence digest.

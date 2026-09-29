@@ -61,3 +61,11 @@ BUCK.OBS.ID-R05).
   measured gap would still be required before any observer process.
 - Bad contexts degrade to _unset_ — a build never fails from telemetry
   input, and a failed post-hoc emit never changes the caller's exit code.
+
+## Amendment 1 — Local Sidecar and Direct Export (q60–q62)
+
+Accepted 2026-09-28. The sidecar stays beside the native event log for the
+local post-hoc adapter; it is no longer part of an uploaded run-record spool.
+The command view joins the caller's job trace, and the completed job trace
+exports directly to dev3 Alloy over the tailnet with a local retry spool.
+The buck2 preparation and fail-open direct invocation boundary are unchanged.
