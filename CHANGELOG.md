@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Breaking changes
+- **Buck2 Rust metadata**: non-vendored Reindeer workspaces must set
+  `cargo_env = true` at the root of `reindeer.toml`. The Rust dependency gate
+  rejects per-crate `cargo_env` overrides, which otherwise replace this global
+  package environment. Remove those overrides from fixups while retaining
+  build-script execution and native-link directives where needed. First-party
+  Cargo projections also provide package metadata to build-script execution
+  and `CARGO_MANIFEST_DIR` to rustc.
 
 - **Effect v4 RC cohort**: bump `effect`, `@effect/platform-node`,
   `@effect/vitest`, `@effect/opentelemetry`, `@effect/atom-react`, and the
