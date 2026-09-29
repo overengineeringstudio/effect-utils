@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest'
 import { storyGateReportEnvVar, storyGateRunCompleteMarker } from './completion-reporter.ts'
 import { settledStoryMarker } from './constants.ts'
 import {
+  assertCaptureCollectionComplete,
   assertCaptureLiveness,
   assertionStoryKey,
   baselineCacheKey,
@@ -183,6 +184,20 @@ describe('isStoryGateOk', () => {
         themeAxis: { ...clean.themeAxis, comparable: 0, differing: 0 },
       }),
     ).toBe(true)
+  })
+})
+
+describe('assertCaptureCollectionComplete', () => {
+  it('rejects a failed story-module import even when other story files captured normally', () => {
+    expect(() =>
+      assertCaptureCollectionComplete([
+        { name: 'Visitor.stories.tsx', collectionErrors: [] },
+        {
+          name: 'PtgInspectionConsole.stories.tsx',
+          collectionErrors: ["SyntaxError: is-dom does not provide an export named 'default'"],
+        },
+      ]),
+    ).toThrow(/Failed to collect story modules:[\s\S]*PtgInspectionConsole\.stories\.tsx:[\s\S]*is-dom does not provide/)
   })
 })
 

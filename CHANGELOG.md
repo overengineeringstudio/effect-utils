@@ -320,6 +320,8 @@ All notable changes to this project will be documented in this file.
   projects now capture in sequence: serial files inside each project alone
   still let light and dark browser projects contend for capture resources and
   exceed Vitest's stable-screenshot bound under load.
+  Failed Storybook module imports now fail the gate immediately rather than
+  silently dropping their stories from both baseline and candidate captures.
 
 - **Buck2 rules product**: Ship and export `runtime-closure.ts` in the rules
   cell so external consumers can analyze `pnpm_runtime_closure` without

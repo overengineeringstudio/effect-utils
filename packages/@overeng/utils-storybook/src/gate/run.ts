@@ -1226,6 +1226,24 @@ interface VitestJsonAssertion {
   readonly file?: string
 }
 
+/**
+ * Collection failures have no assertions, so comparing only executed stories
+ * silently drops an entire CSF module from both sides of a baseline.
+ */
+export const assertCaptureCollectionComplete = (
+  testResults: readonly {
+    readonly name?: string
+    readonly collectionErrors?: readonly string[]
+  }[],
+): void => {
+  const failed = testResults.flatMap((file) =>
+    (file.collectionErrors ?? []).map((error) => `${file.name ?? '<unknown>'}: ${error}`),
+  )
+  if (failed.length !== 0) {
+    throw new Error(`[story-gate] Failed to collect story modules:\n${failed.join('\n')}`)
+  }
+}
+
 const parseAssertions = ({
   reportFile,
   output,
@@ -1239,9 +1257,11 @@ const parseAssertions = ({
   const report = JSON.parse(readFileSync(reportFile, 'utf8')) as {
     readonly testResults?: readonly {
       readonly name?: string
+      readonly collectionErrors?: readonly string[]
       readonly assertionResults?: readonly VitestJsonAssertion[]
     }[]
   }
+  assertCaptureCollectionComplete(report.testResults ?? [])
   return (report.testResults ?? []).flatMap((file) => {
     if (file.name === undefined) return file.assertionResults ?? []
     // Hoisted: one basename per FILE rather than per assertion, and assigning
