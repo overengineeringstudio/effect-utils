@@ -78,6 +78,12 @@ pkgs.runCommand "buck2-rules"
         src = "public-archive-origin.ts",
         visibility = ["PUBLIC"],
     )
+
+    export_file(
+        name = "runtime-closure.ts",
+        src = "runtime-closure.ts",
+        visibility = ["PUBLIC"],
+    )
     BUCK
     mkdir -p "$out/packages/@overeng/buck2-tools"
     cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'

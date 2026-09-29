@@ -13,6 +13,7 @@ const expectedFiles = [
   'buck2/dependencies/defs.bzl',
   'buck2/dependencies/nix-archive.ts',
   'buck2/dependencies/public-archive-origin.ts',
+  'buck2/dependencies/runtime-closure.ts',
   'buck2/editor_view.bzl',
   'buck2/go/defs.bzl',
   'buck2/javascript.bzl',
@@ -77,22 +78,32 @@ describe('Buck rules product inventory', () => {
     ).toEqual([])
   })
 
-  /* Rule defaults resolve inside the consumer's `rules` cell, so every source file they name must ship and be exported there (#1386 regression). */
-  it('ships and exports every source file that shipped rule defaults reference', () => {
-    const referenced = new Set<string>()
+  it('ships every local load and rule tool source referenced by shipped .bzl files', () => {
+    const inventory = new Set<string>(buck2RulesInventory.files)
+    const rulesCell = readFileSync(new URL('nix/buck2-rules/default.nix', repoRoot), 'utf8')
     for (const path of buck2RulesInventory.files.filter((file) => file.endsWith('.bzl'))) {
       const text = readFileSync(new URL(path, repoRoot), 'utf8')
-      for (const match of text.matchAll(/default = "\/\/([^":]+):([^"]+\.(?:ts|js|sh|json))"/g)) {
-        referenced.add(`${match[1]}:${match[2]}`)
+        .replace(/'''[\s\S]*?'''|"""[\s\S]*?"""/g, '')
+      const directory = path.slice(0, path.lastIndexOf('/'))
+      const references = [
+        ...[...text.matchAll(/load\(\s*["'](\/\/[^"']+|:[^"']+)["']/g)].map((match) => match[1]!),
+        ...[...text.matchAll(/default\s*=\s*["'](\/\/[^"']+\.(?:ts|js|sh|json)|:[^"']+\.(?:ts|js|sh|json))["']/g)]
+          .map((match) => match[1]!),
+      ]
+      for (const label of references) {
+        const relativeLabel = label.startsWith('//') ? label.slice(2) : `${directory}${label}`
+        const colon = relativeLabel.lastIndexOf(':')
+        const slash = relativeLabel.lastIndexOf('/')
+        const name = relativeLabel.slice(colon >= 0 ? colon + 1 : slash + 1)
+        const file = colon >= 0
+          ? `${relativeLabel.slice(0, colon)}/${relativeLabel.slice(colon + 1)}`
+          : relativeLabel
+        expect(inventory.has(file), `${path} references ${label} (${file})`).toBe(true)
+        if (!file.endsWith('.bzl')) {
+          expect(rulesCell, `${path} references a tool without a rules-cell target: ${label}`)
+            .toContain(`name = "${name}",`)
+        }
       }
-    }
-    expect(referenced).toContain('buck2/dependencies:acquire-archive.ts')
-    expect(referenced).toContain('packages/@overeng/buck2-tools:src/repository-validation-runner.ts')
-    const rulesCell = readFileSync(new URL('nix/buck2-rules/default.nix', repoRoot), 'utf8')
-    for (const label of referenced) {
-      const [pkg, file] = label.split(':') as [string, string]
-      expect(buck2RulesInventory.files).toContain(`${pkg}/${file}`)
-      expect(rulesCell).toContain(`name = "${file}",`)
     }
   })
 })

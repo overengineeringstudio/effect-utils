@@ -27,6 +27,7 @@ root="$(nix build --impure --no-link --print-out-paths --expr '
 [ -f "$root/.buck2/rules/prelude/prelude.bzl" ]
 [ -f "$root/.buck2/capabilities/defs.bzl" ]
 [ -f "$root/.buck2/rules/packages/@overeng/buck2-tools/src/typescript-runner.ts" ]
+[ -f "$root/.buck2/rules/buck2/dependencies/runtime-closure.ts" ]
 
 config="$(cat "$root/.buckconfig")"
 printf '%s\n' "$config" | grep -F 'fixture = .' >/dev/null
@@ -51,6 +52,7 @@ grep -F 'actual = "//buck2/toolchains:rust"' "$root/BUCK" >/dev/null
 grep -F 'name = "typescript-runner.ts"' "$root/.buck2/rules/packages/@overeng/buck2-tools/BUCK" >/dev/null
 grep -F 'name = "package_tree_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 grep -F 'name = "package_command_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
+grep -F 'name = "runtime-closure.ts"' "$root/.buck2/rules/buck2/dependencies/BUCK" >/dev/null
 
 # Buck writes buck-out under the project root, so queries run in a writable copy.
 work="$(mktemp -d)"
@@ -98,10 +100,45 @@ bun_compiled_product_executable(
 )
 BUCK
 
+mkdir -p "$work/closure"
+cat > "$work/closure/defs.bzl" <<'BZL'
+load("@rules//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
+
+def _view_impl(ctx):
+    node_modules = ctx.actions.symlinked_dir("node_modules", {})
+    manifest = ctx.actions.write("manifest.json", "{}")
+    return [
+        DefaultInfo(default_output = node_modules),
+        PnpmDeclaredClosureInfo(
+            manifest = manifest,
+            node_modules = node_modules,
+            read_roots = [node_modules],
+            toolchain_identity = "fixture",
+        ),
+    ]
+
+view = rule(impl = _view_impl, attrs = {})
+BZL
+cat > "$work/closure/BUCK" <<'BUCK'
+load("@rules//buck2/dependencies:defs.bzl", "pnpm_runtime_closure")
+load(":defs.bzl", "view")
+
+view(name = "view")
+
+pnpm_runtime_closure(
+    name = "runtime",
+    importers = {"service": ":view"},
+    primary = "service",
+    runtime = "@rules//buck2/dependencies:runtime-closure.ts",
+)
+BUCK
+
 (
   cd "$work"
   buck2 --isolation-dir consumer-root-contract uquery \
     'set(rules//:package_tree_runtime rules//:package_command_runtime rules//packages/@overeng/buck2-tools:typescript-runner.ts)' >/dev/null
+  buck2 --isolation-dir consumer-root-contract uquery 'rules//buck2/dependencies:runtime-closure.ts' >/dev/null
+  buck2 --isolation-dir consumer-root-contract cquery 'fixture//closure:runtime' >/dev/null
   exec_deps="$(buck2 --isolation-dir consumer-root-contract cquery 'deps(fixture//compiled:compiled, 1, exec_deps())')"
   printf '%s\n' "$exec_deps" | grep -F 'rules//buck2/toolchains:bun_compile_runtime' >/dev/null
   providers="$(buck2 --isolation-dir consumer-root-contract audit providers fixture//compiled:compiled)"
