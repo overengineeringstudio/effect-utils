@@ -316,7 +316,10 @@ All notable changes to this project will be documented in this file.
   with the same pixel threshold as the browser assertion, rather than counting
   PNG encodings or tolerated antialiasing as different frames. Before settling
   a full-page capture, request offscreen lazy images so image readiness can
-  observe their completion instead of timing out with unloaded content.
+  observe their completion instead of timing out with unloaded content. Theme
+  projects now capture in sequence: serial files inside each project alone
+  still let light and dark browser projects contend for capture resources and
+  exceed Vitest's stable-screenshot bound under load.
 
 - **Buck2 rules product**: Ship and export `runtime-closure.ts` in the rules
   cell so external consumers can analyze `pnpm_runtime_closure` without

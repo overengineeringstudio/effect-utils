@@ -286,6 +286,7 @@ const storybookNodeEnv = {
 const createProject = ({
   configDir,
   theme,
+  sequenceGroupOrder,
   headless,
   baselineRoot,
   playsOnly,
@@ -294,6 +295,7 @@ const createProject = ({
 }: {
   configDir: string
   theme: StoryGateTheme | undefined
+  sequenceGroupOrder: number
   headless: boolean
   baselineRoot: string
   playsOnly: boolean
@@ -340,6 +342,12 @@ const createProject = ({
       // Vitest deprecated the `browser.fileParallelism` mirror; the top-level
       // option is the one that governs browser-mode runs.
       fileParallelism: false,
+      // `fileParallelism: false` serializes files only within each themed
+      // project. Vitest still runs light and dark browser projects together,
+      // contending for browser resources during full-page captures. PTG mobile
+      // overviews exceeded the stable-frame bound in the two-theme run, while
+      // the identical dark stories passed in isolation.
+      sequence: { groupOrder: sequenceGroupOrder },
       browser: {
         enabled: true,
         headless,
@@ -458,10 +466,11 @@ export const createStoryGateConfig = ({
   const playsOnly = readPlaysOnly()
   const baselineRoot =
     playsOnly === true ? join(tmpdir(), 'overeng-story-plays') : readBaselineRoot()
-  const projects = (themes ?? [undefined]).map((theme) =>
+  const projects = (themes ?? [undefined]).map((theme, sequenceGroupOrder) =>
     createProject({
       configDir,
       theme,
+      sequenceGroupOrder,
       headless,
       baselineRoot,
       playsOnly,
