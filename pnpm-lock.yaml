@@ -210,6 +210,36 @@ importers:
         specifier: 4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
+  packages/@overeng/effect-ai-gateway:
+    devDependencies:
+      '@effect/ai-openai-compat':
+        specifier: 4.0.0-rc.118
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)
+      '@effect/ai-typesafe':
+        specifier: 4.0.0-rc.118
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)
+      '@effect/vitest':
+        specifier: 4.0.0-rc.118
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+      '@overeng/utils-dev':
+        specifier: workspace:^
+        version: link:../utils-dev
+      '@types/node':
+        specifier: 26.5.0
+        version: 26.5.0
+      effect:
+        specifier: 4.0.0-rc.118
+        version: 4.0.0-rc.118
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 8.2.2
+        version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
+      vitest:
+        specifier: 4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+
   packages/@overeng/effect-distributed-lock:
     devDependencies:
       '@effect/vitest':
@@ -2198,6 +2228,16 @@ packages:
 
   '@dual-bundle/import-meta-resolve@4.2.1':
     resolution: {integrity: sha512-id+7YRUgoUX6CgV0DtuhirQWodeeA7Lf4i2x71JS/vtA5pRb/hIGWlw+G6MeXvsM+MXrz0VAydTGElX1rAfgPg==}
+
+  '@effect/ai-openai-compat@4.0.0-rc.118':
+    resolution: {integrity: sha512-VqjUIq1HDcluCx6Xoqg+nDY4UC2FQUnfihNitg0y3rj/gHOps70k1PCgyPzBXNNi6GWzfakjNp69d2PfTryyOA==}
+    peerDependencies:
+      effect: ^4.0.0-rc.118
+
+  '@effect/ai-typesafe@4.0.0-rc.118':
+    resolution: {integrity: sha512-I8woyusKXG8u8p2VHXGL9Xbcw0ZPWAmqxa/rAgdZcaOErqWl9q1I+ubqiqSQS4AbMCJP2aIF2j4b+YIJBfj7Zw==}
+    peerDependencies:
+      effect: ^4.0.0-rc.118
 
   '@effect/atom-react@4.0.0-rc.118':
     resolution: {integrity: sha512-H6XBWGOlKIe53yFHdzd9zJE+H1RDoMvqF5OyWBZetbaHJUYlSbZECvDzBw1545fSoHrgH2JmlWePFPsXOgGSqA==}
@@ -5791,6 +5831,14 @@ snapshots:
   '@csstools/css-tokenizer@3.0.4': {}
 
   '@dual-bundle/import-meta-resolve@4.2.1': {}
+
+  '@effect/ai-openai-compat@4.0.0-rc.118(effect@4.0.0-rc.118)':
+    dependencies:
+      effect: 4.0.0-rc.118
+
+  '@effect/ai-typesafe@4.0.0-rc.118(effect@4.0.0-rc.118)':
+    dependencies:
+      effect: 4.0.0-rc.118
 
   '@effect/atom-react@4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)':
     dependencies:

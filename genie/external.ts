@@ -261,6 +261,8 @@ export const otelSdkDeps = [
 /** Effect 4 packages pinned together as one cohort (must flip in lockstep). */
 export const effectV4Cohort = [
   'effect',
+  '@effect/ai-openai-compat',
+  '@effect/ai-typesafe',
   '@effect/platform-node',
   '@effect/vitest',
   '@effect/opentelemetry',
@@ -291,6 +293,8 @@ export const catalog = defineCatalog({
   // the `effect` core package (mostly under `effect/*`); only these
   // packages remain separate.
   effect: '4.0.0-rc.118',
+  '@effect/ai-openai-compat': '4.0.0-rc.118',
+  '@effect/ai-typesafe': '4.0.0-rc.118',
   '@effect/platform-node': '4.0.0-rc.118',
   '@effect/vitest': '4.0.0-rc.118',
   '@effect/opentelemetry': '4.0.0-rc.118',

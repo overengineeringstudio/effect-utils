@@ -115,6 +115,20 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-ai-gateway:test_collect",
+      "excludes": [],
+      "packageName": "effect-ai-gateway",
+      "packagePath": "packages/@overeng/effect-ai-gateway",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/ai-gateway.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-ai-gateway:test",
+      "taskName": "test:effect-ai-gateway",
+      "testFiles": ["src/ai-gateway.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/effect-distributed-lock:test_collect",
       "excludes": [],
       "packageName": "effect-distributed-lock",

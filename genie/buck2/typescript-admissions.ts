@@ -6,6 +6,7 @@ import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiClaudeCliAdmission } from '../../packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectAiGatewayAdmission } from '../../packages/@overeng/effect-ai-gateway/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectPathAdmission } from '../../packages/@overeng/effect-path/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectReactAdmission } from '../../packages/@overeng/effect-react/BUCK.genie.ts'
@@ -81,6 +82,7 @@ export const buck2TypeScriptAdmissions = {
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,
   effectAiClaudeCli: effectAiClaudeCliAdmission,
+  effectAiGateway: effectAiGatewayAdmission,
   effectDistributedLock: effectDistributedLockAdmission,
   effectPath: effectPathAdmission,
   effectReact: effectReactAdmission,
