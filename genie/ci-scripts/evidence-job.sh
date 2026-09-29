@@ -4,11 +4,22 @@
 
 # GitHub provider adapter: canonical identity, job-end export, attempt close.
 set -euo pipefail
+timestamp_ns() {
+  local value seconds
+  value=$(python3 -c 'import time; print(time.time_ns())' 2>/dev/null) || value=
+  if [[ $value =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$value"
+    return
+  fi
+  seconds=$(date +%s 2>/dev/null) || seconds=
+  [[ $seconds =~ ^[0-9]+$ ]] || seconds=0
+  printf '%s000000000\n' "$seconds"
+}
 case "${1:?mode required}" in
   identity)
     cd "${GITHUB_WORKSPACE:?}"
     repo_component=${GITHUB_REPOSITORY//\//%2F}
-    printf 'PIPELINE_JOB_START_NS=%s\n' "$(date +%s%N)" >> "$GITHUB_ENV"
+    printf 'PIPELINE_JOB_START_NS=%s\n' "$(timestamp_ns)" >> "$GITHUB_ENV"
     printf 'PIPELINE_RUN_ID=ci/github/%s/%s/%s\n' "$repo_component" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
     printf 'PIPELINE_JOB_KEY=%s\nPIPELINE_TASK_KEY=%s\nPIPELINE_MATRIX_RUNNER=%s\n' "${JOB_KEY:?}" "$JOB_KEY" "${MATRIX_VALUE:-}" >> "$GITHUB_ENV"
     printf 'PIPELINE_EXPORT_OWNER=adapter\nCI_PROVIDER=github\nPIPELINE_REPOSITORY=%s\nPIPELINE_EVENT=%s\n' "$GITHUB_REPOSITORY" "$GITHUB_EVENT_NAME" >> "$GITHUB_ENV"
@@ -22,6 +33,7 @@ case "${1:?mode required}" in
     export PIPELINE_JOB_STATUS="${2:?job status required}"
     cd "${GITHUB_WORKSPACE:-$PWD}"
     if [ -z "${PIPELINE_RUN_ID:-}" ] || [ -z "${PIPELINE_JOB_KEY:-}" ] || [ -z "${DEVENV_BIN:-}" ]; then echo 'Pipeline: no task identity; skipping export'; exit 0; fi
+    export PIPELINE_JOB_END_NS="$(timestamp_ns)"
     "$DEVENV_BIN" shell -- bash -c '
       set -euo pipefail
       args=()
@@ -39,7 +51,7 @@ case "${1:?mode required}" in
       if [ "${PIPELINE_FORK:-}" = true ] || [ "${PIPELINE_FORK:-}" = false ]; then attrs+=(--attr-bool "ci.pr.fork=$PIPELINE_FORK"); fi
       otel-span emit-span effect-utils-devenv cicd.pipeline.job \
         --trace-id "${trace_assignment#trace=}" --span-id "${root_assignment#root=}" \
-        --start-time-ns "${PIPELINE_JOB_START_NS:?}" --end-time-ns "$(date +%s%N)" \
+        --start-time-ns "${PIPELINE_JOB_START_NS:?}" --end-time-ns "${PIPELINE_JOB_END_NS:?}" \
         --status-code "$status" --attr-string "cicd.pipeline.run.id=$PIPELINE_RUN_ID" \
         --attr-string "cicd.pipeline.job.key=$PIPELINE_JOB_KEY" \
         --attr-string "ci.job.status=${PIPELINE_JOB_STATUS:?}" "${attrs[@]}"

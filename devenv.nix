@@ -1353,7 +1353,7 @@ in
         ]
       }:$PATH \
         bash ${./nix/devenv-modules/tasks/shared/tests/pipeline-run.test.sh} \
-          ${otelSpan}/bin/otel-span ${pkgs.python3}/bin/python3
+          ${otelSpan}/bin/otel-span "$PWD"
     '';
   };
 

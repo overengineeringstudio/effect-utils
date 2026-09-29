@@ -52,7 +52,7 @@ printf 'canonical job identity and offline OTLP spool passed: %s\n' "$spool"
 
 # GitHub's adapter owns the root across two independent task steps; the last
 # successful task must not mask the earlier failure in the job-level status.
-repo=$(realpath "$(dirname "$0")/../../../../..")
+repo=${2:-$(realpath "$(dirname "$0")/../../../../..")}
 mkdir -p "$tmp/bin"
 ln -s "$(realpath "$span")" "$tmp/bin/otel-span"
 cat > "$tmp/bin/devenv" <<'SH'
@@ -72,6 +72,21 @@ env GITHUB_WORKSPACE="$tmp" GITHUB_ENV="$tmp/job.env" \
   GITHUB_REPOSITORY=overengineeringstudio/effect-utils GITHUB_RUN_ID=421 \
   GITHUB_RUN_ATTEMPT=2 GITHUB_EVENT_NAME=pull_request JOB_KEY=typecheck \
   bash "$repo/genie/ci-scripts/evidence-job.sh" identity
+read -r start_line < "$tmp/job.env"
+[[ ${start_line#*=} =~ ^[0-9]+$ ]]
+cat > "$tmp/bin/python3" <<'SH'
+#!/usr/bin/env bash
+echo 'not-a-timestamp'
+SH
+chmod +x "$tmp/bin/python3"
+env PATH="$tmp/bin:$PATH" GITHUB_WORKSPACE="$tmp" GITHUB_ENV="$tmp/fallback.env" \
+  GITHUB_REPOSITORY=overengineeringstudio/effect-utils GITHUB_RUN_ID=421 \
+  GITHUB_RUN_ATTEMPT=2 GITHUB_EVENT_NAME=pull_request JOB_KEY=typecheck \
+  bash "$repo/genie/ci-scripts/evidence-job.sh" identity
+read -r fallback_line < "$tmp/fallback.env"
+fallback_ns=${fallback_line#*=}
+[[ $fallback_ns =~ ^[0-9]+000000000$ ]] || { echo "Invalid fallback timestamp: $fallback_ns" >&2; exit 1; }
+rm "$tmp/bin/python3"
 set -a
 source "$tmp/job.env"
 set +a
