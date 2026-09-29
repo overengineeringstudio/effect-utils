@@ -1,185 +1,166 @@
-import { spawn } from 'node:child_process'
-import fs from 'node:fs/promises'
-import path from 'node:path'
-
 import { Effect, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 
+import { deriveJobTraceId, pipelineJobIdentityForName } from '@overeng/ci-tools'
+
+import type { WorkflowJob, WorkflowRun } from '../../isomorphic/GitHubSchemas.ts'
+import { isStaleRunSelection, isWrongWorkflowSelection } from '../../isomorphic/lib/summary.ts'
 import { resolveConfig } from '../Config.ts'
+import { GitHubClient } from '../GitHubClient.ts'
+import { resolveTarget } from '../RunId.ts'
 
-type Trace = { kind: string; id: string; url: string }
-type Job = {
-  key: string
-  status: string
-  durationMs?: number
-  traces: Trace[]
-  topTasks: { name: string; durationMs: number }[]
-}
-type Run = {
-  runId: string
-  attempt: number
-  status: string
-  trace?: { id: string; url: string }
-  jobs: Job[]
-}
-type Comparison = {
-  baselineCount: number
-  tasks: {
-    jobKey: string
-    name: string
-    sampleCount: number
-    medianMs: number
-    spreadMs: [number, number]
-    prMs: number
-    deltaMs: number
-    classification: string
-  }[]
-}
-type Document = {
-  schema: string
-  repository: string
-  changeId: string
-  status: string
-  verdict?: { text: string; criticalChainKind: string; criticalChain: string[] }
-  runs: Run[]
-  comparison?: Comparison
-}
-
-/** Failure of the `traces` command: invalid input, resolver access, or snapshot publication. */
+/** Failure of the `traces` command: invalid input or unavailable GitHub/Grafana configuration. */
 export class TraceCommandError extends Schema.TaggedError<TraceCommandError>()(
   'TraceCommandError',
-  {
-    message: Schema.String,
-  },
+  { message: Schema.String },
 ) {}
 
 const pr = Cli.Argument.Int('pr').pipe(Cli.Argument.withDescription('Pull request number'))
-const repo = Cli.Flag.String('repo').pipe(Cli.Flag.optional)
-const resolver = Cli.Flag.String('resolver').pipe(Cli.Flag.optional)
-const freeze = Cli.Flag.Boolean('freeze').pipe(Cli.Flag.withDefault(false))
+const repoFlag = Cli.Flag.String('repo').pipe(Cli.Flag.optional)
 
-const isDocument = (value: unknown): value is Document => {
-  if (typeof value !== 'object' || value === null) return false
-  const doc = value as Record<string, unknown>
-  return (
-    doc.schema === 'buck2-trace-access/v1' &&
-    Array.isArray(doc.runs) &&
-    typeof doc.repository === 'string' &&
-    typeof doc.changeId === 'string'
+const encodeComponent = (value: string) =>
+  encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   )
-}
 
-const print = (doc: Document) => {
-  console.log(`${doc.repository}#${doc.changeId}  ${doc.status}`)
-  if (doc.verdict) {
-    console.log(`Verdict: ${doc.verdict.text}`)
-    console.log(
-      `Slowest-job chain (${doc.verdict.criticalChainKind}): ${doc.verdict.criticalChain.join(' → ')}`,
-    )
-  }
-  for (const run of doc.runs) {
-    console.log(`Run ${run.runId} (attempt ${run.attempt})  ${run.status}`)
-    if (run.trace) console.log(`  Run trace: ${run.trace.id} ${run.trace.url}`)
-    for (const job of run.jobs) {
-      console.log(
-        `  ${job.key}: ${job.status}${job.durationMs === undefined ? '' : ` (${job.durationMs} ms)`}`,
-      )
-      for (const trace of job.traces) {
-        console.log(`    ${trace.kind}: ${trace.id} ${trace.url}`)
-        console.log(`      gcx traces get -d tempo ${trace.id} --llm -o json`)
-        console.log(`      ${trace.url}/perfetto`)
-      }
-      for (const task of job.topTasks) console.log(`    ${task.name}: ${task.durationMs} ms`)
-    }
-  }
-  for (const task of doc.comparison?.tasks ?? []) {
-    console.log(
-      `Δ ${task.jobKey}/${task.name}: ${task.deltaMs >= 0 ? '+' : ''}${task.deltaMs} ms vs ${task.medianMs} ms median (main ${task.spreadMs[0]}–${task.spreadMs[1]} ms, n=${task.sampleCount}; ${task.classification})`,
-    )
-  }
-}
-
-const publishFreeze = async ({ doc, prNumber }: { doc: Document; prNumber: number }) => {
-  const slug = `buck2-pr-${doc.repository.replaceAll(/[^A-Za-z0-9-]/g, '-')}-${prNumber}-${Date.now()}`
-  const dir = path.join('resources', 'vista', slug)
-  await fs.mkdir(dir, { recursive: true })
-  const facts = JSON.stringify(doc, null, 2)
-  const source = `import { AppRoot, Evidence } from '@vista/blocks'\n\nconst facts = ${JSON.stringify(facts)}\n\nexport default function Snapshot() {\n  return <AppRoot title=${JSON.stringify(`${doc.repository}#${prNumber} build traces`)} template="architecture-review" scope="review"><Evidence id="resolver-snapshot"><pre>{facts}</pre></Evidence></AppRoot>\n}\n`
-  await fs.writeFile(path.join(dir, 'app.tsx'), source, { flag: 'wx' })
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      'vista',
-      ['publish', slug, '--message', `Freeze PR ${doc.repository}#${prNumber} trace evidence`],
-      {
-        stdio: 'inherit',
+/** Grafana Explore uses a fixed Tempo datasource and an explicit window around each job. */
+export const jobTraceUrl = ({
+  grafanaBaseUrl,
+  traceId,
+  startedAt,
+  completedAt,
+}: {
+  grafanaBaseUrl: string
+  traceId: string
+  startedAt: Date
+  completedAt: Date
+}): string | undefined => {
+  if (!/^[0-9a-f]{32}$/.test(traceId)) return undefined
+  const panes = {
+    a: {
+      datasource: { type: 'tempo', uid: 'tempo' },
+      queries: [
+        {
+          refId: 'A',
+          datasource: { type: 'tempo', uid: 'tempo' },
+          queryType: 'traceql',
+          query: traceId,
+        },
+      ],
+      range: {
+        from: String(startedAt.getTime() - 15 * 60_000),
+        to: String(completedAt.getTime() + 60 * 60_000),
       },
-    )
-    child.once('error', reject)
-    child.once('exit', (code) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`Vista publish failed (${code}); source retained at ${dir}`)),
-    )
-  })
+    },
+  }
+  return `${grafanaBaseUrl}/explore?schemaVersion=1&orgId=1&panes=${encodeURIComponent(JSON.stringify(panes))}`
 }
 
-/** `gh-ci-utils traces <pr>`: resolve a PR's Buck build traces and optionally freeze them in Vista. */
-export const tracesCommand = Cli.Command.make('traces', { pr, repo, resolver, freeze }).pipe(
-  Cli.Command.withHandler(
-    ({ pr: number, repo: repoOpt, resolver: resolverOpt, freeze: shouldFreeze }) =>
-      Effect.gen(function* () {
-        if (!Number.isSafeInteger(number) || number <= 0) {
-          return yield* new TraceCommandError({ message: 'PR number must be positive' })
-        }
-        const config = yield* resolveConfig({})
-        const selectedRepo = Option.isSome(repoOpt) ? repoOpt.value : config.repos[0]
-        if (!selectedRepo || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(selectedRepo)) {
-          return yield* new TraceCommandError({
-            message: 'Could not determine owner/repo; pass --repo owner/name',
-          })
-        }
-        const base = Option.isSome(resolverOpt)
-          ? resolverOpt.value
-          : (process.env.BUCK2_EVIDENCE_RESOLVER_URL ?? config.resolverUrl)
-        if (!base) {
-          return yield* new TraceCommandError({
-            message:
-              'Set BUCK2_EVIDENCE_RESOLVER_URL or config.resolverUrl to a tailnet resolver URL',
-          })
-        }
-        const url = `${base.replace(/\/$/, '')}/pr/${selectedRepo}/${number}.json`
-        const doc = yield* Effect.tryPromise({
-          try: async () => {
-            const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
-            if (!response.ok) {
-              throw new TraceCommandError({ message: `Resolver returned HTTP ${response.status}` })
-            }
-            const body: unknown = await response.json()
-            if (!isDocument(body)) {
-              throw new TraceCommandError({
-                message: 'Unknown resolver JSON schema; expected buck2-trace-access/v1',
-              })
-            }
-            return body
-          },
-          catch: (cause) =>
-            new TraceCommandError({
-              message: `Trace resolver unavailable (${url}); tailnet access is required: ${String(cause)}`,
-            }),
+/** Jobs API rows for exactly one attempt, with no guessed identities for unknown or duplicate names. */
+export const renderJobTraces = ({
+  repo,
+  prNumber,
+  run,
+  jobs,
+  grafanaBaseUrl,
+  reportedAt,
+}: {
+  repo: string
+  prNumber: number
+  run: Pick<WorkflowRun, 'id' | 'run_attempt'>
+  jobs: readonly WorkflowJob[]
+  grafanaBaseUrl: string
+  reportedAt: Date
+}): string => {
+  const attemptJobs = jobs.filter(
+    (job) => job.run_attempt === run.run_attempt && job.name !== 'pipeline-attempt-close',
+  )
+  const nameCounts = new Map<string, number>()
+  for (const job of attemptJobs) nameCounts.set(job.name, (nameCounts.get(job.name) ?? 0) + 1)
+  const runIdentity = `ci/github/${encodeComponent(repo)}/${run.id}/${run.run_attempt}`
+  const lines = [`${repo}#${prNumber}  Run ${run.id} (attempt ${run.run_attempt})`]
+  // oxlint-disable-next-line unicorn/no-array-sort -- filter returned a fresh array; toSorted copies it again.
+  for (const job of attemptJobs.sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : left.id - right.id,
+  )) {
+    const status = `${job.status}${job.conclusion === null ? '' : ` (${job.conclusion})`}`
+    const identity =
+      nameCounts.get(job.name) === 1 ? pipelineJobIdentityForName(job.name) : undefined
+    if (!identity || !job.started_at || job.conclusion === 'skipped') {
+      lines.push(
+        `  ${job.name}: ${status} — trace unavailable (${!identity ? 'unmatched job name' : 'not started'})`,
+      )
+      continue
+    }
+    const traceId = deriveJobTraceId({
+      runId: runIdentity,
+      job: identity.job,
+      dimensions: identity.dimensions,
+    })
+    const url = jobTraceUrl({
+      grafanaBaseUrl,
+      traceId,
+      startedAt: job.started_at,
+      completedAt: job.completed_at ?? reportedAt,
+    })
+    if (!url) {
+      lines.push(`  ${job.name}: ${status} — trace unavailable (invalid identity)`)
+      continue
+    }
+    lines.push(`  ${job.name}: ${status}`)
+    lines.push(`    ${traceId} ${url}`)
+  }
+  if (attemptJobs.length === 0) lines.push('  No jobs for this attempt')
+  lines.push(
+    'Trace links are locators; export, indexing, access, and retention are not guaranteed.',
+  )
+  return lines.join('\n')
+}
+
+/** `gh-ci-utils traces <pr>`: show deterministic links from GitHub run/job facts. */
+export const tracesCommand = Cli.Command.make('traces', { pr, repo: repoFlag }).pipe(
+  Cli.Command.withHandler(({ pr: number, repo: repoOpt }) =>
+    Effect.gen(function* () {
+      if (!Number.isSafeInteger(number) || number <= 0) {
+        return yield* new TraceCommandError({ message: 'PR number must be positive' })
+      }
+      const config = yield* resolveConfig({})
+      const selectedRepo = Option.isSome(repoOpt) ? repoOpt.value : config.repos[0]
+      if (!selectedRepo || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(selectedRepo)) {
+        return yield* new TraceCommandError({
+          message: 'Could not determine owner/repo; pass --repo owner/name',
         })
-        print(doc)
-        if (shouldFreeze) {
-          yield* Effect.tryPromise({
-            try: () => publishFreeze({ doc, prNumber: number }),
-            catch: (cause) =>
-              new TraceCommandError({
-                message: `Could not publish trace snapshot: ${String(cause)}`,
-              }),
-          })
-        }
-      }),
+      }
+      const base = process.env.GRAFANA_BASE_URL ?? config.grafanaBaseUrl
+      if (!base || !/^https?:\/\/[^/?#]+(?:\/[^?#]*)?$/.test(base) || base.endsWith('/')) {
+        return yield* new TraceCommandError({
+          message:
+            'Set GRAFANA_BASE_URL or config.grafanaBaseUrl to an HTTP(S) Grafana URL without a trailing slash',
+        })
+      }
+      const resolved = yield* resolveTarget(`#${number}`, Option.some(selectedRepo), 'ci.yml')
+      if (isWrongWorkflowSelection(resolved.selection) || isStaleRunSelection(resolved.selection)) {
+        return yield* new TraceCommandError({
+          message: `No ci.yml run for the current head of ${selectedRepo}#${number}`,
+        })
+      }
+      const github = yield* GitHubClient
+      const run = yield* github.getWorkflowRun({ repo: selectedRepo, runId: resolved.runId })
+      const response = yield* github.listWorkflowJobs({ repo: selectedRepo, runId: run.id })
+      console.log(
+        renderJobTraces({
+          repo: selectedRepo,
+          prNumber: number,
+          run,
+          jobs: response.jobs,
+          grafanaBaseUrl: base,
+          reportedAt: new Date(),
+        }),
+      )
+    }),
   ),
   Cli.Command.withDescription(
-    'Show PR run/job trace IDs from the tailnet resolver; --freeze publishes a Vista snapshot',
+    'Show GitHub PR job trace IDs and Grafana Explore links (no Tempo access)',
   ),
 )

@@ -1,3 +1,12 @@
+[package]
+name = "foreign-root"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+unicode-width = "0.2.0"
+renamed_itoa = { package = "itoa", version = "1.0.15" }
+
 [workspace]
 resolver = "2"
 members = ["app"]

@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:3de0bb2f35a2cb94da97aa1a00e888fcc37250c057f9160269bb1ba9fe04a3d2
-# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/evidence/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Semantic fingerprint: sha256:22245aee01ff9847c363d75f06af07c9ee11ff6d184df6dacb3f97b740b98d69
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")

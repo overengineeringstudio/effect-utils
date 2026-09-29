@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 itoa = "1.0.15"
+unicode-width = "0.2.0"
+toml_datetime = "=1.1.1+spec-1.1.0"

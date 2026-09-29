@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:91f5f68b0aaa6cedf0f4147d4209e607dcc02df0aac008c36a51a68058026b26
+# Store fingerprint: sha256:1e5e6705476db0480262cb179023e2f5a4f5d876d4503193b41cf8f439132305
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -25647,6 +25647,7 @@ pnpm_store_view(
         "@types/react": "@types+react@19.2.18",
         "@types/react-reconciler": "@types+react-reconciler@0.33.0_@types+react@19.2.18",
         "@vitejs/plugin-react": "@vitejs+plugin-react@6.1.1_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0",
+        "@vitest/browser-playwright": "@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "effect": "effect@4.0.0-rc.118",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",
@@ -26694,12 +26695,14 @@ pnpm_store_view(
         "vitest": "vitest@4.1.9_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@4.1.9_happy-dom@20._f830263be88a0e28\tvitest.mjs",
     },
     workspace_trees = {
+        "workspace_packages_overeng_ci_tools_f38325e49617": "//packages/@overeng/ci-tools:package_tree",
         "workspace_packages_overeng_otel_contract_9f5fb18bc9a6": "//packages/@overeng/otel-contract:package_tree",
         "workspace_packages_overeng_tui_react_075c2d6779ed": "//packages/@overeng/tui-react:package_tree",
         "workspace_packages_overeng_utils_e8a24aadff3a": "//packages/@overeng/utils:package_tree",
         "workspace_packages_overeng_utils_storybook_4017a5070d04": "//packages/@overeng/utils-storybook:package_tree",
     },
     workspace_dependencies = {
+        "@overeng/ci-tools": "workspace_packages_overeng_ci_tools_f38325e49617",
         "@overeng/otel-contract": "workspace_packages_overeng_otel_contract_9f5fb18bc9a6",
         "@overeng/tui-react": "workspace_packages_overeng_tui_react_075c2d6779ed",
         "@overeng/utils": "workspace_packages_overeng_utils_e8a24aadff3a",

@@ -140,7 +140,11 @@ const generatedCiJobKeys = [
   ...workflowJobKeys(generatedStorybookPlaysWorkflowYamlSource),
 ]
 
-const advisoryCheckContexts = new Set(['ci/measurements-report', 'notify-alignment'])
+const advisoryCheckContexts: Record<string, true> = {
+  'ci/measurements-report': true,
+  'notify-alignment': true,
+  'pipeline-attempt-close': true,
+}
 // Dispatch-only lanes (see OPT_IN_CI_JOB_NAMES in genie/ci.ts) are non-advisory but do
 // not run on every pull request, so branch protection cannot require them: an absent lane
 // produces no check run and a required-but-absent context would wait forever.
@@ -169,7 +173,7 @@ const generatedNonAdvisoryCheckContexts = generatedCiJobKeys
     }
     return [jobKey]
   })
-  .filter((context) => advisoryCheckContexts.has(context) === false)
+  .filter((context) => advisoryCheckContexts[context] !== true)
 
 const generatedRequiredCheckContexts =
   generatedRepoSettings.rules
@@ -331,15 +335,17 @@ describe('CI evidence upload isolation', () => {
     expect(lintJob).toContain('tasks run ')
     expect(lintJob.indexOf(join)).toBeGreaterThan(lintJob.lastIndexOf('tasks run '))
     const closeJob = generatedCiWorkflowYamlSource.slice(
-      generatedCiWorkflowYamlSource.indexOf('  evidence-attempt-close:\n'),
+      generatedCiWorkflowYamlSource.indexOf('  pipeline-attempt-close:\n'),
     )
-    expect(closeJob.slice(0, closeJob.indexOf('name: Close pipeline attempt'))).toContain(joinGate)
-    expect(closeJob.indexOf('name: Prepare evidence uploader')).toBeLessThan(closeJob.indexOf(join))
+    const closeStep = 'name: Link started job roots'
+    const closeJoinGate =
+      "      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}\n        uses: tailscale/github-action@v4"
+    expect(closeJob.slice(0, closeJob.indexOf(closeStep))).toContain(closeJoinGate)
+    expect(closeJob.indexOf(join)).toBeLessThan(closeJob.indexOf(closeStep))
     expect(closeJob.slice(closeJob.indexOf(join))).not.toContain('nix build')
-    expect(closeJob.indexOf(join)).toBeLessThan(closeJob.indexOf('name: Close pipeline attempt'))
-    expect(
-      closeJob.slice(closeJob.indexOf(join), closeJob.indexOf('name: Close pipeline attempt')),
-    ).toContain('continue-on-error: true')
+    expect(closeJob.slice(closeJob.indexOf(join), closeJob.indexOf(closeStep))).toContain(
+      'continue-on-error: true',
+    )
   })
 })
 

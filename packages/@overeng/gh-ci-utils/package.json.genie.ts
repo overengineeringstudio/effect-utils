@@ -7,6 +7,7 @@ import {
   workspaceMember,
   workspaceClosureReference,
 } from '../../../genie/internal.ts'
+import ciToolsPkg from '../ci-tools/package.json.genie.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
@@ -26,7 +27,8 @@ const composition = catalog.compose({
   mode: 'install',
   workspace: workspaceMember({ memberPath: 'packages/@overeng/gh-ci-utils' }),
   dependencies: {
-    workspace: [otelContractPkg, tuiReactPkg, utilsPkg],
+    workspace: [ciToolsPkg, otelContractPkg, tuiReactPkg, utilsPkg],
+    liveWorkspaceLinks: ['@overeng/ci-tools'],
   },
   devDependencies: {
     workspace: [workspaceClosureReference(utilsStorybookPkg)],

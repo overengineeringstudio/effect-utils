@@ -79,10 +79,16 @@ Unknown, dynamically named or duplicate display names are unmatched;
 they cannot be assigned a guessed trace ID. This mapping reads Jobs API
 facts, not per-job outputs, and adds no workflow YAML.
 
-The job root carries `cicd.pipeline.run.id` and its job key. Task-run spans
-are descendants of the job root; Buck command spans and critical views
-retain the same trace id. A job root links back to an outer caller when one
-exists. At attempt close, the finalizer pages the Jobs API for this run
+The CI identity step records the job start time. Each CI task step emits only
+its task-run span beneath the deterministic job root; the always-run job-end
+adapter emits that root exactly once, using the recorded start, its export
+time as the end, and GitHub's whole-job status (`success` maps to OK; other
+statuses map to ERROR). `ci.job.status` retains the provider status string.
+The root carries `cicd.pipeline.run.id` and its job key. Buck command spans
+and critical views retain the same trace id. For a standalone local task run,
+the generic entrypoint emits its own root at completion. A job root links
+back to an outer caller when one exists. At attempt close, the finalizer
+pages the Jobs API for this run
 and filters `run_attempt` to the closing attempt. It excludes its own job
 and includes only jobs with `started_at` and a unique canonical `K` under
 the same name mapping used by the reporter (failed and cancelled jobs that

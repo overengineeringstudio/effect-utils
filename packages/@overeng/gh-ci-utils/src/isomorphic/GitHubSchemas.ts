@@ -94,6 +94,7 @@ export type WorkflowStep = typeof WorkflowStep.Type
 export const WorkflowJob = Schema.Struct({
   id: Schema.Finite,
   run_id: Schema.Finite,
+  run_attempt: Schema.optional(Schema.Finite),
   name: Schema.String,
   status: Schema.Literals([
     'queued',

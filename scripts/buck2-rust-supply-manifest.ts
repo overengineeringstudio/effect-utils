@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
@@ -20,6 +21,7 @@ type Package = {
   readonly version: string
   readonly source: string | null
   readonly manifest_path: string
+  readonly dependencies: readonly { readonly name: string; readonly rename: string | null }[]
 }
 type Metadata = {
   readonly packages: readonly Package[]
@@ -125,11 +127,20 @@ const featuresById = new Map(metadata.resolve.nodes.map((node) => [node.id, node
 const namesById = new Map<string, string>()
 const rootPackageId = metadata.resolve.root
 if (rootPackageId !== null) {
+  const rootPackage = byId.get(rootPackageId)
   const node = metadata.resolve.nodes.find((entry) => entry.id === rootPackageId)
   for (const dep of node?.deps ?? []) {
     const pkg = byId.get(dep.pkg)
-    if (pkg?.source !== null && pkg !== undefined && dep.name !== pkg.name) {
-      namesById.set(pkg.id, dep.name)
+    // Resolve node names are extern crate spellings (hyphens become underscores),
+    // not evidence of an explicit dependency rename in the declaring manifest.
+    const rename = rootPackage?.dependencies.find(
+      (dependency) =>
+        dependency.name === pkg?.name &&
+        dependency.rename !== null &&
+        dependency.rename.replaceAll('-', '_') === dep.name,
+    )?.rename
+    if (pkg?.source !== null && pkg !== undefined && rename !== undefined) {
+      namesById.set(pkg.id, rename)
     }
   }
 }
@@ -139,8 +150,12 @@ const entries = selected
   .map((pkg) => {
     const preferred = namesById.get(pkg.id) ?? pkg.name
     let key = preferred
-    if (usedNames.has(key) === true)
-      key = `buck2-supply-${pkg.name}-${pkg.version.replaceAll('.', '-')}`
+    if (usedNames.has(key) === true) {
+      key = `buck2-supply-${pkg.name}-${pkg.version}`.replaceAll(/[^A-Za-z0-9_-]/g, '-')
+      if (usedNames.has(key) === true) {
+        key = `${key}-${createHash('sha256').update(pkg.id).digest('hex').slice(0, 12)}`
+      }
+    }
     if (usedNames.has(key) === true)
       throw new Error(`ambiguous Cargo package supply alias: ${pkg.id}`)
     usedNames.add(key)
