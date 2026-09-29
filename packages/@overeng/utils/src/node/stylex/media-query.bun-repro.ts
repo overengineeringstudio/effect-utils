@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
 
-import { transformSync } from '@babel/core'
 import stylexPlugin from '@stylexjs/babel-plugin'
 
 type Token = [string, ...unknown[]]
@@ -19,6 +19,14 @@ type ParserForTests = {
     label: string,
   ) => { parseToEnd: (input: TokenIterator) => Token | null }
   TokenType: { EOF: string }
+}
+
+type CssRule = readonly [string, { ltr: string | null }, number]
+const { transformSync } = createRequire(import.meta.url)('@babel/core') as {
+  transformSync: (
+    input: string,
+    options: object,
+  ) => { metadata: { stylex: ReadonlyArray<CssRule> } } | null
 }
 
 // This private test-only seam exposes the parser embedded in the published plugin.
@@ -71,9 +79,7 @@ const transformed = transformSync(
     plugins: [[stylexPlugin, { enableMediaQueryOrder: true }]],
   },
 )
-const rules = transformed?.metadata.stylex as
-  | ReadonlyArray<readonly [string, { ltr: string | null }, number]>
-  | undefined
+const rules = transformed?.metadata.stylex
 assert.ok(rules)
 for (const condition of ['@media (max-width: 63.99rem)', '@media (hover: hover)']) {
   assert.ok(rules.some((rule) => rule[1].ltr?.includes(condition)))
