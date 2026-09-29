@@ -43,6 +43,7 @@ eval_observability_module_attr() {
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       observabilityModule = import $ROOT/nix/devenv-modules/observability.nix {
         project = \"fixture\";
+        otelite = flake.packages.\${builtins.currentSystem}.otelite;
         profile = {
           name = \"fixture\";
           task = \"fixture:task\";

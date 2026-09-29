@@ -658,6 +658,7 @@ in
     # composes with the full stack above without importing it a second time.
     (import ./nix/devenv-modules/observability.nix {
       project = "effect-utils";
+      otelite = repoFlake.packages.${currentSystem}.otelite;
       # Shell-entry setup is intentionally absent. Profile an instantiated,
       # non-mutating task so check:all retains its trace integrity gate.
       profile = {

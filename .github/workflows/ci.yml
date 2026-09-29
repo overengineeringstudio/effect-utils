@@ -1076,7 +1076,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
-      - name: Build and smoke compiled products
+      - name: Build and smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
@@ -3263,7 +3263,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')
-          tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\.nix|cache-targets\.json|cache-targets\.json\.genie\.ts|compiled\.nix|compiled-targets\.json|compiled-targets\.json\.genie\.ts|consumer-root\.nix|default\.nix|from-source-contract\.test\.sh|from-source\.nix|manifest\.json|pnpm-archives\.nix|private-product-tarballs\.nix|private-product-tarballs\.test\.sh|publish\.sh|source-recipes\.nix|targets\.json|targets\.json\.genie\.ts)$' || true)
+          tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\.nix|cache-targets\.json|cache-targets\.json\.genie\.ts|compiled\.nix|compiled-targets\.json|compiled-targets\.json\.genie\.ts|consumer-root\.nix|default\.nix|from-source-contract\.test\.sh|from-source\.nix|manifest\.json|native\.nix|native-targets\.json|native-targets\.json\.genie\.ts|pnpm-archives\.nix|private-product-tarballs\.nix|private-product-tarballs\.test\.sh|publish\.sh|source-recipes\.nix|targets\.json|targets\.json\.genie\.ts)$' || true)
           if [ -n "$tracked_editor$tracked_product" ]; then
             printf 'Tracked inert payload bytes are forbidden:\n%s\n%s\n' "$tracked_editor" "$tracked_product" >&2
             exit 1
@@ -3467,7 +3467,7 @@ jobs:
           product_refs+=(".#buck2-evidence")
           echo "Building ${#product_refs[@]} from-source products and evidence"
           nix build --no-link --print-build-logs "${product_refs[@]}"
-      - name: Build and smoke compiled products
+      - name: Build and smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'

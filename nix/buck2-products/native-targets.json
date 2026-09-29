@@ -1,0 +1,29 @@
+{
+  "products": [
+    {
+      "cargoWorkspaceRoot": "rust",
+      "kind": "native",
+      "name": "otel-scrape",
+      "outputName": "artifact.tar",
+      "target": "effect_utils//packages/@overeng/otel-scrape:otel-scrape-product",
+      "version": "0.0.0"
+    },
+    {
+      "cargoWorkspaceRoot": "rust",
+      "kind": "native",
+      "name": "otelite",
+      "outputName": "artifact.tar",
+      "target": "effect_utils//packages/@overeng/otelite:otelite-product",
+      "version": "0.0.0"
+    },
+    {
+      "kind": "native",
+      "name": "typescript-api-server",
+      "outputName": "artifact.tar",
+      "target": "effect_utils//packages/@overeng/genie:typescript-api-server-product",
+      "version": "0.0.0"
+    }
+  ],
+  "schema": "effect-utils/buck-native-targets/v1",
+  "schemaVersion": 1
+}

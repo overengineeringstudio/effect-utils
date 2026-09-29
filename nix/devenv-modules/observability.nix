@@ -8,6 +8,7 @@
 # https://github.com/cachix/devenv/issues/3037
 {
   project,
+  otelite,
   backend ? "ambient",
   profile ? {
     name = "setup";
@@ -41,7 +42,6 @@ let
   # Temporary compatibility producer for task-phase detail. Keep otelite and
   # the profile/verify surface after this producer can be retired.
   otelSpan = import ./otel/otel-span.nix { inherit pkgs; };
-  otelite = (import ../buck2-native-products { inherit pkgs; }).products.otelite;
 
   capture =
     if profile == null then

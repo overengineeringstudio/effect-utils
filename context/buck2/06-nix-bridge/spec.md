@@ -115,6 +115,30 @@ tree, or rewritten package rule. Changing later repository metadata does not
 change the identity of an already-published product. The anonymous artifact
 URL is an interoperability path, not a second source of product authority.
 
+### Native products
+
+`otelite`, `otel-scrape`, and `typescript-api-server` use the same
+source-backed, cache-substituted Nix import as compiled executables. The
+generated `nix/buck2-products/native-targets.json` inventory binds each name
+to its Buck `build_product` target and `artifact.tar` output; the Rust rows
+also declare the `rust` Cargo workspace root. On each host,
+`mkBuckProductFromSource { importNative = true; ...; }` builds the declared
+target with pinned pnpm archives (and, for Rust, the pinned Cargo archive
+projection), then validates the emitted descriptor, payload, platform and
+runtime before exposing `packages.<system>.<name>`. The TypeScript API server
+has an ELF-static runtime on Linux and Mach-O-dynamic on Darwin; the Rust
+products have dynamic runtimes. Genie wrappers bind
+`GENIE_TYPESCRIPT_API_SERVER` to that same imported package; the reusable
+observability module uses the imported `otelite` for capture.
+
+Protected main publishes the three native imports alongside the compiled
+imports from native Linux x86_64 and Darwin arm64 runners to the public
+`overeng-effect-utils` Cachix cache. PR CI builds and `--help`-smokes them
+without a write credential. Linux arm64 is admitted but has no publisher:
+consumers build its import from source on a cache miss. Neither native
+product lookup nor publication uses GitHub release assets or a release
+manifest; the derivation itself is the substitution identity.
+
 ### Compiled-executable products
 
 `compiled-executable` refines BRIDGE-R01–R03 and BRIDGE-R05–R09. This
@@ -130,11 +154,11 @@ inventory binds each compiled product name to its Buck target; each host
 derivation imports its own platform tuple. It has no JS/package cache-manifest
 row: the immutable imported Nix store path is the distribution unit.
 
-On protected main, the compiled-product publisher builds that imported
-derivation on the Linux x86_64 and Darwin arm64 runners and pushes it to
+On protected main, the native-and-compiled publisher builds the imported
+derivations on the Linux x86_64 and Darwin arm64 runners and pushes them to
 Cachix. aarch64 Linux is admitted but unpublished; its consumers build the
-import from source. Pull-request
-jobs build and smoke the same import without a write credential. Darwin builds
+imports from source. Pull-request jobs build and smoke the same imports without
+a write credential. Darwin builds
 run on the macOS arm64 runner; the import inspects but does not strip, patch,
 or re-sign Bun's embedded Mach-O ad-hoc signature. The signing inspector
 accepts an ad-hoc CodeDirectory with either no CMS wrapper (Bun) or a single
