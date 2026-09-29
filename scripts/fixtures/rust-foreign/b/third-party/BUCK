@@ -28,6 +28,34 @@ rust_library(
 )
 
 alias(
+    name = "toml_datetime",
+    actual = ":toml_datetime-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "toml_datetime-1.1.1+spec-1.1.0.crate",
+    sha256 = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7",
+    strip_prefix = "toml_datetime-1.1.1+spec-1.1.0",
+    urls = ["https://static.crates.io/crates/toml_datetime/1.1.1+spec-1.1.0/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "toml_datetime-1",
+    srcs = [":toml_datetime-1.1.1+spec-1.1.0.crate"],
+    crate = "toml_datetime",
+    crate_root = "toml_datetime-1.1.1+spec-1.1.0.crate/src/lib.rs",
+    edition = "2024",
+    features = [
+        "alloc",
+        "default",
+        "std",
+    ],
+    visibility = [],
+)
+
+alias(
     name = "unicode-width",
     actual = ":unicode-width-0.2",
     visibility = ["PUBLIC"],

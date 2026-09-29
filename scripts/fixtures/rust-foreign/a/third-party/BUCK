@@ -56,6 +56,222 @@ rust_library(
 )
 
 alias(
+    name = "proc-macro2",
+    actual = ":proc-macro2-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "proc-macro2-1.0.107.crate",
+    sha256 = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9",
+    strip_prefix = "proc-macro2-1.0.107",
+    urls = ["https://static.crates.io/crates/proc-macro2/1.0.107/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "proc-macro2-1",
+    srcs = [":proc-macro2-1.0.107.crate"],
+    crate = "proc_macro2",
+    crate_root = "proc-macro2-1.0.107.crate/src/lib.rs",
+    edition = "2021",
+    features = ["proc-macro"],
+    visibility = [],
+    deps = [":unicode-ident-1"],
+)
+
+alias(
+    name = "quote",
+    actual = ":quote-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "quote-1.0.47.crate",
+    sha256 = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001",
+    strip_prefix = "quote-1.0.47",
+    urls = ["https://static.crates.io/crates/quote/1.0.47/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "quote-1",
+    srcs = [":quote-1.0.47.crate"],
+    crate = "quote",
+    crate_root = "quote-1.0.47.crate/src/lib.rs",
+    edition = "2021",
+    features = ["proc-macro"],
+    visibility = [],
+    deps = [":proc-macro2-1"],
+)
+
+alias(
+    name = "serde_core",
+    actual = ":serde_core-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "serde_core-1.0.229.crate",
+    sha256 = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48",
+    strip_prefix = "serde_core-1.0.229",
+    urls = ["https://static.crates.io/crates/serde_core/1.0.229/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "serde_core-1",
+    srcs = [":serde_core-1.0.229.crate"],
+    crate = "serde_core",
+    crate_root = "serde_core-1.0.229.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "alloc",
+        "std",
+    ],
+    visibility = [],
+)
+
+alias(
+    name = "serde_derive",
+    actual = ":serde_derive-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "serde_derive-1.0.229.crate",
+    sha256 = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348",
+    strip_prefix = "serde_derive-1.0.229",
+    urls = ["https://static.crates.io/crates/serde_derive/1.0.229/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "serde_derive-1",
+    srcs = [":serde_derive-1.0.229.crate"],
+    crate = "serde_derive",
+    crate_root = "serde_derive-1.0.229.crate/src/lib.rs",
+    edition = "2021",
+    features = ["default"],
+    proc_macro = True,
+    visibility = [],
+    deps = [
+        ":proc-macro2-1",
+        ":quote-1",
+        ":syn-3",
+    ],
+)
+
+alias(
+    name = "syn",
+    actual = ":syn-3",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "syn-3.0.6.crate",
+    sha256 = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee",
+    strip_prefix = "syn-3.0.6",
+    urls = ["https://static.crates.io/crates/syn/3.0.6/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "syn-3",
+    srcs = [":syn-3.0.6.crate"],
+    crate = "syn",
+    crate_root = "syn-3.0.6.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "clone-impls",
+        "derive",
+        "parsing",
+        "printing",
+        "proc-macro",
+    ],
+    visibility = [],
+    deps = [
+        ":proc-macro2-1",
+        ":quote-1",
+        ":unicode-ident-1",
+    ],
+)
+
+alias(
+    name = "toml_datetime",
+    actual = ":toml_datetime-0.6",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "toml_datetime-0.6.11.crate",
+    sha256 = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c",
+    strip_prefix = "toml_datetime-0.6.11",
+    urls = ["https://static.crates.io/crates/toml_datetime/0.6.11/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "toml_datetime-0.6",
+    srcs = [":toml_datetime-0.6.11.crate"],
+    crate = "toml_datetime",
+    crate_root = "toml_datetime-0.6.11.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+)
+
+alias(
+    name = "buck2-supply-toml_datetime-1-1-1-spec-1-1-0",
+    actual = ":toml_datetime-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "toml_datetime-1.1.1+spec-1.1.0.crate",
+    sha256 = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7",
+    strip_prefix = "toml_datetime-1.1.1+spec-1.1.0",
+    urls = ["https://static.crates.io/crates/toml_datetime/1.1.1+spec-1.1.0/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "toml_datetime-1",
+    srcs = [":toml_datetime-1.1.1+spec-1.1.0.crate"],
+    crate = "toml_datetime",
+    crate_root = "toml_datetime-1.1.1+spec-1.1.0.crate/src/lib.rs",
+    edition = "2024",
+    features = [
+        "alloc",
+        "default",
+        "std",
+    ],
+    visibility = [],
+)
+
+alias(
+    name = "unicode-ident",
+    actual = ":unicode-ident-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "unicode-ident-1.0.26.crate",
+    sha256 = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954",
+    strip_prefix = "unicode-ident-1.0.26",
+    urls = ["https://static.crates.io/crates/unicode-ident/1.0.26/download"],
+    visibility = [],
+)
+
+rust_library(
+    name = "unicode-ident-1",
+    srcs = [":unicode-ident-1.0.26.crate"],
+    crate = "unicode_ident",
+    crate_root = "unicode-ident-1.0.26.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+)
+
+alias(
     name = "unicode-width",
     actual = ":unicode-width-0.2",
     visibility = ["PUBLIC"],

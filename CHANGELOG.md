@@ -82,7 +82,9 @@ All notable changes to this project will be documented in this file.
   authoritative Cargo lock. The consumer graph includes registry dependencies
   reachable through foreign first-party crates without emitting those crates.
   Public registry aliases use Cargo package names (including hyphens), except
-  when the workspace root explicitly renames a dependency.
+  when the workspace root explicitly renames a dependency. Synthetic aliases
+  for multiple versions are valid Cargo dependency names even when versions
+  contain build metadata.
 
 - **Buck2 pnpm runtime closure**: `pnpm_runtime_closure` consolidates the
   normalized store entries and importer views of declared `package_tree`

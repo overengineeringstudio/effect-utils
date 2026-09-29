@@ -254,6 +254,8 @@ if grep -Fq 'name = "unicode_width"' "$fixture_a_graph"; then
 fi
 grep -Fq 'name = "unicode-width"' "$fixture_b_graph" ||
   fail "provider hyphenated registry dependency missing"
+grep -Fq 'name = "buck2-supply-toml_datetime-1-1-1-spec-1-1-0"' "$fixture_a_graph" ||
+  fail "multiple package versions with build metadata lost a valid synthetic alias"
 REPO_ROOT="$ROOT" "$BUN" -e '
   const root = process.env.REPO_ROOT
   const lock = Bun.TOML.parse(await Bun.file(`${root}/scripts/fixtures/rust-foreign/a/Cargo.lock`).text())
@@ -293,6 +295,7 @@ edition = "2021"
 [dependencies]
 foreign-shared = { path = "../../b/crates/shared" }
 renamed_memchr = { package = "memchr", version = "2.7.5" }
+old_toml_datetime = { package = "toml_datetime", version = "0.6.11" }
 TOML
 "$GATE" generate "$foreign_repo" "$foreign_workspace" "$foreign_graph" \
   "$real_reindeer" "$real_cargo" "$real_rustc" "$BUN"

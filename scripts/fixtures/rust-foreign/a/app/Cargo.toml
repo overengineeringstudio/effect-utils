@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 foreign-shared = { path = "../../b/crates/shared" }
 memchr = "2.7.5"
+old_toml_datetime = { package = "toml_datetime", version = "0.6.11" }

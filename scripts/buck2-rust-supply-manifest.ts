@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
@@ -149,8 +150,12 @@ const entries = selected
   .map((pkg) => {
     const preferred = namesById.get(pkg.id) ?? pkg.name
     let key = preferred
-    if (usedNames.has(key) === true)
-      key = `buck2-supply-${pkg.name}-${pkg.version.replaceAll('.', '-')}`
+    if (usedNames.has(key) === true) {
+      key = `buck2-supply-${pkg.name}-${pkg.version}`.replaceAll(/[^A-Za-z0-9_-]/g, '-')
+      if (usedNames.has(key) === true) {
+        key = `${key}-${createHash('sha256').update(pkg.id).digest('hex').slice(0, 12)}`
+      }
+    }
     if (usedNames.has(key) === true)
       throw new Error(`ambiguous Cargo package supply alias: ${pkg.id}`)
     usedNames.add(key)
