@@ -33,6 +33,8 @@ let
     builtins.isString taskPrefix && builtins.match "^[a-z0-9][a-z0-9:-]*$" taskPrefix != null;
   script = mode: ''
     set -euo pipefail
+    # Reindeer only inspects Cargo metadata; inherited compiler wrappers may not be on the task PATH.
+    unset RUSTC_WRAPPER CARGO_BUILD_RUSTC_WRAPPER
     root="''${DEVENV_ROOT:-$PWD}"
     exec ${pkgs.bash}/bin/bash ${gate} ${mode} \
       "$root" \
