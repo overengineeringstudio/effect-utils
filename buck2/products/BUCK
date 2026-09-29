@@ -11,6 +11,12 @@ pnpm_runtime_closure(
     runtime = "//buck2/dependencies:runtime-closure.ts",
     visibility = ["PUBLIC"],
 )
+export_file(
+    name = "vite_runtime_fixture_module",
+    src = "vite-runtime-fixture.mjs",
+    visibility = ["PUBLIC"],
+)
+
 
 # Public rule API lives in defs.bzl; concrete products belong to repository adapters.
 export_file(

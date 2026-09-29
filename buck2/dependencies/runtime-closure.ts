@@ -1,17 +1,41 @@
 import { createHash } from 'node:crypto'
-import { chmod, copyFile, lstat, mkdir, readdir, readFile, readlink, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import {
+  chmod,
+  copyFile,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-const fail = (reason: string): never => { throw new Error(`pnpm runtime closure: ${reason}`) }
+const fail = (reason: string): never => {
+  throw new Error(`pnpm runtime closure: ${reason}`)
+}
 const inside = (root: string, path: string): boolean => {
   const suffix = relative(root, path)
   return suffix === '' || (suffix !== '..' && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix))
 }
 const safeName = (name: string): string => {
-  if (!name || name.includes('\\') || name.includes('\0') || isAbsolute(name) || name.split('/').some((part) => !part || part === '.' || part === '..')) fail(`unsafe importer name: ${name}`)
+  if (
+    !name ||
+    name.includes('\\') ||
+    name.includes('\0') ||
+    isAbsolute(name) ||
+    name.split('/').some((part) => !part || part === '.' || part === '..')
+  )
+    fail(`unsafe importer name: ${name}`)
   return name
 }
-const compare = (left: string, right: string): number => Buffer.compare(Buffer.from(left), Buffer.from(right))
+const compare = (left: string, right: string): number =>
+  Buffer.compare(Buffer.from(left), Buffer.from(right))
 
 type Source = { readonly source: string; readonly destination: string }
 export type RuntimeClosureOptions = {
@@ -22,9 +46,15 @@ export type RuntimeClosureOptions = {
 }
 
 /** Rehomes every declared Buck output, never following source links while copying. */
-export const assembleRuntimeClosure = async ({ output, importers, roots, primary }: RuntimeClosureOptions): Promise<void> => {
+export const assembleRuntimeClosure = async ({
+  output,
+  importers,
+  roots,
+  primary,
+}: RuntimeClosureOptions): Promise<void> => {
   const names = Object.keys(importers).sort(compare)
-  if (!names.length || !Object.hasOwn(importers, primary)) fail('primary must name a declared importer')
+  if (!names.length || !Object.hasOwn(importers, primary))
+    fail('primary must name a declared importer')
   names.forEach(safeName)
   const stage = `${resolve(output)}.stage-${process.pid}-${crypto.randomUUID()}`
   const canonical = new Set<string>()
@@ -37,7 +67,9 @@ export const assembleRuntimeClosure = async ({ output, importers, roots, primary
     const path = await realpath(importers[name]!)
     if (!canonical.has(path)) fail(`view ${name} is not a declared root: ${path}`)
   }
-  const sources: Source[] = [...canonical].sort(compare).map((source, index) => ({ source, destination: join(stage, '.pnpm', String(index)) }))
+  const sources: Source[] = [...canonical]
+    .sort(compare)
+    .map((source, index) => ({ source, destination: join(stage, '.pnpm', String(index)) }))
   const bySource = new Map(sources.map((entry) => [entry.source, entry]))
   const find = (path: string): Source => {
     let candidate = path
@@ -54,7 +86,8 @@ export const assembleRuntimeClosure = async ({ output, importers, roots, primary
     const stat = await lstat(source)
     if (stat.isDirectory()) {
       await mkdir(destination, { recursive: true })
-      for (const child of (await readdir(source)).sort(compare)) await walk(join(source, child), join(destination, child))
+      for (const child of (await readdir(source)).sort(compare))
+        await walk(join(source, child), join(destination, child))
     } else if (stat.isSymbolicLink()) {
       const target = await readlink(source)
       if (isAbsolute(target)) fail(`absolute source symlink: ${source}`)
@@ -84,7 +117,10 @@ export const assembleRuntimeClosure = async ({ output, importers, roots, primary
       await symlink(relative(dir, view.destination), join(dir, 'node_modules'))
     }
     const digest = await digestRuntimeClosure(stage)
-    await writeFile(join(stage, 'descriptor.json'), `${JSON.stringify({ schema: 'effect-utils/pnpm-runtime-closure/v1', digest, importers: names, primary })}\n`)
+    await writeFile(
+      join(stage, 'descriptor.json'),
+      `${JSON.stringify({ schema: 'effect-utils/pnpm-runtime-closure/v1', digest, importers: names, primary })}\n`,
+    )
     await rename(stage, output)
   } catch (error) {
     await rm(stage, { recursive: true, force: true })
@@ -106,9 +142,8 @@ export const digestRuntimeClosure = async (root: string): Promise<string> => {
         await walk(path, key)
       } else if (stat.isSymbolicLink()) hash.update(`l\0${key}\0${await readlink(path)}\0`)
       else if (stat.isFile()) {
-        const bytes = await readFile(path)
-        hash.update(`f\0${key}\0${stat.mode & 0o111 ? 'x' : '-'}\0${bytes.length}\0`)
-        hash.update(bytes)
+        hash.update(`f\0${key}\0${stat.mode & 0o111 ? 'x' : '-'}\0${stat.size}\0`)
+        for await (const bytes of createReadStream(path)) hash.update(bytes)
       } else fail(`unsupported output entry: ${path}`)
     }
   }
@@ -119,16 +154,20 @@ export const digestRuntimeClosure = async (root: string): Promise<string> => {
 export const verifyRuntimeClosure = async (root: string, expectedDigest: string): Promise<void> => {
   if (!/^[a-f0-9]{64}$/.test(expectedDigest)) fail('expected digest must be lowercase SHA-256')
   const descriptor: unknown = JSON.parse(await readFile(join(root, 'descriptor.json'), 'utf8'))
-  if (typeof descriptor !== 'object' || descriptor === null || Array.isArray(descriptor)) fail('invalid descriptor')
+  if (typeof descriptor !== 'object' || descriptor === null || Array.isArray(descriptor))
+    fail('invalid descriptor')
   const fields = descriptor as Record<string, unknown>
-  if (Object.keys(fields).sort().join(',') !== 'digest,importers,primary,schema' ||
-      fields.schema !== 'effect-utils/pnpm-runtime-closure/v1' ||
-      fields.digest !== expectedDigest ||
-      !Array.isArray(fields.importers) ||
-      !fields.importers.every((name) => typeof name === 'string' && safeName(name) === name) ||
-      typeof fields.primary !== 'string' ||
-      !fields.importers.includes(fields.primary)) fail('invalid runtime closure descriptor')
-  if (await digestRuntimeClosure(root) !== expectedDigest) fail('runtime closure digest mismatch')
+  if (
+    Object.keys(fields).sort().join(',') !== 'digest,importers,primary,schema' ||
+    fields.schema !== 'effect-utils/pnpm-runtime-closure/v1' ||
+    fields.digest !== expectedDigest ||
+    !Array.isArray(fields.importers) ||
+    !fields.importers.every((name) => typeof name === 'string' && safeName(name) === name) ||
+    typeof fields.primary !== 'string' ||
+    !fields.importers.includes(fields.primary)
+  )
+    fail('invalid runtime closure descriptor')
+  if ((await digestRuntimeClosure(root)) !== expectedDigest) fail('runtime closure digest mismatch')
 }
 
 if (import.meta.main) {
@@ -142,11 +181,14 @@ if (import.meta.main) {
   for (let i = 0; i < args.length; i++) {
     const flag = args[i]
     if (flag === '--root') roots.push(args[++i] ?? fail('missing root'))
-    else if (flag === '--view') { const name = args[++i] ?? fail('missing view name'); importers[name] = args[++i] ?? fail('missing view path') }
-    else if (flag === '--primary') primary = args[++i] ?? fail('missing primary')
+    else if (flag === '--view') {
+      const name = args[++i] ?? fail('missing view name')
+      importers[name] = args[++i] ?? fail('missing view path')
+    } else if (flag === '--primary') primary = args[++i] ?? fail('missing primary')
     else if (flag === '--output') output = args[++i] ?? fail('missing output')
     else if (flag === '--verify') verificationRoot = args[++i] ?? fail('missing verify root')
-    else if (flag === '--expected-digest') expectedDigest = args[++i] ?? fail('missing expected digest')
+    else if (flag === '--expected-digest')
+      expectedDigest = args[++i] ?? fail('missing expected digest')
     else fail(`unknown argument: ${flag}`)
   }
   if (verificationRoot) await verifyRuntimeClosure(verificationRoot, expectedDigest)

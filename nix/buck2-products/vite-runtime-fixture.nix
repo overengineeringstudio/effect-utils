@@ -1,9 +1,13 @@
-{ pkgs, runtimeClosure }:
+{
+  pkgs,
+  runtimeClosure,
+  artifact ? ../../buck2/products/vite-runtime-fixture.mjs,
+}:
 
 let
-  artifact = ../../buck2/products/vite-runtime-fixture.mjs;
-  content = builtins.readFile artifact;
-  moduleDigest = builtins.hashFile "sha256" artifact;
+  sourceArtifact = ../../buck2/products/vite-runtime-fixture.mjs;
+  content = builtins.readFile sourceArtifact;
+  moduleDigest = builtins.hashFile "sha256" sourceArtifact;
   descriptorContent = builtins.toJSON {
     schema = "effect-utils/javascript-product/v2";
     productName = "vite-runtime-closure-fixture";
@@ -19,21 +23,29 @@ let
     target = "//buck2/products:vite_runtime_fixture_module";
     modulePath = "vite-runtime-fixture.mjs";
     externalCapabilities = [ ];
-    externalModules = [ "@vitejs/plugin-react" "vite" ];
+    externalModules = [
+      "@vitejs/plugin-react"
+      "vite"
+    ];
     integrity = builtins.convertHash {
       hash = moduleDigest;
       hashAlgo = "sha256";
       toHashFormat = "sri";
     };
     sizeBytes = builtins.stringLength content;
-    provenance = { configuredTarget = "//buck2/products:vite_runtime_fixture_module"; };
+    provenance = {
+      configuredTarget = "//buck2/products:vite_runtime_fixture_module";
+    };
   };
 in
 (import ../workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
   inherit artifact descriptorContent runtimeClosure;
   descriptor = artifact;
   expectedDescriptorSha256 = builtins.hashString "sha256" descriptorContent;
-  expectedExternalModules = [ "@vitejs/plugin-react" "vite" ];
+  expectedExternalModules = [
+    "@vitejs/plugin-react"
+    "vite"
+  ];
   expectedModuleSha256 = moduleDigest;
   expectedProductKind = "cli";
   expectedProductName = "vite-runtime-closure-fixture";
