@@ -59,7 +59,7 @@ const GhCiUtilsFileConfig = Schema.Struct({
   auth: GitHubAuthConfig.pipe(Schema.withDecodingDefault(Effect.succeed(defaultGitHubAuthConfig))),
   repos: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   runnerHosts: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  resolverUrl: Schema.optional(Schema.String),
+  grafanaBaseUrl: Schema.optional(Schema.String),
 })
 
 const defaultFileConfig: typeof GhCiUtilsFileConfig.Type = {
@@ -99,8 +99,8 @@ export const CiUtilsConfig = Schema.Struct({
   repos: Schema.Array(Schema.String),
   /** Runner-scaler hosts for /jobs endpoint */
   runnerHosts: Schema.Array(Schema.String),
-  /** Read-only private evidence resolver; credentials remain with the caller. */
-  resolverUrl: Schema.optional(Schema.String),
+  /** Grafana URL used by the PR job trace links. */
+  grafanaBaseUrl: Schema.optional(Schema.String),
 })
 export type CiUtilsConfig = typeof CiUtilsConfig.Type
 
@@ -187,6 +187,6 @@ export const resolveConfig = ({
     return {
       repos,
       runnerHosts: partial?.runnerHosts ?? fileConfig.runnerHosts,
-      resolverUrl: fileConfig.resolverUrl,
+      grafanaBaseUrl: fileConfig.grafanaBaseUrl,
     } satisfies CiUtilsConfig
   })

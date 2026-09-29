@@ -319,7 +319,6 @@ const checkWorkspaceContract = ({
   const expectedCargoPackages = [
     'buck2-archive-tool',
     'buck2-events',
-    'buck2-evidence',
     'buck2-product',
     'buck2-tool-core',
     'otel-scrape',
