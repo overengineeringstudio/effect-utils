@@ -1,5 +1,3 @@
 {
-  "foreignPackageManifestPaths": [
-    "scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml"
-  ]
+  "foreignPackageManifestPaths": ["scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml"]
 }

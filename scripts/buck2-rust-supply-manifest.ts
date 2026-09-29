@@ -74,15 +74,23 @@ for (const manifestPath of foreignPaths) {
     !/^[A-Za-z0-9][A-Za-z0-9._/-]*\/Cargo\.toml$/.test(manifestPath) ||
     manifestPath.split('/').some((segment) => segment === '..' || segment === '.')
   ) {
-    throw new Error(`foreign package manifest must be a normalized repository-relative path: ${manifestPath}`)
+    throw new Error(
+      `foreign package manifest must be a normalized repository-relative path: ${manifestPath}`,
+    )
   }
   const resolved = realpathSync(path.join(root, manifestPath))
   if (!resolved.startsWith(`${root}${path.sep}`)) {
     throw new Error(`foreign package manifest escapes repository: ${manifestPath}`)
   }
   const packageInfo = metadata.packages.find((entry) => entry.manifest_path === resolved)
-  if (packageInfo === undefined || packageInfo.source !== null || metadata.workspace_members.includes(packageInfo.id)) {
-    throw new Error(`foreign package is absent from the external path dependency graph: ${manifestPath}`)
+  if (
+    packageInfo === undefined ||
+    packageInfo.source !== null ||
+    metadata.workspace_members.includes(packageInfo.id)
+  ) {
+    throw new Error(
+      `foreign package is absent from the external path dependency graph: ${manifestPath}`,
+    )
   }
 }
 if (new Set(foreignPaths).size !== foreignPaths.length) {
@@ -102,31 +110,33 @@ for (const member of metadata.workspace_members) {
   }
 }
 const usedNames = new Set<string>()
-const entries = selected.toSorted((a, b) => a.id.localeCompare(b.id)).map((pkg) => {
-  const preferred = namesById.get(pkg.id) ?? pkg.name
-  let key = preferred
-  if (usedNames.has(key)) key = `buck2-supply-${pkg.name}-${pkg.version.replaceAll('.', '-')}`
-  if (usedNames.has(key)) throw new Error(`ambiguous Cargo package supply alias: ${pkg.id}`)
-  usedNames.add(key)
-  const attrs: string[] = []
-  if (key !== pkg.name) attrs.push(`package = ${JSON.stringify(pkg.name)}`)
-  if (pkg.source?.startsWith('registry+https://github.com/rust-lang/crates.io-index') === true) {
-    attrs.push(`version = ${JSON.stringify(`=${pkg.version}`)}`)
-  } else if (pkg.source?.startsWith('git+') === true) {
-    const source = pkg.source.slice(4)
-    const hash = source.lastIndexOf('#')
-    if (hash < 0 || !/^[0-9a-f]{40}$/.test(source.slice(hash + 1))) {
-      throw new Error(`un-pinned git dependency in Cargo metadata: ${pkg.id}`)
+const entries = selected
+  .toSorted((a, b) => a.id.localeCompare(b.id))
+  .map((pkg) => {
+    const preferred = namesById.get(pkg.id) ?? pkg.name
+    let key = preferred
+    if (usedNames.has(key)) key = `buck2-supply-${pkg.name}-${pkg.version.replaceAll('.', '-')}`
+    if (usedNames.has(key)) throw new Error(`ambiguous Cargo package supply alias: ${pkg.id}`)
+    usedNames.add(key)
+    const attrs: string[] = []
+    if (key !== pkg.name) attrs.push(`package = ${JSON.stringify(pkg.name)}`)
+    if (pkg.source?.startsWith('registry+https://github.com/rust-lang/crates.io-index') === true) {
+      attrs.push(`version = ${JSON.stringify(`=${pkg.version}`)}`)
+    } else if (pkg.source?.startsWith('git+') === true) {
+      const source = pkg.source.slice(4)
+      const hash = source.lastIndexOf('#')
+      if (hash < 0 || !/^[0-9a-f]{40}$/.test(source.slice(hash + 1))) {
+        throw new Error(`un-pinned git dependency in Cargo metadata: ${pkg.id}`)
+      }
+      attrs.push(`git = ${JSON.stringify(source.slice(0, hash).split('?')[0])}`)
+      attrs.push(`rev = ${JSON.stringify(source.slice(hash + 1))}`)
+    } else {
+      throw new Error(`unsupported Cargo source for ${pkg.id}: ${pkg.source}`)
     }
-    attrs.push(`git = ${JSON.stringify(source.slice(0, hash).split('?')[0])}`)
-    attrs.push(`rev = ${JSON.stringify(source.slice(hash + 1))}`)
-  } else {
-    throw new Error(`unsupported Cargo source for ${pkg.id}: ${pkg.source}`)
-  }
-  attrs.push('default-features = false')
-  attrs.push(`features = ${JSON.stringify((featuresById.get(pkg.id) ?? []).toSorted())}`)
-  return `${JSON.stringify(key)} = { ${attrs.join(', ')} }`
-})
+    attrs.push('default-features = false')
+    attrs.push(`features = ${JSON.stringify((featuresById.get(pkg.id) ?? []).toSorted())}`)
+    return `${JSON.stringify(key)} = { ${attrs.join(', ')} }`
+  })
 const supplyManifest = path.join(supplyDir, 'Cargo.toml')
 await Bun.write(
   supplyManifest,
@@ -134,7 +144,11 @@ await Bun.write(
 )
 await Bun.write(path.join(supplyDir, 'src/lib.rs'), '// Dependency-only Reindeer workspace.\n')
 const supplied = cargoMetadata(supplyManifest, false)
-const sourceKey = (pkg: { readonly name: string; readonly version: string; readonly source?: string | null }) => {
+const sourceKey = (pkg: {
+  readonly name: string
+  readonly version: string
+  readonly source?: string | null
+}) => {
   const source = pkg.source
   if (source?.startsWith('git+') === true) {
     const hash = source.lastIndexOf('#')
@@ -144,7 +158,10 @@ const sourceKey = (pkg: { readonly name: string; readonly version: string; reado
   return `${pkg.name}@${pkg.version} ${source}`
 }
 const originalSources = selected.map(sourceKey).toSorted()
-const suppliedSources = supplied.packages.filter((pkg) => pkg.source !== null).map(sourceKey).toSorted()
+const suppliedSources = supplied.packages
+  .filter((pkg) => pkg.source !== null)
+  .map(sourceKey)
+  .toSorted()
 if (JSON.stringify(originalSources) !== JSON.stringify(suppliedSources)) {
   throw new Error('derived Reindeer supply changed the authoritative resolved package set')
 }
@@ -162,10 +179,14 @@ for (const pkg of selected) {
 const originalLock = Bun.TOML.parse(await Bun.file(path.join(workspace, 'Cargo.lock')).text()) as {
   package: { name: string; version: string; source?: string; checksum?: string }[]
 }
-const derivedLock = Bun.TOML.parse(await Bun.file(path.join(supplyDir, 'Cargo.lock')).text()) as typeof originalLock
+const derivedLock = Bun.TOML.parse(
+  await Bun.file(path.join(supplyDir, 'Cargo.lock')).text(),
+) as typeof originalLock
 for (const pkg of derivedLock.package.filter((entry) => entry.source !== undefined)) {
   const original = originalLock.package.find((entry) => sourceKey(entry) === sourceKey(pkg))
   if (original === undefined || original.checksum !== pkg.checksum) {
-    throw new Error(`derived Reindeer supply changed authoritative Cargo.lock pin for ${pkg.name}@${pkg.version}`)
+    throw new Error(
+      `derived Reindeer supply changed authoritative Cargo.lock pin for ${pkg.name}@${pkg.version}`,
+    )
   }
 }
