@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
-import * as HttpClient from 'effect/unstable/http/HttpClient'
-import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
+import * as HttpClient from 'effect/http/HttpClient'
+import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
 import { pipelineJobIdentityForName, type PipelineJobIdentity } from './pipeline-job-names.ts'
 import { canonicalJobKey } from './pipeline-trace-identity.ts'
@@ -131,6 +131,10 @@ const mermaidLabel = (name: string): string =>
 const canonicalKey = (identity: PipelineJobIdentity): string =>
   `${identity.job}${Object.entries(identity.dimensions).map(([key, value]) => `[${key}=${value}]`).join('')}`
 
+// Historical attempts still expose the two retired finalizer names in Jobs API.
+const nonBuildJobNames = ['pipeline-traces', 'pipeline-attempt-close', 'evidence-attempt-close', 'evidence-pr-link']
+const isBuildJob = (name: string): boolean => !nonBuildJobNames.includes(name)
+
 export const buildPipelineReport = (opts: {
   readonly repository: string
   readonly runId: number
@@ -141,7 +145,7 @@ export const buildPipelineReport = (opts: {
   readonly grafanaBaseUrl: string
   readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
 }): WorkflowReportRecord => {
-  const current = opts.jobs.filter((job) => job.run_attempt === opts.attempt && job.name !== 'pipeline-traces' && job.name !== 'evidence-attempt-close' && job.name !== 'evidence-pr-link')
+  const current = opts.jobs.filter((job) => job.run_attempt === opts.attempt && isBuildJob(job.name))
   const runIdentity = `ci/github/${encodeURIComponent(opts.repository)}/${opts.runId}/${opts.attempt}`
   const duplicateNames = new Set<string>()
   const countsByName: Record<string, number> = {}
@@ -156,7 +160,7 @@ export const buildPipelineReport = (opts: {
       const identity = pipelineJobIdentityForName(candidate.name)
       const duration = wallTimeMs(candidate)
       if (identity === undefined || candidate.conclusion !== 'success' || duration === undefined) continue
-      const key = canonicalJobKey(identity.job, identity.dimensions).toString('hex')
+      const key = canonicalJobKey(identity).toString('hex')
       if (durations.has(key)) duplicates.add(key)
       else durations.set(key, duration)
     }
@@ -176,7 +180,7 @@ export const buildPipelineReport = (opts: {
     const wallMs = wallTimeMs(job)
     const samples: number[] = []
     if (identity !== undefined) {
-      const identityKey = canonicalJobKey(identity.job, identity.dimensions).toString('hex')
+      const identityKey = canonicalJobKey(identity).toString('hex')
       for (const baseline of baselineIndex) {
         const duration = baseline.durations.get(identityKey)
         if (duration === undefined) continue
@@ -192,7 +196,9 @@ export const buildPipelineReport = (opts: {
         ? 'duration unavailable'
         : p50 === undefined
           ? 'no main baseline'
-          : `${signedSeconds(wallMs - p50)} (${(100 * (wallMs - p50) / p50).toFixed(1)}%; n=${samples.length})`
+          : p50 === 0
+            ? `${signedSeconds(wallMs)} (percent unavailable; n=${samples.length})`
+            : `${signedSeconds(wallMs - p50)} (${(100 * (wallMs - p50) / p50).toFixed(1)}%; n=${samples.length})`
     const start = job.started_at === null || status === 'skipped' ? undefined : Date.parse(job.started_at)
     const end = job.completed_at === null ? Date.parse(opts.generatedAtUtc) : Date.parse(job.completed_at)
     if (start !== undefined && Number.isFinite(start) && Number.isFinite(end) && end >= start) {
@@ -275,9 +281,9 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     jobs.push(...payload.jobs)
     if (jobs.length >= payload.total_count || payload.jobs.length === 0) break
   }
-  const wantedKeys = new Set(jobs.filter((job) => job.run_attempt === opts.attempt).flatMap((job) => {
+  const wantedKeys = new Set(jobs.filter((job) => job.run_attempt === opts.attempt && isBuildJob(job.name)).flatMap((job) => {
     const identity = pipelineJobIdentityForName(job.name)
-    return identity === undefined ? [] : [canonicalJobKey(identity.job, identity.dimensions).toString('hex')]
+    return identity === undefined ? [] : [canonicalJobKey(identity).toString('hex')]
   }))
   const counts: Record<string, number> = {}
   const baselines: { id: number; jobs: PipelineJob[] }[] = []
@@ -294,15 +300,19 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
         if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
       }
       baselines.push({ id: run.id, jobs: candidateJobs })
-      const seen = new Set<string>()
+      const candidateDurations = new Map<string, number>()
+      const duplicateKeys = new Set<string>()
       for (const job of candidateJobs) {
         const identity = pipelineJobIdentityForName(job.name)
-        if (identity === undefined || job.conclusion !== 'success' || wallTimeMs(job) === undefined) continue
-        const key = canonicalJobKey(identity.job, identity.dimensions).toString('hex')
-        if (wantedKeys.has(key) && !seen.has(key) && (counts[key] ?? 0) < 7) {
-          counts[key] = (counts[key] ?? 0) + 1
-          seen.add(key)
-        }
+        const duration = wallTimeMs(job)
+        if (identity === undefined || job.conclusion !== 'success' || duration === undefined) continue
+        const key = canonicalJobKey(identity).toString('hex')
+        if (candidateDurations.has(key)) duplicateKeys.add(key)
+        else candidateDurations.set(key, duration)
+      }
+      for (const key of candidateDurations.keys()) {
+        if (duplicateKeys.has(key) || !wantedKeys.has(key) || (counts[key] ?? 0) >= 7) continue
+        counts[key] = (counts[key] ?? 0) + 1
       }
     }
     examined += payload.workflow_runs.length

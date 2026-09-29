@@ -22,7 +22,7 @@ workflow_id="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --jq .workflo
   --bundle-id pipeline-traces \
   --input-paths-json "[\"$scratch/record.jsonl\"]" \
   --output-path "$scratch/bundle.json"
-gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments?per_page=100" --paginate --slurp --jq 'add' > "$scratch/comments.json"
+gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments?per_page=100" --paginate --slurp | jq 'add' > "$scratch/comments.json"
 "$ci_tools" workflow-report render-comment-body \
   --bundle-path "$scratch/bundle.json" \
   --comments-path "$scratch/comments.json" \

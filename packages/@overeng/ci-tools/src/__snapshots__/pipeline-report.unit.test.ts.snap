@@ -130,6 +130,7 @@ gantt
                 "status": "success",
                 "wallTime": "5m 04s",
                 "delta": "+56.0s (22.6%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790622931000%22%2C%22to%22%3A%221790627735000%22%7D%7D%7D"
               },
               {
@@ -137,6 +138,7 @@ gantt
                 "status": "success",
                 "wallTime": "0m 53s",
                 "delta": "+36.0s (211.8%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790622810000%22%2C%22to%22%3A%221790627363000%22%7D%7D%7D"
               },
               {
@@ -144,6 +146,7 @@ gantt
                 "status": "success",
                 "wallTime": "0m 11s",
                 "delta": "+6.0s (120.0%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623020000%22%2C%22to%22%3A%221790627531000%22%7D%7D%7D"
               },
               {
@@ -151,6 +154,7 @@ gantt
                 "status": "success",
                 "wallTime": "17m 48s",
                 "delta": "+551.0s (106.6%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623020000%22%2C%22to%22%3A%221790628588000%22%7D%7D%7D"
               },
               {
@@ -158,6 +162,7 @@ gantt
                 "status": "success",
                 "wallTime": "5m 18s",
                 "delta": "no main baseline",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623020000%22%2C%22to%22%3A%221790627838000%22%7D%7D%7D"
               },
               {
@@ -171,6 +176,7 @@ gantt
                 "status": "success",
                 "wallTime": "4m 53s",
                 "delta": "+57.0s (24.2%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623020000%22%2C%22to%22%3A%221790627813000%22%7D%7D%7D"
               },
               {
@@ -178,6 +184,7 @@ gantt
                 "status": "success",
                 "wallTime": "27m 59s",
                 "delta": "+1050.0s (166.9%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790622802000%22%2C%22to%22%3A%221790628981000%22%7D%7D%7D"
               },
               {
@@ -185,6 +192,7 @@ gantt
                 "status": "success",
                 "wallTime": "0m 04s",
                 "delta": "no main baseline",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790622784000%22%2C%22to%22%3A%221790627288000%22%7D%7D%7D"
               },
               {
@@ -192,6 +200,7 @@ gantt
                 "status": "success",
                 "wallTime": "4m 51s",
                 "delta": "+112.0s (62.6%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623084000%22%2C%22to%22%3A%221790627875000%22%7D%7D%7D"
               },
               {
@@ -199,6 +208,7 @@ gantt
                 "status": "success",
                 "wallTime": "5m 17s",
                 "delta": "+129.0s (68.6%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623083000%22%2C%22to%22%3A%221790627900000%22%7D%7D%7D"
               },
               {
@@ -206,6 +216,7 @@ gantt
                 "status": "success",
                 "wallTime": "3m 40s",
                 "delta": "+106.0s (93.0%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623141000%22%2C%22to%22%3A%221790627861000%22%7D%7D%7D"
               },
               {
@@ -213,6 +224,7 @@ gantt
                 "status": "success",
                 "wallTime": "7m 44s",
                 "delta": "+134.0s (40.6%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623083000%22%2C%22to%22%3A%221790628047000%22%7D%7D%7D"
               },
               {
@@ -220,6 +232,7 @@ gantt
                 "status": "success",
                 "wallTime": "4m 50s",
                 "delta": "-97.0s (-25.1%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623140000%22%2C%22to%22%3A%221790627930000%22%7D%7D%7D"
               },
               {
@@ -227,6 +240,7 @@ gantt
                 "status": "cancelled",
                 "wallTime": "90m 28s",
                 "delta": "+4238.5s (356.3%; n=6)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790622884000%22%2C%22to%22%3A%221790632812000%22%7D%7D%7D"
               },
               {
@@ -234,6 +248,7 @@ gantt
                 "status": "success",
                 "wallTime": "6m 33s",
                 "delta": "no main baseline",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623084000%22%2C%22to%22%3A%221790627977000%22%7D%7D%7D"
               },
               {
@@ -241,6 +256,7 @@ gantt
                 "status": "success",
                 "wallTime": "3m 10s",
                 "delta": "-78.0s (-29.1%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623140000%22%2C%22to%22%3A%221790627830000%22%7D%7D%7D"
               },
               {
@@ -248,6 +264,7 @@ gantt
                 "status": "success",
                 "wallTime": "4m 58s",
                 "delta": "+81.0s (37.3%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623200000%22%2C%22to%22%3A%221790627998000%22%7D%7D%7D"
               },
               {
@@ -261,6 +278,7 @@ gantt
                 "status": "success",
                 "wallTime": "13m 21s",
                 "delta": "+589.0s (277.8%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623202000%22%2C%22to%22%3A%221790628503000%22%7D%7D%7D"
               },
               {
@@ -268,6 +286,7 @@ gantt
                 "status": "success",
                 "wallTime": "5m 40s",
                 "delta": "+50.0s (17.2%; n=7)",
+                "traceId": "a0123456789abcdef0123456789abcde",
                 "traceUrl": "https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22a0123456789abcdef0123456789abcde%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%221790623140000%22%2C%22to%22%3A%221790627980000%22%7D%7D%7D"
               },
               {

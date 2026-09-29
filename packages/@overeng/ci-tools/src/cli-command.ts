@@ -111,7 +111,7 @@ const pipelineReportCollectCommand = Command.make(
         generatedAtUtc,
         token,
         traceIdForJob: (runIdentity, identity) =>
-          deriveJobTraceId(runIdentity, identity.job, identity.dimensions),
+          deriveJobTraceId({ runId: runIdentity, ...identity }),
       }).pipe(
         Effect.catch((cause) => Effect.succeed({
           _tag: 'WorkflowReportRecord' as const,

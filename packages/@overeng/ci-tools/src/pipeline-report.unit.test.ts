@@ -77,9 +77,23 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     })
   })
 
+  it('keeps zero-duration baselines legible and excludes the attempt-close finalizer', () => {
+    const typecheck = options.jobs.find((job) => job.name === 'typecheck')!
+    const zeroDuration = { ...typecheck, completed_at: typecheck.started_at }
+    const report = buildPipelineReport({
+      ...options,
+      jobs: [typecheck, { ...typecheck, name: 'pipeline-attempt-close' }],
+      baselines: baselineIds.map((id) => ({ id, jobs: [zeroDuration] })),
+    })
+    const rows = report.data!.rows as readonly { job: string; delta: string }[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.job).toBe('typecheck')
+    expect(rows[0]?.delta).toMatch(/^[+-]\d+\.\ds \(percent unavailable; n=7\)$/u)
+  })
+
   it('links the VRS 01 runner vector through the same producer derivation', () => {
     const identity = pipelineJobIdentityForName('test (namespace-profile-linux-x86-64)')!
-    expect(deriveJobTraceId('ci/github/overengineeringstudio%2Feffect-utils/421/2', identity.job, identity.dimensions))
+    expect(deriveJobTraceId({ runId: 'ci/github/overengineeringstudio%2Feffect-utils/421/2', ...identity }))
       .toBe('dc8939be377d7ae198ab958b5457787c')
     const report = buildPipelineReport({
       ...options,
@@ -89,7 +103,7 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
         { ...options.jobs.find((job) => job.name === 'test (namespace-profile-linux-x86-64)')!, run_attempt: 2 },
       ],
       traceIdForJob: (runId, jobIdentity) =>
-        deriveJobTraceId(runId, jobIdentity.job, jobIdentity.dimensions),
+        deriveJobTraceId({ runId, ...jobIdentity }),
     })
     expect((report.data!.rows as readonly { traceId?: string }[])[0]?.traceId)
       .toBe('dc8939be377d7ae198ab958b5457787c')
