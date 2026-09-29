@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:91f5f68b0aaa6cedf0f4147d4209e607dcc02df0aac008c36a51a68058026b26
+# Store fingerprint: sha256:1e5e6705476db0480262cb179023e2f5a4f5d876d4503193b41cf8f439132305
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -25647,6 +25647,7 @@ pnpm_store_view(
         "@types/react": "@types+react@19.2.18",
         "@types/react-reconciler": "@types+react-reconciler@0.33.0_@types+react@19.2.18",
         "@vitejs/plugin-react": "@vitejs+plugin-react@6.1.1_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0",
+        "@vitest/browser-playwright": "@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "effect": "effect@4.0.0-rc.118",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",

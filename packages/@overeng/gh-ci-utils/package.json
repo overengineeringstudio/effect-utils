@@ -38,6 +38,7 @@
     "@storybook/react-vite": "10.6.0",
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
+    "@vitest/browser-playwright": "4.1.9",
     "effect": "4.0.0-rc.118",
     "react": "19.2.8",
     "react-dom": "19.2.8",
