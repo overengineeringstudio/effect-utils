@@ -23,6 +23,7 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   gate = ../../../../scripts/buck2-rust-deps.sh;
+  foreignFixups = ../../../../scripts/buck2-rust-foreign-fixups.ts;
   workspaceSegments = lib.splitString "/" workspaceRoot;
   validRelativePath =
     workspaceRoot != ""
@@ -43,7 +44,8 @@ let
       ${pkgs.reindeer}/bin/reindeer \
       ${pkgs.cargo}/bin/cargo \
       ${pkgs.rustc}/bin/rustc \
-      ${pkgs.bun}/bin/bun
+      ${pkgs.bun}/bin/bun \
+      ${foreignFixups}
   '';
 in
 assert lib.assertMsg validRelativePath

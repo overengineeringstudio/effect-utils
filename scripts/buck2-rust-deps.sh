@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 8 ]; then
-  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <bun>" >&2
+if [ "$#" -ne 9 ]; then
+  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <bun> <foreign-fixups-script>" >&2
   exit 64
 fi
 
@@ -14,6 +14,7 @@ reindeer="$5"
 cargo="$6"
 rustc="$7"
 bun="$8"
+foreign_fixups_script="$9"
 
 case "$mode" in
   generate | check) ;;
@@ -103,11 +104,23 @@ fi
 mkdir -p "$cargo_home"
 lock_before="$(mktemp "$cargo_home/Cargo.lock.before.XXXXXX")"
 candidate="$(mktemp "$third_party/.BUCK.next.XXXXXX")"
+foreign_fixups=""
+temporary_config=""
 cleanup() {
-  rm -f "$lock_before" "$candidate"
+  rm -f "$lock_before" "$candidate" "$temporary_config"
+  if [ -n "$foreign_fixups" ]; then rm -rf "$foreign_fixups"; fi
 }
 trap cleanup EXIT
 cp "$lock" "$lock_before"
+
+if [ -f "$workspace/foreign-packages.json" ]; then
+  foreign_fixups="$(mktemp -d "$cargo_home/foreign-fixups.XXXXXX")"
+  temporary_config="$(mktemp "$workspace/.reindeer-foreign.XXXXXX.toml")"
+  "$bun" "$foreign_fixups_script" \
+    "$root" "$workspace" "$config" "$third_party" "$cargo" "$cargo_home" \
+    "$foreign_fixups" "$temporary_config"
+  config="$temporary_config"
+fi
 
 set +e
 CARGO_HOME="$cargo_home" "$reindeer" \
