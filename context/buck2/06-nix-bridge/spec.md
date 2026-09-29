@@ -210,6 +210,60 @@ exposure revoke the affected key immediately; uninstall the app from both
 repositories to halt writes while investigating. Installation tokens expire
 automatically and must never be saved.
 
+## pnpm runtime closure for executing JavaScript products
+
+```text
+declared importer package_tree targets
+  -> PnpmDeclaredClosureInfo (views + every reachable declared root)
+  -> pnpm_runtime_closure (one relocatable tree + digest descriptor)
+  -> mkBuckProductFromSource.runtimeClosureTarget
+  -> mkBuck2JavaScriptProductImport.runtimeClosure
+       $out/libexec/node_modules -> .pnpm/<primary-view>
+       $out/libexec/importers/<name>/node_modules -> .pnpm/<view>
+```
+
+The importer map uses caller-owned normalized relative names (`service`, `cli`,
+`flakes/vista/blocks`); the primary name is one of them. A `package_tree`
+backed by a pnpm view forwards `PnpmDeclaredClosureInfo`, so callers refer to
+stable package-tree labels, not lock-derived hashed view labels. The Buck rule
+unions their `read_roots` (including workspace package trees, normalized
+entries, SCC groups and peer siblings), maps each distinct source artifact to
+one `.pnpm/<index>` directory, copies only declared files, and rewrites every
+relative symlink to its new internal target. Missing, cyclic, escaping,
+absolute, and unsupported file types fail assembly. This materializes the
+runtime closure once per declared set, rather than shipping the prepared pnpm
+workspace or relying on the original Buck output paths.
+
+The tree contains `descriptor.json` with exact fields
+`{schema:\"effect-utils/pnpm-runtime-closure/v1\",digest:<sha256 hex>,
+importers:<sorted names>,primary:<name>}`. Its digest is SHA-256 of the
+lexicographically sorted directory, regular-file and symlink records
+(normalized relative path, executable bit, byte count and bytes or relative
+link text), excluding the descriptor itself. Source paths, timestamps and
+inode identity are not part of the digest. Because optional native package
+entries are selected by the target platform, consumers pin a digest per
+platform tuple; a Linux digest does not authorize a Darwin closure. The
+descriptor is a repository-local versioned format; unknown fields or schema
+versions fail import.
+
+`mkBuckProductFromSource { runtimeClosureTarget = \"//…:runtime_closure\"; … }`
+builds the target through the same sandboxed, archive-projected Buck graph as
+its JavaScript module and exports `$sourceProduct/runtime-closure`. The Nix
+JavaScript product import accepts
+`runtimeClosure = { artifact = \"${sourceProduct}/runtime-closure\";
+expectedDigest = \"<independently pinned lowercase sha256>\"; };`. It checks
+the exact descriptor and recalculates the tree digest before copying the whole
+tree under `$out/libexec`; only then does it add `nativeNodePackages` slots
+under the primary view's `node_modules`. Each native slot is supplied by a
+Nix-owned package (or by the existing normalized-entry package override), not
+downloaded or lifecycle-built during import. ESM modules must be installed
+beside the primary `node_modules` root; modules using a secondary importer
+must have a `node_modules` link to
+`$out/libexec/importers/<name>/node_modules` beside their own module path.
+`NODE_PATH` alone is insufficient for ESM bare imports. Both the pinned npm
+archives and any Nix-native slots are declared inputs, and neither Buck
+assembly nor Nix import accesses the network.
+
 ## Private pnpm Consumption
 
 Private package products (decision 0037 clauses 4 and 5) reach pnpm and Buck

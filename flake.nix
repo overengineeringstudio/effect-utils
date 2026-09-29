@@ -115,6 +115,45 @@ rec {
           producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           repositoryRoot = ./.;
         };
+        viteRuntimeFixture =
+          if system != "x86_64-linux" then
+            null
+          else
+            let
+              fixtureSource = mkBuckProductFromSource {
+                capabilities = buck2Capabilities;
+                inherit pnpmArchives;
+                nativeStorePackages = [
+                  {
+                    name = "node-pty";
+                    package = "${nodePtyNative}/node_modules/node-pty";
+                  }
+                ];
+                producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
+                repositoryRoot = ./.;
+                product = {
+                  name = "vite-runtime-closure-fixture";
+                  kind = "fixture";
+                  target = "//buck2/products:vite_runtime_fixture_module";
+                  outputName = "vite-runtime-fixture.mjs";
+                };
+                runtimeClosureTarget = "//buck2/products:vite_runtime_closure_fixture";
+              };
+            in
+            import ./nix/buck2-products/vite-runtime-fixture.nix {
+              inherit pkgs;
+              artifact = "${fixtureSource}/vite-runtime-fixture.mjs";
+              runtimeClosure = {
+                artifact = "${fixtureSource}/runtime-closure";
+                expectedDigest = "0341b46ca478ea0c96b499f1ed834bb644ab677319687edf1a60478fa014d551";
+              };
+              nativeNodePackages = [
+                {
+                  name = "@fixture/native-slot";
+                  package = pkgs.writeTextDir "index.js" "module.exports = 'native-slot-ok'\n";
+                }
+              ];
+            };
         buck2-go = import ./nix/go.nix { inherit pkgs; };
         buck2-bun-compile-runtime = import ./nix/bun-compile-runtime.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
@@ -246,7 +285,9 @@ rec {
             oxlint-npm = oxlintNpm;
             node-pty-native = nodePtyNative;
           }
-          // pkgs.lib.optionalAttrs (system == "x86_64-linux") { }
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            buck2-vite-runtime-closure-fixture = viteRuntimeFixture;
+          }
           // pkgs.lib.mapAttrs' (
             name: value:
             pkgs.lib.nameValuePair "buck-product-${pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-from-source" value

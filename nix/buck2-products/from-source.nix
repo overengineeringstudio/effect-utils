@@ -19,6 +19,10 @@
   repositoryRoot ? ../..,
   repositorySource ? null,
   expectedSha256 ? null,
+  # Optional Buck tree containing the declared pnpm runtime importer closure.
+  runtimeClosureTarget ? null,
+  # Nix-built native packages used by lockfile store entries (not view links).
+  nativeStorePackages ? [ ],
 }:
 
 let
@@ -78,8 +82,12 @@ let
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
-    lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"
-  }${lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"}${
+    lib.concatMapStringsSep "" (
+      package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
+    ) nativeStorePackages
+  }${lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"}${
+    lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
+  }${
     lib.optionalString (
       cliBuildStamp != null
     ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"
@@ -155,6 +163,11 @@ let
         test -f "$descriptor"
         jq -cS . "$descriptor" > descriptor.json
       ''}
+      ${lib.optionalString (runtimeClosureTarget != null) ''
+        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg runtimeClosureTarget})"
+        test -f "$runtime_closure/descriptor.json"
+        cp -R "$runtime_closure" runtime-closure
+      ''}
       actual_sha256="$(sha256sum ${lib.escapeShellArg outputName} | cut -d' ' -f1)"
       ${lib.optionalString (expectedSha256 != null) ''
         test "$actual_sha256" = ${lib.escapeShellArg expectedSha256}
@@ -177,6 +190,9 @@ let
       ${lib.optionalString hasDescriptor ''
         cp descriptor.json "$out/descriptor.json"
       ''}
+      ${lib.optionalString (runtimeClosureTarget != null) ''
+        cp -R runtime-closure "$out/runtime-closure"
+      ''}
       runHook postInstall
     '';
 
@@ -184,11 +200,13 @@ let
       inherit
         capabilities
         cargoArchives
+        nativeStorePackages
         pnpmArchives
         producerCommit
         repositorySource
         source
         target
+        runtimeClosureTarget
         ;
       artifactName = outputName;
       inherit productName;

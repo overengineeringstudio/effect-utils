@@ -66,6 +66,18 @@ All notable changes to this project will be documented in this file.
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
 ### Added
+- **Buck2 pnpm runtime closure**: `pnpm_runtime_closure` consolidates the
+  normalized store entries and importer views of declared `package_tree`
+  roots into one relocatable tree with a pinned digest. JavaScript products can
+  build the tree with `mkBuckProductFromSource.runtimeClosureTarget` and import
+  it under `$out/libexec` with `runtimeClosure = { artifact; expectedDigest; }`;
+  Nix-built addons used by declared package snapshots are passed through
+  `mkBuckProductFromSource.nativeStorePackages = [ { name; package; } ]` so
+  their normalized `.pnpm` entries contain the addon; use
+  `nativeNodePackages` only for additional importer-view slots. The in-repo
+  Vite fixture loads `node-pty` from a normalized entry, adds a scoped native
+  slot, and runs a React build from the imported product.
+
 
 - **Buck2 cache products**: Publish `@overeng/effect-rpc-explorer`,
   `@overeng/effect-rpc-explorer-react`, and its runtime dependency
