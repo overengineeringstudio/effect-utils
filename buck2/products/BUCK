@@ -1,4 +1,16 @@
 load("//buck2/products:defs.bzl", "build_product", "javascript_product")
+load("//buck2/dependencies:defs.bzl", "pnpm_runtime_closure")
+
+pnpm_runtime_closure(
+    name = "vite_runtime_closure_fixture",
+    importers = {
+        "service": "//packages/@overeng/gh-ci-utils:package_tree",
+        "cli": "//packages/@overeng/gh-ci-utils:package_tree",
+    },
+    primary = "service",
+    runtime = "//buck2/dependencies:runtime-closure.ts",
+    visibility = ["PUBLIC"],
+)
 
 # Public rule API lives in defs.bzl; concrete products belong to repository adapters.
 export_file(

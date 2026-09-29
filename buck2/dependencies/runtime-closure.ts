@@ -38,9 +38,16 @@ export const assembleRuntimeClosure = async ({ output, importers, roots, primary
     if (!canonical.has(path)) fail(`view ${name} is not a declared root: ${path}`)
   }
   const sources: Source[] = [...canonical].sort(compare).map((source, index) => ({ source, destination: join(stage, '.pnpm', String(index)) }))
+  const bySource = new Map(sources.map((entry) => [entry.source, entry]))
   const find = (path: string): Source => {
-    const source = sources.filter((entry) => inside(entry.source, path)).sort((a, b) => b.source.length - a.source.length)[0]
-    return source ?? fail(`link target is outside declared roots: ${path}`)
+    let candidate = path
+    while (true) {
+      const found = bySource.get(candidate)
+      if (found !== undefined) return found
+      const parent = dirname(candidate)
+      if (candidate === parent) fail(`link target is outside declared roots: ${path}`)
+      candidate = parent
+    }
   }
   const pending: string[] = []
   const walk = async (source: string, destination: string): Promise<void> => {
