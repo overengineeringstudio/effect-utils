@@ -12,6 +12,7 @@ export const internalPackages = [
   'agent-session-ingest',
   'buck2-tools',
   'content-address',
+  'devbar',
   'effect-ai-claude-cli',
   'effect-ai-gateway',
   'effect-distributed-lock',

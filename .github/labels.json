@@ -166,6 +166,11 @@
       "description": "@overeng/content-address package · Set: manual"
     },
     {
+      "name": "system:devbar",
+      "color": "a371f7",
+      "description": "@overeng/devbar package · Set: manual"
+    },
+    {
       "name": "system:effect-ai-claude-cli",
       "color": "a371f7",
       "description": "@overeng/effect-ai-claude-cli package · Set: manual"
