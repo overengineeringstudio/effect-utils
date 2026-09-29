@@ -645,7 +645,10 @@ fn ingest_reports_spool_failure(signal: &str) {
     let target = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
-        .find(|path| path.to_string_lossy().ends_with(&format!(".{signal}.chunk")))
+        .find(|path| {
+            path.to_string_lossy()
+                .ends_with(&format!(".{signal}.chunk"))
+        })
         .unwrap();
     fs::remove_file(&target).unwrap();
     fs::create_dir(&target).unwrap();
@@ -659,7 +662,11 @@ fn ingest_reports_spool_failure(signal: &str) {
         },
     });
     let error = result.expect_err("an unspooled chunk must fail ingest");
-    let kind = if signal == "traces" { "trace" } else { "metrics" };
+    let kind = if signal == "traces" {
+        "trace"
+    } else {
+        "metrics"
+    };
     assert!(
         error.to_string().contains(&format!("OTLP {kind} chunk")),
         "{error}"
