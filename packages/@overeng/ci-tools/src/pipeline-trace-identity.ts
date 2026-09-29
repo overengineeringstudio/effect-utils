@@ -19,9 +19,9 @@ export const canonicalJobKey = ({
   dimensions: Readonly<Record<string, string>>
 }): Buffer => {
   if (job === '') throw new TypeError('pipeline job identifier is empty')
-  const names = Object.keys(dimensions).sort((a, b) =>
-    Buffer.compare(Buffer.from(a), Buffer.from(b)),
-  )
+  const names = Object.keys(dimensions)
+  // oxlint-disable-next-line unicorn/no-array-sort -- Object.keys returns a fresh array; toSorted copies it again.
+  names.sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
   const count = Buffer.allocUnsafe(4)
   count.writeUInt32BE(names.length)
   const parts = [frame(job), count]

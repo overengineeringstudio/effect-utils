@@ -16,7 +16,7 @@ export class TraceCommandError extends Schema.TaggedError<TraceCommandError>()(
 ) {}
 
 const pr = Cli.Argument.Int('pr').pipe(Cli.Argument.withDescription('Pull request number'))
-const repo = Cli.Flag.String('repo').pipe(Cli.Flag.optional)
+const repoFlag = Cli.Flag.String('repo').pipe(Cli.Flag.optional)
 
 const encodeComponent = (value: string) =>
   encodeURIComponent(value).replace(
@@ -80,6 +80,7 @@ export const renderJobTraces = ({
   for (const job of attemptJobs) nameCounts.set(job.name, (nameCounts.get(job.name) ?? 0) + 1)
   const runIdentity = `ci/github/${encodeComponent(repo)}/${run.id}/${run.run_attempt}`
   const lines = [`${repo}#${prNumber}  Run ${run.id} (attempt ${run.run_attempt})`]
+  // oxlint-disable-next-line unicorn/no-array-sort -- filter returned a fresh array; toSorted copies it again.
   for (const job of attemptJobs.sort((left, right) =>
     left.name < right.name ? -1 : left.name > right.name ? 1 : left.id - right.id,
   )) {
@@ -118,7 +119,7 @@ export const renderJobTraces = ({
 }
 
 /** `gh-ci-utils traces <pr>`: show deterministic links from GitHub run/job facts. */
-export const tracesCommand = Cli.Command.make('traces', { pr, repo }).pipe(
+export const tracesCommand = Cli.Command.make('traces', { pr, repo: repoFlag }).pipe(
   Cli.Command.withHandler(({ pr: number, repo: repoOpt }) =>
     Effect.gen(function* () {
       if (!Number.isSafeInteger(number) || number <= 0) {
