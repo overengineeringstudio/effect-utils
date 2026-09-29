@@ -21,8 +21,8 @@ pkgs.writeShellScriptBin "otel-span" ''
         [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }
       }
 
-      # Payload is passed as $1. Spool delivery validates and compacts JSON before
-      # writing so malformed shell-built OTLP never enters downstream tests.
+      # Per-span capture stays readable locally. The completed pipeline converts
+      # these files into immutable OTLP retry chunks before attempting delivery.
       _otel_deliver() {
         local payload="$1"
         local _spool_dir="''${OTEL_SPAN_SPOOL_DIR:-}"
@@ -35,17 +35,45 @@ pkgs.writeShellScriptBin "otel-span" ''
           else
             printf '%s\n' "$payload" | "$_jq" -c . >> "$_spool_dir/spans.jsonl"
           fi
-        else
-          local _endpoint="''${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
-          if [ -n "$_endpoint" ]; then
-            ${pkgs.curl}/bin/curl -s -X POST \
-              "$_endpoint/v1/traces" \
-              -H "Content-Type: application/json" \
-              -d "$payload" \
-              --max-time 2 \
-              >/dev/null 2>&1 || true
-          fi
+        elif [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+          ${pkgs.curl}/bin/curl -s -X POST \
+            "''${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/traces" \
+            -H "Content-Type: application/json" \
+            -d "$payload" --max-time 2 >/dev/null 2>&1 || true
         fi
+      }
+
+      _spool_otlp_chunk() {
+        local LC_ALL=C payload=$1 pending=$2 digest tmp
+        if (( ''${#payload} > 3300000 )); then
+          echo "otel-span: span payload exceeds OTLP collector limit; native JSONL retained" >&2
+          return 1
+        fi
+        digest="$(printf '%s' "$payload" | ${pkgs.coreutils}/bin/sha256sum)"
+        digest="''${digest%% *}"
+        [[ -f "$pending/$digest.traces.chunk" ]] && return 0
+        tmp="$(${pkgs.coreutils}/bin/mktemp "$pending/.tmp.XXXXXXXX")"
+        "$_jq" -cn --arg id "$digest" --argjson bytes "''${#payload}" \
+          '{signal:"traces",byte_count:$bytes,destination:"OTEL_EXPORTER_OTLP_ENDPOINT",id:$id}' > "$tmp"
+        printf '%s' "$payload" >> "$tmp"
+        ${pkgs.coreutils}/bin/sync "$tmp" || return 1
+        ${pkgs.coreutils}/bin/mv "$tmp" "$pending/$digest.traces.chunk" || return 1
+        ${pkgs.coreutils}/bin/sync "$pending"
+      }
+
+      _pipeline_prepare_spans() {
+        local spool=$1 payload file
+        local pending="$spool/pending"
+        ${pkgs.coreutils}/bin/mkdir -p "$pending"
+        for file in "$spool/spans/"*.jsonl; do
+          [[ -f "$file" ]] || continue
+          while IFS= read -r payload || [[ -n "$payload" ]]; do
+            if [[ -n "$payload" ]]; then
+              _spool_otlp_chunk "$payload" "$pending" || return 1
+            fi
+          done < "$file"
+          ${pkgs.coreutils}/bin/rm -f "$file"
+        done
       }
 
       _gen_hex() {
@@ -94,8 +122,7 @@ pkgs.writeShellScriptBin "otel-span" ''
           _validate_span_id "$PARENT_SPAN_ID"
         fi
       }
-      # Binary framing is shared with buck2-evidence: domain NUL, then each
-      # UTF-8 input as u32be(byte length) + bytes.
+      # Length-framed canonical K(job, dimensions) from the run-identity VRS.
       _u32be() {
         local n=$1 bytes
         printf -v bytes '\\%03o\\%03o\\%03o\\%03o' \
@@ -110,17 +137,48 @@ pkgs.writeShellScriptBin "otel-span" ''
         printf '%s' "$1"
       }
 
+      _job_key_bytes() {
+        local job=$1 dimension name value candidate
+        shift
+        _frame "$job"
+        _u32be "$#"
+        (( $# )) || return 0
+        local -a names=()
+        local -A seen=()
+        for dimension in "$@"; do
+          name="''${dimension%%=*}"
+          value="''${dimension#*=}"
+          [[ -n "$name" && -n "$value" && "$dimension" == *=* ]] ||
+            { echo "otel-span: invalid matrix dimension" >&2; return 1; }
+          [[ -z "''${seen[$name]+x}" ]] ||
+            { echo "otel-span: duplicate dimension name" >&2; return 1; }
+          seen[$name]=1
+          names+=("$name")
+        done
+        while IFS= read -r -d "" name; do
+          for dimension in "$@"; do
+            candidate="''${dimension%%=*}"
+            if [[ "$candidate" == "$name" ]]; then
+              _frame "$name"
+              _frame "''${dimension#*=}"
+              break
+            fi
+          done
+        done < <(printf '%s\0' "''${names[@]}" | LC_ALL=C ${pkgs.coreutils}/bin/sort -zu)
+      }
+
       _derive_pipeline_id() {
-        local domain=$1 length=$2 run=$3 job="''${4:-}" counter=0 digest result
+        local domain=$1 length=$2 run=$3 counter=0 digest result
+        shift 3
         while :; do
           digest="$(
             {
               printf '%s\0' "$domain"
               _frame "$run"
-              if [[ "$domain" == "buck2.pipeline-run.job/v1" ]]; then _frame "$job"; fi
+              if [[ "$domain" == buck2.job.* ]]; then _job_key_bytes "$@" || return 1; fi
               if (( counter > 0 )); then _u32be "$counter"; fi
             } | ${pkgs.coreutils}/bin/sha256sum
-          )"
+          )" || return 1
           result="''${digest:0:length}"
           if [[ "$result" != "$(printf '%0*d' "$length" 0)" ]]; then
             printf '%s' "$result"
@@ -174,12 +232,18 @@ pkgs.writeShellScriptBin "otel-span" ''
 
       _cmd_pipeline_derive() {
         local id=$1 job=$2
+        shift 2
         _valid_pipeline_run_id "$id" || { echo "otel-span: invalid PIPELINE_RUN_ID: $id" >&2; return 1; }
-        [[ -n "$job" ]] || { echo "otel-span: missing PIPELINE_TASK_KEY" >&2; return 1; }
-        printf 'trace=%s root=%s job=%s\n' \
-          "$(_derive_pipeline_id buck2.pipeline-run.trace/v1 32 "$id")" \
-          "$(_derive_pipeline_id buck2.pipeline-run.root/v1 16 "$id")" \
-          "$(_derive_pipeline_id buck2.pipeline-run.job/v1 16 "$id" "$job")"
+        [[ -n "$job" ]] || { echo "otel-span: missing pipeline job identifier" >&2; return 1; }
+        local dim
+        for dim in "$@"; do
+          [[ "$dim" == *=* && -n "''${dim%%=*}" && -n "''${dim#*=}" ]] ||
+            { echo "otel-span: invalid dimension: $dim" >&2; return 1; }
+        done
+        local trace root
+        trace="$(_derive_pipeline_id buck2.job.trace/v1 32 "$id" "$job" "$@")" || return 1
+        root="$(_derive_pipeline_id buck2.job.root/v1 16 "$id" "$job" "$@")" || return 1
+        printf 'trace=%s root=%s\n' "$trace" "$root"
       }
 
       _attr_key_from_kv() {
@@ -656,6 +720,51 @@ pkgs.writeShellScriptBin "otel-span" ''
         exit "$exit_code"
       }
 
+      # Join locally captured Buck logs and task spans into immutable retry
+      # chunks. The exporter handles response validation and retains ambiguous
+      # or partially accepted chunks. Neither path changes the child exit code.
+      _pipeline_export() {
+        local spool=$1 log sidecar
+        local -a logs=() sidecars=()
+        for log in "$spool/buck2/"*.pb.zst; do
+          [[ -s "$log" ]] && logs+=("$log")
+        done
+        for sidecar in "$spool/buck2/"*.sidecar; do
+          [[ -s "$sidecar" ]] && sidecars+=("$sidecar")
+        done
+        if (( ''${#logs[@]} )) && command -v buck2-events >/dev/null 2>&1; then
+          local -a sidecar_args=()
+          if (( ''${#sidecars[@]} )); then
+            ${pkgs.coreutils}/bin/cat -- "''${sidecars[@]}" > "$spool/buck2/combined.sidecar"
+            sidecar_args=(--sidecar "$spool/buck2/combined.sidecar")
+          fi
+          buck2-events ingest "''${logs[@]}" "''${sidecar_args[@]}" --spool-dir "$spool/pending" ||
+            echo "otel-span: Buck event conversion failed; native logs retained" >&2
+        fi
+        _pipeline_prepare_spans "$spool" || return 1
+        if command -v buck2-events >/dev/null 2>&1; then
+          buck2-events export --spool-dir "$spool/pending"
+        else
+          echo "otel-span: buck2-events unavailable; OTLP chunks retained" >&2
+          return 1
+        fi
+      }
+
+      _cmd_pipeline_export() {
+        [[ "''${1:-}" == --spool && $# == 2 ]] ||
+          { echo "Usage: otel-span pipeline-export --spool DIR" >&2; return 2; }
+        [[ -d "$2" ]] || { echo "otel-span: spool directory missing: $2" >&2; return 1; }
+        local spool=$2 retry
+        if command -v buck2-events >/dev/null 2>&1; then
+          for retry in "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records/"*/pending; do
+            [[ -d "$retry" && "$retry" != "$spool/pending" ]] || continue
+            buck2-events export --spool-dir "$retry" ||
+              echo "otel-span: prior OTLP retry deferred: $retry" >&2
+          done
+        fi
+        _pipeline_export "$spool"
+      }
+
       _cmd_pipeline_run() {
         if [[ "''${1:-}" == "--help" ]]; then
           echo "Usage: otel-span pipeline-run -- devenv tasks run <verb> [args...]"
@@ -664,7 +773,8 @@ pkgs.writeShellScriptBin "otel-span" ''
         [[ "''${1:-}" == "--" && $# -gt 1 ]] ||
           { echo "otel-span pipeline-run: expected -- <command> [args...]" >&2; return 2; }
         shift
-        local owner=0 nested=0 invalid=0 run_id job_key trace_id root_id job_id
+        local owner=0 nested=0 invalid=0 run_id job_key trace_id root_id job_id invocation
+        local -a dimensions=()
         local inherited="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}" outer="" rc=0 signal=""
         if [[ ! -v PIPELINE_RUN_ID ]]; then
           run_id="local/$(${pkgs.util-linux}/bin/uuidgen | ${pkgs.coreutils}/bin/tr '[:upper:]' '[:lower:]')"
@@ -673,9 +783,14 @@ pkgs.writeShellScriptBin "otel-span" ''
           run_id="$PIPELINE_RUN_ID"
         fi
         if (( owner )); then
-          job_key="''${PIPELINE_TASK_KEY:-worker/local}"
+          job_key="''${PIPELINE_TASK_KEY:-''${*: -1}}"
+          invocation="$(${pkgs.util-linux}/bin/uuidgen | ${pkgs.coreutils}/bin/tr '[:upper:]' '[:lower:]')"
+          dimensions=("invocation=$invocation")
         else
-          job_key="''${PIPELINE_TASK_KEY:-}"
+          job_key="''${PIPELINE_JOB_KEY:-''${PIPELINE_TASK_KEY:-}}"
+          if [[ -n "''${PIPELINE_MATRIX_RUNNER:-}" ]]; then
+            dimensions=("runner=$PIPELINE_MATRIX_RUNNER")
+          fi
         fi
         if ! _valid_pipeline_run_id "$run_id" || [[ -z "$job_key" ]]; then
           echo "otel-span pipeline-run: invalid pipeline identity; running without seeded telemetry" >&2
@@ -688,13 +803,12 @@ pkgs.writeShellScriptBin "otel-span" ''
           "$@"
           return $?
         fi
-        # Devenv-native OTelite is the preferred local collector. Resolve the
-        # endpoint once for child spans, root emission and local ingestion.
-        local effective_endpoint="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}"
+        # OTelite is a local endpoint; CI uses only the explicitly configured endpoint.
+        local effective_endpoint="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}"
         export OTEL_EXPORTER_OTLP_ENDPOINT="$effective_endpoint"
-        trace_id="$(_derive_pipeline_id buck2.pipeline-run.trace/v1 32 "$run_id")"
-        root_id="$(_derive_pipeline_id buck2.pipeline-run.root/v1 16 "$run_id")"
-        job_id="$(_derive_pipeline_id buck2.pipeline-run.job/v1 16 "$run_id" "$job_key")"
+        trace_id="$(_derive_pipeline_id buck2.job.trace/v1 32 "$run_id" "$job_key" "''${dimensions[@]}")"
+        root_id="$(_derive_pipeline_id buck2.job.root/v1 16 "$run_id" "$job_key" "''${dimensions[@]}")"
+        job_id="$(_gen_hex 8)"
         export PIPELINE_RUN_ID="$run_id" PIPELINE_TASK_KEY="$job_key"
         export PIPELINE_TRACE_ID="$trace_id" PIPELINE_ROOT_SPAN_ID="$root_id" PIPELINE_TASK_SPAN_ID="$job_id"
         if (( owner )); then export PIPELINE_ROOT_OWNER=entrypoint; fi
@@ -729,31 +843,27 @@ pkgs.writeShellScriptBin "otel-span" ''
           fi
         fi
 
-        # Never divert OTLP away from a working HTTP endpoint when there is
-        # no evidence consumer to drain the spool.
-        local evidence_available=0
-        if command -v buck2-evidence >/dev/null 2>&1; then evidence_available=1; fi
-        if (( owner && evidence_available )) && [[ -n "''${BUCK2_EVIDENCE_UPLOAD_URL:-}" ]]; then
-          ${pkgs.coreutils}/bin/timeout -k 2 45 buck2-evidence upload --pending \
-            --spool "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records" ||
-            echo "otel-span pipeline-run: pending evidence replay deferred" >&2
+        if (( ! nested )); then
+          export PIPELINE_SPOOL_DIR="''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records/$trace_id-$root_id"
         fi
-        if (( evidence_available )); then
-          if (( owner )) || [[ -z "''${PIPELINE_SPOOL_DIR:-}" ]]; then
-            export PIPELINE_SPOOL_DIR="''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records/$trace_id-$job_id"
-          fi
-          if ${pkgs.coreutils}/bin/mkdir -p "$PIPELINE_SPOOL_DIR/spans" "$PIPELINE_SPOOL_DIR/buck2" 2>/dev/null; then
-            export OTEL_SPAN_SPOOL_DIR="$PIPELINE_SPOOL_DIR/spans"
-            export OTEL_SPOOL_MULTI_WRITER=1
-          else
-            echo "otel-span pipeline-run: cannot create evidence spool; continuing" >&2
-            unset PIPELINE_SPOOL_DIR OTEL_SPAN_SPOOL_DIR
-          fi
+        if ${pkgs.coreutils}/bin/mkdir -p "$PIPELINE_SPOOL_DIR/spans" "$PIPELINE_SPOOL_DIR/buck2" "$PIPELINE_SPOOL_DIR/pending" 2>/dev/null; then
+          export OTEL_SPAN_SPOOL_DIR="$PIPELINE_SPOOL_DIR/spans"
+          export OTEL_SPOOL_MULTI_WRITER=1
         else
+          echo "otel-span pipeline-run: cannot create local retry spool; continuing" >&2
           unset PIPELINE_SPOOL_DIR OTEL_SPAN_SPOOL_DIR
         fi
         if (( owner )) && [[ -n "$outer" && -n "''${OTEL_SPAN_FORWARD_LINK_FILE:-}" ]]; then
           printf '00-%s-%s-01\n' "$trace_id" "$root_id" > "$OTEL_SPAN_FORWARD_LINK_FILE" || true
+        fi
+        if (( owner )) && [[ -n "$effective_endpoint" ]] &&
+          command -v buck2-events >/dev/null 2>&1; then
+          local retry
+          for retry in "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records/"*/pending; do
+            [[ -d "$retry" ]] || continue
+            buck2-events export --spool-dir "$retry" ||
+              echo "otel-span: pending retry deferred: $retry" >&2
+          done
         fi
         local start_ns end_ns child
         start_ns="$(${pkgs.coreutils}/bin/date +%s%N)"
@@ -772,64 +882,45 @@ pkgs.writeShellScriptBin "otel-span" ''
         fi
         trap - INT TERM
         end_ns="$(${pkgs.coreutils}/bin/date +%s%N)"
-        if (( owner )); then
+        if (( ! nested )); then
           local status=ok link_args=()
           (( rc == 0 )) || status=error
           if [[ -n "$outer" ]]; then link_args=(--link-traceparent "$outer"); fi
+          local -a identity_attrs=()
+          local env_name attr_name
+          for env_name in CI_PROVIDER VCS_CHANGE_ID VCS_REF_HEAD_REVISION VCS_REF_BASE_REVISION BUCK2_VCS_MERGE_REVISION; do
+            if [[ -n "''${!env_name:-}" ]]; then
+              case "$env_name" in
+                CI_PROVIDER) attr_name=ci.provider ;;
+                VCS_CHANGE_ID) attr_name=vcs.change.id ;;
+                VCS_REF_HEAD_REVISION) attr_name=vcs.ref.head.revision ;;
+                VCS_REF_BASE_REVISION) attr_name=vcs.ref.base.revision ;;
+                BUCK2_VCS_MERGE_REVISION) attr_name=buck2.vcs.merge.revision ;;
+              esac
+              identity_attrs+=(--attr-string "$attr_name=''${!env_name}")
+            fi
+          done
+          if [[ "''${PIPELINE_FORK:-}" == true || "''${PIPELINE_FORK:-}" == false ]]; then
+            identity_attrs+=(--attr-bool "ci.pr.fork=$PIPELINE_FORK")
+          fi
           (
             unset TRACEPARENT OTEL_TASK_TRACEPARENT
             "$0" emit-span effect-utils-devenv cicd.pipeline.task.run \
               --trace-id "$trace_id" --span-id "$job_id" --parent-span-id "$root_id" \
               --start-time-ns "$start_ns" --end-time-ns "$end_ns" \
               --status-code "$status" --attr "cicd.pipeline.task.name=$job_key" \
-              --attr "cicd.pipeline.run.id=$run_id" || true
-            "$0" emit-span effect-utils-devenv cicd.pipeline.run \
+              --attr-string "cicd.pipeline.run.id=$run_id" || true
+            "$0" emit-span effect-utils-devenv cicd.pipeline.job \
               --trace-id "$trace_id" --span-id "$root_id" \
               --start-time-ns "$start_ns" --end-time-ns "$end_ns" \
-              --status-code "$status" --attr "cicd.pipeline.run.id=$run_id" \
-              --attr-int "exit.code=$rc" "''${link_args[@]}" || true
+              --status-code "$status" --attr-string "cicd.pipeline.run.id=$run_id" \
+              --attr-string "cicd.pipeline.job.key=$job_key" --attr-int "exit.code=$rc" \
+              "''${identity_attrs[@]}" "''${link_args[@]}" || true
           )
         fi
-        # An outer adapter may retry this command against the same spool. Its
-        # post-step owns sealing and upload after the final attempt.
-        if (( ! nested && evidence_available )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" && -z "''${PIPELINE_SEAL_OWNER:-}" ]]; then
-          if ${pkgs.coreutils}/bin/timeout -k 2 15 buck2-evidence seal \
-            --spool "$PIPELINE_SPOOL_DIR" --run-id "$run_id" --task-key "$job_key"; then
-            local skip_local_ingest=0 close_dir="$PIPELINE_SPOOL_DIR/attempt-close" conclusion=success
-            if (( owner )) && [[ -n "''${BUCK2_EVIDENCE_UPLOAD_URL:-}" ]]; then
-              (( rc == 0 )) || conclusion=failure
-              if [[ -n "$signal" ]]; then conclusion=cancelled; fi
-              if ${pkgs.jq}/bin/jq -cn --arg key "$job_key" --arg conclusion "$conclusion" \
-                '[{key:$key,conclusion:$conclusion}]' > "$PIPELINE_SPOOL_DIR/close-jobs.json" &&
-                ${pkgs.coreutils}/bin/timeout -k 2 15 buck2-evidence seal-close \
-                  --spool "$close_dir" --run-id "$run_id" \
-                  --repository "''${PIPELINE_REPOSITORY:-local/unknown}" \
-                  --jobs-json "$PIPELINE_SPOOL_DIR/close-jobs.json" &&
-                ${pkgs.coreutils}/bin/timeout -k 2 45 buck2-evidence upload --spool "$close_dir" &&
-                ${pkgs.coreutils}/bin/timeout -k 2 45 buck2-evidence upload --spool "$PIPELINE_SPOOL_DIR"; then
-                skip_local_ingest=1
-              else
-                if [[ -e "$close_dir/upload-pending" || -e "$PIPELINE_SPOOL_DIR/upload-pending" ||
-                      -e "$close_dir/upload-confirmed" || -e "$PIPELINE_SPOOL_DIR/upload-confirmed" ]]; then
-                  echo "otel-span pipeline-run: service may own this spool; offline ingest withheld" >&2
-                  skip_local_ingest=1
-                elif [[ -n "$effective_endpoint" ]]; then
-                  echo "otel-span pipeline-run: evidence upload rejected or unreachable; attempting offline local ingest" >&2
-                else
-                  echo "otel-span pipeline-run: upload failed and no OTLP endpoint is configured; sealed spool retained" >&2
-                fi
-              fi
-            fi
-            if (( ! skip_local_ingest )); then
-              if [[ -n "$effective_endpoint" ]]; then
-                ${pkgs.coreutils}/bin/timeout -k 2 60 buck2-evidence ingest --local \
-                  --spool "$PIPELINE_SPOOL_DIR" ||
-                  echo "otel-span pipeline-run: local ingest failed; sealed spool retained" >&2
-              fi
-            fi
-          else
-            echo "otel-span pipeline-run: evidence seal failed" >&2
-          fi
+        if (( ! nested )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" && -z "''${PIPELINE_EXPORT_OWNER:-}" ]]; then
+          _pipeline_export "$PIPELINE_SPOOL_DIR" ||
+            echo "otel-span pipeline-run: OTLP export deferred; pending chunks retained" >&2
         fi
         printf 'pipeline run=%s trace=%s exit=%s\n' "$run_id" "$trace_id" "$rc" >&2
         return "$rc"
@@ -844,6 +935,7 @@ pkgs.writeShellScriptBin "otel-span" ''
     Subcommands:
       run        Wrap a command in an OTLP trace span
       pipeline-run  Seed a pipeline trace around a devenv task verb
+      pipeline-export  Convert captured job spans/logs and retry pending OTLP
       buck2      Prepare Buck command identity without wrapping Buck
       emit-span  Emit one typed OTLP span without wrapping a command
       emit       Deliver a raw OTLP JSON payload from stdin
@@ -857,6 +949,7 @@ pkgs.writeShellScriptBin "otel-span" ''
         emit-span) shift; _cmd_emit_span "$@" ;;
         pipeline-derive) shift; _cmd_pipeline_derive "$@" ;;
         pipeline-run) shift; _cmd_pipeline_run "$@" ;;
+        pipeline-export) shift; _cmd_pipeline_export "$@" ;;
         buck2) shift; _cmd_buck2 "$@" ;;
         emit) shift; _cmd_emit ;;
         --help|-h) _top_help; exit 0 ;;

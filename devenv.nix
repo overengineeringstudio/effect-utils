@@ -550,8 +550,8 @@ let
       cd "$root"
       ${standaloneBuckCachePosture}
 
-      # The pipeline owner seals its shared spool after the task graph.
-      # Standalone Buck tasks retain their bounded native ingest path.
+      # Pipeline logs join their job trace after the task graph. Standalone
+      # Buck commands convert locally, retaining unacknowledged OTLP chunks.
       pipeline_spool=0
       spool=""
       if [ -n "''${PIPELINE_SPOOL_DIR:-}" ]; then
@@ -593,11 +593,14 @@ let
           --status-code "$command_status" \
           --attr-int "exit.code=$buck_exit" || true
       fi
-      if (( ! pipeline_spool )) && [ -n "$spool" ] && [ -s "$event_log" ] &&
-        [ -n "''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" ]; then
-        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+      if (( ! pipeline_spool )) && [ -n "$spool" ] && [ -s "$event_log" ]; then
+        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}" \
           ${pkgs.coreutils}/bin/timeout -k 5 60 \
-          ${repoPackages.buck2-events}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" || true
+          ${repoPackages.buck2-events}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" \
+            --spool-dir "$spool/pending" || true
+        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}" \
+          ${pkgs.coreutils}/bin/timeout -k 5 60 \
+          ${repoPackages.buck2-events}/bin/buck2-events export --spool-dir "$spool/pending" || true
       fi
       exit "$buck_exit"
     '';
@@ -919,7 +922,6 @@ in
     repoPackages.otelite
     repoPackages.otel-scrape
     repoPackages.buck2-events
-    repoPackages.buck2-evidence
     # Nix-distributed Buck binary used by direct repository tasks.
     buck2Machine
     buck2Stage0Definition.product
@@ -1320,17 +1322,6 @@ in
         --target-platforms //buck2/platforms:host_platform \
         //buck2/toolchains:cross_cell_provider_identity \
         //buck2/toolchains:cross_cell_product_identity
-    '';
-  };
-
-  tasks."buck2:evidence:faults" = {
-    description = "Exercise evidence queue fault recovery and dead-lettering";
-    exec = trace.exec "buck2:evidence:faults" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      cd "$root"
-      binary=$(nix build --no-link --print-out-paths .#buck2-evidence)/bin/buck2-evidence
-      exec ${pkgs.python3}/bin/python3 "$root/scripts/buck2-evidence-faults.py" "$binary"
     '';
   };
 

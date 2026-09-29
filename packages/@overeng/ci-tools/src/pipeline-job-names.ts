@@ -33,7 +33,7 @@ export const pipelineJobIds = [
   'trusted-buck2-remote-cache-proof',
   'seed-pnpm-archives',
   'pr-a-inert-buck',
-  'evidence-attempt-close',
+  'pipeline-attempt-close',
 ] as const
 
 export type PipelineJobIdentity = {
