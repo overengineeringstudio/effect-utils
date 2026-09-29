@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 // Reindeer cannot omit a foreign Source::Local target without also pruning its
@@ -9,10 +9,9 @@ if (
   root === undefined ||
   workspace === undefined ||
   cargo === undefined ||
-  cargoHome === undefined ||
-  supplyDir === undefined
+  cargoHome === undefined
 ) {
-  throw new Error('expected root, workspace, cargo, cargo-home, supply directory')
+  throw new Error('expected root, workspace, cargo and cargo-home')
 }
 
 type Package = {
@@ -26,6 +25,7 @@ type Metadata = {
   readonly packages: readonly Package[]
   readonly workspace_members: readonly string[]
   readonly resolve: {
+    readonly root: string | null
     readonly nodes: readonly {
       readonly id: string
       readonly features: readonly string[]
@@ -54,7 +54,19 @@ const cargoMetadata = (manifest: string, locked: boolean): Metadata => {
   return JSON.parse(result.stdout.toString()) as Metadata
 }
 
+const metadata = cargoMetadata(path.join(workspace, 'Cargo.toml'), true)
+const byId = new Map(metadata.packages.map((entry) => [entry.id, entry]))
+const externalPaths = metadata.packages
+  .filter((entry) => entry.source === null && !metadata.workspace_members.includes(entry.id))
+  .map((entry) => entry.manifest_path)
 const declarationPath = path.join(workspace, 'foreign-packages.json')
+if (!existsSync(declarationPath)) {
+  if (externalPaths.length > 0) {
+    throw new Error(`undeclared external Cargo path dependencies: ${externalPaths.join(', ')}`)
+  }
+  process.exit(0)
+}
+if (supplyDir === undefined) throw new Error('expected supply directory for foreign packages')
 const declaration: unknown = JSON.parse(await Bun.file(declarationPath).text())
 if (
   typeof declaration !== 'object' ||
@@ -66,9 +78,8 @@ if (
 ) {
   throw new Error(`${declarationPath}: expected nonempty foreignPackageManifestPaths: string[]`)
 }
-const metadata = cargoMetadata(path.join(workspace, 'Cargo.toml'), true)
-const byId = new Map(metadata.packages.map((entry) => [entry.id, entry]))
 const foreignPaths = declaration.foreignPackageManifestPaths as string[]
+const declaredPaths: string[] = []
 for (const manifestPath of foreignPaths) {
   if (
     !/^[A-Za-z0-9][A-Za-z0-9._/-]*\/Cargo\.toml$/.test(manifestPath) ||
@@ -79,6 +90,7 @@ for (const manifestPath of foreignPaths) {
     )
   }
   const resolved = realpathSync(path.join(root, manifestPath))
+  declaredPaths.push(resolved)
   if (!resolved.startsWith(`${root}${path.sep}`)) {
     throw new Error(`foreign package manifest escapes repository: ${manifestPath}`)
   }
@@ -86,7 +98,7 @@ for (const manifestPath of foreignPaths) {
   if (
     packageInfo === undefined ||
     packageInfo.source !== null ||
-    metadata.workspace_members.includes(packageInfo.id)
+    !externalPaths.includes(resolved)
   ) {
     throw new Error(
       `foreign package is absent from the external path dependency graph: ${manifestPath}`,
@@ -96,15 +108,21 @@ for (const manifestPath of foreignPaths) {
 if (new Set(foreignPaths).size !== foreignPaths.length) {
   throw new Error('duplicate foreign package declarations')
 }
+if (JSON.stringify(declaredPaths.toSorted()) !== JSON.stringify(externalPaths.toSorted())) {
+  throw new Error(
+    `undeclared external Cargo path dependencies: ${externalPaths.filter((entry) => !declaredPaths.includes(entry)).join(', ')}`,
+  )
+}
 
 const selected = metadata.packages.filter((entry) => entry.source !== null)
 const featuresById = new Map(metadata.resolve.nodes.map((node) => [node.id, node.features]))
 const namesById = new Map<string, string>()
-for (const member of metadata.workspace_members) {
-  const node = metadata.resolve.nodes.find((entry) => entry.id === member)
+const rootPackageId = metadata.resolve.root
+if (rootPackageId !== null) {
+  const node = metadata.resolve.nodes.find((entry) => entry.id === rootPackageId)
   for (const dep of node?.deps ?? []) {
     const pkg = byId.get(dep.pkg)
-    if (pkg?.source !== null && pkg !== undefined && !namesById.has(pkg.id)) {
+    if (pkg?.source !== null && pkg !== undefined && dep.name !== pkg.name) {
       namesById.set(pkg.id, dep.name)
     }
   }

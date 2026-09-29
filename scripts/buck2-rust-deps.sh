@@ -117,6 +117,8 @@ if [ -f "$workspace/foreign-packages.json" ]; then
   supply_dir="$(mktemp -d "$cargo_home/foreign-supply.XXXXXX")"
   "$bun" "$supply_manifest_script" "$root" "$workspace" "$cargo" "$cargo_home" "$supply_dir"
   manifest_args=(--manifest-path "$supply_dir/Cargo.toml")
+else
+  "$bun" "$supply_manifest_script" "$root" "$workspace" "$cargo" "$cargo_home"
 fi
 
 set +e
