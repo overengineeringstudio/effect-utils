@@ -2864,6 +2864,15 @@
       "sha256": "def4ca0c41a06ce64a36e124934908afd87c062566ae812cddd24339e393c64d",
       "sizeBytes": 469381
     },
+    "@types/pngjs@6.0.5": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==",
+      "packageIdentity": "@types/pngjs@6.0.5",
+      "registryUrl": "https://registry.npmjs.org/@types/pngjs/-/pngjs-6.0.5.tgz",
+      "sha256": "db919544cdd5c9bd50928619fee0498341e4c0845b03d38752b510cff3994e07",
+      "sizeBytes": 2390
+    },
     "@types/react-dom@19.2.7": {
       "bins": {},
       "classification": "public",

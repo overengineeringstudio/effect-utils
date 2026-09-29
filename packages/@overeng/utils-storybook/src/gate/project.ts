@@ -12,7 +12,7 @@ import { dirname, join, resolve } from 'node:path'
 import { playwright } from '@vitest/browser-playwright'
 import type { Plugin, ViteUserConfig } from 'vitest/config'
 
-import { playsOnlyProvideKey } from './constants.ts'
+import { playsOnlyProvideKey, storyScreenshotComparatorOptions } from './constants.ts'
 import { portableStoryTests } from './portable-stories.ts'
 
 /**
@@ -391,9 +391,7 @@ const createProject = ({
               // fringe with a pixel-count budget instead would have cost the
               // property that a single structurally-different pixel still
               // fails; keeping the count at 0 preserves it.
-              threshold: 0.02,
-              includeAA: true,
-              allowedMismatchedPixels: 0,
+              ...storyScreenshotComparatorOptions,
             },
             resolveScreenshotPath: ({ arg, ext, testFileDirectory, testFileName }) => {
               const path = join(baselineDir, testFileDirectory, testFileName, `${arg}${ext}`)

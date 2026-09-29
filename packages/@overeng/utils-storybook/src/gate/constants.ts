@@ -94,6 +94,13 @@ export const storySettleConfig = {
   workQuietMs: 600,
 } as const
 
+/** One pixel contract for browser assertions and same-tree capture stability. */
+export const storyScreenshotComparatorOptions = {
+  threshold: 0.02,
+  includeAA: true,
+  allowedMismatchedPixels: 0,
+} as const
+
 /** Why a story was excluded from visual comparison by observation. */
 export type StorySettleFailure =
   | 'shape-never-quiet'

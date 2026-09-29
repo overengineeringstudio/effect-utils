@@ -159,6 +159,15 @@ export const createStoryGateAnnotations = ({ projectName }: { readonly projectNa
     }
 
     const started = Date.now()
+    // The assertion captures the full page, including offscreen images. A lazy
+    // image below the fold stays incomplete forever when nobody scrolls, so the
+    // existing image-readiness signal would correctly wait but never resolve.
+    // Request it now; settle() still waits for its actual completion, not a timer.
+    for (const image of context.canvasElement.querySelectorAll<HTMLImageElement>(
+      'img[loading="lazy"]',
+    )) {
+      image.loading = 'eager'
+    }
     const environment = browserEnvironment(context.canvasElement)
 
     if ((await fontsReady()) === false) {

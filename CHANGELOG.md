@@ -312,6 +312,11 @@ All notable changes to this project will be documented in this file.
   `readme` selects the first available `README.md`, `README.txt`, or `README`;
   `readme = false` disables that default. Consumers using `env!` and
   `option_env!` compile under Buck2.
+- **Storybook story gate screenshot stability**: Compare decoded screenshots
+  with the same pixel threshold as the browser assertion, rather than counting
+  PNG encodings or tolerated antialiasing as different frames. Before settling
+  a full-page capture, request offscreen lazy images so image readiness can
+  observe their completion instead of timing out with unloaded content.
 
 - **Buck2 rules product**: Ship and export `runtime-closure.ts` in the rules
   cell so external consumers can analyze `pnpm_runtime_closure` without
