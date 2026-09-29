@@ -44,9 +44,9 @@ export type PackageTreeOptions = {
   /**
    * Remove TypeScript project references from the staged root tsconfig.
    *
-   * A bounded test view contains one package, while project references describe the
-   * source-workspace build graph. Oxc follows those references during per-file transforms,
-   * so leaving them in would make the bounded view depend on undeclared sibling checkouts.
+   * Package views contain one package, while references describe the source-workspace
+   * build graph. Bundlers and per-file transforms may follow them into unstaged sibling
+   * projects; Buck typecheck and emit use the package's declared dependency view instead.
    */
   readonly stripProjectReferences: boolean
 }
@@ -387,7 +387,13 @@ const cloneProjectFileWithoutReferences = ({
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) === true) {
     throw new Error('package tree: tsconfig.json must contain an object')
   }
-  const project = { ...(parsed as Readonly<Record<string, unknown>>), references: [] }
+  const config = parsed as Readonly<Record<string, unknown>>
+  const references = config.references
+  if (Array.isArray(references) === false || references.length === 0) {
+    cloneTree({ source, destination })
+    return
+  }
+  const project = { ...config, references: [] }
   mkdirSync(dirname(destination), { recursive: true })
   writeFileSync(destination, `${JSON.stringify(project, null, 2)}\n`)
 }

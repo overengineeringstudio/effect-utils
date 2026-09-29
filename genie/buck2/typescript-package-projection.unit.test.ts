@@ -147,6 +147,14 @@ describe('declared-closure package projection', () => {
     }
   })
 
+  it('removes source-workspace references from compile and test package views', () => {
+    const output = outputsByAdmission.kdl
+    for (const tree of ['package_tree', 'test_package_tree']) {
+      const target = output.split(`package_view(\n    name = "${tree}",\n`)[1]?.split('\n)\n')[0]
+      expect(target).toContain('    strip_project_references = True,')
+    }
+  })
+
   it('overlays authoritative sibling declarations into compile and test package views', () => {
     for (const tree of ['package_tree', 'test_package_tree']) {
       const target = outputsByAdmission.notionReact.split(

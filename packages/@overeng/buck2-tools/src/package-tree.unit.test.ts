@@ -159,7 +159,7 @@ describe('Buck package view over a normalized dependency view', () => {
     expect(statSync(join(link, 'safe', 'package.json')).isFile()).toBe(true)
     expect(statSync(join(fixture.output, 'src', 'mod.ts')).isFile()).toBe(true)
   })
-  it('strips workspace project references from a bounded test view', () => {
+  it('strips authored workspace project references from a bounded package view', () => {
     const fixture = createAssemblyFixture()
     const source = join(fixture.root, 'tsconfig.json')
     writeFileSync(
@@ -184,6 +184,29 @@ describe('Buck package view over a normalized dependency view', () => {
       references: [],
     })
     expect(readFileSync(source, 'utf8')).toContain('../sibling')
+  })
+
+  it.each([
+    ['absent', '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"}}\n'],
+    ['empty', '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"},"references":[]}\n'],
+  ])('preserves tsconfig bytes when project references are %s', (_case, contents) => {
+    const fixture = createAssemblyFixture()
+    const source = join(fixture.root, 'tsconfig.json')
+    writeFileSync(source, contents)
+
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--dependency-view',
+      fixture.nodeModules,
+      '--strip-project-references',
+      'true',
+      '--file',
+      'tsconfig.json',
+      source,
+    ])
+
+    expect(readFileSync(join(fixture.output, 'tsconfig.json'), 'utf8')).toBe(contents)
   })
 
   it('rejects project-reference stripping without a staged tsconfig.json', () => {

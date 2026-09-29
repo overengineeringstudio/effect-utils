@@ -157,6 +157,10 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+- **Buck2 TypeScript package views:** Strip source-workspace project references
+  from both compile and test trees. Consumers can bundle staged TypeScript
+  packages with Vite without resolving sibling projects absent from the bounded
+  package view; authored tsconfig files remain unchanged.
 - **@overeng/notion-effect-schema tests:** assert canonical JSON wire baselines
   with exact string equality rather than inline snapshots. Vitest's inline
   snapshot stack-frame inference fails for these async tests under Bun on macOS;

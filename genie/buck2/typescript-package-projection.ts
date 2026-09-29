@@ -1241,6 +1241,7 @@ export const buck2TypeScriptPackageProjection = ({
         name: 'workspace_dependency_views',
         entries: workspaceDependencyViewEntries,
       }),
+      '    strip_project_references = True,',
       `    runtime = ${starlarkString(data.packageTreeRuntime)},`,
       `    runtime_entry = ${starlarkString(runtimeEntry)},`,
       renderBuck2Visibility({ visibility }),
