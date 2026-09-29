@@ -14,12 +14,28 @@ This subsystem owns direct OTLP export of [03](../03-event-log-adapter/spec.md) 
 ## Requirements
 
 - **BUCK.OBS.ING-R01 Same exporter (refines BUCK.OBS-R03):** CI and local runs use the same adapter, trace views, OTLP encoder, and direct exporter; only endpoint and tailnet admission differ. Exports are chunked below the collector's configured body limit (historically ~3.5 MB).
-- **BUCK.OBS.ING-R02 Identity independence (refines BUCK.OBS-R04):** The job trace ID and the attempt-close pipeline link trace derive from 01's pre-delivery identity. Task, command, and Buck critical-view spans nest inside that one job trace; the Buck full view has the deterministic linked trace ID from 04. No manifest digest, backend search, or provider lookup mints an ID.
+- **BUCK.OBS.ING-R02 Identity independence (refines BUCK.OBS-R04):** The
+  job trace ID and attempt-close pipeline link trace derive from 01's
+  pre-delivery identity. Task and command spans and seeded Buck critical
+  views nest in one job trace; unseeded commands use 04's independent
+  critical trace. The Buck full view has a deterministic linked trace ID.
+  No manifest digest or backend search mints an ID; the producer already
+  has its canonical job key, while finalizer/reporter reconstruct it from
+  Jobs API metadata before applying the same hash.
 - **BUCK.OBS.ING-R03 Local retry (refines BUCK.OBS-R04):** Write exportable batches to a local retry spool before sending, retain unacknowledged batches across exporter failure, and retry them without changing the build's result. Acknowledged batches may leave the spool; there is no remote raw-evidence archive or cross-host recovery promise.
 - **BUCK.OBS.ING-R04 Retention (refines BUCK.OBS-R06):** Tempo retains traces for 30 days; long-term trends use bounded Mimir metrics. Native evidence survives only according to the producing host's spool lifecycle.
 - **BUCK.OBS.ING-R05 Provider-neutral tagging (refines BUCK.OBS-R08):** Trace/resource attributes include available `cicd.*`, `vcs.*`, `buck2.vcs.merge.revision`, `ci.provider`, and `ci.pr.fork` facts; run IDs and attempts are string-valued. High-cardinality identifiers never become metric labels.
 - **BUCK.OBS.ING-R06 Search-independent links:** The producer can calculate deterministic job/trace identifiers and Grafana Explore links before export. Delayed Tempo indexing cannot delay publication or cause guessed trace IDs.
 - **BUCK.OBS.ING-R07 Deployment boundary:** effect-utils owns capture, local spool, conversion and OTLP exporter. Dotfiles owns dev3 Alloy :4318, its tailnet ACL, Tempo/Mimir routing and retention. No `buck2-evidence` upload/serve service, two-socket admission pair, SQLite index, or resolver participates.
 - **BUCK.OBS.ING-R08 Job-end burst:** On trusted same-repository PRs, main pushes, and tailnet-reachable local runs, the completed job's task and command spans join its single job trace after build and before one direct OTLP burst. CI joins the tailnet only after build work. Forks and offline local runs spool without export; retries happen from the local spool.
-- **BUCK.OBS.ING-R09 Failure visibility:** The exporter reports unacknowledged chunks and retry state locally; OTLP success alone is not a claim of complete Tempo persistence. No active by-ID repair or `missing_spans` state is required.
-- **BUCK.OBS.ING-R10 Attempt closure:** The CI finalizer sends one pipeline-run link trace at attempt close using 01's deterministic job identities. It neither waits for records to be ingested nor synthesizes missing-job spans; an undeliverable link trace follows the same local spool/retry policy.
+- **BUCK.OBS.ING-R09 Failure visibility:** An OTLP 2xx response with nonzero
+  partial-success rejected spans or data points does not acknowledge the
+  chunk; the whole chunk remains retryable and the rejected count is
+  reported. Resends preserve deterministic span IDs but may duplicate
+  already accepted data. OTLP success is not proof of Tempo persistence;
+  no by-ID repair or `missing_spans` state is required.
+- **BUCK.OBS.ING-R10 Attempt closure:** The CI finalizer sends one pipeline
+  link trace at attempt close, linking uniquely identified jobs that started
+  in the closing attempt without claiming their roots were exported.
+  It neither waits for records to be ingested nor synthesizes missing-job
+  spans; an undeliverable link trace follows the same spool/retry policy.

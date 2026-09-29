@@ -20,24 +20,36 @@ summaries, bounded metrics, and trace lookup fields.
 
 ```text
 local span model (salted ids, daemon waits)
-  ├─ critical view (default; emitted into job trace beneath task span)
+  ├─ critical view (default; seeded: job trace; unseeded: command trace)
   │    keep: roots + buck2.command
   │          critical-path actions + stage children
   │          spans >= threshold (default 1 s) + ancestors
   │          daemon-wait spans
   │    escalate threshold to span count <= 1,200
   │    stamp: dropped_children; exact command summaries
-  └─ full view (separate deterministic trace linked to command span)
+  └─ full view (separate deterministic trace; link only if caller exists)
        keep: every span
 ```
 
-Both views derive deterministically from the same local event log and sidecar
-context. The critical view is parented beneath the caller task span in the
-job trace; a local task run uses a job-equivalent trace. The full trace root
-links to the caller command span. Job roots carry `cicd.pipeline.run.id`
-for run lookup. Completed eligible job views export directly to dev3 Alloy;
-an ordinary fork keeps only its local spool. Neither view requires an
-archived run record or read-time projection.
+Both views derive deterministically from the same local event log and
+sidecar context. With a valid caller span, the critical view is parented
+beneath its task and command spans in the job trace; a local task run has
+a job-equivalent trace. The full-view root links to the command span.
+Without a valid caller context (ID-R07), the adapter exports the critical
+view as an independent root rather than inventing a missing job/task span;
+the separate full-view root has no caller link.
+
+For independent views, parse the Buck trace UUID as 16 bytes and format it
+as exactly 32 lowercase hexadecimal characters without hyphens. The
+critical/full trace IDs are the first 16 bytes of
+`SHA-256(UTF-8(canonical UUID + ":critical"))` and
+`SHA-256(UTF-8(canonical UUID + ":full"))`, respectively; if the 16 bytes
+are all zero, rehash the original input with an appended `u32be(counter)`
+starting at 1. The same full-view rule applies to seeded commands; a seeded
+critical view instead inherits the caller job trace ID. Job roots carry
+`cicd.pipeline.run.id` for run lookup. Eligible completed views export to
+dev3 Alloy; forks keep only the local spool. Neither view needs an archived
+record or read-time transformation.
 
 Measured shape on the largest cold-CI command (12,622 spans): full view
 12.70 MB; the 1 s rule yields a **pre-escalation candidate** of ≈ 1,113–1,225
@@ -67,13 +79,13 @@ retention.
 
 ## Trace Lookup
 
-The deterministic job trace id derives from the run id and matrix-qualified
-job key ([01](../01-run-identity/spec.md)); every job root has
-`cicd.pipeline.run.id`. Task spans belong to that job trace, while full-view
-roots link to their critical-view command span. Grafana links can use derived
-trace ids without a resolver, while Tempo search over
-`.cicd.pipeline.run.id` can find exported job roots. Neither query is a
-promise that late or failed exports are already visible.
+The deterministic job trace ID derives from the run ID and canonical
+matrix-qualified key ([01](../01-run-identity/spec.md)); every job root has
+`cicd.pipeline.run.id`. A seeded command's critical view shares that job
+trace while its full-view root links to the command span. Without context,
+critical and full roots use the independent IDs above and cannot be found
+by an absent pipeline-run ID. Grafana links can use derived IDs without a
+resolver; neither a link nor a Tempo query proves that export succeeded.
 
 ## Metrics
 
@@ -101,6 +113,9 @@ enters a metric series.
   mandatory structure intact (121 mandatory spans; escalation documented via
   the effective threshold attribute).
 - Summaries exact against the full model at every cap.
+- An unseeded Buck command exports two independent, distinct, nonzero
+  deterministic trace IDs without a fabricated task span or caller link;
+  a seeded command puts only its critical view in the job trace.
 - Evidence: [span-shaping and metrics](./.experiments/2026-09-25-span-shaping-and-metrics.md),
   [span-cap benchmark](./.experiments/2026-09-25-span-cap-benchmark.md),
   decisions [0001](./.decisions/0001-trace-view-family.md),

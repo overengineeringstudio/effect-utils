@@ -21,12 +21,14 @@ and exact command summaries. It refines BUCK.OBS-R05 of the
 ## Requirements
 
 - **BUCK.OBS.VIEW-R01 Two identified views:** Each locally converted Buck
-  command is exported as a critical view in its job trace and a separate
-  deterministic full trace. Both are sent at job end in eligible CI or at
-  local task-run end over the tailnet; an untrusted fork only retains its
-  local retry spool. With caller context, the critical view is parented
-  beneath the caller's task span and the full view root links to its command
-  span. Neither view is a read-time transformation.
+  command yields a critical and a separate deterministic full view. With
+  valid caller context, the critical view nests in its job trace beneath
+  the task/command spans, and the full-view root links to its command span.
+  Without caller context, the critical view has an independent command
+  trace derived from the Buck UUID; its full view is another independent
+  trace, with no invented caller link. Both are sent at eligible job/local
+  task-run end; a fork retains only its local spool. Neither view is a
+  read-time transformation.
 - **BUCK.OBS.VIEW-R02 Critical view rule:** the critical view retains the
   critical path and its stage children, all spans at or above the view
   threshold, all their ancestors, and exact whole-command summary attributes

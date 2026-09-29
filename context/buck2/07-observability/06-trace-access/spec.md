@@ -16,39 +16,58 @@ Draft.
 
 ```text
 PR attempt close (after build jobs settle)
-  ├─ GET current run jobs (all pages)                  -> job table + gantt
-  ├─ GET latest successful main CI runs; select 7 samples per job key
-  │    └─ GET jobs for candidate runs                 -> p50 baseline
+  ├─ Jobs API: current attempt jobs (all pages)         -> job table + gantt
+  ├─ Workflow Runs API: completed successful main runs  -> candidate run IDs
+  │    └─ Jobs API: each candidate's jobs              -> p50 baseline
   └─ 01 deterministic job trace IDs + Grafana base URL -> Explore links
        -> workflow-report sticky PR comment
 ```
 
-The workflow-report generator runs in CI and uses the workflow's GitHub token to read Actions job metadata and update the existing sticky comment. The fleet host does not call GitHub; CI does not call Tempo. The finalizer can run after dependent jobs even if one failed or was cancelled. It excludes itself from the build-job rows and the baseline.
+The workflow-report generator uses the workflow's GitHub token to list
+successful main workflow runs and read their jobs. The workflow-runs API
+supplies only candidate IDs, conclusion and branch; the Jobs API is the
+sole source of current and baseline job timings. The fleet host does not
+call GitHub; CI does not call Tempo. The finalizer can run after dependent
+jobs even if one failed or was cancelled. It excludes itself from build
+rows and the baseline.
 
 ## Job Facts
 
 Read the current workflow run's jobs for its **current attempt**, following
-pagination. The GitHub adapter maps the Jobs API `name` through the same
-generated job-name rule used by the existing producer identity step's
-`JOB_KEY` and `MATRIX_VALUE` (01); a matrix runner value is part of the key.
-Reject duplicate canonical keys rather than assigning two jobs one trace.
-If the adapter cannot reconstruct a unique key, show the provider job name
-as an unmatched row and omit both baseline and trace link rather than
-guessing. Store no provider job ID in trace attributes.
+pagination and filtering `run_attempt`. Map each Jobs API `name` through
+[01's finite generated-workflow name mapping](../01-run-identity/spec.md)
+to its job identifier and named matrix dimensions before deriving the
+canonical `K` bytes. Reject duplicate or unrecognized names rather than
+assigning two jobs one trace. Show an unmatched provider job name without
+baseline or trace link; store no provider job ID in trace attributes.
 
-| Column    | Rule                                                                                                           |
-| --------- | -------------------------------------------------------------------------------------------------------------- |
-| Job       | Markdown-escaped job key/name                                                                                  |
-| Status    | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished)                  |
-| Wall time | `completed_at - started_at` when both exist; otherwise `unavailable`                                           |
-| Delta     | job wall time minus baseline p50, signed seconds and percentage; `baseline unavailable` without a valid sample |
-| Trace     | deterministic Grafana Explore link for executed jobs, if 01 identity is available                              |
+| Column    | Rule                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Job       | Markdown-escaped job key/name                                                                                                                                             |
+| Status    | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished)                                                                             |
+| Wall time | `completed_at - started_at` when both exist; otherwise `unavailable`                                                                                                      |
+| Delta     | `duration unavailable` when this job lacks both timestamps; otherwise `baseline unavailable` without a sample; otherwise signed duration minus p50 in seconds and percent |
+| Trace     | deterministic Grafana Explore link for executed jobs, if 01 identity is available                                                                                         |
 
-A failed PR job still has its observed duration and delta when timings exist; its row keeps `failure`. Skipped or never-started jobs have no duration or delta. The table uses the attempt the comment describes, not the latest attempt of a different run.
+A failed PR job still has its observed duration and delta when timings
+exist; its row keeps `failure`. Skipped, never-started, cancelled without
+end time, or unfinished jobs have no delta: show `duration unavailable`
+even when a valid baseline exists. The table uses the attempt the comment
+describes, not the latest attempt of a different run.
 
 ## Main Baseline
 
-Select candidate workflow runs on the main branch from the same workflow and repository, newest first. A candidate is admissible only when the workflow run concluded `success` and its job has conclusion `success` with both timestamps. For every PR job key, walk candidates until seven admissible job samples or no more candidates; retain run IDs and sample count for audit. Compute p50 as the median of the sampled wall durations, averaging the two middle values when seven is unavailable and the sample count is even. Report the actual `n`; with `n=0`, do not calculate a delta. The baseline compares like-for-like matrix-qualified job keys, never provider job display order or run number alone. Main runs remain the source even after trace data expires from Tempo.
+List runs for this repository and workflow on `main` using the workflow-runs
+API (`branch=main`, `event=push`), following pagination and sorting newest
+first. Keep only completed runs with conclusion `success`, then fetch their
+Jobs API pages. For each PR job key, walk these candidate runs until seven
+jobs with matching canonical keys, `success` conclusions and both
+timestamps are found, or candidates are exhausted. Retain run IDs and
+sample counts for audit. Compute p50 as the median of the sampled wall
+durations, averaging the two middle values if the sample count is even.
+Report the actual `n`; at `n=0`, display `baseline unavailable`. The baseline
+compares like-for-like matrix-qualified keys rather than provider display
+order or run number. Main runs remain the source even after Tempo retention.
 
 ## Gantt
 
@@ -74,9 +93,17 @@ The existing sticky comment gets one Buck2 observability section, replacing the 
 
 ## Conformance
 
-- Given current jobs with success, failure, cancelled, skipped, and unfinished states, the table preserves each status and never emits a zero-duration success.
-- Given nine successful, one failed, and one cancelled main run, the baseline takes the latest seven admissible successes for the matching job key and reports p50 and `n=7`.
-- A job absent from every admissible main run reports `baseline unavailable`; a finalizer job never appears as a build row.
-- The same job facts and trace identity produce the exact same Grafana URL; malformed IDs produce no URL; an unindexed trace remains an Explore link, not a pending resolver state.
-- The comment generator performs Jobs API and comment operations only: no Tempo, SQLite, resolver, artifact download, or upload request.
+- Current jobs with success, failure, cancelled, skipped, and unfinished
+  states preserve status and never emit a zero-duration success. A job with
+  no completion timestamp reports `duration unavailable` even when its
+  baseline has seven valid samples.
+- Among nine successful, one failed and one cancelled main run, enumerate
+  candidates through the workflow-runs API, then select the latest seven
+  admissible same-key Jobs API durations and report p50 and `n=7`.
+- A job absent from every admissible main run reports `baseline unavailable`;
+  a finalizer job never appears as a build row.
+- The same job facts and trace identity produce the exact same Grafana URL;
+  malformed IDs produce no URL; an unindexed trace remains an Explore link.
+- The comment generator reads only GitHub Actions workflow-run metadata and
+  Jobs API facts, with no Tempo, SQLite, resolver or artifact requests.
 - Historical evidence: [PR access prototype](./.experiments/2026-09-25-pr-trace-access.md), [page variants](./.experiments/2026-09-26-pr-page-variants.md), and amended decisions [0001](./.decisions/0001-resolver-and-ci-links.md), [0002](./.decisions/0002-review-page-and-baseline.md), [0003](./.decisions/0003-versioned-agent-contract.md).

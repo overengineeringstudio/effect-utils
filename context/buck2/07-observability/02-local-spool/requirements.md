@@ -20,5 +20,12 @@ This subsystem owns local native evidence and the retry spool for each Buck2 job
 - **BUCK.OBS.REC-R05 Portability (refines BUCK.OBS-R08):** Telemetry and portable fixtures contain no hostnames, host paths, usernames, or fleet endpoints; provider facts are optional attribute values, not transport control flow.
 - **BUCK.OBS.REC-R06 Fork boundary:** Ordinary forks remain spool-only with no OTLP export credential or tailnet join. A future fork admission requires a separately approved trust and network boundary; a GitHub label alone is not current authorization.
 - **BUCK.OBS.REC-R07 Native evidence authority (refines BUCK.OBS-R01):** Event logs and build reports remain execution truth. Adapter decode and delivery failures are visible diagnostics, not changes to the Buck result; untrusted bytes cannot cause an external decode fallback.
-- **BUCK.OBS.REC-R08 Named deletions (refines BUCK.OBS-R09):** Direct delivery supersedes CI span-artifact upload, run-record seal/content-addressed upload, and artifact re-ingest. The transfer removes those mechanisms rather than maintaining a compatibility route.
-- **BUCK.OBS.REC-R09 Attempt closure:** A CI finalizer depending on work jobs emits the 01 pipeline-run link trace after the attempt closes. It does not seal or upload a roster record, synthesize missing-job spans, or wait for an ingest worker.
+- **BUCK.OBS.REC-R08 No legacy delivery (refines BUCK.OBS-R09):** The
+  telemetry path does not upload CI span artifacts, seal or upload run
+  records, or re-ingest provider artifacts. The local spool and direct OTLP
+  export are its only delivery mechanisms.
+- **BUCK.OBS.REC-R09 Attempt closure:** A CI finalizer depending on work
+  jobs emits the 01 pipeline-run link trace after the attempt closes.
+  It links only uniquely identifiable jobs that started in that attempt,
+  without claiming their traces reached Tempo. It does not seal or upload
+  a roster, synthesize missing-job spans, or wait for an ingest worker.

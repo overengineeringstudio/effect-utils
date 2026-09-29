@@ -50,3 +50,11 @@ Jobs API-only PR comment and deterministic Grafana trace links. The indexed
 resolver, evidence service, agent JSON, and record-based baselines described
 above are retired. Task-level columns require a separate Tempo buck2 tenant
 and authenticated read proxy; they are roadmap work.
+
+## Amendment 2 — Baseline run enumeration
+
+Clarified 2026-09-29 against the q63 round-5 Jobs API bakeoff. "Jobs API
+only" in Amendment 1 excludes Tempo, job outputs and artifact data, but the
+seven-main-run baseline needs GitHub's workflow-runs metadata endpoint to
+enumerate successful main runs. The Jobs API remains the sole source of job
+timings. No new workflow YAML or fleet read grant is involved.

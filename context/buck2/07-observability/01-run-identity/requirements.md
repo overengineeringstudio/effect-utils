@@ -63,13 +63,16 @@ It refines BUCK.OBS-R03 and BUCK.OBS-R07 of the
   within their job trace. A local task run is a job-equivalent trace.
 - **BUCK.OBS.ID-R09 Provider-neutral run identity:** `PIPELINE_RUN_ID` is
   `ci/<provider>/<repo>/<run>/<attempt>` in CI or `local/<uuid>` locally.
-  The entrypoint mints it only when absent; job trace and root span ids
-  derive deterministically with domain separation, unambiguous framing, and
+  The entrypoint mints it only when absent; producer, attempt finalizer,
+  and reporter derive the same job trace/root IDs from a canonical framed
+  job identifier and named matrix dimensions with domain separation and
   a W3C-nonzero guard. An already supplied identity is preserved.
 - **BUCK.OBS.ID-R10 Attempt-close link trace:** At attempt close, emit one
-  pipeline-run trace linking the completed job traces; it does not contain
-  job or task spans and never waits for a server-side evidence roster or
-  completion timeout. A missing job remains missing, not a fabricated error span.
+  pipeline-run trace linking the deterministically derived identities of
+  jobs that started in this attempt. Links are unverified locators, not
+  assertions of delivery; an unstarted job remains absent, never a
+  fabricated error span. The finalizer does not wait for a server-side
+  evidence roster or completion timeout.
 - **BUCK.OBS.ID-R11 Context propagation and caller links:** Entry points
   seed W3C `TRACEPARENT`, prevent stale `OTEL_TASK_TRACEPARENT` from
   overriding it, and link a new trace to the outer caller rather than

@@ -27,9 +27,10 @@ devenv tasks run [01] -> Buck command + native event log [03]
                                            v
                                   dev3 Alloy :4318 -> Tempo (30 d)
                                            │
-attempt close [01] -> small pipeline trace linking each job trace
-GitHub Actions Jobs API -> PR job table, gantt, p50(main × 7) [06]
-                                    └── deterministic Grafana trace links
+attempt close [01] -> small pipeline trace linking started job IDs
+GitHub Workflow Runs API -> successful main run IDs ───┐
+GitHub Jobs API -> current/main job timings ───────────┴─> PR table,
+                             gantt, p50(main × 7) [06], Grafana trace links
 ```
 
 The same conversion and export path runs on a laptop and in CI. A same-repo PR
@@ -52,8 +53,9 @@ A failed decode or export never changes the Buck result (BUCK.OBS-R01–R04).
 | [06-trace-access](./06-trace-access/spec.md)           | Jobs API PR report and deterministic Grafana links        |
 
 `02` retains local inputs from `01`; `03` decodes Buck evidence, `04` shapes
-the traces, and `05` delivers them. `06` uses the Jobs API for timings and
-trace IDs derived from `01`, without reading Tempo from CI.
+the traces, and `05` delivers them. `06` uses the workflow-runs API to
+enumerate baseline runs, the Jobs API for timings, and IDs derived from `01`
+for links, without reading Tempo from CI.
 
 ## Cross-Tree Relationships
 

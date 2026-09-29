@@ -37,11 +37,42 @@ encoded OTLP chunk: write durable local pending bytes -> send -> acknowledge
 restart/retry: read retained bytes -> resend -> acknowledge -> release chunk
 ```
 
-The producer persists a self-contained chunk before its first send, including its OTLP signal type, byte count, destination configuration reference and stable local identity; do not persist endpoint credentials. Record acknowledgement only for a successful OTLP response. Network failure, timeout, server rejection, loss of the acknowledgement, unavailable endpoint, and tailnet admission failure leave the chunk pending for later bounded retries; permanent errors surface locally without changing the Buck result. Retries resend the **same bytes**, rather than replaying event logs or minting another trace identity. An ambiguous acknowledgement can lead to duplicate ingestion; deterministic IDs limit identity drift but do not guarantee Tempo deduplication. Local spool lifetime bounds recovery. No server-side queue, readback repair, reconciliation sweep, or success status backed by Tempo queries exists.
+The producer persists a self-contained chunk before its first send,
+including OTLP signal type, byte count, destination configuration reference,
+and stable local identity; endpoint credentials do not enter the spool.
+An HTTP 2xx response acknowledges a chunk only after decoding its
+signal-specific OTLP response body and confirming absent or zero
+`partial_success.rejected_spans` / `partial_success.rejected_data_points`.
+A malformed or unreadable response is ambiguous and leaves the chunk pending.
+Any nonzero rejection keeps the **whole original chunk** pending, reports
+the rejected count/message locally and retries with bounded backoff; it
+cannot silently discard rejected data. Network failure, timeout, server
+rejection, lost acknowledgement, missing endpoint and tailnet admission
+failure also retain the chunk. Permanent errors surface locally without
+changing the Buck result. Retries resend the same bytes, preserving trace
+and span IDs rather than minting new identity. Already accepted spans (or
+metric points) may be duplicated after a partial acceptance or ambiguous
+acknowledgement: deterministic IDs keep span identity stable but do not
+guarantee Tempo deduplication. Local spool lifetime bounds recovery. No
+server-side queue, readback repair, reconciliation sweep, or status backed
+by Tempo queries exists.
 
 ## Identity, Attributes, and Retention (BUCK.OBS.ING-R02/R04/R05/R06/R10)
 
-Each job exports exactly one job trace (a local invocation exports its local equivalent). Its root carries `cicd.pipeline.run.id`; task spans, Buck command spans, and critical-view spans nest inside it rather than forming separate per-task traces. The close root links known job roots. Full-view roots link to the caller command span and use the `SHA-256(UTF-8(Buck UUID + ":full"))` first-16-byte trace ID (04). Without caller context, 04's deterministic fallback applies. These IDs can be computed without backend search or an index. Run IDs and attempts are **strings** in OTLP attributes because integer-typed fields were not reliably searchable with TraceQL. The producer carries available `cicd.*`, `vcs.*`, `buck2.vcs.merge.revision`, `ci.provider` and `ci.pr.fork` attributes; fork traces are not exported under current admission. Metric labels stay bounded as required by 04, never run IDs or revisions.
+Each job exports exactly one job trace (a local invocation exports its
+local equivalent). Its root carries `cicd.pipeline.run.id`; task spans,
+Buck command spans, and seeded critical-view spans nest inside it rather
+than forming separate per-task traces. The close root links started jobs'
+derived root identities with unverified links. Full-view roots link to the
+caller command span and use the `SHA-256(UTF-8(Buck UUID + ":full"))`
+first-16-byte trace ID (04). Without caller context, 04's independent
+command trace applies. These IDs can be computed without backend search or
+an index. Run IDs and attempts are **strings** in OTLP attributes because
+integer-typed fields were not reliably searchable with TraceQL. The producer
+carries available `cicd.*`, `vcs.*`, `buck2.vcs.merge.revision`,
+`ci.provider` and `ci.pr.fork` attributes; fork traces are not exported
+under current admission. Metric labels stay bounded as required by 04,
+never run IDs or revisions.
 
 Tempo keeps traces for 30 days; Mimir keeps bounded trend metrics under fleet policy. There is no one-year native-log archive. When the producer's local spool is gone, this specification promises neither trace replay nor reconstruction from another host. Tempo search lag is a UI/search property, not an exporter acceptance gate; by-ID visibility also cannot be inferred from an HTTP success.
 
@@ -54,6 +85,12 @@ Tempo keeps traces for 30 days; Mimir keeps bounded trend metrics under fleet po
 | CI adapter   | Job-end late join and one export phase; always-run attempt-close trace; no fleet read permission for comment generation |
 
 - A trusted PR job that completes Buck then joins the tailnet sends its single job trace (with nested task and command spans) plus linked full views in one bounded burst; a fork sends none and leaves pending bytes locally.
-- Rejecting one chunk does not acknowledge or erase it. A retry resends identical bytes and preserves IDs, and neither rejection nor retry changes the command result.
-- A job root is discoverable by `cicd.pipeline.run.id`; a close root links known job roots without inventing missing jobs or merging all jobs into one trace.
+- A 2xx response with `partial_success.rejected_spans > 0` (or
+  `rejected_data_points > 0` for metrics) retains the whole chunk and
+  reports the rejected count. Retrying sends identical bytes/IDs; the
+  accepted portion may duplicate. A zero-rejection response acknowledges
+  the chunk; neither outcome changes the Buck result.
+- A job root is discoverable by `cicd.pipeline.run.id`; the attempt-close
+  root links started jobs' derived root IDs as unverified locators, without
+  fabricating unstarted jobs or merging all jobs into one trace.
 - The historical experiments and decisions remain evidence, superseded where amended: [replay baseline](./.experiments/2026-09-25-ci-to-tempo-replay-baseline.md), [ingest bakeoff](./.experiments/2026-09-26-ingest-service-bakeoff.md), [0001](./.decisions/0001-ingest-parity-and-retention.md), [0002](./.decisions/0002-durable-ingest-and-tempo-readback.md). The [q18 delivery bakeoff](../02-local-spool/.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md) records the earlier bundle choice that [root decision 0004](../.decisions/0004-tempo-only-delivery-and-job-report.md) supersedes.

@@ -49,12 +49,22 @@ build -> finish command spans / decode evidence -> join task/command spans into 
 attempt closes -> CI finalizer emits a pipeline-run link trace (01)
 ```
 
-The job's build and span join complete before export. The CI finalizer uses known job identities to link job roots; it neither loads native evidence from other jobs nor uploads an attempt-close roster. If a job never emitted telemetry, its trace stays absent, not replaced by a synthetic error span. Forks do not join the tailnet and keep telemetry locally. A delivery failure leaves local bytes for retry and does not alter the child exit status. A local invocation without a reachable tailnet endpoint likewise spools only.
+The job's build and span join complete before export. The CI finalizer uses
+the current attempt's Jobs API pages to derive uniquely mapped started-job
+root IDs by [01's canonical key](../01-run-identity/spec.md). It neither
+loads other jobs' native evidence nor uploads an attempt-close roster. A
+started job that never emitted telemetry can have a link to an absent root;
+the link is marked unverified, not replaced by a synthetic error span.
+Forks do not join the tailnet and keep telemetry locally. Delivery failure
+leaves local bytes for retry and does not alter the child exit status.
+An offline local invocation likewise spools only.
 
 ## Conformance
 
 - Repeated commands and matrix legs retain disjoint event-log/trace-id/sidecar files; the adapter can correlate each Buck command to its caller.
 - A PR merge checkout emits separate PR head, base parent, and merge revision attributes even when the CI run API has no PR association; a push omits unavailable base/merge values.
 - A fork or offline local invocation retains telemetry without export; a failed export leaves retryable batches and unchanged native evidence; neither failure changes the build result.
-- The finalizer links known job traces once at attempt close; it emits no roster record or server-owned root.
+- The finalizer links started jobs' unverified derived identities once at
+  attempt close; skipped/unstarted jobs receive no link, and there is no
+  roster record or server-owned root.
 - Historical evidence and amended decisions: [capture experiment](./.experiments/2026-09-24-cold-ci-event-log-capture.md), [delivery bakeoff](./.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md), [0001](./.decisions/0001-run-record-system-of-record.md), [0002](./.decisions/0002-untrusted-run-trust-signal.md), [0003](./.decisions/0003-seal-vcs-identity.md), [0004](./.decisions/0004-attempt-close-record.md).

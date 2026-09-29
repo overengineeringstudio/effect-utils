@@ -16,12 +16,25 @@ This subsystem owns the PR job report and deterministic Grafana links. The repor
 
 ### Must report observable job outcomes
 
-- **BUCK.OBS.ACCESS-R01 PR job source (refines BUCK.OBS-R03):** The PR comment's job table and gantt come only from the GitHub Actions Jobs API for the current run/attempt. They report each matrix-qualified job's conclusion/status, wall time where both timestamps exist, and missing, skipped, cancelled, or unfinished timings explicitly. A close/finalizer job is not treated as a build job.
+- **BUCK.OBS.ACCESS-R01 PR job source (refines BUCK.OBS-R03):** The PR
+  comment's job table and gantt take timings and conclusions only from the
+  GitHub Actions Jobs API for the current run/attempt. They report each
+  matrix-qualified job's status, wall time where both timestamps exist,
+  and missing, skipped, cancelled, or unfinished timings explicitly.
+  A close/finalizer job is not treated as a build job.
 - **BUCK.OBS.ACCESS-R02 CI-owned publication:** The existing workflow-report sticky PR comment is updated by CI at attempt close after dependent build jobs settle. No fleet-host GitHub write credential, run-record service, artifact aggregation, or Tempo read is required; ordinary fork jobs retain the workflow's no-write guard.
 
 ### Must compare completed jobs fairly
 
-- **BUCK.OBS.ACCESS-R03 Job baseline:** For each PR job key, compare its wall duration to p50 of that same job among the latest seven **successful completed main-branch workflow runs** with usable job timings. Report signed absolute and percentage deltas and sample count; no matching completed successful samples means `baseline unavailable`. Never present cancelled, skipped, failed, or incomplete main jobs as successful duration samples.
+- **BUCK.OBS.ACCESS-R03 Job baseline:** Enumerate successful completed
+  main-branch runs of the same repository and workflow via the GitHub Actions
+  workflow-runs API. For each PR job key, compare its wall duration to p50
+  of that job among the latest seven eligible successful main runs using
+  Jobs API timings. Report signed absolute and percentage deltas and sample
+  count; no matching successful job samples means `baseline unavailable`.
+  A PR job without both timestamps has no delta even when a baseline exists.
+  Never count cancelled, skipped, failed, or incomplete main jobs as
+  successful duration samples.
 - **BUCK.OBS.ACCESS-R04 Job gantt:** Show each executed job's started/completed window on one attempt-level time axis, marking unfinished/missing timings and final conclusions separately. The chart must not turn a missing or cancelled job into zero-duration success.
 
 ### Must link traces without a read proxy

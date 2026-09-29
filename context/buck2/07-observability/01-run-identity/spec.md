@@ -40,39 +40,75 @@ unseeded without failing the task (BUCK.OBS-R01). Examples:
 `ci/github/repo/421` and `local/not-a-uuid` are invalid. Never use the
 identifier verbatim as a filesystem path.
 
-Identity inputs use `u32be(utf8 byte length) || utf8 bytes`, with each
-domain separate. Truncate SHA-256 to 16 bytes for a trace id and 8 bytes
-for a span id; if all zero, rehash with appended `u32be(counter)` starting at
-1 until nonzero. Domains are
+`F(value)` is `u32be(length of UTF-8 bytes) || UTF-8 bytes`.
+`K(job, dimensions)` is `F(job) || u32be(number of dimensions)` followed
+by `F(name) || F(value)` for each dimension sorted by the UTF-8 bytes of its
+name. Dimension names are unique, nonempty and case-sensitive; values are
+nonempty, unnormalized UTF-8. The trace/root preimage is the corresponding
+ASCII domain followed by `F(run id) || K(job, dimensions)` for a job, or
+`F(run id)` for the pipeline root. Domains are
 `buck2.job.trace/v1\0`, `buck2.job.root/v1\0`,
 `buck2.pipeline-run.trace/v2\0`, and `buck2.pipeline-run.root/v2\0`.
-The job input is `(run id, job key)`; the pipeline-run input is `(run id)`.
-The job key includes a provider-neutral job identifier and a count followed
-by sorted matrix dimension/value pairs, with each string length-prefixed.
-CI retries change the attempt in `PIPELINE_RUN_ID`. A local task run uses
-its verb and invocation identity as its job key. Nested task runs are spans
-in the CI job trace, not separately seeded traces; the task executor
-distinguishes repeated invocations by its task invocation identity.
+Truncate SHA-256 to 16 bytes for trace IDs and 8 bytes for span IDs; if
+all zero, rehash the original preimage with appended `u32be(counter)` from
+1 until nonzero. No stringified `job[runner=value]` is hashed.
 
-In the generated GitHub workflow, the existing identity step supplies
-`JOB_KEY` and `MATRIX_VALUE` (`matrix.runner` when present). The adapter
-canonicalizes these into the same matrix-qualified key the Jobs API reporter
-reconstructs from the job's name; this does not add per-job outputs or steps
-to the workflow. A duplicate or unrecognizable provider job name is not
-silently assigned another job's trace ID.
+In CI, `job` is the workflow job identifier. The generated GitHub workflow
+already supplies it as `JOB_KEY`; its sole current matrix dimension is
+`runner`, supplied by `MATRIX_VALUE` (`matrix.runner`). For example,
+`K("test", {"runner":"namespace-profile-linux-x86-64"})` encodes
+`F("test") || u32be(1) || F("runner") ||
+F("namespace-profile-linux-x86-64")`; `K("typecheck", {})` ends in
+`u32be(0)`. If the workflow adds a matrix dimension, the producer must
+receive its name and value through the existing identity step before it
+can derive a trace ID; neither the finalizer nor reporter invents it.
+CI retries change the attempt in `PIPELINE_RUN_ID`. A local task run uses
+its verb as `job` and `{"invocation": <task invocation ID>}` as dimensions.
+Nested task runs are spans in the CI job trace, not separately seeded
+traces; the task executor distinguishes repeated invocations.
+
+The GitHub adapter constructs a finite mapping from the generated workflow
+job declarations to the exact GitHub Actions Jobs API `name`: an ordinary
+job's declared display name (or job identifier if unnamed), and each
+enumerated matrix leg's rendered display name in declaration order. It
+maps the name back to the job identifier and the named matrix values, then
+applies `K` identically in producer, finalizer and reporter. For the current
+`runner` matrix, `test (namespace-profile-linux-x86-64)` maps to
+`K("test", {"runner":"namespace-profile-linux-x86-64"})`.
+Unknown, dynamically named or duplicate display names are unmatched;
+they cannot be assigned a guessed trace ID. This mapping reads Jobs API
+facts, not per-job outputs, and adds no workflow YAML.
 
 The job root carries `cicd.pipeline.run.id` and its job key. Task-run spans
 are descendants of the job root; Buck command spans and critical views
 retain the same trace id. A job root links back to an outer caller when one
-exists. Attempt close emits a pipeline-run root with links to the known job
-roots, using their deterministic ids, and `cicd.pipeline.run.id`. Its bounds
-describe the attempt; it does not reparent job traces, synthesize absent jobs,
-or await late span persistence. Each attempt has its own trace; a known
-previous attempt root can be linked. No ingester owns a root: each job
-emits at its own end directly to the configured OTLP endpoint, and the
-attempt-close step emits the link trace. On delivery failure, keep the local
-retry spool. No upload service, archived run record, SQLite index, replay,
-or resolver participates in identity.
+exists. At attempt close, the finalizer pages the Jobs API for this run
+and filters `run_attempt` to the closing attempt. It excludes its own job
+and includes only jobs with `started_at` and a unique canonical `K` under
+the same name mapping used by the reporter (failed and cancelled jobs that
+started are included; skipped and unstarted jobs are not). It derives their
+job root trace/span IDs and writes one pipeline root with links marked
+`buck2.job_trace.link_state=unverified`: the API proves that a job started,
+not that its root was sent, accepted, or retained by Tempo. A link to an
+absent root is therefore possible and is never shown as proof of delivery.
+Its bounds describe the attempt; it does not reparent job traces, synthesize
+absent jobs, or await late span persistence.
+Each attempt has its own trace; a known previous attempt root can be linked.
+No ingester owns a root: each job exports to the configured OTLP endpoint
+at its own end, and attempt close exports the link trace. A delivery
+failure keeps the local retry spool. No upload service, archived run
+record, SQLite index, replay, or resolver participates in identity.
+
+The link attribute `buck2.job_trace.link_state` belongs to this repository's
+private lowercase dotted `buck2.job_trace.*` namespace, not OTel semconv.
+Its only valid value is the lowercase string `unverified`; the link always
+remains a locator, never a persistence assertion. Readers that do not
+understand the key or encounter an unknown value treat the link as
+unverified, not as proof of export. For example,
+`buck2.job_trace.link_state=unverified` is valid;
+`buck2.job_trace.link_state=complete` is invalid. It records link
+confidence, not job conclusion or OTLP transport status; those axes
+cannot be inferred from it.
 
 The generic entrypoint seeds `TRACEPARENT` for the job trace; nested task
 invocations inherit that trace and parent their spans inside it. It clears
@@ -156,16 +192,23 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
 - Post-hoc emit: a completed command span with the pre-derived span id,
   measured start/end, and Buck's exit code appears in the caller's trace;
   a failed emit never changes the caller's exit code.
-- Seeded identity: repeated derivation yields identical nonzero ids;
-  different providers, attempts, matrix legs, and ambiguous-separator
-  candidates yield distinct job trace ids. Every job root carries
-  `cicd.pipeline.run.id`; nested tasks stay in their job trace.
-- Lifecycle: each completed job exports its job trace at job end after the
-  task-span join; attempt close exports one separate root linked to known
-  job roots. Export failure retains the local retry spool. Neither missing
-  jobs nor absent task traces are synthesized by a server. A new trace links
-  back to an outer caller; only a participating owner writes a forward link
-  before its span ends. Stale task context cannot override either seed.
+- Seeded identity: repeated derivation yields identical nonzero IDs;
+  different providers, attempts, matrix legs, names with separator
+  characters, and dimension orderings have unambiguous framed bytes. The
+  producer's `JOB_KEY=test, MATRIX_VALUE=namespace-profile-linux-x86-64`
+  and the Jobs API `test (namespace-profile-linux-x86-64)` resolve to
+  identical `K`; an unknown or duplicate name gets no guessed trace ID.
+  Every job root carries `cicd.pipeline.run.id`; nested tasks share its
+  trace.
+- Lifecycle: each completed job exports its job trace at job end after
+  the task-span join. Attempt close uses only this attempt's started,
+  uniquely mapped Jobs API rows, including started failed/cancelled jobs,
+  and omits unstarted/skipped/other-attempt rows. Links carry
+  `buck2.job_trace.link_state=unverified`, even if the root never arrived
+  in Tempo. Export failure retains the local retry spool; no server
+  synthesizes missing jobs. A new trace links back to an outer caller;
+  only a participating owner writes a forward link before its span ends.
+  Stale task context cannot override either seed.
 - Seeded-run evidence: [traceparent bakeoff](./.experiments/2026-09-26-seeded-run-trace.md)
   and [decision 0002](./.decisions/0002-seeded-pipeline-run-trace.md).
 - Caller-correlation evidence: [caller-correlation bakeoff](./.experiments/2026-09-25-caller-correlation-and-salting.md)

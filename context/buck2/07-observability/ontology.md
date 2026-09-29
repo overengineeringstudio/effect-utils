@@ -73,13 +73,15 @@ process) is a different, scoped sense — see flagged ambiguities.
 Task Run), exported in one burst at job end. Its root identifies the Pipeline
 Run with `cicd.pipeline.run.id`.
 
-**Pipeline Trace** is the small trace written at attempt close; its root links
-to the Job Traces rather than parenting their spans. Distinct attempts remain
-distinct.
+**Pipeline Trace** is the small trace written at attempt close; its root
+links the derived identities of jobs that started in that attempt rather
+than parenting their spans. A link does not prove its job trace arrived.
+Distinct attempts remain distinct.
 
 **Trace Access** is the PR job report and deterministic Grafana trace links.
-The report reads GitHub Actions job timings; Grafana reads traces from Tempo.
-_Avoid_: "resolver" for a link whose ID is derived without a lookup.
+The report takes job timings from the GitHub Actions Jobs API and enumerates
+successful main runs through the workflow-runs API; Grafana reads traces
+from Tempo. _Avoid_: "resolver" for a link whose ID is derived without lookup.
 
 ### The local retry unit
 
@@ -128,7 +130,7 @@ derivation:      event-log adapter -> span model -> {full view, critical view} +
 identity:        pipeline run id -> per-job trace id + attempt-close pipeline trace id;
                  wrapper trace id = f(caller trace id, command span id);
                  salted OTLP span ids = f(log identity, Buck span id) (Buck ids collide across commands)
-access:          Jobs API -> job table + gantt + p50 delta; deterministic trace id -> Grafana
+access:          workflow-runs API -> main run IDs; Jobs API -> job timings; derived trace ID -> Grafana
 wait:            peer commands on one daemon -> daemon wait (exact | inferred)
 ```
 

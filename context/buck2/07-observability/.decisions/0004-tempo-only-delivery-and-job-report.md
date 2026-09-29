@@ -52,3 +52,13 @@ Each job/task run exports one trace once at job end. Its root carries `cicd.pipe
 ## Consequences
 
 Lost or expired spools cannot be reconstructed from Tempo; post-retention re-ingest is unavailable. A job trace has no whole-run waterfall, so the Jobs API gantt is the run-level view. The reporter can show skipped/cancelled jobs but cannot claim Buck action critical paths or task-level baselines from the Jobs API. The dotfiles fleet config owns Alloy, Tempo, the tailnet ACL, and retention; effect-utils owns conversion, retry, trace identity, and comment rendering.
+
+## Amendment 1 — Report metadata boundary
+
+Clarified 2026-09-29 from the measured round-5 request sequence: the
+workflow-runs API enumerates successful main runs; the Jobs API supplies
+current and historical job timings. "Jobs API-only" means job-level
+GitHub Actions metadata rather than Tempo, artifacts or job outputs, not
+that a jobs endpoint can list workflow runs. The pipeline close trace
+links uniquely identified jobs with `started_at` in the closing attempt;
+those links remain unverified locators, not proof of export.
