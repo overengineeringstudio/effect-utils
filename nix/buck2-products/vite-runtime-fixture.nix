@@ -40,7 +40,12 @@ let
   };
 in
 (import ../workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
-  inherit artifact descriptorContent nativeNodePackages runtimeClosure;
+  inherit
+    artifact
+    descriptorContent
+    nativeNodePackages
+    runtimeClosure
+    ;
   descriptor = artifact;
   expectedDescriptorSha256 = builtins.hashString "sha256" descriptorContent;
   expectedExternalModules = [

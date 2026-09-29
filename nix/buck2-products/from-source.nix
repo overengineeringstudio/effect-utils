@@ -85,9 +85,9 @@ let
     lib.concatMapStringsSep "" (
       package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
     ) nativeStorePackages
+  }${lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"}${
+    lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
   }${
-    lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"
-  }${lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"}${
     lib.optionalString (
       cliBuildStamp != null
     ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"
