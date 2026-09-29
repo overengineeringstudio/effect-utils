@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 import {
   decodePnpmSha256Sidecar,
+  isProductSha256Entry,
   translatePnpmLock,
   validatePnpmSha256Sidecar,
   type PnpmSha256Entry,
@@ -132,6 +133,8 @@ export const seedArchive = async ({
   readonly tier: 'public' | 'private'
   readonly urlPrefix: string
 }): Promise<ArchiveSeedResult> => {
+  if (isProductSha256Entry(archive) === true)
+    return fail(`private product ${packageIdentity} travels only through Nix substitution`)
   assertArchiveAllowedForTier({ archive, packageIdentity, tier })
   if (archive.packageIdentity !== packageIdentity)
     return fail(`package identity mismatch for ${packageIdentity}`)
@@ -188,7 +191,11 @@ const main = async (): Promise<void> => {
   const headers = authorization === undefined ? undefined : { authorization }
   let present = 0
   let uploaded = 0
-  const archives = Object.entries(sidecar.packages)
+  // Private product tarballs travel only through Nix substitution (decision 0037); no
+  // archive CAS tier ever receives them.
+  const archives = Object.entries(sidecar.packages).filter(
+    ([, archive]) => isProductSha256Entry(archive) === false,
+  )
   const seedNext = async (index: number): Promise<void> => {
     const entry = archives[index]
     if (entry === undefined) return

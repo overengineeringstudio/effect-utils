@@ -2,6 +2,8 @@ import { Effect } from 'effect'
 import type { Scope } from 'effect'
 import type { RpcClient, RpcGroup, RpcMiddleware, RpcServer } from 'effect/unstable/rpc'
 
+import { makeDescriptorSet } from './descriptor-set.ts'
+import type { DescriptorSet } from './descriptor-set.ts'
 import { makeRpcDescriptors } from './descriptor.ts'
 import type { RpcDescriptor } from './descriptor.ts'
 import { makeInspectorGroup, InspectorRpcGroup } from './inspector.ts'
@@ -84,10 +86,29 @@ export interface ExplorerServerDecoratorOptions {
   readonly requestObservation?: 'protocol' | 'middleware' | undefined
 }
 
+/** Named input for one runtime-mounted RPC group's descriptor registration. */
+export interface RegisterDescriptorsOptions {
+  readonly group: RpcGroup.Any
+  /** Stable mount identity; registering an owner again replaces its previous descriptors. */
+  readonly owner: string
+}
+
 /** Complete host-facing surface owned by one scoped explorer instance. */
 export interface ExplorerServices {
-  /** Application descriptors only; the inspector never appears in its own UI model. */
-  readonly descriptors: ReadonlyArray<RpcDescriptor>
+  /**
+   * Current application descriptors: the construction group plus live runtime registrations.
+   * The inspector never appears in its own UI model.
+   */
+  readonly descriptors: DescriptorSet
+  /**
+   * Registers a runtime-mounted group's descriptors for the lifetime of the caller's Scope.
+   * Construction-group tags keep their descriptors; a runtime tag stays resolvable while any
+   * owner holds it, served by the most recent registration. Closing a replaced registration's
+   * Scope is a no-op.
+   */
+  readonly registerDescriptors: (
+    options: RegisterDescriptorsOptions,
+  ) => Effect.Effect<void, never, Scope.Scope>
   readonly store: ExplorerStore
   readonly middleware: RpcMiddleware.RpcMiddleware<never, never, never>
   readonly decorateClientProtocol: (
@@ -283,18 +304,35 @@ export const makeExplorer = ({
   Scope.Scope
 > =>
   Effect.gen(function* () {
-    const applicationDescriptors = makeRpcDescriptors(group)
-    const inspectorDescriptors = makeRpcDescriptors(InspectorRpcGroup)
-    const descriptorsByTag = new Map(
-      [...applicationDescriptors, ...inspectorDescriptors].map((descriptor) => {
-        const { descriptorId, key, tag, kind } = descriptor
-        const hostPolicies =
-          typeof config.capture === 'function'
-            ? config.capture({ descriptorId, key, tag, kind })
-            : config.capture
-        return [tag, captureDescriptor({ descriptor, hostPolicies })] as const
-      }),
+    const applicationDescriptors = makeDescriptorSet(makeRpcDescriptors(group))
+    // Host capture resolves once per descriptor, at construction or at its registration.
+    const captureDescriptors = new WeakMap<RpcDescriptor, ProtocolCaptureDescriptor>()
+    const resolveCapture = (descriptor: RpcDescriptor): ProtocolCaptureDescriptor => {
+      const cached = captureDescriptors.get(descriptor)
+      if (cached !== undefined) return cached
+      const { descriptorId, key, tag, kind } = descriptor
+      const hostPolicies =
+        typeof config.capture === 'function'
+          ? config.capture({ descriptorId, key, tag, kind })
+          : config.capture
+      const resolved = captureDescriptor({ descriptor, hostPolicies })
+      captureDescriptors.set(descriptor, resolved)
+      return resolved
+    }
+    for (const descriptor of applicationDescriptors.current().descriptors) {
+      resolveCapture(descriptor)
+    }
+    const inspectorDescriptorsByTag = new Map(
+      makeRpcDescriptors(InspectorRpcGroup).map(
+        (descriptor) => [descriptor.tag, resolveCapture(descriptor)] as const,
+      ),
     )
+    const captureDescriptorForTag = (tag: string): ProtocolCaptureDescriptor | undefined => {
+      const inspectorDescriptor = inspectorDescriptorsByTag.get(tag)
+      if (inspectorDescriptor !== undefined) return inspectorDescriptor
+      const descriptor = applicationDescriptors.descriptorForTag(tag)
+      return descriptor === undefined ? undefined : resolveCapture(descriptor)
+    }
     let reportDeltaEvicted: ((count: number) => void) | undefined
     const rawStore = makeExplorerStore({
       instanceId: config.instanceId,
@@ -331,7 +369,7 @@ export const makeExplorer = ({
     }): ProtocolObserverOptions => ({
       store,
       descriptorForTag: (tag) => {
-        const descriptor = descriptorsByTag.get(tag)
+        const descriptor = captureDescriptorForTag(tag)
         const encodedDecoders = encodedDecodersByTag?.get(tag)
         return descriptor === undefined || encodedDecoders === undefined
           ? descriptor
@@ -361,8 +399,25 @@ export const makeExplorer = ({
       descriptors: applicationDescriptors,
     })
 
+    const registerDescriptors = ({
+      group: mountedGroup,
+      owner,
+    }: RegisterDescriptorsOptions): Effect.Effect<void, never, Scope.Scope> =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          const descriptors = makeRpcDescriptors(mountedGroup)
+          for (const descriptor of descriptors) resolveCapture(descriptor)
+          return applicationDescriptors.register({ owner, descriptors })
+        }),
+        (release) => Effect.sync(release),
+      ).pipe(Effect.asVoid)
+
     return {
-      descriptors: applicationDescriptors,
+      descriptors: {
+        current: applicationDescriptors.current,
+        subscribe: applicationDescriptors.subscribe,
+      },
+      registerDescriptors,
       store,
       middleware: makeServerExplorerMiddleware(middlewareOptions),
       decorateClientProtocol: ({ protocol, encodedDecodersByTag }) =>

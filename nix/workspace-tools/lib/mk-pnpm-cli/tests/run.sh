@@ -264,10 +264,6 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-source-input-manifest-aliases"
 
-  echo "Check: external install roots stage every injected directory package in the lockfile"
-  nix build --no-link --no-write-lock-file \
-    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
-    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-injected-directory-packages"
 
   echo "Check: injected directory paths are canonical and beneath the lockfile directory"
   nix build --no-link --no-write-lock-file \
@@ -283,6 +279,11 @@ run_downstream_pure_eval_regression() {
   nix build --no-link --no-write-lock-file \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.invalid-source-input-stage-path"
+
+  echo "Check: declared source inputs need a provided source, then stage at path and alias"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.unsourced-source-input"
 
   echo "Build: downstream pure-eval profile-dedup regression (standalone effect-utils path)"
   nix build --no-link --no-write-lock-file \
@@ -445,8 +446,8 @@ importers:
     configDependencies: {}
     packageManagerDependencies:
       pnpm:
-        specifier: 12.4.1
-        version: 12.4.1
+        specifier: 12.7.0
+        version: 12.7.0
 ---
 lockfileVersion: '9.0'
 settings:

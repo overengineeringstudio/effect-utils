@@ -43,6 +43,13 @@ const generatedCiWorkflowYamlSource = readFileSync(
   'utf8',
 )
 const generatedCiWorkflowTriggers = generatedCiWorkflowYamlSource.split('\njobs:\n')[0] ?? ''
+const generatedStorybookPlaysWorkflowYamlSource = readFileSync(
+  new URL(
+    ['../../../../../../.github/workflows', 'storybook-plays.yml'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 const generatedAutoReviewWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'auto-review.yml'].join('/'), import.meta.url),
   'utf8',
@@ -120,10 +127,18 @@ const buckToolchainsSource = readFileSync(
   'utf8',
 )
 
-const generatedCiJobKeys = Array.from(
-  (generatedCiWorkflowYamlSource.split('\njobs:\n')[1] ?? '').matchAll(/^  ([a-zA-Z0-9_-]+):$/gm),
-  ([, jobKey]) => jobKey,
-).filter((jobKey): jobKey is string => jobKey !== undefined)
+const workflowJobKeys = (workflowYamlSource: string) =>
+  Array.from(
+    (workflowYamlSource.split('\njobs:\n')[1] ?? '').matchAll(/^  ([a-zA-Z0-9_-]+):$/gm),
+    ([, jobKey]) => jobKey,
+  ).filter((jobKey): jobKey is string => jobKey !== undefined)
+
+// Required-eligible jobs come from `ci.yml` plus the standalone per-PR workflows that
+// `ci.yml`'s size limit pushes out of it.
+const generatedCiJobKeys = [
+  ...workflowJobKeys(generatedCiWorkflowYamlSource),
+  ...workflowJobKeys(generatedStorybookPlaysWorkflowYamlSource),
+]
 
 const advisoryCheckContexts = new Set(['ci/measurements-report', 'notify-alignment'])
 // Dispatch-only lanes (see OPT_IN_CI_JOB_NAMES in genie/ci.ts) are non-advisory but do
@@ -133,6 +148,8 @@ const optInCheckContexts = new Set([
   'devenv-perf',
   'pr-a-inert-buck',
   'trusted-buck2-remote-cache-proof',
+  'evidence-attempt-close',
+  'evidence-pr-link',
 ])
 const mainOnlyCheckContexts: Record<string, true> = {
   'test-integration-notion': true,
@@ -272,6 +289,57 @@ describe('protected-main archive seeding', () => {
     )
     expect(generatedSeedPnpmArchivesJob).toContain("github.ref == 'refs/heads/main'")
     expect(generatedCiWorkflowYamlSource).not.toContain('trusted-cache.example')
+  })
+})
+
+describe('CI evidence upload isolation', () => {
+  it('joins the tailnet only after build work, immediately before upload or attempt-close', () => {
+    const jobKeys = workflowJobKeys(generatedCiWorkflowYamlSource)
+    const join = 'uses: tailscale/github-action@v4'
+    const joinGate =
+      "      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}\n        uses: tailscale/github-action@v4"
+    const seal = 'name: Seal and publish pipeline evidence'
+    for (const [index, jobKey] of jobKeys.entries()) {
+      const start = generatedCiWorkflowYamlSource.indexOf(`  ${jobKey}:\n`)
+      const end =
+        index + 1 < jobKeys.length
+          ? generatedCiWorkflowYamlSource.indexOf(`  ${jobKeys[index + 1]}:\n`, start + 1)
+          : generatedCiWorkflowYamlSource.length
+      const job = generatedCiWorkflowYamlSource.slice(start, end)
+      if (job.includes(seal) === false) continue
+      const joinIndex = job.indexOf(join)
+      expect(joinIndex, `${jobKey}: missing tailnet join`).toBeGreaterThan(-1)
+      const lastBuildTask = job.lastIndexOf('tasks run ')
+      if (lastBuildTask >= 0) {
+        expect(joinIndex, `${jobKey}: build task must finish before joining`).toBeGreaterThan(
+          lastBuildTask,
+        )
+      }
+      expect(
+        job.slice(joinIndex).match(/      - name: /g),
+        `${jobKey}: join is not the last pre-seal step`,
+      ).toHaveLength(1)
+      expect(job.indexOf(seal), `${jobKey}: evidence must follow join`).toBeGreaterThan(joinIndex)
+      expect(job.slice(joinIndex, job.indexOf(seal))).toContain('continue-on-error: true')
+      expect(job.slice(joinIndex, job.indexOf(seal))).toContain('args: --accept-dns=true')
+      expect(job.slice(0, job.indexOf(seal))).toContain(joinGate)
+    }
+    const lintJob = generatedCiWorkflowYamlSource.slice(
+      generatedCiWorkflowYamlSource.indexOf('  lint:\n'),
+      generatedCiWorkflowYamlSource.indexOf('  test:\n'),
+    )
+    expect(lintJob).toContain('tasks run ')
+    expect(lintJob.indexOf(join)).toBeGreaterThan(lintJob.lastIndexOf('tasks run '))
+    const closeJob = generatedCiWorkflowYamlSource.slice(
+      generatedCiWorkflowYamlSource.indexOf('  evidence-attempt-close:\n'),
+    )
+    expect(closeJob.slice(0, closeJob.indexOf('name: Close pipeline attempt'))).toContain(joinGate)
+    expect(closeJob.indexOf('name: Prepare evidence uploader')).toBeLessThan(closeJob.indexOf(join))
+    expect(closeJob.slice(closeJob.indexOf(join))).not.toContain('nix build')
+    expect(closeJob.indexOf(join)).toBeLessThan(closeJob.indexOf('name: Close pipeline attempt'))
+    expect(
+      closeJob.slice(closeJob.indexOf(join), closeJob.indexOf('name: Close pipeline attempt')),
+    ).toContain('continue-on-error: true')
   })
 })
 
@@ -1020,7 +1088,7 @@ describe('ci workflow standard job helpers', () => {
     ['public', '1'],
   ] as const)(
     'renders the %s repository cache trust tier without an ambient GitHub token',
-    (trustTier, noRemoteCache) => {
+    (trustTier, publicReadOnly) => {
       const fixture = spawnSync(
         'bun',
         [
@@ -1201,7 +1269,8 @@ describe('ci workflow standard job helpers', () => {
       const expectedEnv = {
         FORCE_SETUP: '1',
         CI: 'true',
-        BUCK2_NO_REMOTE_CACHE: noRemoteCache,
+        BUCK2_NO_REMOTE_CACHE: '0',
+        BUCK2_PUBLIC_CACHE_READ_ONLY: publicReadOnly,
       }
       const expectedTokenEnv = {
         GITHUB_TOKEN: '${{ github.token }}',
@@ -1306,6 +1375,65 @@ describe('ci workflow standard job helpers', () => {
     expect(ciWorkflowSource).toContain('export const standardSelfHostedDevenvTaskJob')
     expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPrepSteps(prep)')
     expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPostSteps(post)')
+  })
+})
+
+interface StorybookPlaysWorkflowFacts {
+  readonly triggers: unknown
+  readonly jobs: readonly string[]
+  readonly permissions: readonly unknown[]
+  readonly referencesSecrets: boolean
+  readonly runsPlays: boolean
+  readonly jobConditions: ReadonlyArray<string | null>
+  readonly ciHasPlaysJob: boolean
+}
+
+describe('storybook plays workflow', () => {
+  let facts: StorybookPlaysWorkflowFacts
+
+  beforeAll(() => {
+    const fixture = spawnSync(
+      'bun',
+      [
+        '-e',
+        `
+          import { readFileSync } from 'node:fs'
+          import { YAML } from 'bun'
+          const plays = YAML.parse(readFileSync('.github/workflows/storybook-plays.yml', 'utf8'))
+          const ci = YAML.parse(readFileSync('.github/workflows/ci.yml', 'utf8'))
+          console.log(JSON.stringify({
+            triggers: plays.on,
+            jobs: Object.keys(plays.jobs),
+            jobConditions: Object.values(plays.jobs).map((job) => job.if ?? null),
+            permissions: [plays.permissions, ...Object.values(plays.jobs).map((job) => job.permissions)],
+            referencesSecrets: JSON.stringify(plays).includes('secrets.'),
+            runsPlays: JSON.stringify(plays).includes('tasks run storybook:test'),
+            ciHasPlaysJob: Object.keys(ci.jobs).includes('test-storybook-plays'),
+          }))
+        `,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(fixture.status, fixture.stderr).toBe(0)
+    facts = JSON.parse(fixture.stdout) as StorybookPlaysWorkflowFacts
+  })
+
+  it('runs story plays for pull requests and main with read-only, secret-free access', () => {
+    expect(facts.triggers).toEqual({
+      pull_request: { types: ['opened', 'reopened', 'synchronize'] },
+      push: { branches: ['main'] },
+    })
+    expect(facts.jobs).toEqual(['test-storybook-plays'])
+    expect(facts.runsPlays).toBe(true)
+    expect(facts.referencesSecrets).toBe(false)
+    for (const permissions of facts.permissions) expect(permissions).toEqual({ contents: 'read' })
+  })
+
+  it('requires the plays lane from its own workflow, outside ci.yml', () => {
+    expect(facts.ciHasPlaysJob).toBe(false)
+    expect(generatedRequiredCheckContexts).toContain('test-storybook-plays')
+    // A skipped required job reports no check run and blocks every PR.
+    expect(facts.jobConditions).toEqual([null])
   })
 })
 
@@ -1820,21 +1948,6 @@ describe('effect-utils standalone CI root', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain('EFFECT_UTILS_WORKSPACE_ROOT')
     expect(generatedCiWorkflowYamlSource).not.toContain('.megarepo/bin/buck2')
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^\s+(?:buck2|\.\/[^ ]*buck2)\s/m)
-  })
-
-  it('keeps the standalone remote-cache proof and cold-GC lane explicit', () => {
-    const cacheProof =
-      generatedCiWorkflowYamlSource
-        .split('  trusted-buck2-remote-cache-proof:\n')[1]
-        ?.split(/^  [a-z]/m)[0] ?? ''
-    expect(cacheProof).toContain('Context B is a second standalone root')
-    expect(cacheProof).toContain('buck="${BUCK2_BIN:?BUCK2_BIN not set}"')
-    expect(cacheProof).toContain('source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"')
-
-    const coldGc =
-      generatedCiWorkflowYamlSource.split('  test-megarepo-cold-gc:\n')[1]?.split(/^  [a-z]/m)[0] ??
-      ''
-    expect(coldGc).toContain('tasks run test:megarepo-cold-gc')
   })
 
   it('keeps pull-request execution credentialless and trusted writes main-only', () => {

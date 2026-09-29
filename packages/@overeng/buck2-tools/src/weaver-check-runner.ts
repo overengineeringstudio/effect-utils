@@ -125,7 +125,9 @@ const checkRegistry = async ({
     const rewritten = contents.replace(/^([ \t]*registry_path:[ \t]*).+$/mu, `$1${semconvModel}`)
     if (rewritten === contents) throw new Error('Registry manifest has no upstream registry_path')
     await writeFile(manifest, rewritten)
-    run({ executable: weaver, args: ['registry', 'check', '-r', scratchRegistry, '--future'] })
+    // Stable policy mode: `--future` promotes the pinned upstream registry's own experimental
+    // `definition/2` files (semconv v1.44) to errors.
+    run({ executable: weaver, args: ['registry', 'check', '-r', scratchRegistry] })
   } finally {
     await rm(scratch, { recursive: true, force: true })
   }

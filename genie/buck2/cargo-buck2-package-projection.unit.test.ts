@@ -10,7 +10,10 @@ import otelScrapeBuck from '../../packages/@overeng/otel-scrape/BUCK.genie.ts'
 import oteliteBuck from '../../packages/@overeng/otelite/BUCK.genie.ts'
 import archiveToolBuck from '../../rust/buck2-tools/archive-tool/BUCK.genie.ts'
 import coreBuck from '../../rust/buck2-tools/core/BUCK.genie.ts'
-import { defineCargoBuck2PackageProjection } from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
+import {
+  type CargoBuck2PackageProjectionOptions,
+  defineCargoBuck2PackageProjection,
+} from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
 import productBuck from '../../rust/buck2-tools/product/BUCK.genie.ts'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
@@ -159,6 +162,8 @@ const renderCargoFixture = ({
   registryPackages = ['serde'],
   thirdPartyTargets = ['serde'],
   foreignPackages = {},
+  extraFiles = [],
+  projectOptions = {},
   render,
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
@@ -170,7 +175,10 @@ const renderCargoFixture = ({
   readonly foreignPackages?: Readonly<
     Record<string, CargoFixtureMember & { readonly projected: boolean }>
   >
+  /** Repository-relative files outside any member (for example build script inputs). */
+  readonly extraFiles?: readonly string[]
   readonly render: string
+  readonly projectOptions?: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>
 }): string => {
   const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
   const write = (relativePath: string, content: string) => {
@@ -225,6 +233,7 @@ const renderCargoFixture = ({
       for (const file of foreign.files) write(`${packagePath}/${file}`, '// fixture\n')
       if (foreign.projected === true) write(`${packagePath}/BUCK.genie.ts`, '// projected\n')
     }
+    for (const file of extraFiles) write(file, '// fixture\n')
     for (const [memberPath, member] of Object.entries(members)) {
       if (memberPath !== '.') {
         write(`rust/${memberPath}/Cargo.toml`, memberManifest(memberPath, member.manifest))
@@ -245,6 +254,7 @@ const renderCargoFixture = ({
       generatorSourcePaths: [],
     })
     return project({
+      ...projectOptions,
       sourceUrl: pathToFileURL(path.join(root, 'rust', render, 'BUCK.genie.ts')).href,
     }).stringify({ cwd: root, location: '' })
   } finally {
@@ -762,5 +772,476 @@ describe('Cargo renamed dependencies', () => {
         render: 'relay',
       }),
     ).toThrow('Unsupported renamed Cargo path or workspace dependency at dependencies.webpki')
+  })
+})
+
+describe('Cargo multi-product packages', () => {
+  const renderPackage = (
+    projectOptions: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>,
+    files: readonly string[] = ['src/main.rs', 'src/bin/devnet-edge.rs'],
+  ) =>
+    renderCargoFixture({
+      members: { relay: { manifest: '[package]\nname = "tailnet-relay"', files } },
+      render: 'relay',
+      projectOptions,
+    })
+  /** The product rule blocks, in emission order. */
+  const productBlocks = (rendered: string): readonly string[] =>
+    [...rendered.matchAll(/^(?:rust_product_executable|build_product)\([\s\S]*?^\)$/gm)].map(
+      (match) => match[0],
+    )
+
+  it('emits one executable/product pair per named binary', () => {
+    const rendered = renderPackage({
+      buildProducts: [
+        { name: 'tailnet-relay' },
+        { name: 'edge', binary: 'devnet-edge', entrypoint: 'libexec/devnet-edge' },
+      ],
+    })
+    expect(productBlocks(rendered)).toEqual([
+      'rust_product_executable(\n    name = "tailnet-relay-product-executable",\n    binary = ":tailnet-relay",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
+      'build_product(\n    name = "tailnet-relay-product",\n    entrypoint = "bin/tailnet-relay",\n    executable = ":tailnet-relay-product-executable",\n    product_name = "tailnet-relay",\n    target_platform = host_platform_label(),\n)',
+      'rust_product_executable(\n    name = "edge-product-executable",\n    binary = ":devnet-edge",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
+      'build_product(\n    name = "edge-product",\n    entrypoint = "libexec/devnet-edge",\n    executable = ":edge-product-executable",\n    product_name = "edge",\n    target_platform = host_platform_label(),\n)',
+    ])
+    expect(rendered).toContain('"build_product")')
+  })
+
+  it('renders a one-entry buildProducts like buildProduct', () => {
+    const single = ['src/main.rs']
+    const withoutHeader = (rendered: string) =>
+      rendered.replace(/^# Semantic fingerprint: .*$/m, '')
+    expect(
+      withoutHeader(renderPackage({ buildProducts: [{ name: 'tailnet-relay' }] }, single)),
+    ).toBe(withoutHeader(renderPackage({ buildProduct: true }, single)))
+  })
+
+  it('rejects ambiguous, unknown, repeated, unsafe, and colliding products', () => {
+    expect(() => renderPackage({ buildProduct: true })).toThrow(
+      'BuildProduct projection requires exactly one binary in rust/relay/Cargo.toml',
+    )
+    expect(() =>
+      renderPackage({ buildProduct: true, buildProducts: [{ name: 'tailnet-relay' }] }),
+    ).toThrow('buildProduct and buildProducts are mutually exclusive in rust/relay/Cargo.toml')
+    expect(() => renderPackage({ buildProducts: [] })).toThrow(
+      'buildProducts must name at least one product in rust/relay/Cargo.toml',
+    )
+    expect(() => renderPackage({ buildProducts: [{ name: 'ghost' }] })).toThrow(
+      'buildProducts[0] packages unknown Cargo binary ghost in rust/relay/Cargo.toml (binaries: devnet-edge, tailnet-relay)',
+    )
+    expect(() =>
+      renderPackage({
+        buildProducts: [
+          { name: 'tailnet-relay' },
+          { name: 'tailnet-relay', binary: 'devnet-edge' },
+        ],
+      }),
+    ).toThrow('buildProducts names repeat in rust/relay/Cargo.toml: tailnet-relay')
+    expect(() =>
+      renderPackage({ buildProducts: [{ name: 'a")\nrule(', binary: 'devnet-edge' }] }),
+    ).toThrow('buildProducts[0].name is not a Buck target-safe product name')
+    expect(() =>
+      renderPackage({ buildProducts: [{ name: 'tailnet-relay', entrypoint: '../escape' }] }),
+    ).toThrow('buildProducts[0].entrypoint must be a normalized relative path: ../escape')
+    expect(() =>
+      renderPackage({ buildProducts: [{ name: 'x', binary: 'tailnet-relay' }] }, [
+        'src/main.rs',
+        'src/bin/x-product.rs',
+      ]),
+    ).toThrow(
+      'Cargo binary names collide with generated Buck targets in rust/relay/Cargo.toml: x-product',
+    )
+  })
+})
+
+describe('Cargo features', () => {
+  const tokenlens = (cliDependency: string) => ({
+    lib: {
+      manifest:
+        '[package]\nname = "lib"\n\n[features]\ndefault = []\nsqlite = ["dep:hostname", "dep:rusqlite"]\n\n[dependencies]\nserde.workspace = true\nhostname = { workspace = true, optional = true }\nrusqlite = { workspace = true, optional = true }',
+      files: ['src/lib.rs'],
+    },
+    cli: {
+      manifest: `[package]\nname = "cli"\n\n[dependencies]\n${cliDependency}`,
+      files: ['src/main.rs'],
+    },
+  })
+  const renderTokenlens = (cliDependency: string) =>
+    renderCargoFixture({
+      members: tokenlens(cliDependency),
+      workspaceDependencies: 'hostname = "0.4"\nrusqlite = "0.39"\n',
+      registryPackages: ['serde', 'hostname', 'rusqlite'],
+      thirdPartyTargets: ['serde', 'hostname', 'rusqlite'],
+      render: 'lib',
+    })
+
+  it('unifies a dependent-enabled feature into the library and its dep: edges', () => {
+    const rules = renderedRules(renderTokenlens('lib = { path = "../lib", features = ["sqlite"] }'))
+    expect(rules.lib).toContain(
+      'deps = [\n        "//rust/third-party:hostname",\n        "//rust/third-party:rusqlite",\n        "//rust/third-party:serde",\n    ],',
+    )
+    expect(rules.lib).toContain('features = [\n        "default",\n        "sqlite",\n    ],')
+  })
+
+  it('leaves inactive optional dependencies out and the default-only feature set', () => {
+    const rules = renderedRules(renderTokenlens('lib = { path = "../lib" }'))
+    expect(rules.lib).toContain('deps = [\n        "//rust/third-party:serde",\n    ],')
+    expect(rules.lib).toContain('features = [\n        "default",\n    ],')
+  })
+
+  it('follows default, implicit, dep/feature, and weak dep?/feature items', () => {
+    const render = (appFeatures: string) =>
+      renderedRules(
+        renderCargoFixture({
+          members: {
+            core: {
+              manifest:
+                '[package]\nname = "core"\n\n[features]\ndefault = ["std"]\nstd = []\nturbo = ["serde?/derive", "util/fast"]\n\n[dependencies]\nserde = { version = "1", optional = true }\nutil = { path = "../util" }',
+              files: ['src/lib.rs'],
+            },
+            util: {
+              manifest: '[package]\nname = "util"\n\n[features]\nfast = []',
+              files: ['src/lib.rs'],
+            },
+            app: {
+              manifest: `[package]\nname = "app"\n\n[dependencies]\ncore = { path = "../core", features = [${appFeatures}] }`,
+              files: ['src/main.rs'],
+            },
+          },
+          render: 'core',
+        }),
+      ).lib
+    // A weak item never activates `serde`; only the implicit `serde` feature does.
+    expect(render('"turbo"')).toContain(
+      'deps = [\n        "//rust/util:lib",\n    ],\n    edition = "2024",\n    features = [\n        "default",\n        "std",\n        "turbo",\n    ],',
+    )
+    expect(render('"turbo", "serde"')).toContain(
+      'deps = [\n        "//rust/third-party:serde",\n        "//rust/util:lib",\n    ],\n    edition = "2024",\n    features = [\n        "default",\n        "serde",\n        "std",\n        "turbo",\n    ],',
+    )
+  })
+
+  it('propagates dep/feature items into another member', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        core: {
+          manifest:
+            '[package]\nname = "core"\n\n[features]\nturbo = ["util/fast"]\n\n[dependencies]\nutil = { path = "../util" }',
+          files: ['src/lib.rs'],
+        },
+        util: {
+          manifest: '[package]\nname = "util"\n\n[features]\nfast = []',
+          files: ['src/lib.rs'],
+        },
+        app: {
+          manifest:
+            '[package]\nname = "app"\n\n[dependencies]\ncore = { path = "../core", features = ["turbo"] }',
+          files: ['src/main.rs'],
+        },
+      },
+      render: 'util',
+    })
+    expect(renderedRules(rendered).lib).toContain('features = [\n        "fast",\n    ],')
+  })
+
+  it('omits a binary until its required-features are enabled', () => {
+    const render = (features: string) =>
+      Object.keys(
+        renderedRules(
+          renderCargoFixture({
+            members: {
+              forge: {
+                manifest: `[package]\nname = "forge"\n\n[features]\n${features}refresh-fixtures = []\n\n[[bin]]\nname = "refresh-fixtures"\npath = "src/bin/refresh_fixtures.rs"\nrequired-features = ["refresh-fixtures"]`,
+                files: ['src/lib.rs', 'src/bin/refresh_fixtures.rs'],
+              },
+            },
+            render: 'forge',
+          }),
+        ),
+      )
+    expect(render('')).toEqual(['lib'])
+    expect(render('default = ["refresh-fixtures"]\n')).toEqual(['lib', 'refresh-fixtures'])
+  })
+
+  it('rejects undefined, misplaced, and unprojectable feature requests', () => {
+    expect(() => renderTokenlens('lib = { path = "../lib", features = ["postgres"] }')).toThrow(
+      'Cargo feature postgres is not defined in rust/lib/Cargo.toml',
+    )
+    const single = (manifest: string, files: readonly string[] = ['src/lib.rs']) =>
+      renderCargoFixture({
+        members: { pkg: { manifest: `[package]\nname = "pkg"${manifest}`, files } },
+        render: 'pkg',
+      })
+    expect(() =>
+      single('\n\n[dev-dependencies]\nserde = { version = "1", optional = true }'),
+    ).toThrow('Cargo dev-dependencies cannot be optional at dev-dependencies.serde')
+    expect(() =>
+      single('\n\n[features]\nx = ["dep:serde"]\n\n[dependencies]\nserde = "1"'),
+    ).toThrow('Cargo feature dep:serde in rust/pkg/Cargo.toml names a non-optional dependency')
+    expect(() => single('\n\n[features]\ndefault = ["ghost/x"]')).toThrow(
+      'Cargo feature ghost/x in rust/pkg/Cargo.toml names no dependency ghost',
+    )
+    expect(() =>
+      single(
+        '\n\n[features]\nx = []\n\n[[bin]]\nname = "tool"\npath = "src/main.rs"\nrequired-features = ["y"]',
+        ['src/main.rs'],
+      ),
+    ).toThrow('Cargo binary tool requires undefined features in rust/pkg/Cargo.toml: y')
+    expect(() =>
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared", features = ["x"] }',
+            files: ['src/lib.rs'],
+          },
+        },
+        foreignPackages: {
+          shared: {
+            manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+            files: ['src/lib.rs'],
+            projected: true,
+          },
+        },
+        render: 'pkg',
+      }),
+    ).toThrow(
+      'Cargo features on a foreign path dependency are unsupported at dependencies.shared: x',
+    )
+    // The same request written as a [features] item, strong or weak, even when disabled.
+    for (const [dependency, item] of [
+      ['shared = { path = "../../shared" }', 'shared/x'],
+      ['shared = { path = "../../shared", optional = true }', 'shared?/x'],
+    ] as const) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            pkg: {
+              manifest: `[package]\nname = "pkg"\n\n[features]\nturbo = ["${item}"]\n\n[dependencies]\n${dependency}`,
+              files: ['src/lib.rs'],
+            },
+          },
+          foreignPackages: {
+            shared: {
+              manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+              files: ['src/lib.rs'],
+              projected: true,
+            },
+          },
+          render: 'pkg',
+        }),
+      ).toThrow(
+        `Cargo features on a foreign path dependency are unsupported at rust/pkg/Cargo.toml features.turbo: ${item}`,
+      )
+    }
+  })
+
+  it('rejects feature requests and optional activation on target-specific member edges', () => {
+    for (const request of [
+      '{ path = "../lib", features = ["sqlite"] }',
+      '{ path = "../lib", optional = true }',
+    ]) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            ...tokenlens('serde.workspace = true'),
+            cli: {
+              manifest: `[package]\nname = "cli"\n\n[target.'cfg(target_os = "linux")'.dependencies]\nlib = ${request}`,
+              files: ['src/main.rs'],
+            },
+          },
+          workspaceDependencies: 'hostname = "0.4"\nrusqlite = "0.39"\n',
+          registryPackages: ['serde', 'hostname', 'rusqlite'],
+          thirdPartyTargets: ['serde', 'hostname', 'rusqlite'],
+          render: 'lib',
+        }),
+      ).toThrow(
+        'Target-specific Cargo dependencies on workspace members cannot request features or be optional in rust/cli/Cargo.toml: lib',
+      )
+    }
+  })
+})
+
+describe('Cargo git dependencies', () => {
+  const render = (dependencies: string, workspaceDependencies = '') =>
+    renderCargoFixture({
+      members: {
+        app: {
+          manifest: `[package]\nname = "app"\n\n[dependencies]\n${dependencies}`,
+          files: ['src/main.rs'],
+        },
+      },
+      workspaceDependencies,
+      registryPackages: ['serde', 'agent-spec', 'pty-core'],
+      thirdPartyTargets: ['serde', 'agent-spec', 'pty-core'],
+      render: 'app',
+    })
+
+  it('labels member and inherited git dependencies by their third-party alias', () => {
+    expect(
+      renderedRules(
+        render(
+          'agent-spec = { git = "https://github.com/o/st2", rev = "0123456789abcdef0123456789abcdef01234567" }\npty-core.workspace = true',
+          'pty-core = { git = "https://github.com/o/pty-rust", branch = "main" }\n',
+        ),
+      ).app,
+    ).toContain(
+      'deps = [\n        "//rust/third-party:agent-spec",\n        "//rust/third-party:pty-core",\n    ],',
+    )
+  })
+
+  it('rejects git mixed with path and git selectors without git', () => {
+    expect(() =>
+      render('agent-spec = { git = "https://github.com/o/st2", path = "../x" }'),
+    ).toThrow(
+      'Cargo dependency at dependencies.agent-spec cannot combine git with path or workspace',
+    )
+    expect(() => render('agent-spec = { version = "1", rev = "abc" }')).toThrow(
+      'Cargo dependency at dependencies.agent-spec sets branch, rev, or tag without git',
+    )
+  })
+})
+
+describe('Cargo build scripts', () => {
+  const render = ({
+    manifest = '',
+    files = ['src/lib.rs', 'build.rs'],
+    buildScriptInputs,
+  }: {
+    readonly manifest?: string
+    readonly files?: readonly string[]
+    readonly buildScriptInputs?: CargoBuck2PackageProjectionOptions['buildScriptInputs']
+  }) =>
+    renderCargoFixture({
+      members: { axe: { manifest: `[package]\nname = "axe"${manifest}`, files } },
+      extraFiles: ['feedback/feedback-contract.json'],
+      render: 'axe',
+      projectOptions: buildScriptInputs === undefined ? {} : { buildScriptInputs },
+    })
+
+  it('runs build.rs with its build dependencies and declared cross-package inputs', () => {
+    const rendered = render({
+      manifest: '\n\n[build-dependencies]\nserde.workspace = true',
+      files: ['src/lib.rs', 'build.rs', 'data/table.txt'],
+      buildScriptInputs: [
+        { path: 'feedback/feedback-contract.json', label: '//feedback:feedback-contract.json' },
+        { path: 'rust/axe/data/table.txt' },
+      ],
+    })
+    expect(rendered).toContain(
+      'load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")\nload("//buck2/rust:defs.bzl", "cargo_build_script")\n',
+    )
+    expect(rendered).toContain(
+      [
+        'native.rust_binary(',
+        '    name = "axe-build-script-build",',
+        '    crate = "build_script_build",',
+        '    crate_root = "build.rs",',
+        '    srcs = [',
+        '        "build.rs",',
+        '    ],',
+        '    deps = [',
+        '        "//rust/third-party:serde",',
+        '    ],',
+        '    edition = "2024",',
+        '    env = {',
+        '        "CARGO_PKG_NAME": "axe",',
+        '        "CARGO_PKG_VERSION": "0.1.0",',
+        '    },',
+        ')',
+        '',
+        'cargo_build_script(',
+        '    name = "axe-build-script",',
+        '    build_script = ":axe-build-script-build",',
+        '    package_path = "rust/axe",',
+        '    srcs = {',
+        '        "feedback/feedback-contract.json": "//feedback:feedback-contract.json",',
+        '        "rust/axe/Cargo.toml": "Cargo.toml",',
+        '        "rust/axe/build.rs": "build.rs",',
+        '        "rust/axe/data/table.txt": "data/table.txt",',
+        '        "rust/axe/src/lib.rs": "src/lib.rs",',
+        '    },',
+        ')',
+        '',
+        'buildscript_run(',
+        '    name = "axe-build-script-run",',
+        '    package_name = "axe",',
+        '    buildscript_rule = ":axe-build-script",',
+        '    manifest_dir = ":axe-build-script",',
+        '    env = {',
+        '        "CARGO_PKG_VERSION_MAJOR": "0",',
+        '        "CARGO_PKG_VERSION_MINOR": "1",',
+        '        "CARGO_PKG_VERSION_PATCH": "0",',
+        '        "CARGO_PKG_VERSION_PRE": "",',
+        '        "DEBUG": "false",',
+        '        "NUM_JOBS": "1",',
+        '        "PROFILE": "debug",',
+        '    },',
+        '    version = "0.1.0",',
+        ')',
+      ].join('\n'),
+    )
+    expect(renderedRules(rendered).lib).toContain(
+      '    env = {\n        "CARGO_PKG_NAME": "axe",\n        "CARGO_PKG_VERSION": "0.1.0",\n        "OUT_DIR": "$(location :axe-build-script-run[out_dir])",\n    },\n    rustc_flags = ["@$(location :axe-build-script-run[rustc_flags])"],',
+    )
+    expect(rendered).toMatch(/"build\.rs",\n {8}"data\/table\.txt",/)
+  })
+
+  it('rejects inputs repeating package files and feature requests on member build deps', () => {
+    expect(() => render({ buildScriptInputs: [{ path: 'rust/axe/src/lib.rs' }] })).toThrow(
+      'buildScriptInputs repeat files the build script already sees (Cargo.toml, the build script, Rust sources) in rust/axe/Cargo.toml: rust/axe/src/lib.rs',
+    )
+    for (const request of ['features = ["x"]', 'default-features = false']) {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            axe: {
+              manifest: `[package]\nname = "axe"\n\n[build-dependencies]\ncodegen = { path = "../codegen", ${request} }`,
+              files: ['src/lib.rs', 'build.rs'],
+            },
+            codegen: {
+              manifest: '[package]\nname = "codegen"\n\n[features]\nx = []',
+              files: ['src/lib.rs'],
+            },
+          },
+          render: 'axe',
+        }),
+      ).toThrow(
+        'Cargo build dependencies on first-party packages cannot request features or disable default features in rust/axe/Cargo.toml: codegen',
+      )
+    }
+  })
+
+  it('honors package.build paths and ignores build dependencies without a script', () => {
+    expect(
+      render({ manifest: '\nbuild = "tools/gen.rs"', files: ['src/lib.rs', 'tools/gen.rs'] }),
+    ).toContain('    crate_root = "tools/gen.rs",')
+    const scriptless = render({
+      manifest: '\nbuild = false\n\n[build-dependencies]\nserde.workspace = true',
+    })
+    expect(scriptless).not.toContain('build-script')
+  })
+
+  it('rejects undeclared, mislabeled, and unsupported build script inputs', () => {
+    expect(() =>
+      render({ files: ['src/lib.rs'], buildScriptInputs: [{ path: 'rust/axe/src/lib.rs' }] }),
+    ).toThrow('buildScriptInputs needs a Cargo build script in rust/axe/Cargo.toml')
+    expect(() =>
+      render({ buildScriptInputs: [{ path: 'feedback/feedback-contract.json' }] }),
+    ).toThrow(
+      'buildScriptInputs[0] outside rust/axe needs the Buck label providing it: feedback/feedback-contract.json',
+    )
+    expect(() =>
+      render({ buildScriptInputs: [{ path: 'rust/axe/build.rs', label: '//rust/axe:build.rs' }] }),
+    ).toThrow('buildScriptInputs[0] is inside rust/axe and takes no label: rust/axe/build.rs')
+    expect(() => render({ manifest: '\nbuild = true', files: ['src/lib.rs'] })).toThrow(
+      'Cargo package.build = true needs build.rs in rust/axe/Cargo.toml',
+    )
+    expect(() =>
+      render({
+        manifest: '\n\n[build-dependencies]\nser = { package = "serde", version = "1" }',
+      }),
+    ).toThrow(
+      'Optional and renamed Cargo build dependencies are unsupported in rust/axe/Cargo.toml: ser',
+    )
   })
 })

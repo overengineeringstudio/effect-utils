@@ -29,6 +29,8 @@
   binaryName ? null,
   environment ? { },
   generateCompletions ? binaryName != null,
+  # A Buck pnpm_runtime_closure tree and its independently pinned tree digest.
+  runtimeClosure ? null,
   nativeNodePackages ? [ ],
   pathPackages ? [ ],
   smokeTestArgs ? null,
@@ -91,6 +93,13 @@ let
       ln -s ${package.package} "$out/libexec/node_modules/${parent}/${leaf}"
     ''
   ) nativeNodePackages;
+  closureInstaller = lib.optionalString (runtimeClosure != null) ''
+    ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node ${../../../buck2/dependencies/runtime-closure.ts} \
+      --verify ${lib.escapeShellArg "${runtimeClosure.artifact}"} \
+      --expected-digest ${lib.escapeShellArg runtimeClosure.expectedDigest}
+    cp -R ${lib.escapeShellArg "${runtimeClosure.artifact}"}/. "$out/libexec/"
+    chmod u+w "$out/libexec/node_modules"
+  '';
   smoke = lib.optionalString (smokeTestArgs != null && binaryName != null) ''
     "$out/bin/${binaryName}" ${lib.escapeShellArgs smokeTestArgs} >/dev/null
   '';
@@ -139,6 +148,18 @@ assert lib.assertMsg (
   normalizedActualModules == normalizedExpectedModules
 ) "javascript-product-import: external module mismatch";
 assert lib.assertMsg (
+  runtimeClosure == null
+  || (
+    builtins.isAttrs runtimeClosure
+    &&
+      builtins.attrNames runtimeClosure == [
+        "artifact"
+        "expectedDigest"
+      ]
+    && builtins.match "[0-9a-f]{64}" runtimeClosure.expectedDigest != null
+  )
+) "javascript-product-import: runtimeClosure needs artifact and expectedDigest";
+assert lib.assertMsg (
   builtins.match "[0-9a-f]{64}" expectedModuleSha256 != null
 ) "javascript-product-import: expectedModuleSha256 must be lowercase SHA-256 hex";
 assert lib.assertMsg (
@@ -183,6 +204,7 @@ pkgs.runCommand "${expectedProductName}-buck2-candidate"
     mkdir -p "$out/libexec/$module_dir"
     cp ${lib.escapeShellArg "${artifact}"} "$out/libexec/$module_path"
     chmod 0444 "$out/libexec/$module_path"
+    ${closureInstaller}
     ${nativePackageLinks}
     ${lib.optionalString (binaryName != null) ''
       mkdir -p "$out/bin"

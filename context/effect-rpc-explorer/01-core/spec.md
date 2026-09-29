@@ -65,9 +65,9 @@ different transports. Decoders are optional, and their absence cannot weaken
 the fail-closed capture policy. Server options additionally select whether
 decoded middleware or Protocol owns request observation.
 
-`ExplorerServices` contains application descriptors, the bounded store, server
-middleware, client/server Protocol decorators, the excluded inspector group and
-handler Layer, and telemetry. The constructor returns a scoped Effect instead
+`ExplorerServices` contains the application descriptor set, runtime descriptor
+registration, the bounded store, server middleware, client/server Protocol
+decorators, the excluded inspector group and handler Layer, and telemetry. The constructor returns a scoped Effect instead
 of a Layer because it produces a plain service value rather than a Context
 service identifier. Host telemetry registration failures fail construction;
 observation-time telemetry faults cannot affect application RPCs. Inspector
@@ -135,6 +135,35 @@ RPC documentation comes only from the RPC's own Context annotations:
 `OpenApi.Deprecated`. Unset fields are absent from the inspector wire
 descriptor; explicit `deprecated: false` remains distinct from absence.
 Neither the tag nor root/channel Schema annotations supply RPC documentation.
+
+### Runtime descriptor registration
+
+A host that mounts RPC groups after construction (for example, per-app
+providers) registers each group's descriptors with the existing explorer rather
+than constructing a second explorer:
+
+```ts
+type RegisterDescriptorsOptions = {
+  readonly group: RpcGroup.Any
+  readonly owner: string // stable mount identity, such as `<app>/<version>/<provider>`
+}
+readonly registerDescriptors: (
+  options: RegisterDescriptorsOptions,
+) => Effect.Effect<void, never, Scope.Scope>
+readonly descriptors: DescriptorSet // { current(): { revision, descriptors }, subscribe }
+```
+
+Registration builds descriptors with the same group enumeration as construction
+and holds them for the caller's Scope. Registering an owner again replaces that
+owner's descriptors, and closing the replaced registration's Scope changes
+nothing, so a remount never duplicates a descriptor. Construction-group tags
+keep their construction descriptors. A runtime tag stays resolvable while any
+live registration holds it; the most recent holder supplies its descriptor.
+When the last holder releases a tag, later observations of it record
+`UnknownDescriptor`, and retained records that referenced it keep their
+descriptor ID without wire metadata. The descriptor-set revision starts at 0
+and increases only when the effective set changes. The host `capture` selector
+resolves once per descriptor, at construction or at its registration.
 
 ## Observation at Public Effect Seams
 
@@ -399,7 +428,7 @@ current state. All counters and reasons are content-free.
 sequenceDiagram
   participant U as Watch client
   participant S as Store mutation boundary
-  U->>S: Watch(afterRevision?)
+  U->>S: Watch(afterRevision?, descriptorRevision?)
   S->>S: register subscriber + select prefix atomically
   alt no afterRevision
     S-->>U: SnapshotFrame
@@ -410,6 +439,7 @@ sequenceDiagram
   end
   S-->>U: later Delta frames
   Note over U,S: queue overflow or clear => ResetFrame, SnapshotFrame
+  Note over U,S: descriptor-set change => SnapshotFrame
 ```
 
 The inspector group declares `GetSnapshot`, streaming `Watch`, and
@@ -425,6 +455,7 @@ type SnapshotFrame = {
   readonly protocolVersion: 'rpc-explorer.v1'
   readonly instanceId: string
   readonly revision: number
+  readonly descriptorRevision: number
   readonly descriptors: ReadonlyArray<RpcDescriptorWire>
   readonly active: ReadonlyArray<RpcRecord>
   readonly completed: ReadonlyArray<RpcRecord>
@@ -460,6 +491,14 @@ replaced by `Reset(overflow)` and a fresh snapshot; ClearHistory similarly sends
 `Reset(cleared)` then a snapshot to current subscribers. No old/new delta mix is
 sent. The snapshot and replay share a model revision, so UI clients can assert
 `frame.fromRevision === localRevision` before applying a delta.
+
+Snapshots carry the descriptor set current when they are sent, with its
+`descriptorRevision`. When the descriptor set changes, each Watch drains its
+queued store frames and then sends one fresh Snapshot at the current store
+revision, so no Delta is skipped or repeated. A Watch whose
+`descriptorRevision` is older than the current set sends that Snapshot after
+its replay prefix; this covers a registration between a client's GetSnapshot
+and its Watch.
 
 ## Telemetry
 
