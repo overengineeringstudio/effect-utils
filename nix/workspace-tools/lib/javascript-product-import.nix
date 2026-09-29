@@ -150,7 +150,11 @@ assert lib.assertMsg (
   runtimeClosure == null
   || (
     builtins.isAttrs runtimeClosure
-    && builtins.attrNames runtimeClosure == [ "artifact" "expectedDigest" ]
+    &&
+      builtins.attrNames runtimeClosure == [
+        "artifact"
+        "expectedDigest"
+      ]
     && builtins.match "[0-9a-f]{64}" runtimeClosure.expectedDigest != null
   )
 ) "javascript-product-import: runtimeClosure needs artifact and expectedDigest";
