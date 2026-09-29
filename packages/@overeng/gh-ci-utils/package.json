@@ -46,6 +46,9 @@
     "vitest": "4.1.9"
   },
   "dependenciesMeta": {
+    "@overeng/ci-tools": {
+      "injected": false
+    },
     "@overeng/tui-react": {
       "injected": true
     }

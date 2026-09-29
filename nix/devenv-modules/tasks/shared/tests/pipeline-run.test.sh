@@ -47,3 +47,60 @@ for chunk in "${chunks[@]}"; do
 done
 [[ $root_count == 1 && $task_count == 1 ]]
 printf 'canonical job identity and offline OTLP spool passed: %s\n' "$spool"
+
+# A fork must never use direct HTTP when local spool creation fails.
+if PIPELINE_RUN_ID="$run" PIPELINE_JOB_KEY=test PIPELINE_MATRIX_RUNNER="$runner" \
+  PIPELINE_FORK=true PIPELINE_TRUSTED=false DEVENV_ROOT=/proc \
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:9 \
+  "$span" pipeline-run -- bash -c '[[ -z ${OTEL_EXPORTER_OTLP_ENDPOINT:-} ]]'; then
+  echo 'fork spool failure remained local'
+else
+  echo 'fork spool failure leaked the exporter endpoint' >&2
+  exit 1
+fi
+
+# Once conversion succeeds, a failed delivery retries chunks, not native inputs.
+mkdir -p "$tmp/bin"
+cat > "$tmp/bin/buck2-events" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+mode=$1
+shift
+for arg in "$@"; do
+  if [[ ${previous:-} == --spool-dir ]]; then spool=$arg; fi
+  previous=$arg
+done
+case "$mode" in
+  ingest)
+    echo ingest >> "$MOCK_CALLS"
+    printf 'pending\n' > "$spool/mock.metrics.chunk"
+    ;;
+  export)
+    [[ ${MOCK_EXPORT_FAIL:-} == 1 || "$spool" == */expired/pending ]] && exit 1
+    rm -f "$spool/"*.chunk
+    ;;
+esac
+MOCK
+chmod +x "$tmp/bin/buck2-events"
+export MOCK_CALLS="$tmp/calls"
+printf 'buck log\n' > "$spool/buck2/input.pb.zst"
+PATH="$tmp/bin:$PATH" MOCK_EXPORT_FAIL=1 DEVENV_ROOT="$tmp" \
+  "$span" pipeline-export --spool "$spool" && { echo 'expected delivery failure' >&2; exit 1; }
+[[ ! -f "$spool/buck2/input.pb.zst" && -f "$spool/pending/mock.metrics.chunk" ]]
+PATH="$tmp/bin:$PATH" DEVENV_ROOT="$tmp" "$span" pipeline-export --spool "$spool"
+[[ $(wc -l < "$MOCK_CALLS") == 1 && ! -d "$spool" ]] || {
+  echo 'retry re-ingested Buck logs or failed to prune completed run' >&2
+  exit 1
+}
+
+# Old undelivered chunks have bounded retention even without a live endpoint.
+old="$tmp/.devenv/otel/run-records/expired"
+mkdir -p "$old/pending"
+printf 'pending\n' > "$old/pending/old.metrics.chunk"
+touch -d '8 days ago' "$old"
+mkdir -p "$spool/pending" "$spool/spans" "$spool/buck2"
+PATH="$tmp/bin:$PATH" DEVENV_ROOT="$tmp" "$span" pipeline-export --spool "$spool"
+[[ ! -d "$old" && ! -d "$spool" ]] || {
+  echo 'old offline chunks or completed run were retained' >&2
+  exit 1
+}

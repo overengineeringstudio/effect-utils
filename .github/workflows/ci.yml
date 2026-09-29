@@ -567,6 +567,7 @@ jobs:
       - name: Verify mutation-free shell entry
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         shell: bash
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
@@ -3170,6 +3171,7 @@ jobs:
       - name: Check generated sources
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run genie:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check'
@@ -8783,6 +8785,7 @@ jobs:
           CI_TOOLS_NETLIFY_LIVE: '1'
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"
           export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"
@@ -9009,6 +9012,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
       - name: Collect workflow report bundle
         shell: bash
         env:
@@ -9019,6 +9023,7 @@ jobs:
           WORKFLOW_REPORT_OUTPUT_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-bundle.json'
           WORKFLOW_REPORT_RECORD_MARKER: 'WORKFLOW_REPORT_V1: '
           WORKFLOW_REPORT_ALLOW_MISSING_INPUT: '1'
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:collect-bundle --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:collect-bundle --show-output'
@@ -9041,6 +9046,7 @@ jobs:
           WORKFLOW_REPORT_CREATED_AT_UTC: ''
           WORKFLOW_REPORT_TIME_ZONE: UTC
           WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:render-comment-body --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:render-comment-body --show-output'

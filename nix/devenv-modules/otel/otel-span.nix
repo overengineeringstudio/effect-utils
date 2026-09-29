@@ -35,7 +35,7 @@ pkgs.writeShellScriptBin "otel-span" ''
           else
             printf '%s\n' "$payload" | "$_jq" -c . >> "$_spool_dir/spans.jsonl"
           fi
-        elif [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+        elif [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [[ "''${PIPELINE_TRUSTED:-true}" != false && "''${PIPELINE_FORK:-false}" != true ]]; then
           ${pkgs.curl}/bin/curl -s -X POST \
             "''${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/traces" \
             -H "Content-Type: application/json" \
@@ -738,8 +738,13 @@ pkgs.writeShellScriptBin "otel-span" ''
             ${pkgs.coreutils}/bin/cat -- "''${sidecars[@]}" > "$spool/buck2/combined.sidecar"
             sidecar_args=(--sidecar "$spool/buck2/combined.sidecar")
           fi
-          buck2-events ingest "''${logs[@]}" "''${sidecar_args[@]}" --spool-dir "$spool/pending" ||
+          if buck2-events ingest "''${logs[@]}" "''${sidecar_args[@]}" --spool-dir "$spool/pending"; then
+            # Ingest has durably spooled all chunks; retries must only resend pending chunks.
+            ${pkgs.coreutils}/bin/rm -f -- "''${logs[@]}" "''${sidecars[@]}" "$spool/buck2/combined.sidecar"
+          else
             echo "otel-span: Buck event conversion failed; native logs retained" >&2
+            return 1
+          fi
         fi
         _pipeline_prepare_spans "$spool" || return 1
         if command -v buck2-events >/dev/null 2>&1; then
@@ -748,6 +753,43 @@ pkgs.writeShellScriptBin "otel-span" ''
           echo "otel-span: buck2-events unavailable; OTLP chunks retained" >&2
           return 1
         fi
+      }
+
+      # Keep only bounded offline retries; completed runs have no durable work left.
+      _pipeline_prune() {
+        local base=$1 completed="''${2:-}" run pending bytes=0 age now size
+        local max_age_seconds=604800 max_bytes=536870912
+        now="$(${pkgs.coreutils}/bin/date +%s)"
+        for run in "$base/"*; do
+          [[ -d "$run" ]] || continue
+          [[ "$run" == "''${PIPELINE_SPOOL_DIR:-}" && "$run" != "$completed" ]] && continue
+          size=0
+          pending="$run/pending"
+          age="$(${pkgs.coreutils}/bin/stat -c %Y "$run" 2>/dev/null || printf '%s' "$now")"
+          if [[ ! -d "$pending" ]] || [[ -z "$(${pkgs.findutils}/bin/find "$pending" -maxdepth 1 -name '*.chunk' -print -quit 2>/dev/null)" ]]; then
+            # Conversion failure retains native evidence within the same bounds.
+            if [[ -n "$(${pkgs.findutils}/bin/find "$run/buck2" "$run/spans" -type f -print -quit 2>/dev/null)" ]] && (( now - age <= max_age_seconds )); then
+              size="$(${pkgs.coreutils}/bin/du -sb "$run" | ${pkgs.coreutils}/bin/cut -f1)"
+              bytes="$(( bytes + size ))"
+              if (( bytes <= max_bytes )); then continue; fi
+              bytes="$(( bytes - size ))"
+            fi
+            if [[ "$run" == "$completed" ]] || (( now - age > max_age_seconds )) || (( bytes + size > max_bytes )); then
+              ${pkgs.coreutils}/bin/rm -rf -- "$run"
+            fi
+            continue
+          fi
+          if (( now - age > max_age_seconds )); then
+            ${pkgs.coreutils}/bin/rm -rf -- "$run"
+            continue
+          fi
+          size="$(${pkgs.coreutils}/bin/du -sb "$run" | ${pkgs.coreutils}/bin/cut -f1)"
+          bytes="$(( bytes + size ))"
+          if (( bytes > max_bytes )); then
+            ${pkgs.coreutils}/bin/rm -rf -- "$run"
+            bytes="$(( bytes - size ))"
+          fi
+        done
       }
 
       _cmd_pipeline_export() {
@@ -762,7 +804,10 @@ pkgs.writeShellScriptBin "otel-span" ''
               echo "otel-span: prior OTLP retry deferred: $retry" >&2
           done
         fi
-        _pipeline_export "$spool"
+        local result=0
+        _pipeline_export "$spool" || result=$?
+        _pipeline_prune "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records" "$spool"
+        return "$result"
       }
 
       _cmd_pipeline_run() {
@@ -852,6 +897,9 @@ pkgs.writeShellScriptBin "otel-span" ''
         else
           echo "otel-span pipeline-run: cannot create local retry spool; continuing" >&2
           unset PIPELINE_SPOOL_DIR OTEL_SPAN_SPOOL_DIR
+          if [[ "''${PIPELINE_TRUSTED:-true}" == false || "''${PIPELINE_FORK:-false}" == true ]]; then
+            export OTEL_EXPORTER_OTLP_ENDPOINT=
+          fi
         fi
         if (( owner )) && [[ -n "$outer" && -n "''${OTEL_SPAN_FORWARD_LINK_FILE:-}" ]]; then
           printf '00-%s-%s-01\n' "$trace_id" "$root_id" > "$OTEL_SPAN_FORWARD_LINK_FILE" || true
@@ -921,6 +969,11 @@ pkgs.writeShellScriptBin "otel-span" ''
         if (( ! nested )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" && -z "''${PIPELINE_EXPORT_OWNER:-}" ]]; then
           _pipeline_export "$PIPELINE_SPOOL_DIR" ||
             echo "otel-span pipeline-run: OTLP export deferred; pending chunks retained" >&2
+        fi
+        if (( ! nested )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" && -z "''${PIPELINE_EXPORT_OWNER:-}" ]]; then
+          local completed="$PIPELINE_SPOOL_DIR"
+          unset PIPELINE_SPOOL_DIR
+          _pipeline_prune "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records" "$completed"
         fi
         printf 'pipeline run=%s trace=%s exit=%s\n' "$run_id" "$trace_id" "$rc" >&2
         return "$rc"

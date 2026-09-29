@@ -65,6 +65,9 @@ export default packageJson(
       exports: { '.': './dist/src/mod.js' },
     },
     dependenciesMeta: {
+      // ci-tools runs against its own peer environment; this consumer needs a link,
+      // not another injected copy with a consumer-specific lockfile snapshot.
+      '@overeng/ci-tools': { injected: false },
       '@overeng/tui-react': { injected: true },
     },
   },

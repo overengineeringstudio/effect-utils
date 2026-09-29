@@ -37,12 +37,9 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
         },
         run: `${script} identity`,
       })
-      const taskIndex = steps.findLastIndex(
-        (step) => 'run' in step && typeof step.run === 'string' && step.run.includes('tasks run '),
-      )
-      if (taskIndex >= 0) {
-        const taskStep = steps[taskIndex]!
-        steps[taskIndex] = {
+      for (const [index, taskStep] of steps.entries()) {
+        if (!('run' in taskStep) || typeof taskStep.run !== 'string' || !taskStep.run.includes('tasks run ')) continue
+        steps[index] = {
           ...taskStep,
           env: {
             ...('env' in taskStep ? taskStep.env : {}),
