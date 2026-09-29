@@ -768,7 +768,7 @@ pkgs.writeShellScriptBin "otel-span" ''
           age="$(${pkgs.coreutils}/bin/stat -c %Y "$run" 2>/dev/null || printf '%s' "$now")"
           if [[ ! -d "$pending" ]] || [[ -z "$(${pkgs.findutils}/bin/find "$pending" -maxdepth 1 -name '*.chunk' -print -quit 2>/dev/null)" ]]; then
             # Conversion failure retains native evidence within the same bounds.
-            if [[ -n "$(${pkgs.findutils}/bin/find "$run/buck2" "$run/spans" -type f -print -quit 2>/dev/null)" ]] && (( now - age <= max_age_seconds )); then
+            if [[ -n "$(${pkgs.findutils}/bin/find "$run/buck2" "$run/spans" -type f \( -name '*.pb.zst' -o -name '*.jsonl' \) -print -quit 2>/dev/null)" ]] && (( now - age <= max_age_seconds )); then
               size="$(${pkgs.coreutils}/bin/du -sb "$run" | ${pkgs.coreutils}/bin/cut -f1)"
               bytes="$(( bytes + size ))"
               if (( bytes <= max_bytes )); then continue; fi

@@ -23,7 +23,7 @@ fi
 
 # No endpoint: a job root and task span must remain as pending OTLP chunks.
 PIPELINE_RUN_ID="$run" PIPELINE_JOB_KEY=test PIPELINE_MATRIX_RUNNER="$runner" \
-  DEVENV_ROOT="$tmp" OTEL_EXPORTER_OTLP_ENDPOINT= \
+  PIPELINE_EXPORT_OWNER= OTELITE_HTTP_ENDPOINT= DEVENV_ROOT="$tmp" OTEL_EXPORTER_OTLP_ENDPOINT= \
   "$span" pipeline-run -- bash -c '[[ $TRACEPARENT == 00-dc8939be377d7ae198ab958b5457787c-*-01 && $TRACEPARENT == "$OTEL_TASK_TRACEPARENT" ]]'
 spool="$tmp/.devenv/otel/run-records/dc8939be377d7ae198ab958b5457787c-53fa95f498248e99"
 [[ -d "$spool/pending" ]]
@@ -76,7 +76,7 @@ case "$mode" in
     printf 'pending\n' > "$spool/mock.metrics.chunk"
     ;;
   export)
-    [[ ${MOCK_EXPORT_FAIL:-} == 1 || "$spool" == */expired/pending ]] && exit 1
+    [[ ${MOCK_EXPORT_FAIL:-} == 1 || "$spool" == */expired/pending || "$spool" == */oversized/pending ]] && exit 1
     rm -f "$spool/"*.chunk
     ;;
 esac
@@ -102,5 +102,15 @@ mkdir -p "$spool/pending" "$spool/spans" "$spool/buck2"
 PATH="$tmp/bin:$PATH" DEVENV_ROOT="$tmp" "$span" pipeline-export --spool "$spool"
 [[ ! -d "$old" && ! -d "$spool" ]] || {
   echo 'old offline chunks or completed run were retained' >&2
+  exit 1
+}
+
+# Cap bytes as well as age, counting apparent bytes rather than allocated blocks.
+large="$tmp/.devenv/otel/run-records/oversized"
+mkdir -p "$large/pending" "$spool/pending" "$spool/spans" "$spool/buck2"
+truncate -s 536870913 "$large/pending/large.metrics.chunk"
+PATH="$tmp/bin:$PATH" DEVENV_ROOT="$tmp" "$span" pipeline-export --spool "$spool"
+[[ ! -d "$large" && ! -d "$spool" ]] || {
+  echo 'oversized offline chunk was retained' >&2
   exit 1
 }
