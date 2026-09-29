@@ -387,7 +387,13 @@ const cloneProjectFileWithoutReferences = ({
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) === true) {
     throw new Error('package tree: tsconfig.json must contain an object')
   }
-  const project = { ...(parsed as Readonly<Record<string, unknown>>), references: [] }
+  const config = parsed as Readonly<Record<string, unknown>>
+  const references = config.references
+  if (Array.isArray(references) === false || references.length === 0) {
+    cloneTree({ source, destination })
+    return
+  }
+  const project = { ...config, references: [] }
   mkdirSync(dirname(destination), { recursive: true })
   writeFileSync(destination, `${JSON.stringify(project, null, 2)}\n`)
 }
