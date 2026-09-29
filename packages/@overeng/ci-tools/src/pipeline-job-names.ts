@@ -1,10 +1,12 @@
 /* GitHub Jobs API names for the generated CI workflow. A generator assertion guards this finite list. */
 
+/** Runner profiles used to generate matrix job identities. */
 export const pipelineRunnerProfiles = [
   'namespace-profile-linux-x86-64',
   'namespace-profile-macos-arm64',
 ] as const
 
+/** Static job identifiers declared by the generated CI workflow. */
 export const pipelineJobIds = [
   'default-ref-policy',
   'typecheck',
@@ -36,10 +38,18 @@ export const pipelineJobIds = [
   'pipeline-attempt-close',
 ] as const
 
+/** Canonical identity of a GitHub Actions job and its matrix dimensions. */
 export type PipelineJobIdentity = {
   readonly job: string
   readonly dimensions: Readonly<Record<string, string>>
 }
+
+/** Never guess a canonical key for an unknown or ambiguous provider job name. */
+export const pipelineJobIdentityForName = (name: string): PipelineJobIdentity | undefined =>
+  duplicateNames.has(name) === true ? undefined : identities.get(name)
+
+/** All known job identifiers, used to check the generator's declarations. */
+export const pipelineJobIdentifierSet = new Set([...pipelineJobIds, 'test'])
 
 const names = [
   ...pipelineJobIds.map((job) => ({
@@ -55,13 +65,6 @@ const names = [
 const identities = new Map<string, PipelineJobIdentity>()
 const duplicateNames = new Set<string>()
 for (const { name, identity } of names) {
-  if (identities.has(name)) duplicateNames.add(name)
+  if (identities.has(name) === true) duplicateNames.add(name)
   identities.set(name, identity)
 }
-
-/** Never guess a canonical key for an unknown or ambiguous provider job name. */
-export const pipelineJobIdentityForName = (name: string): PipelineJobIdentity | undefined =>
-  duplicateNames.has(name) ? undefined : identities.get(name)
-
-/** All known job identifiers, used to check the generator's declarations. */
-export const pipelineJobIdentifierSet = new Set([...pipelineJobIds, 'test'])
