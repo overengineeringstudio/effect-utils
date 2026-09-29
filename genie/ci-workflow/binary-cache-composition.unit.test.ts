@@ -18,6 +18,7 @@ import {
   type BinaryCacheDescriptor as Cache,
 } from './binary-cache-descriptors.ts'
 import { validateWorkflowCachePolicy } from './cache-policy.ts'
+import { prSnapshotPackJob, prSnapshotReleaseJobs } from './pr-snapshot.ts'
 import {
   cachixPublisherStep,
   cachixPushStep,
@@ -345,6 +346,35 @@ describe('Cachix publisher', () => {
         },
       }),
     ).toThrow(CachePublisherJobError)
+  })
+
+  it('accepts PR snapshot producer and release consumer workflows without job-wide cache tokens', () => {
+    const producer = prSnapshotPackJob({
+      topologyPath: 'release-topology.json',
+      setupStepsAfterCheckout: [],
+      packTask: 'release:pack',
+    })
+    const release = prSnapshotReleaseJobs({
+      topologyPath: 'release-topology.json',
+      attestationPredicateType: 'https://example.com/pr-snapshot/v1',
+    })
+    expect(() =>
+      validateWorkflowCachePolicy({
+        workflow: { on: { pull_request: null }, jobs: producer },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      validateWorkflowCachePolicy({
+        workflow: {
+          on: {
+            schedule: release.scheduleTrigger,
+            workflow_run: release.workflowRunTrigger,
+            workflow_dispatch: { inputs: release.dispatchInputs },
+          },
+          jobs: release.jobs,
+        },
+      }),
+    ).not.toThrow()
   })
 
   it('rejects implicit Cachix action writes and job-wide tokens', () => {

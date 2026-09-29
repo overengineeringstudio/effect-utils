@@ -104,7 +104,6 @@ export const prSnapshotPackJob = (opts: PrSnapshotPackJobOptions) => {
       'runs-on': runsOn,
       permissions: { contents: 'read' },
       env: {
-        CACHIX_AUTH_TOKEN: '',
         SNAPSHOT_OUT_DIR: '${{ github.workspace }}/tmp/pr-snapshot-artifact',
       },
       defaults: bashShellDefaults,
@@ -341,7 +340,6 @@ fi`,
         },
         env: {
           ARTIFACT_DIR: '${{ github.workspace }}/tmp/pr-snapshot-artifact',
-          CACHIX_AUTH_TOKEN: '',
           GH_TOKEN: '${{ github.token }}',
           PUBLISH_LIST: '${{ github.workspace }}/tmp/pr-snapshot-publish-list.tsv',
         },
@@ -485,7 +483,6 @@ cp "$PUBLISH_LIST" "$ARTIFACT_DIR/trusted-publish-list.tsv"`,
         },
         env: {
           ARTIFACT_DIR: '${{ github.workspace }}/tmp/validated-pr-snapshot',
-          CACHIX_AUTH_TOKEN: '',
         },
         defaults: bashShellDefaults,
         outputs: { 'promotion-attempt': '${{ steps.handoff.outputs.promotion-attempt }}' },
@@ -632,7 +629,6 @@ echo "Snapshot promotion authorized: $authorized ($authorized_by)" >> "$GITHUB_S
         },
         env: {
           ARTIFACT_DIR: '${{ github.workspace }}/tmp/validated-pr-snapshot',
-          CACHIX_AUTH_TOKEN: '',
           GH_TOKEN: '${{ github.token }}',
           PUBLISH_LIST:
             '${{ github.workspace }}/tmp/validated-pr-snapshot/trusted-publish-list.tsv',
