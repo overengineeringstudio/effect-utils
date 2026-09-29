@@ -429,11 +429,9 @@ export const syncMegarepo = <R = never>({
 
     // Nix lock sync and generators only run when changing workspace (apply mode).
     if (dryRun === false && changesWorkspace === true) {
-      // Sync Nix lock files (flake.lock, devenv.lock) in member repos
-      // - lockSync.enabled: true → always enable (explicit override)
-      // - lockSync.enabled: false → always disable (explicit override)
-      // - lockSync.enabled: undefined → auto-detect based on root lock file presence
-      if (lockFile !== undefined) {
+      // Only explicit lock-sync modes may rewrite member lock files.
+      const lockSyncMode = options.lockSyncMode ?? 'off'
+      if (lockFile !== undefined && lockSyncMode !== 'off') {
         const lockSyncFs = yield* FileSystem.FileSystem
         const lockSyncExplicitSetting = config.lockSync?.enabled
         const devenvLockExists = yield* lockSyncFs.exists(
@@ -446,18 +444,16 @@ export const syncMegarepo = <R = never>({
           lockSyncExplicitSetting === true ||
           (lockSyncExplicitSetting !== false && (devenvLockExists || flakeLockExists))
 
-        const lockSyncMode = options.lockSyncMode ?? 'auto'
-        const cliLockSyncEnabled = lockSyncMode !== 'off'
         const lockSyncScope =
           lockSyncMode === 'recursive'
             ? 'recursive'
-            : lockSyncMode === 'direct' || lockSyncMode === 'off'
+            : lockSyncMode === 'direct'
               ? 'direct'
               : all === true
                 ? 'recursive'
                 : 'direct'
 
-        if (lockSyncEnabled === true && cliLockSyncEnabled === true) {
+        if (lockSyncEnabled === true) {
           const excludeMembers = new Set(config.lockSync?.exclude ?? [])
           nixLockResult = yield* syncNixLocks({
             megarepoRoot,

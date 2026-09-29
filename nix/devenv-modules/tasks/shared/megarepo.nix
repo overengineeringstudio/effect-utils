@@ -215,7 +215,7 @@ let
 
     "mr:fetch-apply" = {
       guard = "mr";
-      description = "Fetch latest refs and apply to workspace";
+      description = "Fetch latest refs and apply to workspace without syncing member Nix locks";
       exec = trace.exec "mr:fetch-apply" ''
         set -euo pipefail
 
@@ -247,7 +247,7 @@ let
 
     "mr:apply" = {
       guard = "mr";
-      description = "Apply megarepo.lock to workspace";
+      description = "Apply megarepo.lock to workspace without syncing member Nix locks";
       exec = trace.exec "mr:apply" ''
         set -euo pipefail
 

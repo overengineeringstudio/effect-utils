@@ -127,7 +127,7 @@ SUBCOMMANDS
   ls          List all members in the megarepo
   check       Check that the megarepo is structurally valid
   fetch       Remote → Lock: fetch upstream refs, resolve commits, write lock. Use --apply to also materialize workspace.
-  apply       Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.
+  apply       Lock → Workspace: create worktrees from lock, symlink, generators. Nix lock sync is opt-in. Never writes lock.
   lock        Workspace → Lock: record current worktree HEAD commits into megarepo.lock.
   add         Add a new member repository
   config      Configuration operations: push refs, pin/unpin members

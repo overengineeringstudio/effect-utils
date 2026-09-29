@@ -1492,7 +1492,7 @@ const createNestedWorkspaceFixture = () =>
   Effect.gen(function* () {
     const store = yield* createStoreFixture([
       {
-        host: 'example.com',
+        host: 'github.com',
         owner: 'acme',
         repo: 'shared',
         branches: ['main'],
@@ -1505,7 +1505,7 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    const sharedKey = 'example.com/acme/shared#main'
+    const sharedKey = 'github.com/acme/shared#main'
     const sharedWorktreePath = store.worktreePaths[sharedKey]
     if (sharedWorktreePath === undefined) {
       throw new Error(`Missing worktree path for ${sharedKey}`)
@@ -1522,7 +1522,7 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
       (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
         new MegarepoConfig({
           members: {
-            shared: 'https://example.com/acme/shared#main',
+            shared: 'https://github.com/acme/shared#main',
           },
         }),
       )) + '\n',
@@ -1532,7 +1532,7 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
       lockFile: childLock,
       memberName: 'shared',
       member: createLockedMember({
-        url: 'https://example.com/acme/shared',
+        url: 'https://github.com/acme/shared',
         ref: 'main',
         commit: staleNestedCommit,
       }),
@@ -1551,7 +1551,7 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
       (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
         new MegarepoConfig({
           members: {
-            shared: 'https://example.com/acme/shared#main',
+            shared: 'https://github.com/acme/shared#main',
             child: childPath,
           },
         }),
@@ -1562,7 +1562,7 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
       lockFile: parentLock,
       memberName: 'shared',
       member: createLockedMember({
-        url: 'https://example.com/acme/shared',
+        url: 'https://github.com/acme/shared',
         ref: 'main',
         commit: sharedCommit,
       }),
@@ -1615,7 +1615,7 @@ const createAliasWorkspaceFixture = () =>
       ...parentConfig,
       members: {
         ...parentConfig.members,
-        'shared-alias': 'https://example.com/acme/shared#main' as const,
+        'shared-alias': 'https://github.com/acme/shared#main' as const,
       },
     })
     yield* fs.writeFileString(
@@ -1771,11 +1771,21 @@ const createNestedMegarepoLockRefMatchFixture = () =>
 
 describe('nested megarepo.lock sync scope', () => {
   it.effect(
-    'should not sync nested megarepo.lock when apply lock sync is disabled',
+    'should leave member flake.nix and nested megarepo.lock untouched by default on apply',
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, staleNestedCommit } =
           yield* createNestedWorkspaceFixture()
+
+        const fs = yield* FileSystem.FileSystem
+        const memberFlakePath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile('flake.nix'),
+        )
+        const memberFlake = `{
+  inputs.shared.url = "git+https://github.com/acme/shared?ref=main&rev=${staleNestedCommit}";
+}`
+        yield* fs.writeFileString(memberFlakePath, memberFlake)
 
         const nestedLockPath = EffectPath.ops.join(
           childPath,
@@ -1788,7 +1798,7 @@ describe('nested megarepo.lock sync scope', () => {
 
         const result = yield* runApplyCommand({
           cwd: parentPath,
-          args: ['--output', 'json', '--lock-sync', 'off'],
+          args: ['--output', 'json'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },
@@ -1799,6 +1809,7 @@ describe('nested megarepo.lock sync scope', () => {
         expect(Option.isSome(afterNestedLockOpt)).toBe(true)
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+        expect(yield* fs.readFileString(memberFlakePath)).toBe(memberFlake)
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -1807,11 +1818,21 @@ describe('nested megarepo.lock sync scope', () => {
   )
 
   it.effect(
-    'should not sync nested megarepo.lock in default workspace sync mode',
+    'should leave member flake.nix and nested megarepo.lock untouched by default on fetch --apply',
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, staleNestedCommit } =
           yield* createNestedWorkspaceFixture()
+
+        const fs = yield* FileSystem.FileSystem
+        const memberFlakePath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile('flake.nix'),
+        )
+        const memberFlake = `{
+  inputs.shared.url = "git+https://github.com/acme/shared?ref=main&rev=${staleNestedCommit}";
+}`
+        yield* fs.writeFileString(memberFlakePath, memberFlake)
 
         const nestedLockPath = EffectPath.ops.join(
           childPath,
@@ -1835,6 +1856,7 @@ describe('nested megarepo.lock sync scope', () => {
         expect(Option.isSome(afterNestedLockOpt)).toBe(true)
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+        expect(yield* fs.readFileString(memberFlakePath)).toBe(memberFlake)
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -1843,7 +1865,7 @@ describe('nested megarepo.lock sync scope', () => {
   )
 
   it.effect(
-    'should sync nested megarepo.lock only when mr fetch --apply --all is set',
+    'should sync nested megarepo.lock with explicit recursive lock sync',
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, sharedCommit, staleNestedCommit } =
@@ -1860,7 +1882,7 @@ describe('nested megarepo.lock sync scope', () => {
 
         const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          args: ['--output', 'json', '--all'],
+          args: ['--output', 'json', '--all', '--lock-sync', 'recursive'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },
@@ -1896,7 +1918,7 @@ describe('nested megarepo.lock sync scope', () => {
           lockFile: Option.getOrThrow(nestedLockOpt),
           memberName: 'shared',
           member: createLockedMember({
-            url: 'https://example.com/acme/shared',
+            url: 'https://github.com/acme/shared',
             ref: 'main',
             commit: staleNestedCommit,
             pinned: true,
@@ -1939,7 +1961,7 @@ describe('nested megarepo.lock sync scope', () => {
 
         const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          args: ['--output', 'json', '--all', '--only', 'shared'],
+          args: ['--output', 'json', '--all', '--lock-sync', 'recursive', '--only', 'shared'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },
@@ -1975,7 +1997,7 @@ describe('nested megarepo.lock sync scope', () => {
 
         const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          args: ['--output', 'json', '--all'],
+          args: ['--output', 'json', '--all', '--lock-sync', 'recursive'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },
@@ -2011,7 +2033,7 @@ describe('nested megarepo.lock sync scope', () => {
 
         const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          args: ['--output', 'json', '--all'],
+          args: ['--output', 'json', '--all', '--lock-sync', 'recursive'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },
@@ -2047,7 +2069,15 @@ describe('nested megarepo.lock sync scope', () => {
 
         const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          args: ['--output', 'json', '--all', '--worktree-mode', 'tracking'],
+          args: [
+            '--output',
+            'json',
+            '--all',
+            '--lock-sync',
+            'recursive',
+            '--worktree-mode',
+            'tracking',
+          ],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },

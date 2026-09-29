@@ -154,6 +154,10 @@ Buck root — is retired (principal q5, 2026-09-25).
 | `mr exec`                        | both           | run a command across members                                          |
 | `mr check`                       | both           | validate config, lock, and workspace consistency                      |
 
+Nix lock rewriting during `mr apply` and `mr fetch --apply` is off by default;
+`--lock-sync direct|recursive` opts in. `mr:lock-sync-check` reports lock drift
+without rewriting it. Member repins are made as member PRs.
+
 Filtering (`--only` / `--skip`, mutually exclusive) applies to bulk
 arrangement commands; generators skip members that were not synced rather than
 failing on a missing path.
