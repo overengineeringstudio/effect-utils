@@ -97,6 +97,16 @@ for fixup in "$third_party"/fixups/*/fixups.toml; do
       exit "$grep_status"
     fi
   fi
+  if grep -nE '^[[:space:]]*cargo_env[[:space:]]*=' "$fixup"; then
+    echo "buck2-rust-deps: per-crate cargo_env overrides the full root-level Cargo package environment: ${fixup#"$root"/}; remove the override" >&2
+    fixup_violations=1
+  else
+    grep_status=$?
+    if [ "$grep_status" -ne 1 ]; then
+      echo "buck2-rust-deps: failed to inspect fixup: ${fixup#"$root"/}" >&2
+      exit "$grep_status"
+    fi
+  fi
 done
 if [ "$fixup_violations" -ne 0 ]; then
   exit 1

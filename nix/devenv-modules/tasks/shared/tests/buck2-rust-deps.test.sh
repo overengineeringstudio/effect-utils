@@ -126,6 +126,13 @@ for key in extra_srcs omit_srcs; do
   grep -Fq 'non-vendored fixup uses a discarded source key' "$TEMP_ROOT/$key.stderr" || fail "$key failure was not diagnosed"
   [ ! -s "$FAKE_REINDEER_CALL_LOG" ] || fail "$key lint ran Reindeer before rejecting the fixup"
 done
+printf 'cargo_env = ["CARGO_PKG_VERSION_PATCH"]\n' >"$THIRD_PARTY/fixups/example/fixups.toml"
+: >"$FAKE_REINDEER_CALL_LOG"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/fixup-cargo-env-error"; then
+  fail "gate accepted a per-crate Cargo environment override"
+fi
+grep -Fq 'per-crate cargo_env overrides the full root-level Cargo package environment' "$TEMP_ROOT/fixup-cargo-env-error" || fail "per-crate override was not diagnosed"
+[ ! -s "$FAKE_REINDEER_CALL_LOG" ] || fail "per-crate override ran Reindeer before rejecting the fixup"
 
 mkdir -p "$TEMP_ROOT/outside-workspace"
 ln -s "$TEMP_ROOT/outside-workspace" "$FIXTURE/workspaces/escape"
