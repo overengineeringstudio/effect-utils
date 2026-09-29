@@ -6,8 +6,8 @@ import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { Effect, FileSystem, Layer, Option, Schema } from 'effect'
-import { Argument as Args, CliError, Command, Flag as Options } from 'effect/unstable/cli'
-import { FetchHttpClient } from 'effect/unstable/http'
+import { Argument as Args, CliError, Command, Flag as Options } from 'effect/cli'
+import { FetchHttpClient } from 'effect/http'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'

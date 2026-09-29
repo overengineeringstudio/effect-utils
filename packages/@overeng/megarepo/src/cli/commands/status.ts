@@ -5,10 +5,10 @@
  */
 
 import { Clock, Effect, Option, type Schema } from 'effect'
+import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import * as Cli from 'effect/unstable/cli'
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

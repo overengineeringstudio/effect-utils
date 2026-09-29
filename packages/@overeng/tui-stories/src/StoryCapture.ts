@@ -12,7 +12,7 @@ import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
 import type { Schema } from 'effect'
-import type { Atom } from 'effect/unstable/reactivity'
+import type { Atom } from 'effect/reactivity'
 import type { ReactElement, ComponentType } from 'react'
 
 // Import only the type — the runtime TuiStoryPreview import pulls in xterm.js

@@ -41,7 +41,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { Schema } from 'effect'
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
+import { Atom, AtomRegistry } from 'effect/reactivity'
 // oxlint-disable-next-line import/no-unassigned-import -- deliberate side-effect import: the bundler injects xterm's stylesheet
 import '@xterm/xterm/css/xterm.css'
 import React, {

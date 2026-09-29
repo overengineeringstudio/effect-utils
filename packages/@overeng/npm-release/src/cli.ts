@@ -11,7 +11,7 @@
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Cause, Duration, Effect, Option, Schedule } from 'effect'
-import { Command as Cli, Flag } from 'effect/unstable/cli'
+import { Command as Cli, Flag } from 'effect/cli'
 
 import { readPlan, verifyPlan, type VerifyFailure } from './verify.ts'
 

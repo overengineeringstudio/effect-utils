@@ -23,12 +23,12 @@
     "@overeng/otel-contract": "workspace:^"
   },
   "devDependencies": {
-    "effect": "4.0.0-rc.113",
+    "effect": "4.0.0-rc.118",
     "typescript": "7.0.2",
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "4.0.0-rc.113"
+    "effect": "4.0.0-rc.118"
   },
   "publishConfig": {
     "access": "public",

@@ -1,8 +1,8 @@
 import { Effect, Fiber, Layer, Option, Redacted, Result, Schema, Tracer } from 'effect'
+import { HttpClient, make as makeHttpClient } from 'effect/http/HttpClient'
+import { EncodeError, HttpClientError, TransportError } from 'effect/http/HttpClientError'
+import type * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import { adjust as testClockAdjust } from 'effect/testing/TestClock'
-import { HttpClient, make as makeHttpClient } from 'effect/unstable/http/HttpClient'
-import { EncodeError, HttpClientError, TransportError } from 'effect/unstable/http/HttpClientError'
-import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

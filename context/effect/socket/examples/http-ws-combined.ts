@@ -4,12 +4,12 @@ import { NodeRuntime } from '@effect/platform-node'
 import { layer as nodeHttpLayer } from '@effect/platform-node/NodeHttpServer'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
 import { Effect, Layer } from 'effect'
-import * as HttpRouter from 'effect/unstable/http/HttpRouter'
-import { text } from 'effect/unstable/http/HttpServerResponse'
-import { formatSocketAddress } from 'effect/unstable/net/NetAddress'
-import type { Socket as SocketType, SocketError } from 'effect/unstable/socket/Socket'
-import { readerString } from 'effect/unstable/socket/Socket'
-import { SocketServer } from 'effect/unstable/socket/SocketServer'
+import * as HttpRouter from 'effect/http/HttpRouter'
+import { text } from 'effect/http/HttpServerResponse'
+import { formatSocketAddress } from 'effect/net/NetAddress'
+import type { Socket as SocketType, SocketError } from 'effect/socket/Socket'
+import { readerString } from 'effect/socket/Socket'
+import { SocketServer } from 'effect/socket/SocketServer'
 
 /**
  * Example: HTTP + WebSocket in one Effect runtime.

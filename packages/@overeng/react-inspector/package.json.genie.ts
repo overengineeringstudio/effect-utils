@@ -11,6 +11,7 @@ import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 
 const catalog = defineCatalog({
   ...repoCatalog.pick(
+    'effect',
     'is-dom',
     'react',
     '@storybook/react',
@@ -27,7 +28,6 @@ const catalog = defineCatalog({
     'vite',
     'vitest',
   ),
-  effect: '4.0.0-rc.113',
 })
 
 const peerDepNames = ['effect', 'react'] as const

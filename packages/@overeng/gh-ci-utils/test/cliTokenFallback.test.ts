@@ -1,7 +1,7 @@
 import { Effect, Layer, Logger, Stream } from 'effect'
-import { HttpClient, HttpClientResponse } from 'effect/unstable/http'
-import * as ChildProcess from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import { HttpClient, HttpClientResponse } from 'effect/http'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { describe, expect, it } from 'vitest'
 
 import { GitHubAuthConfigTag } from '../src/node/Config.ts'

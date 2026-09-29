@@ -10,7 +10,7 @@ import { link, lstat, open, readFile, rename, unlink } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import { Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
-import * as Command from 'effect/unstable/process/ChildProcess'
+import * as Command from 'effect/process/ChildProcess'
 
 import * as Observability from './observability.ts'
 

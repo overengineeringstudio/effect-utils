@@ -22,10 +22,10 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Clock, Duration, Effect, Layer, Option, Ref, Schema } from 'effect'
+import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
-import * as Cli from 'effect/unstable/cli'
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as Command from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'

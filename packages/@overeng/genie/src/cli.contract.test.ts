@@ -79,5 +79,9 @@ describe('genie CLI contract baselines (status/signal invariant, prose owner-reb
 it('rejects conflicting output flags', () => {
   const result = runCli('--dry-run', '--output', 'json', '--json')
   expect(result.status).toBe(1)
+  expect(result.stdout).toBe('')
   expect(result.stderr).toContain('use only one of --output / -o or --json')
+  expect(result.stderr).toContain('CliError/InvalidValue')
+  expect(result.stderr).toContain('--output')
+  expect(result.stderr).toContain('--json')
 })

@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking changes
 
+- **Effect v4 RC cohort**: bump `effect`, `@effect/platform-node`,
+  `@effect/vitest`, `@effect/opentelemetry`, `@effect/atom-react`, and the
+  `@effect/platform-node-shared` override from `4.0.0-rc.113` to
+  `4.0.0-rc.118`. Effect removed the `effect/unstable/*` export paths; import
+  those modules from `effect/*` instead (for example,
+  `effect/unstable/http/HttpClient` → `effect/http/HttpClient`).
+
 - **@overeng/utils-storybook** (new package): the Storybook config helpers and
   the story gate move out of `@overeng/utils`, which no longer declares
   Storybook peers. Under `autoInstallPeers`, pnpm links an optional peer into a

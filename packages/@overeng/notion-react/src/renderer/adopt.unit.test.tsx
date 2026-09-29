@@ -4,7 +4,7 @@ import { Effect } from 'effect'
  * asserts zero mutating requests on the mock's request log: adoption is
  * GET-only by contract, in all outcomes.
  */
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
+import type { HttpClient } from 'effect/http/HttpClient'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 

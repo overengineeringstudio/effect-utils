@@ -8,8 +8,8 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Cause, Effect, Exit, Option, Schema } from 'effect'
+import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
-import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

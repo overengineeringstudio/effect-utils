@@ -1,6 +1,6 @@
 import { Effect, Schema, SchemaIssue } from 'effect'
-import { HttpClient } from 'effect/unstable/http/HttpClient'
-import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
+import { HttpClient } from 'effect/http/HttpClient'
+import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 /**
  * Classifying real HTTP outcomes from an `HttpClient` call (Molty consumer recipe
  * #3 — the union-member classification, made concrete). A handler that calls an
@@ -39,7 +39,7 @@ import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
  * upstream returning controlled statuses, and asserts each union member lands in the
  * right channel. Skips when no native server is available.
  */
-import type * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
+import type * as HttpClientResponse from 'effect/http/HttpClientResponse'
 
 import { Restate, RestateService } from '../src/mod.ts'
 

@@ -1,6 +1,6 @@
 import { type Cause, Deferred, Duration, Effect, type Queue, Schema, Stream } from 'effect'
-import { Headers } from 'effect/unstable/http'
-import { Rpc, RpcGroup, RpcMessage } from 'effect/unstable/rpc'
+import { Headers } from 'effect/http'
+import { Rpc, RpcGroup, RpcMessage } from 'effect/rpc'
 
 import {
   defaultNormalizationBounds,

@@ -1,6 +1,6 @@
 import { Cause, Effect, Option, Result } from 'effect'
-import { RpcSchema } from 'effect/unstable/rpc'
-import type { RpcMiddleware } from 'effect/unstable/rpc'
+import { RpcSchema } from 'effect/rpc'
+import type { RpcMiddleware } from 'effect/rpc'
 
 import type { CaptureChannel } from './model.ts'
 import { makeProtocolObserver } from './protocol.ts'

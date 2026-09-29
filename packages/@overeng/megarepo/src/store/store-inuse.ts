@@ -17,8 +17,8 @@
 
 import { Effect } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
-import * as ChildProcess from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 

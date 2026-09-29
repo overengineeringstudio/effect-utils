@@ -1,5 +1,5 @@
 import { Console, Effect, Option, Schema } from 'effect'
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 
 import { EffectPath } from '@overeng/effect-path'
 

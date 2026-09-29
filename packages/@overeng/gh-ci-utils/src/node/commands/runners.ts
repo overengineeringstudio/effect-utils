@@ -4,7 +4,7 @@ import { Effect } from 'effect'
  *
  * Show active runner jobs across all configured hosts.
  */
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 import React from 'react'
 
 import { outputModeLayer, outputOption, resolveOutputOption } from '@overeng/tui-react/node'

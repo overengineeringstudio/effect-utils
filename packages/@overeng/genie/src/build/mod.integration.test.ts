@@ -3,7 +3,7 @@ import * as os from 'node:os'
 
 import { NodeServices } from '@effect/platform-node'
 import { Effect, FileSystem, Path, Schema, Stream } from 'effect'
-import * as Command from 'effect/unstable/process/ChildProcess'
+import * as Command from 'effect/process/ChildProcess'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

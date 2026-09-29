@@ -1,7 +1,7 @@
 import { Console as NodeConsole } from 'node:console'
 
 import { Console, Context, Effect, Layer, Option } from 'effect'
-import { CliOutput } from 'effect/unstable/cli'
+import { CliOutput } from 'effect/cli'
 
 /** CLI name and version pair, provided at startup for error diagnostics. */
 export interface CliVersionInfo {

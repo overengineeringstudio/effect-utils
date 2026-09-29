@@ -1,7 +1,7 @@
 import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
+import { Prompt } from 'effect/cli'
 import type { QuitError } from 'effect/Terminal'
-import { Prompt } from 'effect/unstable/cli'
 
 type PromptTrace =
   | {

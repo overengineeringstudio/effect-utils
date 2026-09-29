@@ -3,9 +3,9 @@ import path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { Effect, FileSystem, Layer, Sink, Stream } from 'effect'
-import { HttpClient, HttpClientResponse } from 'effect/unstable/http'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
-import * as ProcessSpawner from 'effect/unstable/process/ChildProcessSpawner'
+import { HttpClient, HttpClientResponse } from 'effect/http'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
+import * as ProcessSpawner from 'effect/process/ChildProcessSpawner'
 import { describe, expect, it } from 'vitest'
 
 import { GitHubAuthConfigTag, detectCurrentBranch, resolveConfig } from '../src/node/Config.ts'

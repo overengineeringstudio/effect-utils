@@ -5,7 +5,7 @@
  * Handles ls, status, fetch, gc, add, and error states.
  */
 
-import type { Atom } from 'effect/unstable/reactivity'
+import type { Atom } from 'effect/reactivity'
 import React from 'react'
 
 import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'

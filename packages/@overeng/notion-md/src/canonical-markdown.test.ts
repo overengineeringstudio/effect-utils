@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from '@effect/vitest'
 import { Schema } from 'effect'
-import * as Arbitrary from 'effect/unstable/arbitrary/Arbitrary'
+import * as Arbitrary from 'effect/Arbitrary'
 
 import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markdown.ts'
 import { sha256Digest } from './hash.ts'

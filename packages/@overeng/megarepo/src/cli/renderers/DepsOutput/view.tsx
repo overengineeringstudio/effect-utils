@@ -5,7 +5,7 @@
  * Shows upstream members with their downstream dependents indented below.
  */
 
-import type { Atom } from 'effect/unstable/reactivity'
+import type { Atom } from 'effect/reactivity'
 import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'

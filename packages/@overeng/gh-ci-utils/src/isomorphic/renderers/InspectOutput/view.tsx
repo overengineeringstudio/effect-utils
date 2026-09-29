@@ -5,7 +5,7 @@
  * groups it was derived from, so a reader can always see which source said
  * what — and, when nothing could be observed, that the GitHub facts survived.
  */
-import type { Atom } from 'effect/unstable/reactivity'
+import type { Atom } from 'effect/reactivity'
 import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'

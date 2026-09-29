@@ -1,5 +1,5 @@
 import { Console, Effect } from 'effect'
-import { CliError, CliOutput } from 'effect/unstable/cli'
+import { CliError, CliOutput } from 'effect/cli'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

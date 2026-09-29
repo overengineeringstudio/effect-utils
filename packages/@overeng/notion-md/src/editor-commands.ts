@@ -1,8 +1,8 @@
 import { join } from 'node:path'
 
 import { Console, Effect, FileSystem } from 'effect'
-import * as ChildProcess from 'effect/unstable/process/ChildProcess'
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { describeBodyLossyRefusal } from '@overeng/notion-core'
 import type { Sha256Digest } from '@overeng/notion-effect-client'

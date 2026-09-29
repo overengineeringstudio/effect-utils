@@ -18,7 +18,7 @@
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
-import { Command, Flag as Options } from 'effect/unstable/cli'
+import { Command, Flag as Options } from 'effect/cli'
 
 import { outputOption, outputModeLayer, resolveOutputOption } from '../../../src/node/mod.ts'
 import { DeployError, runDeploy } from './deploy.tsx'

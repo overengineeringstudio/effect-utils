@@ -8,7 +8,7 @@
  */
 
 import { Effect, Schema } from 'effect'
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
+import { Atom, AtomRegistry } from 'effect/reactivity'
 
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 

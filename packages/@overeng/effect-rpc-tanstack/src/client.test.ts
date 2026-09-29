@@ -1,5 +1,5 @@
 import { Cause, Effect, Exit, Schema, Stream } from 'effect'
-import { type RpcMessage, Rpc, RpcGroup, RpcClient } from 'effect/unstable/rpc'
+import { type RpcMessage, Rpc, RpcGroup, RpcClient } from 'effect/rpc'
 import { describe, expect, it, vi } from 'vitest'
 
 import {

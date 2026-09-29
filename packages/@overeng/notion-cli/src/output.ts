@@ -1,5 +1,5 @@
 import { Data, Effect, FileSystem } from 'effect'
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'

@@ -13,7 +13,7 @@ import { Cause, Context, Effect, Fiber, Layer, ManagedRuntime } from 'effect'
  *
  * Run: bun examples/effect-atoms-keyboard.tsx
  */
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
+import { Atom, AtomRegistry } from 'effect/reactivity'
 
 // -----------------------------------------------------------------------------
 // Services (Layer-based dependencies)

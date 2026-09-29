@@ -268,7 +268,7 @@ export { NotionViews } from './views.ts'
  * @example
  * ```ts
  * import { Effect, Layer, Redacted } from 'effect'
- * import { HttpClient } from 'effect/unstable/http/HttpClient'
+ * import { HttpClient } from 'effect/http/HttpClient'
  * import { NotionConfigLive, NotionDatabases } from '@overeng/notion-effect-client'
  *
  * const program = Effect.gen(function* () {

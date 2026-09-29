@@ -8,9 +8,9 @@ import { createPrivateKey, createSign } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
 import { Context, Duration, Effect, Layer, Option, Ref, Schema } from 'effect'
-import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
-import * as ChildProcess from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import { HttpClient, HttpClientRequest } from 'effect/http'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { GitHubApiError, GitHubAuthError, LogsUnavailableError } from '../isomorphic/Errors.ts'
 import type { WorkflowJobsResponse } from '../isomorphic/GitHubSchemas.ts'

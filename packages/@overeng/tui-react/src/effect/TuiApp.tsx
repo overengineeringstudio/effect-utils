@@ -52,7 +52,7 @@ import {
   Schema,
   Stream,
 } from 'effect'
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
+import { Atom, AtomRegistry } from 'effect/reactivity'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'

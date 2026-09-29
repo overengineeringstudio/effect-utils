@@ -2,7 +2,7 @@
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 
 import { runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'

@@ -1,5 +1,5 @@
 import { Effect, Option, Redacted } from 'effect'
-import { Flag as Options } from 'effect/unstable/cli'
+import { Flag as Options } from 'effect/cli'
 
 import { resolveNotionToken as resolveNotionTokenFromEnv } from '@overeng/notion-effect-client'
 

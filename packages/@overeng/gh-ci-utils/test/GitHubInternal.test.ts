@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect'
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect/unstable/http'
+import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect/http'
 import { describe, expect, it } from 'vitest'
 
 import { GitHubInternal } from '../src/node/GitHubInternal.ts'

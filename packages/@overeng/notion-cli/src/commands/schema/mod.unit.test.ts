@@ -1,7 +1,7 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Cause, Effect, Exit, Option } from 'effect'
-import { Command } from 'effect/unstable/cli'
+import { Command } from 'effect/cli'
 import { expect } from 'vitest'
 
 import { CurrentWorkingDirectory } from '@overeng/utils/node'

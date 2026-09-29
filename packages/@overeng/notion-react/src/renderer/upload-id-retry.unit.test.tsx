@@ -1,5 +1,5 @@
 import { Cause, Effect } from 'effect'
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
+import type { HttpClient } from 'effect/http/HttpClient'
 import { describe, expect, it } from 'vitest'
 
 import type { NotionConfig } from '@overeng/notion-effect-client'

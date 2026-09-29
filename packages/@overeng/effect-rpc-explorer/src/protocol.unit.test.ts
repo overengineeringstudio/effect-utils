@@ -8,7 +8,7 @@ import {
   RpcSerialization,
   RpcSchema,
   RpcServer,
-} from 'effect/unstable/rpc'
+} from 'effect/rpc'
 import { describe, expect, it } from 'vitest'
 
 import type { ExplorerBounds, Timestamp } from './model.ts'

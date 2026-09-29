@@ -3,7 +3,7 @@ import { access } from 'node:fs/promises'
 import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Schema } from 'effect'
-import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
+import { ChildProcess, ChildProcessSpawner } from 'effect/process'
 
 import { SERVICE_NAME, SPAN_NAME } from './emitter.ts'
 import {

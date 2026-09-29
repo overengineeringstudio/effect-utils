@@ -1,7 +1,7 @@
 import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
-import { HttpClient, make as makeHttpClient } from 'effect/unstable/http/HttpClient'
-import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
-import * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
+import { HttpClient, make as makeHttpClient } from 'effect/http/HttpClient'
+import type * as HttpClientRequest from 'effect/http/HttpClientRequest'
+import * as HttpClientResponse from 'effect/http/HttpClientResponse'
 
 import { type NotionClientConfig, NotionConfig } from '../config.ts'
 

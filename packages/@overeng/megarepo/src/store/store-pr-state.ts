@@ -21,8 +21,8 @@
  */
 
 import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as Command from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import type { RelativeDirPath } from '@overeng/effect-path'
 

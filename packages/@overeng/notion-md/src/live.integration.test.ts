@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { Effect, type FileSystem, Layer, Redacted, Schema, Stream } from 'effect'
-import { FetchHttpClient, type HttpClient } from 'effect/unstable/http'
+import { FetchHttpClient, type HttpClient } from 'effect/http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {

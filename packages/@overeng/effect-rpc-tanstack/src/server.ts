@@ -5,10 +5,10 @@
  */
 
 import type * as Context from 'effect/Context'
+import type { HttpMiddleware } from 'effect/http/HttpMiddleware'
+import * as HttpRouter from 'effect/http/HttpRouter'
 import * as Layer from 'effect/Layer'
-import type { HttpMiddleware } from 'effect/unstable/http/HttpMiddleware'
-import * as HttpRouter from 'effect/unstable/http/HttpRouter'
-import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from 'effect/unstable/rpc'
+import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from 'effect/rpc'
 
 /** Web handler interface returned by makeHandler for use in TanStack Start API routes */
 export type RpcWebHandler = {

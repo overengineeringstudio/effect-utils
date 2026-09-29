@@ -1,8 +1,8 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { makeNet } from '@effect/platform-node/NodeSocket'
 import { Duration, Effect, Fiber, Stream } from 'effect'
-import type { SocketError } from 'effect/unstable/socket/Socket'
-import { CloseEvent, toStream } from 'effect/unstable/socket/Socket'
+import type { SocketError } from 'effect/socket/Socket'
+import { CloseEvent, toStream } from 'effect/socket/Socket'
 
 /**
  * Example: TCP echo client.

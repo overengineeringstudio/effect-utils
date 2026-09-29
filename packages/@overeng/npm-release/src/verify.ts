@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto'
 
 import { Effect, FileSystem, Schema, Stream } from 'effect'
 import type { Schedule } from 'effect'
-import { ChildProcess } from 'effect/unstable/process'
+import { ChildProcess } from 'effect/process'
 
 import { registryVerification, type RemoteRegistryState } from './mod.ts'
 

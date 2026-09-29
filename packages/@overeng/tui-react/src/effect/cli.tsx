@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { Command, Flag as Options } from "effect/unstable/cli"
+ * import { Command, Flag as Options } from "effect/cli"
  * import { Effect } from "effect"
  * import { outputOption, outputModeLayer } from "@overeng/tui-react"
  *
@@ -24,7 +24,7 @@
  */
 
 import { Cause, Effect, Exit, Layer, Logger, Option } from 'effect'
-import { CliError, Flag, type Command } from 'effect/unstable/cli'
+import { CliError, Flag, type Command } from 'effect/cli'
 
 import { createLogCapture } from './LogCapture.ts'
 import { detectOutputMode, viewOutputStreamStdoutLayer } from './OutputMode.node.ts'

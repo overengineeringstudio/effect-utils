@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { NodeRuntime } from '@effect/platform-node'
 import * as NodeContext from '@effect/platform-node/NodeServices'
 import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
+import { FetchHttpClient } from 'effect/http'
 
 import {
   NOTION_API_VERSION,

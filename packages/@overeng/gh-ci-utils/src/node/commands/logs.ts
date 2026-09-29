@@ -5,7 +5,7 @@ import { Clock, Duration, Effect, Option } from 'effect'
  * Fetch logs for completed jobs. Supports per-step logs when session is available.
  * Accepts run ID, URL, or branch name. Auto-detects current branch when omitted.
  */
-import * as Cli from 'effect/unstable/cli'
+import * as Cli from 'effect/cli'
 import React from 'react'
 
 import { outputModeLayer, outputOption, resolveOutputOption } from '@overeng/tui-react/node'

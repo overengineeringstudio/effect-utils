@@ -9,9 +9,9 @@ import {
   Schema,
   Stream,
 } from 'effect'
-import { Headers } from 'effect/unstable/http'
-import * as OpenApi from 'effect/unstable/httpapi/OpenApi'
-import { Rpc, RpcGroup, RpcMessage } from 'effect/unstable/rpc'
+import { Headers } from 'effect/http'
+import * as OpenApi from 'effect/http-api/OpenApi'
+import { Rpc, RpcGroup, RpcMessage } from 'effect/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { makeDescriptorSet, staticDescriptorSet } from './descriptor-set.ts'

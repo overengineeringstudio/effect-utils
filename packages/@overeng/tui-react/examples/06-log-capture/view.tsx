@@ -5,7 +5,7 @@
  * output in the Static region, above dynamic task progress.
  */
 
-import { Atom } from 'effect/unstable/reactivity'
+import { Atom } from 'effect/reactivity'
 import React, { useMemo } from 'react'
 
 import { Box, Text, Static, Spinner, useTuiAtomValue, useCapturedLogs } from '../../src/mod.tsx'

@@ -60,7 +60,7 @@
  * After that repair sync, strict re-adoption succeeds and `plan()` is empty.
  */
 import { Data, Effect } from 'effect'
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
+import type { HttpClient } from 'effect/http/HttpClient'
 import type { ReactNode } from 'react'
 
 import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'

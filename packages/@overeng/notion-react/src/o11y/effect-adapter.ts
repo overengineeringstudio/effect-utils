@@ -19,7 +19,7 @@
  */
 import { Cause, Context, Effect, Exit, Option, Schema } from 'effect'
 import type { Tracer } from 'effect'
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
+import type { HttpClient } from 'effect/http/HttpClient'
 import type { ReactNode } from 'react'
 
 import type { NotionConfig } from '@overeng/notion-effect-client'
