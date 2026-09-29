@@ -13,7 +13,7 @@ packageExtensionsChecksum: sha256-epTbgV6B/4VjMZl+6yKpdYaKky9k3quNEA681y79Hlk=
 patchedDependencies:
   '@myobie/pty@0.10.0': e6d9b2f6990efbb98235e6e4018e3e9bb5ac94bc54ea6764364857206b6b95a5
   '@storybook/builder-vite@10.6.0': 3ea63b6347343243dbebc21be698afb9635d47f3fd2a5c2bb7b10c002250dad5
-  '@stylexjs/babel-plugin@0.19.0': 045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2
+  '@stylexjs/babel-plugin@0.19.0': 00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600
 
 importers:
 
@@ -1959,7 +1959,7 @@ importers:
         version: 1.63.0
       '@stylexjs/babel-plugin':
         specifier: 0.19.0
-        version: 0.19.0(patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2)
+        version: 0.19.0(patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600)
       '@stylexjs/postcss-plugin':
         specifier: 0.19.0
         version: 0.19.0
@@ -6750,7 +6750,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@stylexjs/babel-plugin@0.19.0(patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2)':
+  '@stylexjs/babel-plugin@0.19.0(patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600)':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/helper-module-imports': 7.29.7
@@ -6773,7 +6773,7 @@ snapshots:
   '@stylexjs/postcss-plugin@0.19.0':
     dependencies:
       '@babel/core': 7.29.7
-      '@stylexjs/babel-plugin': 0.19.0(patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2)
+      '@stylexjs/babel-plugin': 0.19.0(patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600)
       fast-glob: 3.3.3
       glob-parent: 6.0.2
       is-glob: 4.0.3
@@ -6795,7 +6795,7 @@ snapshots:
       '@babel/plugin-syntax-flow': 7.29.7(@babel/core@7.29.7)
       '@babel/plugin-syntax-jsx': 7.29.7(@babel/core@7.29.7)
       '@babel/plugin-syntax-typescript': 7.29.7(@babel/core@7.29.7)
-      '@stylexjs/babel-plugin': 0.19.0(patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2)
+      '@stylexjs/babel-plugin': 0.19.0(patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600)
       browserslist: 4.28.8
       lightningcss: 1.33.0
       unplugin: 3.3.0(esbuild@0.28.2)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))

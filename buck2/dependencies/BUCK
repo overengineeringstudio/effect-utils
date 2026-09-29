@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:c29111966c42e2046fffd855afe448e88828d9d504fc8eccb0e61c7e5ff2b7e4
+# Store fingerprint: sha256:e679e92e1efd98c75310fcd4608d8eda1f896ec5704ddd77169c6fca1991e441
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -10557,9 +10557,9 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_stylexjs_babel_plugin_0_19_0_patch_hash_045d67fae6e9657aff811026194d748e_caf6f40b8a09",
+    name = "entry_stylexjs_babel_plugin_0_19_0_patch_hash_00dfe5d8581f8cd8fd37532db8e6c67c_da991b1b0231",
     package = ":package_stylexjs_babel_plugin_0_19_0_749472a206a4",
-    store_key = "@stylexjs+babel-plugin@0.19.0_patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2",
+    store_key = "@stylexjs+babel-plugin@0.19.0_patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600",
     runtime = ":assemble-store.ts",
     dependencies = {
         "@babel/core": ":entry_babel_core_7_29_7_46a08ec2c1b0",
@@ -10595,7 +10595,7 @@ pnpm_store_entry(
     runtime = ":assemble-store.ts",
     dependencies = {
         "@babel/core": ":entry_babel_core_7_29_7_46a08ec2c1b0",
-        "@stylexjs/babel-plugin": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_045d67fae6e9657aff811026194d748e_caf6f40b8a09",
+        "@stylexjs/babel-plugin": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_00dfe5d8581f8cd8fd37532db8e6c67c_da991b1b0231",
         "fast-glob": ":entry_fast_glob_3_3_3_dd5e0fd017ea",
         "glob-parent": ":entry_glob_parent_6_0_2_7b90c3653564",
         "is-glob": ":entry_is_glob_4_0_3_ab2c83c8b42b",
@@ -10637,7 +10637,7 @@ pnpm_store_entry(
         "@babel/plugin-syntax-flow": ":entry_babel_plugin_syntax_flow_7_29_7_babel_core_7_29_7_b1d03c43be5f",
         "@babel/plugin-syntax-jsx": ":entry_babel_plugin_syntax_jsx_7_29_7_babel_core_7_29_7_63bfecfd2544",
         "@babel/plugin-syntax-typescript": ":entry_babel_plugin_syntax_typescript_7_29_7_babel_core_7_29_7_430af880d553",
-        "@stylexjs/babel-plugin": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_045d67fae6e9657aff811026194d748e_caf6f40b8a09",
+        "@stylexjs/babel-plugin": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_00dfe5d8581f8cd8fd37532db8e6c67c_da991b1b0231",
         "browserslist": ":entry_browserslist_4_28_8_3a679ad65cca",
         "lightningcss": ":entry_lightningcss_1_33_0_7129b0f44113",
         "unplugin": ":entry_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vite_8_2_2_types_node_26_5__5b95d906a093",
@@ -40319,7 +40319,7 @@ pnpm_store_view(
         "@opentelemetry/sdk-trace-web": "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1",
         "@opentelemetry/semantic-conventions": "@opentelemetry+semantic-conventions@1.43.0",
         "@playwright/test": "@playwright+test@1.63.0",
-        "@stylexjs/babel-plugin": "@stylexjs+babel-plugin@0.19.0_patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2",
+        "@stylexjs/babel-plugin": "@stylexjs+babel-plugin@0.19.0_patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600",
         "@stylexjs/postcss-plugin": "@stylexjs+postcss-plugin@0.19.0",
         "@stylexjs/stylex": "@stylexjs+stylex@0.19.0",
         "@stylexjs/unplugin": "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5",
@@ -40398,7 +40398,7 @@ pnpm_store_view(
             "@redis+time-series@6.2.1_@redis+client@6.2.1_@opentelemetry+api@1.9.1": ":entry_redis_time_series_6_2_1_redis_client_6_2_1_opentelemetry_api_1_9_1_e4d2523e153b",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
             "@standard-schema+spec@1.1.0": ":entry_standard_schema_spec_1_1_0_9bfb5ac2eb33",
-            "@stylexjs+babel-plugin@0.19.0_patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_045d67fae6e9657aff811026194d748e_caf6f40b8a09",
+            "@stylexjs+babel-plugin@0.19.0_patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_00dfe5d8581f8cd8fd37532db8e6c67c_da991b1b0231",
             "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
@@ -40595,7 +40595,7 @@ pnpm_store_view(
             "@rolldown+binding-linux-arm64-gnu@1.2.7": ":entry_rolldown_binding_linux_arm64_gnu_1_2_7_b564cdf057d1",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
             "@standard-schema+spec@1.1.0": ":entry_standard_schema_spec_1_1_0_9bfb5ac2eb33",
-            "@stylexjs+babel-plugin@0.19.0_patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_045d67fae6e9657aff811026194d748e_caf6f40b8a09",
+            "@stylexjs+babel-plugin@0.19.0_patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_00dfe5d8581f8cd8fd37532db8e6c67c_da991b1b0231",
             "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
@@ -40794,7 +40794,7 @@ pnpm_store_view(
             "@rolldown+binding-linux-x64-gnu@1.2.7": ":entry_rolldown_binding_linux_x64_gnu_1_2_7_2b8bc0885731",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
             "@standard-schema+spec@1.1.0": ":entry_standard_schema_spec_1_1_0_9bfb5ac2eb33",
-            "@stylexjs+babel-plugin@0.19.0_patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_045d67fae6e9657aff811026194d748e_caf6f40b8a09",
+            "@stylexjs+babel-plugin@0.19.0_patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_00dfe5d8581f8cd8fd37532db8e6c67c_da991b1b0231",
             "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
@@ -40993,7 +40993,7 @@ pnpm_store_view(
             "@rolldown+binding-darwin-arm64@1.2.7": ":entry_rolldown_binding_darwin_arm64_1_2_7_c213ca2a9ab4",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
             "@standard-schema+spec@1.1.0": ":entry_standard_schema_spec_1_1_0_9bfb5ac2eb33",
-            "@stylexjs+babel-plugin@0.19.0_patch_hash=045d67fae6e9657aff811026194d748e48d13c98b5614b0328c845b730f24aa2": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_045d67fae6e9657aff811026194d748e_caf6f40b8a09",
+            "@stylexjs+babel-plugin@0.19.0_patch_hash=00dfe5d8581f8cd8fd37532db8e6c67c76ce23429aee712d7b0e9fbaccb8c600": ":entry_stylexjs_babel_plugin_0_19_0_patch_hash_00dfe5d8581f8cd8fd37532db8e6c67c_da991b1b0231",
             "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
