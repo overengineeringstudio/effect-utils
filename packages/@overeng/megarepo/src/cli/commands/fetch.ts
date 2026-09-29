@@ -13,9 +13,9 @@ import { runCommand, type LockSyncMode } from './engine.ts'
 
 const lockSyncOption = Cli.Flag.Literals('lock-sync', ['auto', 'off', 'direct', 'recursive']).pipe(
   Cli.Flag.withDescription(
-    'Lock-file rewrite policy for the apply phase: auto, off, direct members only, or recursive nested megarepos',
+    'Lock-file rewrite policy for the apply phase: off (default), direct members, recursive nested megarepos, or auto',
   ),
-  Cli.Flag.withDefault('auto' as LockSyncMode),
+  Cli.Flag.withDefault('off' as LockSyncMode),
 )
 
 const sharedOptions = {

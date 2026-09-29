@@ -1,7 +1,7 @@
 /**
  * `mr apply` — Lock → Workspace
  *
- * Create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.
+ * Create worktrees from lock, symlink, generators. Nix lock sync is opt-in. Never writes lock.
  */
 
 import { Effect } from 'effect'
@@ -12,12 +12,12 @@ import { runCommand, type LockSyncMode } from './engine.ts'
 
 const lockSyncOption = Cli.Flag.Literals('lock-sync', ['auto', 'off', 'direct', 'recursive']).pipe(
   Cli.Flag.withDescription(
-    'Lock-file rewrite policy during apply: auto, off, direct members only, or recursive nested megarepos',
+    'Lock-file rewrite policy during apply: off (default), direct members, recursive nested megarepos, or auto',
   ),
-  Cli.Flag.withDefault('auto' as LockSyncMode),
+  Cli.Flag.withDefault('off' as LockSyncMode),
 )
 
-/** `mr apply` — Lock → Workspace: create worktrees, symlink, nix lock sync, generators. */
+/** `mr apply` — Lock → Workspace: create worktrees, symlink, generators; Nix lock sync is opt-in. */
 export const applyCommand = Cli.Command.make(
   'apply',
   {
@@ -79,6 +79,6 @@ export const applyCommand = Cli.Command.make(
     ),
 ).pipe(
   Cli.Command.withDescription(
-    'Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.',
+    'Lock → Workspace: create worktrees from lock, symlink, generators. Nix lock sync is opt-in. Never writes lock.',
   ),
 )
