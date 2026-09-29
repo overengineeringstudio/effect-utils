@@ -1,6 +1,7 @@
-import { deriveJobTraceId, pipelineJobIdentityForName } from '@overeng/ci-tools'
 import { Effect, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
+
+import { deriveJobTraceId, pipelineJobIdentityForName } from '@overeng/ci-tools'
 
 import type { WorkflowJob, WorkflowRun } from '../../isomorphic/GitHubSchemas.ts'
 import { isStaleRunSelection, isWrongWorkflowSelection } from '../../isomorphic/lib/summary.ts'
@@ -18,8 +19,9 @@ const pr = Cli.Argument.Int('pr').pipe(Cli.Argument.withDescription('Pull reques
 const repo = Cli.Flag.String('repo').pipe(Cli.Flag.optional)
 
 const encodeComponent = (value: string) =>
-  encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
-    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   )
 
 /** Grafana Explore uses a fixed Tempo datasource and an explicit window around each job. */
@@ -71,18 +73,23 @@ export const renderJobTraces = ({
   grafanaBaseUrl: string
   reportedAt: Date
 }): string => {
-  const attemptJobs = jobs.filter((job) => job.run_attempt === run.run_attempt && job.name !== 'pipeline-attempt-close')
+  const attemptJobs = jobs.filter(
+    (job) => job.run_attempt === run.run_attempt && job.name !== 'pipeline-attempt-close',
+  )
   const nameCounts = new Map<string, number>()
   for (const job of attemptJobs) nameCounts.set(job.name, (nameCounts.get(job.name) ?? 0) + 1)
   const runIdentity = `ci/github/${encodeComponent(repo)}/${run.id}/${run.run_attempt}`
   const lines = [`${repo}#${prNumber}  Run ${run.id} (attempt ${run.run_attempt})`]
   for (const job of attemptJobs.sort((left, right) =>
-    left.name < right.name ? -1 : left.name > right.name ? 1 : left.id - right.id
+    left.name < right.name ? -1 : left.name > right.name ? 1 : left.id - right.id,
   )) {
     const status = `${job.status}${job.conclusion === null ? '' : ` (${job.conclusion})`}`
-    const identity = nameCounts.get(job.name) === 1 ? pipelineJobIdentityForName(job.name) : undefined
+    const identity =
+      nameCounts.get(job.name) === 1 ? pipelineJobIdentityForName(job.name) : undefined
     if (!identity || !job.started_at || job.conclusion === 'skipped') {
-      lines.push(`  ${job.name}: ${status} — trace unavailable (${!identity ? 'unmatched job name' : 'not started'})`)
+      lines.push(
+        `  ${job.name}: ${status} — trace unavailable (${!identity ? 'unmatched job name' : 'not started'})`,
+      )
       continue
     }
     const traceId = deriveJobTraceId(runIdentity, identity.job, identity.dimensions)
@@ -100,7 +107,9 @@ export const renderJobTraces = ({
     lines.push(`    ${traceId} ${url}`)
   }
   if (attemptJobs.length === 0) lines.push('  No jobs for this attempt')
-  lines.push('Trace links are locators; export, indexing, access, and retention are not guaranteed.')
+  lines.push(
+    'Trace links are locators; export, indexing, access, and retention are not guaranteed.',
+  )
   return lines.join('\n')
 }
 
@@ -114,30 +123,39 @@ export const tracesCommand = Cli.Command.make('traces', { pr, repo }).pipe(
       const config = yield* resolveConfig({})
       const selectedRepo = Option.isSome(repoOpt) ? repoOpt.value : config.repos[0]
       if (!selectedRepo || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(selectedRepo)) {
-        return yield* new TraceCommandError({ message: 'Could not determine owner/repo; pass --repo owner/name' })
+        return yield* new TraceCommandError({
+          message: 'Could not determine owner/repo; pass --repo owner/name',
+        })
       }
       const base = process.env.GRAFANA_BASE_URL ?? config.grafanaBaseUrl
       if (!base || !/^https?:\/\/[^/?#]+(?:\/[^?#]*)?$/.test(base) || base.endsWith('/')) {
         return yield* new TraceCommandError({
-          message: 'Set GRAFANA_BASE_URL or config.grafanaBaseUrl to an HTTP(S) Grafana URL without a trailing slash',
+          message:
+            'Set GRAFANA_BASE_URL or config.grafanaBaseUrl to an HTTP(S) Grafana URL without a trailing slash',
         })
       }
       const resolved = yield* resolveTarget(`#${number}`, Option.some(selectedRepo), 'ci.yml')
       if (isWrongWorkflowSelection(resolved.selection) || isStaleRunSelection(resolved.selection)) {
-        return yield* new TraceCommandError({ message: `No ci.yml run for the current head of ${selectedRepo}#${number}` })
+        return yield* new TraceCommandError({
+          message: `No ci.yml run for the current head of ${selectedRepo}#${number}`,
+        })
       }
       const github = yield* GitHubClient
       const run = yield* github.getWorkflowRun({ repo: selectedRepo, runId: resolved.runId })
       const response = yield* github.listWorkflowJobs({ repo: selectedRepo, runId: run.id })
-      console.log(renderJobTraces({
-        repo: selectedRepo,
-        prNumber: number,
-        run,
-        jobs: response.jobs,
-        grafanaBaseUrl: base,
-        reportedAt: new Date(),
-      }))
+      console.log(
+        renderJobTraces({
+          repo: selectedRepo,
+          prNumber: number,
+          run,
+          jobs: response.jobs,
+          grafanaBaseUrl: base,
+          reportedAt: new Date(),
+        }),
+      )
     }),
   ),
-  Cli.Command.withDescription('Show GitHub PR job trace IDs and Grafana Explore links (no Tempo access)'),
+  Cli.Command.withDescription(
+    'Show GitHub PR job trace IDs and Grafana Explore links (no Tempo access)',
+  ),
 )

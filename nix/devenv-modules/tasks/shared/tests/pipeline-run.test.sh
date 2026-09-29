@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-span=${1:?otel-span binary required}
+span=${1:-${OTEL_SPAN_BIN:?otel-span binary required}}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 

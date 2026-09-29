@@ -1,6 +1,7 @@
-import { deriveJobTraceId } from '@overeng/ci-tools'
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+
+import { deriveJobTraceId } from '@overeng/ci-tools'
 
 import { WorkflowJob } from '../src/isomorphic/GitHubSchemas.ts'
 import { jobTraceUrl, renderJobTraces } from '../src/node/commands/traces.ts'
@@ -54,23 +55,31 @@ describe('Grafana trace URLs', () => {
       startedAt: new Date('2026-09-29T10:00:00.000Z'),
       completedAt: new Date('2026-09-29T10:10:00.000Z'),
     })
-    const panes = { a: {
-      datasource: { type: 'tempo', uid: 'tempo' },
-      queries: [{
-        refId: 'A',
+    const panes = {
+      a: {
         datasource: { type: 'tempo', uid: 'tempo' },
-        queryType: 'traceql',
-        query: traceId,
-      }],
-      range: { from: '1790675100000', to: '1790680200000' },
-    } }
-    expect(url).toBe(`https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=${encodeURIComponent(JSON.stringify(panes))}`)
-    expect(jobTraceUrl({
-      grafanaBaseUrl: args.grafanaBaseUrl,
-      traceId: 'not-a-trace-id',
-      startedAt: args.reportedAt,
-      completedAt: args.reportedAt,
-    })).toBeUndefined()
+        queries: [
+          {
+            refId: 'A',
+            datasource: { type: 'tempo', uid: 'tempo' },
+            queryType: 'traceql',
+            query: traceId,
+          },
+        ],
+        range: { from: '1790675100000', to: '1790680200000' },
+      },
+    }
+    expect(url).toBe(
+      `https://grafana.example.test/explore?schemaVersion=1&orgId=1&panes=${encodeURIComponent(JSON.stringify(panes))}`,
+    )
+    expect(
+      jobTraceUrl({
+        grafanaBaseUrl: args.grafanaBaseUrl,
+        traceId: 'not-a-trace-id',
+        startedAt: args.reportedAt,
+        completedAt: args.reportedAt,
+      }),
+    ).toBeUndefined()
   })
 
   it('maps Jobs API names to the producer identity, filtering other attempts, duplicate names, unknown and unstarted jobs', () => {
@@ -85,7 +94,14 @@ describe('Grafana trace URLs', () => {
         makeJob({ id: 6, name: 'lint', conclusion: 'failure' }),
         makeJob({ id: 7, name: 'pipeline-attempt-close' }),
         makeJob({ id: 9, name: 'weaver', conclusion: 'cancelled' }),
-        makeJob({ id: 10, name: 'bundle-smoke', status: 'queued', conclusion: null, startedAt: null, completedAt: null }),
+        makeJob({
+          id: 10,
+          name: 'bundle-smoke',
+          status: 'queued',
+          conclusion: null,
+          startedAt: null,
+          completedAt: null,
+        }),
       ],
     })
     const canonical = deriveJobTraceId(
@@ -93,11 +109,17 @@ describe('Grafana trace URLs', () => {
       'test',
       { runner: 'namespace-profile-linux-x86-64' },
     )
-    expect(output).toContain(`test (namespace-profile-linux-x86-64): completed (success)\n    ${canonical} https://grafana.example.test/explore?`)
+    expect(output).toContain(
+      `test (namespace-profile-linux-x86-64): completed (success)\n    ${canonical} https://grafana.example.test/explore?`,
+    )
     expect(output).toContain('typecheck: completed (skipped) — trace unavailable (not started)')
-    expect(output).toContain('unknown-dynamic-name: completed (success) — trace unavailable (unmatched job name)')
+    expect(output).toContain(
+      'unknown-dynamic-name: completed (success) — trace unavailable (unmatched job name)',
+    )
     expect(output).toContain('lint: completed (failure) — trace unavailable (unmatched job name)')
-    expect(output).toMatch(/weaver: completed \(cancelled\)\n    [0-9a-f]{32} https:\/\/grafana\.example\.test\/explore\?/)
+    expect(output).toMatch(
+      /weaver: completed \(cancelled\)\n    [0-9a-f]{32} https:\/\/grafana\.example\.test\/explore\?/,
+    )
     expect(output).toContain('bundle-smoke: queued — trace unavailable (not started)')
     expect(output).not.toContain('pipeline-attempt-close')
     expect(output).not.toContain('typecheck: completed (success)')
@@ -107,7 +129,15 @@ describe('Grafana trace URLs', () => {
   it('gives a started unfinished job a report-time window', () => {
     const output = renderJobTraces({
       ...args,
-      jobs: [makeJob({ id: 8, name: 'cargo', status: 'in_progress', conclusion: null, completedAt: null })],
+      jobs: [
+        makeJob({
+          id: 8,
+          name: 'cargo',
+          status: 'in_progress',
+          conclusion: null,
+          completedAt: null,
+        }),
+      ],
     })
     expect(output).toContain('cargo: in_progress')
     const line = output.split('\n').find((part) => part.includes('/explore?'))

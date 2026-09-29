@@ -82,7 +82,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             sidecar,
             out,
             spool_dir,
-        } => ingest(&logs, sidecar.as_ref(), out.as_ref(), &spool_directory(spool_dir)),
+        } => ingest(
+            &logs,
+            sidecar.as_ref(),
+            out.as_ref(),
+            &spool_directory(spool_dir),
+        ),
         Command::Export {
             spool_dir,
             request_timeout_secs,
@@ -147,7 +152,10 @@ fn ingest(
             let resource = json!({"attributes": resource_attrs});
             for (chunk_index, chunk) in chunks(&spans, &resource)?.iter().enumerate() {
                 if let Some(dir) = out {
-                    fs::write(dir.join(format!("{index}-{kind}-{chunk_index}.json")), chunk)?;
+                    fs::write(
+                        dir.join(format!("{index}-{kind}-{chunk_index}.json")),
+                        chunk,
+                    )?;
                 }
                 if let Err(error) = spool_chunk(spool_dir, "traces", chunk) {
                     eprintln!("buck2-events: could not spool OTLP trace chunk: {error}");
@@ -160,7 +168,9 @@ fn ingest(
         }
         let metrics = metric_payload(&model);
         if metrics.len() > MAX_OTLP_BODY {
-            eprintln!("buck2-events: OTLP metrics exceed collector body limit; retaining native log");
+            eprintln!(
+                "buck2-events: OTLP metrics exceed collector body limit; retaining native log"
+            );
         } else {
             if let Some(dir) = out {
                 fs::write(dir.join(format!("{index}-metrics.json")), &metrics)?;
@@ -179,11 +189,16 @@ fn identity_attributes(mut env: impl FnMut(&str) -> Option<String>) -> Vec<Value
     if let Some(run_id) = &run_id {
         attrs.push(attr("cicd.pipeline.run.id", run_id));
     }
-    let provider = env("CI_PROVIDER").filter(|value| !value.is_empty()).or_else(|| {
-        run_id.as_deref().and_then(|id| id.strip_prefix("ci/"))
-            .and_then(|tail| tail.split('/').next()).filter(|value| !value.is_empty())
-            .map(str::to_owned)
-    });
+    let provider = env("CI_PROVIDER")
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            run_id
+                .as_deref()
+                .and_then(|id| id.strip_prefix("ci/"))
+                .and_then(|tail| tail.split('/').next())
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        });
     if let Some(provider) = provider {
         attrs.push(attr("ci.provider", provider));
     }
@@ -230,7 +245,10 @@ fn sha256_hex(body: &[u8]) -> String {
 
 fn spool_chunk(dir: &Path, signal: &str, body: &[u8]) -> io::Result<PathBuf> {
     if body.len() > MAX_OTLP_BODY {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "OTLP chunk exceeds collector limit"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "OTLP chunk exceeds collector limit",
+        ));
     }
     fs::create_dir_all(dir)?;
     let id = sha256_hex(body);
@@ -240,10 +258,16 @@ fn spool_chunk(dir: &Path, signal: &str, body: &[u8]) -> io::Result<PathBuf> {
         return Ok(target);
     }
     let meta = json!({"signal":signal,"byte_count":body.len(),"destination":DESTINATION,"id":id});
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     let temporary = dir.join(format!(".{name}.{}.{}.tmp", std::process::id(), now));
     let result = (|| {
-        let mut file = OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
         serde_json::to_writer(&mut file, &meta)?;
         file.write_all(b"\n")?;
         file.write_all(body)?;
@@ -264,10 +288,16 @@ fn read_chunk(path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         return Err("OTLP chunk exceeds collector body limit".into());
     }
     let mut bytes = fs::read(path)?;
-    let split = bytes.iter().position(|byte| *byte == b'\n').ok_or("missing OTLP chunk header")?;
+    let split = bytes
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .ok_or("missing OTLP chunk header")?;
     let meta: Value = serde_json::from_slice(&bytes[..split])?;
     let body = &bytes[split + 1..];
-    let filename = path.file_name().and_then(|s| s.to_str()).ok_or("invalid chunk name")?;
+    let filename = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("invalid chunk name")?;
     let signal = meta["signal"].as_str().ok_or("invalid OTLP signal")?;
     let id = sha256_hex(body);
     if !matches!(signal, "traces" | "metrics")
@@ -284,12 +314,22 @@ fn read_chunk(path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(bytes)
 }
 
-fn export(agent: &ureq::Agent, url: &str, signal: &str, chunk: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-    let response = agent.post(url).header("content-type", "application/json").send(chunk)?;
+fn export(
+    agent: &ureq::Agent,
+    url: &str,
+    signal: &str,
+    chunk: &[u8],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let response = agent
+        .post(url)
+        .header("content-type", "application/json")
+        .send(chunk)?;
     let body = response.into_body().read_to_vec()?;
     let result: Value = serde_json::from_slice(&body)?;
     let response = result.as_object().ok_or("invalid OTLP response object")?;
-    let partial = response.get("partialSuccess").or_else(|| response.get("partial_success"));
+    let partial = response
+        .get("partialSuccess")
+        .or_else(|| response.get("partial_success"));
     if let Some(partial) = partial {
         let partial = partial.as_object().ok_or("invalid OTLP partial success")?;
         let (camel, snake, unit) = if signal == "metrics" {
@@ -305,15 +345,23 @@ fn export(agent: &ureq::Agent, url: &str, signal: &str, chunk: &[u8]) -> Result<
             _ => return Err("invalid OTLP rejection count".into()),
         };
         if rejected > 0 {
-            let message = partial.get("errorMessage").or_else(|| partial.get("error_message"))
-                .and_then(Value::as_str).unwrap_or("");
+            let message = partial
+                .get("errorMessage")
+                .or_else(|| partial.get("error_message"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
             return Err(format!("OTLP partial rejection: {rejected} {unit}; {message}").into());
         }
     }
     Ok(())
 }
 
-fn export_allowed(github_actions: bool, run_id: Option<&str>, mode: Option<&str>, trusted: Option<&str>) -> bool {
+fn export_allowed(
+    github_actions: bool,
+    run_id: Option<&str>,
+    mode: Option<&str>,
+    trusted: Option<&str>,
+) -> bool {
     let ci_run = github_actions || run_id.is_some_and(|run| run.starts_with("ci/"));
     !ci_run || (mode == Some("upload") && trusted == Some("true"))
 }
@@ -335,7 +383,12 @@ fn drain_pending(dir: &Path, request_timeout: Duration, budget: Duration) {
         eprintln!("buck2-events: OTLP endpoint unavailable; retaining pending chunks");
         return;
     }
-    let url = format!("{}/v1/traces", endpoint.trim_end_matches('/').trim_end_matches("/v1/traces"));
+    let url = format!(
+        "{}/v1/traces",
+        endpoint
+            .trim_end_matches('/')
+            .trim_end_matches("/v1/traces")
+    );
     drain_to_url(dir, &url, request_timeout, budget);
 }
 
@@ -346,8 +399,11 @@ fn drain_to_url(dir: &Path, url: &str, request_timeout: Duration, budget: Durati
     let deadline = Instant::now() + budget;
     let agent = otlp_agent(request_timeout);
     let metric_url = format!("{}/v1/metrics", url.trim_end_matches("/v1/traces"));
-    let mut paths: Vec<_> = entries.filter_map(Result::ok).map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "chunk")).collect();
+    let mut paths: Vec<_> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "chunk"))
+        .collect();
     paths.sort();
     for path in paths {
         if Instant::now() >= deadline {
@@ -361,18 +417,29 @@ fn drain_to_url(dir: &Path, url: &str, request_timeout: Duration, budget: Durati
                 continue;
             }
         };
-        let metrics = path.file_name().and_then(|name| name.to_str())
+        let metrics = path
+            .file_name()
+            .and_then(|name| name.to_str())
             .is_some_and(|name| name.ends_with(".metrics.chunk"));
-        let (route, signal) = if metrics { (metric_url.as_str(), "metrics") } else { (url, "traces") };
+        let (route, signal) = if metrics {
+            (metric_url.as_str(), "metrics")
+        } else {
+            (url, "traces")
+        };
         for attempt in 0..2 {
             match export(&agent, route, signal, &body) {
                 Ok(()) => {
                     if let Err(error) = fs::remove_file(&path) {
-                        eprintln!("buck2-events: could not acknowledge {}: {error}", path.display());
+                        eprintln!(
+                            "buck2-events: could not acknowledge {}: {error}",
+                            path.display()
+                        );
                     }
                     break;
                 }
-                Err(error) if attempt == 0 && Instant::now() + Duration::from_millis(100) < deadline => {
+                Err(error)
+                    if attempt == 0 && Instant::now() + Duration::from_millis(100) < deadline =>
+                {
                     eprintln!("buck2-events: {}: {error}; retrying", path.display());
                     std::thread::sleep(Duration::from_millis(100));
                 }
@@ -926,12 +993,19 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                                 span.attrs
                                     .push(bool_attr("buck2.cache_hit", span.cache_hit));
                                 span.attrs.push(bool_attr("buck2.failed", a.failed));
-                                span.execution_ns = a.commands.iter().rev().find_map(|command| {
-                                    command.details.as_ref()
-                                        .and_then(|details| details.metadata.as_ref())
-                                        .and_then(|metadata| metadata.execution_time.as_ref())
-                                        .map(duration_ns)
-                                }).or_else(|| a.wall_time.as_ref().map(duration_ns));
+                                span.execution_ns = a
+                                    .commands
+                                    .iter()
+                                    .rev()
+                                    .find_map(|command| {
+                                        command
+                                            .details
+                                            .as_ref()
+                                            .and_then(|details| details.metadata.as_ref())
+                                            .and_then(|metadata| metadata.execution_time.as_ref())
+                                            .map(duration_ns)
+                                    })
+                                    .or_else(|| a.wall_time.as_ref().map(duration_ns));
                                 let mut queue = None;
                                 for command in &a.commands {
                                     let measured = command.details.as_ref().and_then(|details| {
@@ -1269,7 +1343,9 @@ struct Histogram {
 impl Histogram {
     fn observe(&mut self, duration_ns: u64) {
         let seconds = duration_ns as f64 / 1_000_000_000.0;
-        let bucket = HISTOGRAM_BOUNDS.iter().position(|bound| seconds <= *bound)
+        let bucket = HISTOGRAM_BOUNDS
+            .iter()
+            .position(|bound| seconds <= *bound)
             .unwrap_or(HISTOGRAM_BOUNDS.len());
         self.count += 1;
         self.sum += seconds;
@@ -1320,27 +1396,47 @@ fn metric_histogram(name: &str, points: Vec<Value>) -> Value {
 }
 
 fn metric_payload(model: &Model) -> Vec<u8> {
-    let command = model.spans.iter().find(|span| span.name.starts_with("buck2.command "));
+    let command = model
+        .spans
+        .iter()
+        .find(|span| span.name.starts_with("buck2.command "));
     let (start, end) = command.map_or((0, 0), |span| (span.start, span.end));
-    let subcommand = metric_subcommand(command.and_then(|span| span.name.strip_prefix("buck2.command "))
-        .unwrap_or(""));
+    let subcommand = metric_subcommand(
+        command
+            .and_then(|span| span.name.strip_prefix("buck2.command "))
+            .unwrap_or(""),
+    );
     let command_points = command.map_or_else(Vec::new, |span| {
         let mut hist = Histogram::default();
         hist.observe(span.end.saturating_sub(span.start));
-        vec![metric_point(&hist, vec![attr("subcommand", subcommand)], start, end)]
+        vec![metric_point(
+            &hist,
+            vec![attr("subcommand", subcommand)],
+            start,
+            end,
+        )]
     });
     let critical_points = model.critical_ns.map_or_else(Vec::new, |ns| {
         let mut hist = Histogram::default();
         hist.observe(ns);
-        vec![metric_point(&hist, vec![attr("subcommand", subcommand)], start, end)]
+        vec![metric_point(
+            &hist,
+            vec![attr("subcommand", subcommand)],
+            start,
+            end,
+        )]
     });
     let mut counts = BTreeMap::<(&str, &str, bool), u64>::new();
     let mut execution = BTreeMap::<&str, Histogram>::new();
     let mut queue = BTreeMap::<&str, Histogram>::new();
     for span in model.spans.iter().filter(|span| span.action) {
         let category = metric_category(span.name.strip_prefix("buck2.action ").unwrap_or(""));
-        let kind = span.attrs.iter().find(|value| value["key"] == "buck2.execution_kind")
-            .and_then(|value| value["value"]["stringValue"].as_str()).unwrap_or("not_set");
+        let kind = span
+            .attrs
+            .iter()
+            .find(|value| value["key"] == "buck2.execution_kind")
+            .and_then(|value| value["value"]["stringValue"].as_str())
+            .unwrap_or("not_set");
         *counts.entry((category, kind, span.cache_hit)).or_default() += 1;
         if let Some(ns) = span.execution_ns {
             execution.entry(category).or_default().observe(ns);
@@ -1349,27 +1445,39 @@ fn metric_payload(model: &Model) -> Vec<u8> {
             queue.entry(category).or_default().observe(ns);
         }
     }
-    let action_points: Vec<_> = counts.into_iter().map(|((category, kind, cache_hit), count)| {
-        json!({"attributes":[attr("category",category),attr("execution_kind",kind),
+    let action_points: Vec<_> = counts
+        .into_iter()
+        .map(|((category, kind, cache_hit), count)| {
+            json!({"attributes":[attr("category",category),attr("execution_kind",kind),
             bool_attr("cache_hit",cache_hit)],
             "startTimeUnixNano":start.to_string(),"timeUnixNano":end.to_string(),
             "asInt":count.to_string()})
-    }).collect();
-    let duration_points = |aggregates: BTreeMap<&str, Histogram>| aggregates.into_iter()
-        .map(|(category, hist)| metric_point(&hist, vec![attr("category", category)], start, end))
+        })
         .collect();
+    let duration_points = |aggregates: BTreeMap<&str, Histogram>| {
+        aggregates
+            .into_iter()
+            .map(|(category, hist)| {
+                metric_point(&hist, vec![attr("category", category)], start, end)
+            })
+            .collect()
+    };
     let metrics = vec![
         metric_histogram("buck2.command.duration", command_points),
         metric_histogram("buck2.critical_path.duration", critical_points),
         json!({"name":"buck2.action.count","sum":{"aggregationTemporality":1,
             "isMonotonic":true,"dataPoints":action_points}}),
-        metric_histogram("buck2.action.execution.duration", duration_points(execution)),
+        metric_histogram(
+            "buck2.action.execution.duration",
+            duration_points(execution),
+        ),
         metric_histogram("buck2.action.queue.duration", duration_points(queue)),
     ];
     serde_json::to_vec(&json!({"resourceMetrics":[{
         "resource":{"attributes":[attr("service.name","effect-utils-buck2")]},
         "scopeMetrics":[{"scope":{"name":"buck2-events"},"metrics":metrics}]
-    }]})).expect("OTLP metrics JSON")
+    }]}))
+    .expect("OTLP metrics JSON")
 }
 
 #[cfg(test)]

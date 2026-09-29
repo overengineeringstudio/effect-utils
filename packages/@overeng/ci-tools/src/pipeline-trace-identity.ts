@@ -11,9 +11,14 @@ const frame = (value: string): Buffer => {
 }
 
 /** K(job, dimensions): UTF-8 length frames, ordered by dimension-name bytes. */
-export const canonicalJobKey = (job: string, dimensions: Readonly<Record<string, string>>): Buffer => {
+export const canonicalJobKey = (
+  job: string,
+  dimensions: Readonly<Record<string, string>>,
+): Buffer => {
   if (!job) throw new TypeError('pipeline job identifier is empty')
-  const names = Object.keys(dimensions).sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
+  const names = Object.keys(dimensions).sort((a, b) =>
+    Buffer.compare(Buffer.from(a), Buffer.from(b)),
+  )
   const count = Buffer.allocUnsafe(4)
   count.writeUInt32BE(names.length)
   const parts = [frame(job), count]
@@ -27,7 +32,11 @@ export const canonicalJobKey = (job: string, dimensions: Readonly<Record<string,
 
 const derive = (domain: string, runId: string, bytes: 8 | 16, jobKey?: Buffer): string => {
   if (!runId) throw new TypeError('pipeline run identifier is empty')
-  const preimage = Buffer.concat([Buffer.from(`${domain}\0`), frame(runId), ...(jobKey ? [jobKey] : [])])
+  const preimage = Buffer.concat([
+    Buffer.from(`${domain}\0`),
+    frame(runId),
+    ...(jobKey ? [jobKey] : []),
+  ])
   for (let counter = 0; ; counter++) {
     const hash = createHash('sha256')
     hash.update(preimage)
@@ -41,9 +50,17 @@ const derive = (domain: string, runId: string, bytes: 8 | 16, jobKey?: Buffer): 
   }
 }
 
-export const deriveJobTraceId = (runId: string, job: string, dimensions: Readonly<Record<string, string>>): string =>
-  derive('buck2.job.trace/v1', runId, 16, canonicalJobKey(job, dimensions))
-export const deriveJobRootSpanId = (runId: string, job: string, dimensions: Readonly<Record<string, string>>): string =>
-  derive('buck2.job.root/v1', runId, 8, canonicalJobKey(job, dimensions))
-export const derivePipelineTraceId = (runId: string): string => derive('buck2.pipeline-run.trace/v2', runId, 16)
-export const derivePipelineRootSpanId = (runId: string): string => derive('buck2.pipeline-run.root/v2', runId, 8)
+export const deriveJobTraceId = (
+  runId: string,
+  job: string,
+  dimensions: Readonly<Record<string, string>>,
+): string => derive('buck2.job.trace/v1', runId, 16, canonicalJobKey(job, dimensions))
+export const deriveJobRootSpanId = (
+  runId: string,
+  job: string,
+  dimensions: Readonly<Record<string, string>>,
+): string => derive('buck2.job.root/v1', runId, 8, canonicalJobKey(job, dimensions))
+export const derivePipelineTraceId = (runId: string): string =>
+  derive('buck2.pipeline-run.trace/v2', runId, 16)
+export const derivePipelineRootSpanId = (runId: string): string =>
+  derive('buck2.pipeline-run.root/v2', runId, 8)
