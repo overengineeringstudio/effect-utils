@@ -650,6 +650,14 @@ const storybookBuilderVitePatch = {
     'packages/@overeng/utils-storybook/patches/@storybook__builder-vite@10.6.0.patch',
 } satisfies PatchesRegistry
 
+// StyleX 0.19's bundled CSS tokenizer can return an EOF token before
+// endOfFile() becomes true under Bun. The media-query parser then rejects
+// otherwise valid conditions (facebook/stylex#1916).
+const stylexBabelPluginPatch = {
+  '@stylexjs/babel-plugin@0.19.0':
+    'packages/@overeng/utils/patches/@stylexjs__babel-plugin@0.19.0.patch',
+} satisfies PatchesRegistry
+
 /** Repo-local patches that should not be projected into downstream consumers. */
 export const effectUtilsWorkspacePatches = definePatchedDependencies({
   location: '.',
@@ -662,6 +670,7 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
        a namespace import so `xtermSerialize.SerializeAddon` resolves. */
     '@myobie/pty@0.10.0': 'patches/@myobie__pty@0.10.0.patch',
     ...storybookBuilderVitePatch,
+    ...stylexBabelPluginPatch,
   },
 })
 
@@ -669,7 +678,7 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
  * Repo-root-relative registry used by downstream projection helpers
  * (patchPostinstall / pnpmPatchedDependencies / createPnpmPatchedDependencies).
  */
-const patches: PatchesRegistry = storybookBuilderVitePatch
+const patches: PatchesRegistry = { ...storybookBuilderVitePatch, ...stylexBabelPluginPatch }
 
 /**
  * Parse a patch specifier into package name and version.

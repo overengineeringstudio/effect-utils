@@ -1,0 +1,83 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1655,6 +1655,10 @@
+ 	      return null;
+ 	    }
+ 	    const token = this.tokenIterator.nextToken();
++	    if (token[0] === _cssTokenizer.TokenType.EOF) {
++	      this.isAtEnd = true;
++	      return null;
++	    }
+ 	    this.consumedTokens.push(token);
+ 	    this.currentIndex++;
+ 	    if (this.tokenIterator.endOfFile()) {
+@@ -1670,6 +1674,10 @@
+ 	      return null;
+ 	    }
+ 	    const token = this.tokenIterator.nextToken();
++	    if (token[0] === _cssTokenizer.TokenType.EOF) {
++	      this.isAtEnd = true;
++	      return null;
++	    }
+ 	    this.consumedTokens.push(token);
+ 	    return token;
+ 	  }
+@@ -1683,6 +1691,10 @@
+ 	    }
+ 	    while (!this.isAtEnd && !this.tokenIterator.endOfFile() && this.consumedTokens.length <= newIndex) {
+ 	      const token = this.tokenIterator.nextToken();
++	      if (token[0] === _cssTokenizer.TokenType.EOF) {
++	        this.isAtEnd = true;
++	        break;
++	      }
+ 	      this.consumedTokens.push(token);
+ 	      if (this.tokenIterator.endOfFile()) {
+ 	        this.isAtEnd = true;
+@@ -9576 +9588,10 @@
++if (process.env.NODE_ENV === 'test') {
++  Object.defineProperty(styleXTransform, 'parserForTests', {
++    value: {
++      TokenList: requireTokenTypes().TokenList,
++      TokenParser: requireTokenParser().TokenParser,
++      TokenType: requireDist().TokenType
++    }
++  });
++}
+ module.exports = styleXTransform;
+diff --git a/lib/index.browser.js b/lib/index.browser.js
+--- a/lib/index.browser.js
++++ b/lib/index.browser.js
+@@ -2770,6 +2770,10 @@
+ 	      return null;
+ 	    }
+ 	    const token = this.tokenIterator.nextToken();
++	    if (token[0] === _cssTokenizer.TokenType.EOF) {
++	      this.isAtEnd = true;
++	      return null;
++	    }
+ 	    this.consumedTokens.push(token);
+ 	    this.currentIndex++;
+ 	    if (this.tokenIterator.endOfFile()) {
+@@ -2785,6 +2789,10 @@
+ 	      return null;
+ 	    }
+ 	    const token = this.tokenIterator.nextToken();
++	    if (token[0] === _cssTokenizer.TokenType.EOF) {
++	      this.isAtEnd = true;
++	      return null;
++	    }
+ 	    this.consumedTokens.push(token);
+ 	    return token;
+ 	  }
+@@ -2798,6 +2806,10 @@
+ 	    }
+ 	    while (!this.isAtEnd && !this.tokenIterator.endOfFile() && this.consumedTokens.length <= newIndex) {
+ 	      const token = this.tokenIterator.nextToken();
++	      if (token[0] === _cssTokenizer.TokenType.EOF) {
++	        this.isAtEnd = true;
++	        break;
++	      }
+ 	      this.consumedTokens.push(token);
+ 	      if (this.tokenIterator.endOfFile()) {
+ 	        this.isAtEnd = true;
