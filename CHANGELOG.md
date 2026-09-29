@@ -209,6 +209,10 @@ All notable changes to this project will be documented in this file.
   The derivation is otherwise unchanged: it is still the unpatched official
   distribution, so decision 0029's store-reference-free property and
   `elf-static/v1` reachability are unaffected.
+- **nix/provider-clis/netlify-cli**: update the first-party Netlify CLI
+  derivation from 26.1.0 to 27.10.0, regenerate `package-lock.json`, and
+  refresh `npmDepsHash`. Netlify CLI 27 raises its Node floor to `>=22.13.0`;
+  the pinned `nodejs_24` satisfies it.
 
 - **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
   Weaver remap dynamic sandbox paths before compilation, so capability
