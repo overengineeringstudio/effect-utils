@@ -20,4 +20,10 @@ test('each task step in a job shares the pipeline run prefix', () => {
     expect('env' in step && step.env?.PIPELINE_RUN_PREFIX).toContain('otel-span pipeline-run')
   }
   expect('env' in taskSteps[1]! && taskSteps[1]!.env?.EXISTING).toBe('yes')
+  const exports = steps.filter((step) => 'run' in step && step.run?.includes('evidence-job.sh export'))
+  expect(exports).toHaveLength(1)
+  expect(exports[0]).toMatchObject({
+    if: '${{ always() }}',
+    run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true",
+  })
 })

@@ -446,8 +446,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -691,8 +690,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -926,8 +924,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -1164,8 +1161,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -1394,8 +1390,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -1624,8 +1619,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -1854,8 +1848,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -2134,8 +2127,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -2365,8 +2357,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -2595,8 +2586,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -2825,8 +2815,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -3062,8 +3051,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -3241,8 +3229,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pr-a-inert-buck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3335,8 +3322,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -3422,8 +3408,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-build-products"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3577,8 +3562,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-publish-products"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3686,8 +3670,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-trusted-buck2-remote-cache-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3855,8 +3838,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -4696,8 +4678,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     timeout-minutes: 90
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-devenv-perf"
@@ -5419,8 +5400,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-closure-sizes"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -5705,8 +5685,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-source-shape"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -8279,8 +8258,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-ci-measurements-report"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -8453,8 +8431,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -8637,8 +8614,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -8871,8 +8847,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     permissions:
       contents: read
       id-token: write
@@ -9129,8 +9104,7 @@ jobs:
       - name: Export completed job trace
         if: ${{ always() }}
         shell: bash
-        continue-on-error: true
-        run: bash genie/ci-scripts/evidence-job.sh export || true
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     env:
       FORCE_SETUP: '1'
       CI: 'true'

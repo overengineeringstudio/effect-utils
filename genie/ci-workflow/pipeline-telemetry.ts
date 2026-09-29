@@ -53,8 +53,7 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
         name: 'Export completed job trace',
         if: '${{ always() }}',
         shell: 'bash',
-        'continue-on-error': true,
-        run: `${script} export || true`,
+        run: `${script} export '\${{ job.status }}' || true`,
       })
       return [
         jobId,

@@ -8,6 +8,7 @@ case "${1:?mode required}" in
   identity)
     cd "${GITHUB_WORKSPACE:?}"
     repo_component=${GITHUB_REPOSITORY//\//%2F}
+    printf 'PIPELINE_JOB_START_NS=%s\n' "$(date +%s%N)" >> "$GITHUB_ENV"
     printf 'PIPELINE_RUN_ID=ci/github/%s/%s/%s\n' "$repo_component" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
     printf 'PIPELINE_JOB_KEY=%s\nPIPELINE_TASK_KEY=%s\nPIPELINE_MATRIX_RUNNER=%s\n' "${JOB_KEY:?}" "$JOB_KEY" "${MATRIX_VALUE:-}" >> "$GITHUB_ENV"
     printf 'PIPELINE_EXPORT_OWNER=adapter\nCI_PROVIDER=github\nPIPELINE_REPOSITORY=%s\nPIPELINE_EVENT=%s\n' "$GITHUB_REPOSITORY" "$GITHUB_EVENT_NAME" >> "$GITHUB_ENV"
@@ -18,6 +19,7 @@ case "${1:?mode required}" in
     printf 'BUCK2_VCS_MERGE_REVISION=%s\nVCS_REF_BASE_REVISION=%s\nVCS_REF_HEAD_REVISION=%s\n' "$merge" "$base" "${PR_HEAD:-$merge}" >> "$GITHUB_ENV"
     ;;
   export)
+    export PIPELINE_JOB_STATUS="${2:?job status required}"
     cd "${GITHUB_WORKSPACE:-$PWD}"
     if [ -z "${PIPELINE_RUN_ID:-}" ] || [ -z "${PIPELINE_JOB_KEY:-}" ] || [ -z "${DEVENV_BIN:-}" ]; then echo 'Pipeline: no task identity; skipping export'; exit 0; fi
     "$DEVENV_BIN" shell -- bash -c '
@@ -26,9 +28,22 @@ case "${1:?mode required}" in
       if [ -n "${PIPELINE_MATRIX_RUNNER:-}" ]; then args+=("runner=$PIPELINE_MATRIX_RUNNER"); fi
       read -r trace_assignment root_assignment <<< "$(otel-span pipeline-derive "$PIPELINE_RUN_ID" "$PIPELINE_JOB_KEY" "${args[@]}")"
       spool="$PWD/.devenv/otel/run-records/${trace_assignment#trace=}-${root_assignment#root=}"
-      if [ -d "$spool" ]; then
-        otel-span pipeline-export --spool "$spool" || echo "Warning: OTLP chunks retained in $spool" >&2
-      fi
+      mkdir -p "$spool/spans" "$spool/buck2" "$spool/pending"
+      export OTEL_SPAN_SPOOL_DIR="$spool/spans" OTEL_SPOOL_MULTI_WRITER=1
+      status=error
+      if [ "${PIPELINE_JOB_STATUS:-}" = success ]; then status=ok; fi
+      attrs=()
+      for entry in "ci.provider:${CI_PROVIDER:-}" "vcs.change.id:${VCS_CHANGE_ID:-}" "vcs.ref.head.revision:${VCS_REF_HEAD_REVISION:-}" "vcs.ref.base.revision:${VCS_REF_BASE_REVISION:-}" "buck2.vcs.merge.revision:${BUCK2_VCS_MERGE_REVISION:-}"; do
+        if [ -n "${entry#*:}" ]; then attrs+=(--attr-string "${entry/:/=}"); fi
+      done
+      if [ "${PIPELINE_FORK:-}" = true ] || [ "${PIPELINE_FORK:-}" = false ]; then attrs+=(--attr-bool "ci.pr.fork=$PIPELINE_FORK"); fi
+      otel-span emit-span effect-utils-devenv cicd.pipeline.job \
+        --trace-id "${trace_assignment#trace=}" --span-id "${root_assignment#root=}" \
+        --start-time-ns "${PIPELINE_JOB_START_NS:?}" --end-time-ns "$(date +%s%N)" \
+        --status-code "$status" --attr-string "cicd.pipeline.run.id=$PIPELINE_RUN_ID" \
+        --attr-string "cicd.pipeline.job.key=$PIPELINE_JOB_KEY" \
+        --attr-string "ci.job.status=${PIPELINE_JOB_STATUS:?}" "${attrs[@]}"
+      otel-span pipeline-export --spool "$spool" || echo "Warning: OTLP chunks retained in $spool" >&2
     '
     ;;
   close)

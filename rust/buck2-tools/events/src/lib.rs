@@ -2,6 +2,8 @@
 //! `*_events.pb.zst` logs into linked critical and full OTLP trace views.
 //! No Buck daemon or `buck2 log show` is needed, and truncated logs decode
 //! up to their last complete record.
+//! Ingest fails if any trace or metric chunk cannot be durably spooled, so
+//! callers can retain the native logs for a later retry.
 use clap::{Parser, Subcommand};
 use prost::Message;
 use serde_json::{json, Value};
@@ -157,9 +159,12 @@ fn ingest(
                         chunk,
                     )?;
                 }
-                if let Err(error) = spool_chunk(spool_dir, "traces", chunk) {
-                    eprintln!("buck2-events: could not spool OTLP trace chunk: {error}");
-                }
+                spool_chunk(spool_dir, "traces", chunk).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!("could not spool OTLP trace chunk: {error}"),
+                    )
+                })?;
             }
             println!(
                 "{}",
@@ -167,18 +172,15 @@ fn ingest(
             );
         }
         let metrics = metric_payload(&model);
-        if metrics.len() > MAX_OTLP_BODY {
-            eprintln!(
-                "buck2-events: OTLP metrics exceed collector body limit; retaining native log"
-            );
-        } else {
-            if let Some(dir) = out {
-                fs::write(dir.join(format!("{index}-metrics.json")), &metrics)?;
-            }
-            if let Err(error) = spool_chunk(spool_dir, "metrics", &metrics) {
-                eprintln!("buck2-events: could not spool OTLP metric chunk: {error}");
-            }
+        if let Some(dir) = out {
+            fs::write(dir.join(format!("{index}-metrics.json")), &metrics)?;
         }
+        spool_chunk(spool_dir, "metrics", &metrics).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("could not spool OTLP metrics chunk: {error}"),
+            )
+        })?;
     }
     Ok(())
 }

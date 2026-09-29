@@ -50,6 +50,82 @@ done
 [[ $root_count == 1 && $task_count == 1 ]]
 printf 'canonical job identity and offline OTLP spool passed: %s\n' "$spool"
 
+# GitHub's adapter owns the root across two independent task steps; the last
+# successful task must not mask the earlier failure in the job-level status.
+repo=$(realpath "$(dirname "$0")/../../../../..")
+mkdir -p "$tmp/bin"
+ln -s "$(realpath "$span")" "$tmp/bin/otel-span"
+cat > "$tmp/bin/devenv" <<'SH'
+#!/usr/bin/env bash
+[[ $1 == shell && $2 == -- ]] || exit 1
+shift 2
+exec "$@"
+SH
+cat > "$tmp/bin/buck2-events" <<'SH'
+#!/usr/bin/env bash
+exit 1
+SH
+chmod +x "$tmp/bin/devenv" "$tmp/bin/buck2-events"
+git -C "$tmp" init -q
+git -C "$tmp" -c core.hooksPath=/dev/null -c user.name=CI -c user.email=ci@example.invalid commit -q --allow-empty -m initial
+env GITHUB_WORKSPACE="$tmp" GITHUB_ENV="$tmp/job.env" \
+  GITHUB_REPOSITORY=overengineeringstudio/effect-utils GITHUB_RUN_ID=421 \
+  GITHUB_RUN_ATTEMPT=2 GITHUB_EVENT_NAME=pull_request JOB_KEY=typecheck \
+  bash "$repo/genie/ci-scripts/evidence-job.sh" identity
+set -a
+source "$tmp/job.env"
+set +a
+[[ $PIPELINE_RUN_ID == "$run" && $PIPELINE_EXPORT_OWNER == adapter ]]
+job=typecheck
+read -r trace_assignment root_assignment <<< "$("$span" pipeline-derive "$run" "$job")"
+job_trace=${trace_assignment#trace=}
+job_root=${root_assignment#root=}
+job_spool="$tmp/.devenv/otel/run-records/$job_trace-$job_root"
+job_env=(PIPELINE_RUN_ID="$PIPELINE_RUN_ID" PIPELINE_JOB_KEY="$PIPELINE_JOB_KEY"
+  PIPELINE_EXPORT_OWNER="$PIPELINE_EXPORT_OWNER" OTELITE_HTTP_ENDPOINT=
+  OTEL_EXPORTER_OTLP_ENDPOINT= DEVENV_ROOT="$tmp")
+code=0
+env "${job_env[@]}" "$span" pipeline-run -- bash -c 'exit 13' || code=$?
+[[ $code == 13 ]] || { echo "task failure was replaced: $code" >&2; exit 1; }
+env "${job_env[@]}" "$span" pipeline-run -- bash -c 'exit 0'
+mapfile -t before < <(find "$job_spool/spans" -maxdepth 1 -name '*.jsonl' -type f)
+[[ ${#before[@]} == 2 ]] || { echo "CI steps emitted a root instead of two task spans" >&2; exit 1; }
+env PATH="$tmp/bin:$PATH" DEVENV_BIN="$tmp/bin/devenv" GITHUB_WORKSPACE="$tmp" \
+  PIPELINE_JOB_START_NS="$PIPELINE_JOB_START_NS" \
+  "${job_env[@]}" bash "$repo/genie/ci-scripts/evidence-job.sh" export failure
+mapfile -t chunks < <(find "$job_spool/pending" -maxdepth 1 -name '*.traces.chunk' -type f)
+[[ ${#chunks[@]} == 3 ]] || { echo "Expected one job root and two tasks, got ${#chunks[@]}" >&2; exit 1; }
+root_count=0
+task_count=0
+declare -A task_ids=()
+root_end=0
+latest_task_end=0
+task_statuses=0
+for chunk in "${chunks[@]}"; do
+  body=$(jq -sR 'split("\n")[1] | fromjson | .resourceSpans[0].scopeSpans[0].spans[0]' "$chunk")
+  [[ $(jq -r '.traceId' <<< "$body") == "$job_trace" ]]
+  name=$(jq -r '.name' <<< "$body")
+  case "$name" in
+    cicd.pipeline.job)
+      [[ $(jq -r '.spanId' <<< "$body") == "$job_root" ]]
+      [[ $(jq -r '.startTimeUnixNano' <<< "$body") == "$PIPELINE_JOB_START_NS" ]]
+      [[ $(jq -r '.status.code' <<< "$body") == 2 ]]
+      [[ $(jq -r '.attributes[] | select(.key=="ci.job.status").value.stringValue' <<< "$body") == failure ]]
+      root_end=$(jq -r '.endTimeUnixNano' <<< "$body")
+      ((root_count += 1)) ;;
+    cicd.pipeline.task.run)
+      [[ $(jq -r '.parentSpanId' <<< "$body") == "$job_root" ]]
+      task_ids[$(jq -r '.spanId' <<< "$body")]=1
+      task_end=$(jq -r '.endTimeUnixNano' <<< "$body")
+      (( task_end > latest_task_end )) && latest_task_end=$task_end
+      (( task_statuses += $(jq -r '.status.code' <<< "$body") ))
+      ((task_count += 1)) ;;
+    *) echo "Unexpected span: $name" >&2; exit 1 ;;
+  esac
+done
+[[ $root_count == 1 && $task_count == 2 && ${#task_ids[@]} == 2 && $task_statuses == 3 ]]
+[[ $root_end -ge $latest_task_end ]]
+
 # A fork must never use direct HTTP when local spool creation fails.
 if PIPELINE_RUN_ID="$run" PIPELINE_JOB_KEY=test PIPELINE_MATRIX_RUNNER="$runner" \
   PIPELINE_FORK=true PIPELINE_TRUSTED=false DEVENV_ROOT=/proc \
@@ -116,3 +192,15 @@ PATH="$tmp/bin:$PATH" DEVENV_ROOT="$tmp" "$span" pipeline-export --spool "$spool
   echo 'oversized offline chunk was retained' >&2
   exit 1
 }
+
+# A cleanup error cannot replace the wrapped task's exit status.
+if [[ $(id -u) != 0 ]]; then
+  mkdir -p "$spool/pending" "$spool/spans" "$spool/buck2"
+  chmod 500 "$(dirname "$spool")"
+  code=0
+  PIPELINE_RUN_ID="$run" PIPELINE_JOB_KEY=test PIPELINE_MATRIX_RUNNER="$runner" \
+    PIPELINE_EXPORT_OWNER= DEVENV_ROOT="$tmp" OTEL_EXPORTER_OTLP_ENDPOINT= \
+    "$span" pipeline-run -- bash -c 'exit 17' || code=$?
+  chmod 700 "$(dirname "$spool")"
+  [[ $code == 17 ]] || { echo "cleanup replaced task exit status: $code" >&2; exit 1; }
+fi

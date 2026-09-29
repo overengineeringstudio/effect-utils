@@ -757,7 +757,7 @@ pkgs.writeShellScriptBin "otel-span" ''
 
       # Keep only bounded offline retries; completed runs have no durable work left.
       _pipeline_prune() {
-        local base=$1 completed="''${2:-}" run pending bytes=0 age now size
+        local base=$1 completed="''${2:-}" run pending bytes=0 age now size failed=0
         local max_age_seconds=604800 max_bytes=536870912
         now="$(${pkgs.coreutils}/bin/date +%s)"
         for run in "$base/"*; do
@@ -765,31 +765,32 @@ pkgs.writeShellScriptBin "otel-span" ''
           [[ "$run" == "''${PIPELINE_SPOOL_DIR:-}" && "$run" != "$completed" ]] && continue
           size=0
           pending="$run/pending"
-          age="$(${pkgs.coreutils}/bin/stat -c %Y "$run" 2>/dev/null || printf '%s' "$now")"
+          age="$(${pkgs.coreutils}/bin/stat -c %Y "$run" 2>/dev/null)" || { echo "otel-span: cannot inspect retry spool: $run" >&2; failed=1; continue; }
           if [[ ! -d "$pending" ]] || [[ -z "$(${pkgs.findutils}/bin/find "$pending" -maxdepth 1 -name '*.chunk' -print -quit 2>/dev/null)" ]]; then
             # Conversion failure retains native evidence within the same bounds.
             if [[ -n "$(${pkgs.findutils}/bin/find "$run/buck2" "$run/spans" -type f \( -name '*.pb.zst' -o -name '*.jsonl' \) -print -quit 2>/dev/null)" ]] && (( now - age <= max_age_seconds )); then
-              size="$(${pkgs.coreutils}/bin/du -sb "$run" | ${pkgs.coreutils}/bin/cut -f1)"
+              size="$(${pkgs.coreutils}/bin/du -sb "$run" | ${pkgs.coreutils}/bin/cut -f1)" || { echo "otel-span: cannot size retry spool: $run" >&2; failed=1; continue; }
               bytes="$(( bytes + size ))"
               if (( bytes <= max_bytes )); then continue; fi
               bytes="$(( bytes - size ))"
             fi
             if [[ "$run" == "$completed" ]] || (( now - age > max_age_seconds )) || (( bytes + size > max_bytes )); then
-              ${pkgs.coreutils}/bin/rm -rf -- "$run"
+              ${pkgs.coreutils}/bin/rm -rf -- "$run" || { echo "otel-span: cannot prune retry spool: $run" >&2; failed=1; }
             fi
             continue
           fi
           if (( now - age > max_age_seconds )); then
-            ${pkgs.coreutils}/bin/rm -rf -- "$run"
+            ${pkgs.coreutils}/bin/rm -rf -- "$run" || { echo "otel-span: cannot prune retry spool: $run" >&2; failed=1; }
             continue
           fi
-          size="$(${pkgs.coreutils}/bin/du -sb "$run" | ${pkgs.coreutils}/bin/cut -f1)"
+          size="$(${pkgs.coreutils}/bin/du -sb "$run" | ${pkgs.coreutils}/bin/cut -f1)" || { echo "otel-span: cannot size retry spool: $run" >&2; failed=1; continue; }
           bytes="$(( bytes + size ))"
           if (( bytes > max_bytes )); then
-            ${pkgs.coreutils}/bin/rm -rf -- "$run"
+            ${pkgs.coreutils}/bin/rm -rf -- "$run" || { echo "otel-span: cannot prune retry spool: $run" >&2; failed=1; }
             bytes="$(( bytes - size ))"
           fi
         done
+        return "$failed"
       }
 
       _cmd_pipeline_export() {
@@ -806,7 +807,7 @@ pkgs.writeShellScriptBin "otel-span" ''
         fi
         local result=0
         _pipeline_export "$spool" || result=$?
-        _pipeline_prune "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records" "$spool"
+        _pipeline_prune "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records" "$spool" || true
         return "$result"
       }
 
@@ -958,12 +959,15 @@ pkgs.writeShellScriptBin "otel-span" ''
               --start-time-ns "$start_ns" --end-time-ns "$end_ns" \
               --status-code "$status" --attr "cicd.pipeline.task.name=$job_key" \
               --attr-string "cicd.pipeline.run.id=$run_id" || true
-            "$0" emit-span effect-utils-devenv cicd.pipeline.job \
-              --trace-id "$trace_id" --span-id "$root_id" \
-              --start-time-ns "$start_ns" --end-time-ns "$end_ns" \
-              --status-code "$status" --attr-string "cicd.pipeline.run.id=$run_id" \
-              --attr-string "cicd.pipeline.job.key=$job_key" --attr-int "exit.code=$rc" \
-              "''${identity_attrs[@]}" "''${link_args[@]}" || true
+            # The CI adapter emits this deterministic root once at job end.
+            if [[ "''${PIPELINE_EXPORT_OWNER:-}" != adapter ]]; then
+              "$0" emit-span effect-utils-devenv cicd.pipeline.job \
+                --trace-id "$trace_id" --span-id "$root_id" \
+                --start-time-ns "$start_ns" --end-time-ns "$end_ns" \
+                --status-code "$status" --attr-string "cicd.pipeline.run.id=$run_id" \
+                --attr-string "cicd.pipeline.job.key=$job_key" --attr-int "exit.code=$rc" \
+                "''${identity_attrs[@]}" "''${link_args[@]}" || true
+            fi
           )
         fi
         if (( ! nested )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" && -z "''${PIPELINE_EXPORT_OWNER:-}" ]]; then
@@ -973,7 +977,7 @@ pkgs.writeShellScriptBin "otel-span" ''
         if (( ! nested )) && [[ -n "''${PIPELINE_SPOOL_DIR:-}" && -z "''${PIPELINE_EXPORT_OWNER:-}" ]]; then
           local completed="$PIPELINE_SPOOL_DIR"
           unset PIPELINE_SPOOL_DIR
-          _pipeline_prune "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records" "$completed"
+          _pipeline_prune "''${DEVENV_ROOT:-$PWD}/.devenv/otel/run-records" "$completed" || true
         fi
         printf 'pipeline run=%s trace=%s exit=%s\n' "$run_id" "$trace_id" "$rc" >&2
         return "$rc"

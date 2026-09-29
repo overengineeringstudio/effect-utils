@@ -633,6 +633,50 @@ fn ingest_spools_even_without_endpoint_and_preserves_out_dump() {
     assert_eq!(fs::read_dir(&out).unwrap().count(), pending.len());
 }
 
+fn ingest_reports_spool_failure(signal: &str) {
+    let dir = tempfile::tempdir().unwrap();
+    let log = write_log(
+        &dir,
+        "failed_spool_events.pb.zst",
+        &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
+    );
+    let spool = dir.path().join("pending");
+    ingest(&[log.clone()], None, None, &spool).unwrap();
+    let target = fs::read_dir(&spool)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.to_string_lossy().ends_with(&format!(".{signal}.chunk")))
+        .unwrap();
+    fs::remove_file(&target).unwrap();
+    fs::create_dir(&target).unwrap();
+
+    let result = run(Cli {
+        command: Command::Ingest {
+            logs: vec![log.clone()],
+            sidecar: None,
+            out: None,
+            spool_dir: Some(spool),
+        },
+    });
+    let error = result.expect_err("an unspooled chunk must fail ingest");
+    let kind = if signal == "traces" { "trace" } else { "metrics" };
+    assert!(
+        error.to_string().contains(&format!("OTLP {kind} chunk")),
+        "{error}"
+    );
+    assert!(log.is_file(), "the native log must remain for retry");
+}
+
+#[test]
+fn ingest_fails_when_trace_chunk_cannot_be_spooled() {
+    ingest_reports_spool_failure("traces");
+}
+
+#[test]
+fn ingest_fails_when_metric_chunk_cannot_be_spooled() {
+    ingest_reports_spool_failure("metrics");
+}
+
 #[test]
 fn pipeline_identity_attributes_distinguish_absent_and_forked_runs() {
     let vars = HashMap::from([
