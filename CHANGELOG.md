@@ -212,6 +212,10 @@ All notable changes to this project will be documented in this file.
   2.3 fixes [cachix/devenv#3038](https://github.com/cachix/devenv/issues/3038)
   (explicit `showOutput` was swallowed by AI-agent auto-quiet), so the caveat
   in `nix/devenv-modules/tasks/README.md` now records it as fixed.
+- **nix/provider-clis/netlify-cli**: update the first-party Netlify CLI
+  derivation from 26.1.0 to 27.10.0, regenerate `package-lock.json`, and
+  refresh `npmDepsHash`. Netlify CLI 27 raises its Node floor to `>=22.13.0`;
+  the pinned `nodejs_24` satisfies it.
 
 - **Buck capability reproducibility:** Nix-packaged stage0 Rust tools and
   Weaver remap dynamic sandbox paths before compilation, so capability
