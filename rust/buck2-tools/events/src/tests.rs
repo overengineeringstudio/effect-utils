@@ -641,7 +641,7 @@ fn ingest_reports_spool_failure(signal: &str) {
         &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
     );
     let spool = dir.path().join("pending");
-    ingest(&[log.clone()], None, None, &spool).unwrap();
+    ingest(std::slice::from_ref(&log), None, None, &spool).unwrap();
     let target = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
