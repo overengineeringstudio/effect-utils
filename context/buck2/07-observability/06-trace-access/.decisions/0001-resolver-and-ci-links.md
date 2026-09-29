@@ -10,7 +10,7 @@ Tempo attribute search can lag long after a trace is pushed. A PR needs an
 entry point before ingest finishes, without placing a GitHub write credential
 on the evidence host. V1 uploads are tailnet-only through federated ephemeral
 CI identity and a Tailscale Service app capability; fork ingestion is deferred
-([02](../../02-run-record/spec.md)).
+([02](../../02-local-spool/spec.md)).
 
 ## Evidence and Argument
 
@@ -49,3 +49,14 @@ PR-scoped URL.
 - CI's provider-specific comment/summary glue stays outside the build path.
 - Reviewers off the tailnet cannot use these links; fork records remain
   spool-only until an explicitly designed trust and ingress path exists.
+
+## Amendment 1 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q61, q63; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+The tailnet resolver, `/t/<id>` pending states, and seal-time summary file are
+retired with the run index. CI still owns publication: at attempt close the
+workflow-report job reads the GitHub Actions Jobs API and updates the
+existing sticky comment. Its trace links are deterministic Grafana Explore
+by-ID URLs computed from pipeline run ID and job key; they need no index and
+do not claim delivery completed. The fleet host still holds no GitHub write
+credential, and CI receives no Tempo read grant.

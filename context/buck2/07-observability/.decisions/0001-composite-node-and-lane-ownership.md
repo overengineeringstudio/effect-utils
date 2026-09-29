@@ -70,3 +70,13 @@ read-only CI-coupling audit as a separate epic.
 - Decision 0011 is amended for this lane: the versioned adapter is a
   direct-decode Rust crate; the caller-side `otel-span` buck2 mode prepares
   environment and span without interposition.
+
+## Amendment 1 — Direct delivery
+
+Accepted 2026-09-28 (Johannes, q60–q63;
+[decision 0004](./0004-tempo-only-delivery-and-job-report.md)).
+The composite-node ownership stays. Its second child now owns a local retry
+spool rather than a portable run record; the fifth owns OTLP delivery instead
+of ingest and archive, and the sixth owns Jobs API reporting rather than a
+resolver. Dotfiles owns collector access and Tempo retention, not a separate
+evidence service or archive.

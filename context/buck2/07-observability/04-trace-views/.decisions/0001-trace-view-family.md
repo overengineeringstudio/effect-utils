@@ -48,3 +48,10 @@ in the [ontology](../../ontology.md); "slim", "shaping", and unqualified
   - cap) is specifiable and testable independent of storage choices.
 - "View" joins the flagged ambiguities (always "trace view" vs the
   materialization surface's editor views).
+
+## Amendment 1 — Local Evidence, No Remote Record (q60–q62)
+
+Accepted 2026-09-28. The names and deterministic selection rule remain.
+“Regenerable from a record” above now means regenerable only while the native
+event log is retained locally. Neither trace view depends on an archived
+run record; Tempo stores the exported views, with no remote forensic copy.

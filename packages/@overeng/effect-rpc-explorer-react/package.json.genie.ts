@@ -12,12 +12,17 @@ import stylexTokensPkg from '../stylex-tokens/package.json.genie.ts'
 import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
+const peerDepNames = [
+  '@stylexjs/stylex',
+  'effect',
+  'react',
+  'react-aria-components',
+  'react-dom',
+] as const
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-rpc-explorer-react' }),
   dependencies: {
     workspace: [corePkg, stylexTokensPkg],
-    external: catalog.pick('@stylexjs/stylex'),
   },
   devDependencies: {
     workspace: [utilsPkg, utilsStorybookPkg],

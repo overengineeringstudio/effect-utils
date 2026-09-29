@@ -57,3 +57,15 @@ is exceeded, the fallback is critical-only + on-demand re-ingest.
   until the measurement lands (BUCK.OBS-T02).
 - The full view is still regenerable from the archive — the two stored views
   are conveniences, not the forensic copy (BUCK.OBS-R01).
+
+## Amendment 1 — Tempo-Only Direct Views (q60–q63)
+
+Accepted 2026-09-28. Both deterministic views remain: the critical view
+joins the CI job trace beneath its task span (a local task run is
+job-equivalent); the full view is a separate linked trace. Conversion
+is local and eligible jobs export to dev3 Alloy at job end, retaining a local
+retry spool on failure. The remote archive and on-demand re-ingest assumptions
+above are superseded; bounded metrics still feed long-term Mimir trends.
+An ordinary fork exports neither view nor metrics; it only spools locally.
+The job-level PR comment reads the Jobs API, not either trace; task-level
+Tempo read access remains a separate roadmap.

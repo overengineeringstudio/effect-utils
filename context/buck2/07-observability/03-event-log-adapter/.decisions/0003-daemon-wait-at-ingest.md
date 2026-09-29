@@ -67,3 +67,11 @@ small dice-hook PR are filed in parallel and never gate this design
   re-joins are idempotent.
 - If upstream ever ships owner events, the join demotes to fallback and the
   gap attributes remain.
+
+## Amendment 1 — Available Local Peers (q60–q62)
+
+Accepted 2026-09-28. The run-record batch and server-side ingest guarantee
+above are superseded: post-hoc conversion runs locally before job-end direct
+OTLP export. Attribute waits against daemon-named peers whose logs are
+available within that job; leave absent peers unattributed and preserve each
+command's gap summary. No archived run record or cross-job batch is required.

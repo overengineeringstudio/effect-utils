@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs'
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
 const isMissingPath = (error: unknown): boolean =>
@@ -50,4 +50,31 @@ export const canonicalizeParent = (path: string): string => {
   const parent = dirname(absolute)
   if (parent === absolute) return absolute
   return join(canonicalizePath(parent), basename(absolute))
+}
+
+/** Bound on one symlink chain, matching the kernel's own `ELOOP` limit. */
+const MAX_SYMLINK_HOPS = 40
+
+/**
+ * Resolves a path to its symlink-free form, spelled through the name the path
+ * itself reaches rather than through whichever hard link the kernel reports.
+ *
+ * Bun's `realpathSync` opens the path and asks the kernel for the descriptor's
+ * path. On Darwin that is `fcntl(F_GETPATH)`, which answers with the name the
+ * vnode last carried: for a file with several hard links it may return any of
+ * them. A hardlink farm gives every imaged file a second name, so a plain
+ * realpath of a link into a declared root can come back as the file's farm
+ * image. Directories have exactly one name, so only directories are
+ * canonicalized here; the final component is followed with `readlink` and
+ * otherwise kept verbatim.
+ */
+export const realpathThroughName = (path: string): string => {
+  let current = resolve(path)
+  for (let hop = 0; hop <= MAX_SYMLINK_HOPS; hop++) {
+    const parent = dirname(current)
+    const named = parent === current ? current : join(realpathSync(parent), basename(current))
+    if (lstatSync(named).isSymbolicLink() === false) return named
+    current = resolve(dirname(named), readlinkSync(named))
+  }
+  throw Object.assign(new Error(`too many symbolic links: ${path}`), { code: 'ELOOP' })
 }

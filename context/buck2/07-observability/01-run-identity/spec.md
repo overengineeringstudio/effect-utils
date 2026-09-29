@@ -1,8 +1,8 @@
 # Run Identity Spec
 
-This document specifies pipeline-run identity and the `otel-span` buck2 mode.
-It builds on [requirements.md](./requirements.md); the run record that
-consumes the sidecar is [02-run-record](../02-run-record/spec.md).
+This document specifies job and attempt-close trace identity and the
+`otel-span` buck2 mode. It builds on [requirements.md](./requirements.md);
+the local event-log adapter is [03](../03-event-log-adapter/spec.md).
 
 ## Status
 
@@ -10,101 +10,121 @@ Draft.
 
 ## Scope
 
-**Defines:** the run-id seed and root ownership, the buck2 mode's behavior,
-derivation and validation, sidecar format, salting, and no-interposition
+**Defines:** run-id grammar, job/attempt trace derivation and links,
+buck2 mode preparation, sidecar correlation, salting, and no-interposition
 boundary.
 
 **Does not define:** the otel-span CLI's general surface (devenv otel module),
 the adapter that consumes the sidecar (03), or provider-specific CI wiring.
 
-## Seeded Pipeline-Run Trace (BUCK.OBS.ID-R08..R12)
+## Job and Attempt Traces (BUCK.OBS.ID-R08..R13)
 
 ```text
-local entrypoint ── mint if absent ──┐
-CI adapter ── supply run identity ───┴─ PIPELINE_RUN_ID ── deterministic trace
-                                           ├─ root (local entrypoint or CI ingester)
-                                           └─ job key (including matrix) ─ task ─ buck2.command
+PIPELINE_RUN_ID ── job key ── deterministic job trace (job root)
+                                      └── task-run spans ─ buck2.command ─ critical view
+attempt close ── deterministic pipeline-run trace ── links to job roots
 ```
 
 `PIPELINE_RUN_ID` is a provider-neutral, case-sensitive identifier owned by
-the pipeline-run entrypoint. Grammar: `ci/<provider>/<repo>/<run>/<attempt>`
-or `local/<uuid>`. Every CI component is a nonempty UTF-8 value encoded
-as RFC 3986 percent-encoded bytes (uppercase hex escapes; leave unreserved
-bytes literal), with literal slashes reserved exclusively for separators;
-`repo` encodes the stable repository identity including its namespace.
-Decimal attempt numbers are positive without leading zeros. The local UUID
-is lowercase RFC 4122 canonical form. The CI adapter supplies the full
-identifier including the attempt; the local entrypoint mints
-`local/<uuid>` only when the variable is absent. A present but invalid/empty
-value is reported as invalid telemetry identity, never silently replaced
-with another ID; the task still runs without seeded telemetry
-(BUCK.OBS-R01). For example
-`ci/forge/repo%2Fmodule/421/2` and
+the pipeline entrypoint. Grammar: `ci/<provider>/<repo>/<run>/<attempt>` or
+`local/<uuid>`. CI components are nonempty UTF-8 values encoded as RFC 3986
+percent-encoded bytes (uppercase hex escapes; unreserved bytes remain
+literal); literal slashes separate components. `repo` contains the stable
+namespaced repository identity. Attempt numbers are positive decimals without
+leading zeros. The local UUID is lowercase RFC 4122 canonical form. The CI
+adapter supplies the whole identifier; a local entrypoint mints `local/<uuid>`
+only when absent. A present invalid or empty value warns and leaves telemetry
+unseeded without failing the task (BUCK.OBS-R01). Examples:
+`ci/github/overengineeringstudio%2Feffect-utils/421/2` and
 `local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1` are valid;
-`ci/forge/repo/421` and `local/not-a-uuid` are invalid. Values are never
-made into host paths verbatim.
+`ci/github/repo/421` and `local/not-a-uuid` are invalid. Never use the
+identifier verbatim as a filesystem path.
 
-Derive the 16-byte W3C trace id from the first 16 bytes of SHA-256 over
-`"buck2.pipeline-run.trace/v1\0" || u32be(byte_length(id)) || utf8(id)`.
-Derive the 8-byte run-root span id analogously with domain
-`"buck2.pipeline-run.root/v1\0"`. If a truncated id is all zero, retry with
-`u32be(counter)` appended (counter starts at 1) until nonzero. Each job's
-8-byte span id uses its own `"buck2.pipeline-run.job/v1\0"` domain and two
-length-prefixed UTF-8 inputs (run id, job key), with the same zero guard.
-No bare concatenation, ambiguous separator, random reseed, or zero-valued
-W3C identifier. Each attempt is a distinct trace; its root links to the
-previous attempt's root when that attempt exists.
+`F(value)` is `u32be(length of UTF-8 bytes) || UTF-8 bytes`.
+`K(job, dimensions)` is `F(job) || u32be(number of dimensions)` followed
+by `F(name) || F(value)` for each dimension sorted by the UTF-8 bytes of its
+name. Dimension names are unique, nonempty and case-sensitive; values are
+nonempty, unnormalized UTF-8. The trace/root preimage is the corresponding
+ASCII domain followed by `F(run id) || K(job, dimensions)` for a job, or
+`F(run id)` for the pipeline root. Domains are
+`buck2.job.trace/v1\0`, `buck2.job.root/v1\0`,
+`buck2.pipeline-run.trace/v2\0`, and `buck2.pipeline-run.root/v2\0`.
+Truncate SHA-256 to 16 bytes for trace IDs and 8 bytes for span IDs; if
+all zero, rehash the original preimage with appended `u32be(counter)` from
+1 until nonzero. No stringified `job[runner=value]` is hashed.
 
-The job key combines the provider-neutral job identifier with canonical
-matrix dimension/value pairs sorted by dimension name; encode each string as
-`u32be(utf8 byte length) || utf8 bytes`, preceded by a pair count. This
-distinguishes matrix variants even when a provider reuses the same job name.
-For the worker/job span, seed `TRACEPARENT` as
-`00-<derived-trace-id>-<derived-job-span-id>-01`. The run identity owner
-alone writes the root: locally the generic `devenv tasks run <verb>`
-entrypoint records start/end around the child and writes both root and
-worker span at exit (including best-effort SIGINT and SIGTERM without
-masking the child's exit status); nested invocations inheriting that id
-do not emit another root. In CI the ingester writes the root after 02's
-attempt-close record arrives and every listed job is ingested or marked
-missing, using its roster/conclusions and run/job bounds. It synthesizes
-deterministic error spans for missing jobs. If close never arrives or listed
-jobs remain unaccounted for, a persisted deadline about six hours after the
-last upload writes one root and labels the attempt `incomplete`; late
-evidence cannot rewrite the root (05).
-Ingest also reconstructs a missing local root after SIGKILL/crash when a
-record is recovered. A first-job root would freeze incorrect bounds;
-spans cannot be updated and duplicate root ids persist in Tempo. Until
-the late root arrives, the index-backed resolver serves the run as pending.
+In CI, `job` is the workflow job identifier. The generated GitHub workflow
+already supplies it as `JOB_KEY`; its sole current matrix dimension is
+`runner`, supplied by `MATRIX_VALUE` (`matrix.runner`). For example,
+`K("test", {"runner":"namespace-profile-linux-x86-64"})` encodes
+`F("test") || u32be(1) || F("runner") ||
+F("namespace-profile-linux-x86-64")`; `K("typecheck", {})` ends in
+`u32be(0)`. If the workflow adds a matrix dimension, the producer must
+receive its name and value through the existing identity step before it
+can derive a trace ID; neither the finalizer nor reporter invents it.
+CI retries change the attempt in `PIPELINE_RUN_ID`. A local task run uses
+its verb as `job` and `{"invocation": <task invocation ID>}` as dimensions.
+Nested task runs are spans in the CI job trace, not separately seeded
+traces; the task executor distinguishes repeated invocations.
 
-The same generic entrypoint runs locally and from the CI adapter. With a
-valid outer W3C context, it replaces rather than parents the new run under
-that trace. The new root always links back to the prior span. An
-outer-span-to-new-root forward link is written only if that span's owner is
-otel-span-aware (for example, `otel-span run` records the link before
-ending its outer span); an unrelated or already-completed caller cannot
-be mutated through `TRACEPARENT`, so navigation is then one-way. It
-clears any inherited `OTEL_TASK_TRACEPARENT`
-before seeding. During the devenv transition, it seeds **both**
-`TRACEPARENT` and `OTEL_TASK_TRACEPARENT` with the same run/job context:
-the pinned devenv executor and shell hooks overwrite `TRACEPARENT`, while
-otel-span prefers `OTEL_TASK_TRACEPARENT`. Generic SDKs reading only
-`TRACEPARENT` do not yet join reliably. Fix devenv upstream to extract
-ambient inbound W3C context and stop shell-hook overrides; then delete
-`OTEL_TASK_TRACEPARENT` seeding and consume only W3C `TRACEPARENT`.
-Never let a stale inherited task variable select another trace. The task
-graph's `@completed` hook is not a root finalizer: cancellation skips it
-and it can mask failures.
+The GitHub adapter constructs a finite mapping from the generated workflow
+job declarations to the exact GitHub Actions Jobs API `name`: an ordinary
+job's declared display name (or job identifier if unnamed), and each
+enumerated matrix leg's rendered display name in declaration order. It
+maps the name back to the job identifier and the named matrix values, then
+applies `K` identically in producer, finalizer and reporter. For the current
+`runner` matrix, `test (namespace-profile-linux-x86-64)` maps to
+`K("test", {"runner":"namespace-profile-linux-x86-64"})`.
+Unknown, dynamically named or duplicate display names are unmatched;
+they cannot be assigned a guessed trace ID. This mapping reads Jobs API
+facts, not per-job outputs, and adds no workflow YAML.
 
-Whole-run traces are the default; if backend size limits make them unusable,
-seed a trace per matrix-qualified job and link job roots through the run
-index, without reverting to random per-task traces. Ingestion verifies
-the cumulative expected span-id set for the whole shared trace after each
-later job write and before declaring it complete: accepted OTLP is not
-proof of persistence across inter-job gaps. See the
-[loss evidence](./.experiments/2026-09-26-seeded-run-trace.md).
-The record's pre-manifest identity and VCS metadata remain defined by
-[02-run-record](../02-run-record/spec.md).
+The job root carries `cicd.pipeline.run.id` and its job key. Task-run spans
+are descendants of the job root; Buck command spans and critical views
+retain the same trace id. A job root links back to an outer caller when one
+exists. At attempt close, the finalizer pages the Jobs API for this run
+and filters `run_attempt` to the closing attempt. It excludes its own job
+and includes only jobs with `started_at` and a unique canonical `K` under
+the same name mapping used by the reporter (failed and cancelled jobs that
+started are included; skipped and unstarted jobs are not). It derives their
+job root trace/span IDs and writes one pipeline root with links marked
+`buck2.job_trace.link_state=unverified`: the API proves that a job started,
+not that its root was sent, accepted, or retained by Tempo. A link to an
+absent root is therefore possible and is never shown as proof of delivery.
+Its bounds describe the attempt; it does not reparent job traces, synthesize
+absent jobs, or await late span persistence.
+Each attempt has its own trace; a known previous attempt root can be linked.
+No ingester owns a root: each job exports to the configured OTLP endpoint
+at its own end, and attempt close exports the link trace. A delivery
+failure keeps the local retry spool. No upload service, archived run
+record, SQLite index, replay, or resolver participates in identity.
+
+The link attribute `buck2.job_trace.link_state` belongs to this repository's
+private lowercase dotted `buck2.job_trace.*` namespace, not OTel semconv.
+Its only valid value is the lowercase string `unverified`; the link always
+remains a locator, never a persistence assertion. Readers that do not
+understand the key or encounter an unknown value treat the link as
+unverified, not as proof of export. For example,
+`buck2.job_trace.link_state=unverified` is valid;
+`buck2.job_trace.link_state=complete` is invalid. It records link
+confidence, not job conclusion or OTLP transport status; those axes
+cannot be inferred from it.
+
+The generic entrypoint seeds `TRACEPARENT` for the job trace; nested task
+invocations inherit that trace and parent their spans inside it. It clears
+stale inherited `OTEL_TASK_TRACEPARENT` and, until devenv honors inbound W3C
+context, seeds both variables identically; the pinned devenv executor and
+shell hooks currently overwrite `TRACEPARENT`. Remove the transitional task
+variable when inbound propagation is fixed. A new job trace links to an outer
+caller rather than nesting in it; an outer-span owner can write the reverse
+link only before that span completes. The task graph's `@completed` hook is
+not an attempt finalizer: cancellation may skip it.
+
+CI jobs join task spans into their job trace after the build and before
+job-end export (#1477). The join must finish before the completed job trace
+is sent; the attempt-close pipeline link trace can be sent independently of
+Tempo search lag. There is no whole-run shared trace or size-triggered
+switch to per-job traces.
 
 ## Mechanism
 
@@ -114,7 +134,7 @@ caller task span (task run)
   │    1. pre-derive the command span id and record the start time
   │    2. read W3C context; validate regex
   │       ├─ valid  -> BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id))
-  │       │            append sidecar "<uuid> <traceparent-of-command-span>"
+  │       │            write local sidecar "<uuid> <traceparent-of-command-span>"
   │       └─ invalid/absent/all-zero -> export nothing
   │    3. hand the caller the derived env + span id, and exit
   ├─ caller invokes buck2 ... --event-log <path> --write-build-id <path>
@@ -142,8 +162,8 @@ spawners (the #1382 `otel-span emit-span` pattern), and CI job wrappers all
 use the same preparation and the same post-hoc emit; there is exactly one
 implementation of the validation invariant (BUCK.OBS.ID-T01).
 
-**Salting.** The adapter (03) salts OTLP span ids as
-`sha256("<log-uuid>:<buck-span-id>")[:16]` — deterministic from the log, unique
+**Salting.** The adapter (03) salts OTLP span ids with the first 8 bytes of
+`sha256("<log-uuid>:<buck-span-id>")` — deterministic from the log, unique
 per command; the nested editor-publish reproduction showed 8,526/8,526
 unique ids across two commands under one task trace, and sequential,
 concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
@@ -152,7 +172,7 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
 
 | Condition                                 | Behavior                                                                                                             |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| No OTEL context outside a seeded run      | No export; both views become derived traces (05); no build impact                                                    |
+| No OTEL context outside a seeded task run | No wrapper export; the local adapter derives independent command views; no build impact                              |
 | Invalid `TRACEPARENT` on a direct command | Treat as absent across `otel-span run` and buck2 prepare; never export an invalid Buck wrapper UUID                  |
 | Invalid or empty `PIPELINE_RUN_ID`        | Warn and run the task without seeded telemetry; do not silently mint a different identity or change the build result |
 | Sidecar append fails                      | Warn; the command view degrades to an independent root                                                               |
@@ -165,23 +185,30 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
   and unsampled flags, uppercase, wrong version, short/long/nonhex ids,
   empty, zero trace id, zero parent id. `otel-span run` and buck2 prepare
   agree on valid inputs; valid flags survive child propagation.
-- End-to-end: a real task trace whose `buck2.command` parent decodes to the
-  command span id; a nested two-command task with zero id collisions; a
+- End-to-end: a job trace contains task-run and Buck critical-view spans
+  whose `buck2.command` parent decodes to the command span id; a nested
+  two-command task has zero id collisions; a
   concurrent same-daemon pair with distinct logs.
 - Post-hoc emit: a completed command span with the pre-derived span id,
   measured start/end, and Buck's exit code appears in the caller's trace;
   a failed emit never changes the caller's exit code.
-- Seeded identity: repeated derivation yields identical nonzero ids;
-  different providers, attempts, matrix legs, and ambiguous-separator
-  candidates yield distinct ids. Nested local invocations inherit one run
-  without duplicate roots; independent invocations mint distinct ids.
-- Lifecycle: CI ingester emits one bounded root after 02's close roster
-  settles, synthesizes missing error job spans, and closes absent-roster
-  attempts as `incomplete` after a six-hour last-upload timeout. The local
-  entrypoint preserves success, failure, INT and TERM statuses, and missing
-  roots after kill are reconstructed. The root links back to an outer
-  caller; only a participating owner can write the forward link before its
-  span ends. Stale task context cannot override either seed.
+- Seeded identity: repeated derivation yields identical nonzero IDs;
+  different providers, attempts, matrix legs, names with separator
+  characters, and dimension orderings have unambiguous framed bytes. The
+  producer's `JOB_KEY=test, MATRIX_VALUE=namespace-profile-linux-x86-64`
+  and the Jobs API `test (namespace-profile-linux-x86-64)` resolve to
+  identical `K`; an unknown or duplicate name gets no guessed trace ID.
+  Every job root carries `cicd.pipeline.run.id`; nested tasks share its
+  trace.
+- Lifecycle: each completed job exports its job trace at job end after
+  the task-span join. Attempt close uses only this attempt's started,
+  uniquely mapped Jobs API rows, including started failed/cancelled jobs,
+  and omits unstarted/skipped/other-attempt rows. Links carry
+  `buck2.job_trace.link_state=unverified`, even if the root never arrived
+  in Tempo. Export failure retains the local retry spool; no server
+  synthesizes missing jobs. A new trace links back to an outer caller;
+  only a participating owner writes a forward link before its span ends.
+  Stale task context cannot override either seed.
 - Seeded-run evidence: [traceparent bakeoff](./.experiments/2026-09-26-seeded-run-trace.md)
   and [decision 0002](./.decisions/0002-seeded-pipeline-run-trace.md).
 - Caller-correlation evidence: [caller-correlation bakeoff](./.experiments/2026-09-25-caller-correlation-and-salting.md)

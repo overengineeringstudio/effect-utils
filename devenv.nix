@@ -454,6 +454,7 @@ let
       path = "packages/@overeng/effect-schema-form-aria";
       name = "effect-schema-form-aria";
       port = 6010;
+      playTests = true;
     }
     {
       path = "packages/@overeng/react-inspector";
@@ -489,6 +490,7 @@ let
       path = "packages/@overeng/effect-rpc-explorer-react";
       name = "effect-rpc-explorer-react";
       port = 6017;
+      playTests = true;
     }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
@@ -656,6 +658,7 @@ in
     # composes with the full stack above without importing it a second time.
     (import ./nix/devenv-modules/observability.nix {
       project = "effect-utils";
+      otelite = repoFlake.packages.${currentSystem}.otelite;
       # Shell-entry setup is intentionally absent. Profile an instantiated,
       # non-mutating task so check:all retains its trace integrity gate.
       profile = {
@@ -1150,6 +1153,8 @@ in
       set -euo pipefail
       BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
         ${pkgs.bash}/bin/bash nix/buck2-products/from-source-contract.test.sh "$PWD"
+      BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
+        ${pkgs.bash}/bin/bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
     '';
   };

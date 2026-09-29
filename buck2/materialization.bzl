@@ -87,11 +87,19 @@ def _package_tree_impl(ctx):
         local_only = True,
         allow_cache_upload = True,
     )
-    return [
+    providers = [
         # Export every root that links beneath the tree may resolve into.
         DefaultInfo(default_output = out, other_outputs = read_roots[1:]),
         PackageTreeInfo(read_roots = read_roots, tree = out),
     ]
+    if ctx.attrs.dependency_view != None:
+        providers.append(PnpmDeclaredClosureInfo(
+            manifest = dependency_view.manifest,
+            node_modules = dependency_view.node_modules,
+            read_roots = read_roots,
+            toolchain_identity = dependency_view.toolchain_identity,
+        ))
+    return providers
 
 
 _package_tree = rule(

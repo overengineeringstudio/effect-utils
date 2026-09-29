@@ -850,7 +850,7 @@ measure() {
       base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
       base_started="$(date +%s%3N)"
       set +e
-      (cd "$CI_MEASUREMENT_BASE_DIR" && "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+      (cd "$CI_MEASUREMENT_BASE_DIR" && BUCK2_NO_REMOTE_CACHE=1 "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
       base_status=$?
       set -e
       base_ended="$(date +%s%3N)"
@@ -881,7 +881,7 @@ measure() {
       base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
       base_started="$(date +%s%3N)"
       set +e
-      (cd "$CI_MEASUREMENT_BASE_DIR" && "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+      (cd "$CI_MEASUREMENT_BASE_DIR" && BUCK2_NO_REMOTE_CACHE=1 "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
       base_status=$?
       set -e
       base_ended="$(date +%s%3N)"
@@ -939,7 +939,7 @@ measure() {
       base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
       base_started="$(date +%s%3N)"
       set +e
-      (cd "$CI_MEASUREMENT_BASE_DIR" && "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+      (cd "$CI_MEASUREMENT_BASE_DIR" && BUCK2_NO_REMOTE_CACHE=1 "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
       base_status=$?
       set -e
       base_ended="$(date +%s%3N)"

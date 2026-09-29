@@ -1,4 +1,5 @@
 export * from './descriptor.ts'
+export * from './descriptor-set.ts'
 export * from './explorer.ts'
 export * from './inspector.ts'
 export * from './middleware.ts'

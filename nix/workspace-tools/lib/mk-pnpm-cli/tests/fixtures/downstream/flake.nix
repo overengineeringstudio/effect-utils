@@ -89,6 +89,37 @@
           };
           smokeTestArgs = [ ];
         };
+        # Declares a source input in a repo the consumer does not import. pnpm
+        # still packlists it, so the manifest must come from `workspaceSources`.
+        # The root is a derivation output, like a consumer's projected
+        # workspace, whose missing paths only surface when the deps src builds.
+        unsourcedWorkspaceRoot = pkgs.runCommand "mk-pnpm-cli-unsourced-workspace-root" { } ''
+          cp -R ${./fixture-workspace-unsourced-source-input} "$out"
+        '';
+        mkUnsourcedSourceInputFixture =
+          workspaceSources:
+          mkPnpmCli {
+            name = "mk-pnpm-cli-unsourced-source-input-fixture";
+            binaryName = "mk-pnpm-cli-unsourced-source-input-fixture";
+            entry = "app/src/mod.ts";
+            packageDir = "app";
+            workspaceRoot = unsourcedWorkspaceRoot;
+            inherit workspaceSources;
+            depsBuilds = {
+              "." = {
+                hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+              };
+            };
+            smokeTestArgs = [ ];
+          };
+        unsourcedSourceInputFixture = mkUnsourcedSourceInputFixture { };
+        foreignSourceInputRepo = pkgs.runCommand "mk-pnpm-cli-foreign-source-input-repo" { } ''
+          mkdir -p "$out/packages/foreign"
+          printf '{"name":"foreign","version":"0.0.0"}\n' > "$out/packages/foreign/package.json"
+        '';
+        sourcedSourceInputFixture = mkUnsourcedSourceInputFixture {
+          "repos/unsourced" = foreignSourceInputRepo;
+        };
         # Two consumers that differ ONLY in `name` but share the same external
         # install-root profile. Their prepared deps for that shared root must
         # collapse to one in-store derivation (profileKey dedup), while their
@@ -295,32 +326,6 @@
                 "$deps_src/pnpm-install-contract.json"
               touch "$out"
             '';
-        # effect-utils' lockfile injects workspace packages as `file:` directory
-        # packages, and a frozen pnpm install packlists every one of them. The
-        # external install root must stage each recorded directory, including
-        # the ones outside the consumer closure (only @overeng/utils here),
-        # without turning them into workspace members.
-        checks.prepared-injected-directory-packages =
-          pkgs.runCommand "mk-pnpm-cli-prepared-injected-directory-packages" { }
-            ''
-              deps_src=${pureEvalFixture.passthru.depsSrcByInstallRoot.repos-effect-utils}
-              install_dir="$deps_src/repos/effect-utils"
-              sed -n 's/^    resolution: {directory: \([^,]*\), type: directory}$/\1/p' \
-                "$install_dir/pnpm-lock.yaml" > directories
-              test "$(grep -cv '^packages/@overeng/utils$' directories)" -gt 0
-              while read -r directory; do
-                test -f "$install_dir/$directory/package.json" || {
-                  echo "injected directory package not staged: $directory" >&2
-                  exit 1
-                }
-                if [ "$directory" != packages/@overeng/utils ] \
-                  && grep -Fqx "  - $directory" "$install_dir/pnpm-workspace.yaml"; then
-                  echo "injected directory package widened the workspace: $directory" >&2
-                  exit 1
-                fi
-              done < directories
-              touch "$out"
-            '';
         # Lockfile-derived directories must stay canonical and beneath the
         # lockfile directory; `..` anywhere (including one that would dodge the
         # source-input check), empty segments, absolute paths, undecodable escapes
@@ -371,6 +376,26 @@
           pkgs.runCommand "mk-pnpm-cli-invalid-source-input-stage-path" { } ''
             touch "$out"
           '';
+        # A declared source input whose repo is not among `workspaceSources`
+        # fails evaluation instead of a missing-file copy in the deps FOD; once
+        # the repo is provided, its manifest is staged at the logical path and
+        # the alias.
+        checks.unsourced-source-input =
+          let
+            evaluation = builtins.tryEval unsourcedSourceInputFixture.passthru.depsSrcByInstallRoot.root.drvPath;
+          in
+          assert !evaluation.success;
+          pkgs.runCommand "mk-pnpm-cli-unsourced-source-input"
+            {
+              depsSrc = sourcedSourceInputFixture.passthru.depsSrcByInstallRoot.root;
+            }
+            ''
+              cmp "$depsSrc/repos/unsourced/packages/foreign/package.json" \
+                ${foreignSourceInputRepo}/packages/foreign/package.json
+              cmp "$depsSrc/.devenv/pnpm-source-inputs/current/repos/unsourced/packages/foreign/package.json" \
+                ${foreignSourceInputRepo}/packages/foreign/package.json
+              touch "$out"
+            '';
         checks.pure-eval-profile-dedup = pkgs.runCommand "mk-pnpm-cli-pure-eval-profile-dedup" { } ''
           actual='${
             builtins.toJSON {

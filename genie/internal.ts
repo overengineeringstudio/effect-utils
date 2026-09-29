@@ -167,7 +167,6 @@ export const commonPnpmWorkspaceData = {
     allowedVersions: {
       ...commonPnpmPolicySettings.peerDependencyRules.allowedVersions,
       typescript: '>=7.0.0',
-      eslint: '>=10.0.0',
       vitest: '>=4.0.0',
     },
   },

@@ -6,6 +6,9 @@
 #       packages = [
 #         { path = "packages/@overeng/tui-react"; name = "tui-react"; port = 6006; }
 #         { path = "packages/@overeng/megarepo"; name = "megarepo"; port = 6007; }
+#         # `playTests` opts a package into `storybook:test:<name>`; it needs a
+#         # `vitest.gate.config.ts` built on `@overeng/utils-storybook/gate`.
+#         { path = "packages/@overeng/app-react"; name = "app-react"; port = 6008; playTests = true; }
 #       ];
 #       # Optional: install task name (default: "pnpm:install")
 #       installTask = "pnpm:install";
@@ -16,6 +19,9 @@
 #   Tasks:
 #     - storybook:build:<name> - Build storybook for specific package
 #     - storybook:build - Aggregate task to build all storybooks
+#     - storybook:test:<name> - Run every story's play and accessibility check
+#       in headless Chromium (packages with `playTests = true`)
+#     - storybook:test - Aggregate task over every `storybook:test:<name>`
 #   Processes (for dev servers):
 #     - storybook-<name>-<port> - Run with: devenv up storybook-<name>-<port>
 #
@@ -67,6 +73,33 @@ let
     };
   };
 
+  playTestPackages = lib.filter (pkg: pkg.playTests or false) packages;
+
+  # Runs the package's story-gate Vitest config in plays-only mode: every
+  # story's `play` and accessibility check execute through Portable Stories in
+  # headless Chromium, with no screenshot baseline. Vite's dependency cache
+  # moves out of the read-only editor view for the same reason as `CACHE_DIR`.
+  mkPlayTestTask =
+    pkg:
+    let
+      playTestConfig = lib.escapeShellArg (pkg.playTestConfig or "vitest.gate.config.ts");
+    in
+    {
+      "storybook:test:${pkg.name}" = {
+        description = "Run Storybook play and accessibility tests for ${pkg.name}";
+        exec = trace.exec "storybook:test:${pkg.name}" ''
+          set -euo pipefail
+          source ${lib.escapeShellArg pnpmTaskHelpersScript}
+          ${exportCacheDir pkg}
+          export VITE_CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/vite-cache/${pkg.name}"}
+          export OVERENG_STORY_GATE_MODE=plays
+          run_package_bin vitest vitest run --configLoader runner --config ${playTestConfig}
+        '';
+        cwd = pkg.path;
+        after = [ installTask ] ++ extraInstallTasks;
+      };
+    };
+
   # Dev servers as processes (long-running, with TUI via process-compose)
   # Uses automatic port allocation to avoid conflicts
   # --host 0.0.0.0 allows access from other machines (useful for remote dev environments)
@@ -99,12 +132,18 @@ in
 {
   tasks = lib.mkMerge (
     (if hasPackages then map (pkg: cliGuard.stripGuards (mkBuildTask pkg)) packages else [ ])
+    ++ map (pkg: cliGuard.stripGuards (mkPlayTestTask pkg)) playTestPackages
     ++ [
       (cliGuard.stripGuards {
         "storybook:build" = {
           description = "Build all storybooks";
           exec = null;
           after = if hasPackages then map (pkg: "storybook:build:${pkg.name}") packages else [ ];
+        };
+        "storybook:test" = {
+          description = "Run Storybook play and accessibility tests for every opted-in package";
+          exec = null;
+          after = map (pkg: "storybook:test:${pkg.name}") playTestPackages;
         };
       })
     ]

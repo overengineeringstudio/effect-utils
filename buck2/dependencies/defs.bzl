@@ -10,6 +10,10 @@ package, then declares:
   freshness-gated sidecar; the rule performs the only network action and the
   capability-backed archive tool extracts the npm ``package/`` tree offline.
   Each package's ``bins`` maps its executable names to package-relative files.
+  A ``url`` of the form ``file:<path>-<sha256>.tgz`` names a private product
+  tarball (decision 0037): it never touches the network and resolves only from
+  ``nix_store.root`` (sandboxed Nix builds) or ``nix_store.product_root`` (the
+  consumer's ``mkPrivateProductTarballs`` archive root).
 * ``pnpm_store_entry(name, package, store_key, runtime, ...)`` once per
   peer-resolved snapshot for the whole repository. Edges are given either as
   ``dependencies = {<name>: <entry target>}`` when the lockfile resolves the
@@ -136,9 +140,12 @@ def _require_sha256(value):
         if character not in "0123456789abcdef":
             fail("pnpm package sha256 must contain exactly 64 lowercase hex digits")
 
+def _is_product_tarball(value):
+    return value.startswith("file:")
+
 def _require_url(value):
-    if not value.startswith("https://"):
-        fail("pnpm package URL must use https: {}".format(value))
+    if not value.startswith("https://") and not _is_product_tarball(value):
+        fail("pnpm package URL must use https or name a private product file: tarball: {}".format(value))
 
 
 def _require_size(value):
@@ -187,6 +194,13 @@ def _fetch_impl(ctx):
     _require_size(ctx.attrs.size_bytes)
     _require_url(ctx.attrs.url)
     archive_root = read_config("nix_store", "root", "")
+    if _is_product_tarball(ctx.attrs.url):
+        # Private products are Nix capabilities (decision 0037): their bytes come only
+        # from a Nix-realized archive tree, never from a registry, CAS, or credential.
+        if archive_root == "":
+            archive_root = read_config("nix_store", "product_root", "")
+        if archive_root == "":
+            fail("private product {} needs nix_store.root or nix_store.product_root".format(ctx.attrs.url))
     if archive_root == "":
         url_prefix = read_config("archive_origin", "url_prefix", "")
         if url_prefix != "" and (not url_prefix.startswith("https://") and not url_prefix.startswith("http://")):
@@ -835,3 +849,51 @@ def pnpm_store_view(
         workspace_trees = workspace_trees,
         **kwargs
     )
+
+
+def _runtime_closure_impl(ctx):
+    if ctx.attrs.primary not in ctx.attrs.importers:
+        fail("primary must name a declared importer")
+    roots = []
+    views = {}
+    for name in sorted(ctx.attrs.importers.keys()):
+        _require_portable_path(name, "runtime importer")
+        info = ctx.attrs.importers[name][PnpmDeclaredClosureInfo]
+        views[name] = info.node_modules
+        roots.extend(info.read_roots)
+    roots = _unique_artifacts(roots)
+    out = ctx.actions.declare_output("runtime-closure", dir = True)
+    args = cmd_args([
+        ctx.attrs._bun[BunToolchainInfo].executable,
+        ctx.attrs.runtime,
+        "--output",
+        out.as_output(),
+        "--primary",
+        ctx.attrs.primary,
+    ])
+    for name in sorted(views.keys()):
+        args.add("--view", name, views[name])
+    for root in roots:
+        args.add("--root", root)
+    ctx.actions.run(
+        args,
+        category = "pnpm_runtime_closure",
+        identifier = ctx.attrs.name,
+        local_only = True,
+        allow_cache_upload = True,
+    )
+    return [DefaultInfo(default_output = out)]
+
+
+pnpm_runtime_closure = rule(
+    impl = _runtime_closure_impl,
+    attrs = {
+        "importers": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [PnpmDeclaredClosureInfo])),
+        "primary": attrs.string(),
+        "runtime": attrs.source(),
+        "_bun": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:bun",
+            providers = [BunToolchainInfo],
+        )),
+    },
+)

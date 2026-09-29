@@ -38,3 +38,13 @@ Off-tailnet access fails explicitly instead of reporting no traces.
   identity/status/comparison consistent with HTML.
 - The TS CLI is a consumer of the Rust service's contract, not another
   implementation of its indexing or comparison logic.
+
+## Amendment 1 — Tempo-Only Delivery (q58–q63)
+
+Accepted 2026-09-28 (Johannes, q63; [root decision 0004](../../.decisions/0004-tempo-only-delivery-and-job-report.md)).
+With the resolver retired, `buck2-trace-access/v1` JSON and
+`gh-ci-utils traces <pr>` are no longer part of the current contract. Agents
+use the Jobs API-backed PR comment for job facts and follow its deterministic
+Grafana links, or query Tempo by trace id with their own authorized tools.
+A future restricted read proxy would need its own versioned contract
+decision.

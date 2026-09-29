@@ -1,7 +1,7 @@
 # Projection source: components/rust/consumer-cli/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:fb588b82f6ad78ea64788892d49cd33741925422e5ea7ba3d75a45c343f1a5a2
+# Semantic fingerprint: sha256:b1d3b5bf5161ab3da7969e7bac5767fcf4bdaa18c18e2629adb2bde46a0158e6
 # Semantic inputs: components/rust/Cargo.lock, components/rust/Cargo.toml, components/rust/consumer-cli/BUCK.genie.ts, components/rust/consumer-cli/Cargo.toml, components/rust/consumer-cli/src/**/*.rs, components/rust/consumer-cli/tests/**/*.rs, components/rust/reindeer.toml, vendor/cargo/BUCK
 # Regenerate: devenv tasks run genie:run
 

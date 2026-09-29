@@ -48,16 +48,65 @@ grep -F 'load("@capabilities//:defs.bzl"' "$root/buck2/toolchains/BUCK" >/dev/nu
 grep -F 'effect_tsgo_toolchain(' "$root/buck2/toolchains/BUCK" >/dev/null
 grep -F 'name = "product_tool"' "$root/buck2/toolchains/BUCK" >/dev/null
 grep -F 'actual = "//buck2/toolchains:rust"' "$root/BUCK" >/dev/null
-grep -F 'name = "packages/@overeng/buck2-tools/src/typescript-runner.ts"' "$root/.buck2/rules/BUCK" >/dev/null
+grep -F 'name = "typescript-runner.ts"' "$root/.buck2/rules/packages/@overeng/buck2-tools/BUCK" >/dev/null
 grep -F 'name = "package_tree_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 grep -F 'name = "package_command_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 
+# Buck writes buck-out under the project root, so queries run in a writable copy.
+work="$(mktemp -d)"
+cleanup() {
+  (cd "$work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
+  chmod -R u+w "$work"
+  rm -rf "$work"
+}
+trap cleanup EXIT
+cp -R "$root/." "$work/"
+chmod -R u+w "$work"
+
+# A consumer package must analyze `bun_compiled_product_executable`. Its rule
+# defaults (`//buck2/toolchains:bun`, `:bun_compile_runtime`) resolve in the
+# rules cell against effect-utils' capability projection, so the consumer root
+# declares no compile-runtime tool of its own. The module is a stub provider;
+# analysis needs no build.
+mkdir -p "$work/compiled"
+cat > "$work/compiled/defs.bzl" <<'BZL'
+load("@rules//buck2:package_tools.bzl", "JavaScriptModuleInfo")
+
+def _stub_module_impl(ctx):
+    module = ctx.actions.write("module.js", "")
+    descriptor = ctx.actions.write("module.json", "{}")
+    return [
+        DefaultInfo(default_output = module),
+        JavaScriptModuleInfo(module = module, descriptor = descriptor, dependency_closure_identity = "stub"),
+    ]
+
+stub_module = rule(impl = _stub_module_impl, attrs = {})
+BZL
+cat > "$work/compiled/BUCK" <<'BUCK'
+load("@rules//buck2/platforms:defs.bzl", "host_platform_label")
+load("@rules//buck2/products:defs.bzl", "bun_compiled_product_executable")
+load(":defs.bzl", "stub_module")
+
+stub_module(name = "module")
+
+bun_compiled_product_executable(
+    name = "compiled",
+    module = ":module",
+    product_name = "fixture-cli",
+    recipe = "bun-compile:fixture",
+    target_platform = host_platform_label("rules"),
+)
+BUCK
+
 (
-  cd "$root"
+  cd "$work"
   buck2 --isolation-dir consumer-root-contract uquery \
-    'set(rules//:package_tree_runtime rules//:package_command_runtime rules//:packages/@overeng/buck2-tools/src/typescript-runner.ts)' >/dev/null
-  buck2 --isolation-dir consumer-root-contract cquery \
-    'fixture//buck2/toolchains:effect_tsgo' >/dev/null
+    'set(rules//:package_tree_runtime rules//:package_command_runtime rules//packages/@overeng/buck2-tools:typescript-runner.ts)' >/dev/null
+  exec_deps="$(buck2 --isolation-dir consumer-root-contract cquery 'deps(fixture//compiled:compiled, 1, exec_deps())')"
+  printf '%s\n' "$exec_deps" | grep -F 'rules//buck2/toolchains:bun_compile_runtime' >/dev/null
+  providers="$(buck2 --isolation-dir consumer-root-contract audit providers fixture//compiled:compiled)"
+  printf '%s\n' "$providers" | grep -F 'ProductExecutableInfo' >/dev/null
+  printf '%s\n' "$providers" | grep -F 'bun-compile-runtime=' >/dev/null
 )
 
 echo 'buck2 consumer root contract passed'

@@ -4,21 +4,18 @@ These are the lane's open design questions. Each links to the spec section or
 child that owns it. Questions exit this file into the specs (as decisions) or
 experiments (as tested hypotheses).
 
-## OQ1: What does always-ingesting both views cost in Tempo? — open
+## OQ1: What does delivering both views cost in Tempo? — open
 
-- Blocks: production widening of ingest (05); the BUCK.OBS-T02 tradeoff.
-- Decided (q24, 2026-09-25): ingest the critical view _and_ the full view as
-  two identified traces for now — "dial in later if issues appear". The cost
-  is unmeasured: ~67 k spans / ~61 MB OTLP JSON per full CI run, at ~90
-  runs/day, stored 30 d.
-- Measurement plan: when the ingest CLI lands, ingest a representative week of
-  run records (cold + warm + fork shapes) into the Tempo instance and record
-  object-store block growth, compactor behavior, trace-fetch and TraceQL
-  latency at both view sizes, and querier stability. Compare against the
-  critical-view-only baseline (~6 k spans/run). Report before any production
-  widening; if growth exceeds the corridor budget (BUCK.OBS-R06), the dial-in
-  options are: critical view only + on-demand full re-ingest (the q24
-  recommended option), or a higher full-view cadence (e.g. failures only).
+- Blocks: production volume tuning of [05 OTLP delivery](./05-otlp-delivery/spec.md);
+  the BUCK.OBS-T02 tradeoff.
+- Both critical and full views are exported as separately identified traces
+  (q24). A full CI run is ~67 k spans / ~61 MB OTLP JSON at the planning
+  volume of ~90 runs/day; the critical view is ~6 k spans/run.
+- Measure collector traffic, Tempo block growth, compaction, trace fetch,
+  TraceQL latency and querier stability on representative cold, warm, and
+  fork-shaped runs. If both views strain the 30-day corridor, compare critical
+  view only or a lower full-view cadence. On-demand re-derivation is possible
+  only while a local spool remains.
 
 ## OQ2: Will upstream accept daemon-wait attribution? — open, not gating
 
@@ -30,14 +27,12 @@ experiments (as tested hypotheses).
   command leaves no silent gap) is fixed only upstream. Revisit if upstream
   merges or if >10% of true waits sit on busy waiters.
 
-## OQ3: When can direct OTLP become an optional fast path? — open, not gating
+## OQ3: How long must a local retry spool persist? — open, not gating
 
-- Prerequisites (q18): `otel-span` must honor `OTEL_EXPORTER_OTLP_HEADERS`
-  (today ignored — measured) and define a spool flush protocol. The sealed
-  record remains the system of record; upload-enqueued ingest targets
-  job-end→clickable ≤30 s p95 plus upload time without this fast path. Enable
-  only after measuring whether it adds useful latency improvement without
-  introducing a second correctness path.
+- [05 OTLP delivery](./05-otlp-delivery/spec.md) owns bounded retry after
+  collector or tailnet failure. The retention/cleanup policy must be measured
+  against outages: deleting the spool permanently removes the ability to
+  regenerate or resend derived traces. It does not imply a raw archive.
 
 ## OQ4: When do the `ci.*` vendor keys migrate to OTel CICD attributes? — open
 
@@ -46,21 +41,16 @@ experiments (as tested hypotheses).
   `ci.pr.fork`, and the run/job identity keys) and the `devenv.task.exec`
   naming predate that. Migration timing depends on the otel-scrape semconv
   pin (v1.37.0) catching up to the now-RC CICD set and on a coordinated
-  rename across the spool, ingester, and dashboards. The build path must
+  rename across the spool, exporter, and dashboards. The build path must
   not carry two schemes indefinitely.
 
-## OQ5: Evidence-namespace lifecycle details — resolved
+## OQ5: Collector access — resolved
 
-- The fleet build-evidence trait owns the dedicated ZFS dataset and placement
-  claim, one hardened `buck2-evidence` service with separate upload and
-  read-only resolver Tailscale Services, a SQLite index/queue, ~one-year raw
-  retention within ≤150 GiB/yr, and queue health. Upload is tailnet-only in
-  V1; fork ingestion and its short-lived capability/revocation story are
-  explicitly deferred rather than presumed implemented. Trace storage lasts
-  30 days, and the archived raw record enables re-ingest. The dedicated
-  namespace and service choice is recorded in
-  [05](./05-ingest-and-archive/spec.md); the fleet realization lives in
-  dotfiles `context/fleet/traits/build-evidence`.
+- Same-repo PR jobs and main pushes export OTLP directly to dev3 Alloy on
+  port 4318 after build work ends; local runs use the same path. The CI
+  runner joins the tailnet immediately before export (#1477), with access
+  controlled by a tailnet ACL grant. Fork jobs do not export; they leave a
+  local spool. Dotfiles owns the collector grant and Tempo retention.
 
 ## OQ6: Adjacent work tracked elsewhere — not this lane's scope
 

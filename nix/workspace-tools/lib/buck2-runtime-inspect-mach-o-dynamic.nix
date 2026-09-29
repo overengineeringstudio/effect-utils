@@ -174,11 +174,15 @@ let
         index="$((index + 1))"
       done
       [ -n "$flags" ] || fail "Mach-O CodeDirectory must be present: $relative"
-      [ "$cms_count" -eq 1 ] || fail "Mach-O CMS signature wrapper must be present exactly once: $relative"
+      [ "$cms_count" -le 1 ] || fail "Mach-O CMS signature wrapper must not repeat: $relative"
       if [ "$signing_policy" = adhoc/v1 ]; then
         [ "$((flags & 2))" -eq 2 ] || fail "Mach-O CodeDirectory must carry the ad-hoc flag: $relative"
-        [ "$cms_size" -eq 8 ] || fail "Mach-O CMS signature blob must be empty: $relative"
+        # Apple codesign emits an empty CMS wrapper. Bun's valid ad-hoc
+        # CodeDirectory has no CMS wrapper; neither may carry CMS payload.
+        [ "$cms_count" -eq 0 ] || [ "$cms_size" -eq 8 ] \
+          || fail "Mach-O CMS signature blob must be empty: $relative"
       else
+        [ "$cms_count" -eq 1 ] || fail "embedded Mach-O CMS signature wrapper must be present: $relative"
         [ "$((flags & 2))" -eq 0 ] || fail "Mach-O CodeDirectory must not carry the ad-hoc flag: $relative"
         [ "$cms_size" -gt 8 ] || fail "Mach-O CMS signature blob must be embedded: $relative"
       fi

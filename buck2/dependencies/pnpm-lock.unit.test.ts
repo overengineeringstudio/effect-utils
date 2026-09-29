@@ -192,7 +192,9 @@ describe('translatePnpmLock', () => {
         },
       }),
     ).toThrow('approved public HTTPS archive origin')
-    expect(renderPnpmPackageTargets({ metadata, sidecar })).toContain(`    url = ${JSON.stringify(url)},`)
+    expect(renderPnpmPackageTargets({ metadata, sidecar })).toContain(
+      `    url = ${JSON.stringify(url)},`,
+    )
     await expect(
       generatePnpmSha256Sidecar({ metadata, fetchArchive: async () => otherArchive }),
     ).rejects.toThrow('integrity')
@@ -300,9 +302,9 @@ ${packageFields}`,
       ...options,
       lockfileText: explicitFalse,
     }).lockfileFingerprint
-    expect(
-      translatePnpmLock({ ...options, lockfileText: omitted }).lockfileFingerprint,
-    ).toBe(explicitFalseFingerprint)
+    expect(translatePnpmLock({ ...options, lockfileText: omitted }).lockfileFingerprint).toBe(
+      explicitFalseFingerprint,
+    )
     expect(translatePnpmLock({ ...options, lockfileText: lock() }).lockfileFingerprint).not.toBe(
       explicitFalseFingerprint,
     )
@@ -627,6 +629,146 @@ describe('pnpm sha256 sidecar', () => {
         },
       }),
     ).toThrow(/must be classified public/)
+  })
+})
+
+describe('private product tarballs', () => {
+  const productBytes = npmArchive({ name: '@overeng/meters', version: '0.1.0' })
+  const productDigest = createHash('sha256').update(productBytes).digest('hex')
+  const productIntegrity = `sha512-${createHash('sha512').update(productBytes).digest('base64')}`
+  const productTarball = `file:.devenv/pnpm-product-tarballs/overeng-meters-0.1.0-${productDigest}.tgz`
+  const productKey = `@overeng/meters@${productTarball}`
+  const productLock = ({
+    tarball = productTarball,
+    integrity = productIntegrity,
+  }: { tarball?: string; integrity?: string } = {}) =>
+    lock({
+      importers: `  packages/app:
+    dependencies:
+      '@overeng/meters':
+        specifier: ../../${tarball.slice('file:'.length)}
+        version: ${tarball}`,
+      packages: `  '@overeng/meters@${tarball}':
+    resolution: {integrity: ${integrity}, tarball: ${tarball}}
+    version: 0.1.0`,
+      snapshots: `  '@overeng/meters@${tarball}': {}`,
+    })
+  const noNetwork = async (url: string): Promise<Uint8Array> => {
+    throw new Error(`unexpected network fetch ${url}`)
+  }
+
+  it('binds a staged file: tarball to its digest, never fetching or seeding it', async () => {
+    const metadata = translatePnpmLock({ lockfileText: productLock(), workspaceText: workspace() })
+    expect(metadata.packages[productKey]).toMatchObject({
+      integrity: productIntegrity,
+      resolution: 'product',
+      url: productTarball,
+      version: productTarball,
+    })
+    const read: string[] = []
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: noNetwork,
+      readProductTarball: async (relativePath) => {
+        read.push(relativePath)
+        return productBytes
+      },
+    })
+    expect(read).toEqual([productTarball.slice('file:'.length)])
+    expect(sidecar.packages[productKey]).toEqual({
+      bins: {},
+      classification: 'private',
+      integrity: productIntegrity,
+      packageIdentity: productKey,
+      productTarball,
+      sha256: productDigest,
+      sizeBytes: productBytes.byteLength,
+    })
+    const decoded = decodePnpmSha256Sidecar(JSON.parse(JSON.stringify(sidecar)))
+    expect(decoded).toEqual(sidecar)
+    validatePnpmSha256Sidecar({ metadata, sidecar: decoded })
+
+    // Integrity-matched rows are reused without touching the staged bytes again.
+    const regenerated = await generatePnpmSha256Sidecar({
+      metadata,
+      previous: decoded,
+      fetchArchive: noNetwork,
+      readProductTarball: noNetwork,
+    })
+    expect(regenerated).toEqual(sidecar)
+
+    const rendered = renderPnpmPackageTargets({ metadata, sidecar })
+    expect(rendered).toContain(`    url = ${JSON.stringify(productTarball)},`)
+    expect(rendered).toContain(`    sha256 = ${JSON.stringify(productDigest)},`)
+  })
+
+  it('fails closed on staged bytes that do not match the lock or the named digest', async () => {
+    const metadata = translatePnpmLock({ lockfileText: productLock(), workspaceText: workspace() })
+    await expect(
+      generatePnpmSha256Sidecar({ metadata, readProductTarball: async () => otherArchive }),
+    ).rejects.toThrow(/does not match downloaded archive/)
+    await expect(generatePnpmSha256Sidecar({ metadata })).rejects.toThrow(
+      /requires a staged product tarball reader/,
+    )
+
+    const misnamed = `file:.devenv/pnpm-product-tarballs/overeng-meters-0.1.0-${'0'.repeat(64)}.tgz`
+    const misnamedMetadata = translatePnpmLock({
+      lockfileText: productLock({ tarball: misnamed }),
+      workspaceText: workspace(),
+    })
+    await expect(
+      generatePnpmSha256Sidecar({
+        metadata: misnamedMetadata,
+        readProductTarball: async () => productBytes,
+      }),
+    ).rejects.toThrow(/do not match its named sha256/)
+  })
+
+  it('rejects product identities that escape the root or omit the digest', () => {
+    for (const tarball of [
+      `file:../outside/overeng-meters-0.1.0-${'a'.repeat(64)}.tgz`,
+      `file:/nix/store/overeng-meters-0.1.0-${'a'.repeat(64)}.tgz`,
+      `file:.devenv/./overeng-meters-0.1.0-${'a'.repeat(64)}.tgz`,
+      'file:.devenv/pnpm-product-tarballs/overeng-meters-0.1.0.tgz',
+    ]) {
+      expect(() =>
+        translatePnpmLock({ lockfileText: productLock({ tarball }), workspaceText: workspace() }),
+      ).toThrow(/root-relative file: tarball whose name ends in -<sha256>.tgz/)
+    }
+  })
+
+  it('keeps product and registry rows from standing in for each other', async () => {
+    const metadata = translatePnpmLock({ lockfileText: productLock(), workspaceText: workspace() })
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      readProductTarball: async () => productBytes,
+    })
+    const { productTarball: _productTarball, ...rest } = sidecar.packages[productKey] as {
+      productTarball: string
+    } & Record<string, unknown>
+    const asRegistry = {
+      ...rest,
+      classification: 'public',
+      registryUrl: 'https://registry.npmjs.org/@overeng/meters/-/meters-0.1.0.tgz',
+    }
+    const registrySidecar = decodePnpmSha256Sidecar(
+      JSON.parse(JSON.stringify({ ...sidecar, packages: { [productKey]: asRegistry } })),
+    )
+    expect(() => validatePnpmSha256Sidecar({ metadata, sidecar: registrySidecar })).toThrow(
+      /stale sha256 sidecar product tarball/,
+    )
+    expect(() =>
+      decodePnpmSha256Sidecar(
+        JSON.parse(
+          JSON.stringify({
+            ...sidecar,
+            packages: {
+              [productKey]: { ...sidecar.packages[productKey], classification: 'public' },
+            },
+          }),
+        ),
+      ),
+    ).toThrow(/must be private for a product tarball/)
   })
 })
 

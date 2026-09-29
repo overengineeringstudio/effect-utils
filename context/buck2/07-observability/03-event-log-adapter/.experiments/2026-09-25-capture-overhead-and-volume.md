@@ -60,3 +60,7 @@ Grounded BUCK.OBS.REC-R02 (unconditional capture) and BUCK.OBS-R06's volume
 model; motivated the trace-view lane ([04](../../04-trace-views/requirements.md))
 before any always-on rollout (q10). What would change it: an upstream change
 to event-log writing (e.g. fsync per event) — recheck on bumps.
+
+## Intent Impact
+
+The low capture overhead supports BUCK.OBS.REC-R02's unconditional log capture; the large graph-driven span counts constrain BUCK.OBS-R06's volume model.

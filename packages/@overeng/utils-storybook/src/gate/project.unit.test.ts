@@ -1,10 +1,12 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
+import { playsOnlyProvideKey } from './constants.ts'
 import {
   baselineDirEnvVar,
   createStoryGateConfig,
   storyGateArtifactsDir,
   storyGateArtifactsRoot,
+  storyGateModeEnvVar,
 } from './project.ts'
 
 /**
@@ -172,5 +174,41 @@ describe('screenshot diagnostics', () => {
       artifactsRoot: '/tmp/story-gate-unit-test-artifacts',
       insideBaseline: false,
     })
+  })
+})
+
+describe('plays-only mode', () => {
+  afterEach(() => {
+    delete process.env[storyGateModeEnvVar]
+    process.env[baselineDirEnvVar] = '/tmp/story-gate-unit-test'
+  })
+
+  it('runs without a derived baseline and tells the setup file to skip screenshots', () => {
+    delete process.env[baselineDirEnvVar]
+    expect(() => createStoryGateConfig({ storybookPluginFor: fakeStorybookPluginFor })).toThrow(
+      baselineDirEnvVar,
+    )
+
+    process.env[storyGateModeEnvVar] = 'plays'
+    const config = createStoryGateConfig({
+      themes: [
+        { name: 'theme', value: 'light' },
+        { name: 'theme', value: 'dark' },
+      ],
+      storybookPluginFor: fakeStorybookPluginFor,
+    })
+    for (const project of projectsOf(config)) {
+      expect(project).toMatchObject({ test: { provide: { [playsOnlyProvideKey]: true } } })
+    }
+  })
+
+  it('keeps the full gate as the default and rejects an unknown mode', () => {
+    const gate = createStoryGateConfig({ storybookPluginFor: fakeStorybookPluginFor })
+    expect(gate.test?.provide).toEqual({ [playsOnlyProvideKey]: false })
+
+    process.env[storyGateModeEnvVar] = 'play'
+    expect(() => createStoryGateConfig({ storybookPluginFor: fakeStorybookPluginFor })).toThrow(
+      storyGateModeEnvVar,
+    )
   })
 })

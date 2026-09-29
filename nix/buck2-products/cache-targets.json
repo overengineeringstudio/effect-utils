@@ -47,6 +47,24 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/effect-rpc-explorer",
+      "outputName": "overeng-effect-rpc-explorer.tgz",
+      "packagePath": "packages/@overeng/effect-rpc-explorer",
+      "packageTreePath": "packages/@overeng/effect-rpc-explorer",
+      "target": "effect_utils//packages/@overeng/effect-rpc-explorer:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/effect-rpc-explorer-react",
+      "outputName": "overeng-effect-rpc-explorer-react.tgz",
+      "packagePath": "packages/@overeng/effect-rpc-explorer-react",
+      "packageTreePath": "packages/@overeng/effect-rpc-explorer-react",
+      "target": "effect_utils//packages/@overeng/effect-rpc-explorer-react:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/genie",
       "outputName": "overeng-genie.tgz",
       "packagePath": "packages/@overeng/genie",
@@ -124,6 +142,15 @@
       "packagePath": "packages/@overeng/restate-effect",
       "packageTreePath": "packages/@overeng/restate-effect",
       "target": "effect_utils//packages/@overeng/restate-effect:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/stylex-tokens",
+      "outputName": "overeng-stylex-tokens.tgz",
+      "packagePath": "packages/@overeng/stylex-tokens",
+      "packageTreePath": "packages/@overeng/stylex-tokens",
+      "target": "effect_utils//packages/@overeng/stylex-tokens:dist-package",
       "version": "0.1.0"
     },
     {

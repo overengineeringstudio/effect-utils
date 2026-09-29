@@ -23,6 +23,18 @@ All notable changes to this project will be documented in this file.
   `packages/@overeng/utils-storybook/patches/`; genie-projected
   `patchedDependencies` pick up the new path on regeneration.
 
+- **@overeng/effect-rpc-explorer**: The explorer's application descriptors are
+  now a live set. `ExplorerServices.descriptors` is a `DescriptorSet`
+  (`current()` returns `{ revision, descriptors }`; `subscribe` notifies on
+  change), and `makeInspectorGroup` takes `descriptors: DescriptorSet`; wrap a
+  fixed array with `staticDescriptorSet(descriptors)`. `InspectorSnapshotFrame`
+  gains a required `descriptorRevision`, so hand-built snapshot fixtures add
+  `descriptorRevision: 0`.
+- **@overeng/effect-rpc-explorer-react**: `ExplorerClient.watch` takes one
+  `ExplorerWatchCursor` (`{ afterRevision?, descriptorRevision? }`) instead of
+  a positional `afterRevision`; forward both fields to the `RpcExplorer.Watch`
+  payload.
+
 - **Genie exact prerelease peers**: `catalog.compose` peer dependencies and
   `catalog.peers` now emit a prerelease catalog version exactly
   (`effect: 4.0.0-rc.113`) instead of with a caret. Release versions keep `^`.
@@ -54,6 +66,75 @@ All notable changes to this project will be documented in this file.
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
 ### Added
+- **Buck2 pnpm runtime closure**: `pnpm_runtime_closure` consolidates the
+  normalized store entries and importer views of declared `package_tree`
+  roots into one relocatable tree with a pinned digest. JavaScript products can
+  build the tree with `mkBuckProductFromSource.runtimeClosureTarget` and import
+  it under `$out/libexec` with `runtimeClosure = { artifact; expectedDigest; }`;
+  Nix-built addons used by declared package snapshots are passed through
+  `mkBuckProductFromSource.nativeStorePackages = [ { name; package; } ]` so
+  their normalized `.pnpm` entries contain the addon; use
+  `nativeNodePackages` only for additional importer-view slots. The in-repo
+  Vite fixture loads `node-pty` from a normalized entry, adds a scoped native
+  slot, and runs a React build from the imported product.
+
+
+- **Buck2 cache products**: Publish `@overeng/effect-rpc-explorer`,
+  `@overeng/effect-rpc-explorer-react`, and its runtime dependency
+  `@overeng/stylex-tokens` as package archives in the product manifest so
+  external consumers can install the complete explorer package graph. The
+  React package requires its host's `@stylexjs/stylex` peer rather than
+  installing a second StyleX runtime.
+
+- **Buck2 `compiled-executable` product kind**: `bun_compiled_product_executable`
+  (`buck2/products/defs.bzl`) compiles a fully bundled `cli` module with
+  `bun build --compile` against the pinned, unpatched official Bun release
+  (`buck2-bun-compile-runtime` capability) on the matching native platform
+  (Linux x86_64/aarch64 glibc, Darwin arm64). `build_product` packages it and
+  `lib.mkBuckProductFromSource { importNative = true; }` imports it through the
+  native descriptor, archive-scan and ELF/Mach-O inspector path; Bun's embedded
+  ad-hoc Mach-O signature is accepted and never rewritten. A registry flag
+  `compiledExecutable: true` emits `<name>-compiled-product` and a
+  `packages.<system>.<name>-compiled` row (fixture: `ci-tools-compiled`). PRs
+  build and `--help`-smoke it in `build-products` (Linux) and the macOS `test`
+  leg; `.github/workflows/compiled-products.yml` publishes the Linux x86_64 and
+  Darwin arm64 imports to Cachix from protected main. aarch64 Linux is admitted
+  but not published (no runner serves this repository): those consumers build
+  compiled products from source. No cache-manifest row: the per-platform store
+  path is the distribution unit.
+
+- **@overeng/effect-rpc-explorer runtime descriptors**:
+  `registerDescriptors({ group, owner })` registers a group mounted after construction, such as an app-local
+  provider, for the caller's Scope. Registering the same owner again replaces
+  its descriptors, so a remount never duplicates them; a tag held by several
+  owners stays resolvable until the last one releases it. Watch sends a fresh
+  Snapshot when the set changes, and accepts `descriptorRevision` so a viewer
+  that subscribed across a change catches up. The React projection passes its
+  descriptor revision through `ExplorerClient.watch`, so filters and schema
+  views cover runtime RPCs.
+- **Storybook play tests in CI** (#1392): The shared storybook task module
+  adds `storybook:test:<name>` for packages marked `playTests = true` and a
+  `storybook:test` aggregate. Each runs the package's `vitest.gate.config.ts`
+  with `OVERENG_STORY_GATE_MODE=plays`, a new `@overeng/utils-storybook/gate`
+  mode (`storyGateModeEnvVar`) that runs every story's `play` and
+  accessibility check in headless Chromium without the settle wait,
+  screenshot, or derived baseline. The gate config also honours
+  `VITE_CACHE_DIR` and renders stories under `NODE_ENV=development`, as
+  Storybook does. Under Vitest's `test` value, react-aria's virtualizer read
+  `process.env` in the browser and crashed every virtualized story. CI runs
+  `storybook:test` for `effect-rpc-explorer-react` and
+  `effect-schema-form-aria` in the `Storybook Plays` workflow
+  (`storybook-plays.yml`, pull requests and `main`, no secrets), outside
+  `ci.yml`. Its `test-storybook-plays` check is required on `main` through
+  `STANDALONE_REQUIRED_CI_JOB_NAMES` in `genie/ci.ts` and the generated
+  `.github/repo-settings.json` ruleset.
+
+- **Local Buck2 evidence upload**: `otel-span pipeline-run` sends sealed
+  local records and their one-job close to the configured evidence service.
+  The service verifies their single carried root and binds upload roles
+  to CI/local identities. Definitive upload rejection falls back to
+  `ingest --local`; ambiguous lost responses keep an `upload-pending`
+  spool for idempotent retry on the next run without exporting another root.
 
 - **CI `build-products` lane**: Every pull request builds all published
   `.#buck-product-*-from-source` attrs (derived from
@@ -76,6 +157,51 @@ All notable changes to this project will be documented in this file.
   Storybook previews again.
 
 ### Changed
+- **@overeng/notion-effect-schema tests:** assert canonical JSON wire baselines
+  with exact string equality rather than inline snapshots. Vitest's inline
+  snapshot stack-frame inference fails for these async tests under Bun on macOS;
+  the expected JSON bytes remain unchanged.
+- **Native Buck product distribution:** `otelite`, `otel-scrape`, and
+  `typescript-api-server` now build from pinned Buck sources through
+  `mkBuckProductFromSource`/`importNative`; protected main publishes the
+  validated Linux x86_64 and Darwin arm64 store paths to Cachix.
+  Linux arm64 builds from source. Flake packages, Genie’s
+  `GENIE_TYPESCRIPT_API_SERVER`, and the observability module consume the
+  source-backed imports. The native GitHub-release manifest, target matrix,
+  and release-asset fetch path are removed.
+- **genie pnpm peer rules:** `commonPnpmPolicySettings` and
+  `genie/internal.ts` no longer carry `peerDependencyRules.allowedVersions`
+  `eslint: '>=10.0.0'`. Every eslint peer in the lockfile accepts the catalog's
+  eslint 10.10.0, so the rule masked nothing. The `typescript` and `vitest`
+  entries stay: `bun-ffi-structs@0.3.1` peers `typescript ^5` but resolves
+  TypeScript 7.0.2, and `@effect/vitest` 4.0.0-rc.113 peers `vitest >=5 <6`
+  against the catalog's vitest 4.1.9 (#1468).
+- **Prepared pnpm trees:** remove the pacquet stage-twin rewrite and rejection
+  workaround now that pnpm 12.7 serializes package writers within each target
+  directory upstream.
+- **pnpm 12.7.0:** the megarepo pnpm pin (`nix/pnpm.nix`, genie's default
+  `packageManager`, the Buck `tool_pnpm` protocol and the lock-mutator
+  allowlist) moves from 12.4.1 to 12.7.0. Prepared dependency workspaces now
+  prune lockfile importers whose manifests were intentionally omitted by
+  staging, satisfying pnpm 12.7's stricter frozen-lockfile validation while
+  picking up pnpm/pnpm#15455's single-writer package import.
+
+- **weaver / semconv pins**: OpenTelemetry Weaver 0.24.2 → 0.26.1 and the
+  pinned upstream semantic-convention registry v1.37.0 → v1.44.0, moved in
+  lockstep across `nix/weaver-flake/flake.nix` and
+  `genie/weaver-registry/registry.ts`. The emitted registry is regenerated.
+  Upstream dependencies now carry the `schema_url` that Weaver 0.26 requires.
+  `//:weaver_check`, `weaver:diff`, and the live-check test run in stable
+  policy mode (no `--future`), because semconv v1.44 ships experimental
+  `definition/2` files that `--future` rejects. The pin skips 0.25.x, which
+  dropped the legacy v1 `name` + `registry_path` dependency form (restored in
+  0.26.0).
+- **nix/provider-clis/vercel-cli**: update the pinned Vercel CLI from 54.18.5
+  to 60.1.3, regenerate `package-lock.json`, and refresh `npmDepsHash`. The
+  derivation no longer omits optional dependencies, because
+  `@vercel/static-config` loads the platform-specific Oxc parser binding
+  (`@oxc-parser/binding-*`) at runtime. The wrapper entrypoint is unchanged:
+  60.1.3 still publishes both `vercel` and `vc` as `dist/vc.js`.
 
 - **devenv**: bump the pinned devenv input from `v2.2.1` to `v2.4.0` and raise
   `require_version` to `>=2.3`. Only the `devenv` subtree of `devenv.lock` is
@@ -92,7 +218,6 @@ All notable changes to this project will be documented in this file.
   manifests retain their strict executable digest across sandbox roots.
   Run `devenv tasks run buck2:capabilities:reproducibility` to compare an
   archive-tool rebuild under an alternate sandbox root with its normal output.
-
 - **Pipeline run tracing:** `otel-span pipeline-run -- devenv tasks run <verb>`
   now seeds one deterministic run/job trace, records local roots even on
   interruption, and seals Buck command evidence into a per-run spool.
@@ -110,6 +235,49 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **StyleX Vite consumers under Bun**: Patch `@stylexjs/babel-plugin@0.19.0`
+  so the media-query parser treats an explicit tokenizer EOF as end-of-input.
+  Without the patch, valid responsive and hover conditions can fail
+  nondeterministically during a packed RPC explorer consumer build with
+  `Invalid media query syntax` ([upstream issue](https://github.com/facebook/stylex/issues/1916)).
+  The pnpm patch registry now projects the fix to downstream consumers.
+
+- **mk-pnpm-cli declared source inputs without a source**: pnpm 12.7
+  packlists every declared `sourceInputPaths` package, so each one's manifest
+  is staged even when the consumer does not import it. When no
+  `workspaceSources` entry covered one (e.g. a projected dotfiles workspace
+  given only `repos/effect-utils` while the contract also lists
+  `repos/private-shared` packages), the deps-src derivation failed at build
+  time with `cp: cannot stat .../package.json`. Evaluation now fails, naming
+  the source input and the `workspaceSources` entry to add.
+
+- **@overeng/buck2-tools portable farm on Darwin** (#1450): a bundle action
+  intermittently failed with "symlink target escapes every declared closure
+  root" naming a file inside its own `portable-farm/.closure` tree. Bun's
+  `realpathSync` asks the kernel for an open descriptor's path, and Darwin's
+  `F_GETPATH` may answer with any hard link of a file — including the farm
+  image the assembly had just hardlinked. Farm assembly now follows link
+  chains with `readlink` and canonicalizes only directories, and a target
+  already inside the farm (compared against the farm root's canonical form)
+  keeps its place instead of being rejected.
+- **Storybook story gate**: Load consumer Vitest gate configs with the Vite
+  runner so installed `@overeng/utils-storybook` TypeScript imports under
+  `node_modules` work without Node's unsupported type stripping. Baseline
+  worktrees with a different `pnpm-lock.yaml` use their own installed
+  `node_modules` instead of borrowing incompatible dependencies from HEAD.
+- **Netlify staged PR previews deploy new targets**: `netlify:deploy-staged`
+  deployed only the targets configured in the deploying revision, which for
+  the trusted `workflow_run` deploy is the default branch, so a PR adding a
+  Storybook package staged its output but never got a preview. The task now
+  deploys every top-level directory of the staged artifact as data, each under
+  alias `<name>-pr-<n>` on the configured site. Names must match
+  `^[a-z0-9][a-z0-9-]{0,62}$`, entries must be real directories (no symlinks
+  or files), and at most 32 targets are accepted; any rejected entry fails the
+  deploy before a credentialed call. Each deploy runs from an empty scratch
+  directory, so the Netlify CLI reads no project config from the repository or
+  the artifact, and staged deploys no longer pass `--workspace-filter`. The
+  per-target `netlify:deploy-staged:<name>` tasks are removed.
+
 - **mk-pnpm-cli external install roots**: Stage every injected `file:`
   directory package the install root's lockfile records
   (`injectWorkspacePackages`), not only the consumer's workspace closure
@@ -122,7 +290,6 @@ All notable changes to this project will be documented in this file.
 - **notion-md product publication**: Declare Node types in its own package
   dependencies so the isolated Buck typecheck resolves `types: ["node"]` and
   the from-source Nix product can be published.
-
 - **Storybook and Playwright task caches**: The shared `storybook:build:<name>`
   tasks, Storybook dev processes, and Playwright test tasks now export
   `CACHE_DIR` (and `VITE_CACHE_DIR` for Playwright) as
@@ -167,6 +334,57 @@ All notable changes to this project will be documented in this file.
 - **Cargo Buck projection**: Rust binaries declare their non-root `src/`
   module files as `srcs`, so editing a module such as `buck2-product`'s
   `npm_manifest.rs` invalidates the cached binary.
+- **Buck2 Cargo projector**: `defineCargoBuck2PackageProjection` discovers
+  Cargo's implicit targets (`src/lib.rs`, empty or path-only `[lib]`,
+  `src/main.rs`, `src/bin/*.rs`, `src/bin/<name>/main.rs`, `[[bin]]` without
+  `path`) and honors `autolib`/`autobins = false`. It resolves
+  `[workspace.dependencies]` `path` entries inherited with `workspace = true`,
+  path dependencies on Buck-projected packages outside the workspace declared
+  through `foreignPackageManifestPaths` (label `//<package path>:lib`), and
+  renamed registry dependencies (`package = "..."`) through `named_deps`.
+  Explicit-target projections are unchanged.
+- **Buck2 Cargo projector**: `buildProducts: [{ name, binary?, entrypoint? }]`
+  emits one `rust_product_executable` + `build_product` pair per named Cargo
+  binary, so one package can ship several products (for example
+  `tailnet-relay` and `devnet-edge`). `buildProduct: true` output is unchanged.
+- **Buck2 Cargo projector**: Cargo features. `[features]`, optional
+  dependencies, `dep:`/`dep/feature`/`dep?/feature` items and implicit
+  optional-dependency features are unified across the workspace like
+  `cargo build --workspace` (every member a root with its defaults, plus each
+  dependent's requested features), since each member has one `:lib`. Enabled
+  features render as `features = [...]` and activate their optional deps; a
+  binary whose `required-features` stay disabled is omitted. Feature-free
+  packages render unchanged. Feature requests that one `:lib` cannot honor
+  are rejected: features on foreign path dependencies (direct or through
+  `dep/feature` items) and feature requests or optional activation on
+  target-specific edges to workspace members.
+- **Buck2 Rust git dependencies**: offline, digest-pinned supply for Cargo
+  `git` sources. Selecting Reindeer `[buck] git_fetch = "git_archive"` (with
+  `pinned_git_archive` from `buck2/rust/crates.bzl` bound to the workspace's
+  `third-party/git-archives.json`) turns each `(repo, rev)` into a GitHub
+  commit tarball pinned by sha256; `mkBuck2CargoArchives` fetches the pinned
+  tarballs for sandboxed builds and `buck2-archive-tool extract-git-archive`
+  unpacks them offline. `scripts/buck2-rust-deps.sh` rejects bare `git_fetch`
+  rules, writes the sidecar on `generate`, and on `check` re-fetches every
+  tarball and fails on digest drift or stale pins. The Cargo projector
+  resolves `git`/`rev`/`branch`/`tag` dependencies to the third-party graph.
+- **Buck2 Cargo projector**: first-party build scripts. A package with
+  `build.rs` (or `package.build`) and optional `[build-dependencies]` gets a
+  `<pkg>-build-script-build` binary, a `cargo_build_script` launcher
+  (`buck2/rust/defs.bzl`) and a Prelude `buildscript_run`; the library and
+  binaries receive `OUT_DIR` and the script's `cargo:rustc-*` flags. Files the
+  script reads outside its package are declared with
+  `buildScriptInputs: [{ path, label? }]` (repository-relative; `label` names
+  the Buck target providing a file in another package). The launcher runs the
+  script with `CARGO_MANIFEST_DIR` inside a repository-relative symlink tree,
+  so `$CARGO_MANIFEST_DIR/../<pkg>/<file>` resolves as under Cargo. The
+  consumer-root prelude (`buck2-rules`) still runs ELF build scripts through
+  the Nix loader and hands that loader to launchers as
+  `BUCK2_RUST_BUILD_SCRIPT_LOADER`.
+- **Buck2 from-source products**: `product.cliBuildStamp` (a single-line JSON
+  string) sets `build_identity.cli_build_stamp` for the product's Buck build,
+  so projections rendered with `cliBuildStamp: true` embed a real
+  `CLI_BUILD_STAMP` instead of an empty one.
 - **Genie build cache descriptors**: `readBinaryCacheDescriptors` is now
   bootstrap-safe. It validates producer JSON with a dependency-free reader
   instead of the runtime Effect Schema, so consumer generators can import it
@@ -246,6 +464,16 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/otel-contract**: Accept an additive `incremental` counter option
   so OTLP metrics preserve monotonic counter semantics.
+- **Buck2 remote cache**: the standalone effect-utils checkout now points its
+  tracked `.buckconfig` at the public cache tier
+  (`grpc://dev3.tail8108.ts.net:8443`, TLS) instead of the private tailnet
+  endpoint, per decision 0033. Public PR CI reads anonymously over TLS with
+  uploads disabled; `BUCK2_NO_REMOTE_CACHE=1` still disables reads explicitly.
+  Only a job holding `BUCK2_CACHE_WRITE_BASIC_AUTH` gets the publisher posture
+  in `.buckconfig.local`. The trusted remote-cache proof on protected `main`
+  writes with `BUCK2_PUBLIC_CACHE_WRITE_AUTH`, then verifies a fresh reader
+  checkout without the publisher overlay or credential. The Buck member
+  capability manifest has no remote-cache field.
 
 - **Buck2 editor views**: Editor-view publication proves the materialized snapshot
   copy against the admitted pre-copy digests in an owner-resolved link form — plus a

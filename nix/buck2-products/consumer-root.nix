@@ -11,6 +11,9 @@
   cacheTls ? null,
   archiveOriginUrlPrefix ? null,
   archiveOriginTier ? null,
+  # `mkPrivateProductTarballs` `archiveRoot`: the only source of private product
+  # archives for live (non-sandboxed) Buck builds.
+  privateProductRoot ? null,
   projectIgnore ? [
     "**/__pycache__"
     "**/dist"
@@ -73,6 +76,10 @@ let
       cas_address = ${casAddress}
       instance_name = ${cacheInstanceName}
       tls = ${boolString cacheTls}
+  ''
+  + lib.optionalString (privateProductRoot != null) ''
+    [nix_store]
+      product_root = ${privateProductRoot}
   ''
   + lib.optionalString archiveOriginConfigured ''
     [archive_origin]
@@ -157,6 +164,9 @@ assert lib.assertMsg (
     ]
   )
 ) "mkConsumerBuckRoot: archive origin values have invalid types";
+assert lib.assertMsg (
+  privateProductRoot == null || lib.hasPrefix "/nix/store/" "${privateProductRoot}"
+) "mkConsumerBuckRoot: privateProductRoot must be a Nix store path";
 pkgs.runCommand "${cellName}-buck2-root"
   {
     passthru = {
@@ -171,6 +181,7 @@ pkgs.runCommand "${cellName}-buck2-root"
         capabilities
         casAddress
         cellName
+        privateProductRoot
         remoteCacheEnabled
         rootBuck
         rules

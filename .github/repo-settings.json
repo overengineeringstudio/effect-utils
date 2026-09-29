@@ -82,6 +82,9 @@
           },
           {
             "context": "pr-reviews-resolved"
+          },
+          {
+            "context": "test-storybook-plays"
           }
         ]
       }

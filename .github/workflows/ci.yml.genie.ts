@@ -47,6 +47,11 @@ import {
   githubAccessTokenEnv,
   readBinaryCacheDescriptors,
 } from '../../genie/ci-workflow.ts'
+import {
+  withGitHubEvidence,
+  evidenceCloseJob,
+  evidenceEnabled,
+} from '../../genie/ci-workflow/evidence.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
 
 const workflowReportFlakeRef =
@@ -358,14 +363,23 @@ const job = ({
   ],
 })
 
+/** Build and `--help`-smoke compiled-executable and native products. */
+const compiledProductsSmokeStep = {
+  name: 'Build and smoke native and compiled products',
+  env: githubTokenEnv(),
+  run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh'),
+} as const
+
 const multiPlatformJob = ({
   timeoutMinutes = jobTimeoutMinutes,
+  afterSteps = [],
   ...step
 }: {
   name: string
   run: string
   env?: Record<string, string>
   timeoutMinutes?: number
+  afterSteps?: readonly any[]
 }) => ({
   if: normalCiIf,
   strategy: {
@@ -383,6 +397,7 @@ const multiPlatformJob = ({
   steps: [
     ...baseSteps,
     step,
+    ...afterSteps,
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -457,6 +472,10 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     name: 'Unit tests',
     env: githubTokenEnv(),
     run: runDevenvTasksBefore('test:run'),
+    // Darwin leg of the compiled-executable proof; `build-products` covers Linux x86_64.
+    afterSteps: [
+      { ...compiledProductsSmokeStep, if: "matrix.runner == 'namespace-profile-macos-arm64'" },
+    ],
   }),
   'test-playwright-utils': job({
     timeoutMinutes: longJobTimeoutMinutes,
@@ -702,6 +721,7 @@ const extraJobs: Record<string, any> = {
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"',
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"',
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/from-source-contract.test.sh "$PWD"',
+            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"',
           ].join('\n'),
         ),
       },
@@ -711,7 +731,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|pnpm-archives\\.nix|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|compiled\\.nix|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|native\\.nix|native-targets\\.json|native-targets\\.json\\.genie\\.ts|pnpm-archives\\.nix|private-product-tarballs\\.nix|private-product-tarballs\\.test\\.sh|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts|vite-runtime-fixture\\.nix)$' || true)`,
             'if [ -n "$tracked_editor$tracked_product" ]; then',
             '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
             '  exit 1',
@@ -782,7 +802,9 @@ const extraJobs: Record<string, any> = {
   /**
    * Credential-free twin of `publish-products`: realizes every published from-source
    * product on each PR with the same attr derivation, plus the independent
-   * native evidence consumer. This job never receives a Cachix token, never
+   * native evidence consumer, and builds plus `--help`-smokes every compiled-executable
+   * product (compiled-targets.json) for Linux x86_64 (Darwin: the macOS `test` leg;
+   * publication: compiled-products.yml). This job never receives a Cachix token, never
    * pushes, and never proposes a manifest. The public cache is a read-only
    * substituter only. On `main`, `publish-products` publishes the product
    * inventory and evidence package.
@@ -818,6 +840,7 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
+      compiledProductsSmokeStep,
     ],
   },
   'publish-products': {
@@ -947,7 +970,8 @@ const extraJobs: Record<string, any> = {
   },
   /**
    * Trusted-only proof that a second plain checkout can consume an action
-   * uploaded by an independent standalone root through the tailnet cache.
+   * uploaded by an independent standalone root through the public cache tier.
+   * Protected main is the tier's only writer (decision 0033).
    */
   'trusted-buck2-remote-cache-proof': {
     if: trustedSecretCiIf,
@@ -971,109 +995,20 @@ const extraJobs: Record<string, any> = {
         name: 'Prove fresh-root remote action and test-cache hits',
         env: {
           ...githubTokenEnv(),
-          BUCK2_REMOTE_CACHE_BASIC_AUTH: '${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}',
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: '${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}',
         },
         run: [
           'set -euo pipefail',
-          'proof_script="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof.sh"',
-          `trap 'rm -f "$proof_script"' EXIT`,
-          `cat > "$proof_script" <<'BUCK2_REMOTE_CACHE_PROOF'`,
-          'set -euo pipefail',
-          'if [ -z "${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}" ]; then',
-          '  echo "::error::BUCK2_REMOTE_CACHE_BASIC_AUTH is required for the trusted remote-cache proof"',
+          'if [ -z "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then',
+          '  echo "::error::BUCK2_PUBLIC_CACHE_WRITE_AUTH is required for the trusted remote-cache proof"',
           '  exit 1',
           'fi',
-          'source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"',
-          'cd "$source_root"',
-          'buck="${BUCK2_BIN:?BUCK2_BIN not set}"',
-          'context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"',
-          'target="effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"',
-          'test_target="effect_utils//packages/@overeng/content-address:test"',
-          'proof_source="$source_root/packages/@overeng/ci-tools/bin/ci-tools.ts"',
-          'test_proof_source="$source_root/packages/@overeng/content-address/src/mod.unit.test.ts"',
-          `printf '%s\\n' '' "// trusted remote-cache proof \${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-\${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$proof_source"`,
-          `printf '%s\\n' '' "// trusted test-cache proof \${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-\${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$test_proof_source"`,
-          'evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-a.jsonl"',
-          'test_evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-a.jsonl"',
-          'evidence_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-b.jsonl"',
-          'test_evidence_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-b.jsonl"',
-          'test_evidence_c="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-c.jsonl"',
-          `trap 'rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c"; rm -rf "$context_b"' EXIT`,
-          '',
-          '# Context A has run-unique source inputs, executes locally, and uploads to the remote cache.',
-          '"$buck" kill',
-          'rm -rf buck-out',
-          '"$buck" build --local-only "$target"',
-          '"$buck" log show --recent 1 > "$evidence_a"',
-          `if ! jq -e 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.execution_kind == "ACTION_EXECUTION_KIND_LOCAL" and $action.cache_upload_result == "UPLOAD_RESULT_UPLOADED")' "$evidence_a" >/dev/null; then`,
-          '  echo "::error::Context A did not report a successful upload for a locally executed action"',
-          '  exit 1',
-          'fi',
-          '"$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"',
-          '"$buck" log show --recent 1 > "$test_evidence_a"',
-          `if ! jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_a" >/dev/null; then`,
-          '  echo "::error::Context A did not execute the representative unit-test lane locally"',
-          '  exit 1',
-          'fi',
-          '',
-          '# Context B is a second standalone root with a fresh daemon and materializer over identical inputs.',
-          '"$buck" kill',
-          'rm -rf buck-out "$context_b"',
-          'mkdir -p "$context_b"',
-          'tar -C "$source_root" \\',
-          `  --exclude='./.devenv' \\`,
-          `  --exclude='./.git' \\`,
-          `  --exclude='./buck-out' \\`,
-          `  --exclude='./node_modules' \\`,
-          `  --exclude='./packages/.editor-view' \\`,
-          `  --exclude='./target' \\`,
-          `  --exclude='./tmp' \\`,
-          `  --exclude='*/__pycache__' \\`,
-          `  --exclude='*/dist' \\`,
-          `  --exclude='*/node_modules' \\`,
-          `  --exclude='*/target' \\`,
-          '  -cf - . | tar -C "$context_b" -xf -',
-          'cd "$context_b"',
-          '',
-          '# Buck event data must classify the independent build as a remote action-cache hit.',
-          '"$buck" build --local-only "$target"',
-          '"$buck" log show --recent 1 > "$evidence_b"',
-          `if ! jq -e 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind == "ACTION_EXECUTION_KIND_ACTION_CACHE")' "$evidence_b" >/dev/null; then`,
-          '  echo "::error::Context B did not report a remote action-cache hit"',
-          '  exit 1',
-          'fi',
-          `if jq -e 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind as $kind | $kind == "ACTION_EXECUTION_KIND_LOCAL" or $kind == "ACTION_EXECUTION_KIND_REMOTE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_DEP_FILE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_ACTION_CACHE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_WORKER" or $kind == "ACTION_EXECUTION_KIND_REMOTE_WORKER")' "$evidence_b" >/dev/null; then`,
-          '  echo "::error::Context B executed an action or reused local action state instead of relying on the remote action cache"',
-          '  exit 1',
-          'fi',
-          '',
-          '# The representative unit test must pass from the remote test cache without a local test command.',
-          '"$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"',
-          '"$buck" log show --recent 1 > "$test_evidence_b"',
-          `if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_b" >/dev/null; then`,
-          '  echo "::error::Context B did not report the cached representative unit test as passing"',
-          '  exit 1',
-          'fi',
-          `if jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_b" >/dev/null; then`,
-          '  echo "::error::Context B executed the representative unit test locally instead of using the remote test cache"',
-          '  exit 1',
-          'fi',
-          '',
-          '# A source file outside the representative target graph must not change its test action key.',
-          `printf '%s\\n' '' "// trusted irrelevant-mutation proof \${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-\${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> README.md`,
-          '"$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"',
-          '"$buck" log show --recent 1 > "$test_evidence_c"',
-          `if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_c" >/dev/null; then`,
-          '  echo "::error::The irrelevant mutation prevented the cached representative unit test from passing"',
-          '  exit 1',
-          'fi',
-          `if jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_c" >/dev/null; then`,
-          '  echo "::error::The irrelevant mutation changed the representative unit-test action key"',
-          '  exit 1',
-          'fi',
-          'echo "Fresh-root remote action and test-cache proof passed"',
-          'BUCK2_REMOTE_CACHE_PROOF',
-          '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash "$proof_script"',
+          '# Buck sends the header verbatim; only the Base64 form reaches the daemon.',
+          'BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf \'%s\' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d \'\\n\')"',
+          'echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"',
+          'export BUCK2_CACHE_WRITE_BASIC_AUTH',
+          'unset BUCK2_PUBLIC_CACHE_WRITE_AUTH',
+          '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash scripts/buck2-remote-cache-proof.sh',
         ].join('\n'),
       },
     ],
@@ -1138,7 +1073,12 @@ const extraJobs: Record<string, any> = {
       // base/head evidence. Deterministic measurements such as closure sizes
       // can still use budget-style gates in consuming repos.
       regressionMode: 'warn',
-      env: ciMeasurementSubjectEnv,
+      env: {
+        ...ciMeasurementSubjectEnv,
+        // Backfills checkout older refs whose posture script cannot select the public read tier.
+        BUCK2_NO_REMOTE_CACHE:
+          "${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '0' }}",
+      },
       setupSteps: baseSteps,
       taskProbes: [
         {
@@ -1540,6 +1480,62 @@ const withCiOtelCapture = (jobMap: Record<string, any>) =>
     }),
   )
 
+const evidencePrCommentJob = {
+  if: `\${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (${evidenceEnabled}) }}`,
+  'runs-on': 'ubuntu-latest',
+  permissions: { contents: 'read', 'pull-requests': 'write' },
+  defaults: bashShellDefaults,
+  steps: [
+    {
+      name: 'Upsert PR evidence link',
+      shell: 'bash',
+      'continue-on-error': true,
+      env: {
+        GH_TOKEN: '${{ github.token }}',
+        GH_REPO: '${{ github.repository }}',
+        PR_NUMBER: '${{ github.event.pull_request.number }}',
+        BUCK2_EVIDENCE_RESOLVER_URL: '${{ vars.BUCK2_EVIDENCE_RESOLVER_URL }}',
+      },
+      run: [
+        'set -euo pipefail',
+        'marker=\"<!-- workflow-report:pipeline-evidence -->\"',
+        'body=$(mktemp)',
+        'resolver_url="${BUCK2_EVIDENCE_RESOLVER_URL:?BUCK2_EVIDENCE_RESOLVER_URL must be set for PR evidence links}"',
+        'printf "%s\\n### Pipeline evidence\\n\\n[Browse this PR’s pipeline evidence](%s/pr/%s/%s)\\n" "$marker" "${resolver_url%/}" "$GH_REPO" "$PR_NUMBER" > "$body"',
+        'comment_id=$(gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" --paginate --jq \'.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- workflow-report:pipeline-evidence -->"))) | .id\' | sed -n \'1p\')',
+        'if [ -n \"$comment_id\" ]; then gh api --method PATCH \"repos/$GH_REPO/issues/comments/$comment_id\" --field body=@\"$body\" >/dev/null;',
+        'else gh pr comment \"$PR_NUMBER\" --body-file \"$body\"; fi',
+      ].join('\n'),
+    },
+  ],
+} as const
+
+const allCiJobs: Record<string, any> = {
+  // Source-policy is independent of product gates and has no devenv dependency.
+  'default-ref-policy': {
+    if: `\${{ ${notNightlyMeasurementIf} }}`,
+    ...defaultRefPolicyCheckJob({
+      runsOn: namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+      }),
+      defaultRefs: { 'livestorejs/livestore': 'dev' },
+    }),
+  },
+  ...withCiOtelCapture(jobs),
+  ...extraJobs,
+  ...deployJobs,
+  'evidence-pr-link': evidencePrCommentJob,
+  'notify-alignment': notifyAlignmentJob({
+    targetRepo: 'schickling/megarepo-all',
+    needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
+    runner: [
+      'namespace-profile-linux-x86-64',
+      'namespace-features:github.run-id=${{ github.run_id }}',
+    ],
+  }),
+}
+
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   trustTier: 'public',
@@ -1568,41 +1564,20 @@ export default ciWorkflow({
           default: false,
           type: 'boolean',
         },
+        evidence_mode: {
+          description:
+            'Pipeline evidence: off by default; seal locally for dry run or upload through trusted tailnet',
+          required: false,
+          default: 'off',
+          type: 'choice',
+          options: ['off', 'seal', 'upload'],
+        },
       },
     },
   },
-  permissions: { contents: 'read' },
+  permissions: { contents: 'read', 'id-token': 'write' },
   jobs: {
-    // Keep default-ref/source-policy separate from product checks: downstream
-    // validation branches should fail one authority job, not obscure
-    // lint/typecheck/test signal.
-    // Checkout exemption: policy scans checkout authority files and never invokes devenv or Buck.
-    'default-ref-policy': {
-      // A cron carries no code change, so the source-policy scan has nothing to say.
-      if: `\${{ ${notNightlyMeasurementIf} }}`,
-      ...defaultRefPolicyCheckJob({
-        // Keep this tiny policy job on the same Namespace runner class as the
-        // rest of CI so source-policy enforcement does not wait on legacy labels.
-        runsOn: namespaceRunner({
-          profile: 'namespace-profile-linux-x86-64',
-          runId: '${{ github.run_id }}',
-        }),
-        // LiveStore intentionally uses dev as its trunk branch.
-        defaultRefs: { 'livestorejs/livestore': 'dev' },
-      }),
-    },
-    ...withCiOtelCapture(jobs),
-    ...extraJobs,
-    ...deployJobs,
-    'notify-alignment': {
-      ...notifyAlignmentJob({
-        targetRepo: 'schickling/megarepo-all',
-        needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
-        runner: [
-          'namespace-profile-linux-x86-64',
-          'namespace-features:github.run-id=${{ github.run_id }}',
-        ],
-      }),
-    },
+    ...withGitHubEvidence(allCiJobs),
+    'evidence-attempt-close': evidenceCloseJob(allCiJobs),
   },
 } satisfies CiWorkflowArgs)

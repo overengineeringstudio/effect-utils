@@ -52,3 +52,7 @@ Settles the home half of [decision 0001](../.decisions/0001-direct-decode-rust-c
 (BUCK.OBS.ADP-R05, q10). What would change it: a generated TS decoder within
 2× wall / 1.5× RSS at full parity; formal stabilization of the event-log
 format; or a hard platform-independent-descriptor requirement.
+
+## Intent Impact
+
+The streaming decoder's measured time and memory advantage supports BUCK.OBS.ADP-R05 and decision 0001's dedicated Rust-crate home.
