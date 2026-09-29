@@ -57,12 +57,6 @@ export type DefineCargoBuck2PackageProjectionOptions = {
   readonly cargoLockPath?: string
   readonly reindeerConfigPath?: string
   readonly workspaceMemberManifestPaths: readonly string[]
-  /**
-   * Foreign packages are declared in `<workspaceRoot>/foreign-packages.json`, shared with
-   * the Reindeer supply gate. The inline list is retained for standalone projections
-   * without that file; specifying both is an error.
-   */
-  readonly foreignPackageManifestPaths?: readonly string[]
   readonly thirdPartyBuckPath?: string
   readonly thirdPartyPackage?: string
   readonly buck2LoadLabelPrefix?: string
@@ -100,7 +94,6 @@ export const defineCargoBuck2PackageProjection = ({
   cargoLockPath: configuredCargoLockPath,
   reindeerConfigPath: configuredReindeerConfigPath,
   workspaceMemberManifestPaths: configuredWorkspaceMemberManifestPaths,
-  foreignPackageManifestPaths: configuredForeignPackageManifestPaths = [],
   thirdPartyBuckPath: configuredThirdPartyBuckPath,
   thirdPartyPackage = '//rust/third-party',
   buck2LoadLabelPrefix = '//buck2',
@@ -194,9 +187,6 @@ export const defineCargoBuck2PackageProjection = ({
   }
   const foreignPackagesPath = path.posix.join(workspaceRoot, 'foreign-packages.json')
   const hasForeignPackagesFile = existsSync(repo.resolve(foreignPackagesPath))
-  if (hasForeignPackagesFile && configuredForeignPackageManifestPaths.length > 0) {
-    throw new Error(`Use ${foreignPackagesPath} instead of inline foreignPackageManifestPaths`)
-  }
   const foreignPackageManifestPaths: readonly string[] = hasForeignPackagesFile
     ? (() => {
         const declaration: unknown = JSON.parse(repo.readText(foreignPackagesPath))
@@ -205,13 +195,14 @@ export const defineCargoBuck2PackageProjection = ({
           declaration === null ||
           !('foreignPackageManifestPaths' in declaration) ||
           !Array.isArray(declaration.foreignPackageManifestPaths) ||
+          declaration.foreignPackageManifestPaths.length === 0 ||
           !declaration.foreignPackageManifestPaths.every((value) => typeof value === 'string')
         ) {
-          throw new Error(`${foreignPackagesPath} must contain foreignPackageManifestPaths: string[]`)
+          throw new Error(`${foreignPackagesPath} must contain nonempty foreignPackageManifestPaths: string[]`)
         }
         return declaration.foreignPackageManifestPaths as string[]
       })()
-    : configuredForeignPackageManifestPaths
+    : []
   const generatorSourcePathsWithForeign = hasForeignPackagesFile
     ? [...generatorSourcePaths, foreignPackagesPath]
     : generatorSourcePaths

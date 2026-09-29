@@ -230,4 +230,12 @@ for workspace in a b; do
     "$(command -v reindeer)" "$(command -v cargo)" "$(command -v rustc)" "$BUN"
 done
 
+fixture_a_graph="$ROOT/scripts/fixtures/rust-foreign/a/third-party/BUCK"
+fixture_b_graph="$ROOT/scripts/fixtures/rust-foreign/b/third-party/BUCK"
+if grep -Fq 'foreign-shared' "$fixture_a_graph"; then
+  fail "consumer Reindeer graph includes a first-party foreign package"
+fi
+grep -Fq 'name = "memchr"' "$fixture_a_graph" || fail "consumer registry dependency missing"
+grep -Fq 'name = "itoa"' "$fixture_b_graph" || fail "provider registry dependency missing"
+
 echo "Buck2 Rust dependency gate tests passed."
