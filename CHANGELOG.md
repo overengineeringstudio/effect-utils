@@ -285,6 +285,10 @@ All notable changes to this project will be documented in this file.
   `missingAuthPolicy=skip`. Regenerate consumer workflows to pick this up.
 
 ### Fixed
+- **@overeng/effect-ai-gateway Buck2 projection**: Include the generated
+  `strip_project_references` setting in its package view so the committed BUCK
+  file matches the projection generator and passes the Genie freshness gate.
+
 - **PR snapshot CI helpers**: Omit empty job-level `CACHIX_AUTH_TOKEN` values
   from producer and release jobs so consumer workflows satisfy the cache policy
   requiring cache write credentials to be step-local.
