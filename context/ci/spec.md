@@ -52,11 +52,12 @@ GitHub creates a check run for each materialized job and groups runs from one wo
 - `OPT_IN_CI_JOB_NAMES` contains `devenv-perf`, whose dispatch-only cadence prevents it from being required;
 - `advisoryCIJobNames` contains report/notification jobs whose conclusions do not gate merge;
 - `REQUIRED_CI_JOB_NAMES` contains the default-ref policy job plus every core and extra PR job, and excludes opt-in, main-only, and advisory jobs;
+- `STANDALONE_REQUIRED_CI_JOB_NAMES` contains merge-blocking jobs of per-PR workflows outside `ci.yml` (currently `test-storybook-plays`); each runs on every pull request with no path filter or job-level `if`;
 - `ciJobCheckContexts` expands matrix job keys to the exact runner-qualified context strings emitted by GitHub.
 
 The main-only exclusion is deliberate and fixes the absent-check failure mode: requiring `test-integration-notion`, `test-live-deploy-ci-tools`, or `deploy-storybooks` on a pull request would leave branch protection waiting for check runs that the workflow never creates.
 
-`.github/repo-settings.json.genie.ts` derives the repository ruleset directly from `requiredCIJobs`. Tests compare the generated workflow's eligible check contexts with the generated ruleset, including matrix expansion and the exclusions above.
+`.github/repo-settings.json.genie.ts` derives the repository ruleset directly from `requiredCIJobs` (the expanded `REQUIRED_CI_JOB_NAMES` plus `STANDALONE_REQUIRED_CI_JOB_NAMES`). Tests compare the generated workflows' eligible check contexts with the generated ruleset, including matrix expansion and the exclusions above.
 
 ## Storybook previews
 
@@ -70,6 +71,10 @@ Storybook deploys split by trust. `deploy-storybooks` in the CI workflow is main
 The deploy workflow treats the artifact as data: it checks out `github.workflow_sha`, never the PR head, and hands the static files to `netlify deploy --no-build`. PR number and head SHA come from `github.event.workflow_run` and the GitHub API; a closed PR or a head that moved past the triggering run is skipped. Fork PRs are not deployed. `NETLIFY_AUTH_TOKEN` exists only in the deploy step environment, and only `publish-preview-comment` has `pull-requests: write`. Because `workflow_run` workflows run from the default branch, changes to the deploy workflow take effect after they merge.
 
 The deploy target set is the artifact's top-level directory names, not the default branch's Storybook list, so a PR that adds a Storybook package gets its preview on first push. `netlify-staged-targets.sh` admits a name only if it matches `^[a-z0-9][a-z0-9-]{0,62}$` and names a real directory (no symlink, no file), and caps the stage at 32 targets; any rejected entry fails the deploy before the Netlify CLI runs. Every target deploys to the `overeng-utils` site under alias `<name>-pr-<n>`, from an empty scratch directory so the Netlify CLI reads no project config from the checkout or the artifact.
+
+## Storybook plays
+
+`storybook-plays.yml` (workflow `Storybook Plays`) runs its single `test-storybook-plays` job on every pull request and on pushes to `main`, with `contents: read` and no secrets. It executes `storybook:test`: for each package marked `playTests = true` in `devenv.nix`, `storybook:test:<name>` runs that package's `vitest.gate.config.ts` with `OVERENG_STORY_GATE_MODE=plays`. Every story tagged `test` renders through Portable Stories in headless Chromium, and a failing `play` or an accessibility violation fails the lane (`parameters.a11y.test: 'error'`). Plays mode skips the story gate's settle wait and screenshot comparison, so it needs no baseline: pixel captures depend on the host's fonts, so the visual gate stays a same-host local tool. `test-storybook-plays` is a required check, listed in `STANDALONE_REQUIRED_CI_JOB_NAMES`. The workflow is separate from `ci.yml` only so `ci.yml` stays under the GitHub Actions workflow size limit. Because the check is required, the job has no path filter and no job-level `if`: a skipped job reports no check run and would block every pull request. With no opted-in package, `storybook:test` is an empty aggregate that succeeds.
 
 ## Gates and no-op actions
 

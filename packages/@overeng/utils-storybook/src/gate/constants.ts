@@ -15,6 +15,13 @@ export const initialGlobalsProvideKey = 'overeng/story-gate-initial-globals'
 export const projectNameProvideKey = 'overeng/story-gate-project-name'
 
 /**
+ * Vitest `provide` key that is `true` when the run executes story plays only
+ * (see `storyGateModeEnvVar`): the setup file then skips the settle wait and
+ * the screenshot assertion.
+ */
+export const playsOnlyProvideKey = 'overeng/story-gate-plays-only'
+
+/**
  * Marker the runner greps out of a run's output to report stories that opted
  * out of visual comparison by DECLARATION, via `parameters.storyGate.unstable`.
  *

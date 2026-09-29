@@ -25,11 +25,13 @@ export const buck2TypeScriptAdmission = {
     },
   ],
   authorities: [{ declarationEntrypoint: 'src/isomorphic/mod.d.ts', projectFile: 'tsconfig.json' }],
+  testDataRoots: [{ root: 'patches', extensions: ['.patch'] }],
   tests: [
     {
       name: 'test',
       runner: 'vitest',
       tools: {
+        BUN_BIN: '//buck2/toolchains:tool_bun',
         NODE_BIN: '//buck2/toolchains:tool_node',
         PNPM_BIN: '//buck2/toolchains:tool_pnpm',
       },

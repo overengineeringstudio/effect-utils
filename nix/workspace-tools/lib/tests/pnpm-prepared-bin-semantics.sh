@@ -5,6 +5,7 @@ repo_root="${1:-$(cd "$(dirname "$0")/../../../.." && pwd)}"
 lib_dir="$repo_root/nix/workspace-tools/lib"
 fixture="$lib_dir/tests/fixtures/pnpm-bin-projector"
 prepared_tree="$lib_dir/prepared-pnpm-tree.cjs"
+absent_importers="$lib_dir/absent-pnpm-lock-importers.cjs"
 projector="$lib_dir/pnpm-bin-projector.cjs"
 helper="$lib_dir/mk-pnpm-deps.nix"
 sandbox="$(mktemp -d "${TMPDIR:-/tmp}/pnpm-prepared-bin-semantics.XXXXXX")"
@@ -67,66 +68,34 @@ grep -F 'node_modules/.bin' "$workspace/scan-error" >/dev/null ||
 rm -rf "$workspace/node_modules/.bin"
 node "$prepared_tree" scan "$workspace"
 
-# pacquet stage twins embed a pid and timestamp. A byte-identical twin of a
-# landed file is dropped; a twin without an identical target fails closed, and
-# the scan independently rejects any surviving twin.
-stage_sandbox="$sandbox/pacquet-stage"
-stage_pkg="$stage_sandbox/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
-mkdir -p "$stage_pkg"
-printf '{"name":"pkg"}\n' > "$stage_pkg/package.json"
-cp "$stage_pkg/package.json" "$stage_pkg/package.json_pacquet-stage_26141_1790407040075053000_110"
-chmod 0444 "$stage_pkg/package.json_pacquet-stage_26141_1790407040075053000_110"
-node "$prepared_tree" normalize "$stage_sandbox"
-[ -f "$stage_pkg/package.json" ] || fail 'normalization dropped the landed stage target'
-[ -z "$(find "$stage_sandbox" -name '*_pacquet-stage_*' -print -quit)" ] ||
-  fail 'normalization retained an identical pacquet stage twin'
-node "$prepared_tree" scan "$stage_sandbox"
-chmod -R u+w "$stage_sandbox"
-printf '{"name":"partial"}\n' > "$stage_pkg/package.json_pacquet-stage_1_2_3"
-if node "$prepared_tree" normalize "$stage_sandbox" 2>"$sandbox/stage-error"; then
-  fail 'normalization accepted a pacquet stage twin that differs from its target'
+# A staged workspace contains only the selected dependency closure. Report
+# lockfile importers whose manifests were omitted so the Nix builder can prune
+# them before pnpm 12.7's frozen-lockfile validation.
+importer_sandbox="$sandbox/importers"
+mkdir -p "$importer_sandbox/packages/present"
+printf '{}\n' > "$importer_sandbox/package.json"
+printf '{}\n' > "$importer_sandbox/packages/present/package.json"
+touch "$importer_sandbox/pnpm-lock.yaml"
+printf '[".","packages/present","packages/missing"]\n' \
+  | node "$absent_importers" "$importer_sandbox/pnpm-lock.yaml" \
+  > "$importer_sandbox/absent"
+[ "$(cat "$importer_sandbox/absent")" = "packages/missing" ] ||
+  fail 'absent lockfile importer discovery did not match staged manifests'
+if printf '["../outside"]\n' \
+  | node "$absent_importers" "$importer_sandbox/pnpm-lock.yaml" \
+    2>"$importer_sandbox/escape-error"; then
+  fail 'absent lockfile importer discovery accepted an escaping importer'
 fi
-grep -F 'differs from its landed target' "$sandbox/stage-error" >/dev/null ||
-  fail 'normalization did not explain the divergent pacquet stage twin'
-if node "$prepared_tree" scan "$stage_sandbox" 2>"$sandbox/stage-scan-error"; then
-  fail 'strict scan accepted a surviving pacquet stage twin'
-fi
-grep -F 'package.json_pacquet-stage_1_2_3' "$sandbox/stage-scan-error" >/dev/null ||
-  fail 'strict scan did not identify the surviving pacquet stage twin'
+grep -F 'escapes its install root' "$importer_sandbox/escape-error" >/dev/null ||
+  fail 'escaping lockfile importer failure was not explicit'
 
-rm "$stage_pkg/package.json_pacquet-stage_1_2_3"
-malformed_stage="$stage_pkg/package.json_pacquet-stage_bad"
-cp "$stage_pkg/package.json" "$malformed_stage"
-if node "$prepared_tree" normalize "$stage_sandbox" 2>"$sandbox/malformed-stage-error"; then
-  fail 'normalization accepted a pacquet stage artifact with a malformed suffix'
-fi
-grep -F 'malformed suffix' "$sandbox/malformed-stage-error" >/dev/null ||
-  fail 'normalization did not explain the malformed pacquet stage suffix'
-[ -f "$malformed_stage" ] || fail 'normalization deleted the malformed pacquet stage artifact'
-if node "$prepared_tree" scan "$stage_sandbox" 2>"$sandbox/malformed-stage-scan-error"; then
-  fail 'strict scan accepted a malformed pacquet stage artifact'
-fi
-grep -F 'package.json_pacquet-stage_bad' "$sandbox/malformed-stage-scan-error" >/dev/null ||
-  fail 'strict scan did not identify the malformed pacquet stage artifact'
-rm "$malformed_stage"
-
-outside_dir="$stage_sandbox/package-source"
-outside_target="$outside_dir/source.js"
-outside_stage="${outside_target}_pacquet-stage_1_2_3"
-mkdir -p "$outside_dir"
-printf 'export const value = 1\n' > "$outside_target"
-cp "$outside_target" "$outside_stage"
-if node "$prepared_tree" normalize "$stage_sandbox" 2>"$sandbox/outside-stage-error"; then
-  fail 'normalization accepted a pacquet stage artifact outside node_modules'
-fi
-grep -F 'outside node_modules' "$sandbox/outside-stage-error" >/dev/null ||
-  fail 'normalization did not explain the pacquet stage artifact outside node_modules'
-[ -f "$outside_stage" ] || fail 'normalization deleted the pacquet stage artifact outside node_modules'
-if node "$prepared_tree" scan "$stage_sandbox" 2>"$sandbox/outside-stage-scan-error"; then
-  fail 'strict scan accepted a pacquet stage artifact outside node_modules'
-fi
-grep -F 'source.js_pacquet-stage_1_2_3' "$sandbox/outside-stage-scan-error" >/dev/null ||
-  fail 'strict scan did not identify the pacquet stage artifact outside node_modules'
+# pnpm 12.7 serializes writers within a target directory, so prepared-tree
+# normalization no longer gives pacquet stage-like names special meaning.
+stage_like_file="$workspace/node_modules/package.json_pacquet-stage_1_2_3"
+printf '{"ordinary":"data"}\n' > "$stage_like_file"
+node "$prepared_tree" normalize "$workspace"
+[ -f "$stage_like_file" ] || fail 'normalization still deletes pacquet stage-like files'
+node "$prepared_tree" scan "$workspace"
 
 # Nix store payloads are read-only. Restore establishes a mutable projection
 # workspace through tar metadata before the projector reaches nested virtual
@@ -161,6 +130,10 @@ grep -F 'preparedPnpmTreeScript = pkgs.writeText' "$helper" >/dev/null ||
   fail 'prepared-tree helper is not an explicit Nix store input'
 grep -F 'pnpmBinProjectorScript = pkgs.writeText' "$helper" >/dev/null ||
   fail 'bin projector is not an explicit Nix store input'
+grep -F 'absentPnpmLockImportersScript = pkgs.writeText' "$helper" >/dev/null ||
+  fail 'absent-importer helper is not an explicit Nix store input'
+grep -F "del(.importers[strenv(PNPM_ABSENT_IMPORTER)])" "$helper" >/dev/null ||
+  fail 'staged lockfile importer pruning is not wired'
 grep -F -- "--mode='u+w'" "$helper" >/dev/null ||
   fail 'restore does not establish a writable projection workspace'
 grep -F 'preparedPnpmTreeScript} scan .' "$helper" >/dev/null ||

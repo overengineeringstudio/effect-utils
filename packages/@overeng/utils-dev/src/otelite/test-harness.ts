@@ -196,6 +196,16 @@ const makeInProcessAllSignalsLayer = (
     }).pipe(Layer.provide(FetchHttpClient.layer)),
   )
 
+/**
+ * Value for the endpoint env var: the per-signal `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
+ * is used verbatim by OTel SDKs, so it needs the full `/v1/traces` URL; the
+ * generic `OTEL_EXPORTER_OTLP_ENDPOINT` (and custom names) get the bare base.
+ */
+const endpointEnvValue = (handle: CaptureHandle, endpointVar: string | undefined): string =>
+  endpointVar === 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'
+    ? otlpTracesUrl(handle.endpoints.http)
+    : handle.endpoints.http
+
 /** The test-harness service shape exposed by {@link OteliteTestHarness}. */
 export interface OteliteTestHarnessService {
   /** Boot a scoped otelite receiver plus the in-process exporter layers bound to it. */
@@ -266,8 +276,10 @@ export class OteliteTestHarness extends Context.Service<
           envSemaphore.withPermits(1)(
             Effect.scoped(
               scopedEnv({
-                [envOptions.endpointVar ?? 'OTEL_EXPORTER_OTLP_ENDPOINT']:
-                  captureHandle.endpoints.http,
+                [envOptions.endpointVar ?? 'OTEL_EXPORTER_OTLP_ENDPOINT']: endpointEnvValue(
+                  captureHandle,
+                  envOptions.endpointVar,
+                ),
                 [envOptions.serviceNameVar ?? 'OTEL_SERVICE_NAME']: options.serviceName,
                 ...envOptions.extra,
               }).pipe(Effect.andThen(effect)),

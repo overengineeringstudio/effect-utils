@@ -109,3 +109,22 @@ confirmed) amended the gate:
 BUCK-R15 still wins over BUCK-R01 and BUCK-R07. The ledger check drops the
 cumulative sign test at close, keeps the per-consumer test, and stores the
 reconciliation snapshots as data it compares.
+
+## Amendment 3 (2026-09-28)
+
+The per-consumer negative-sum test in Amendment 2 would prevent a completed
+consumer from closing. On 2026-09-28 dotfiles measured net +585 and
+schickling.dev net +582; the projected net at completion is +300 to +600.
+These consumers retain build machinery that is shared or amortized rather than
+fully deleted within one consumer's ledger boundary. Johannes (q2, decision
+tree `dev3.direct.omp.wj3m9rzw`, 2026-09-28) confirmed the protected
+requirements edit and changed the close gate:
+
+1. A consumer closes when all its ledger rows are Buck-owned or excluded (none
+   legacy, claimed, or residual) and its legacy builders, FOD hashes, and
+   `mk-pnpm-cli` glue are deleted.
+2. The consumer's net is recorded with its amortization rationale for
+   reporting, not tested for a negative sign at close.
+3. The cumulative reconciliation trajectory of Amendments 1 and 2 remains a
+   gate; the hub's foundation costs remain reported and amortized across
+   consumers.

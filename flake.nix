@@ -71,10 +71,19 @@ rec {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
           netlify-cli = import ./nix/provider-clis/netlify-cli { inherit pkgs; };
         };
-        # Buck is the sole producer for shipped Rust CLIs. Nix imports the exact
-        # reviewed per-tuple release assets and revalidates their descriptors,
-        # payloads, native runtime contracts, and entrypoints.
-        nativeProductPackages = (import ./nix/buck2-native-products { inherit pkgs; }).products;
+        # Native products are built from this pinned source revision, imported
+        # with descriptor/runtime validation and substituted from Cachix.
+        # Cache misses rebuild through the same Buck graph.
+        nativeProductPackages = import ./nix/buck2-products/native.nix {
+          inherit
+            pkgs
+            mkBuckProductFromSource
+            pnpmArchives
+            ;
+          capabilities = buck2Capabilities;
+          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
+          repositoryRoot = ./.;
+        };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
         mkBuckProductFromSource = import ./nix/buck2-products/from-source.nix {
           inherit pkgs buck2;
@@ -96,7 +105,57 @@ rec {
           producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           repositoryRoot = ./.;
         };
+        # Compiled-executable products imported for this host platform (compiled.nix).
+        buckCompiledProducts = import ./nix/buck2-products/compiled.nix {
+          inherit
+            mkBuckProductFromSource
+            pnpmArchives
+            ;
+          capabilities = buck2Capabilities;
+          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
+          repositoryRoot = ./.;
+        };
+        viteRuntimeFixture =
+          if system != "x86_64-linux" then
+            null
+          else
+            let
+              fixtureSource = mkBuckProductFromSource {
+                capabilities = buck2Capabilities;
+                inherit pnpmArchives;
+                nativeStorePackages = [
+                  {
+                    name = "node-pty";
+                    package = "${nodePtyNative}/node_modules/node-pty";
+                  }
+                ];
+                producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
+                repositoryRoot = ./.;
+                product = {
+                  name = "vite-runtime-closure-fixture";
+                  kind = "fixture";
+                  target = "//buck2/products:vite_runtime_fixture_module";
+                  outputName = "vite-runtime-fixture.mjs";
+                };
+                runtimeClosureTarget = "//buck2/products:vite_runtime_closure_fixture";
+              };
+            in
+            import ./nix/buck2-products/vite-runtime-fixture.nix {
+              inherit pkgs;
+              artifact = "${fixtureSource}/vite-runtime-fixture.mjs";
+              runtimeClosure = {
+                artifact = "${fixtureSource}/runtime-closure";
+                expectedDigest = "0341b46ca478ea0c96b499f1ed834bb644ab677319687edf1a60478fa014d551";
+              };
+              nativeNodePackages = [
+                {
+                  name = "@fixture/native-slot";
+                  package = pkgs.writeTextDir "index.js" "module.exports = 'native-slot-ok'\n";
+                }
+              ];
+            };
         buck2-go = import ./nix/go.nix { inherit pkgs; };
+        buck2-bun-compile-runtime = import ./nix/bun-compile-runtime.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         buck2-rust-toolchain-capability =
           import ./nix/workspace-tools/lib/buck2-rust-toolchain-capability.nix
@@ -105,7 +164,7 @@ rec {
               nixpkgsRevision = nixpkgs.rev;
             };
         capabilityPackages = {
-          inherit buck2 buck2-go;
+          inherit buck2 buck2-go buck2-bun-compile-runtime;
           inherit pnpm;
           bun = pkgs.bun;
           buck2-node = pkgs.writeShellScriptBin "node" ''
@@ -188,6 +247,7 @@ rec {
             dirty
             ;
           products = trackedBuck2Products.products;
+          nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
         cliPackages = buck2ProductCandidates // {
@@ -205,6 +265,7 @@ rec {
           cliPackages
           // providerCliPackages
           // nativeProductPackages
+          // buckCompiledProducts
           // capabilityPackages
           // {
             buck2-evidence = buck2Evidence;
@@ -224,7 +285,9 @@ rec {
             oxlint-npm = oxlintNpm;
             node-pty-native = nodePtyNative;
           }
-          // pkgs.lib.optionalAttrs (system == "x86_64-linux") { }
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            buck2-vite-runtime-closure-fixture = viteRuntimeFixture;
+          }
           // pkgs.lib.mapAttrs' (
             name: value:
             pkgs.lib.nameValuePair "buck-product-${pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-from-source" value
@@ -266,7 +329,13 @@ rec {
       devenvModules = {
         # Lightweight native-devenv + effect-utils capture, optionally composed
         # with the full Collector/Tempo/Grafana stack.
-        observability = import ./nix/devenv-modules/observability.nix;
+        observability =
+          args:
+          { pkgs, ... }@moduleArgs:
+          (import ./nix/devenv-modules/observability.nix (
+            { otelite = self.packages.${pkgs.stdenv.hostPlatform.system}.otelite; } // args
+          ))
+            moduleArgs;
         # OpenTelemetry observability stack (Collector + Tempo + Grafana)
         otel = import ./nix/devenv-modules/otel.nix;
         # Shared task modules (parameterized) - meant for reuse in other repos
@@ -312,9 +381,14 @@ rec {
       # Build a materialized standalone Buck root for a consumer checkout.
       lib.mkConsumerBuckRoot = args: import ./nix/buck2-products/consumer-root.nix args;
 
+      # Stage private package products (decision 0037) for pnpm and Buck consumers
+      # from the producer manifest's substituted store paths.
+      # Usage: effectUtils.lib.mkPrivateProductTarballs { inherit pkgs manifest schema; }
+      lib.mkPrivateProductTarballs = args: import ./nix/buck2-products/private-product-tarballs.nix args;
+
       # Rebuild a declared Buck product from source inside the Nix sandbox.
-      # For native products, importNative = true realizes and validates the
-      # resulting artifact without accepting a caller-supplied source product.
+      # For native and compiled-executable products, importNative = true realizes
+      # and validates the artifact without a caller-supplied source product.
       lib.mkBuckProductFromSource =
         {
           pkgs,
@@ -346,6 +420,7 @@ rec {
         args:
         import ./nix/workspace-tools/lib/buck2-product-candidates.nix (
           {
+            nativeProducts = self.packages.${args.pkgs.stdenv.hostPlatform.system};
             products = self.buckProducts.${args.pkgs.stdenv.hostPlatform.system}.products;
             typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
           }
@@ -377,6 +452,7 @@ rec {
         args:
         import ./nix/workspace-tools/lib/mk-cli-packages.nix (
           {
+            nativeProducts = self.packages.${args.pkgs.stdenv.hostPlatform.system};
             products = self.buckProducts.${args.pkgs.stdenv.hostPlatform.system}.products;
             typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
           }

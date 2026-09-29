@@ -60,4 +60,8 @@ revisited only if it merges and changes shape.
 
 Settled [decision 0002](../.decisions/0002-post-hoc-capture.md) (q10,
 BUCK.OBS.ADP capture side; wiring lives in
-[02](../../02-run-record/requirements.md) BUCK.OBS.REC-R02).
+[02](../../02-local-spool/requirements.md) BUCK.OBS.REC-R02).
+
+## Intent Impact
+
+The complete normal-outcome logs and lack of a usable native span sink support decision 0002's post-hoc, per-invocation capture contract and BUCK.OBS.REC-R02's explicit-log wiring.

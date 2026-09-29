@@ -114,6 +114,9 @@ ledger
   version                       contract version
   repos[]                       every composed member: name, remote, ledger path patterns
                                 (what counts as build machinery: include/exclude globs)
+    legacyMarkers               per consumer close: path globs and text markers
+                                (path glob, extended regex); exceptions pair an
+                                exact path with an excluded row that declares it
   rows[]                        one per (repo, operation, subject)
     id                          "<repo>/<operation>/<subject>"
     operation                   Semantic Operation (typecheck, dist, unit-test, lint, format,
@@ -124,6 +127,8 @@ ledger
     target                      Buck label once buck-owned or claimed
     dissolution                 for residual/legacy: the condition that retires the producer
     exclusion                   for excluded: why it is outside Buck by policy (unbounded, live)
+    excludedPaths               for excluded: exact repository-relative files
+                                exempted from close markers by that row
     transfer                    pr, merged revision, deleted producers (BUCK-R09)
     net                         added, deleted, measured-at revision, measuring command,
                                 amortization rationale when added > deleted (BUCK-R15)
@@ -143,12 +148,17 @@ Semantics the check enforces:
   requires `exclusion`.
 - `net` is recomputed from the merged revision using the repo's path patterns;
   a stored value that disagrees fails the check.
-- A repository closes when it has no `residual`, `legacy`, or `claimed` rows;
-  the platform hub records `hubReady` (revision) at that point, a milestone
-  rather than a close (BUCK-R15 as amended).
-  At every consumer close, that repository's row sum must be negative
-  (BUCK-R15). The check fails on any later change to a closed repository that
-  flips the sign.
+- A consumer closes when it has no `residual`, `legacy`, or `claimed` rows,
+  and its legacy builders, FOD hashes, and `mk-pnpm-cli` glue are deleted.
+  At the close revision the check scans tracked paths and text markers declared
+  for that consumer, plus legacy Nix builder paths derived from row evidence;
+  a match blocks close unless its exact path is declared by an excluded row
+  in the same repository and named in a marker exception. Missing marker
+  declarations and exceptions outside their excluded row paths block close.
+  The platform hub records `hubReady` (revision) when its residual list reaches
+  zero, a milestone rather than a close (BUCK-R15 as amended).
+  The consumer's row sum and amortization rationale remain recorded for
+  reporting; neither a negative sum nor a later sign change gates its close.
 - The last reconciliation's cumulative net must be lower than the previous
   one's (BUCK-R15 trajectory); the cumulative sum itself carries no sign test.
 - Rendering is deterministic: the same instance renders the same progress

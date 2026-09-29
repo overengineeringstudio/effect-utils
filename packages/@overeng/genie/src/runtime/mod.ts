@@ -55,9 +55,13 @@ export {
 } from './package-json/mod.ts'
 export {
   pnpmWorkspaceYaml,
+  pnpmProductTarballStagePath,
   pnpmSourceInputStagePath,
+  privateProductTarballFileName,
   projectPnpmSourceInputs,
+  projectPrivateProductTarballs,
   type PnpmSettings,
+  type PrivateProductManifestRow,
   type PnpmWorkspaceData,
 } from './pnpm-workspace/mod.ts'
 export * from './tsconfig-json/mod.ts'

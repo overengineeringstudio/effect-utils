@@ -1,9 +1,8 @@
 # Run Identity Requirements
 
-This subsystem owns pipeline-run trace identity and the correlation between a
-caller's trace context and Buck commands: the command span, the wrapper trace
-id exported as `BUCK_WRAPPER_UUID`, the per-command sidecar line, and span-id
-salting. It refines BUCK.OBS-R03 and BUCK.OBS-R07 of the
+This subsystem owns deterministic job-trace identity, task and Buck command
+nesting, the attempt-close pipeline link trace, and caller correlation.
+It refines BUCK.OBS-R03 and BUCK.OBS-R07 of the
 [07-observability requirements](../requirements.md).
 
 ## Assumptions
@@ -43,9 +42,9 @@ salting. It refines BUCK.OBS-R03 and BUCK.OBS-R07 of the
   context is validated (`^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$`, with
   nonzero trace and parent span ids) before export; invalid or empty values
   degrade to _unset_ — never to a malformed export.
-- **BUCK.OBS.ID-R04 Sidecar line:** Each Buck command appends one line
-  `<uuid> <traceparent-of-command-span>` to the run record's spool; the
-  ingester uses it to parent `buck2.command` under the caller.
+- **BUCK.OBS.ID-R04 Sidecar line:** Each Buck command records
+  `<uuid> <traceparent-of-command-span>` alongside its local event log; the
+  local adapter uses it to parent `buck2.command` under the caller.
 - **BUCK.OBS.ID-R05 Salted span ids:** Exported OTLP span ids are salted
   deterministically per command (a function of log identity and Buck span
   id), making concurrent and repeated commands collision-free and re-pushes
@@ -55,38 +54,36 @@ salting. It refines BUCK.OBS-R03 and BUCK.OBS-R07 of the
   their own command span, wrapper trace id, sidecar line, and salt — one
   caller trace may hold sibling command roots.
 - **BUCK.OBS.ID-R07 No context, no coupling:** With no valid OTEL context the
-  wrapper exports nothing; Buck mints its own trace id and the adapter emits
-  an independent trace (with a root link when only the task traceparent is
-  known).
-- **BUCK.OBS.ID-R08 One trace per pipeline run:** A local top-level verb or CI
-  attempt has one deterministic seeded trace containing its run root, distinct
-  matrix-qualified job spans, task spans, and Buck command spans. Attempts
-  have distinct traces with a link to the prior attempt's root.
+  wrapper exports nothing; Buck mints its own trace id and the local adapter
+  emits an independent command trace. A valid caller context keeps Buck's
+  critical view inside the caller's job trace.
+- **BUCK.OBS.ID-R08 One trace per job:** Each CI job has one deterministic
+  trace with its root, task-run spans, Buck command spans, and critical views.
+  Matrix legs have distinct identities; repeated tasks stay separate spans
+  within their job trace. A local task run is a job-equivalent trace.
 - **BUCK.OBS.ID-R09 Provider-neutral run identity:** `PIPELINE_RUN_ID` is
   `ci/<provider>/<repo>/<run>/<attempt>` in CI or `local/<uuid>` locally.
-  The entrypoint mints it only when absent, and deriving trace and root span
-  ids is deterministic, domain-separated, unambiguously framed, and
-  W3C-nonzero. An already supplied identity is preserved.
-- **BUCK.OBS.ID-R10 Exactly one completed run root:** Only the run identity
-  owner writes its root: the local entrypoint on completion (including
-  best-effort INT/TERM), or the CI ingester after an attempt-close roster
-  settles, with a six-hour last-upload `incomplete` timeout if the close
-  record is absent or listed jobs remain unaccounted for. Ingestion
-  reconstructs a missing local root after kill/crash and synthesizes error
-  spans for missing CI jobs; no first-job provisional or duplicate root is
-  written.
-- **BUCK.OBS.ID-R11 Context propagation and caller links:** The entrypoints
+  The entrypoint mints it only when absent; producer, attempt finalizer,
+  and reporter derive the same job trace/root IDs from a canonical framed
+  job identifier and named matrix dimensions with domain separation and
+  a W3C-nonzero guard. An already supplied identity is preserved.
+- **BUCK.OBS.ID-R10 Attempt-close link trace:** At attempt close, emit one
+  pipeline-run trace linking the deterministically derived identities of
+  jobs that started in this attempt. Links are unverified locators, not
+  assertions of delivery; an unstarted job remains absent, never a
+  fabricated error span. The finalizer does not wait for a server-side
+  evidence roster or completion timeout.
+- **BUCK.OBS.ID-R11 Context propagation and caller links:** Entry points
   seed W3C `TRACEPARENT`, prevent stale `OTEL_TASK_TRACEPARENT` from
-  overriding it, and replace an outer caller trace instead of nesting under
-  it. The new root always links back to the outer span; a forward link is
-  written only by an outer-span owner that can record it before completion.
-  Generic task instrumentation must join the seeded run trace.
-- **BUCK.OBS.ID-R12 Bounded trace size:** Per-job traces linked through the
-  run index remain the fallback when a whole-run trace exceeds the backend's
-  usable size; a fallback does not silently split one run across random
-  per-task traces.
+  overriding it, and link a new trace to the outer caller rather than
+  nesting across trace boundaries. A forward link requires an outer-span
+  owner able to record it before completion.
+- **BUCK.OBS.ID-R12 Stable job lookup:** Every job root carries
+  `cicd.pipeline.run.id`, so a run can be found from Tempo without a run
+  index or resolver; a pipeline link trace identifies the job traces at
+  attempt close.
 - **BUCK.OBS.ID-R13 Consistent W3C validation:** The seeded entrypoint,
   `otel-span run`, and buck2 preparation reject W3C-invalid context equally
-  (wrong version/case/width or all-zero trace or parent span id); an invalid
-  context cannot split the task and its Buck view across traces. Valid
-  trace flags are preserved through propagation.
+  (wrong version/case/width or all-zero trace or parent span id); invalid
+  context cannot split a task and its Buck view. Valid flags survive
+  propagation.

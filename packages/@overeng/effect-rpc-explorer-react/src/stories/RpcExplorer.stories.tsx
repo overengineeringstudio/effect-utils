@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import * as stylex from '@stylexjs/stylex'
 import * as React from 'react'
 import { Button } from 'react-aria-components'
-import { expect, userEvent, within } from 'storybook/test'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 
 import { spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
@@ -37,7 +37,7 @@ const denseClient = makeFixtureClient(denseSnapshot)
 const clearFailureBase = makeFixtureClient(lifecycleSnapshot)
 const clearFailureClient: ExplorerClient = {
   getSnapshot: () => clearFailureBase.getSnapshot(),
-  watch: () => clearFailureBase.watch(),
+  watch: (cursor) => clearFailureBase.watch(cursor),
   clearHistory: async () => Promise.reject(new Error('Fixture clear failed')),
 }
 
@@ -435,6 +435,70 @@ export const LiveCoreProtocol: Story = {
     await expect(
       selected ?? (await canvas.findByRole('article', { name: /Fixture\.ApplicationRpc/ })),
     ).toHaveTextContent('Fixture.ApplicationRpc')
+  },
+}
+
+const RuntimeDescriptorsHarness = (): React.ReactNode => {
+  const [fixture] = React.useState(makeLiveCoreFixture)
+  return (
+    <>
+      <div>
+        <Button onPress={fixture.mountRuntimeProvider}>Mount runtime provider</Button>
+        <Button onPress={fixture.unmountRuntimeProvider}>Unmount runtime provider</Button>
+      </div>
+      <RpcExplorer client={fixture.client} presentation={{ nowMillis: () => fixtureNow }} />
+    </>
+  )
+}
+
+const descriptorOptionNames = async (canvasElement: HTMLElement): Promise<Array<string>> => {
+  const canvas = within(canvasElement)
+  if (canvas.queryByRole('button', { name: /^All descriptors Descriptor/ }) === null)
+    await userEvent.click(canvas.getByRole('button', { name: /^Filters and actions/ }))
+  await userEvent.click(canvas.getByRole('button', { name: /^All descriptors Descriptor/ }))
+  // The Select popover names its listbox after the trigger, so anchor on the
+  // popover-only "All descriptors" option instead of an accessible name.
+  const allOption = await within(document.body).findByRole('option', { name: 'All descriptors' })
+  const listbox = allOption.closest<HTMLElement>('[role="listbox"]')!
+  const names = within(listbox)
+    .getAllByRole('option')
+    .map((option) => option.textContent ?? '')
+  await userEvent.keyboard('{Escape}')
+  return names
+}
+
+/**
+ * A group registered after construction reaches a connected viewer as a fresh
+ * Snapshot: its records resolve to a descriptor and the descriptor filter lists
+ * it; releasing the registration removes it again.
+ */
+export const LiveRuntimeDescriptors: Story = {
+  render: () => <RuntimeDescriptorsHarness />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await canvas.findByRole('img', { name: 'Inspector connected' })
+    expect(await descriptorOptionNames(canvasElement)).not.toContainEqual(
+      expect.stringMatching(/Fixture\.RuntimeProviderRpc/),
+    )
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Mount runtime provider' }))
+    await expect(canvas.findByText(/2 active · 0 done/)).resolves.toBeVisible()
+    await waitFor(() =>
+      expect(canvas.getAllByRole('option').map((option) => option.textContent)).toContainEqual(
+        expect.stringMatching(/Fixture\.RuntimeProviderRpc/),
+      ),
+    )
+    expect(canvas.queryByText('Unknown descriptor')).toBeNull()
+    expect(await descriptorOptionNames(canvasElement)).toContainEqual(
+      expect.stringMatching(/Fixture\.RuntimeProviderRpc/),
+    )
+
+    // The retained record outlives its released descriptor and says so honestly.
+    await userEvent.click(canvas.getByRole('button', { name: 'Unmount runtime provider' }))
+    await expect(canvas.findByText('Unknown descriptor')).resolves.toBeVisible()
+    expect(await descriptorOptionNames(canvasElement)).not.toContainEqual(
+      expect.stringMatching(/Fixture\.RuntimeProviderRpc/),
+    )
   },
 }
 

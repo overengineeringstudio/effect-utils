@@ -48,3 +48,12 @@ PR page itself needed the subsequent variants review; see
 The [trace access spec](../spec.md) makes the index-backed resolver and
 versioned JSON the canonical paths, with pending-by-ID semantics; the
 [page variants](./2026-09-26-pr-page-variants.md) settle the A/B display.
+
+## Intent Impact
+
+Deterministic by-ID links and delayed search visibility still support
+[BUCK.OBS.ACCESS-R05](../requirements.md). q63 supersedes the index-backed
+resolver, PR page and versioned JSON as the report source: the CI-owned
+sticky comment uses Jobs API facts for job timings and baselines
+([R01–R04](../requirements.md)), without fleet reads or ingester-written
+comments.

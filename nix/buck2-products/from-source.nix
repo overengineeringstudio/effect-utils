@@ -9,7 +9,8 @@
   # Offline crate supply for Rust products (`mkBuck2CargoArchives`); null
   # when the product has no third-party crates.
   cargoArchives ? null,
-  # Native import is constructed here from our own Buck derivation.
+  # Native import is constructed here from our own Buck derivation
+  # (`native` and `compiled-executable` products).
   importNative ? false,
   expectedPlatform ? null,
   runtimeKind ? null,
@@ -18,11 +19,18 @@
   repositoryRoot ? ../..,
   repositorySource ? null,
   expectedSha256 ? null,
+  # Optional Buck tree containing the declared pnpm runtime importer closure.
+  runtimeClosureTarget ? null,
+  # Nix-built native packages used by lockfile store entries (not view links).
+  nativeStorePackages ? [ ],
 }:
 
 let
   lib = pkgs.lib;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
+  # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
+  cliBuildStamp = product.cliBuildStamp or null;
   source =
     if repositorySource == null then
       lib.fileset.toSource {
@@ -52,7 +60,7 @@ let
             (repositoryRoot + "/buck2")
             (repositoryRoot + "/packages/@overeng")
           ]
-          ++ lib.optionals (product.kind == "native") [
+          ++ lib.optionals (cargoWorkspaceRoot != null) [
             (repositoryRoot + "/${cargoWorkspaceRoot}")
           ]
         );
@@ -64,33 +72,52 @@ let
   productName = product.name;
   outputName = product.outputName;
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
-  # Descriptor-bearing products: JavaScript product-v2 and native build_product.
-  hasDescriptor = builtins.elem product.kind [
-    "javascript"
+  # `build_product` kinds: a Rust `native` executable or a Bun
+  # `compiled-executable` (`bun build --compile` of a CLI module).
+  isBuildProduct = builtins.elem product.kind [
     "native"
+    "compiled-executable"
   ];
+  # Descriptor-bearing products: JavaScript product-v2 and build_product.
+  hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+    lib.concatMapStringsSep "" (
+      package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
+    ) nativeStorePackages
+  }${lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"}${
     lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
+  }${
+    lib.optionalString (
+      cliBuildStamp != null
+    ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"
   } --local-only --no-remote-cache --console simple --show-simple-output";
 in
 assert lib.assertMsg (
   builtins.match "[0-9a-f]{40}" producerCommit != null
 ) "buck2-products: producerCommit must be a full lowercase Git commit";
 assert lib.assertMsg (
-  product.kind != "native" || outputName == "artifact.tar"
-) "buck2-products: native products must name the build_product payload artifact.tar";
+  !isBuildProduct || outputName == "artifact.tar"
+) "buck2-products: ${product.kind} products must name the build_product payload artifact.tar";
 assert lib.assertMsg (
-  product.kind != "native"
+  cargoWorkspaceRoot == null
   || (
-    cargoWorkspaceRoot != null
+    product.kind == "native"
     && builtins.match "[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*" cargoWorkspaceRoot != null
     && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" cargoWorkspaceRoot)
   )
-) "buck2-products: native products must declare a relative cargoWorkspaceRoot";
+) "buck2-products: cargoWorkspaceRoot must be a safe relative path on a native product";
 assert lib.assertMsg (
-  !importNative || product.kind == "native"
-) "buck2-products: importNative requires a native product";
+  !importNative || isBuildProduct
+) "buck2-products: importNative requires a native or compiled-executable product";
+assert lib.assertMsg (
+  cliBuildStamp == null
+  || (
+    builtins.isString cliBuildStamp
+    && cliBuildStamp != ""
+    && builtins.match ".*[\n\r].*" cliBuildStamp == null
+  )
+) "buck2-products: cliBuildStamp must be a non-empty single-line string";
 let
   sourceProduct = pkgs.stdenv.mkDerivation {
     pname = "${safeName}-buck2-from-source";
@@ -114,6 +141,19 @@ let
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
+      ${lib.optionalString (cargoWorkspaceRoot != null) ''
+        # Buck's bundled Rust prelude emits /usr/bin/env bash scripts, which
+        # cannot run inside the Nix sandbox. Patch only its extracted copy.
+        ${buck2}/bin/buck2 ${buckGlobalArgs} expand-external-cell prelude
+        substituteInPlace prelude/utils/cmd_script.bzl prelude/rust/cargo_buildscript.bzl \
+          --replace-fail '#!/usr/bin/env bash' '#!${pkgs.bash}/bin/bash'
+        ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+          # Build scripts link against the portable FHS loader, absent in Nix.
+          substituteInPlace prelude/rust/tools/buildscript_run.py \
+            --replace-fail '            os.path.abspath(buildscript),' \
+            '            ["${pkgs.stdenv.cc.bintools.dynamicLinker}", "--library-path", "${pkgs.stdenv.cc.cc.lib}/lib", os.path.abspath(buildscript)],'
+        ''}
+      ''}
 
       artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg target})"
       test -f "$artifact"
@@ -122,6 +162,11 @@ let
         descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg "${target}[descriptor]"})"
         test -f "$descriptor"
         jq -cS . "$descriptor" > descriptor.json
+      ''}
+      ${lib.optionalString (runtimeClosureTarget != null) ''
+        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg runtimeClosureTarget})"
+        test -f "$runtime_closure/descriptor.json"
+        cp -R "$runtime_closure" runtime-closure
       ''}
       actual_sha256="$(sha256sum ${lib.escapeShellArg outputName} | cut -d' ' -f1)"
       ${lib.optionalString (expectedSha256 != null) ''
@@ -145,6 +190,9 @@ let
       ${lib.optionalString hasDescriptor ''
         cp descriptor.json "$out/descriptor.json"
       ''}
+      ${lib.optionalString (runtimeClosureTarget != null) ''
+        cp -R runtime-closure "$out/runtime-closure"
+      ''}
       runHook postInstall
     '';
 
@@ -152,11 +200,13 @@ let
       inherit
         capabilities
         cargoArchives
+        nativeStorePackages
         pnpmArchives
         producerCommit
         repositorySource
         source
         target
+        runtimeClosureTarget
         ;
       artifactName = outputName;
       inherit productName;

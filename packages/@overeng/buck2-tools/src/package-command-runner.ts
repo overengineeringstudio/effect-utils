@@ -15,7 +15,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 
 import type { BunPlugin } from 'bun'
 
-import { canonicalizePath } from './real-path.ts'
+import { canonicalizePath, realpathThroughName } from './real-path.ts'
 import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
 
 // This module is a pipeline: each stage's public entry point sits next to the
@@ -31,10 +31,12 @@ export {
   bundleImportSpecifiers,
   createEntryOverridePlugin,
   normalizePortableCommonJsGlobals,
+  parseCompileExecutableCommand,
   parseProductDescriptorCommand,
   planPackageLaunch,
   projectProductDescriptor,
   readPlatformGatedManifest,
+  runCompileExecutable,
   verifyExternalSurface,
 }
 
@@ -289,6 +291,8 @@ type FarmMapping = {
 }
 
 type Farm = {
+  /** Realpath of `root`; symlink realpaths are compared against this form. */
+  readonly canonicalRoot: string
   readonly gated: ReadonlySet<string>
   readonly mappings: FarmMapping[]
   readonly root: string
@@ -336,6 +340,14 @@ const gatedPackageName = ({
 }
 
 const farmPathFor = ({ farm, real }: { readonly farm: Farm; readonly real: string }): string => {
+  // A target inside the farm is already one of the farm's own images, so it
+  // keeps its place. Both sides are compared canonically: where the scratch
+  // directory is reached through a symlink (Darwin's `/var` ->
+  // `/private/var`), `root` and a canonical path beneath it spell the same
+  // directory differently.
+  if (real === farm.canonicalRoot || real.startsWith(`${farm.canonicalRoot}${sep}`) === true) {
+    return join(farm.root, relative(farm.canonicalRoot, real))
+  }
   let best: FarmMapping | undefined
   for (const mapping of farm.mappings) {
     if (real !== mapping.realRoot && real.startsWith(`${mapping.realRoot}${sep}`) === false)
@@ -369,7 +381,9 @@ const imageSymlink = ({
 }): void => {
   let real: string
   try {
-    real = realpathSync(source)
+    // Never plain `realpathSync`: on Darwin it may name a file through any of
+    // its hard links, including the farm image this assembly just created.
+    real = realpathThroughName(source)
   } catch (error) {
     fail(`package tree symlink is dangling: ${source} (${String(error)})`)
   }
@@ -449,6 +463,7 @@ const assemblePortableFarm = ({
 }): string => {
   const farmRoot = resolve(root)
   rmSync(farmRoot, { force: true, recursive: true })
+  mkdirSync(farmRoot, { recursive: true })
   const treeRoot: FarmMapping = {
     farmRoot,
     materialized: false,
@@ -456,6 +471,7 @@ const assemblePortableFarm = ({
   }
   const seen = new Set<string>()
   const farm: Farm = {
+    canonicalRoot: realpathSync(farmRoot),
     gated: new Set(gatedPackages),
     mappings: [treeRoot],
     root: farmRoot,
@@ -1007,7 +1023,7 @@ const runBundle = async (command: PackageCommand): Promise<void> => {
     packageTree,
     root: join(scratch, 'portable-farm'),
   })
-  const entry = realpathSync(join(farm, command.entrypoint))
+  const entry = realpathThroughName(join(farm, command.entrypoint))
   const external = [...new Set([...command.external, ...gatedManifest.packages])].toSorted(
     (left, right) => (left < right ? -1 : left > right ? 1 : 0),
   )
@@ -1125,12 +1141,102 @@ const runProductDescriptor = async (command: ProductDescriptorCommand): Promise<
   )
 }
 
+/** One `bun build --compile` action emitted by `bun_compiled_product_executable`. */
+export type CompileExecutableCommand = {
+  /** Official Bun release embedded as the executable's runtime. */
+  readonly compileRuntime: string
+  readonly module: string
+  readonly moduleDescriptor: string
+  readonly output: string
+  /** Bun `--target`, e.g. `bun-linux-x64`; must name the compile runtime's platform. */
+  readonly target: string
+}
+
+const COMPILE_EXECUTABLE_FLAGS: Readonly<Record<string, keyof CompileExecutableCommand>> = {
+  '--compile-runtime': 'compileRuntime',
+  '--module': 'module',
+  '--module-descriptor': 'moduleDescriptor',
+  '--output': 'output',
+  '--target': 'target',
+}
+
+const parseCompileExecutableCommand = (argv: readonly string[]): CompileExecutableCommand => {
+  const values: Partial<Record<keyof CompileExecutableCommand, string>> = {}
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index] ?? '<missing>'
+    const field = COMPILE_EXECUTABLE_FLAGS[flag] ?? fail(`unknown argument: ${flag}`)
+    if (values[field] !== undefined) fail(`duplicate argument: ${flag}`)
+    values[field] = argv[index + 1] ?? fail(`missing value for ${flag}`)
+  }
+  const required = (field: keyof CompileExecutableCommand): string =>
+    values[field] ?? fail(`compile-executable ${field} is missing`)
+  const target = required('target')
+  if (/^bun-(linux|darwin)-(x64|arm64)$/.test(target) === false) {
+    fail(`unsupported compile target: ${target}`)
+  }
+  return {
+    compileRuntime: required('compileRuntime'),
+    module: required('module'),
+    moduleDescriptor: required('moduleDescriptor'),
+    output: required('output'),
+    target,
+  }
+}
+
+/**
+ * Compiles one portable CLI module into a native executable.
+ *
+ * A compiled executable has no module resolver at runtime, so only a CLI
+ * module whose every import was bundled is admissible; external capabilities
+ * stay process-level (spawned through PATH) and are unaffected. Bun records
+ * each bundled file as a `// <path>` comment relative to its working
+ * directory, so the compile runs beside the module to keep build-root paths
+ * out of the executable.
+ */
+const runCompileExecutable = async (command: CompileExecutableCommand): Promise<void> => {
+  const module = JSON.parse(readFileSync(resolve(command.moduleDescriptor), 'utf8')) as Readonly<
+    Record<string, unknown>
+  >
+  if (module['schema'] !== 'effect-utils/javascript-module/v2') {
+    fail(`unsupported module descriptor schema: ${String(module['schema'])}`)
+  }
+  if (module['productKind'] !== 'cli') {
+    fail(`a compiled executable requires a cli module, got ${String(module['productKind'])}`)
+  }
+  const externalModules = module['externalModules']
+  if (Array.isArray(externalModules) === false || externalModules.length > 0) {
+    fail(`a compiled executable cannot load external modules: ${JSON.stringify(externalModules)}`)
+  }
+  const modulePath = resolve(command.module)
+  const output = resolve(command.output)
+  await mkdir(dirname(output), { recursive: true })
+  const compile = Bun.spawn(
+    [
+      process.execPath,
+      'build',
+      `./${basename(modulePath)}`,
+      '--compile',
+      '--target',
+      command.target,
+      '--compile-executable-path',
+      resolve(command.compileRuntime),
+      '--outfile',
+      output,
+    ],
+    { cwd: dirname(modulePath), stdout: 'inherit', stderr: 'inherit' },
+  )
+  const exitCode = await compile.exited
+  if (exitCode !== 0) fail(`bun build --compile exited ${exitCode}`)
+}
+
 if (import.meta.main) {
   const argv = Bun.argv.slice(2)
   const main =
     argv[0] === 'product-descriptor'
       ? runProductDescriptor(parseProductDescriptorCommand(argv.slice(1)))
-      : run(parsePackageCommand(argv))
+      : argv[0] === 'compile-executable'
+        ? runCompileExecutable(parseCompileExecutableCommand(argv.slice(1)))
+        : run(parsePackageCommand(argv))
   main.catch((error: unknown) => {
     console.error(error instanceof Error ? (error.stack ?? error.message) : String(error))
     process.exitCode = 1

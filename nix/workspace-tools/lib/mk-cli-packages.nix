@@ -6,6 +6,7 @@
 {
   pkgs,
   products,
+  nativeProducts,
   typeProofCompilerBin,
   oxfmtPkg ? pkgs.oxfmt,
   gitRev ? "unknown",
@@ -17,6 +18,7 @@ let
     inherit
       pkgs
       products
+      nativeProducts
       typeProofCompilerBin
       oxfmtPkg
       gitRev

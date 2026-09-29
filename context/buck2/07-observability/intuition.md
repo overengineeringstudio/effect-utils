@@ -10,26 +10,28 @@ critical path. Nothing here watches Buck from outside. The lane's whole job is
 to move that existing truth to where it can be queried — without changing what
 a build means.
 
-The mental model is a pipeline over one portable unit:
+The mental model is a local conversion followed by one export burst:
 
 ```text
-identity:  caller task -> command span -> wrapper trace id (Buck's BUCK_WRAPPER_UUID)
-capture:   buck2 --event-log -> native evidence + span spool = run record
-deliver:   seal -> upload (content-addressed, provider-neutral)
-derive:    event-log adapter -> span model -> {full view, critical view} + bounded metrics
-store:     Tempo 30 d (traces) · Mimir (trends) · archive ~1 y (raw records)
+identity:  caller task -> command span -> wrapper trace id (BUCK_WRAPPER_UUID)
+capture:   Buck event log + caller spans -> local retry spool
+derive:    event-log adapter -> {full view, critical view} + bounded metrics
+deliver:   job-end OTLP -> dev3 collector -> Tempo 30 d · Mimir trends
+report:    Jobs API timings -> PR table + gantt + p50 delta -> Grafana trace links
 ```
 
-Three invariants hold at every stage. First, telemetry is derived, never
-authoritative: delete Tempo, delete the archive, and every trace regenerates
-from archived run records; a broken pipeline never rewrites a build result.
-Second, CI is unspecial: the laptop and the CI runner run the same commands
-through the same code and differ only in environment variables — which is why
-delivery is "upload a sealed record" rather than any CI-provider artifact API.
-Third, volume is the constraint, not overhead: capture costs single-digit
-milliseconds, but a cold CI run produces ~67 k spans, so what lands in trace
-storage is a bounded choice (two views, one capped) while the raw record keeps
-everything.
+Telemetry is derived, never authoritative. Native Buck evidence remains the
+execution truth; views can be regenerated only while their local spool exists.
+Tempo keeps 30 days of traces, with no raw archive behind it. A failed export
+leaves the Buck result unchanged and retains the local spool for retry.
+
+CI and a laptop use the same conversion and export path. CI joins the tailnet
+after build work, immediately before sending to the collector. Same-repo PR
+and main jobs export; forks only spool. Each job exports its own trace in one
+burst so a mid-run Grafana read does not expose the shared-trace spaced-burst
+loss; the attempt-close trace links those job traces. The PR comment gets its
+durations from the Jobs API rather than giving a CI runner access to all fleet
+traces.
 
 Two identity facts drive the design. Buck span ids are per-command counters
 that always include 0 — every pair of commands collides — so exported span ids

@@ -64,7 +64,8 @@ export const standardCIEnv = ({ trustTier }: { readonly trustTier: CiTrustTier }
   ({
     FORCE_SETUP: '1',
     CI: 'true',
-    BUCK2_NO_REMOTE_CACHE: trustTier === 'private' ? '0' : '1',
+    BUCK2_NO_REMOTE_CACHE: '0',
+    BUCK2_PUBLIC_CACHE_READ_ONLY: trustTier === 'public' ? '1' : '0',
   }) as const
 
 /**
@@ -370,7 +371,7 @@ export const runDevenvTasksBeforeWithOptions = (
 ) =>
   withCiSourceRoot(
     withAppendedNixConfig({
-      command: `DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${devenvBinRef} tasks run ${args.join(' ')}`,
+      command: `DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false \${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }${devenvBinRef} tasks run ${args.join(' ')}`,
       opts,
     }),
   )

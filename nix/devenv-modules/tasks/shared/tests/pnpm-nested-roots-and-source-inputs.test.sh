@@ -3,17 +3,14 @@ set -euo pipefail
 
 # Two pnpm-12 behaviors this repository depends on, pinned as contracts against
 # the repository's own pnpm (nix/pnpm.nix) and the shared helpers that encode
-# them. Both were silent under pnpm 11 and both are load-bearing for composed
-# workspaces, so each is proven here against real pnpm rather than asserted.
+# them.
 #
-#   1. WORKSPACE BOUNDARY. pnpm discovers the workspace by walking UP from the
-#      install root. A nested install root without its own pnpm-workspace.yaml
-#      is adopted by the nearest ancestor workspace: the ancestor's lockfile is
-#      written instead of the nested one and the nested dependency graph is
-#      resolved against the wrong root, after which a frozen install fails with
-#      ERR_PNPM_NO_LOCKFILE. `--ignore-workspace` does NOT prevent this.
-#      Covered: the raw behavior (so the test fails if pnpm ever changes it),
-#      and pnpmInstallPolicy.nestedWorkspaceBoundaryShell in both modes.
+#   1. WORKSPACE BOUNDARY. pnpm 12.7 keeps an `--ignore-workspace` install in a
+#      nested root independent from an ancestor workspace. The shared boundary
+#      helper still fails closed for staged installs, where an explicit
+#      pnpm-workspace.yaml is part of the builder contract, and can create an
+#      ephemeral boundary for materialization roots whose directory is itself a
+#      build artifact.
 #   2. SOURCE-INPUT SPECIFIER RELATIVITY. pnpm resolves a `file:` specifier
 #      relative to the manifest that declares it and records that
 #      importer-relative form in the lockfile. A root-relative staged-source
@@ -95,16 +92,20 @@ make_parent_workspace() {
   printf '{"name":"@acme/shared","version":"1.0.0"}\n' > "$root/nested/vendor/shared/package.json"
 }
 
-# (1a) RAW BEHAVIOR: without its own boundary the nested root is hijacked.
+# (1a) RAW BEHAVIOR: pnpm 12.7 keeps an ignored nested install independent.
 raw="$tmpdir/raw"
 mkdir -p "$raw/home"
 make_parent_workspace "$raw"
-pnpm_run "$raw/nested" "$raw" install --ignore-workspace --no-frozen-lockfile || true
-if [ ! -f "$raw/nested/pnpm-lock.yaml" ] && [ -f "$raw/pnpm-lock.yaml" ]; then
-  ok
-else
-  fail "pnpm $pnpm_version no longer hijacks a boundary-less nested root; this test's premise (and the shared boundary helper) needs revisiting"
-fi
+pnpm_run "$raw/nested" "$raw" install --ignore-workspace --no-frozen-lockfile \
+  || fail "pnpm $pnpm_version nested --ignore-workspace install failed: $(cat "$raw/last-stderr")"
+[ -f "$raw/nested/pnpm-lock.yaml" ] \
+  && ok || fail "pnpm $pnpm_version must write the nested lockfile under --ignore-workspace"
+[ ! -f "$raw/pnpm-lock.yaml" ] \
+  && ok || fail "pnpm $pnpm_version must not write the ancestor lockfile under --ignore-workspace"
+raw_resolved_version="$("$NODE" -e 'process.stdout.write(require(process.argv[1]).version)' \
+  "$raw/nested/node_modules/@acme/shared/package.json" 2>/dev/null || echo missing)"
+[ "$raw_resolved_version" = "1.0.0" ] \
+  && ok || fail "pnpm $pnpm_version must resolve the nested root's vendored dependency, got '$raw_resolved_version'"
 
 # (1b) WITH the boundary the nested root owns its install.
 scoped="$tmpdir/scoped"

@@ -19,7 +19,7 @@ cat > "$fixture" <<'EOF'
 EOF
 
 if DEVENV_TASKS_JSON="$fixture" DEVENV_TASK_GRAPH_DEPENDENCIES_ONLY=1 \
-  "$NODE_BIN" "$ROOT/scripts/devenv-task-graph-check.mjs" "$ROOT"
+  "$NODE_BIN" "$ROOT/scripts/devenv-task-graph-check.mjs" "$ROOT" >/dev/null 2>&1
 then
   echo "FAIL: task graph checker accepted dependencies on undefined tasks" >&2
   exit 1
