@@ -146,4 +146,70 @@ BUCK
   printf '%s\n' "$providers" | grep -F 'bun-compile-runtime=' >/dev/null
 )
 
+# Build a native product from the same materialized consumer root. Its prelude
+# is a local cell, unlike effect-utils' own bundled external prelude.
+mkdir -p "$work/rust-fixture"
+cat > "$work/rust-fixture/main.rs" <<'RUST'
+fn main() {
+    println!("consumer-root-rust");
+}
+RUST
+cat > "$work/rust-fixture/BUCK" <<'BUCK'
+load("@prelude//:prelude.bzl", "native")
+load("@rules//buck2/products:defs.bzl", "build_product")
+load("@rules//buck2/platforms:defs.bzl", "host_platform_label")
+load("@rules//buck2/rust:defs.bzl", "rust_product_executable")
+
+native.rust_binary(
+    name = "binary",
+    crate = "consumer_root_rust",
+    crate_root = "main.rs",
+    srcs = ["main.rs"],
+    edition = "2021",
+)
+
+rust_product_executable(
+    name = "executable",
+    binary = ":binary",
+    recipe = "cargo-workspace:consumer-root-rust@0.1.0",
+    target_platform = host_platform_label(cell = "rules"),
+)
+
+build_product(
+    name = "product",
+    entrypoint = "bin/consumer-root-rust",
+    executable = ":executable",
+    product_name = "consumer-root-rust",
+    target_platform = host_platform_label(cell = "rules"),
+)
+BUCK
+export BUCK2_CONSUMER_FIXTURE="$work"
+product="$(nix build --impure --no-link --print-out-paths --expr '
+  let
+    repo = builtins.toPath (builtins.getEnv "BUCK2_RULES_REPO");
+    source = builtins.path {
+      path = builtins.toPath (builtins.getEnv "BUCK2_CONSUMER_FIXTURE");
+      name = "consumer-root-native-fixture";
+    };
+    flake = builtins.getFlake (toString repo);
+    system = builtins.currentSystem;
+    pkgs = import flake.inputs.nixpkgs { inherit system; };
+  in (flake.lib.mkBuckProductFromSource { inherit pkgs; }) {
+    repositorySource = source;
+    capabilities = flake.packages.${system}.buck2-capabilities;
+    pnpmArchives = flake.packages.${system}.buck2-pnpm-archives;
+    producerCommit = "0000000000000000000000000000000000000000";
+    product = {
+      name = "consumer-root-rust";
+      target = "//rust-fixture:product";
+      outputName = "artifact.tar";
+      kind = "native";
+      cargoWorkspaceRoot = "rust-fixture";
+    };
+  }
+')"
+tar -xOf "$product/artifact.tar" bin/consumer-root-rust > "$work/consumer-root-rust"
+chmod +x "$work/consumer-root-rust"
+[[ "$("$work/consumer-root-rust")" == "consumer-root-rust" ]]
+
 echo 'buck2 consumer root contract passed'
