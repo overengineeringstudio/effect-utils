@@ -64,7 +64,7 @@ pkgs.writeShellScript "buck2-artifact-scan" ''
     done < <(${pkgs.findutils}/bin/find "$root" -mindepth 1 -print0)
 
     local leaked grep_status
-    if leaked="$(${pkgs.gnugrep}/bin/grep -a -R -l -F -- '${builtins.storeDir}/' "$root")"; then
+    if leaked="$(${pkgs.gnugrep}/bin/grep -a -R -l -E -- '${builtins.storeDir}/[0-9abcdfghijklmnpqrsvwxyz]{32}-' "$root")"; then
       leaked="''${leaked%%$'\n'*}"
     else
       grep_status=$?

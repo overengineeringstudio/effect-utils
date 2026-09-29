@@ -536,13 +536,19 @@ scan_expr="let
 in import (repo + \"/nix/workspace-tools/lib/buck2-artifact-scan.nix\") { inherit pkgs; }"
 scan_out="$(build_expr "$scan_expr")"
 
+store_prefix_root="$(mktemp -d)"
+printf '%s\n' 'STORE_PREFIX=/nix/store/' \
+  >"$store_prefix_root/store-prefix"
+"$scan_out" tree "$store_prefix_root"
+rm -rf "$store_prefix_root"
+
 store_reference_root="$(mktemp -d)"
 tar --extract --file "$dynamic_export/artifact.tar" --directory "$store_reference_root"
 chmod u+w "$store_reference_root/bin/fixture-tool"
 printf '%s' '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-host-leak' \
   >>"$store_reference_root/bin/fixture-tool"
 expect_command_failure \
-  "dynamic payload store reference" \
+  "realized store path in dynamic payload" \
   "forbidden Nix store reference" \
   "$scan_out" tree "$store_reference_root"
 rm -rf "$store_reference_root"
