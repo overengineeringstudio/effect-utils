@@ -9,6 +9,13 @@
 #     })
 #   ];
 #
+# If a member path-depends on a Buck-projected crate in another Cargo workspace,
+# declare its repository-relative Cargo.toml path in
+# `${workspaceRoot}/foreign-packages.json`:
+#   { "foreignPackageManifestPaths": ["flakes/rust-shared/crates/otel-bootstrap/Cargo.toml"] }
+# The projector and both Reindeer tasks read this same file. Reindeer uses
+# a temporary supply-only Cargo manifest derived from the complete resolved
+# graph, preserving registry dependencies of foreign first-party crates.
 # Provides `${taskPrefix}:generate` and `${taskPrefix}:check`.
 {
   workspaceRoot,
@@ -23,6 +30,7 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   gate = ../../../../scripts/buck2-rust-deps.sh;
+  supplyManifest = ../../../../scripts/buck2-rust-supply-manifest.ts;
   workspaceSegments = lib.splitString "/" workspaceRoot;
   validRelativePath =
     workspaceRoot != ""
@@ -43,7 +51,8 @@ let
       ${pkgs.reindeer}/bin/reindeer \
       ${pkgs.cargo}/bin/cargo \
       ${pkgs.rustc}/bin/rustc \
-      ${pkgs.bun}/bin/bun
+      ${pkgs.bun}/bin/bun \
+      ${supplyManifest}
   '';
 in
 assert lib.assertMsg validRelativePath

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 8 ]; then
-  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <bun>" >&2
+if [ "$#" -ne 9 ]; then
+  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <bun> <supply-manifest-script>" >&2
   exit 64
 fi
 
@@ -14,6 +14,7 @@ reindeer="$5"
 cargo="$6"
 rustc="$7"
 bun="$8"
+supply_manifest_script="$9"
 
 case "$mode" in
   generate | check) ;;
@@ -103,17 +104,29 @@ fi
 mkdir -p "$cargo_home"
 lock_before="$(mktemp "$cargo_home/Cargo.lock.before.XXXXXX")"
 candidate="$(mktemp "$third_party/.BUCK.next.XXXXXX")"
+supply_dir=""
+manifest_args=()
 cleanup() {
   rm -f "$lock_before" "$candidate"
+  if [ -n "$supply_dir" ]; then rm -rf "$supply_dir"; fi
 }
 trap cleanup EXIT
 cp "$lock" "$lock_before"
+
+if [ -f "$workspace/foreign-packages.json" ]; then
+  supply_dir="$(mktemp -d "$cargo_home/foreign-supply.XXXXXX")"
+  "$bun" "$supply_manifest_script" "$root" "$workspace" "$cargo" "$cargo_home" "$supply_dir"
+  manifest_args=(--manifest-path "$supply_dir/Cargo.toml")
+else
+  "$bun" "$supply_manifest_script" "$root" "$workspace" "$cargo" "$cargo_home"
+fi
 
 set +e
 CARGO_HOME="$cargo_home" "$reindeer" \
   --cargo-path "$cargo" \
   --rustc-path "$rustc" \
   --config "$config" \
+  "${manifest_args[@]}" \
   buckify --stdout >"$candidate"
 buckify_status=$?
 set -e

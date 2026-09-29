@@ -195,6 +195,16 @@ const renderCargoFixture = ({
       for (const file of foreign.files) write(`${packagePath}/${file}`, '// fixture\n')
       if (foreign.projected === true) write(`${packagePath}/BUCK.genie.ts`, '// projected\n')
     }
+    if (Object.keys(foreignPackages).length > 0) {
+      write(
+        'rust/foreign-packages.json',
+        JSON.stringify({
+          foreignPackageManifestPaths: Object.keys(foreignPackages).map(
+            (packagePath) => `${packagePath}/Cargo.toml`,
+          ),
+        }),
+      )
+    }
     for (const file of extraFiles) write(file, '// fixture\n')
     for (const [memberPath, member] of Object.entries(members)) {
       if (memberPath !== '.') {
@@ -209,9 +219,6 @@ const renderCargoFixture = ({
       workspaceRoot: 'rust',
       workspaceMemberManifestPaths: Object.keys(members).map((memberPath) =>
         memberPath === '.' ? 'rust/Cargo.toml' : `rust/${memberPath}/Cargo.toml`,
-      ),
-      foreignPackageManifestPaths: Object.keys(foreignPackages).map(
-        (packagePath) => `${packagePath}/Cargo.toml`,
       ),
       generatorSourcePaths: [],
     })

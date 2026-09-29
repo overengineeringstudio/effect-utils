@@ -3,7 +3,12 @@ set -euo pipefail
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
-GATE="$ROOT/scripts/buck2-rust-deps.sh"
+GATE=gate
+gate() {
+  local -a args=("$@")
+  if [ "${args[5]}" = /fake/cargo ]; then args[5]="$FAKE_CARGO"; fi
+  "$ROOT/scripts/buck2-rust-deps.sh" "${args[@]}" "$ROOT/scripts/buck2-rust-supply-manifest.ts"
+}
 TASK_MODULE="$ROOT/nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
 TEMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
@@ -13,6 +18,7 @@ WORKSPACE="$FIXTURE/$WORKSPACE_ROOT"
 THIRD_PARTY_BUCK_PATH="vendor/cargo/BUCK"
 THIRD_PARTY="$FIXTURE/vendor/cargo"
 FAKE_REINDEER="$TEMP_ROOT/reindeer"
+FAKE_CARGO="$TEMP_ROOT/cargo"
 BUN="${BUN_BIN:-$(command -v bun || true)}"
 [ -n "$BUN" ] || { echo "FAIL: bun is required (set BUN_BIN)" >&2; exit 1; }
 
@@ -73,6 +79,12 @@ http_archive(
 GRAPH
 FAKE
 chmod +x "$FAKE_REINDEER"
+cat >"$FAKE_CARGO" <<'FAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' '{"packages":[],"workspace_members":[],"resolve":{"root":null,"nodes":[]}}'
+FAKE
+chmod +x "$FAKE_CARGO"
 
 export FAKE_REINDEER_HOME_LOG="$TEMP_ROOT/cargo-home"
 export FAKE_REINDEER_CALL_LOG="$TEMP_ROOT/calls"
@@ -218,5 +230,69 @@ if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_RE
 fi
 grep -Fq 'pins git sources the graph no longer has' "$TEMP_ROOT/git-stale-error" || fail "stale git pins were not diagnosed"
 rm "$git_archives"
+
+# Both workspace locks are real; the consumer's Cargo graph reaches the provider
+# through a path dependency, while each workspace owns a registry archive.
+for workspace in a b; do
+  fixture_workspace="scripts/fixtures/rust-foreign/$workspace"
+  "$GATE" check "$ROOT" "$fixture_workspace" "$fixture_workspace/third-party/BUCK" \
+    "$(command -v reindeer)" "$(command -v cargo)" "$(command -v rustc)" "$BUN"
+done
+
+fixture_a_graph="$ROOT/scripts/fixtures/rust-foreign/a/third-party/BUCK"
+fixture_b_graph="$ROOT/scripts/fixtures/rust-foreign/b/third-party/BUCK"
+if grep -Fq 'foreign-shared' "$fixture_a_graph"; then
+  fail "consumer Reindeer graph includes a first-party foreign package"
+fi
+grep -Fq 'name = "memchr"' "$fixture_a_graph" || fail "consumer registry dependency missing"
+grep -Fq 'name = "itoa"' "$fixture_a_graph" || fail "foreign registry dependency missing from consumer"
+grep -Fq 'name = "itoa"' "$fixture_b_graph" || fail "provider registry dependency missing"
+REPO_ROOT="$ROOT" "$BUN" -e '
+  const root = process.env.REPO_ROOT
+  const lock = Bun.TOML.parse(await Bun.file(`${root}/scripts/fixtures/rust-foreign/a/Cargo.lock`).text())
+  const itoa = lock.package.find((entry) => entry.name === "itoa")
+  const graph = await Bun.file(`${root}/scripts/fixtures/rust-foreign/a/third-party/BUCK`).text()
+  if (!itoa?.checksum || !graph.includes(`sha256 = "${itoa.checksum}"`)) {
+    console.error("foreign registry archive is not pinned to the authoritative Cargo.lock")
+    process.exit(1)
+  }
+'
+
+foreign_repo="$TEMP_ROOT/foreign-repository"
+mkdir -p "$foreign_repo/scripts/fixtures"
+cp "$ROOT/.buckconfig" "$ROOT/.buckroot" "$foreign_repo/"
+cp -R "$ROOT/scripts/fixtures/rust-foreign" "$foreign_repo/scripts/fixtures/"
+foreign_workspace="scripts/fixtures/rust-foreign/a"
+foreign_graph="$foreign_workspace/third-party/BUCK"
+real_reindeer="$(command -v reindeer)"
+real_cargo="$(command -v cargo)"
+real_rustc="$(command -v rustc)"
+rm "$foreign_repo/$foreign_workspace/foreign-packages.json"
+if "$GATE" generate "$foreign_repo" "$foreign_workspace" "$foreign_graph" \
+  "$real_reindeer" "$real_cargo" "$real_rustc" "$BUN" 2>"$TEMP_ROOT/undeclared-error"; then
+  fail "gate accepted an undeclared external Cargo path package"
+fi
+grep -Fq 'undeclared external Cargo path dependencies' "$TEMP_ROOT/undeclared-error" ||
+  fail "undeclared external Cargo package was not diagnosed"
+
+cp "$ROOT/$foreign_workspace/foreign-packages.json" \
+  "$foreign_repo/$foreign_workspace/foreign-packages.json"
+cat >"$foreign_repo/$foreign_workspace/app/Cargo.toml" <<'TOML'
+[package]
+name = "foreign-consumer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+foreign-shared = { path = "../../b/crates/shared" }
+renamed_memchr = { package = "memchr", version = "2.7.5" }
+TOML
+"$GATE" generate "$foreign_repo" "$foreign_workspace" "$foreign_graph" \
+  "$real_reindeer" "$real_cargo" "$real_rustc" "$BUN"
+grep -Fq 'name = "memchr"' "$foreign_repo/$foreign_graph" ||
+  fail "member rename removed the package-named third-party alias"
+if grep -Fq 'name = "renamed_memchr"' "$foreign_repo/$foreign_graph"; then
+  fail "member rename incorrectly changed the third-party alias"
+fi
 
 echo "Buck2 Rust dependency gate tests passed."

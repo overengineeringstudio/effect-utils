@@ -1,0 +1,14 @@
+load("@prelude//:prelude.bzl", "native")
+
+native.rust_binary(
+    name = "app",
+    crate = "foreign_consumer",
+    crate_root = "src/main.rs",
+    srcs = ["src/main.rs"],
+    deps = [
+        "//scripts/fixtures/rust-foreign/a/third-party:memchr",
+        "//scripts/fixtures/rust-foreign/b/crates/shared:lib",
+    ],
+    edition = "2021",
+    visibility = ["PUBLIC"],
+)

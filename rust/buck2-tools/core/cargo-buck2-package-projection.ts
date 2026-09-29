@@ -57,12 +57,6 @@ export type DefineCargoBuck2PackageProjectionOptions = {
   readonly cargoLockPath?: string
   readonly reindeerConfigPath?: string
   readonly workspaceMemberManifestPaths: readonly string[]
-  /**
-   * Manifests of Buck-projected Cargo packages outside this workspace that members reach
-   * through `path` dependencies (for example a shared library workspace). Each resolves to
-   * `//<package path>:lib` and must itself carry a `BUCK.genie.ts` projection.
-   */
-  readonly foreignPackageManifestPaths?: readonly string[]
   readonly thirdPartyBuckPath?: string
   readonly thirdPartyPackage?: string
   readonly buck2LoadLabelPrefix?: string
@@ -100,7 +94,6 @@ export const defineCargoBuck2PackageProjection = ({
   cargoLockPath: configuredCargoLockPath,
   reindeerConfigPath: configuredReindeerConfigPath,
   workspaceMemberManifestPaths: configuredWorkspaceMemberManifestPaths,
-  foreignPackageManifestPaths: configuredForeignPackageManifestPaths = [],
   thirdPartyBuckPath: configuredThirdPartyBuckPath,
   thirdPartyPackage = '//rust/third-party',
   buck2LoadLabelPrefix = '//buck2',
@@ -192,6 +185,27 @@ export const defineCargoBuck2PackageProjection = ({
   if (/[\r\n]/.test(regenerationCommand)) {
     throw new Error('regenerationCommand must be a single line')
   }
+  const foreignPackagesPath = path.posix.join(workspaceRoot, 'foreign-packages.json')
+  const hasForeignPackagesFile = existsSync(repo.resolve(foreignPackagesPath))
+  const foreignPackageManifestPaths: readonly string[] = hasForeignPackagesFile
+    ? (() => {
+        const declaration: unknown = JSON.parse(repo.readText(foreignPackagesPath))
+        if (
+          typeof declaration !== 'object' ||
+          declaration === null ||
+          !('foreignPackageManifestPaths' in declaration) ||
+          !Array.isArray(declaration.foreignPackageManifestPaths) ||
+          declaration.foreignPackageManifestPaths.length === 0 ||
+          !declaration.foreignPackageManifestPaths.every((value) => typeof value === 'string')
+        ) {
+          throw new Error(`${foreignPackagesPath} must contain nonempty foreignPackageManifestPaths: string[]`)
+        }
+        return declaration.foreignPackageManifestPaths as string[]
+      })()
+    : []
+  const generatorSourcePathsWithForeign = hasForeignPackagesFile
+    ? [...generatorSourcePaths, foreignPackagesPath]
+    : generatorSourcePaths
   const workspaceManifest = Bun.TOML.parse(repo.readText(cargoManifestPath)) as CargoWorkspace
   const lock = Bun.TOML.parse(repo.readText(cargoLockPath)) as CargoLock
   const workspaceMembers = workspaceMemberManifestPaths.map((manifestPath) => ({
@@ -200,7 +214,7 @@ export const defineCargoBuck2PackageProjection = ({
     manifest: Bun.TOML.parse(repo.readText(manifestPath)) as CargoManifest,
   }))
   const memberPackagePaths = new Set(workspaceMembers.map((member) => member.packagePath))
-  const foreignPackages = configuredForeignPackageManifestPaths.map((configuredPath, index) => {
+  const foreignPackages = foreignPackageManifestPaths.map((configuredPath, index) => {
     const manifestPath = validateRepoPath({
       repo,
       value: configuredPath,
@@ -261,7 +275,7 @@ export const defineCargoBuck2PackageProjection = ({
     context,
     featureResolution: memoize(() => resolveWorkspaceFeatures({ context })),
     foreignPackages,
-    generatorSourcePaths,
+    generatorSourcePaths: generatorSourcePathsWithForeign,
     regenerationCommand,
     reindeerConfigPath,
     repo,

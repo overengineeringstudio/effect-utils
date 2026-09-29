@@ -1,0 +1,8 @@
+[package]
+name = "foreign-consumer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+foreign-shared = { path = "../../b/crates/shared" }
+memchr = "2.7.5"
