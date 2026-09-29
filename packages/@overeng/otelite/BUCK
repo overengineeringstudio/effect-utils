@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otelite/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:5a2b8d65f70f9af59fd026906db7019452e7ebcd8957dfe827f458a51c4c2d07
+# Semantic fingerprint: sha256:7e58096e8ff2f6c867271eb773abf248de1906db6457ad57f89f0e33ae90317a
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/BUCK.genie.ts, packages/@overeng/otelite/Cargo.toml, packages/@overeng/otelite/src/**/*.rs, packages/@overeng/otelite/tests/**/*.rs, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -106,6 +106,7 @@ native.rust_library(
         "CARGO_PKG_README": "README.md",
         "CARGO_PKG_RUST_VERSION": "",
         "CARGO_CRATE_NAME": "otelite",
+        "CARGO_MANIFEST_DIR": "packages/@overeng/otelite",
     },
     visibility = [
         "PUBLIC",
@@ -168,6 +169,7 @@ native.rust_binary(
         "CARGO_PKG_README": "README.md",
         "CARGO_PKG_RUST_VERSION": "",
         "CARGO_CRATE_NAME": "otelite",
+        "CARGO_MANIFEST_DIR": "packages/@overeng/otelite",
         "CARGO_BIN_NAME": "otelite",
     },
     visibility = [
