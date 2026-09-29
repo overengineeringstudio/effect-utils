@@ -203,6 +203,12 @@ All notable changes to this project will be documented in this file.
   (`@oxc-parser/binding-*`) at runtime. The wrapper entrypoint is unchanged:
   60.1.3 still publishes both `vercel` and `vc` as `dist/vc.js`.
 
+- **nix/go.nix**: the hub's official Go release archive moves from 1.26.5 to
+  1.27.1, with all three admitted platform hashes (`linux-amd64`,
+  `linux-arm64`, `darwin-arm64`) taken from `https://go.dev/dl/?mode=json`.
+  The derivation is otherwise unchanged: it is still the unpatched official
+  distribution, so decision 0029's store-reference-free property and
+  `elf-static/v1` reachability are unaffected.
 - **nix/provider-clis/netlify-cli**: update the first-party Netlify CLI
   derivation from 26.1.0 to 27.10.0, regenerate `package-lock.json`, and
   refresh `npmDepsHash`. Netlify CLI 27 raises its Node floor to `>=22.13.0`;
