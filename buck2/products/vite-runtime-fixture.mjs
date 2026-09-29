@@ -1,11 +1,23 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import react from '@vitejs/plugin-react'
 import { build } from 'vite'
 
+const libexec = dirname(fileURLToPath(import.meta.url))
+const require = createRequire(import.meta.url)
+if (require('@fixture/native-slot') !== 'native-slot-ok')
+  throw new Error('native slot did not resolve beside the runtime closure')
+const ptyPackage = await realpath(join(libexec, 'importers', 'pty', 'node_modules', '@myobie', 'pty'))
+const requirePtyDependency = createRequire(join(ptyPackage, 'package.json'))
+const addonPath = await realpath(requirePtyDependency.resolve('node-pty'))
+if (!addonPath.startsWith(join(libexec, '.pnpm') + sep))
+  throw new Error('native addon escaped the pinned runtime closure')
+if (typeof requirePtyDependency('node-pty').spawn !== 'function')
+  throw new Error('native addon did not load from the normalized store entry')
 const root = await mkdtemp(join(tmpdir(), 'vite-runtime-closure-'))
 try {
   // Vite resolves the project's source imports from `root`, not from this

@@ -1,6 +1,7 @@
 {
   pkgs,
   runtimeClosure,
+  nativeNodePackages,
   artifact ? ../../buck2/products/vite-runtime-fixture.mjs,
 }:
 
@@ -39,7 +40,7 @@ let
   };
 in
 (import ../workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
-  inherit artifact descriptorContent runtimeClosure;
+  inherit artifact descriptorContent nativeNodePackages runtimeClosure;
   descriptor = artifact;
   expectedDescriptorSha256 = builtins.hashString "sha256" descriptorContent;
   expectedExternalModules = [

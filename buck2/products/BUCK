@@ -6,6 +6,7 @@ pnpm_runtime_closure(
     importers = {
         "service": "//packages/@overeng/gh-ci-utils:package_tree",
         "cli": "//packages/@overeng/gh-ci-utils:package_tree",
+        "pty": "//packages/@overeng/pty-effect:package_tree",
     },
     primary = "service",
     runtime = "//buck2/dependencies:runtime-closure.ts",

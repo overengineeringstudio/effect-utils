@@ -123,6 +123,12 @@ rec {
               fixtureSource = mkBuckProductFromSource {
                 capabilities = buck2Capabilities;
                 inherit pnpmArchives;
+                nativeStorePackages = [
+                  {
+                    name = "node-pty";
+                    package = "${nodePtyNative}/node_modules/node-pty";
+                  }
+                ];
                 producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
                 repositoryRoot = ./.;
                 product = {
@@ -139,8 +145,14 @@ rec {
               artifact = "${fixtureSource}/vite-runtime-fixture.mjs";
               runtimeClosure = {
                 artifact = "${fixtureSource}/runtime-closure";
-                expectedDigest = "d6fbf56892606854323d6193bedde848cc12d2c01662ee6b6adb8a8fbc300e75";
+                expectedDigest = "0341b46ca478ea0c96b499f1ed834bb644ab677319687edf1a60478fa014d551";
               };
+              nativeNodePackages = [
+                {
+                  name = "@fixture/native-slot";
+                  package = pkgs.writeTextDir "index.js" "module.exports = 'native-slot-ok'\n";
+                }
+              ];
             };
         buck2-go = import ./nix/go.nix { inherit pkgs; };
         buck2-bun-compile-runtime = import ./nix/bun-compile-runtime.nix { inherit pkgs; };

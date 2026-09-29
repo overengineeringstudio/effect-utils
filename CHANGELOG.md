@@ -71,8 +71,12 @@ All notable changes to this project will be documented in this file.
   roots into one relocatable tree with a pinned digest. JavaScript products can
   build the tree with `mkBuckProductFromSource.runtimeClosureTarget` and import
   it under `$out/libexec` with `runtimeClosure = { artifact; expectedDigest; }`;
-  Nix-native addon slots remain `nativeNodePackages`. The in-repo Vite fixture
-  runs a React build from the imported product.
+  Nix-built addons used by declared package snapshots are passed through
+  `mkBuckProductFromSource.nativeStorePackages = [ { name; package; } ]` so
+  their normalized `.pnpm` entries contain the addon; use
+  `nativeNodePackages` only for additional importer-view slots. The in-repo
+  Vite fixture loads `node-pty` from a normalized entry, adds a scoped native
+  slot, and runs a React build from the imported product.
 
 
 - **Buck2 cache products**: Publish `@overeng/effect-rpc-explorer`,

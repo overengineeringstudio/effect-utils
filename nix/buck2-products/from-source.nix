@@ -21,6 +21,8 @@
   expectedSha256 ? null,
   # Optional Buck tree containing the declared pnpm runtime importer closure.
   runtimeClosureTarget ? null,
+  # Nix-built native packages used by lockfile store entries (not view links).
+  nativeStorePackages ? [ ],
 }:
 
 let
@@ -80,6 +82,10 @@ let
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+    lib.concatMapStringsSep "" (
+      package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
+    ) nativeStorePackages
+  }${
     lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"
   }${lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"}${
     lib.optionalString (
@@ -194,6 +200,7 @@ let
       inherit
         capabilities
         cargoArchives
+        nativeStorePackages
         pnpmArchives
         producerCommit
         repositorySource

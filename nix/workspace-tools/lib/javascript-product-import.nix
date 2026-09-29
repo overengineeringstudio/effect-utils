@@ -98,6 +98,7 @@ let
       --verify ${lib.escapeShellArg "${runtimeClosure.artifact}"} \
       --expected-digest ${lib.escapeShellArg runtimeClosure.expectedDigest}
     cp -R ${lib.escapeShellArg "${runtimeClosure.artifact}"}/. "$out/libexec/"
+    chmod u+w "$out/libexec/node_modules"
   '';
   smoke = lib.optionalString (smokeTestArgs != null && binaryName != null) ''
     "$out/bin/${binaryName}" ${lib.escapeShellArgs smokeTestArgs} >/dev/null
