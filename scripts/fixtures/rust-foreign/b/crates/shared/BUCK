@@ -1,0 +1,11 @@
+load("@prelude//:prelude.bzl", "native")
+
+native.rust_library(
+    name = "lib",
+    crate = "foreign_shared",
+    crate_root = "src/lib.rs",
+    srcs = ["src/lib.rs"],
+    deps = ["//scripts/fixtures/rust-foreign/b/third-party:itoa"],
+    edition = "2021",
+    visibility = ["PUBLIC"],
+)

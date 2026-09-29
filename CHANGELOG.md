@@ -66,6 +66,13 @@ All notable changes to this project will be documented in this file.
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
 ### Added
+- **Buck2 Rust foreign Cargo paths**: Declare cross-workspace first-party
+  packages once in `<workspaceRoot>/foreign-packages.json` as
+  `{ "foreignPackageManifestPaths": ["path/to/crate/Cargo.toml"] }`.
+  The projector labels their `:lib` targets; the Reindeer generate/check gate
+  temporarily omits those packages via `omit_targets` fixups, leaving their
+  registry dependencies with the foreign workspace's own graph.
+
 - **Buck2 pnpm runtime closure**: `pnpm_runtime_closure` consolidates the
   normalized store entries and importer views of declared `package_tree`
   roots into one relocatable tree with a pinned digest. JavaScript products can

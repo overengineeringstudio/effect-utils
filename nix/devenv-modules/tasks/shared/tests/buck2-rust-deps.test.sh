@@ -3,7 +3,10 @@ set -euo pipefail
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
-GATE="$ROOT/scripts/buck2-rust-deps.sh"
+GATE=gate
+gate() {
+  "$ROOT/scripts/buck2-rust-deps.sh" "$@" "$ROOT/scripts/buck2-rust-foreign-fixups.ts"
+}
 TASK_MODULE="$ROOT/nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
 TEMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
@@ -218,5 +221,13 @@ if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_RE
 fi
 grep -Fq 'pins git sources the graph no longer has' "$TEMP_ROOT/git-stale-error" || fail "stale git pins were not diagnosed"
 rm "$git_archives"
+
+# Both workspace locks are real; the consumer's Cargo graph reaches the provider
+# through a path dependency, while each workspace owns a registry archive.
+for workspace in a b; do
+  fixture_workspace="scripts/fixtures/rust-foreign/$workspace"
+  "$GATE" check "$ROOT" "$fixture_workspace" "$fixture_workspace/third-party/BUCK" \
+    "$(command -v reindeer)" "$(command -v cargo)" "$(command -v rustc)" "$BUN"
+done
 
 echo "Buck2 Rust dependency gate tests passed."

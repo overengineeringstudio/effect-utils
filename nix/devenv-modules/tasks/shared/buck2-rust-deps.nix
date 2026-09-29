@@ -9,6 +9,13 @@
 #     })
 #   ];
 #
+# If a member path-depends on a Buck-projected crate in another Cargo workspace,
+# declare its repository-relative Cargo.toml path in
+# `${workspaceRoot}/foreign-packages.json`:
+#   { "foreignPackageManifestPaths": ["flakes/rust-shared/crates/otel-bootstrap/Cargo.toml"] }
+# The projector and both Reindeer tasks read this same file. Reindeer temporarily
+# overlays `omit_targets` fixups for the foreign packages; their own workspaces
+# provide their third-party dependencies.
 # Provides `${taskPrefix}:generate` and `${taskPrefix}:check`.
 {
   workspaceRoot,
