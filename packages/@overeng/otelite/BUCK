@@ -51,6 +51,174 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/derive_spanmetrics.rs",
+    src = "src/derive_spanmetrics.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/canonical.rs",
+    src = "src/inspect/canonical.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/mod.rs",
+    src = "src/inspect/mod.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/model.rs",
+    src = "src/inspect/model.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/parse.rs",
+    src = "src/inspect/parse.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/summarize.rs",
+    src = "src/inspect/summarize.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect_cmd.rs",
+    src = "src/inspect_cmd.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect_logs.rs",
+    src = "src/inspect_logs.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect_metrics.rs",
+    src = "src/inspect_metrics.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/main.rs",
+    src = "src/main.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/otlp_json.rs",
+    src = "src/otlp_json.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/receiver.rs",
+    src = "src/receiver.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/run.rs",
+    src = "src/run.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/sink.rs",
+    src = "src/sink.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/capture_cli.rs",
+    src = "tests/capture_cli.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/equivalence.rs",
+    src = "tests/equivalence.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/goldens.rs",
+    src = "tests/goldens.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/inspect_cli.rs",
+    src = "tests/inspect_cli.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/inspect_m6_cli.rs",
+    src = "tests/inspect_m6_cli.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/isolation.rs",
+    src = "tests/isolation.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/m10_contract.rs",
+    src = "tests/m10_contract.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/m6_goldens.rs",
+    src = "tests/m6_goldens.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/properties.rs",
+    src = "tests/properties.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/receiver.rs",
+    src = "tests/receiver.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/run_cli.rs",
+    src = "tests/run_cli.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/spanmetrics.rs",
+    src = "tests/spanmetrics.rs",
+    visibility = ["PUBLIC"],
+)
+
 native.rust_library(
     name = "lib",
     crate = "otelite",
@@ -191,3 +359,4 @@ build_product(
     product_name = "otelite",
     target_platform = host_platform_label(),
 )
+

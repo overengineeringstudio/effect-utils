@@ -34,6 +34,72 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/deadnix.rs",
+    src = "src/adapters/deadnix.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/mod.rs",
+    src = "src/adapters/mod.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/node_cpuprofile.rs",
+    src = "src/adapters/node_cpuprofile.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/oxlint.rs",
+    src = "src/adapters/oxlint.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/vitest.rs",
+    src = "src/adapters/vitest.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/content_address.rs",
+    src = "src/content_address.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/main.rs",
+    src = "src/main.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/telemetry_registry.gen.rs",
+    src = "src/telemetry_registry.gen.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/tests/cli.rs",
+    src = "tests/cli.rs",
+    visibility = ["PUBLIC"],
+)
+
 native.rust_library(
     name = "lib",
     crate = "otel_scrape",
@@ -144,3 +210,4 @@ build_product(
     product_name = "otel-scrape",
     target_platform = host_platform_label(),
 )
+

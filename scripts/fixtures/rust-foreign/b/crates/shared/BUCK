@@ -1,11 +1,72 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: scripts/fixtures/rust-foreign/b/crates/shared/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:8bc56ecd7409dcb93ca3ed43ba96a5375c2a0fb1bfdf0b8d6afa67c777819f19
+# Semantic inputs: genie/buck2/mod.ts, rust/buck2-tools/core/cargo-buck2-package-projection.ts, scripts/fixtures/rust-foreign/b/Cargo.lock, scripts/fixtures/rust-foreign/b/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/BUCK.genie.ts, scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/src/**/*.rs, scripts/fixtures/rust-foreign/b/crates/shared/tests/**/*.rs, scripts/fixtures/rust-foreign/b/reindeer.toml, scripts/fixtures/rust-foreign/b/third-party/BUCK, scripts/fixtures/rust-foreign/projection.ts
+# Regenerate: devenv tasks run genie:run
+
 load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "scripts/fixtures/rust-foreign/b/crates/shared",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/lib.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
 
 native.rust_library(
     name = "lib",
     crate = "foreign_shared",
     crate_root = "src/lib.rs",
-    srcs = ["src/lib.rs"],
-    deps = ["//scripts/fixtures/rust-foreign/b/third-party:itoa"],
+    srcs = [
+        "src/lib.rs",
+    ],
+    deps = [
+        "//scripts/fixtures/rust-foreign/b/third-party:itoa",
+        "//scripts/fixtures/rust-foreign/b/third-party:toml_datetime",
+        "//scripts/fixtures/rust-foreign/b/third-party:unicode-width",
+    ],
     edition = "2021",
-    visibility = ["PUBLIC"],
+    env = {
+        "CARGO_PKG_NAME": "foreign-shared",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "foreign_shared",
+        "CARGO_MANIFEST_DIR": "scripts/fixtures/rust-foreign/b/crates/shared",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
 )
+

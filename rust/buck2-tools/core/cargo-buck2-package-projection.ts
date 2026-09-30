@@ -160,7 +160,7 @@ export const defineCargoBuck2PackageProjection = ({
   const thirdPartyPackagePath = path.posix.dirname(thirdPartyBuckPath)
   const cargoResolutionPath = `${thirdPartyPackagePath}/cargo-resolution.json`
   const cargoResolution: CargoResolution | undefined = existsSync(repo.resolve(cargoResolutionPath))
-    ? JSON.parse(repo.readText(cargoResolutionPath)) as CargoResolution
+    ? (JSON.parse(repo.readText(cargoResolutionPath)) as CargoResolution)
     : undefined
   const expectedThirdPartyPackage = `//${thirdPartyPackagePath}`
   if (
@@ -206,7 +206,9 @@ export const defineCargoBuck2PackageProjection = ({
           declaration.foreignPackageManifestPaths.length === 0 ||
           !declaration.foreignPackageManifestPaths.every((value) => typeof value === 'string')
         ) {
-          throw new Error(`${foreignPackagesPath} must contain nonempty foreignPackageManifestPaths: string[]`)
+          throw new Error(
+            `${foreignPackagesPath} must contain nonempty foreignPackageManifestPaths: string[]`,
+          )
         }
         return declaration.foreignPackageManifestPaths as string[]
       })()
@@ -244,9 +246,14 @@ export const defineCargoBuck2PackageProjection = ({
       manifestPath,
       manifest,
       workspaceRoot: foreignWorkspaceRoot,
-      workspace: (Bun.TOML.parse(repo.readText(`${foreignWorkspaceRoot}/Cargo.toml`)) as CargoWorkspace).workspace ?? {},
+      workspace:
+        (Bun.TOML.parse(repo.readText(`${foreignWorkspaceRoot}/Cargo.toml`)) as CargoWorkspace)
+          .workspace ?? {},
     }
   })
+  if (foreignPackages.length > 0 && cargoResolution === undefined) {
+    throw new Error(`${cargoResolutionPath} is missing; regenerate the consumer Reindeer supply`)
+  }
   const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
   if (workspace.resolver !== '2')
     throw new Error('The Buck projection supports only Cargo resolver = "2"')
@@ -263,7 +270,10 @@ export const defineCargoBuck2PackageProjection = ({
   }
   const context: ProjectionContext = {
     foreignPackageByPath: new Map(foreignPackages.map((foreign) => [foreign.packagePath, foreign])),
-    foreignTargetPackage: requireValue({ value: sorted([...memberPackagePaths])[0], field: 'workspace member hosting foreign targets' }),
+    foreignTargetPackage: requireValue({
+      value: sorted([...memberPackagePaths])[0],
+      field: 'workspace member hosting foreign targets',
+    }),
     cargoResolution,
     cargoResolutionPath: cargoResolution === undefined ? undefined : cargoResolutionPath,
     lockPackageNames: new Set(
@@ -349,25 +359,26 @@ const cargoBuck2PackageProjectionFor = ({
   })
   if (
     path.posix.normalize(path.posix.join(packagePath, packageMetadata.workspace ?? '')) !==
-    context.workspaceRoot && foreignMember === undefined
+      context.workspaceRoot &&
+    foreignMember === undefined
   ) {
     throw new Error(
       `Cargo package ${packagePath} does not resolve workspace to ${cargoManifestPath}`,
     )
   }
   if (
-    foreignMember === undefined && (
-    packageMetadata.version === undefined ||
-    typeof packageMetadata.version === 'string' ||
-    packageMetadata.version.workspace !== true)
+    foreignMember === undefined &&
+    (packageMetadata.version === undefined ||
+      typeof packageMetadata.version === 'string' ||
+      packageMetadata.version.workspace !== true)
   ) {
     throw new Error(`Cargo package ${packagePath} must inherit workspace.package.version`)
   }
   if (
-    foreignMember === undefined && (
-    packageMetadata.edition === undefined ||
-    typeof packageMetadata.edition === 'string' ||
-    packageMetadata.edition.workspace !== true)
+    foreignMember === undefined &&
+    (packageMetadata.edition === undefined ||
+      typeof packageMetadata.edition === 'string' ||
+      packageMetadata.edition.workspace !== true)
   ) {
     throw new Error(`Cargo package ${packagePath} must inherit workspace.package.edition`)
   }
@@ -395,11 +406,17 @@ const cargoBuck2PackageProjectionFor = ({
     field: `${member.manifestPath} package.name`,
   })
   const version = requireValue({
-    value: typeof packageMetadata.version === 'string' ? packageMetadata.version : context.workspace.package?.version,
+    value:
+      typeof packageMetadata.version === 'string'
+        ? packageMetadata.version
+        : context.workspace.package?.version,
     field: 'workspace.package.version',
   })
   const edition = requireValue({
-    value: typeof packageMetadata.edition === 'string' ? packageMetadata.edition : context.workspace.package?.edition,
+    value:
+      typeof packageMetadata.edition === 'string'
+        ? packageMetadata.edition
+        : context.workspace.package?.edition,
     field: 'workspace.package.edition',
   })
   if (edition === '2015') {
@@ -587,7 +604,9 @@ const cargoBuck2PackageProjectionFor = ({
     if (typeof value === 'string') return value
     if (value === undefined || value === false) return ''
     if (value.workspace !== true) {
-      throw new Error(`Cargo package.${field} must inherit with workspace = true in ${member.manifestPath}`)
+      throw new Error(
+        `Cargo package.${field} must inherit with workspace = true in ${member.manifestPath}`,
+      )
     }
     const inherited = requireValue({
       value: context.workspace.package?.[field],
@@ -600,7 +619,9 @@ const cargoBuck2PackageProjectionFor = ({
   if (declaredAuthors !== undefined) {
     if ('workspace' in declaredAuthors) {
       if (declaredAuthors.workspace !== true) {
-        throw new Error(`Cargo package.authors must inherit with workspace = true in ${member.manifestPath}`)
+        throw new Error(
+          `Cargo package.authors must inherit with workspace = true in ${member.manifestPath}`,
+        )
       }
       authors = requireValue({
         value: context.workspace.package?.authors,
@@ -636,13 +657,16 @@ const cargoBuck2PackageProjectionFor = ({
     CARGO_PKG_RUST_VERSION: packageField('rust-version'),
   }
 
-  const foreignProjections = foreignMember === undefined && packagePath === context.foreignTargetPackage
-    ? foreignPackages.map((foreign) => cargoBuck2PackageProjectionFor({
-        definition,
-        sourceUrl,
-        foreignMember: foreign,
-      }))
-    : []
+  const foreignProjections =
+    foreignMember === undefined && packagePath === context.foreignTargetPackage
+      ? foreignPackages.map((foreign) =>
+          cargoBuck2PackageProjectionFor({
+            definition,
+            sourceUrl,
+            foreignMember: foreign,
+          }),
+        )
+      : []
   const semanticInputPaths = sorted([
     ...generatorSourcePaths,
     cargoManifestPath,
@@ -668,7 +692,9 @@ const cargoBuck2PackageProjectionFor = ({
   const semanticData = {
     binaries,
     compileEnv,
-    ...(foreignProjections.length === 0 ? {} : { foreignPackages: foreignProjections.map((projection) => projection.data) }),
+    ...(foreignProjections.length === 0
+      ? {}
+      : { foreignPackages: foreignProjections.map((projection) => projection.data) }),
     cliBuildStamp,
     conditionalDevDependencies,
     conditionalNormalDependencies,
@@ -729,10 +755,7 @@ const cargoBuck2PackageProjectionFor = ({
     enabledFeatures.length === 0
       ? []
       : renderStringList({ name: 'features', values: enabledFeatures })
-  const commonRuleLines = [
-    `    edition = ${starlarkString(edition)},`,
-    ...featureLines,
-  ]
+  const commonRuleLines = [`    edition = ${starlarkString(edition)},`, ...featureLines]
   const normalConditional = activeConditionalNormalDependencies
   const renderRule = ({
     rule,
@@ -804,7 +827,9 @@ const cargoBuck2PackageProjectionFor = ({
       )
     }
     const manifestEntries: readonly (readonly [string, string])[] = [
-      ...packageFiles.map((file) => [`${packagePath}/${file}`, sourceLabel({ file, foreignMember })] as const),
+      ...packageFiles.map(
+        (file) => [`${packagePath}/${file}`, sourceLabel({ file, foreignMember })] as const,
+      ),
       ...buildScript.inputs.map(
         (input) => [input.path, input.label ?? input.path.slice(packagePath.length + 1)] as const,
       ),
@@ -917,8 +942,9 @@ const cargoBuck2PackageProjectionFor = ({
   if (foreignMember !== undefined) {
     return createGenieOutput({ data: semanticData, stringify: () => rules.join('\n') })
   }
-  const foreignRules = foreignProjections.map((projection) =>
-    projection.stringify({ cwd: repo.rootPath, location: packagePath })).join('\n')
+  const foreignRules = foreignProjections
+    .map((projection) => projection.stringify({ cwd: repo.rootPath, location: packagePath }))
+    .join('\n')
 
   const rendered = [
     `# Projection source: ${projectionSource}`,
@@ -937,8 +963,12 @@ const cargoBuck2PackageProjectionFor = ({
           `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "rust_product_executable")`,
         ]
       : []),
-    ...(buildScript === undefined && foreignPackages.every((foreign) =>
-      resolveBuildScript({ member: foreign, packagePath: foreign.packagePath, repo }) === undefined)
+    ...(buildScript === undefined &&
+    foreignPackages.every(
+      (foreign) =>
+        resolveBuildScript({ member: foreign, packagePath: foreign.packagePath, repo }) ===
+        undefined,
+    )
       ? []
       : [
           'load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")',
@@ -955,14 +985,18 @@ const cargoBuck2PackageProjectionFor = ({
     '    visibility = ["PUBLIC"],',
     ')',
     '',
-    ...workspaceContractSources.filter((file) => file !== 'BUCK' && file !== 'BUCK.genie.ts').flatMap((file) => [
-      'native.export_file(',
-      `    name = ${starlarkString(`cargo-source/${file}`)},`,
-      `    src = ${starlarkString(file)},`,
-      '    visibility = ["PUBLIC"],',
-      ')',
-      '',
-    ]),
+    // A library may be instantiated by consumers of other Cargo workspaces (foreign-packages.json),
+    // which compile these exact files against their own third-party graph.
+    ...(library === undefined ? [] : workspaceContractSources)
+      .filter((file) => file !== 'BUCK' && file !== 'BUCK.genie.ts')
+      .flatMap((file) => [
+        'native.export_file(',
+        `    name = ${starlarkString(`cargo-source/${file}`)},`,
+        `    src = ${starlarkString(file)},`,
+        '    visibility = ["PUBLIC"],',
+        ')',
+        '',
+      ]),
     ...rules,
     foreignRules,
   ].join('\n')
@@ -1200,33 +1234,58 @@ type CargoResolution = {
 const foreignTargetName = (member: WorkspaceMember): string =>
   `foreign-${requireValue({ value: member.manifest.package?.name, field: `${member.manifestPath} package.name` })}-lib`
 
-const sourceLabel = ({ file, foreignMember }: {
+const sourceLabel = ({
+  file,
+  foreignMember,
+}: {
   readonly file: string
   readonly foreignMember?: WorkspaceMember
-}): string => foreignMember === undefined ? file : `//${foreignMember.packagePath}:cargo-source/${file}`
+}): string =>
+  foreignMember === undefined ? file : `//${foreignMember.packagePath}:cargo-source/${file}`
 
-const renderSources = ({ name, values, foreignMember }: {
+const renderSources = ({
+  name,
+  values,
+  foreignMember,
+}: {
   readonly name: string
   readonly values: readonly string[]
   readonly foreignMember?: WorkspaceMember
-}): readonly string[] => foreignMember === undefined
-  ? renderStringList({ name, values })
-  : [
-      `    ${name} = {`,
-      ...values.map((file) => `        ${starlarkString(file)}: ${starlarkString(sourceLabel({ file, foreignMember }))},`),
-      '    },',
-    ]
+}): readonly string[] =>
+  foreignMember === undefined
+    ? renderStringList({ name, values })
+    : [
+        '    mapped_srcs = {',
+        ...values.map(
+          (file) =>
+            `        ${starlarkString(sourceLabel({ file, foreignMember }))}: ${starlarkString(file)},`,
+        ),
+        '    },',
+      ]
 
-const contextForMember = ({ context, member }: {
+const contextForMember = ({
+  context,
+  member,
+}: {
   readonly context: ProjectionContext
   readonly member?: WorkspaceMember
-}): ProjectionContext => member?.workspace === undefined ? context : {
-  ...context,
-  workspace: member.workspace,
-  workspaceRoot: requireValue({ value: member.workspaceRoot, field: `${member.manifestPath} workspace root` }),
-}
+}): ProjectionContext =>
+  member?.workspace === undefined
+    ? context
+    : {
+        ...context,
+        workspace: member.workspace,
+        workspaceRoot: requireValue({
+          value: member.workspaceRoot,
+          field: `${member.manifestPath} workspace root`,
+        }),
+      }
 
-const findCargoWorkspaceRoot = ({ repo, packagePath, manifest }: {
+const findCargoWorkspaceRoot = ({
+  repo,
+  packagePath,
+  manifest,
+}: {
   readonly repo: RepoContext
   readonly packagePath: string
   readonly manifest: CargoManifest
@@ -1237,7 +1296,10 @@ const findCargoWorkspaceRoot = ({ repo, packagePath, manifest }: {
   let directory = packagePath
   while (directory !== '.') {
     const candidate = `${directory}/Cargo.toml`
-    if (existsSync(repo.resolve(candidate)) && (Bun.TOML.parse(repo.readText(candidate)) as CargoWorkspace).workspace !== undefined) {
+    if (
+      existsSync(repo.resolve(candidate)) &&
+      (Bun.TOML.parse(repo.readText(candidate)) as CargoWorkspace).workspace !== undefined
+    ) {
       return directory
     }
     directory = path.posix.dirname(directory)
@@ -1421,21 +1483,34 @@ const resolveDependency = ({
   }
   // Reindeer names a public alias after the rename only when the workspace root package
   // declares that rename; otherwise (and always in virtual workspaces) it carries the package name.
-  const dependencyKind = field.includes('dev-dependencies.') ? 'dev'
-    : field.includes('build-dependencies.') ? 'build' : 'normal'
+  const dependencyKind = field.includes('dev-dependencies.')
+    ? 'dev'
+    : field.includes('build-dependencies.')
+      ? 'build'
+      : 'normal'
   const dependencyTarget = field.startsWith('target.')
-    ? field.slice('target.'.length, field.lastIndexOf(`.${dependencyKind === 'normal' ? 'dependencies' : `${dependencyKind}-dependencies`}.`))
+    ? field.slice(
+        'target.'.length,
+        field.lastIndexOf(
+          `.${dependencyKind === 'normal' ? 'dependencies' : `${dependencyKind}-dependencies`}.`,
+        ),
+      )
     : undefined
-  const resolved = context.cargoResolution?.dependencies.find((dependency) =>
-    dependency.manifestPath === member.manifestPath &&
-    dependency.name === dependencyName &&
-    dependency.kind === dependencyKind &&
-    dependency.target === dependencyTarget)
+  const resolved = context.cargoResolution?.dependencies.find(
+    (dependency) =>
+      dependency.manifestPath === member.manifestPath &&
+      dependency.name === dependencyName &&
+      dependency.kind === dependencyKind &&
+      dependency.target === dependencyTarget,
+  )
   if (context.cargoResolution !== undefined && resolved === undefined) {
-    throw new Error(`Cargo resolution has no dependency ${dependencyName} at ${member.manifestPath} ${field}`)
+    throw new Error(
+      `Cargo resolution has no dependency ${dependencyName} at ${member.manifestPath} ${field}`,
+    )
   }
-  const targetName = resolved?.alias ?? (
-    effectiveRequest.package === undefined ||
+  const targetName =
+    resolved?.alias ??
+    (effectiveRequest.package === undefined ||
     rootPackageDeclaresRename({ context, dependencyName, packageName }) === true
       ? dependencyName
       : packageName)
@@ -2095,12 +2170,14 @@ const resolveWorkspaceFeatures = ({
   )
   if (usesFeatures === false) return new Map()
 
-  const memberPathsByLabel = new Map(members.map((member) => [
-    context.foreignPackageByPath.has(member.packagePath)
-      ? `//${context.foreignTargetPackage}:${foreignTargetName(member)}`
-      : `//${member.packagePath}:lib`,
-    member.packagePath,
-  ]))
+  const memberPathsByLabel = new Map(
+    members.map((member) => [
+      context.foreignPackageByPath.has(member.packagePath)
+        ? `//${context.foreignTargetPackage}:${foreignTargetName(member)}`
+        : `//${member.packagePath}:lib`,
+      member.packagePath,
+    ]),
+  )
   const isMemberLabel = (label: string): boolean => memberPathsByLabel.has(label)
   const states = new Map<string, MemberFeatures>()
   for (const member of members) {
@@ -2186,9 +2263,18 @@ const resolveWorkspaceFeatures = ({
     const target = memberState(dependency)
     if (target !== undefined) enableFeature({ state: target, feature })
   }
+  const activatedPackages = new Set(context.memberByPath.keys())
   const requestDependency = (dependency: ResolvedDependency) => {
     const target = memberState(dependency)
     if (target === undefined) return
+    if (activatedPackages.has(target.member.packagePath) === false) {
+      activatedPackages.add(target.member.packagePath)
+      for (const dependencies of target.dependenciesByName.values()) {
+        for (const nested of dependencies) {
+          if (nested.optional !== true) requestDependency(nested)
+        }
+      }
+    }
     if (dependency.defaultFeatures === true && Object.hasOwn(target.declared, 'default') === true) {
       enableFeature({ state: target, feature: 'default' })
     }
@@ -2261,7 +2347,8 @@ const resolveWorkspaceFeatures = ({
     }
   }
   for (const state of states.values()) {
-    if (context.memberByPath.has(state.member.packagePath) && Object.hasOwn(state.declared, 'default') === true) {
+    if (context.memberByPath.has(state.member.packagePath) === false) continue
+    if (Object.hasOwn(state.declared, 'default') === true) {
       enableFeature({ state, feature: 'default' })
     }
     for (const dependencies of state.dependenciesByName.values()) {

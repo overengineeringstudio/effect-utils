@@ -31,6 +31,7 @@ name = "foreign-consumer"
 version = "0.1.0"
 dependencies = [
  "foreign-shared",
+ "itoa",
  "memchr",
  "toml_datetime 0.6.11",
 ]

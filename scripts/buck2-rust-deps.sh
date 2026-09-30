@@ -117,6 +117,7 @@ mkdir -p "$cargo_home"
 lock_before="$(mktemp "$cargo_home/Cargo.lock.before.XXXXXX")"
 candidate="$(mktemp "$third_party/.BUCK.next.XXXXXX")"
 supply_dir=""
+cargo_resolution="$third_party/cargo-resolution.json"
 manifest_args=()
 cleanup() {
   rm -f "$lock_before" "$candidate"
@@ -264,6 +265,12 @@ case "$mode" in
     else
       rm -f "$git_archives"
     fi
+    if [ -n "$supply_dir" ]; then
+      chmod 0644 "$supply_dir/cargo-buck2-resolution.json"
+      mv "$supply_dir/cargo-buck2-resolution.json" "$cargo_resolution"
+    else
+      rm -f "$cargo_resolution"
+    fi
     ;;
   check)
     if ! cmp -s "$third_party_buck" "$candidate"; then
@@ -277,6 +284,15 @@ case "$mode" in
       fi
     elif [ -e "$git_archives" ]; then
       echo "buck2-rust-deps: ${git_archives#"$root"/} pins git sources the graph no longer has" >&2
+      exit 1
+    fi
+    if [ -n "$supply_dir" ]; then
+      if ! cmp -s "$cargo_resolution" "$supply_dir/cargo-buck2-resolution.json"; then
+        echo "buck2-rust-deps: ${cargo_resolution#"$root"/} is stale (run the generate task)" >&2
+        exit 1
+      fi
+    elif [ -e "$cargo_resolution" ]; then
+      echo "buck2-rust-deps: ${cargo_resolution#"$root"/} resolves foreign packages the graph no longer has" >&2
       exit 1
     fi
     ;;

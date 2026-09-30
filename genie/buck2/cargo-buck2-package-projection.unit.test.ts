@@ -25,9 +25,7 @@ const consumerProjectionOptions = {
   generatorSourcePaths: [],
 } as const
 
-
 describe('Cargo Buck2 package projection', () => {
-
   it('rejects lexical and physical repository escapes', () => {
     expect(() =>
       defineCargoBuck2PackageProjection({
@@ -183,7 +181,10 @@ const renderCargoFixture = ({
         )
         .join('')}`,
     )
-    write('rust/reindeer.toml', 'vendor = false\ncargo_env = true\nthird_party_dir = "third-party"\n')
+    write(
+      'rust/reindeer.toml',
+      'vendor = false\ncargo_env = true\nthird_party_dir = "third-party"\n',
+    )
     write(
       'rust/third-party/BUCK',
       thirdPartyTargets
@@ -204,6 +205,7 @@ const renderCargoFixture = ({
           ),
         }),
       )
+      write('rust/third-party/cargo-resolution.json', '{"dependencies":[]}\n')
     }
     for (const file of extraFiles) write(file, '// fixture\n')
     for (const [memberPath, member] of Object.entries(members)) {
@@ -764,7 +766,6 @@ describe('Cargo cross-workspace path dependencies', () => {
     },
   }
 
-
   it('rejects undeclared and unprojected foreign packages', () => {
     expect(() => renderCargoFixture({ members: consumer, render: 'app' })).toThrow(
       'Cargo path dependency at dependencies.otel-bootstrap is neither a workspace member nor a declared foreign package: shared/otel-bootstrap',
@@ -1092,22 +1093,25 @@ describe('Cargo features', () => {
       'shared = { path = "../../shared", features = ["x"], default-features = false }',
       'shared = { path = "../../shared", default-features = false }\n\n[features]\ndefault = ["shared/x"]',
     ]) {
-      const rules = renderedRules(renderCargoFixture({
-        members: {
-          pkg: {
-            manifest: `[package]\nname = "pkg"\n\n[dependencies]\n${request}`,
-            files: ['src/lib.rs'],
+      const rules = renderedRules(
+        renderCargoFixture({
+          members: {
+            pkg: {
+              manifest: `[package]\nname = "pkg"\n\n[dependencies]\n${request}`,
+              files: ['src/lib.rs'],
+            },
           },
-        },
-        foreignPackages: {
-          shared: {
-            manifest: '[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"\n\n[features]\ndefault = ["y"]\nx = []\ny = []',
-            files: ['src/lib.rs'],
-            projected: true,
+          foreignPackages: {
+            shared: {
+              manifest:
+                '[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"\n\n[features]\ndefault = ["y"]\nx = []\ny = []',
+              files: ['src/lib.rs'],
+              projected: true,
+            },
           },
-        },
-        render: 'pkg',
-      }))
+          render: 'pkg',
+        }),
+      )
       expect(rules['foreign-shared-lib']).toContain('features = [\n        "x",\n    ],')
       expect(rules['foreign-shared-lib']).not.toContain('"y"')
     }

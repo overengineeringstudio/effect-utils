@@ -29,6 +29,60 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/gen/buck.daemon.rs",
+    src = "src/gen/buck.daemon.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/gen/buck.data.error.rs",
+    src = "src/gen/buck.data.error.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/gen/buck.data.rs",
+    src = "src/gen/buck.data.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/gen/buck.host_sharing.rs",
+    src = "src/gen/buck.host_sharing.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/gen/buck.subscription.rs",
+    src = "src/gen/buck.subscription.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/main.rs",
+    src = "src/main.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/tests.rs",
+    src = "src/tests.rs",
+    visibility = ["PUBLIC"],
+)
+
 native.rust_library(
     name = "lib",
     crate = "buck2_events",
@@ -124,3 +178,4 @@ native.rust_binary(
         "PUBLIC",
     ],
 )
+

@@ -1,9 +1,10 @@
 [package]
 name = "foreign-shared"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+workspace = "../.."
 
 [dependencies]
-itoa = "1.0.15"
-unicode-width = "0.2.0"
-toml_datetime = "=1.1.1+spec-1.1.0"
+itoa.workspace = true
+unicode-width.workspace = true
+toml_datetime.workspace = true
