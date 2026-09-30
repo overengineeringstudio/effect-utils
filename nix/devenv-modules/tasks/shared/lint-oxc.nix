@@ -365,6 +365,7 @@ let
         export PNPM_CONFIG_STORE_DIR="$store_dir"
         export npm_config_store_dir="$store_dir"
         pnpm install \
+          --lockfile-only \
           --frozen-lockfile \
           --ignore-scripts \
           --config.side-effects-cache=false \
