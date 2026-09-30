@@ -396,11 +396,18 @@ rec {
       lib.mkBuck2ArtifactImport =
         { pkgs }: import ./nix/workspace-tools/lib/buck2-artifact-import.nix { inherit pkgs; };
 
-      # Offline crate supply for mkBuckProductFromSource `cargoArchives`: one
-      # fixed-output fetch per `crate_archive` digest in the given Reindeer graphs.
+      # Offline crate supply for mkBuckProductFromSource `cargoArchives`.
+      # gitSources maps GitHub owner/repo to a pinned flake input (or local path);
+      # absent keys retain the reviewed GitHub archive fetch and digest.
       lib.mkBuck2CargoArchives =
-        { pkgs, thirdPartyBuckFiles }:
-        import ./nix/workspace-tools/lib/buck2-cargo-archives.nix { inherit pkgs thirdPartyBuckFiles; };
+        {
+          pkgs,
+          thirdPartyBuckFiles,
+          gitSources ? { },
+        }:
+        import ./nix/workspace-tools/lib/buck2-cargo-archives.nix {
+          inherit pkgs thirdPartyBuckFiles gitSources;
+        };
 
       # Verify and import one tracked Buck JavaScript product (descriptor plus
       # content-addressed module bytes) into a wrappable Nix output.
