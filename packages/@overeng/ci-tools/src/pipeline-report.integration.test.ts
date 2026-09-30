@@ -162,7 +162,7 @@ it.each([
       )
       expect(
         requests.get(
-          `/repos/overengineeringstudio/effect-utils/actions/runs/${failedBaseline ?? baselineIds[0]}/jobs?filter=all&per_page=100&page=1`,
+          `/repos/overengineeringstudio/effect-utils/actions/runs/${failedBaseline ?? baselineIds[0]}/jobs?filter=latest&per_page=100&page=1`,
         ),
       ).toBe(expectedRequests)
       if (rateLimited === true)

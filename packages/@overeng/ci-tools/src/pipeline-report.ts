@@ -180,10 +180,7 @@ export const buildPipelineReport = (opts: {
   readonly grafanaBaseUrl: string
   readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
 }): WorkflowReportRecord => {
-  const current = opts.jobs.filter(
-    (job) => job.run_attempt === opts.attempt && isBuildJob(job.name),
-  )
-  const runIdentity = `ci/github/${encodeURIComponent(opts.repository)}/${opts.runId}/${opts.attempt}`
+  const current = opts.jobs.filter((job) => isBuildJob(job.name))
   const duplicateNames = new Set<string>()
   const countsByName: Record<string, number> = {}
   for (const job of current) countsByName[job.name] = (countsByName[job.name] ?? 0) + 1
@@ -270,7 +267,10 @@ export const buildPipelineReport = (opts: {
       status === 'unfinished' ||
       instrumented === false
         ? undefined
-        : opts.traceIdForJob(runIdentity, identity)
+        : opts.traceIdForJob(
+            `ci/github/${encodeURIComponent(opts.repository)}/${opts.runId}/${job.run_attempt}`,
+            identity,
+          )
     const traceUrl =
       traceId === undefined || job.started_at === null
         ? undefined
@@ -429,7 +429,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     const jobs: PipelineJob[] = []
     for (let page = 1; ; page++) {
       const payload = yield* get({
-        path: `/repos/${repoPath}/actions/runs/${opts.runId}/jobs?filter=all&per_page=100&page=${page}`,
+        path: `/repos/${repoPath}/actions/runs/${opts.runId}/jobs?filter=latest&per_page=100&page=${page}`,
         schema: JobsPage,
       })
       jobs.push(...payload.jobs)
@@ -437,7 +437,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     }
     const wantedKeys = new Set(
       jobs
-        .filter((job) => job.run_attempt === opts.attempt && isBuildJob(job.name))
+        .filter((job) => isBuildJob(job.name))
         .flatMap((job) => {
           const identity = pipelineJobIdentityForName(job.name)
           return identity === undefined ? [] : [canonicalJobKey(identity).toString('hex')]
@@ -474,10 +474,10 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
           const result: PipelineJob[] = []
           for (let jobsPage = 1; ; jobsPage++) {
             const response = yield* get({
-              path: `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${jobsPage}`,
+              path: `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=latest&per_page=100&page=${jobsPage}`,
               schema: JobsPage,
             })
-            result.push(...response.jobs.filter((job) => job.run_attempt === run.run_attempt))
+            result.push(...response.jobs)
             if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
           }
           return result

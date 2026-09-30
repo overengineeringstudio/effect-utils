@@ -16,7 +16,7 @@ Draft.
 
 ```text
 PR attempt close (after build jobs settle)
-  ├─ Jobs API: current attempt jobs (all pages)         -> job table + gantt
+  ├─ Jobs API: latest execution of each job (all pages)  -> job table + gantt
   ├─ Workflow Runs API: newest completed successful main pushes (at most 20)
   │    └─ Jobs API: each selected run's jobs            -> p50 baseline
   └─ 01 deterministic job trace IDs + Grafana base URL -> Explore links
@@ -33,8 +33,10 @@ rows and the baseline.
 
 ## Job Facts
 
-Read the current workflow run's jobs for its **current attempt**, following
-pagination and filtering `run_attempt`. Map each Jobs API `name` through
+Read the current workflow run's jobs with `filter=latest`, following
+pagination so partial reruns retain jobs that last ran in earlier attempts.
+Use each job's `run_attempt` for its trace identity and attempt-close link.
+Map each Jobs API `name` through
 [01's finite generated-workflow name mapping](../01-run-identity/spec.md)
 to its job identifier and named matrix dimensions before deriving the
 canonical `K` bytes. Reject duplicate or unrecognized names rather than
@@ -82,7 +84,7 @@ GitHub API GETs retry transient 5xx, 429 and network failures with at most three
 
 ## Gantt
 
-Render a Mermaid `gantt` inside a collapsed `<details>` block in the comment when at least one job has a start time. Its axis starts at the earliest observed job start in the attempt. Each completed job bar spans `started_at` to `completed_at`; an unfinished job extends to the report generation time with an `unfinished` label; skipped and never-started jobs appear in the table only. Bar labels contain job key and conclusion; external names are sanitized for Mermaid syntax. Show a textual note for omitted rows so a missing bar is not read as zero duration.
+Render a Mermaid `gantt` inside a collapsed `<details>` block in the comment when at least one job has a start time. Its axis starts at the earliest observed latest job start. Each completed job bar spans `started_at` to `completed_at`; an unfinished job extends to the report generation time with an `unfinished` label; skipped and never-started jobs appear in the table only. Bar labels contain job key and conclusion; external names are sanitized for Mermaid syntax. Show a textual note for omitted rows so a missing bar is not read as zero duration.
 
 ## Deterministic Grafana Links
 
