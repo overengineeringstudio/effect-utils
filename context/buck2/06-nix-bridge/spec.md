@@ -135,7 +135,7 @@ contains `sourceDigest` (SHA-256 of the scoped source store path), `target`,
 and `productDigest`; it contains no Git revision. Source changes inside the
 declared closure change the derivation, while changes outside it do not.
 Directory-level package entries deliberately include all files in each closure
-package: changes to non-Buck files *within* that package may still rebuild it.
+package: changes to non-Buck files _within_ that package may still rebuild it.
 Consumers that embed a Git build stamp (for example SCG
 `__CLI_BUILD_STAMP__` or axe `cliBuildStamp`) opt into per-commit identity for
 that product; the consumer owns that exception and must not claim stable
