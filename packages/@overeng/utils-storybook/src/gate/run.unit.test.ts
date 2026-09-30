@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import {
   chmodSync,
@@ -14,11 +15,13 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { PNG } from 'pngjs'
 import { describe, expect, it } from 'vitest'
 
 import { storyGateReportEnvVar, storyGateRunCompleteMarker } from './completion-reporter.ts'
 import { settledStoryMarker } from './constants.ts'
 import {
+  assertCaptureCollectionComplete,
   assertCaptureLiveness,
   assertionStoryKey,
   baselineCacheKey,
@@ -34,6 +37,7 @@ import {
   isStoryGateOk,
   runVitest,
   registerProcessTreeSignalForwarding,
+  sameScreenshotPixels,
   selfInconsistentStoryKeys,
   slugStoryName,
   storyKey,
@@ -180,6 +184,22 @@ describe('isStoryGateOk', () => {
         themeAxis: { ...clean.themeAxis, comparable: 0, differing: 0 },
       }),
     ).toBe(true)
+  })
+})
+
+describe('assertCaptureCollectionComplete', () => {
+  it('rejects a failed story-module import even when other story files captured normally', () => {
+    expect(() =>
+      assertCaptureCollectionComplete([
+        { name: 'Visitor.stories.tsx', collectionErrors: [] },
+        {
+          name: 'PtgInspectionConsole.stories.tsx',
+          collectionErrors: ["SyntaxError: is-dom does not provide an export named 'default'"],
+        },
+      ]),
+    ).toThrow(
+      /Failed to collect story modules:[\s\S]*PtgInspectionConsole\.stories\.tsx:[\s\S]*is-dom does not provide/,
+    )
   })
 })
 
@@ -707,6 +727,64 @@ describe('classifyStability', () => {
       reproduced: outcome.reproduced,
       inconsistentPresence: outcome.inconsistentPresence,
     }).toEqual({ reproduced: 1, inconsistentPresence: ['light/appears-late.png'] })
+  })
+
+  it('compares the rendered pixels instead of PNG bytes without hiding a changed border', () => {
+    const image = new PNG({ width: 32, height: 32 })
+    image.data.fill(255)
+    const reference = PNG.sync.write(image)
+    const reencoded = PNG.sync.write(image, { colorType: 2 })
+    const fringe = PNG.sync.read(reference)
+    fringe.data[0] = 251
+    fringe.data[1] = 251
+    fringe.data[2] = 251
+    const faintPixel = PNG.sync.write(fringe)
+    const movedBorder = PNG.sync.read(reference)
+    for (let x = 4; x < 28; x += 1) {
+      const offset = (16 * movedBorder.width + x) * 4
+      movedBorder.data[offset] = 0
+      movedBorder.data[offset + 1] = 0
+      movedBorder.data[offset + 2] = 0
+    }
+    const border = PNG.sync.write(movedBorder)
+    expect(reference.equals(reencoded)).toBe(false)
+    expect(sameScreenshotPixels({ referencePng: reference, actualPng: reencoded })).toBe(true)
+    expect(sameScreenshotPixels({ referencePng: reference, actualPng: faintPixel })).toBe(true)
+    expect(sameScreenshotPixels({ referencePng: reference, actualPng: border })).toBe(false)
+
+    const bytes = [
+      new Map([
+        ['light/subpixel.png', reference],
+        ['light/border.png', reference],
+      ]),
+      new Map([
+        ['light/subpixel.png', faintPixel],
+        ['light/border.png', reencoded],
+      ]),
+      new Map([
+        ['light/subpixel.png', reencoded],
+        ['light/border.png', border],
+      ]),
+    ]
+    const outcome = classifyStability({
+      captures: bytes.map(
+        (capture) =>
+          new Map(
+            [...capture].map(([key, png]) => [key, createHash('sha1').update(png).digest('hex')]),
+          ),
+      ),
+      captureMs: [1000, 1100, 1200],
+      sameVisualCapture: (key, index) =>
+        sameScreenshotPixels({
+          referencePng: bytes[0]!.get(key)!,
+          actualPng: bytes[index]!.get(key)!,
+        }),
+    })
+    expect({
+      reproduced: outcome.reproduced,
+      differedOnSecond: outcome.differedOnSecond,
+      differedOnThird: outcome.differedOnThird,
+    }).toEqual({ reproduced: 1, differedOnSecond: [], differedOnThird: ['light/border.png'] })
   })
 })
 

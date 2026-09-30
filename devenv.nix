@@ -1117,10 +1117,19 @@ in
     '';
   };
 
+  tasks."nix:buck2-cargo-archives:check" = {
+    description = "Check local Git source archive projection, source identity, and digest verification";
+    after = [ "genie:check" ];
+    exec = trace.exec "nix:buck2-cargo-archives:check" ''
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-cargo-archives.sh "$PWD"
+    '';
+  };
+
   tasks."nix:check:quick" = {
     description = "Check Nix artifact-import contracts without realizing repository products";
     after = [
       "nix:buck2-artifact-import:check"
+      "nix:buck2-cargo-archives:check"
       "nix:javascript-product-import:check"
     ];
   };

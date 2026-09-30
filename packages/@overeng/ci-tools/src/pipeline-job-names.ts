@@ -36,6 +36,7 @@ export const pipelineJobIds = [
   'seed-pnpm-archives',
   'pr-a-inert-buck',
   'pipeline-attempt-close',
+  'pipeline-traces',
 ] as const
 
 /** Canonical identity of a GitHub Actions job and its matrix dimensions. */

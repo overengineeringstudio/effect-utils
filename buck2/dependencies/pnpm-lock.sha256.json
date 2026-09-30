@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:cf311ee525f895f77ad17c58a11b6546b3acda119e278f76a50afc40778656b2",
+  "lockfileFingerprint": "sha256:5531f630ad827452b5b61c2436a223658574f3e31922e297f51aa4fac1b6fbee",
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
@@ -2863,6 +2863,15 @@
       "registryUrl": "https://registry.npmjs.org/@types/node/-/node-26.5.0.tgz",
       "sha256": "def4ca0c41a06ce64a36e124934908afd87c062566ae812cddd24339e393c64d",
       "sizeBytes": 469381
+    },
+    "@types/pngjs@6.0.5": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==",
+      "packageIdentity": "@types/pngjs@6.0.5",
+      "registryUrl": "https://registry.npmjs.org/@types/pngjs/-/pngjs-6.0.5.tgz",
+      "sha256": "db919544cdd5c9bd50928619fee0498341e4c0845b03d38752b510cff3994e07",
+      "sizeBytes": 2390
     },
     "@types/react-dom@19.2.7": {
       "bins": {},
@@ -6685,5 +6694,5 @@
       "sizeBytes": 4529
     }
   },
-  "fingerprint": "sha256:8027b8262e931bb7330bbfe593ab7e5134fe63bb303b7175966d5c9afb28cfa2"
+  "fingerprint": "sha256:c645a38631d606aa48411c5d86cde960e4a7b6905a9c56056b30b4590e9a113f"
 }

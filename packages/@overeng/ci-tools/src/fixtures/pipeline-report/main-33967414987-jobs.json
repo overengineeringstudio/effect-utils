@@ -1,0 +1,4659 @@
+{
+  "total_count": 26,
+  "jobs": [
+    {
+      "id": 101309855711,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom33w",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855711",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855711",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T13:01:37Z",
+      "name": "lint",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:43Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:43Z",
+          "completed_at": "2026-09-05T12:55:43Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:43Z",
+          "completed_at": "2026-09-05T12:59:19Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:19Z",
+          "completed_at": "2026-09-05T12:59:26Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:26Z",
+          "completed_at": "2026-09-05T12:59:27Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:27Z",
+          "completed_at": "2026-09-05T12:59:27Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:27Z",
+          "completed_at": "2026-09-05T12:59:27Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:27Z",
+          "completed_at": "2026-09-05T12:59:54Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:54Z",
+          "completed_at": "2026-09-05T12:59:56Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:56Z",
+          "completed_at": "2026-09-05T12:59:56Z"
+        },
+        {
+          "name": "Format + lint",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:56Z",
+          "completed_at": "2026-09-05T13:01:30Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:01:30Z",
+          "completed_at": "2026-09-05T13:01:30Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:01:30Z",
+          "completed_at": "2026-09-05T13:01:30Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:01:30Z",
+          "completed_at": "2026-09-05T13:01:30Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:01:30Z",
+          "completed_at": "2026-09-05T13:01:32Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:01:32Z",
+          "completed_at": "2026-09-05T13:01:34Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:01:34Z",
+          "completed_at": "2026-09-05T13:01:35Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:01:35Z",
+          "completed_at": "2026-09-05T13:01:35Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:01:35Z",
+          "completed_at": "2026-09-05T13:01:35Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855711",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68218,
+      "runner_name": "nsc-runner-d39bhjqplgv1u",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855778,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4Ig",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855778",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855778",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T13:10:26Z",
+      "name": "typecheck",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:10Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:10Z",
+          "completed_at": "2026-09-05T12:59:17Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:17Z",
+          "completed_at": "2026-09-05T12:59:17Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:17Z",
+          "completed_at": "2026-09-05T12:59:17Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:17Z",
+          "completed_at": "2026-09-05T12:59:17Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:17Z",
+          "completed_at": "2026-09-05T12:59:37Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:37Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Verify mutation-free shell entry",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T13:01:15Z"
+        },
+        {
+          "name": "Type check",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-09-05T13:01:15Z",
+          "completed_at": "2026-09-05T13:09:35Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:09:35Z",
+          "completed_at": "2026-09-05T13:09:35Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:09:35Z",
+          "completed_at": "2026-09-05T13:09:35Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 18,
+          "started_at": "2026-09-05T13:09:35Z",
+          "completed_at": "2026-09-05T13:09:35Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-09-05T13:09:35Z",
+          "completed_at": "2026-09-05T13:10:21Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:10:21Z",
+          "completed_at": "2026-09-05T13:10:23Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:10:23Z",
+          "completed_at": "2026-09-05T13:10:24Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 38,
+          "started_at": "2026-09-05T13:10:24Z",
+          "completed_at": "2026-09-05T13:10:24Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 39,
+          "started_at": "2026-09-05T13:10:24Z",
+          "completed_at": "2026-09-05T13:10:24Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855778",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68215,
+      "runner_name": "nsc-runner-9qlvk311ftp9c",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855781,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4JQ",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855781",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855781",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T12:55:52Z",
+      "name": "default-ref-policy",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Check first-party default refs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:49Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:55:49Z",
+          "completed_at": "2026-09-05T12:55:50Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:55:50Z",
+          "completed_at": "2026-09-05T12:55:50Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:55:50Z",
+          "completed_at": "2026-09-05T12:55:50Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855781",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68221,
+      "runner_name": "nsc-runner-ltkkjro9qp1k6",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855786,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4Kg",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855786",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855786",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T13:02:44Z",
+      "name": "deploy-storybooks",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:08Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:08Z",
+          "completed_at": "2026-09-05T12:59:16Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:16Z",
+          "completed_at": "2026-09-05T12:59:17Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:17Z",
+          "completed_at": "2026-09-05T12:59:17Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:17Z",
+          "completed_at": "2026-09-05T12:59:17Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:17Z",
+          "completed_at": "2026-09-05T12:59:37Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:37Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Deploy storybooks to Netlify",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T13:01:27Z"
+        },
+        {
+          "name": "Collect workflow report bundle",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-09-05T13:01:27Z",
+          "completed_at": "2026-09-05T13:01:55Z"
+        },
+        {
+          "name": "Render workflow report comment",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-09-05T13:01:55Z",
+          "completed_at": "2026-09-05T13:02:17Z"
+        },
+        {
+          "name": "Publish workflow report",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-09-05T13:02:17Z",
+          "completed_at": "2026-09-05T13:02:39Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 18,
+          "started_at": "2026-09-05T13:02:39Z",
+          "completed_at": "2026-09-05T13:02:39Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 19,
+          "started_at": "2026-09-05T13:02:39Z",
+          "completed_at": "2026-09-05T13:02:39Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 20,
+          "started_at": "2026-09-05T13:02:39Z",
+          "completed_at": "2026-09-05T13:02:39Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-09-05T13:02:39Z",
+          "completed_at": "2026-09-05T13:02:40Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 40,
+          "started_at": "2026-09-05T13:02:40Z",
+          "completed_at": "2026-09-05T13:02:42Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 41,
+          "started_at": "2026-09-05T13:02:42Z",
+          "completed_at": "2026-09-05T13:02:43Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 42,
+          "started_at": "2026-09-05T13:02:43Z",
+          "completed_at": "2026-09-05T13:02:43Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 43,
+          "started_at": "2026-09-05T13:02:43Z",
+          "completed_at": "2026-09-05T13:02:43Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855786",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68223,
+      "runner_name": "nsc-runner-i82mb3lu13nr4",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855788,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4LA",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855788",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855788",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T12:59:59Z",
+      "name": "pnpm-builder-contract",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:18Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:18Z",
+          "completed_at": "2026-09-05T12:59:25Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:25Z",
+          "completed_at": "2026-09-05T12:59:26Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:26Z",
+          "completed_at": "2026-09-05T12:59:26Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:26Z",
+          "completed_at": "2026-09-05T12:59:26Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:26Z",
+          "completed_at": "2026-09-05T12:59:52Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:52Z",
+          "completed_at": "2026-09-05T12:59:54Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:54Z",
+          "completed_at": "2026-09-05T12:59:54Z"
+        },
+        {
+          "name": "Audit native dependency policy",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:54Z",
+          "completed_at": "2026-09-05T12:59:54Z"
+        },
+        {
+          "name": "Guard pnpm builder contract",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-09-05T12:59:54Z",
+          "completed_at": "2026-09-05T12:59:54Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T12:59:54Z",
+          "completed_at": "2026-09-05T12:59:54Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T12:59:54Z",
+          "completed_at": "2026-09-05T12:59:54Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 18,
+          "started_at": "2026-09-05T12:59:54Z",
+          "completed_at": "2026-09-05T12:59:54Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-09-05T12:59:54Z",
+          "completed_at": "2026-09-05T12:59:55Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T12:59:55Z",
+          "completed_at": "2026-09-05T12:59:56Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T12:59:56Z",
+          "completed_at": "2026-09-05T12:59:57Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 38,
+          "started_at": "2026-09-05T12:59:57Z",
+          "completed_at": "2026-09-05T12:59:58Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 39,
+          "started_at": "2026-09-05T12:59:58Z",
+          "completed_at": "2026-09-05T12:59:58Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855788",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68219,
+      "runner_name": "nsc-runner-h8v36gjkfsunk",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855795,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4Mw",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855795",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855795",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:44Z",
+      "completed_at": "2026-09-05T13:08:08Z",
+      "name": "test (namespace-profile-macos-arm64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:45Z",
+          "completed_at": "2026-09-05T12:55:46Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:46Z",
+          "completed_at": "2026-09-05T12:55:49Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:49Z",
+          "completed_at": "2026-09-05T12:56:45Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 4,
+          "started_at": "2026-09-05T12:56:45Z",
+          "completed_at": "2026-09-05T12:56:45Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-09-05T12:56:45Z",
+          "completed_at": "2026-09-05T13:01:31Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T13:01:31Z",
+          "completed_at": "2026-09-05T13:01:42Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T13:01:42Z",
+          "completed_at": "2026-09-05T13:01:43Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T13:01:43Z",
+          "completed_at": "2026-09-05T13:01:43Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T13:01:43Z",
+          "completed_at": "2026-09-05T13:01:43Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T13:01:43Z",
+          "completed_at": "2026-09-05T13:02:22Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T13:02:22Z",
+          "completed_at": "2026-09-05T13:02:25Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12,
+          "started_at": "2026-09-05T13:02:25Z",
+          "completed_at": "2026-09-05T13:02:25Z"
+        },
+        {
+          "name": "Unit tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-09-05T13:02:25Z",
+          "completed_at": "2026-09-05T13:07:56Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 14,
+          "started_at": "2026-09-05T13:07:56Z",
+          "completed_at": "2026-09-05T13:07:56Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:07:56Z",
+          "completed_at": "2026-09-05T13:07:56Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:07:56Z",
+          "completed_at": "2026-09-05T13:07:56Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-09-05T13:07:56Z",
+          "completed_at": "2026-09-05T13:08:00Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 32,
+          "started_at": "2026-09-05T13:08:00Z",
+          "completed_at": "2026-09-05T13:08:02Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 33,
+          "started_at": "2026-09-05T13:08:02Z",
+          "completed_at": "2026-09-05T13:08:04Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:08:04Z",
+          "completed_at": "2026-09-05T13:08:05Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:08:05Z",
+          "completed_at": "2026-09-05T13:08:05Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855795",
+      "labels": ["namespace-profile-macos-arm64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68236,
+      "runner_name": "nsc-runner-8usmnqjec0vgg",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855796,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4NA",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855796",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855796",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T13:02:33Z",
+      "name": "cargo",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:16Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:16Z",
+          "completed_at": "2026-09-05T12:59:23Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:23Z",
+          "completed_at": "2026-09-05T12:59:23Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:23Z",
+          "completed_at": "2026-09-05T12:59:23Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:23Z",
+          "completed_at": "2026-09-05T12:59:23Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:23Z",
+          "completed_at": "2026-09-05T12:59:48Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:48Z",
+          "completed_at": "2026-09-05T12:59:50Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:50Z",
+          "completed_at": "2026-09-05T12:59:50Z"
+        },
+        {
+          "name": "Cargo build + test + clippy + fmt",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:50Z",
+          "completed_at": "2026-09-05T13:02:28Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:02:28Z",
+          "completed_at": "2026-09-05T13:02:28Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:02:28Z",
+          "completed_at": "2026-09-05T13:02:28Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:02:28Z",
+          "completed_at": "2026-09-05T13:02:28Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:02:28Z",
+          "completed_at": "2026-09-05T13:02:29Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:02:29Z",
+          "completed_at": "2026-09-05T13:02:31Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:02:31Z",
+          "completed_at": "2026-09-05T13:02:32Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:02:32Z",
+          "completed_at": "2026-09-05T13:02:32Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:02:32Z",
+          "completed_at": "2026-09-05T13:02:32Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855796",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68217,
+      "runner_name": "nsc-runner-3anjbj8nvvu2o",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855799,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4Nw",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855799",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855799",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T13:03:44Z",
+      "name": "test-integration-restate",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:35Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:32Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:32Z",
+          "completed_at": "2026-09-05T12:59:40Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:40Z",
+          "completed_at": "2026-09-05T12:59:40Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:40Z",
+          "completed_at": "2026-09-05T12:59:40Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:40Z",
+          "completed_at": "2026-09-05T12:59:40Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:40Z",
+          "completed_at": "2026-09-05T13:00:07Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:07Z",
+          "completed_at": "2026-09-05T13:00:09Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T13:00:09Z",
+          "completed_at": "2026-09-05T13:00:09Z"
+        },
+        {
+          "name": "Restate integration tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T13:00:09Z",
+          "completed_at": "2026-09-05T13:03:37Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:03:37Z",
+          "completed_at": "2026-09-05T13:03:37Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:03:37Z",
+          "completed_at": "2026-09-05T13:03:37Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:03:37Z",
+          "completed_at": "2026-09-05T13:03:37Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:03:37Z",
+          "completed_at": "2026-09-05T13:03:40Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:03:40Z",
+          "completed_at": "2026-09-05T13:03:41Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:03:41Z",
+          "completed_at": "2026-09-05T13:03:42Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:03:42Z",
+          "completed_at": "2026-09-05T13:03:43Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:03:43Z",
+          "completed_at": "2026-09-05T13:03:43Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855799",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68216,
+      "runner_name": "nsc-runner-osmi3hvc2mfgo",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855801,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4OQ",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855801",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855801",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T13:01:46Z",
+      "name": "test-megarepo-cold-gc",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:28Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:28Z",
+          "completed_at": "2026-09-05T12:59:36Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:36Z",
+          "completed_at": "2026-09-05T12:59:36Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:36Z",
+          "completed_at": "2026-09-05T12:59:36Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:36Z",
+          "completed_at": "2026-09-05T12:59:36Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:36Z",
+          "completed_at": "2026-09-05T13:00:02Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:02Z",
+          "completed_at": "2026-09-05T13:00:04Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T13:00:04Z",
+          "completed_at": "2026-09-05T13:00:04Z"
+        },
+        {
+          "name": "Megarepo cold-GC tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T13:00:04Z",
+          "completed_at": "2026-09-05T13:01:39Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:01:39Z",
+          "completed_at": "2026-09-05T13:01:39Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:01:39Z",
+          "completed_at": "2026-09-05T13:01:39Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:01:39Z",
+          "completed_at": "2026-09-05T13:01:39Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:01:39Z",
+          "completed_at": "2026-09-05T13:01:41Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:01:41Z",
+          "completed_at": "2026-09-05T13:01:43Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:01:43Z",
+          "completed_at": "2026-09-05T13:01:44Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:01:44Z",
+          "completed_at": "2026-09-05T13:01:44Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:01:44Z",
+          "completed_at": "2026-09-05T13:01:44Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855801",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68220,
+      "runner_name": "nsc-runner-8jrq8ujr7ugdq",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855831,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4Vw",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855831",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855831",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:01:21Z",
+      "name": "weaver",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:07Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:07Z",
+          "completed_at": "2026-09-05T12:59:14Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:14Z",
+          "completed_at": "2026-09-05T12:59:15Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:15Z",
+          "completed_at": "2026-09-05T12:59:15Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:15Z",
+          "completed_at": "2026-09-05T12:59:15Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:15Z",
+          "completed_at": "2026-09-05T12:59:37Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:37Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Fetch baseline history for weaver:diff (SC-R11)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Weaver registry gates (check + diff + live-check)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T13:01:15Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:01:15Z",
+          "completed_at": "2026-09-05T13:01:15Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:01:15Z",
+          "completed_at": "2026-09-05T13:01:15Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 18,
+          "started_at": "2026-09-05T13:01:15Z",
+          "completed_at": "2026-09-05T13:01:15Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-09-05T13:01:15Z",
+          "completed_at": "2026-09-05T13:01:16Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:01:16Z",
+          "completed_at": "2026-09-05T13:01:18Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:01:18Z",
+          "completed_at": "2026-09-05T13:01:19Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 38,
+          "started_at": "2026-09-05T13:01:19Z",
+          "completed_at": "2026-09-05T13:01:20Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 39,
+          "started_at": "2026-09-05T13:01:20Z",
+          "completed_at": "2026-09-05T13:01:20Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855831",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68227,
+      "runner_name": "nsc-runner-uhrb6ga20i3f4",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855840,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4YA",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855840",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855840",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:02:31Z",
+      "name": "nix-check (namespace-profile-linux-x86-64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:43Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:43Z",
+          "completed_at": "2026-09-05T12:55:43Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:43Z",
+          "completed_at": "2026-09-05T12:59:29Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:29Z",
+          "completed_at": "2026-09-05T12:59:37Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:37Z",
+          "completed_at": "2026-09-05T12:59:37Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:37Z",
+          "completed_at": "2026-09-05T12:59:37Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:37Z",
+          "completed_at": "2026-09-05T12:59:37Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:37Z",
+          "completed_at": "2026-09-05T13:00:04Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:04Z",
+          "completed_at": "2026-09-05T13:00:06Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T13:00:06Z",
+          "completed_at": "2026-09-05T13:00:06Z"
+        },
+        {
+          "name": "Nix hash check",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T13:00:06Z",
+          "completed_at": "2026-09-05T13:02:24Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:02:24Z",
+          "completed_at": "2026-09-05T13:02:24Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:02:24Z",
+          "completed_at": "2026-09-05T13:02:24Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:02:24Z",
+          "completed_at": "2026-09-05T13:02:24Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:02:24Z",
+          "completed_at": "2026-09-05T13:02:26Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:02:26Z",
+          "completed_at": "2026-09-05T13:02:28Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:02:28Z",
+          "completed_at": "2026-09-05T13:02:29Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:02:29Z",
+          "completed_at": "2026-09-05T13:02:29Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:02:29Z",
+          "completed_at": "2026-09-05T13:02:29Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855840",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68229,
+      "runner_name": "nsc-runner-go0fpbth0t0kg",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855842,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4Yg",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855842",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855842",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:34Z",
+      "completed_at": "2026-09-05T13:06:16Z",
+      "name": "test (namespace-profile-linux-x86-64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:33Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:33Z",
+          "completed_at": "2026-09-05T12:59:41Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:41Z",
+          "completed_at": "2026-09-05T12:59:41Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:41Z",
+          "completed_at": "2026-09-05T12:59:41Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:41Z",
+          "completed_at": "2026-09-05T12:59:41Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:41Z",
+          "completed_at": "2026-09-05T13:00:08Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:08Z",
+          "completed_at": "2026-09-05T13:00:10Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T13:00:10Z",
+          "completed_at": "2026-09-05T13:00:10Z"
+        },
+        {
+          "name": "Unit tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T13:00:10Z",
+          "completed_at": "2026-09-05T13:06:10Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:06:10Z",
+          "completed_at": "2026-09-05T13:06:10Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:06:10Z",
+          "completed_at": "2026-09-05T13:06:10Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:06:10Z",
+          "completed_at": "2026-09-05T13:06:10Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:06:10Z",
+          "completed_at": "2026-09-05T13:06:12Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:06:12Z",
+          "completed_at": "2026-09-05T13:06:14Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:06:14Z",
+          "completed_at": "2026-09-05T13:06:15Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:06:15Z",
+          "completed_at": "2026-09-05T13:06:15Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:06:15Z",
+          "completed_at": "2026-09-05T13:06:15Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855842",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68222,
+      "runner_name": "nsc-runner-t23pr26kk5dc6",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855846,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4Zg",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855846",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855846",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:00:54Z",
+      "name": "pnpm-regression",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:36Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:36Z",
+          "completed_at": "2026-09-05T12:59:43Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:43Z",
+          "completed_at": "2026-09-05T12:59:44Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:44Z",
+          "completed_at": "2026-09-05T12:59:44Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:44Z",
+          "completed_at": "2026-09-05T12:59:44Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:44Z",
+          "completed_at": "2026-09-05T13:00:11Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:11Z",
+          "completed_at": "2026-09-05T13:00:13Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T13:00:13Z",
+          "completed_at": "2026-09-05T13:00:13Z"
+        },
+        {
+          "name": "pnpm regression suite",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T13:00:13Z",
+          "completed_at": "2026-09-05T13:00:50Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:00:50Z",
+          "completed_at": "2026-09-05T13:00:50Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:00:50Z",
+          "completed_at": "2026-09-05T13:00:50Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:00:50Z",
+          "completed_at": "2026-09-05T13:00:50Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:00:50Z",
+          "completed_at": "2026-09-05T13:00:50Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:00:50Z",
+          "completed_at": "2026-09-05T13:00:52Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:00:52Z",
+          "completed_at": "2026-09-05T13:00:53Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:00:53Z",
+          "completed_at": "2026-09-05T13:00:53Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:00:53Z",
+          "completed_at": "2026-09-05T13:00:53Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855846",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68228,
+      "runner_name": "nsc-runner-lotss3cr295pg",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855878,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4hg",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855878",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855878",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T12:58:15Z",
+      "name": "nix-fod-check (namespace-profile-linux-x86-64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Isolate nix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:50Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:55:50Z",
+          "completed_at": "2026-09-05T12:55:50Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:55:50Z",
+          "completed_at": "2026-09-05T12:55:50Z"
+        },
+        {
+          "name": "Cold pnpm deps validation",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:55:50Z",
+          "completed_at": "2026-09-05T12:58:12Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 11,
+          "started_at": "2026-09-05T12:58:12Z",
+          "completed_at": "2026-09-05T12:58:12Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12,
+          "started_at": "2026-09-05T12:58:12Z",
+          "completed_at": "2026-09-05T12:58:12Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:58:12Z",
+          "completed_at": "2026-09-05T12:58:12Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-09-05T12:58:12Z",
+          "completed_at": "2026-09-05T12:58:12Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-09-05T12:58:12Z",
+          "completed_at": "2026-09-05T12:58:13Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-09-05T12:58:13Z",
+          "completed_at": "2026-09-05T12:58:13Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2026-09-05T12:58:13Z",
+          "completed_at": "2026-09-05T12:58:13Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855878",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68226,
+      "runner_name": "nsc-runner-18ceh8roeh2bs",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855881,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4iQ",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855881",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855881",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:06:52Z",
+      "name": "buck2",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:38Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:38Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:38Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:38Z",
+          "completed_at": "2026-09-05T12:59:46Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:46Z",
+          "completed_at": "2026-09-05T12:59:46Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:46Z",
+          "completed_at": "2026-09-05T12:59:46Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:46Z",
+          "completed_at": "2026-09-05T12:59:46Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:46Z",
+          "completed_at": "2026-09-05T13:00:14Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:14Z",
+          "completed_at": "2026-09-05T13:00:16Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T13:00:16Z",
+          "completed_at": "2026-09-05T13:00:16Z"
+        },
+        {
+          "name": "Buck2 toolchain surface and Nix bridge",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T13:00:16Z",
+          "completed_at": "2026-09-05T13:06:01Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:06:01Z",
+          "completed_at": "2026-09-05T13:06:01Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:06:01Z",
+          "completed_at": "2026-09-05T13:06:01Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:06:01Z",
+          "completed_at": "2026-09-05T13:06:01Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:06:01Z",
+          "completed_at": "2026-09-05T13:06:48Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:06:48Z",
+          "completed_at": "2026-09-05T13:06:50Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:06:50Z",
+          "completed_at": "2026-09-05T13:06:51Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:06:51Z",
+          "completed_at": "2026-09-05T13:06:51Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:06:51Z",
+          "completed_at": "2026-09-05T13:06:51Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855881",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68234,
+      "runner_name": "nsc-runner-cafdegkv06cuq",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855882,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4ig",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855882",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855882",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:44Z",
+      "completed_at": "2026-09-05T13:00:33Z",
+      "name": "nix-fod-check (namespace-profile-macos-arm64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:45Z",
+          "completed_at": "2026-09-05T12:55:47Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:47Z",
+          "completed_at": "2026-09-05T12:55:50Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:50Z",
+          "completed_at": "2026-09-05T12:56:46Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 4,
+          "started_at": "2026-09-05T12:56:46Z",
+          "completed_at": "2026-09-05T12:56:46Z"
+        },
+        {
+          "name": "Isolate nix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-09-05T12:56:46Z",
+          "completed_at": "2026-09-05T12:56:46Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:56:46Z",
+          "completed_at": "2026-09-05T12:56:56Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:56:56Z",
+          "completed_at": "2026-09-05T12:56:57Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:56:57Z",
+          "completed_at": "2026-09-05T12:56:57Z"
+        },
+        {
+          "name": "Cold pnpm deps validation",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:56:57Z",
+          "completed_at": "2026-09-05T13:00:26Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 10,
+          "started_at": "2026-09-05T13:00:26Z",
+          "completed_at": "2026-09-05T13:00:26Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 11,
+          "started_at": "2026-09-05T13:00:26Z",
+          "completed_at": "2026-09-05T13:00:26Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:26Z",
+          "completed_at": "2026-09-05T13:00:26Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-09-05T13:00:26Z",
+          "completed_at": "2026-09-05T13:00:26Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-09-05T13:00:26Z",
+          "completed_at": "2026-09-05T13:00:28Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-09-05T13:00:28Z",
+          "completed_at": "2026-09-05T13:00:29Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-09-05T13:00:29Z",
+          "completed_at": "2026-09-05T13:00:30Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855882",
+      "labels": ["namespace-profile-macos-arm64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68237,
+      "runner_name": "nsc-runner-r4m1e94pbon10",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855923,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4sw",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855923",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855923",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:01:32Z",
+      "name": "test-integration-notion",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:07Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:07Z",
+          "completed_at": "2026-09-05T12:59:14Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:14Z",
+          "completed_at": "2026-09-05T12:59:15Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:15Z",
+          "completed_at": "2026-09-05T12:59:15Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:15Z",
+          "completed_at": "2026-09-05T12:59:15Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:15Z",
+          "completed_at": "2026-09-05T12:59:37Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:37Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T12:59:39Z"
+        },
+        {
+          "name": "Notion integration tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:39Z",
+          "completed_at": "2026-09-05T13:01:27Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:01:27Z",
+          "completed_at": "2026-09-05T13:01:27Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:01:27Z",
+          "completed_at": "2026-09-05T13:01:27Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:01:27Z",
+          "completed_at": "2026-09-05T13:01:27Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:01:27Z",
+          "completed_at": "2026-09-05T13:01:28Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:01:28Z",
+          "completed_at": "2026-09-05T13:01:29Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:01:29Z",
+          "completed_at": "2026-09-05T13:01:30Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:01:30Z",
+          "completed_at": "2026-09-05T13:01:30Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:01:30Z",
+          "completed_at": "2026-09-05T13:01:30Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855923",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68225,
+      "runner_name": "nsc-runner-p9h6accemb986",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855925,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4tQ",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855925",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855925",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:01:47Z",
+      "name": "bootstrap-cold-proof",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:38Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:38Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:36Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:36Z",
+          "completed_at": "2026-09-05T12:59:44Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:44Z",
+          "completed_at": "2026-09-05T12:59:44Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:44Z",
+          "completed_at": "2026-09-05T12:59:44Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:44Z",
+          "completed_at": "2026-09-05T12:59:44Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:44Z",
+          "completed_at": "2026-09-05T13:00:11Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:11Z",
+          "completed_at": "2026-09-05T13:00:13Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T13:00:13Z",
+          "completed_at": "2026-09-05T13:00:13Z"
+        },
+        {
+          "name": "Bootstrap cold-proof (R32)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T13:00:13Z",
+          "completed_at": "2026-09-05T13:01:42Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:01:42Z",
+          "completed_at": "2026-09-05T13:01:42Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:01:42Z",
+          "completed_at": "2026-09-05T13:01:42Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:01:42Z",
+          "completed_at": "2026-09-05T13:01:42Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:01:42Z",
+          "completed_at": "2026-09-05T13:01:43Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:01:43Z",
+          "completed_at": "2026-09-05T13:01:45Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:01:45Z",
+          "completed_at": "2026-09-05T13:01:46Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:01:46Z",
+          "completed_at": "2026-09-05T13:01:46Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:01:46Z",
+          "completed_at": "2026-09-05T13:01:46Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855925",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68224,
+      "runner_name": "nsc-runner-is3hdlhgad10s",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855951,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom4zw",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855951",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855951",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:00:15Z",
+      "name": "nix-closure-sizes",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:37Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:37Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:19Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:19Z",
+          "completed_at": "2026-09-05T12:59:27Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:27Z",
+          "completed_at": "2026-09-05T12:59:27Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:27Z",
+          "completed_at": "2026-09-05T12:59:27Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:27Z",
+          "completed_at": "2026-09-05T12:59:27Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:27Z",
+          "completed_at": "2026-09-05T12:59:56Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:56Z",
+          "completed_at": "2026-09-05T12:59:58Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:58Z",
+          "completed_at": "2026-09-05T12:59:58Z"
+        },
+        {
+          "name": "Measure Nix closure: genie",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:58Z",
+          "completed_at": "2026-09-05T13:00:07Z"
+        },
+        {
+          "name": "Measure Nix closure: megarepo",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-09-05T13:00:07Z",
+          "completed_at": "2026-09-05T13:00:08Z"
+        },
+        {
+          "name": "Measure Nix closure: oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-09-05T13:00:08Z",
+          "completed_at": "2026-09-05T13:00:09Z"
+        },
+        {
+          "name": "Upload CI measurements: nix-closure-measurements",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-09-05T13:00:09Z",
+          "completed_at": "2026-09-05T13:00:10Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 18,
+          "started_at": "2026-09-05T13:00:10Z",
+          "completed_at": "2026-09-05T13:00:10Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 19,
+          "started_at": "2026-09-05T13:00:10Z",
+          "completed_at": "2026-09-05T13:00:10Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 20,
+          "started_at": "2026-09-05T13:00:10Z",
+          "completed_at": "2026-09-05T13:00:10Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-09-05T13:00:10Z",
+          "completed_at": "2026-09-05T13:00:10Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 40,
+          "started_at": "2026-09-05T13:00:10Z",
+          "completed_at": "2026-09-05T13:00:12Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 41,
+          "started_at": "2026-09-05T13:00:12Z",
+          "completed_at": "2026-09-05T13:00:13Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 42,
+          "started_at": "2026-09-05T13:00:13Z",
+          "completed_at": "2026-09-05T13:00:13Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 43,
+          "started_at": "2026-09-05T13:00:13Z",
+          "completed_at": "2026-09-05T13:00:13Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855951",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68230,
+      "runner_name": "nsc-runner-17id8f1l6mdn4",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855967,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom43w",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855967",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855967",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T12:55:40Z",
+      "name": "source-shape",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:38Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:38Z",
+          "completed_at": "2026-09-05T12:55:38Z"
+        },
+        {
+          "name": "Measure source shape: effect-utils",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:38Z",
+          "completed_at": "2026-09-05T12:55:38Z"
+        },
+        {
+          "name": "Upload CI measurements: source-shape",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:38Z",
+          "completed_at": "2026-09-05T12:55:39Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:55:39Z",
+          "completed_at": "2026-09-05T12:55:39Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-09-05T12:55:39Z",
+          "completed_at": "2026-09-05T12:55:39Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855967",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68232,
+      "runner_name": "nsc-runner-pekvhtn1akb5a",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309855976,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom46A",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309855976",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309855976",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:45Z",
+      "completed_at": "2026-09-05T13:05:50Z",
+      "name": "nix-check (namespace-profile-macos-arm64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:46Z",
+          "completed_at": "2026-09-05T12:55:48Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:48Z",
+          "completed_at": "2026-09-05T12:55:50Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:50Z",
+          "completed_at": "2026-09-05T12:56:46Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 4,
+          "started_at": "2026-09-05T12:56:46Z",
+          "completed_at": "2026-09-05T12:56:46Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-09-05T12:56:46Z",
+          "completed_at": "2026-09-05T13:01:32Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T13:01:32Z",
+          "completed_at": "2026-09-05T13:01:42Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T13:01:42Z",
+          "completed_at": "2026-09-05T13:01:43Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T13:01:43Z",
+          "completed_at": "2026-09-05T13:01:43Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T13:01:43Z",
+          "completed_at": "2026-09-05T13:01:43Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T13:01:43Z",
+          "completed_at": "2026-09-05T13:02:22Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T13:02:22Z",
+          "completed_at": "2026-09-05T13:02:25Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12,
+          "started_at": "2026-09-05T13:02:25Z",
+          "completed_at": "2026-09-05T13:02:25Z"
+        },
+        {
+          "name": "Nix hash check",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-09-05T13:02:25Z",
+          "completed_at": "2026-09-05T13:05:37Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 14,
+          "started_at": "2026-09-05T13:05:37Z",
+          "completed_at": "2026-09-05T13:05:37Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:05:37Z",
+          "completed_at": "2026-09-05T13:05:37Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:05:37Z",
+          "completed_at": "2026-09-05T13:05:37Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-09-05T13:05:37Z",
+          "completed_at": "2026-09-05T13:05:41Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 32,
+          "started_at": "2026-09-05T13:05:41Z",
+          "completed_at": "2026-09-05T13:05:43Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 33,
+          "started_at": "2026-09-05T13:05:43Z",
+          "completed_at": "2026-09-05T13:05:45Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:05:45Z",
+          "completed_at": "2026-09-05T13:05:45Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:05:45Z",
+          "completed_at": "2026-09-05T13:05:46Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309855976",
+      "labels": ["namespace-profile-macos-arm64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68243,
+      "runner_name": "nsc-runner-a95u6if7k7h6e",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309856009,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom5CQ",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309856009",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309856009",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:01:21Z",
+      "name": "bundle-smoke",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:35Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:38Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:38Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:55:42Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:42Z",
+          "completed_at": "2026-09-05T12:59:13Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:13Z",
+          "completed_at": "2026-09-05T12:59:20Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:20Z",
+          "completed_at": "2026-09-05T12:59:21Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:21Z",
+          "completed_at": "2026-09-05T12:59:21Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:21Z",
+          "completed_at": "2026-09-05T12:59:21Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:21Z",
+          "completed_at": "2026-09-05T12:59:47Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T12:59:47Z",
+          "completed_at": "2026-09-05T12:59:49Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T12:59:49Z",
+          "completed_at": "2026-09-05T12:59:49Z"
+        },
+        {
+          "name": "Bundle smoke tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T12:59:49Z",
+          "completed_at": "2026-09-05T13:01:14Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-09-05T13:01:14Z",
+          "completed_at": "2026-09-05T13:01:14Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2026-09-05T13:01:14Z",
+          "completed_at": "2026-09-05T13:01:14Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2026-09-05T13:01:14Z",
+          "completed_at": "2026-09-05T13:01:14Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-09-05T13:01:14Z",
+          "completed_at": "2026-09-05T13:01:17Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 34,
+          "started_at": "2026-09-05T13:01:17Z",
+          "completed_at": "2026-09-05T13:01:18Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 35,
+          "started_at": "2026-09-05T13:01:18Z",
+          "completed_at": "2026-09-05T13:01:19Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-09-05T13:01:19Z",
+          "completed_at": "2026-09-05T13:01:20Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-09-05T13:01:20Z",
+          "completed_at": "2026-09-05T13:01:20Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309856009",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68231,
+      "runner_name": "nsc-runner-v62o8afseb58c",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309856043,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom5Kw",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309856043",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309856043",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:35Z",
+      "completed_at": "2026-09-05T13:03:30Z",
+      "name": "test-live-deploy-ci-tools",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:36Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T12:55:36Z",
+          "completed_at": "2026-09-05T12:55:38Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T12:55:38Z",
+          "completed_at": "2026-09-05T12:55:43Z"
+        },
+        {
+          "name": "Checkout CI measurement baseline ref",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-09-05T12:55:43Z",
+          "completed_at": "2026-09-05T12:55:43Z"
+        },
+        {
+          "name": "Prepare effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-09-05T12:55:43Z",
+          "completed_at": "2026-09-05T12:59:48Z"
+        },
+        {
+          "name": "Provide cachix CLI from nixpkgs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T12:59:48Z",
+          "completed_at": "2026-09-05T12:59:57Z"
+        },
+        {
+          "name": "Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T12:59:57Z",
+          "completed_at": "2026-09-05T12:59:57Z"
+        },
+        {
+          "name": "Prepare CI helper scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T12:59:57Z",
+          "completed_at": "2026-09-05T12:59:57Z"
+        },
+        {
+          "name": "Use pinned devenv from lock",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T12:59:57Z",
+          "completed_at": "2026-09-05T12:59:57Z"
+        },
+        {
+          "name": "Resolve devenv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T12:59:57Z",
+          "completed_at": "2026-09-05T13:00:26Z"
+        },
+        {
+          "name": "Evict cached pnpm deps for oxlint-npm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:00:26Z",
+          "completed_at": "2026-09-05T13:00:28Z"
+        },
+        {
+          "name": "Force diagnostics failure (debug)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-09-05T13:00:28Z",
+          "completed_at": "2026-09-05T13:00:28Z"
+        },
+        {
+          "name": "Check live Netlify ci-tools E2E secrets",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-09-05T13:00:28Z",
+          "completed_at": "2026-09-05T13:00:28Z"
+        },
+        {
+          "name": "Check live Vercel ci-tools E2E secrets",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-09-05T13:00:28Z",
+          "completed_at": "2026-09-05T13:00:28Z"
+        },
+        {
+          "name": "Live Netlify ci-tools E2E",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-09-05T13:00:28Z",
+          "completed_at": "2026-09-05T13:02:24Z"
+        },
+        {
+          "name": "Live Vercel ci-tools E2E",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-09-05T13:02:24Z",
+          "completed_at": "2026-09-05T13:03:22Z"
+        },
+        {
+          "name": "Nix diagnostics summary",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 18,
+          "started_at": "2026-09-05T13:03:22Z",
+          "completed_at": "2026-09-05T13:03:22Z"
+        },
+        {
+          "name": "Upload Nix diagnostics artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 19,
+          "started_at": "2026-09-05T13:03:22Z",
+          "completed_at": "2026-09-05T13:03:22Z"
+        },
+        {
+          "name": "Failure note",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 20,
+          "started_at": "2026-09-05T13:03:22Z",
+          "completed_at": "2026-09-05T13:03:22Z"
+        },
+        {
+          "name": "Cleanup effect-utils composition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-09-05T13:03:22Z",
+          "completed_at": "2026-09-05T13:03:25Z"
+        },
+        {
+          "name": "Post Enable Cachix cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 40,
+          "started_at": "2026-09-05T13:03:25Z",
+          "completed_at": "2026-09-05T13:03:26Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 41,
+          "started_at": "2026-09-05T13:03:26Z",
+          "completed_at": "2026-09-05T13:03:27Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 42,
+          "started_at": "2026-09-05T13:03:27Z",
+          "completed_at": "2026-09-05T13:03:28Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 43,
+          "started_at": "2026-09-05T13:03:28Z",
+          "completed_at": "2026-09-05T13:03:28Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309856043",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68233,
+      "runner_name": "nsc-runner-g8t6s161kc4gk",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101309856113,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlom5cQ",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101309856113",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101309856113",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-09-05T12:55:26Z",
+      "started_at": "2026-09-05T12:55:26Z",
+      "completed_at": "2026-09-05T12:55:26Z",
+      "name": "devenv-perf",
+      "steps": [],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101309856113",
+      "labels": [
+        "nscloud-ubuntu-24.04-amd64-16x64-with-features",
+        "namespace-features:github.run-id=33967414987"
+      ],
+      "runner_id": null,
+      "runner_name": null,
+      "runner_group_id": null,
+      "runner_group_name": null
+    },
+    {
+      "id": 101310422681,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlpJemQ",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101310422681",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101310422681",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T13:00:15Z",
+      "started_at": "2026-09-05T13:00:17Z",
+      "completed_at": "2026-09-05T13:01:28Z",
+      "name": "ci/measurements-report",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T13:00:17Z",
+          "completed_at": "2026-09-05T13:00:18Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T13:00:18Z",
+          "completed_at": "2026-09-05T13:00:18Z"
+        },
+        {
+          "name": "Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T13:00:18Z",
+          "completed_at": "2026-09-05T13:00:19Z"
+        },
+        {
+          "name": "Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T13:00:19Z",
+          "completed_at": "2026-09-05T13:00:24Z"
+        },
+        {
+          "name": "Provide CI measurement report tools",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-09-05T13:00:24Z",
+          "completed_at": "2026-09-05T13:00:31Z"
+        },
+        {
+          "name": "Download current measurement artifact: devenv-perf",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 6,
+          "started_at": "2026-09-05T13:00:31Z",
+          "completed_at": "2026-09-05T13:00:31Z"
+        },
+        {
+          "name": "Download current measurement artifact: nix-closure-measurements",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-09-05T13:00:31Z",
+          "completed_at": "2026-09-05T13:00:31Z"
+        },
+        {
+          "name": "Download current measurement artifact: source-shape",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-09-05T13:00:31Z",
+          "completed_at": "2026-09-05T13:00:32Z"
+        },
+        {
+          "name": "Download previous artifact: devenv-perf",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-09-05T13:00:32Z",
+          "completed_at": "2026-09-05T13:00:32Z"
+        },
+        {
+          "name": "Download previous artifact: nix-closure-measurements",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-09-05T13:00:32Z",
+          "completed_at": "2026-09-05T13:01:00Z"
+        },
+        {
+          "name": "Download previous artifact: source-shape",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-09-05T13:01:00Z",
+          "completed_at": "2026-09-05T13:01:24Z"
+        },
+        {
+          "name": "Compare CI measurements with baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-09-05T13:01:24Z",
+          "completed_at": "2026-09-05T13:01:24Z"
+        },
+        {
+          "name": "Upload CI measurements: ci-measurements-report",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-09-05T13:01:24Z",
+          "completed_at": "2026-09-05T13:01:25Z"
+        },
+        {
+          "name": "Post Install Nix",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-09-05T13:01:25Z",
+          "completed_at": "2026-09-05T13:01:26Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-09-05T13:01:26Z",
+          "completed_at": "2026-09-05T13:01:26Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2026-09-05T13:01:26Z",
+          "completed_at": "2026-09-05T13:01:26Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101310422681",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68239,
+      "runner_name": "nsc-runner-cknv76qs6k0c4",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    },
+    {
+      "id": 101311748292,
+      "run_id": 33967414987,
+      "workflow_name": "CI",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/runs/33967414987",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPXc13M8AAAAXlqaYxA",
+      "head_sha": "fb4be8e5889136befece2509453d8e0c99fbd03f",
+      "url": "https://api.github.com/repos/overengineeringstudio/effect-utils/actions/jobs/101311748292",
+      "html_url": "https://github.com/overengineeringstudio/effect-utils/actions/runs/33967414987/job/101311748292",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-05T13:10:26Z",
+      "started_at": "2026-09-05T13:10:35Z",
+      "completed_at": "2026-09-05T13:10:38Z",
+      "name": "notify-alignment",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-09-05T13:10:36Z",
+          "completed_at": "2026-09-05T13:10:36Z"
+        },
+        {
+          "name": "Set up runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-09-05T13:10:36Z",
+          "completed_at": "2026-09-05T13:10:36Z"
+        },
+        {
+          "name": "Dispatch alignment to coordinator",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-09-05T13:10:36Z",
+          "completed_at": "2026-09-05T13:10:36Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-09-05T13:10:36Z",
+          "completed_at": "2026-09-05T13:10:36Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/overengineeringstudio/effect-utils/check-runs/101311748292",
+      "labels": ["namespace-profile-linux-x86-64", "namespace-features:github.run-id=33967414987"],
+      "runner_id": 68246,
+      "runner_name": "nsc-runner-o2lv33b6efuti",
+      "runner_group_id": 1,
+      "runner_group_name": "Default"
+    }
+  ]
+}

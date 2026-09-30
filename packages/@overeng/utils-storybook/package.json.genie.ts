@@ -24,6 +24,9 @@ const gatePeerNames = ['@vitest/browser-playwright', 'vitest'] as const
 
 const deps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils-storybook' }),
+  dependencies: {
+    external: catalog.pick('@blazediff/core', 'pngjs'),
+  },
   devDependencies: {
     workspace: [utilsPkg, utilsDevPkg],
     external: {
@@ -36,6 +39,7 @@ const deps = catalog.compose({
         '@playwright/test',
         '@storybook/addon-a11y',
         '@types/node',
+        '@types/pngjs',
         '@types/react',
         '@vitest/browser',
         'effect',

@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:1a03005a1b96fceba16c1b6daf68a591d9f0459c22df640e7291f916da82b05b
+# Store fingerprint: sha256:4e320be1b2d22dc8e405782e8c0f30f8409f50f1ed9ddb752ebdf4f776d2da6d
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -3219,6 +3219,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/@types/node/-/node-26.5.0.tgz",
     sha256 = "def4ca0c41a06ce64a36e124934908afd87c062566ae812cddd24339e393c64d",
     size_bytes = 469381,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_types_pngjs_6_0_5_bec39b43daa4",
+    package_name = "@types/pngjs",
+    url = "https://registry.npmjs.org/@types/pngjs/-/pngjs-6.0.5.tgz",
+    sha256 = "db919544cdd5c9bd50928619fee0498341e4c0845b03d38752b510cff3994e07",
+    size_bytes = 2390,
     bins = {
     },
 )
@@ -11282,6 +11292,17 @@ pnpm_store_entry(
     runtime = ":assemble-store.ts",
     dependencies = {
         "undici-types": ":entry_undici_types_8_9_0_53cb0487b88b",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_types_pngjs_6_0_5_bec39b43daa4",
+    package = ":package_types_pngjs_6_0_5_bec39b43daa4",
+    store_key = "@types+pngjs@6.0.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "@types/node": ":entry_types_node_26_5_0_a0142d056efc",
     },
     visibility = ["PUBLIC"],
 )
@@ -41958,6 +41979,7 @@ pnpm_store_view(
     name = "view_packages_overeng_utils_storybook_ad47b984871c",
     runtime = ":assemble-store.ts",
     direct = {
+        "@blazediff/core": "@blazediff+core@1.9.1",
         "@effect/opentelemetry": "@effect+opentelemetry@4.0.0-rc.118_@opentelemetry+api-logs@0.222.0_@opentelemetry+api@1.9.1_@openteleme_1eac378340ecf660",
         "@effect/platform-node": "@effect+platform-node@4.0.0-rc.118_effect@4.0.0-rc.118_redis@6.2.1_@opentelemetry+api@1.9.1",
         "@effect/vitest": "@effect+vitest@4.0.0-rc.118_effect@4.0.0-rc.118_vitest@4.1.9",
@@ -41965,11 +41987,13 @@ pnpm_store_view(
         "@storybook/addon-a11y": "@storybook+addon-a11y@10.6.0_storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react_f6a9940ff352e48d",
         "@storybook/react-vite": "@storybook+react-vite@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-do_9b5eccc39f239997",
         "@types/node": "@types+node@26.5.0",
+        "@types/pngjs": "@types+pngjs@6.0.5",
         "@types/react": "@types+react@19.2.18",
         "@vitest/browser": "@vitest+browser@4.1.9_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "@vitest/browser-playwright": "@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9",
         "effect": "effect@4.0.0-rc.118",
         "playwright": "playwright@1.63.0",
+        "pngjs": "pngjs@7.0.0",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",
         "storybook": "storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_prettier@3.9.6_react_da9aab27e30e1021",
@@ -42052,6 +42076,7 @@ pnpm_store_view(
             "@types+doctrine@0.0.9": ":entry_types_doctrine_0_0_9_bb4eabd24633",
             "@types+estree@1.0.9": ":entry_types_estree_1_0_9_ec29746adee7",
             "@types+node@26.5.0": ":entry_types_node_26_5_0_a0142d056efc",
+            "@types+pngjs@6.0.5": ":entry_types_pngjs_6_0_5_bec39b43daa4",
             "@types+react-dom@19.2.7_@types+react@19.2.18": ":entry_types_react_dom_19_2_7_types_react_19_2_18_cafde4f429b3",
             "@types+react@19.2.18": ":entry_types_react_19_2_18_231c43c28c72",
             "@types+resolve@1.20.6": ":entry_types_resolve_1_20_6_21c7ce2f7c28",
@@ -42289,6 +42314,7 @@ pnpm_store_view(
             "@types+doctrine@0.0.9": ":entry_types_doctrine_0_0_9_bb4eabd24633",
             "@types+estree@1.0.9": ":entry_types_estree_1_0_9_ec29746adee7",
             "@types+node@26.5.0": ":entry_types_node_26_5_0_a0142d056efc",
+            "@types+pngjs@6.0.5": ":entry_types_pngjs_6_0_5_bec39b43daa4",
             "@types+react-dom@19.2.7_@types+react@19.2.18": ":entry_types_react_dom_19_2_7_types_react_19_2_18_cafde4f429b3",
             "@types+react@19.2.18": ":entry_types_react_19_2_18_231c43c28c72",
             "@types+resolve@1.20.6": ":entry_types_resolve_1_20_6_21c7ce2f7c28",
@@ -42528,6 +42554,7 @@ pnpm_store_view(
             "@types+doctrine@0.0.9": ":entry_types_doctrine_0_0_9_bb4eabd24633",
             "@types+estree@1.0.9": ":entry_types_estree_1_0_9_ec29746adee7",
             "@types+node@26.5.0": ":entry_types_node_26_5_0_a0142d056efc",
+            "@types+pngjs@6.0.5": ":entry_types_pngjs_6_0_5_bec39b43daa4",
             "@types+react-dom@19.2.7_@types+react@19.2.18": ":entry_types_react_dom_19_2_7_types_react_19_2_18_cafde4f429b3",
             "@types+react@19.2.18": ":entry_types_react_19_2_18_231c43c28c72",
             "@types+resolve@1.20.6": ":entry_types_resolve_1_20_6_21c7ce2f7c28",
@@ -42767,6 +42794,7 @@ pnpm_store_view(
             "@types+doctrine@0.0.9": ":entry_types_doctrine_0_0_9_bb4eabd24633",
             "@types+estree@1.0.9": ":entry_types_estree_1_0_9_ec29746adee7",
             "@types+node@26.5.0": ":entry_types_node_26_5_0_a0142d056efc",
+            "@types+pngjs@6.0.5": ":entry_types_pngjs_6_0_5_bec39b43daa4",
             "@types+react-dom@19.2.7_@types+react@19.2.18": ":entry_types_react_dom_19_2_7_types_react_19_2_18_cafde4f429b3",
             "@types+react@19.2.18": ":entry_types_react_19_2_18_231c43c28c72",
             "@types+resolve@1.20.6": ":entry_types_resolve_1_20_6_21c7ce2f7c28",

@@ -337,6 +337,7 @@ export const catalog = defineCatalog({
   '@types/node': '26.5.0',
   '@types/bun': '1.4.2',
   '@types/is-dom': '1.1.2',
+  '@types/pngjs': '6.0.5',
 
   // Build tools
   // TypeScript 7's npm package provides the native compiler plus its process-backed unstable API.
@@ -349,6 +350,8 @@ export const catalog = defineCatalog({
   '@playwright/test': '1.63.0',
   vite: '8.2.2',
   vitest: '4.1.9',
+  '@blazediff/core': '1.9.1',
+  pngjs: '7.0.0',
   '@vitejs/plugin-react': '6.1.1',
   unplugin: '3.3.0',
 

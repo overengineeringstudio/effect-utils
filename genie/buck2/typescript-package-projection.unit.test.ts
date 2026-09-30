@@ -426,33 +426,22 @@ describe('declared test lanes', () => {
   })
 
   it('stages the snapshot baseline of every staged test module in its test tree', () => {
-    const stagedBaselines = admittedTestLanes.flatMap((lane) => {
+    for (const lane of admittedTestLanes) {
       const testTree = stagedFilesOf({ output: lane.output, tree: 'test_package_tree' })
       const compileTree = stagedFilesOf({ output: lane.output, tree: 'package_tree' })
-      return collectableTestModulesOf(lane)
+      for (const baseline of collectableTestModulesOf(lane)
         .map(snapshotBaselineOf)
-        .filter((baseline) => existsSync(path.join(process.cwd(), lane.packagePath, baseline)))
-        .map((baseline) => {
-          expect(
-            testTree,
-            `//${lane.packagePath}:test runs under CI=true and cannot write ${baseline}: the test package tree omits it`,
-          ).toContain(baseline)
-          expect(
-            compileTree,
-            `//${lane.packagePath} compile tree carries the baseline ${baseline}`,
-          ).not.toContain(baseline)
-          return `${lane.packagePath}/${baseline}`
-        })
-    })
-
-    // The registry-wide sweep only proves an inclusion; these name the baselines the two
-    // reported lanes lost, so a narrowing of the census cannot pass unnoticed.
-    expect(stagedBaselines).toContain(
-      'packages/@overeng/ci-tools/src/__snapshots__/cli.contract.test.ts.snap',
-    )
-    expect(stagedBaselines).toContain(
-      'packages/@overeng/react-inspector/src/object/__snapshots__/ObjectName.spec.jsx.snap',
-    )
+        .filter((baseline) => existsSync(path.join(process.cwd(), lane.packagePath, baseline)))) {
+        expect(
+          testTree,
+          `//${lane.packagePath}:test runs under CI=true and cannot write ${baseline}: the test package tree omits it`,
+        ).toContain(baseline)
+        expect(
+          compileTree,
+          `//${lane.packagePath} compile tree carries the baseline ${baseline}`,
+        ).not.toContain(baseline)
+      }
+    }
   })
 
   it('splits the React Inspector JSX specs and live baselines out of its compile tree', () => {

@@ -52,6 +52,7 @@ import {
   pipelineCloseJob,
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
+import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -1471,6 +1472,28 @@ const withCiOtelCapture = (jobMap: Record<string, any>) =>
     }),
   )
 
+const pipelineTracesJob = {
+  needs: ['pipeline-attempt-close'],
+  if: "${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CI_EVIDENCE_MODE == 'upload' }}",
+  'runs-on': 'ubuntu-latest',
+  permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write' },
+  'continue-on-error': true,
+  steps: [
+    { uses: 'actions/checkout@v4' },
+    { uses: 'cachix/install-nix-action@v31' },
+    {
+      name: 'Publish Pipeline traces',
+      shell: 'bash',
+      env: {
+        GH_TOKEN: '${{ github.token }}',
+        GH_REPO: '${{ github.repository }}',
+        PR_NUMBER: '${{ github.event.pull_request.number }}',
+        GRAFANA_BASE_URL: '${{ vars.GRAFANA_BASE_URL }}',
+      },
+      run: 'bash genie/ci-scripts/pipeline-traces-report.sh',
+    },
+  ],
+} as const
 const allCiJobs: Record<string, any> = {
   // Source-policy is independent of product gates and has no devenv dependency.
   'default-ref-policy': {
@@ -1494,6 +1517,19 @@ const allCiJobs: Record<string, any> = {
       'namespace-features:github.run-id=${{ github.run_id }}',
     ],
   }),
+}
+const declaredJobIds = new Set([
+  ...Object.keys(allCiJobs),
+  'pipeline-attempt-close',
+  'pipeline-traces',
+])
+for (const ciJobId of declaredJobIds) {
+  if (pipelineJobIdentifierSet.has(ciJobId) === false)
+    throw new Error(`CI job ${ciJobId} has no Jobs API name mapping`)
+}
+for (const ciJobId of pipelineJobIdentifierSet) {
+  if (declaredJobIds.has(ciJobId) === false)
+    throw new Error(`Jobs API name mapping contains undeclared CI job ${ciJobId}`)
 }
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
@@ -1531,5 +1567,6 @@ export default ciWorkflow({
   jobs: {
     ...withPipelineTelemetry(allCiJobs),
     'pipeline-attempt-close': pipelineCloseJob(allCiJobs),
+    'pipeline-traces': pipelineTracesJob,
   },
 } satisfies CiWorkflowArgs)

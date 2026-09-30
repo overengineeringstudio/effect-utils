@@ -99,8 +99,8 @@ jobs:
           include-hidden-files: true
           retention-days: 3
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code') }}-build-storybooks"
-      cancel-in-progress: ${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code' }}-build-storybooks"
+      cancel-in-progress: true
     env:
       FORCE_SETUP: '1'
       CI: 'true'

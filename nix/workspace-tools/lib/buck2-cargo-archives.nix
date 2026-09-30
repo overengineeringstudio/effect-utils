@@ -1,17 +1,14 @@
 # Offline crate supply for sandboxed Buck builds (`mkBuckProductFromSource`).
 #
-# Reads the committed, freshness-gated Reindeer graphs (`crate_archive` entries
-# pinned by the Cargo.lock sha256) at evaluation — they are source files, not
-# build outputs — and realizes one fixed-output fetch per digest. The Buck rule
-# `@rules//buck2/rust:crates.bzl` copies `<sha256>.tgz` from this tree when
-# `nix_store.crates_root` is set. Git sources come from the graph's sibling
-# `git-archives.json` sidecar (GitHub commit tarballs pinned by sha256, gated by
-# `scripts/buck2-rust-deps.sh`) and share the `<sha256>.tgz` layout.
-# Acquisition only: nothing is published.
+# Registry archives and ordinary Git archives retain their reviewed byte digests.
+# A declared Git source supplies a deterministic tarball, pinned directly by
+# its SHA-256 for private sources and verified against the source manifest.
 {
   pkgs,
   # Reindeer graph files (`third-party/BUCK`) as paths.
   thirdPartyBuckFiles,
+  # GitHub owner/repo -> pinned flake input (or a local path fixture).
+  gitSources ? { },
 }:
 
 let
@@ -43,7 +40,10 @@ let
       archives = map parseBlock blocks;
     in
     assert lib.assertMsg
-      (archives != [ ] || lib.hasInfix "\ngit_archive(\n" ("\n" + builtins.readFile file))
+      (
+        archives != [ ]
+        || builtins.length (lib.splitString "\ngit_archive(\n" ("\n" + builtins.readFile file)) > 1
+      )
       "buck2-cargo-archives: ${toString file} declares no crate_archive (Reindeer [buck] http_archive = \"crate_archive\")";
     archives;
   parseGitArchives =
@@ -59,7 +59,7 @@ let
       assert lib.assertMsg (
         pins.schema or null == "effect-utils/buck2-git-archives/v1"
       ) "buck2-cargo-archives: ${toString sidecar} must carry schema effect-utils/buck2-git-archives/v1";
-      assert lib.assertMsg (lib.hasInfix "\ngit_archive(\n" ("\n" + graphText))
+      assert lib.assertMsg (builtins.length (lib.splitString "\ngit_archive(\n" ("\n" + graphText)) > 1)
         "buck2-cargo-archives: ${toString sidecar} pins git sources but ${toString file} declares no git_archive";
       map (
         pin:
@@ -69,8 +69,54 @@ let
         assert lib.assertMsg (
           builtins.match "https://github.com/[^\"]+[.]tar[.]gz" pin.url != null
         ) "buck2-cargo-archives: ${toString sidecar} ${pin.repo} needs a GitHub archive url";
+        assert lib.assertMsg (builtins.elem (pin.source or "github") [
+          "github"
+          "nix"
+        ]) "buck2-cargo-archives: ${toString sidecar} ${pin.repo} has unknown source type";
         {
           inherit (pin) sha256 url;
+          source =
+            let
+              repo = lib.removeSuffix ".git" (
+                lib.removeSuffix "/" (lib.removePrefix "https://github.com/" pin.repo)
+              );
+              input = gitSources.${repo} or null;
+              rev = if builtins.isAttrs input then input.rev or null else null;
+              src =
+                if builtins.isAttrs input then
+                  input.outPath
+                else
+                  builtins.path {
+                    path = input;
+                    name = "buck2-git-source-${lib.replaceStrings [ "/" ] [ "-" ] repo}";
+                  };
+            in
+            assert lib.assertMsg (
+              builtins.match "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" repo != null
+            ) "buck2-cargo-archives: ${toString sidecar} has invalid GitHub repo ${pin.repo}";
+            if input == null then
+              assert lib.assertMsg ((pin.source or "github") != "nix")
+                "buck2-cargo-archives: ${pin.repo}@${pin.rev} requires gitSources.${repo} (Nix source archive pin)";
+              null
+            else
+              assert lib.assertMsg (
+                builtins.match "[0-9a-f]{40}" pin.rev != null
+                && builtins.match "[A-Za-z0-9_.-]+" pin.strip_prefix != null
+              ) "buck2-cargo-archives: ${toString sidecar} ${repo} needs a 40-hex rev and safe strip_prefix";
+              assert lib.assertMsg (
+                builtins.isPath input
+                || (builtins.isString input && lib.hasPrefix "/" input)
+                || (builtins.isAttrs input && input ? outPath && rev != null)
+              ) "buck2-cargo-archives: gitSources.${repo} must be a path or a pinned flake input with rev";
+              assert lib.assertMsg (rev == null || rev == pin.rev)
+                "buck2-cargo-archives: gitSources.${repo} rev ${toString rev} does not match Cargo.lock rev ${pin.rev}";
+              import ./buck2-git-source-archive.nix {
+                inherit pkgs src;
+                repo = pin.repo;
+                rev = pin.rev;
+                stripPrefix = pin.strip_prefix;
+                expectedSha256 = if (pin.source or "github") == "nix" then pin.sha256 else null;
+              };
         }
       ) pins.archives;
   archives =
@@ -78,16 +124,36 @@ let
   archivesByDigest = builtins.listToAttrs (
     map (archive: {
       name = archive.sha256;
-      value = pkgs.fetchurl {
-        inherit (archive) url sha256;
-        name = "${archive.sha256}.tgz";
-      };
+      value = archive;
     }) archives
   );
 in
 pkgs.linkFarm "buck2-cargo-archives" (
-  lib.mapAttrsToList (sha256: path: {
-    name = "${sha256}.tgz";
-    inherit path;
-  }) archivesByDigest
+  lib.concatMap (
+    archive:
+    let
+      sha256 = archive.sha256;
+    in
+    if archive.source or null == null then
+      [
+        {
+          name = "${sha256}.tgz";
+          path = pkgs.fetchurl {
+            inherit (archive) url sha256;
+            name = "${sha256}.tgz";
+          };
+        }
+      ]
+    else
+      [
+        {
+          name = "${sha256}.tgz";
+          path = "${archive.source}/archive.tgz";
+        }
+        {
+          name = "${sha256}.source.sha256";
+          path = "${archive.source}/source.sha256";
+        }
+      ]
+  ) (builtins.attrValues archivesByDigest)
 )

@@ -16,11 +16,14 @@
 # The projector and both Reindeer tasks read this same file. Reindeer uses
 # a temporary supply-only Cargo manifest derived from the complete resolved
 # graph, preserving registry dependencies of foreign first-party crates.
+# Private Git sources use the same pinned flake input as the sandboxed archive
+# supply: gitSources."owner/repo" = inputs.repo.
 # Provides `${taskPrefix}:generate` and `${taskPrefix}:check`.
 {
   workspaceRoot,
   thirdPartyBuckPath ? "${workspaceRoot}/third-party/BUCK",
   taskPrefix ? "buck2:rust-deps",
+  gitSources ? { },
 }:
 {
   pkgs,
@@ -31,6 +34,30 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   gate = ../../../../scripts/buck2-rust-deps.sh;
   supplyManifest = ../../../../scripts/buck2-rust-supply-manifest.ts;
+  sourceArchive = import ../../../workspace-tools/lib/buck2-git-source-archive.nix;
+  gitSourceConfigs = builtins.mapAttrs (
+    repo: input:
+    assert lib.assertMsg (
+      builtins.match "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" repo != null
+      && builtins.isAttrs input
+      && input ? outPath
+      && builtins.match "[0-9a-f]{40}" (input.rev or "") != null
+    ) "buck2-rust-deps: gitSources.${repo} must be a pinned flake input with a 40-hex rev";
+    let
+      rev = input.rev;
+      source = sourceArchive {
+        inherit pkgs rev;
+        repo = "https://github.com/${repo}";
+        stripPrefix = "${lib.last (lib.splitString "/" repo)}-${rev}";
+        src = input.outPath;
+      };
+    in
+    {
+      inherit rev;
+      archive = "${source}/archive.tgz";
+    }
+  ) gitSources;
+  gitSourcesFile = pkgs.writeText "buck2-rust-git-sources.json" (builtins.toJSON gitSourceConfigs);
   workspaceSegments = lib.splitString "/" workspaceRoot;
   validRelativePath =
     workspaceRoot != ""
@@ -52,7 +79,8 @@ let
       ${pkgs.cargo}/bin/cargo \
       ${pkgs.rustc}/bin/rustc \
       ${pkgs.bun}/bin/bun \
-      ${supplyManifest}
+      ${supplyManifest} \
+      ${gitSourcesFile}
   '';
 in
 assert lib.assertMsg validRelativePath
