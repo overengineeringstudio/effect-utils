@@ -550,9 +550,19 @@ export const translatePnpmLock = ({
   const unmatchedWorkspacePatches = Object.keys(workspacePatches).filter(
     (identity) => lockedPatches[identity] === undefined,
   )
-  if (unmatchedWorkspacePatches.length > 0) {
+  // During `genie --defer-validation` the catalog may have just introduced a patch.
+  // Project the still-authoritative old lock; pnpm:update must install the patch,
+  // and its mandatory final `genie --check` validates the new lock strictly.
+  const deferNewPatches = process.env.GENIE_DEFER_VALIDATION === '1'
+  if (unmatchedWorkspacePatches.length > 0 && deferNewPatches === false) {
     return fail(`workspace patches missing from lockfile: ${unmatchedWorkspacePatches.join(', ')}`)
   }
+  const activeWorkspacePatches =
+    unmatchedWorkspacePatches.length === 0
+      ? workspacePatches
+      : Object.fromEntries(
+          sortedEntries(workspacePatches).filter(([identity]) => lockedPatches[identity] !== undefined),
+        )
 
   const packageRecords = recordField({
     record: lock,
@@ -653,7 +663,7 @@ export const translatePnpmLock = ({
         location: `${location}.resolution.tarball`,
       })
     }
-    const patch = workspacePatches[`${name}@${version}`]
+    const patch = activeWorkspacePatches[`${name}@${version}`]
     packages[key] = {
       cpu,
       hasBin,

@@ -236,6 +236,18 @@ export const genieCommand = Cli.Command.make(
         (tui) =>
           Effect.scoped(
             Effect.gen(function* () {
+              // Lock-derived generators must project the old lock while pnpm:update
+              // adds newly declared workspace patches. Every ordinary check is strict.
+              const previousValidationMode = process.env.GENIE_DEFER_VALIDATION
+              process.env.GENIE_DEFER_VALIDATION =
+                deferValidation && !check && !dryRun ? '1' : '0'
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  if (previousValidationMode === undefined) delete process.env.GENIE_DEFER_VALIDATION
+                  else process.env.GENIE_DEFER_VALIDATION = previousValidationMode
+                }),
+              )
+
               // Set initial state
               tui.dispatch({
                 _tag: 'SetState',

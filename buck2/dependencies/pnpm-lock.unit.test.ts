@@ -349,6 +349,70 @@ ${packageFields}`,
     })
   })
 
+  it('projects the old lock until a newly declared workspace patch is installed', () => {
+    const patchBytes = new TextEncoder().encode('new patch bytes')
+    const patchHash = createHash('sha256').update(patchBytes).digest('hex')
+    const workspaceText = workspace({ patches: '  foo@1.0.0: patches/foo.patch' })
+    const oldLock = lock({
+      importers: `  .:
+    dependencies:
+      foo:
+        specifier: 1.0.0
+        version: 1.0.0`,
+      packages: `  foo@1.0.0:
+    resolution: {integrity: ${archiveIntegrity}}`,
+      snapshots: '  foo@1.0.0: {}',
+    })
+    const options = { workspaceText, readPatch: () => patchBytes }
+
+    expect(() => translatePnpmLock({ ...options, lockfileText: oldLock })).toThrow(
+      'workspace patches missing from lockfile: foo@1.0.0',
+    )
+
+    const previous = process.env.GENIE_DEFER_VALIDATION
+    process.env.GENIE_DEFER_VALIDATION = '1'
+    try {
+      const beforeUpdate = translatePnpmLock({ ...options, lockfileText: oldLock })
+      expect(beforeUpdate.packages['foo@1.0.0']?.patch).toBeUndefined()
+      expect(beforeUpdate.snapshots['foo@1.0.0']).toBeDefined()
+      const corruptLock = lock({
+        importers: `  .:
+    dependencies:
+      foo:
+        specifier: 1.0.0
+        version: 1.0.0(patch_hash=${'0'.repeat(64)})`,
+        packages: `  foo@1.0.0:
+    resolution: {integrity: ${archiveIntegrity}}`,
+        patchedDependencies: `  foo@1.0.0: '${'0'.repeat(64)}'`,
+        snapshots: `  foo@1.0.0(patch_hash=${'0'.repeat(64)}): {}`,
+      })
+      expect(() => translatePnpmLock({ ...options, lockfileText: corruptLock })).toThrow(
+        /hash mismatch/,
+      )
+    } finally {
+      if (previous === undefined) delete process.env.GENIE_DEFER_VALIDATION
+      else process.env.GENIE_DEFER_VALIDATION = previous
+    }
+
+    const updatedLock = lock({
+      importers: `  .:
+    dependencies:
+      foo:
+        specifier: 1.0.0
+        version: 1.0.0(patch_hash=${patchHash})`,
+      packages: `  foo@1.0.0:
+    resolution: {integrity: ${archiveIntegrity}}`,
+      patchedDependencies: `  foo@1.0.0: ${patchHash}`,
+      snapshots: `  foo@1.0.0(patch_hash=${patchHash}): {}`,
+    })
+    const afterUpdate = translatePnpmLock({ ...options, lockfileText: updatedLock })
+    expect(afterUpdate.packages['foo@1.0.0']?.patch).toEqual({
+      hash: patchHash,
+      path: 'patches/foo.patch',
+    })
+    expect(afterUpdate.snapshots[`foo@1.0.0(patch_hash=${patchHash})`]).toBeDefined()
+  })
+
   it('translates the real lock deterministically', () => {
     const options = {
       lockfileText: readFileSync('pnpm-lock.yaml', 'utf8'),
@@ -364,13 +428,8 @@ ${packageFields}`,
   })
 
   it('keeps every same-repo workspace dependency a live link in the real lock', () => {
-    // `injectWorkspacePackages: true` lets pnpm 12 resolve a workspace
-    // dependency as an injected `file:` snapshot whenever the consumer's peer
-    // graph differs from the dependency's own. That copy is materialised once at
-    // install time, so the consumer silently stops reading workspace source.
-    // Every workspace edge in this repo must therefore stay a `link:` edge; the
-    // one importer that needs an explicit opt-out declares a path-based
-    // `workspace:` specifier (see packages/@overeng/restate-effect).
+    // Injected `file:` workspace snapshots stop reading subsequent source edits.
+    // The lock must retain `link:` edges, including for peer-dependent packages.
     const lockfileText = readFileSync('pnpm-lock.yaml', 'utf8')
     const importersSection = lockfileText.slice(
       lockfileText.indexOf('\nimporters:'),
@@ -378,19 +437,15 @@ ${packageFields}`,
     )
 
     expect(importersSection.match(/^ +version: file:.*$/gm)).toBeNull()
-    expect(importersSection).toContain(
-      "      '@overeng/utils':\n        specifier: workspace:../utils\n        version: link:../utils\n",
-    )
 
-    // The projection still resolves that edge to the workspace tree, so the
-    // opt-out changes where pnpm reads the package from, not the Buck graph.
+    // The lock translator resolves workspace links into the live source tree.
     const metadata = translatePnpmLock({
       lockfileText,
       workspaceText: readFileSync('pnpm-workspace.yaml', 'utf8'),
     })
 
     expect(
-      metadata.importers['packages/@overeng/restate-effect']!.devDependencies['@overeng/utils'],
+      metadata.importers['packages/@overeng/agent-session-ingest']!.dependencies['@overeng/utils'],
     ).toEqual({ kind: 'workspace', path: 'packages/@overeng/utils' })
   })
 
