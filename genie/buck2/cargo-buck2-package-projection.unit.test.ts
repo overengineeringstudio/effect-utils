@@ -764,16 +764,6 @@ describe('Cargo cross-workspace path dependencies', () => {
     },
   }
 
-  it('labels a declared, projected foreign package by its package path', () => {
-    const rules = renderedRules(
-      renderCargoFixture({
-        members: consumer,
-        foreignPackages: sharedLibrary(true),
-        render: 'app',
-      }),
-    )
-    expect(rules.app).toContain('deps = [\n        "//shared/otel-bootstrap:lib",\n    ],')
-  })
 
   it('rejects undeclared and unprojected foreign packages', () => {
     expect(() => renderCargoFixture({ members: consumer, render: 'app' })).toThrow(
@@ -1095,52 +1085,31 @@ describe('Cargo features', () => {
         ['src/main.rs'],
       ),
     ).toThrow('Cargo binary tool requires undefined features in rust/pkg/Cargo.toml: y')
-    expect(() =>
-      renderCargoFixture({
+  })
+
+  it('unifies foreign feature requests without enabling disabled defaults', () => {
+    for (const request of [
+      'shared = { path = "../../shared", features = ["x"], default-features = false }',
+      'shared = { path = "../../shared", default-features = false }\n\n[features]\ndefault = ["shared/x"]',
+    ]) {
+      const rules = renderedRules(renderCargoFixture({
         members: {
           pkg: {
-            manifest:
-              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared", features = ["x"] }',
+            manifest: `[package]\nname = "pkg"\n\n[dependencies]\n${request}`,
             files: ['src/lib.rs'],
           },
         },
         foreignPackages: {
           shared: {
-            manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+            manifest: '[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"\n\n[features]\ndefault = ["y"]\nx = []\ny = []',
             files: ['src/lib.rs'],
             projected: true,
           },
         },
         render: 'pkg',
-      }),
-    ).toThrow(
-      'Cargo features on a foreign path dependency are unsupported at dependencies.shared: x',
-    )
-    // The same request written as a [features] item, strong or weak, even when disabled.
-    for (const [dependency, item] of [
-      ['shared = { path = "../../shared" }', 'shared/x'],
-      ['shared = { path = "../../shared", optional = true }', 'shared?/x'],
-    ] as const) {
-      expect(() =>
-        renderCargoFixture({
-          members: {
-            pkg: {
-              manifest: `[package]\nname = "pkg"\n\n[features]\nturbo = ["${item}"]\n\n[dependencies]\n${dependency}`,
-              files: ['src/lib.rs'],
-            },
-          },
-          foreignPackages: {
-            shared: {
-              manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
-              files: ['src/lib.rs'],
-              projected: true,
-            },
-          },
-          render: 'pkg',
-        }),
-      ).toThrow(
-        `Cargo features on a foreign path dependency are unsupported at rust/pkg/Cargo.toml features.turbo: ${item}`,
-      )
+      }))
+      expect(rules['foreign-shared-lib']).toContain('features = [\n        "x",\n    ],')
+      expect(rules['foreign-shared-lib']).not.toContain('"y"')
     }
   })
 
