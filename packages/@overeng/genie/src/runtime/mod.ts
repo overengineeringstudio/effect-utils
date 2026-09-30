@@ -10,6 +10,7 @@ export type {
 
 export * from './github-action/mod.ts'
 export * from './github-labels/mod.ts'
+export * from './github-repo-settings/mod.ts'
 export * from './github-ruleset/mod.ts'
 export * from './github-workflow/mod.ts'
 export * from './json-artifact/mod.ts'
