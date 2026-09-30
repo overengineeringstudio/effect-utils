@@ -1,6 +1,7 @@
 #!/usr/bin/env -S bun
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { connect, type ClientHttp2Stream } from 'node:http2'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
@@ -13,8 +14,7 @@ export type TrustedArchiveOrigin = {
   readonly urlPrefix: string
 }
 
-/** Parse the reviewed trusted archive destination from tracked Buck config. */
-export const trustedArchiveOriginFromConfig = (text: string): TrustedArchiveOrigin => {
+const buckConfigValues = (text: string): Record<string, string> => {
   let section = ''
   const values: Record<string, string> = {}
   for (const rawLine of text.split(/\r?\n/u)) {
@@ -29,6 +29,12 @@ export const trustedArchiveOriginFromConfig = (text: string): TrustedArchiveOrig
     if (equals !== -1)
       values[`${section}.${line.slice(0, equals).trim()}`] = line.slice(equals + 1).trim()
   }
+  return values
+}
+
+/** Parse the reviewed trusted archive destination from tracked Buck config. */
+export const trustedArchiveOriginFromConfig = (text: string): TrustedArchiveOrigin => {
+  const values = buckConfigValues(text)
   const urlPrefix = values['archive_origin.trusted_url_prefix']
   const tier = values['archive_origin.trusted_tier']
   if (urlPrefix === undefined || /^https?:\/\/.+\/cas\/$/u.test(urlPrefix) === false)
@@ -162,10 +168,172 @@ export const reconcileStandaloneCachePosture = ({
   }
 }
 
+/**
+ * Preflight only the cache endpoint Buck will use in this checkout. Read-only
+ * invocations fail open; publishers must reach the cache before they run.
+ * The next read-only invocation restores its normal posture and probes again.
+ */
+export const reconcileStandaloneCachePostureForInvocation = async ({
+  repoRoot,
+  env,
+  deadlineMs = 1200,
+}: {
+  readonly repoRoot: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly deadlineMs?: number
+}): Promise<boolean> => {
+  reconcileStandaloneCachePosture({ repoRoot, env })
+  if (env['BUCK2_NO_REMOTE_CACHE'] === '1') return true
+
+  const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
+  const local = readFileSync(resolve(repoRoot, '.buckconfig.local'), 'utf8')
+  const values = buckConfigValues(`${tracked}\n${local}`)
+  if (values['buck2.remote_cache_enabled'] === 'false') return true
+
+  const available = await probeRemoteCacheCapabilities({
+    address: values['buck2_re_client.action_cache_address'],
+    instanceName: values['buck2_re_client.instance_name'] ?? '',
+    tls: values['buck2_re_client.tls'] === 'true',
+    header: values['buck2_re_client.http_headers'],
+    env,
+    deadlineMs,
+  })
+  if (available === true) return true
+  if ((env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== '') {
+    const message =
+      'REAPI GetCapabilities failed for cache publisher; refusing to run without remote cache'
+    if (env['GITHUB_ACTIONS'] === 'true')
+      process.stderr.write(`::error title=Buck2 cache::${message}\n`)
+    return fail(message)
+  }
+
+  reconcileStandaloneCachePosture({
+    repoRoot,
+    env: { ...env, BUCK2_NO_REMOTE_CACHE: '1' },
+  })
+  const warning =
+    'Buck2 REAPI GetCapabilities failed; using BUCK2_NO_REMOTE_CACHE=1 for this invocation'
+  process.stderr.write(`warning: ${warning}\n`)
+  if (env['GITHUB_ACTIONS'] === 'true')
+    process.stderr.write(`::warning title=Buck2 cache::${warning}\n`)
+  process.stderr.write('buck2_reapi_fail_open_total 1\n')
+  return false
+}
+
+const probeRemoteCacheCapabilities = async ({
+  address,
+  instanceName,
+  tls,
+  header,
+  env,
+  deadlineMs,
+}: {
+  readonly address: string | undefined
+  readonly instanceName: string
+  readonly tls: boolean
+  readonly header: string | undefined
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly deadlineMs: number
+}): Promise<boolean> => {
+  try {
+    if (address === undefined) return false
+    const url = new URL(address)
+    if (url.protocol !== 'grpc:' && url.protocol !== 'grpcs:') return false
+    const authority = `${tls === true || url.protocol === 'grpcs:' ? 'https' : 'http'}://${url.host}`
+    const name = Buffer.from(instanceName)
+    const length: number[] = []
+    let remaining = name.length
+    do {
+      const octet = remaining % 128
+      remaining = Math.floor(remaining / 128)
+      length.push(octet | (remaining > 0 ? 0x80 : 0))
+    } while (remaining > 0)
+    const frame = Buffer.allocUnsafe(name.length + length.length + 6)
+    frame[0] = 0
+    frame.writeUInt32BE(frame.length - 5, 1)
+    frame[5] = 0x0a
+    frame.set(length, 6)
+    name.copy(frame, 6 + length.length)
+
+    const headers: Record<string, string> = {
+      ':method': 'POST',
+      ':path': '/build.bazel.remote.execution.v2.Capabilities/GetCapabilities',
+      'content-type': 'application/grpc',
+      te: 'trailers',
+      'grpc-timeout': `${deadlineMs}m`,
+    }
+    if (header !== undefined) {
+      const colon = header.indexOf(':')
+      if (colon === -1) return false
+      const value = header
+        .slice(colon + 1)
+        .trim()
+        .replace(/\$([A-Z_][A-Z0-9_]*)/gu, (_, key: string) => env[key] ?? '')
+      headers[header.slice(0, colon).trim().toLowerCase()] = value
+    }
+    return await new Promise<boolean>((resolveProbe) => {
+      const client = connect(authority)
+      let settled = false
+      const finish = (result: boolean) => {
+        if (settled === true) return
+        settled = true
+        clearTimeout(timer)
+        client.destroy()
+        resolveProbe(result)
+      }
+      const timer = setTimeout(() => finish(false), deadlineMs)
+      client.on('error', () => finish(false))
+      let stream: ClientHttp2Stream
+      try {
+        stream = client.request(headers)
+      } catch {
+        finish(false)
+        return
+      }
+      let httpStatus: number | undefined
+      let contentType: string | undefined
+      let grpcStatus: string | undefined
+      const chunks: Buffer[] = []
+      let size = 0
+      stream.on('response', (response) => {
+        httpStatus = response[':status']
+        contentType = String(response['content-type'] ?? '')
+        if (response['grpc-status'] !== undefined) grpcStatus = String(response['grpc-status'])
+      })
+      stream.on('trailers', (trailers) => {
+        grpcStatus = String(trailers['grpc-status'] ?? '')
+      })
+      stream.on('data', (chunk: Buffer) => {
+        size += chunk.length
+        if (size > 65536) return finish(false)
+        chunks.push(chunk)
+      })
+      stream.on('error', () => finish(false))
+      stream.on('end', () => {
+        const body = Buffer.concat(chunks)
+        finish(
+          httpStatus === 200 &&
+            contentType?.startsWith('application/grpc') === true &&
+            grpcStatus === '0' &&
+            body.length >= 5 &&
+            body[0] === 0 &&
+            body.readUInt32BE(1) === body.length - 5,
+        )
+      })
+      stream.end(frame)
+    })
+  } catch {
+    // Never put endpoint, credential, or transport error strings into CI logs.
+    return false
+  }
+}
+
 if (import.meta.main === true)
   try {
     const repoRoot = process.argv[2] ?? fail('expected repository root argument')
-    reconcileStandaloneCachePosture({ repoRoot, env: process.env })
+    if (process.argv[3] === '--probe')
+      await reconcileStandaloneCachePostureForInvocation({ repoRoot, env: process.env })
+    else reconcileStandaloneCachePosture({ repoRoot, env: process.env })
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

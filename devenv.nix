@@ -370,7 +370,7 @@ let
     }
   '';
   standaloneBuckCachePosture = ''
-    ${pkgs.bun}/bin/bun "$root/scripts/buck2-cache-posture.ts" "$root"
+    ${pkgs.bun}/bin/bun "$root/scripts/buck2-cache-posture.ts" "$root" --probe
   '';
 
   buck2BuildExec =
