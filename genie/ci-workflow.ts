@@ -65,6 +65,24 @@ export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions =
   } satisfies GitHubWorkflowJob
 }
 export {
+  cargoClippyJob,
+  cargoClippyStep,
+  cargoFmtJob,
+  cargoFmtStep,
+  cargoNextestJob,
+  cargoNextestStep,
+  nixDevelopStep,
+  plainFlakeGenieCheckJob,
+  plainFlakeJob,
+  plainFlakeSetupSteps,
+  type CargoClippyOptions,
+  type CargoNextestOptions,
+  type NixDevelopStepOptions,
+  type PlainFlakeJobOptions,
+  type PlainFlakeSetupOptions,
+} from './ci-workflow/rust.ts'
+
+export {
   RUNNER_PROFILES,
   bashShellDefaults,
   ciWorkflow,
