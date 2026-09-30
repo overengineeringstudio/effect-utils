@@ -59,11 +59,12 @@ experiments (as tested hypotheses).
   accidental) and the target "CI = `devenv tasks run check:*` + environment"
   shape; filed as a separate epic. This lane already applies the principle
   (BUCK.OBS-R03).
-- **buck2-tools Rust rewrite (q17):** decided as a full rewrite except the
-  genie Buck2 generators — tracked in
-  [issue #1394](https://github.com/overengineeringstudio/effect-utils/issues/1394)
-  with the study's evidence; the event-log adapter crate lands in the same
-  Rust workspace.
+- **buck2-tools Rust rewrite (q17):** the full rewrite was stopped after
+  slice 1 on 2026-09-30 following a rebaseline; #1394 was closed as not
+  planned. Further ports are parked and trigger-based in
+  [issue #1522](https://github.com/overengineeringstudio/effect-utils/issues/1522);
+  see the [rebaseline experiment](../.experiments/2026-09-30-buck2-tools-rust-rebaseline.md)
+  for evidence and reopen triggers.
 - **Findings for other owners (q8):** serial `tsgo_emit` chain and 8-slot
   contention ([02-execution](../02-execution/open-questions.md)), uncached
   editor bootstrap and the publish tail
