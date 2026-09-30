@@ -179,19 +179,30 @@ reconciliation to reconciliation.
 
 ## Phase 7 — action-level remote execution (BUILD.BUCK-R17)
 
-**Entry conditions:** DELTA-001 (second-context key instability) is closed;
-the 0037 distribution layer is in use; an x86_64-linux worker host with
-headroom exists.
+**Entry conditions:** Adoption is deferred under
+[decision 0039](./.decisions/0039-namespace-first-remote-candidate-adoption-deferred.md).
+Second-context key instability is resolved; the 0037 distribution contract
+remains independent. Re-enter cache first:
 
-**Sequence:** Define the worker image contract (02-execution open question);
-stand up NativeLink cache + scheduler + one worker beside bazel-remote; prove
-miss -> remote execution -> AC hit on real typecheck, emit, and test actions
-with local execution disabled; then decide the bazel-remote replacement in a
-decision record and retire it. Public/private trust tiers (0033) are preserved
-by separate processes.
+- **Track A, public cache:** Namespace ships a non-escalatable reader /
+  branch-scoped writer identity that passes the TrustTierReview escalation rerun.
+- **Track B, Linux RE:** Tiny pnpm store/extract actions are local-only or
+  coarsened and fair cold RE is no slower than local cold; alternatively,
+  measured public CI runner queueing establishes local build capacity as the
+  bottleneck.
+- **Track C, macOS RE:** A named Darwin workload needs RE and its capability
+  closure is substitutable from Cachix.
 
-**Dissolution target:** bazel-remote and its service module once NativeLink
-carries both tiers; no second cache backend is kept indefinitely.
+**Sequence:** Evaluate Namespace first on the triggered track. Use exact
+closure-addressed pools (02-execution); prove real admitted commands/tests,
+output identity, clean AC reuse, server-side authority, bounded cost, and
+explicit outage posture before cutover. No rollout is authorized by the probe.
+Private trust and product distribution do not move.
+
+**Dissolution target:** Public bazel-remote service/storage/auth/ingress,
+activation, and public-specific monitoring only when Track A completes.
+The private tier and generic service module remain; duplicate public caches
+are not the steady-state target. Avoid the proposed public NativeLink fleet.
 
 ## Observability lane (07-observability)
 
