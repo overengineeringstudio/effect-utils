@@ -29,12 +29,12 @@ Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/c
 - Shared constants (catalog versions, tsconfig options) live in `genie/repo.ts`
 - `devenv tasks run check:quick` verifies generated files are up to date via `devenv tasks run genie:check`
 
-# Changelog
+# Breaking Changes
 
-Keep `CHANGELOG.md` updated:
+There is no changelog file; commits and PRs are the change record. For a breaking change:
 
-- Add entries under `[Unreleased]` when making changes
-- When cutting a release, move `[Unreleased]` entries to a new version section with the release date
+- Mark the commit/PR title with `!` (e.g. `feat(buck2)!: require cargo_env in reindeer.toml`)
+- Add a `BREAKING CHANGE:` footer with the migration steps, and repeat them in the PR description
 
 # Task Management
 

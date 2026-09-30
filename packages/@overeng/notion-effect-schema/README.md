@@ -47,7 +47,6 @@ When Notion API changes:
 1. Check [Notion API changelog](https://developers.notion.com/changelog)
 2. Update affected schemas in `src/`
 3. Ensure annotations match new docs URLs
-4. Update `CHANGELOG.md`
 
 ## File Structure
 
