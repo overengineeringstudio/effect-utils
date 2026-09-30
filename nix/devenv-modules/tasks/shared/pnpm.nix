@@ -760,6 +760,11 @@ let
         ''}
         run_pnpm_lock_mutator
         ${lib.optionalString (workspaceRoot == ".") ''
+          # Refresh lock-derived Buck projections from pnpm's repaired lock before
+          # the strict check; the pre-mutation projection still reflects the old lock.
+          genie
+        ''}
+        ${lib.optionalString (workspaceRoot == ".") ''
           genie --check
         ''}
         ${gcSourceInputs}
