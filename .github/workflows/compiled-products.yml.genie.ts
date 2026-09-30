@@ -21,11 +21,22 @@ const binaryCache = readBinaryCacheDescriptors(
   new URL('../../nix/binary-caches.json', import.meta.url),
 )['overeng-effect-utils']!
 
+/**
+ * Flake packages whose runtime closures the `test` lanes substitute instead of
+ * compiling. `buck2-capabilities` references every Buck execution capability
+ * (Weaver, the stage-zero Rust tools, the Rust toolchain wrappers);
+ * `buck2-events` is the stage-zero tool the dev shell adds outside that
+ * projection. The `test` jobs only read the cache, so these outputs reach it
+ * through this protected publisher on each platform.
+ */
+const capabilityClosureAttrs = ['buck2-capabilities', 'buck2-events'] as const
+
 const protectedMainIf =
   "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
 
-// Protected-main publisher for compiled-executable and native products.
-// These are platform-specific imported store paths, not cache-manifest rows:
+// Protected-main publisher for compiled-executable and native products, and for
+// the Buck capability closure the `test` lanes consume.
+// Products are platform-specific imported store paths, not cache-manifest rows:
 // each matching runner builds and smokes the product before publishing it.
 // There is no aarch64 Linux publisher, so its consumers build from source.
 // PR proof uses the same script in ci.yml (`build-products` on Linux x86_64,
@@ -63,6 +74,23 @@ export default ciWorkflow({
         installNixStep({ binaryCaches: [binaryCache] }),
         cachixCliBuildStep,
         cachixStep({ name: 'overeng-effect-utils' }),
+        cachixPushStep({
+          jobIf: protectedMainIf,
+          triggers: ['push', 'workflow_dispatch'],
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+          step: {
+            name: 'Publish Buck capability closure',
+            env: githubTokenEnv(),
+            run: withCiSourceRoot(
+              [
+                'set -euo pipefail',
+                `paths=$(nix build --no-link --print-out-paths ${capabilityClosureAttrs.map((attr) => `.#${attr}`).join(' ')})`,
+                '# Store paths contain no whitespace; word splitting yields one argument per output.',
+                'cachix push overeng-effect-utils $paths',
+              ].join('\n'),
+            ),
+          },
+        }),
         cachixPushStep({
           jobIf: protectedMainIf,
           triggers: ['push', 'workflow_dispatch'],
