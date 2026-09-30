@@ -1,5 +1,6 @@
 #!/usr/bin/env -S bun
 import { randomUUID } from 'node:crypto'
+import { connect, type ClientHttp2Stream } from 'node:http2'
 import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
@@ -162,10 +163,176 @@ export const reconcileStandaloneCachePosture = ({
   }
 }
 
+/**
+ * Preflight only the cache endpoint Buck will use in this checkout. A failed
+ * capability RPC disables the cache for this invocation; the next invocation
+ * first restores its normal posture and probes again.
+ */
+export const reconcileStandaloneCachePostureForInvocation = async ({
+  repoRoot,
+  env,
+  deadlineMs = 1200,
+}: {
+  readonly repoRoot: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly deadlineMs?: number
+}): Promise<boolean> => {
+  reconcileStandaloneCachePosture({ repoRoot, env })
+  if (env['BUCK2_NO_REMOTE_CACHE'] === '1') return true
+
+  const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
+  const local = readFileSync(resolve(repoRoot, '.buckconfig.local'), 'utf8')
+  const values: Record<string, string> = {}
+  let section = ''
+  for (const rawLine of `${tracked}\n${local}`.split(/\r?\n/u)) {
+    const line = rawLine.replace(/#.*$/u, '').trim()
+    if (line === '') continue
+    const sectionMatch = /^\[([^\]]+)\]$/u.exec(line)
+    if (sectionMatch !== null) {
+      section = sectionMatch[1] ?? ''
+      continue
+    }
+    const equals = line.indexOf('=')
+    if (equals !== -1)
+      values[`${section}.${line.slice(0, equals).trim()}`] = line.slice(equals + 1).trim()
+  }
+  if (values['buck2.remote_cache_enabled'] === 'false') return true
+
+  const available = await probeRemoteCacheCapabilities({
+    address: values['buck2_re_client.action_cache_address'],
+    instanceName: values['buck2_re_client.instance_name'] ?? '',
+    tls: values['buck2_re_client.tls'] === 'true',
+    header: values['buck2_re_client.http_headers'],
+    env,
+    deadlineMs,
+  })
+  if (available) return true
+
+  reconcileStandaloneCachePosture({
+    repoRoot,
+    env: { ...env, BUCK2_NO_REMOTE_CACHE: '1' },
+  })
+  const warning =
+    'Buck2 REAPI GetCapabilities failed; using BUCK2_NO_REMOTE_CACHE=1 for this invocation'
+  process.stderr.write(`warning: ${warning}\n`)
+  if (env['GITHUB_ACTIONS'] === 'true') process.stderr.write(`::warning title=Buck2 cache::${warning}\n`)
+  process.stderr.write('buck2_reapi_fail_open_total 1\n')
+  return false
+}
+
+const probeRemoteCacheCapabilities = async ({
+  address,
+  instanceName,
+  tls,
+  header,
+  env,
+  deadlineMs,
+}: {
+  readonly address: string | undefined
+  readonly instanceName: string
+  readonly tls: boolean
+  readonly header: string | undefined
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly deadlineMs: number
+}): Promise<boolean> => {
+  try {
+    if (address === undefined) return false
+    const url = new URL(address)
+    if (url.protocol !== 'grpc:' && url.protocol !== 'grpcs:') return false
+    const authority = `${tls || url.protocol === 'grpcs:' ? 'https' : 'http'}://${url.host}`
+    const name = Buffer.from(instanceName)
+    const length: number[] = []
+    let remaining = name.length
+    do {
+      const octet = remaining % 128
+      remaining = Math.floor(remaining / 128)
+      length.push(octet | (remaining > 0 ? 0x80 : 0))
+    } while (remaining > 0)
+    const request = Buffer.concat([Buffer.from([0x0a, ...length]), name])
+    const frame = Buffer.allocUnsafe(request.length + 5)
+    frame[0] = 0
+    frame.writeUInt32BE(request.length, 1)
+    request.copy(frame, 5)
+
+    const headers: Record<string, string> = {
+      ':method': 'POST',
+      ':path': '/build.bazel.remote.execution.v2.Capabilities/GetCapabilities',
+      'content-type': 'application/grpc',
+      'te': 'trailers',
+      'grpc-timeout': `${deadlineMs}m`,
+    }
+    if (header !== undefined) {
+      const colon = header.indexOf(':')
+      if (colon === -1) return false
+      const value = header
+        .slice(colon + 1)
+        .trim()
+        .replace(/\$([A-Z_][A-Z0-9_]*)/gu, (_, key: string) => env[key] ?? '')
+      headers[header.slice(0, colon).trim().toLowerCase()] = value
+    }
+    return await new Promise<boolean>((resolveProbe) => {
+      const client = connect(authority)
+      let settled = false
+      const finish = (result: boolean) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        client.destroy()
+        resolveProbe(result)
+      }
+      const timer = setTimeout(() => finish(false), deadlineMs)
+      client.on('error', () => finish(false))
+      let stream: ClientHttp2Stream
+      try {
+        stream = client.request(headers)
+      } catch {
+        finish(false)
+        return
+      }
+      let httpStatus: number | undefined
+      let contentType: string | undefined
+      let grpcStatus: string | undefined
+      const chunks: Buffer[] = []
+      let size = 0
+      stream.on('response', (response) => {
+        httpStatus = response[':status']
+        contentType = String(response['content-type'] ?? '')
+        if (response['grpc-status'] !== undefined) grpcStatus = String(response['grpc-status'])
+      })
+      stream.on('trailers', (trailers) => {
+        grpcStatus = String(trailers['grpc-status'] ?? '')
+      })
+      stream.on('data', (chunk: Buffer) => {
+        size += chunk.length
+        if (size > 65536) return finish(false)
+        chunks.push(chunk)
+      })
+      stream.on('error', () => finish(false))
+      stream.on('end', () => {
+        const body = Buffer.concat(chunks)
+        finish(
+          httpStatus === 200 &&
+            contentType?.startsWith('application/grpc') === true &&
+            grpcStatus === '0' &&
+            body.length >= 5 &&
+            body[0] === 0 &&
+            body.readUInt32BE(1) === body.length - 5,
+        )
+      })
+      stream.end(frame)
+    })
+  } catch {
+    // Never put endpoint, credential, or transport error strings into CI logs.
+    return false
+  }
+}
+
 if (import.meta.main === true)
   try {
     const repoRoot = process.argv[2] ?? fail('expected repository root argument')
-    reconcileStandaloneCachePosture({ repoRoot, env: process.env })
+    if (process.argv[3] === '--probe')
+      await reconcileStandaloneCachePostureForInvocation({ repoRoot, env: process.env })
+    else reconcileStandaloneCachePosture({ repoRoot, env: process.env })
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
