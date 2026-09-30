@@ -165,4 +165,10 @@ An `otel-scrape` run should write one content-addressed manifest for the run's r
 
 ## Open Design Questions
 
-None.
+### DQ1: Effect contract and Rust byte engine
+
+The planned split keeps Effect Schema as the sole owner of the descriptor contract and moves byte operations into a shared Rust core. Rust types are generated from Effect Schema via JSON Schema, not hand-written mirrors; shared accept/reject vectors run on both sides to establish parity.
+
+The Rust byte engine is exposed through a reusable Effect/Rust interop foundation, with wasm as the default delivery mechanism. The foundation remains a draft under experimentation, not a settled API.
+
+Resolve this question with an interop experiment that demonstrates generated descriptor types and shared-vector parity, byte-engine access through Effect Layers on the supported runtimes, and resource/lifecycle composition when multiple Rust cores are loaded in one application. Runtime constructors, streaming/error semantics, and any measured need for native delivery remain open.
