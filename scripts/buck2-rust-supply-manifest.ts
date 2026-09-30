@@ -39,9 +39,11 @@ type Metadata = {
 const cargoMetadata = ({
   manifest,
   locked,
+  offline = false,
 }: {
   readonly manifest: string
   readonly locked: boolean
+  readonly offline?: boolean
 }): Metadata => {
   const result = Bun.spawnSync({
     cmd: [
@@ -53,6 +55,7 @@ const cargoMetadata = ({
       '--manifest-path',
       manifest,
       ...(locked === true ? ['--locked'] : []),
+      ...(offline === true ? ['--offline'] : []),
     ],
     cwd: workspace,
     env: { ...process.env, CARGO_HOME: cargoHome, RUSTC_WRAPPER: '' },
@@ -188,7 +191,7 @@ await Bun.write(
 // synthetic root, but needs the seed to retain previously locked yanked crates.
 await copyFile(path.join(workspace, 'Cargo.lock'), path.join(supplyDir, 'Cargo.lock'))
 await Bun.write(path.join(supplyDir, 'src/lib.rs'), '// Dependency-only Reindeer workspace.\n')
-const supplied = cargoMetadata({ manifest: supplyManifest, locked: false })
+const supplied = cargoMetadata({ manifest: supplyManifest, locked: false, offline: true })
 const sourceKey = (pkg: {
   readonly name: string
   readonly version: string
