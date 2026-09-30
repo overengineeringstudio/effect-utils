@@ -3173,6 +3173,7 @@ jobs:
       - name: Run focused normalized, projection, and runner tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          DEVENV_TASK_PASSTHROUGH: '1'
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"

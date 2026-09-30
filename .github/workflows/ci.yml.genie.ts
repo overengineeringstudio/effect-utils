@@ -686,7 +686,7 @@ const extraJobs: Record<string, any> = {
       },
       {
         name: 'Run focused normalized, projection, and runner tests',
-        env: githubTokenEnv(),
+        env: { ...githubTokenEnv(), DEVENV_TASK_PASSTHROUGH: '1' },
         run: withCiSourceRoot(
           [
             'set -euo pipefail',

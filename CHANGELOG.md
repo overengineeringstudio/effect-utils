@@ -295,6 +295,8 @@ All notable changes to this project will be documented in this file.
 - **Buck2 JavaScript products**: Parse bundled JavaScript declarations when
   normalizing CommonJS `__filename` and `__dirname`, so nested templates and
   regexes cannot hide a later dependency module's build path (including undici).
+  Declare the runner's parser closure as an action input, so a cold build
+  materializes Acorn's symlink destinations before bundling.
 - **Buck2 artifact imports**: Reject embedded realized Nix store paths while
   accepting binaries that contain only the `/nix/store/` parser prefix.
 - **PR snapshot CI helpers**: Omit empty job-level `CACHIX_AUTH_TOKEN` values

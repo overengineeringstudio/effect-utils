@@ -1,6 +1,6 @@
 """Package-local JavaScript check, build, and launch rules."""
 
-load("//buck2/dependencies:defs.bzl", "PnpmPlatformGatedPackagesInfo")
+load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo", "PnpmPlatformGatedPackagesInfo")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
@@ -38,11 +38,17 @@ def _relative(value, field):
             fail("{} must be a normalized relative path: {}".format(field, value))
 
 def _runner(ctx):
-    return cmd_args(
+    runtime = cmd_args(
         ctx.attrs._runner[DefaultInfo].default_outputs[0],
         format = "{}/package-command-runner.ts",
     )
-
+    # The staged node_modules view links into pnpm store-entry artifacts. A
+    # filegroup stages only the view itself; consumers must also declare every
+    # symlink destination as an action input under deferred materialization.
+    return cmd_args(
+        runtime,
+        hidden = ctx.attrs._runner_node_modules[PnpmDeclaredClosureInfo].read_roots,
+    )
 
 def _runner_args(ctx, mode, output = None):
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
@@ -113,6 +119,10 @@ package_bin_check = rule(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
         )),
+        "_runner_node_modules": attrs.default_only(attrs.dep(
+            default = "//packages/@overeng/buck2-tools:node_modules",
+            providers = [PnpmDeclaredClosureInfo],
+        )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
@@ -149,6 +159,10 @@ package_bin_build = rule(
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
+        )),
+        "_runner_node_modules": attrs.default_only(attrs.dep(
+            default = "//packages/@overeng/buck2-tools:node_modules",
+            providers = [PnpmDeclaredClosureInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
@@ -210,6 +224,10 @@ package_bin = rule(
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
+        )),
+        "_runner_node_modules": attrs.default_only(attrs.dep(
+            default = "//packages/@overeng/buck2-tools:node_modules",
+            providers = [PnpmDeclaredClosureInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
@@ -322,6 +340,10 @@ _package_bin_artifact = rule(
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
+        )),
+        "_runner_node_modules": attrs.default_only(attrs.dep(
+            default = "//packages/@overeng/buck2-tools:node_modules",
+            providers = [PnpmDeclaredClosureInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
