@@ -364,6 +364,42 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     expect(hugeTimeline).toContain('Pipeline timeline omitted to fit the GitHub comment limit.')
   })
 
+  it('emits sortable Mermaid task durations with status tags and UTC second precision', () => {
+    const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
+    const report = buildPipelineReport({
+      ...options,
+      jobs: [
+        ...options.jobs,
+        {
+          ...job,
+          name: 'failed: synthetic',
+          started_at: '2026-09-28T19:28:01.500Z',
+          completed_at: '2026-09-28T19:28:01.500Z',
+          conclusion: 'failure',
+        },
+      ],
+    })
+    const gantt = report.data!.gantt!
+    const lines = gantt.split('\n')
+    const taskLines = lines.slice(5)
+    expect(lines).toContain('    dateFormat YYYY-MM-DD HH:mm:ss')
+    expect(taskLines).toHaveLength(20)
+    for (const line of taskLines) {
+      expect(line).toMatch(
+        /^    [^:]+ :(?:(?:crit|done|active), )?job\d+, \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}, [1-9]\d*s$/u,
+      )
+      expect(line).not.toMatch(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/u)
+    }
+    expect(taskLines[0]).toBe(
+      '    failed synthetic (failure) :crit, job29, 2026-09-28 19:28:01, 1s',
+    )
+    expect(taskLines.some((line) => line.includes('devenv-perf (cancelled) :done, '))).toBe(true)
+    const starts = taskLines.map(
+      (line) => line.match(/, (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),/u)![1]!,
+    )
+    expect(starts).toEqual(starts.toSorted())
+  })
+
   it('renders the managed comment with a collapsed timeline', () => {
     const body = render(buildPipelineReport(options))
     expect(body).toContain('<details>\n<summary>Pipeline timeline</summary>')

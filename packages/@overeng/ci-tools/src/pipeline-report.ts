@@ -213,7 +213,7 @@ export const buildPipelineReport = (opts: {
   const baselineRunIds = opts.baselines.map((baseline) => baseline.id)
   const counts: Record<string, number> = {}
   let omittedBars = 0
-  const bars: string[] = []
+  const bars: { start: number; text: string }[] = []
   const rows = current.map((job, index): PipelineRow => {
     const identity =
       duplicateNames.has(job.name) === true ? undefined : pipelineJobIdentityForName(job.name)
@@ -252,9 +252,17 @@ export const buildPipelineReport = (opts: {
       end >= start
     ) {
       const label = mermaidLabel(`${key} (${status})`)
-      bars.push(
-        `${label} :${status === 'unfinished' ? 'active, ' : ''}job${index}, ${new Date(start).toISOString()}, ${new Date(end).toISOString()}`,
-      )
+      const tag =
+        status === 'failure'
+          ? 'crit, '
+          : status === 'cancelled'
+            ? 'done, '
+            : status === 'unfinished'
+              ? 'active, '
+              : ''
+      const utcStart = new Date(start).toISOString().slice(0, 19).replace('T', ' ')
+      const duration = Math.max(1, Math.ceil((end - start) / 1000))
+      bars.push({ start, text: `${label} :${tag}job${index}, ${utcStart}, ${duration}s` })
     } else omittedBars++
     // The adapter returns before emitting a root without identity or devenv, even
     // when its always() export step itself reports success.
@@ -307,10 +315,10 @@ export const buildPipelineReport = (opts: {
       : [
           'gantt',
           `    title Pipeline jobs (from ${new Date(earliest).toISOString()})`,
-          '    dateFormat YYYY-MM-DDTHH:mm:ss.SSSZ',
+          '    dateFormat YYYY-MM-DD HH:mm:ss',
           '    axisFormat %H:%M',
           '    section Jobs',
-          ...bars.map((bar) => `    ${bar}`),
+          ...bars.toSorted((a, b) => a.start - b.start).map((bar) => `    ${bar.text}`),
         ].join('\n')
   const data: PipelineReportData = {
     rows,
