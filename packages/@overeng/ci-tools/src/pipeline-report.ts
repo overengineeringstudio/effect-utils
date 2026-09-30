@@ -260,7 +260,7 @@ export const buildPipelineReport = (opts: {
             : status === 'unfinished'
               ? 'active, '
               : ''
-      const utcStart = new Date(start).toISOString().slice(0, 19).replace('T', ' ')
+      const utcStart = `${new Date(start).toISOString().slice(0, 19).replace('T', ' ')}+0000`
       const duration = Math.max(1, Math.ceil((end - start) / 1000))
       bars.push({ start, text: `${label} :${tag}job${index}, ${utcStart}, ${duration}s` })
     } else omittedBars++
@@ -314,8 +314,8 @@ export const buildPipelineReport = (opts: {
       ? undefined
       : [
           'gantt',
-          `    title Pipeline jobs (UTC, from ${new Date(earliest).toISOString().slice(0, 19).replace('T', ' ')})`,
-          '    dateFormat YYYY-MM-DD HH:mm:ss',
+          `    title Pipeline jobs (start ${new Date(earliest).toISOString().slice(0, 19).replace('T', ' ')} UTC; axis in local time)`,
+          '    dateFormat YYYY-MM-DD HH:mm:ssZZ',
           '    axisFormat %H:%M',
           '    todayMarker off',
           '    section Jobs',
