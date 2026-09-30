@@ -191,7 +191,8 @@ let
       buck2
       pkgs.cacert
       pkgs.jq
-    ] ++ lib.optionals (cargoWorkspaceRoot != null) [ pkgs.python3 ];
+    ]
+    ++ lib.optionals (cargoWorkspaceRoot != null) [ pkgs.python3 ];
 
     dontConfigure = true;
     dontFixup = true;
