@@ -135,6 +135,7 @@ for (const name of [
   'buck2:editor:publish:restate-effect',
   'buck2:editor:publish:otel-contract',
   'buck2:editor:publish:playwright',
+  'buck2:editor:publish:test',
   'test:run',
   'test:buck2:unit',
 ])
@@ -295,6 +296,7 @@ const standaloneBuckTaskNames = [
   'buck2:editor:publish:restate-effect',
   'buck2:editor:publish:otel-contract',
   'buck2:editor:publish:playwright',
+  'buck2:editor:publish:test',
   'buck2:nix-bridge:check',
   'nix:buck2-artifact-import:check',
   'nix:javascript-product-import:check',
@@ -336,6 +338,21 @@ ok({
   name: 'editor bootstrap reads committed standalone dependencies without mutating projections',
 })
 
+// The source-side test partition executes through one union publisher: every source test task
+// scheduled by the aggregate's batches plus the two source-run extra suites.
+const sourceTestAggregate = 'test:run'
+const sourceTestExtraSuites = ['devenv-modules:test', 'genie:buck2:test']
+const sourceTestBatchPrefix = `${sourceTestAggregate}:batch:`
+const sourceTestTasks = [...dependencies.keys()]
+  .filter((name) => name.startsWith(sourceTestBatchPrefix))
+  .flatMap((batch) =>
+    [...dependencies.get(batch)].filter((name) => name.startsWith(sourceTestBatchPrefix) === false),
+  )
+ok({
+  condition: sourceTestTasks.length > 0,
+  name: `${sourceTestAggregate} schedules source test tasks through its batches`,
+})
+
 const scopedPublisherContracts = {
   'buck2:editor:publish:restate-effect': {
     consumers: ['test:restate-integration'],
@@ -348,6 +365,18 @@ const scopedPublisherContracts = {
   'buck2:editor:publish:playwright': {
     consumers: ['test:pw:tui-react', 'test:pw:utils'],
     packagePaths: ['packages/@overeng/tui-react', 'packages/@overeng/utils'],
+  },
+  'buck2:editor:publish:test': {
+    // The whole-workspace publisher orders itself after the scoped one it shares roots with.
+    consumers: [...sourceTestTasks, ...sourceTestExtraSuites, 'buck2:editor:publish'],
+    packagePaths: [
+      '.',
+      'packages/@overeng/ci-tools',
+      'packages/@overeng/genie',
+      ...buck2TestAuthority.lanes.flatMap(({ packagePath, unboundedTaskName }) =>
+        unboundedTaskName === undefined ? [] : [packagePath],
+      ),
+    ],
   },
 }
 for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
@@ -407,6 +436,42 @@ ok({
     [...(dependencies.get('test:pw:tui-react') ?? [])].join('\n') ===
     [...(dependencies.get('test:pw:utils') ?? [])].join('\n'),
   name: 'both Playwright lanes depend on one canonical union publisher',
+})
+
+// Publishers sharing an editor state root fail fast on its `.publish.lock` (no waiting, no
+// theft), so any two publishers one entrypoint schedules together must be ordered by an edge.
+const editorPublishers = [...dependencies.keys()].filter(
+  (name) =>
+    name === 'buck2:editor:bootstrap' ||
+    name === 'buck2:editor:publish' ||
+    name.startsWith('buck2:editor:publish:'),
+)
+const closures = new Map()
+const closureOf = (start) => {
+  const cached = closures.get(start)
+  if (cached !== undefined) return cached
+  const seen = new Set()
+  const visit = (name) => {
+    if (seen.has(name) === true) return
+    seen.add(name)
+    for (const dependency of dependencies.get(name) ?? []) visit(dependency)
+  }
+  visit(start)
+  closures.set(start, seen)
+  return seen
+}
+const unorderedPublishers = []
+for (const entrypoint of dependencies.keys()) {
+  const scheduled = editorPublishers.filter((publisher) => closureOf(entrypoint).has(publisher))
+  for (const [index, left] of scheduled.entries())
+    for (const right of scheduled.slice(index + 1))
+      if (closureOf(left).has(right) === false && closureOf(right).has(left) === false)
+        unorderedPublishers.push(`${entrypoint}: ${left} || ${right}`)
+}
+ok({
+  condition: unorderedPublishers.length === 0,
+  name: 'no entrypoint co-schedules two editor publishers without an ordering edge',
+  detail: unorderedPublishers.join('; '),
 })
 
 ok({
