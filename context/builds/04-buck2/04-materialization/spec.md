@@ -127,8 +127,13 @@ the lock, the publisher:
    first hop, and emits the package-manifest settle signal required by live
    language servers;
 7. updates the retention record and garbage-collects snapshots outside the
-   configured finite retention set. Pointer helpers validate their exact writes;
-   a separate `buck2:editor:check` performs the full admitted-state traversal.
+   configured finite retention set. Retention proves every snapshot of the
+   published view read-only in full; a store entry owned by another view is
+   proven only by its self-addressed record and read-only root, because its
+   owner proves its payload in full at every publication, reuse, and check. A
+   whole-workspace publication therefore stays linear in total snapshot size.
+   Pointer helpers validate their exact writes; a separate
+   `buck2:editor:check` performs the full admitted-state traversal.
 
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and

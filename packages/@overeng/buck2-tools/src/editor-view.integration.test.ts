@@ -136,6 +136,49 @@ const ownedSnapshots = (fixture: Fixture): readonly string[] =>
     name.startsWith(`${fixture.options.viewName}-`),
   )
 
+/** A second package view publishing into the fixture's shared `packages/.editor-view` store. */
+const makeSiblingView = ({
+  fixture,
+  packageName,
+}: {
+  fixture: Fixture
+  packageName: string
+}): { readonly options: EditorViewOptions; readonly editorInputs: string } => {
+  const packagePath = `packages/@overeng/${packageName}`
+  const packageDir = join(fixture.root, 'packages', '@overeng', packageName)
+  const editorInputs = join(fixture.root, 'inputs', `${packageName}-editor-inputs`)
+  const nodeModules = join(fixture.root, 'inputs', `${packageName}-node-modules`)
+  const workspaceAuthority = join(fixture.root, `${packageName}-workspace-authority.json`)
+  mkdirSync(join(packageDir, 'node_modules'), { recursive: true })
+  writeFileSync(join(packageDir, 'package.json'), '{}\n')
+  mkdirSync(editorInputs)
+  writeFileSync(join(editorInputs, 'install-descriptor.json'), '{"revision":1}\n')
+  mkdirSync(join(nodeModules, 'dep'), { recursive: true })
+  writeFileSync(join(nodeModules, 'dep', 'index.js'), `export default "${packageName}"\n`)
+  writeFileSync(
+    workspaceAuthority,
+    `${JSON.stringify({
+      schema: 'effect-utils/workspace-dependency-authority/v1',
+      requiredPackages: [packagePath],
+      ownedPackages: [packagePath],
+    })}\n`,
+  )
+  return {
+    editorInputs,
+    options: {
+      ...fixture.options,
+      package: packagePath,
+      viewName: packageName,
+      cell: packageName,
+      target: `//${packagePath}:editor_inputs`,
+      editorInputs,
+      nodeModules,
+      workspaceAuthority,
+      consumerCache: join(fixture.root, '.devenv', 'vite-cache', packageName),
+    },
+  }
+}
+
 describe('editor view publisher', () => {
   it('fingerprints deterministically with byte ordering, path framing, and dereferencing', async () => {
     const fixture = makeFixture()
@@ -711,36 +754,10 @@ describe('editor view publisher', () => {
   it('publishes, checks, and garbage-collects two package views independently', async () => {
     const first = makeFixture()
     const secondPackage = 'tui-react'
-    const secondPackagePath = `packages/@overeng/${secondPackage}`
-    const secondPackageDir = join(first.root, 'packages', '@overeng', secondPackage)
-    const secondInputs = join(first.root, 'inputs', 'second-editor-inputs')
-    const secondNodeModules = join(first.root, 'inputs', 'second-node-modules')
-    const secondAuthority = join(first.root, 'second-workspace-authority.json')
-    mkdirSync(join(secondPackageDir, 'node_modules'), { recursive: true })
-    writeFileSync(join(secondPackageDir, 'package.json'), '{}\n')
-    mkdirSync(secondInputs)
-    writeFileSync(join(secondInputs, 'install-descriptor.json'), '{"revision":1}\n')
-    mkdirSync(join(secondNodeModules, 'dep'), { recursive: true })
-    writeFileSync(join(secondNodeModules, 'dep', 'index.js'), 'export default "second"\n')
-    writeFileSync(
-      secondAuthority,
-      `${JSON.stringify({
-        schema: 'effect-utils/workspace-dependency-authority/v1',
-        requiredPackages: [secondPackagePath],
-        ownedPackages: [secondPackagePath],
-      })}\n`,
-    )
-    const secondOptions: EditorViewOptions = {
-      ...first.options,
-      package: secondPackagePath,
-      viewName: secondPackage,
-      cell: secondPackage,
-      target: `//${secondPackagePath}:editor_inputs`,
-      editorInputs: secondInputs,
-      nodeModules: secondNodeModules,
-      workspaceAuthority: secondAuthority,
-      consumerCache: join(first.root, '.devenv', 'vite-cache', secondPackage),
-    }
+    const { options: secondOptions, editorInputs: secondInputs } = makeSiblingView({
+      fixture: first,
+      packageName: secondPackage,
+    })
     try {
       let firstCurrent = await publishEditorView(first.options)
       let secondCurrent = await publishEditorView(secondOptions)
@@ -798,6 +815,36 @@ describe('editor view publisher', () => {
       cleanup(first)
     }
   })
+
+  it('publishes a sibling without re-walking a foreign payload that its owner still rejects', async () => {
+    const first = makeFixture()
+    const sibling = makeSiblingView({ fixture: first, packageName: 'tui-react' })
+    try {
+      await publishEditorView(first.options)
+      await publishEditorView(sibling.options)
+      chmodSync(
+        join(first.editorRoot, currentTarget(first), 'node_modules', 'dep', 'index.js'),
+        0o644,
+      )
+
+      // A sibling publication shares the store but not the tampered payload: it proves only the
+      // foreign entry's self-addressed record and read-only root, so its retention cost does not
+      // grow with the payload of every view already published into the store.
+      await expect(publishEditorView(sibling.options)).resolves.toMatchObject({
+        package: sibling.options.package,
+      })
+
+      await expect(checkEditorView(first.options)).rejects.toThrow(
+        'snapshot immutability violation',
+      )
+      await expect(publishEditorView(first.options)).rejects.toThrow(
+        /snapshot file is writable: .*\/node_modules\/dep\/index\.js$/,
+      )
+    } finally {
+      cleanup(first)
+    }
+  })
+
   it('refuses garbage collection when snapshot ownership is ambiguous', async () => {
     const fixture = makeFixture()
     try {
