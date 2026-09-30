@@ -167,6 +167,25 @@ consumers build its import from source on a cache miss. Neither native
 product lookup nor publication uses GitHub release assets or a release
 manifest; the derivation itself is the substitution identity.
 
+### Rust/Cargo archives
+
+`mkBuck2CargoArchives { pkgs; thirdPartyBuckFiles; gitSources ? {}; }` supplies
+`nix_store.crates_root` from the Reindeer graphs and their `git-archives.json`
+sidecars (BRIDGE-R08). Registry crates and GitHub repositories without an
+override use the reviewed archive URL and SHA-256 unchanged. A consumer can
+declare `gitSources."owner/repo" = inputs.repo;` for a GitHub Git dependency.
+The flake input must expose a `rev` equal to the sidecar's Cargo-locked 40-hex
+commit; a plain Nix path is allowed for a local source fixture. A mismatch
+fails Nix evaluation.
+
+For an override, Nix archives the declared source beneath the sidecar's
+`strip_prefix` with sorted entries, fixed timestamp/ownership, and gzip without
+an input timestamp. The GitHub tarball's reviewed SHA-256 remains the Buck
+lookup key; the Nix store projection also carries the generated source archive
+digest and `(repo, rev)`. Buck checks those three fields and the copied bytes
+before `extract-git-archive`. Without this manifest, Buck still checks the
+reviewed GitHub byte digest. Neither mode fetches from inside the sandbox.
+
 ### Compiled-executable products
 
 `compiled-executable` refines BRIDGE-R01–R03 and BRIDGE-R05–R09. This

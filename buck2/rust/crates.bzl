@@ -3,16 +3,15 @@
 Reindeer emits one `crate_archive` per registry crate (`[buck] http_archive =
 "crate_archive"`). A normal build downloads it exactly like `http_archive`,
 pinned by the `Cargo.lock` sha256. A sandboxed Nix build has no network: it
-sets `nix_store.crates_root` to a Nix store tree of `<sha256>.tgz` fixed-output
-fetches (`nix/workspace-tools/lib/buck2-cargo-archives.nix`), and the archive is
-copied from there, re-verified, and extracted offline by the capability tool.
+sets `nix_store.crates_root` to a Nix store tree of `<sha256>.tgz` archives
+(`nix/workspace-tools/lib/buck2-cargo-archives.nix`), which are copied,
+verified, and extracted offline by the capability tool.
 
 Git dependencies take the same path. Reindeer emits `git_fetch(name, repo, rev)`
 without a digest; selecting `[buck] git_fetch = "git_archive"` routes them to
 `pinned_git_archive`, which resolves `(repo, rev)` in the workspace's committed
-`git-archives.json` sidecar (maintained and fetch-verified by
-`scripts/buck2-rust-deps.sh`) to a sha256-pinned GitHub commit tarball:
-
+`git-archives.json` sidecar. Ordinary GitHub commit tarballs use the reviewed
+sha256; declared Nix flake sources carry a source-derived archive digest:
     [buck]
     git_fetch = "git_archive"
     buckfile_imports = '''
@@ -29,17 +28,20 @@ def _nix_crate_archive_impl(ctx):
     if not root.startswith("/nix/store/"):
         fail("nix_store.crates_root must be an immutable Nix store path: {}".format(root))
     archive = ctx.actions.declare_output("archive.crate")
+    command = [
+        ctx.attrs._bun[BunToolchainInfo].executable,
+        ctx.attrs._nix_archive,
+        "--root",
+        root,
+        "--sha256",
+        ctx.attrs.sha256,
+        "--output",
+        archive.as_output(),
+    ]
+    if ctx.attrs.source_repo != None:
+        command.extend(["--source-repo", ctx.attrs.source_repo, "--source-rev", ctx.attrs.source_rev])
     ctx.actions.run(
-        cmd_args([
-            ctx.attrs._bun[BunToolchainInfo].executable,
-            ctx.attrs._nix_archive,
-            "--root",
-            root,
-            "--sha256",
-            ctx.attrs.sha256,
-            "--output",
-            archive.as_output(),
-        ]),
+        cmd_args(command),
         category = "cargo_nix_archive",
         identifier = ctx.label.name,
         local_only = True,
@@ -76,6 +78,8 @@ _nix_crate_archive = rule(
         "out": attrs.option(attrs.string(), default = None),
         "sha256": attrs.string(),
         "strip_prefix": attrs.string(),
+        "source_repo": attrs.option(attrs.string(), default = None),
+        "source_rev": attrs.option(attrs.string(), default = None),
         "sub_targets": attrs.list(attrs.string(), default = []),
         "_archive_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:archive_tool",
@@ -159,6 +163,8 @@ def pinned_git_archive(pins):
                 extract_command = "extract-git-archive",
                 out = out,
                 sha256 = sha256,
+                source_repo = repo,
+                source_rev = rev,
                 strip_prefix = pin["strip_prefix"],
                 sub_targets = sub_targets,
                 visibility = visibility,
