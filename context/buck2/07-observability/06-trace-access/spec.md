@@ -47,7 +47,7 @@ baseline or trace link; store no provider job ID in trace attributes.
 | Status    | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished)                                                                |
 | Wall time | `completed_at - started_at` when both exist; otherwise `unavailable`                                                                                         |
 | Delta     | `duration unavailable` without valid job timing; otherwise `no main baseline` at `n=0`; otherwise signed duration minus p50 in seconds and percent, with `n` |
-| Trace     | Grafana Explore link if adapter identity, devenv resolution, and export succeed; else `not instrumented` (completed) or `unavailable` (skipped/unfinished) |
+| Trace     | Grafana Explore link if adapter identity, devenv resolution, and export succeed; else `not instrumented` (completed) or `unavailable` (skipped/unfinished)   |
 
 A failed PR job still has its observed duration and delta when timings
 exist; its row keeps `failure`. Skipped, never-started, cancelled without
