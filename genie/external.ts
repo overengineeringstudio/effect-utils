@@ -78,6 +78,7 @@ import {
   defineRepoContext,
   type RepoContext,
 } from '../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
+import { projectBuckProductSourcePaths } from './buck2/product-source-paths.ts'
 import {
   nativeDependencyPolicy,
   type NativeDependencyPolicyEntry,
@@ -106,6 +107,7 @@ export {
   projectionValidators,
   tsconfigJson,
 }
+export { projectBuckProductSourcePaths }
 export type {
   AggregatePackageJsonData,
   ExportEnvironmentContract,

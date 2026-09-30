@@ -115,6 +115,34 @@ tree, or rewritten package rule. Changing later repository metadata does not
 change the identity of an already-published product. The anonymous artifact
 URL is an interoperability path, not a second source of product authority.
 
+### Consumer from-source identity
+
+Consumer products built from their own repository, rather than imported from
+the published effect-utils manifest, use a committed Genie projection of
+repository-relative source paths for each Buck target. The projection derives
+workspace package directories from the target package's authored transitive
+workspace closure (`projectBuckProductSourcePaths`); non-pnpm Buck inputs are
+explicit additional paths. Each product passes its projected `sourcePaths` to
+`mkBuckProductFromSource` with `repositoryRoot` and the separate
+`mkConsumerBuckRoot` derivation as `rootProjection`. Nix evaluates
+`lib.fileset.toSource` over only those paths. Root configuration, toolchains,
+capabilities, fixed-output lock archives, and Cargo archives remain declared
+Nix inputs; neither a checkout copy nor Buck evaluation at Nix evaluation time
+determines the fileset.
+
+The source-backed product's `effect-utils/buck-product-source-provenance/v1`
+contains `sourceDigest` (SHA-256 of the scoped source store path), `target`,
+and `productDigest`; it contains no Git revision. Source changes inside the
+declared closure change the derivation, while changes outside it do not.
+Directory-level package entries deliberately include all files in each closure
+package: changes to non-Buck files _within_ that package may still rebuild it.
+Consumers that embed a Git build stamp (for example SCG
+`__CLI_BUILD_STAMP__` or axe `cliBuildStamp`) opt into per-commit identity for
+that product; the consumer owns that exception and must not claim stable
+paths for it. Published effect-utils products keep their manifest-bound
+`producerCommit` and `effect-utils/buck-product-provenance/v1` unchanged
+(decision 0037).
+
 ### Native products
 
 `otelite`, `otel-scrape`, and `typescript-api-server` use the same
