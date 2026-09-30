@@ -27,6 +27,10 @@ attempt close: CI finalizer -> pipeline-run link trace -> same delivery path
 
 The CI workflow joins the tailnet **after** build work and span joining, immediately before export. Joining before build can change DNS/routes and break Buck; [the observed upload-mode incident](https://github.com/overengineeringstudio/effect-utils/actions/runs/36452247266) motivates the late join. A single burst means one export phase per completed job, possibly several bounded HTTP requests; it is not a per-task streaming export or a repeated workflow step. A retry of failed chunks is recovery from that phase, not another capture/conversion run. At attempt close, the always-run finalizer depends on work jobs and emits the deterministic pipeline-run root with links to known job roots; it does not need their artifacts or native evidence.
 
+The generated CI workflow passes the OTLP endpoint only to the job-end export
+step and the attempt-close finalizer, not to the build job environment. This
+keeps unrelated child processes from exporting pre-burst spans directly.
+
 The endpoint is a configured tailnet-reachable dev3 Alloy OTLP/HTTP receiver at port 4318. POST trace and metric payloads to the standard OTLP/HTTP `/v1/traces` and `/v1/metrics` routes; preserve OTLP trace IDs and span IDs from 01/04. Split serialized payloads into requests below the observed ~3.5 MB collector body limit; splitting must not alter span ancestry or metric labels. Dotfiles configures Alloy and ACL; endpoint addresses never enter portable trace attributes or fixtures. In CI, `CI_EVIDENCE_MODE=upload` selects export for same-repo PR and main jobs, which reach the endpoint under their tailnet ACL; any other value spools only. Ordinary forks receive no such access and remain spool-only. Local runs export when the configured endpoint is reachable on the tailnet and otherwise spool. No CI-provider artifact, GitHub API, upload service, or public ingress carries telemetry.
 
 ## Local Retry (BUCK.OBS.ING-R03/R09)

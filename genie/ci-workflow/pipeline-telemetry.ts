@@ -1,15 +1,19 @@
+import {
+  pipelineExportStepName,
+  pipelineIdentityStepName,
+} from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 type Job = GitHubWorkflowArgs['jobs'][string]
 const script = 'bash genie/ci-scripts/evidence-job.sh'
 
 const joinTailnetStep = {
-  if: "${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}",
+  if: "${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}",
   uses: 'tailscale/github-action@v4',
   'continue-on-error': true,
   with: {
-    'oauth-client-id': '${{ env.TS_EVIDENCE_CLIENT_ID }}',
-    audience: '${{ env.TS_EVIDENCE_AUDIENCE }}',
+    'oauth-client-id': '${{ vars.TS_EVIDENCE_CLIENT_ID }}',
+    audience: '${{ vars.TS_EVIDENCE_AUDIENCE }}',
     tags: 'tag:ci-buck2-evidence',
     args: '--accept-dns=true',
   },
@@ -25,11 +29,11 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
       if (checkout < 0) return [jobId, job]
       const matrix = job.strategy !== undefined && 'matrix' in job.strategy
       steps.splice(checkout + 1, 0, {
-        name: 'Prepare pipeline job identity',
+        name: pipelineIdentityStepName,
         shell: 'bash',
         env: {
           JOB_KEY: jobId,
-          MATRIX_VALUE: matrix ? '${{ matrix.runner }}' : '',
+          MATRIX_VALUE: matrix === true ? '${{ matrix.runner }}' : '',
           PR_HEAD: '${{ github.event.pull_request.head.sha }}',
           PR_NUMBER: '${{ github.event.pull_request.number }}',
           PR_FORK:
@@ -38,7 +42,12 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
         run: `${script} identity`,
       })
       for (const [index, taskStep] of steps.entries()) {
-        if (!('run' in taskStep) || typeof taskStep.run !== 'string' || !taskStep.run.includes('tasks run ')) continue
+        if (
+          !('run' in taskStep) ||
+          typeof taskStep.run !== 'string' ||
+          taskStep.run.includes('tasks run ') === false
+        )
+          continue
         steps[index] = {
           ...taskStep,
           env: {
@@ -50,9 +59,10 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
       }
       // Never change build DNS/routes: join only after all build and span work.
       steps.push(joinTailnetStep, {
-        name: 'Export completed job trace',
+        name: pipelineExportStepName,
         if: '${{ always() }}',
         shell: 'bash',
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: '${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}' },
         run: `${script} export '\${{ job.status }}' || true`,
       })
       return [
@@ -69,9 +79,6 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
           env: {
             ...job.env,
             CI_EVIDENCE_MODE: '${{ vars.CI_EVIDENCE_MODE }}',
-            OTEL_EXPORTER_OTLP_ENDPOINT: '${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}',
-            TS_EVIDENCE_CLIENT_ID: '${{ vars.TS_EVIDENCE_CLIENT_ID }}',
-            TS_EVIDENCE_AUDIENCE: '${{ vars.TS_EVIDENCE_AUDIENCE }}',
           },
           steps,
         },
@@ -86,11 +93,8 @@ export const pipelineCloseJob = (jobs: Record<string, Job>): Job => ({
   permissions: { contents: 'read', actions: 'read', 'id-token': 'write' },
   env: {
     CI_EVIDENCE_MODE: '${{ vars.CI_EVIDENCE_MODE }}',
-    OTEL_EXPORTER_OTLP_ENDPOINT: '${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}',
     PIPELINE_TRUSTED:
       "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}",
-    TS_EVIDENCE_CLIENT_ID: '${{ vars.TS_EVIDENCE_CLIENT_ID }}',
-    TS_EVIDENCE_AUDIENCE: '${{ vars.TS_EVIDENCE_AUDIENCE }}',
   },
   steps: [
     { uses: 'actions/checkout@v6', with: { 'persist-credentials': false } },
@@ -100,7 +104,10 @@ export const pipelineCloseJob = (jobs: Record<string, Job>): Job => ({
       name: 'Link started job roots',
       shell: 'bash',
       'continue-on-error': true,
-      env: { GITHUB_TOKEN: '${{ github.token }}' },
+      env: {
+        GITHUB_TOKEN: '${{ github.token }}',
+        OTEL_EXPORTER_OTLP_ENDPOINT: '${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}',
+      },
       run: `nix shell .#bun .#otel-span .#buck2-events --command ${script} close || true`,
     },
   ],

@@ -1,5 +1,12 @@
 /* GitHub Jobs API names for the generated CI workflow. A generator assertion guards this finite list. */
 
+/** GitHub Jobs API step names proving that the job-end adapter can export a trace. */
+export const pipelineIdentityStepName = 'Prepare pipeline job identity'
+/** The adapter needs a resolved devenv executable to emit and export the job root. */
+export const pipelineDevenvStepName = 'Resolve devenv'
+/** The always-run adapter step performs job-end capture and export when ready. */
+export const pipelineExportStepName = 'Export completed job trace'
+
 /** Runner profiles used to generate matrix job identities. */
 export const pipelineRunnerProfiles = [
   'namespace-profile-linux-x86-64',

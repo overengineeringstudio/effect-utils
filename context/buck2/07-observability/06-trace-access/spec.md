@@ -47,13 +47,18 @@ baseline or trace link; store no provider job ID in trace attributes.
 | Status    | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished)                                                                |
 | Wall time | `completed_at - started_at` when both exist; otherwise `unavailable`                                                                                         |
 | Delta     | `duration unavailable` without valid job timing; otherwise `no main baseline` at `n=0`; otherwise signed duration minus p50 in seconds and percent, with `n` |
-| Trace     | deterministic Grafana Explore link for executed jobs, if 01 identity is available                                                                            |
+| Trace     | Grafana Explore link if adapter identity, devenv resolution, and export succeed; else `not instrumented` (completed) or `unavailable` (skipped/unfinished) |
 
 A failed PR job still has its observed duration and delta when timings
 exist; its row keeps `failure`. Skipped, never-started, cancelled without
 end time, or unfinished jobs have no delta: show `duration unavailable`
 even when a valid baseline exists. The table uses the attempt the comment
 describes, not the latest attempt of a different run.
+
+The Jobs API export step can succeed without emitting a root when the adapter
+finds no pipeline identity or resolved devenv binary. The reporter checks all
+three named adapter steps rather than mistaking an always-run no-op export for
+proof of a trace; this gate does not prove Tempo has indexed the trace.
 
 ## Main Baseline
 
@@ -109,6 +114,9 @@ baseline`; a finalizer job never appears as a build row. The collector
   makes no more than 20 baseline Jobs API run requests for this selection.
 - The same job facts and trace identity produce the exact same Grafana URL;
   malformed IDs produce no URL; an unindexed trace remains an Explore link.
+- A completed job whose adapter identity, devenv resolution, or export step
+  was absent or unsuccessful has no trace ID/link, including when the export
+  step itself succeeded after returning early.
 - The comment generator reads only GitHub Actions workflow-run metadata and
   Jobs API facts, with no Tempo, SQLite, resolver or artifact requests.
 - Historical evidence: [PR access prototype](./.experiments/2026-09-25-pr-trace-access.md), [page variants](./.experiments/2026-09-26-pr-page-variants.md), and amended decisions [0001](./.decisions/0001-resolver-and-ci-links.md), [0002](./.decisions/0002-review-page-and-baseline.md), [0003](./.decisions/0003-versioned-agent-contract.md).

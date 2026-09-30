@@ -1,3 +1,4 @@
+import { pipelineDevenvStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { RunnerProfile } from '../ci.ts'
 import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
@@ -1007,7 +1008,7 @@ export const pnpmBuilderContractStep = ({
  */
 export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>
   ({
-    name: 'Resolve devenv',
+    name: pipelineDevenvStepName,
     env: githubTokenEnv(),
     // Routed through the shared retry wrapper: resolving devenv is the first step that
     // evaluates flake inputs, so it is where a transient store/input-cache failure lands

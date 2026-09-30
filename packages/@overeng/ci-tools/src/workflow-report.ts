@@ -724,11 +724,14 @@ const renderPipelineTraces = (opts: {
     '| --- | --- | --- | --- | --- |',
     ...visibleRows.map((row) => {
       const trace =
-        typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl) === true
-          ? `[Explore](${row.traceUrl})`
-          : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId) === true
-            ? `\`${row.traceId}\` (link unavailable)`
-            : 'unavailable'
+        row.status !== 'skipped' && row.status !== 'unfinished' && row.instrumented === false
+          ? 'not instrumented'
+          : typeof row.traceUrl === 'string' &&
+              /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl) === true
+            ? `[Explore](${row.traceUrl})`
+            : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId) === true
+              ? `\`${row.traceId}\` (link unavailable)`
+              : 'unavailable'
       return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
     }),
     ...(visibleRows.length === rows.length
