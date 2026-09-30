@@ -1,7 +1,7 @@
 #!/usr/bin/env -S bun
 import { randomUUID } from 'node:crypto'
-import { connect, type ClientHttp2Stream } from 'node:http2'
 import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { connect, type ClientHttp2Stream } from 'node:http2'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
@@ -207,7 +207,8 @@ export const reconcileStandaloneCachePostureForInvocation = async ({
   const warning =
     'Buck2 REAPI GetCapabilities failed; using BUCK2_NO_REMOTE_CACHE=1 for this invocation'
   process.stderr.write(`warning: ${warning}\n`)
-  if (env['GITHUB_ACTIONS'] === 'true') process.stderr.write(`::warning title=Buck2 cache::${warning}\n`)
+  if (env['GITHUB_ACTIONS'] === 'true')
+    process.stderr.write(`::warning title=Buck2 cache::${warning}\n`)
   process.stderr.write('buck2_reapi_fail_open_total 1\n')
   return false
 }
@@ -251,7 +252,7 @@ const probeRemoteCacheCapabilities = async ({
       ':method': 'POST',
       ':path': '/build.bazel.remote.execution.v2.Capabilities/GetCapabilities',
       'content-type': 'application/grpc',
-      'te': 'trailers',
+      te: 'trailers',
       'grpc-timeout': `${deadlineMs}m`,
     }
     if (header !== undefined) {

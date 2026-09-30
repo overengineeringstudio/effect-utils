@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer as createGrpcServer } from 'node:http2'
 import { createServer as createTcpServer } from 'node:net'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -219,7 +219,10 @@ describe('Buck2 REAPI capability preflight', () => {
         expect(frame.readUInt32BE(1)).toBe(frame.length - 5)
         expect(frame[5]).toBe(0x0a)
         expect(frame[6]).toBe(Buffer.byteLength('effect-utils'))
-        stream.respond({ ':status': 200, 'content-type': 'application/grpc' }, { waitForTrailers: true })
+        stream.respond(
+          { ':status': 200, 'content-type': 'application/grpc' },
+          { waitForTrailers: true },
+        )
         stream.on('wantTrailers', () => stream.sendTrailers({ 'grpc-status': '0' }))
         stream.end(Buffer.from([0, 0, 0, 0, 4, 0x0a, 2, 8, 1]))
       })
