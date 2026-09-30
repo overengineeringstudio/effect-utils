@@ -120,10 +120,11 @@ The Rust toolchain has two configured profiles. Normal `buck2 build`, `test`,
 and `check` use the dev profile (`-Copt-level=0`); the Nix native-product
 recipe passes `--config rust_profile.mode=release`. A Buck `config_setting`
 selects the toolchain flags, so the choice is part of configured analysis and
-the action key rather than a per-crate edit. The recipe reads the owning
-workspace's `Cargo.toml` `[profile.release]` and passes its opt-level, debug,
-LTO, codegen-units, panic, strip, debug-assertions, and overflow-checks
-settings as Buck config values. Unspecified values use Cargo release defaults
+the action key rather than a per-crate edit. After source staging, the recipe
+reads the owning workspace's `Cargo.toml` `[profile.release]` (including
+derivation-backed consumer roots) and passes its opt-level, debug, LTO,
+codegen-units, panic, strip, debug-assertions, and overflow-checks settings
+as Buck config values. Unspecified values use Cargo release defaults
 (3, 0, off, 16, unwind, none, no, no). All crates in that product graph,
 including third-party crates and build scripts, receive the selected
 toolchain flags. Package-specific Cargo profile overrides require a
