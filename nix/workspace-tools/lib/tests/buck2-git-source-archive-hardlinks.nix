@@ -13,12 +13,19 @@ let
     stripPrefix = "demo-0123456789abcdef0123456789abcdef01234567";
   };
 in
-pkgs.runCommand "buck2-git-archive-hardlinks-test" { nativeBuildInputs = [ pkgs.coreutils pkgs.gnutar ]; } ''
-  test "$(stat -c '%d:%i' ${source}/src/first.rs)" = "$(stat -c '%d:%i' ${source}/src/second.rs)"
-  if tar -tvzf ${archive}/archive.tgz | grep '^h'; then
-    echo 'buck2-git-source-archive: physical source hardlinks leaked into the archive' >&2
-    exit 1
-  fi
-  mkdir -p "$out"
-  cp ${archive}/archive.tgz "$out/"
-''
+pkgs.runCommand "buck2-git-archive-hardlinks-test"
+  {
+    nativeBuildInputs = [
+      pkgs.coreutils
+      pkgs.gnutar
+    ];
+  }
+  ''
+    test "$(stat -c '%d:%i' ${source}/src/first.rs)" = "$(stat -c '%d:%i' ${source}/src/second.rs)"
+    if tar -tvzf ${archive}/archive.tgz | grep '^h'; then
+      echo 'buck2-git-source-archive: physical source hardlinks leaked into the archive' >&2
+      exit 1
+    fi
+    mkdir -p "$out"
+    cp ${archive}/archive.tgz "$out/"
+  ''
