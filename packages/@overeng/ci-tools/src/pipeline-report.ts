@@ -2,11 +2,22 @@ import { Effect, Schema } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
-import { pipelineJobIdentityForName, type PipelineJobIdentity } from './pipeline-job-names.ts'
+import {
+  pipelineDevenvStepName,
+  pipelineExportStepName,
+  pipelineIdentityStepName,
+  pipelineJobIdentityForName,
+  type PipelineJobIdentity,
+} from './pipeline-job-names.ts'
 import { canonicalJobKey } from './pipeline-trace-identity.ts'
 import type { WorkflowReportRecord } from './workflow-report.ts'
 
 const NullableString = Schema.Union([Schema.String, Schema.Null])
+const JobStep = Schema.Struct({
+  name: Schema.String,
+  status: Schema.String,
+  conclusion: NullableString,
+})
 const Job = Schema.Struct({
   name: Schema.String,
   run_attempt: Schema.Finite,
@@ -14,6 +25,7 @@ const Job = Schema.Struct({
   conclusion: NullableString,
   started_at: NullableString,
   completed_at: NullableString,
+  steps: Schema.Array(JobStep),
 })
 const JobsPage = Schema.Struct({ total_count: Schema.Finite, jobs: Schema.Array(Job) })
 /** Bound main-history API work even when a PR-only job has no main samples. */
@@ -44,6 +56,7 @@ export type PipelineRow = {
   readonly status: string
   readonly wallTime: string
   readonly delta: string
+  readonly instrumented: boolean
   readonly traceId?: string
   readonly traceUrl?: string
 }
@@ -63,6 +76,7 @@ const PipelineRowSchema = Schema.Struct({
   status: Schema.String,
   wallTime: Schema.String,
   delta: Schema.String,
+  instrumented: Schema.Boolean,
   traceId: Schema.optional(Schema.String),
   traceUrl: Schema.optional(Schema.String),
 })
@@ -235,8 +249,23 @@ export const buildPipelineReport = (opts: {
         `${label} :${status === 'unfinished' ? 'active, ' : ''}job${index}, ${new Date(start).toISOString()}, ${new Date(end).toISOString()}`,
       )
     } else omittedBars++
+    // The adapter returns before emitting a root without identity or devenv, even
+    // when its always() export step itself reports success.
+    const instrumented = [
+      pipelineIdentityStepName,
+      pipelineDevenvStepName,
+      pipelineExportStepName,
+    ].every((name) =>
+      job.steps.some(
+        (step) =>
+          step.name === name && step.status === 'completed' && step.conclusion === 'success',
+      ),
+    )
     const traceId =
-      identity === undefined || start === undefined
+      identity === undefined ||
+      start === undefined ||
+      status === 'unfinished' ||
+      instrumented === false
         ? undefined
         : opts.traceIdForJob(runIdentity, identity)
     const traceUrl =
@@ -253,6 +282,7 @@ export const buildPipelineReport = (opts: {
       status,
       wallTime: wallMs === undefined ? 'unavailable' : seconds(wallMs),
       delta,
+      instrumented,
       ...(traceId === undefined ? {} : { traceId }),
       ...(traceUrl === undefined ? {} : { traceUrl }),
     }

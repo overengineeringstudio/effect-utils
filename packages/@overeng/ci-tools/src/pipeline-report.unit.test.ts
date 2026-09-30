@@ -3,12 +3,18 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { pipelineJobIdentityForName } from './pipeline-job-names.ts'
+import {
+  pipelineDevenvStepName,
+  pipelineExportStepName,
+  pipelineIdentityStepName,
+  pipelineJobIdentityForName,
+} from './pipeline-job-names.ts'
 import {
   buildPipelineReport,
   decodePipelineJobsPage,
   decodePipelineRunsPage,
   pipelineGrafanaTraceUrl,
+  type PipelineRow,
 } from './pipeline-report.ts'
 import { deriveJobTraceId } from './pipeline-trace-identity.ts'
 import {
@@ -132,6 +138,49 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     })
   })
 
+  it('does not advertise a trace when the adapter cannot finish, even if export reports success', () => {
+    const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
+    const completed = [
+      pipelineIdentityStepName,
+      pipelineDevenvStepName,
+      pipelineExportStepName,
+    ].map((name) => ({ name, status: 'completed', conclusion: 'success' as const }))
+    const reportFor = (steps: typeof job.steps) =>
+      buildPipelineReport({ ...options, jobs: [{ ...job, steps }] })
+    const rowFor = (steps: typeof job.steps): PipelineRow =>
+      (reportFor(steps).data!.rows as readonly PipelineRow[])[0]!
+    const original = reportFor(job.steps)
+    expect(rowFor(job.steps)).toMatchObject({ instrumented: false })
+    expect(render(original)).toContain('| typecheck | success |')
+    expect(render(original)).toContain('| not instrumented |')
+    for (const missing of completed) {
+      const row = rowFor(completed.filter((step) => step.name !== missing.name))
+      expect(row).toMatchObject({ instrumented: false })
+      expect(row.traceId).toBeUndefined()
+    }
+    expect(
+      rowFor(
+        completed.map((step) =>
+          step.name === pipelineDevenvStepName ? { ...step, conclusion: 'failure' } : step,
+        ),
+      ).traceUrl,
+    ).toBeUndefined()
+    const instrumented = reportFor(completed)
+    expect(rowFor(completed).traceUrl).toContain('grafana.example.test/explore?')
+    expect(render(instrumented)).toContain('[Explore](')
+    const unfinished = buildPipelineReport({
+      ...options,
+      jobs: [
+        { ...job, steps: completed, status: 'in_progress', conclusion: null, completed_at: null },
+      ],
+    })
+    expect((unfinished.data!.rows as readonly PipelineRow[])[0]).toMatchObject({
+      status: 'unfinished',
+      instrumented: true,
+    })
+    expect((unfinished.data!.rows as readonly PipelineRow[])[0]?.traceId).toBeUndefined()
+  })
+
   it('keeps zero-duration baselines legible and excludes the attempt-close finalizer', () => {
     const typecheck = options.jobs.find((job) => job.name === 'typecheck')!
     const zeroDuration = { ...typecheck, completed_at: typecheck.started_at }
@@ -162,6 +211,9 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
         {
           ...options.jobs.find((job) => job.name === 'test (namespace-profile-linux-x86-64)')!,
           run_attempt: 2,
+          steps: [pipelineIdentityStepName, pipelineDevenvStepName, pipelineExportStepName].map(
+            (name) => ({ name, status: 'completed', conclusion: 'success' }),
+          ),
         },
       ],
       traceIdForJob: (runId, jobIdentity) => deriveJobTraceId({ runId, ...jobIdentity }),
@@ -193,7 +245,13 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
   })
 
   it('renders trace identity without a link when the Grafana base is absent', () => {
-    const body = render(buildPipelineReport({ ...options, grafanaBaseUrl: '' }))
+    const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
+    const steps = [pipelineIdentityStepName, pipelineDevenvStepName, pipelineExportStepName].map(
+      (name) => ({ name, status: 'completed', conclusion: 'success' }),
+    )
+    const body = render(
+      buildPipelineReport({ ...options, jobs: [{ ...job, steps }], grafanaBaseUrl: '' }),
+    )
     expect(body).toContain('`a0123456789abcdef0123456789abcde` (link unavailable)')
     expect(body).not.toContain('[Explore](')
   })
@@ -238,6 +296,7 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
         ...data,
         rows: rows.map((row) =>
           Object.assign({}, row, {
+            instrumented: true,
             traceUrl: `https://grafana.example.test/explore?${'x'.repeat(4_000)}`,
           }),
         ),
