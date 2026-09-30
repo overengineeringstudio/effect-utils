@@ -76,6 +76,17 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - `lintPaths` are Git pathspecs. The lint tasks enumerate tracked and untracked
     non-ignored files through `git ls-files` before calling oxlint/oxfmt, and do
     not use devenv's `execIfModified` glob walker.
+  - `lint:check:no-tailwind` runs within `lint:check` (and `check:quick`) by
+    default. It scans tracked and non-ignored untracked package manifests,
+    JS/TS imports, Tailwind config filenames, and CSS/Astro/Svelte/Vue style
+    directives. Each violation includes a file, line, and StyleX remedy.
+  - Approved exceptions live in a consumer-owned `.no-tailwind-exceptions.json`
+    containing an array of `{ "path": "examples/**", "reason": "Standalone example apps" }`.
+    The file is optional, so existing consumers can declare exceptions before
+    repinning effect-utils; the older lint module does not need to parse them.
+    Paths are anchored; `packages/@local/**/example/**` covers nested example
+    apps, while `"**"` explicitly exempts an entire repository. A reason is
+    required; other library paths remain guarded.
 - `megarepo.nix` - Megarepo workspace tasks
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`

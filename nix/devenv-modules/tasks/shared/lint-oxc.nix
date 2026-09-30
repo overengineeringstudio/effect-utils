@@ -76,6 +76,7 @@ let
   genieTaskEnv = lib.optionalAttrs (megarepoStoreEnv != "") {
     MEGAREPO_STORE = megarepoStoreEnv;
   };
+  noTailwindScript = ../../../../scripts/lint-no-tailwind.mjs;
   git = "${pkgs.git}/bin/git";
   scanDirsSetup = builtins.concatStringsSep "\n" (
     map (dir: "scan_dir_args+=(${builtins.toJSON dir})") genieCoverageDirs
@@ -374,11 +375,18 @@ let
           --config.store-dir="$store_dir"
       '';
     };
+    "lint:check:no-tailwind" = {
+      description = "Reject Tailwind dependencies, imports, configs, and CSS directives";
+      exec = trace.exec "lint:check:no-tailwind" ''
+        ${pkgs.nodejs}/bin/node ${noTailwindScript}
+      '';
+    };
     "lint:check" = {
       description = "Run all lint checks";
       after = [
         "lint:check:format"
         "lint:check:oxlint"
+        "lint:check:no-tailwind"
         "lint:check:genie"
         "lint:check:genie:coverage"
         "lint:check:lockfile"
