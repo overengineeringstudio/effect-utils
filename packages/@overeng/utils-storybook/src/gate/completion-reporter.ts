@@ -39,9 +39,9 @@ export interface StoryGateReporterOutput {
 export const storyGateReporterOutput = (testModules: TestModules): StoryGateReporterOutput => ({
   testResults: testModules.map((module) => ({
     name: module.moduleId,
-    collectionErrors: module.errors().map(
-      (error) => error.stack ?? error.message ?? JSON.stringify(error),
-    ),
+    collectionErrors: module
+      .errors()
+      .map((error) => error.stack ?? error.message ?? JSON.stringify(error)),
     assertionResults: [...module.children.allTests()].map((test) => {
       const result = test.result()
       return {

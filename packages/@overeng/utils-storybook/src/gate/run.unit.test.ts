@@ -197,7 +197,9 @@ describe('assertCaptureCollectionComplete', () => {
           collectionErrors: ["SyntaxError: is-dom does not provide an export named 'default'"],
         },
       ]),
-    ).toThrow(/Failed to collect story modules:[\s\S]*PtgInspectionConsole\.stories\.tsx:[\s\S]*is-dom does not provide/)
+    ).toThrow(
+      /Failed to collect story modules:[\s\S]*PtgInspectionConsole\.stories\.tsx:[\s\S]*is-dom does not provide/,
+    )
   })
 })
 
