@@ -27,6 +27,7 @@ export const buck2TypeScriptAdmission = {
     },
   ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
+  testDataRoots: [{ root: 'src', extensions: ['.json'] }],
   tests: [
     {
       name: 'test',

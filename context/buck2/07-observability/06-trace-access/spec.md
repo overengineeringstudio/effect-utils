@@ -41,13 +41,13 @@ canonical `K` bytes. Reject duplicate or unrecognized names rather than
 assigning two jobs one trace. Show an unmatched provider job name without
 baseline or trace link; store no provider job ID in trace attributes.
 
-| Column    | Rule                                                                                                                                                                      |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Job       | Markdown-escaped job key/name                                                                                                                                             |
-| Status    | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished)                                                                             |
-| Wall time | `completed_at - started_at` when both exist; otherwise `unavailable`                                                                                                      |
+| Column    | Rule                                                                                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Job       | Markdown-escaped job key/name                                                                                                                                |
+| Status    | provider status plus conclusion (`success`, `failure`, `cancelled`, `skipped`, or unfinished)                                                                |
+| Wall time | `completed_at - started_at` when both exist; otherwise `unavailable`                                                                                         |
 | Delta     | `duration unavailable` without valid job timing; otherwise `no main baseline` at `n=0`; otherwise signed duration minus p50 in seconds and percent, with `n` |
-| Trace     | deterministic Grafana Explore link for executed jobs, if 01 identity is available                                                                                         |
+| Trace     | deterministic Grafana Explore link for executed jobs, if 01 identity is available                                                                            |
 
 A failed PR job still has its observed duration and delta when timings
 exist; its row keeps `failure`. Skipped, never-started, cancelled without
@@ -105,7 +105,7 @@ The existing sticky comment gets one Buck2 observability section, replacing the 
   candidates through the workflow-runs API, then select the latest seven
   admissible same-key Jobs API durations and report p50 and `n=7`.
 - A job absent from all 20 selected successful main runs reports `no main
-  baseline`; a finalizer job never appears as a build row. The collector
+baseline`; a finalizer job never appears as a build row. The collector
   makes no more than 20 baseline Jobs API run requests for this selection.
 - The same job facts and trace identity produce the exact same Grafana URL;
   malformed IDs produce no URL; an unindexed trace remains an Explore link.

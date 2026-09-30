@@ -9,26 +9,26 @@ import type { WorkflowReportRecord } from './workflow-report.ts'
 const NullableString = Schema.Union([Schema.String, Schema.Null])
 const Job = Schema.Struct({
   name: Schema.String,
-  run_attempt: Schema.Number,
+  run_attempt: Schema.Finite,
   status: Schema.String,
   conclusion: NullableString,
   started_at: NullableString,
   completed_at: NullableString,
 })
-const JobsPage = Schema.Struct({ total_count: Schema.Number, jobs: Schema.Array(Job) })
+const JobsPage = Schema.Struct({ total_count: Schema.Finite, jobs: Schema.Array(Job) })
 /** Bound main-history API work even when a PR-only job has no main samples. */
 export const maxBaselineRuns = 20
 
 const Run = Schema.Struct({
-  id: Schema.Number,
-  run_attempt: Schema.Number,
+  id: Schema.Finite,
+  run_attempt: Schema.Finite,
   head_branch: Schema.String,
   event: Schema.String,
   status: Schema.String,
   conclusion: NullableString,
-  workflow_id: Schema.Number,
+  workflow_id: Schema.Finite,
 })
-const RunsPage = Schema.Struct({ total_count: Schema.Number, workflow_runs: Schema.Array(Run) })
+const RunsPage = Schema.Struct({ total_count: Schema.Finite, workflow_runs: Schema.Array(Run) })
 export type PipelineJob = typeof Job.Type
 export type PipelineRun = typeof Run.Type
 
@@ -64,10 +64,10 @@ const PipelineRowSchema = Schema.Struct({
 const PipelineReportDataSchema = Schema.Struct({
   rows: Schema.Array(PipelineRowSchema),
   gantt: Schema.optional(Schema.String),
-  omittedBars: Schema.Number,
-  baselineRunIds: Schema.Array(Schema.Number),
-  baselineCounts: Schema.Record(Schema.String, Schema.Number),
-  counts: Schema.Record(Schema.String, Schema.Number),
+  omittedBars: Schema.Finite,
+  baselineRunIds: Schema.Array(Schema.Finite),
+  baselineCounts: Schema.Record(Schema.String, Schema.Finite),
+  counts: Schema.Record(Schema.String, Schema.Finite),
 })
 export const decodePipelineReportData = Schema.decodeUnknownSync(PipelineReportDataSchema)
 
@@ -86,14 +86,13 @@ const seconds = (ms: number): string => {
   return `${Math.floor(rounded / 60)}m ${String(rounded % 60).padStart(2, '0')}s`
 }
 
-const signedSeconds = (ms: number): string => `${ms >= 0 ? '+' : '-'}${(Math.abs(ms) / 1000).toFixed(1)}s`
+const signedSeconds = (ms: number): string =>
+  `${ms >= 0 ? '+' : '-'}${(Math.abs(ms) / 1000).toFixed(1)}s`
 
 const median = (samples: readonly number[]): number => {
   const sorted = [...samples].sort((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1
-    ? sorted[middle]!
-    : (sorted[middle - 1]! + sorted[middle]!) / 2
+  return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
 }
 
 /** Grafana's exact by-ID query shape, including the documented key order. */
@@ -104,7 +103,8 @@ export const pipelineGrafanaTraceUrl = (opts: {
   readonly completedAt: string
 }): string | undefined => {
   if (/^[0-9a-f]{32}$/.test(opts.traceId) === false) return undefined
-  if (opts.baseUrl.length === 0 || /^https?:\/\/[^/\s?#]+\/?$/u.test(opts.baseUrl) === false) return undefined
+  if (opts.baseUrl.length === 0 || /^https?:\/\/[^/\s?#]+\/?$/u.test(opts.baseUrl) === false)
+    return undefined
   const start = Date.parse(opts.startedAt)
   const end = Date.parse(opts.completedAt)
   if (Number.isFinite(start) === false || Number.isFinite(end) === false) return undefined
@@ -126,13 +126,24 @@ export const pipelineGrafanaTraceUrl = (opts: {
 }
 
 const mermaidLabel = (name: string): string =>
-  name.replace(/[\r\n:;#%\[\]<>`]/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, 100)
+  name
+    .replace(/[\r\n:;#%\[\]<>`]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .slice(0, 100)
 
 const canonicalKey = (identity: PipelineJobIdentity): string =>
-  `${identity.job}${Object.entries(identity.dimensions).map(([key, value]) => `[${key}=${value}]`).join('')}`
+  `${identity.job}${Object.entries(identity.dimensions)
+    .map(([key, value]) => `[${key}=${value}]`)
+    .join('')}`
 
 // Historical attempts still expose the two retired finalizer names in Jobs API.
-const nonBuildJobNames = ['pipeline-traces', 'pipeline-attempt-close', 'evidence-attempt-close', 'evidence-pr-link']
+const nonBuildJobNames = [
+  'pipeline-traces',
+  'pipeline-attempt-close',
+  'evidence-attempt-close',
+  'evidence-pr-link',
+]
 const isBuildJob = (name: string): boolean => !nonBuildJobNames.includes(name)
 
 export const buildPipelineReport = (opts: {
@@ -145,7 +156,9 @@ export const buildPipelineReport = (opts: {
   readonly grafanaBaseUrl: string
   readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
 }): WorkflowReportRecord => {
-  const current = opts.jobs.filter((job) => job.run_attempt === opts.attempt && isBuildJob(job.name))
+  const current = opts.jobs.filter(
+    (job) => job.run_attempt === opts.attempt && isBuildJob(job.name),
+  )
   const runIdentity = `ci/github/${encodeURIComponent(opts.repository)}/${opts.runId}/${opts.attempt}`
   const duplicateNames = new Set<string>()
   const countsByName: Record<string, number> = {}
@@ -159,7 +172,8 @@ export const buildPipelineReport = (opts: {
     for (const candidate of baseline.jobs) {
       const identity = pipelineJobIdentityForName(candidate.name)
       const duration = wallTimeMs(candidate)
-      if (identity === undefined || candidate.conclusion !== 'success' || duration === undefined) continue
+      if (identity === undefined || candidate.conclusion !== 'success' || duration === undefined)
+        continue
       const key = canonicalJobKey(identity).toString('hex')
       if (durations.has(key)) duplicates.add(key)
       else durations.set(key, duration)
@@ -198,24 +212,30 @@ export const buildPipelineReport = (opts: {
           ? 'no main baseline'
           : p50 === 0
             ? `${signedSeconds(wallMs)} (percent unavailable; n=${samples.length})`
-            : `${signedSeconds(wallMs - p50)} (${(100 * (wallMs - p50) / p50).toFixed(1)}%; n=${samples.length})`
-    const start = job.started_at === null || status === 'skipped' ? undefined : Date.parse(job.started_at)
-    const end = job.completed_at === null ? Date.parse(opts.generatedAtUtc) : Date.parse(job.completed_at)
+            : `${signedSeconds(wallMs - p50)} (${((100 * (wallMs - p50)) / p50).toFixed(1)}%; n=${samples.length})`
+    const start =
+      job.started_at === null || status === 'skipped' ? undefined : Date.parse(job.started_at)
+    const end =
+      job.completed_at === null ? Date.parse(opts.generatedAtUtc) : Date.parse(job.completed_at)
     if (start !== undefined && Number.isFinite(start) && Number.isFinite(end) && end >= start) {
       const label = mermaidLabel(`${key} (${status})`)
-      bars.push(`${label} :${status === 'unfinished' ? 'active, ' : ''}job${index}, ${new Date(start).toISOString()}, ${new Date(end).toISOString()}`)
+      bars.push(
+        `${label} :${status === 'unfinished' ? 'active, ' : ''}job${index}, ${new Date(start).toISOString()}, ${new Date(end).toISOString()}`,
+      )
     } else omittedBars++
-    const traceId = identity === undefined || start === undefined
-      ? undefined
-      : opts.traceIdForJob(runIdentity, identity)
-    const traceUrl = traceId === undefined || job.started_at === null
-      ? undefined
-      : pipelineGrafanaTraceUrl({
-          baseUrl: opts.grafanaBaseUrl,
-          traceId,
-          startedAt: job.started_at,
-          completedAt: job.completed_at ?? opts.generatedAtUtc,
-        })
+    const traceId =
+      identity === undefined || start === undefined
+        ? undefined
+        : opts.traceIdForJob(runIdentity, identity)
+    const traceUrl =
+      traceId === undefined || job.started_at === null
+        ? undefined
+        : pipelineGrafanaTraceUrl({
+            baseUrl: opts.grafanaBaseUrl,
+            traceId,
+            startedAt: job.started_at,
+            completedAt: job.completed_at ?? opts.generatedAtUtc,
+          })
     return {
       job: key,
       status,
@@ -225,12 +245,29 @@ export const buildPipelineReport = (opts: {
       ...(traceUrl === undefined ? {} : { traceUrl }),
     }
   })
-  const starts = current.filter((job) => job.started_at !== null && job.conclusion !== 'skipped').map((job) => Date.parse(job.started_at!))
+  const starts = current
+    .filter((job) => job.started_at !== null && job.conclusion !== 'skipped')
+    .map((job) => Date.parse(job.started_at!))
   const earliest = Math.min(...starts)
-  const gantt = bars.length === 0 || !Number.isFinite(earliest)
-    ? undefined
-    : ['gantt', `    title Pipeline jobs (from ${new Date(earliest).toISOString()})`, '    dateFormat YYYY-MM-DDTHH:mm:ss.SSSZ', '    axisFormat %H:%M', '    section Jobs', ...bars.map((bar) => `    ${bar}`)].join('\n')
-  const data: PipelineReportData = { rows, ...(gantt === undefined ? {} : { gantt }), omittedBars, baselineRunIds: [...baselineRunIds], baselineCounts, counts }
+  const gantt =
+    bars.length === 0 || !Number.isFinite(earliest)
+      ? undefined
+      : [
+          'gantt',
+          `    title Pipeline jobs (from ${new Date(earliest).toISOString()})`,
+          '    dateFormat YYYY-MM-DDTHH:mm:ss.SSSZ',
+          '    axisFormat %H:%M',
+          '    section Jobs',
+          ...bars.map((bar) => `    ${bar}`),
+        ].join('\n')
+  const data: PipelineReportData = {
+    rows,
+    ...(gantt === undefined ? {} : { gantt }),
+    omittedBars,
+    baselineRunIds: [...baselineRunIds],
+    baselineCounts,
+    counts,
+  }
   return {
     _tag: 'WorkflowReportRecord',
     schemaVersion: 1,
@@ -245,78 +282,129 @@ export const buildPipelineReport = (opts: {
   }
 }
 
-const githubJson = Effect.fn('ci-tools.pipeline-report.github-json')(function* <T extends Schema.Schema<unknown>>(opts: {
+class PipelineReportGitHubApiError extends Schema.TaggedError<PipelineReportGitHubApiError>(
+  '@overeng/ci-tools/pipeline-report/GitHubApiError',
+)('PipelineReportGitHubApiError', {
+  message: Schema.String,
+  path: Schema.String,
+  status: Schema.Finite,
+}) {}
+
+const githubJson = Effect.fn('ci-tools.pipeline-report.github-json')(function* <
+  T extends Schema.Schema<unknown>,
+>(opts: {
   readonly path: string
   readonly token: string
   readonly schema: T
   readonly apiBaseUrl: string
 }) {
   const client = yield* HttpClient.HttpClient
-  const response = yield* client.execute(HttpClientRequest.get(`${opts.apiBaseUrl}${opts.path}`).pipe(
-    HttpClientRequest.setHeader('Authorization', `Bearer ${opts.token}`),
-    HttpClientRequest.setHeader('Accept', 'application/vnd.github+json'),
-    HttpClientRequest.setHeader('X-GitHub-Api-Version', '2022-11-28'),
-  ))
-  if (response.status < 200 || response.status >= 300) return yield* Effect.fail(new Error(`GitHub API ${opts.path}: HTTP ${response.status}`))
-  return yield* Schema.decodeUnknownEffect(opts.schema)(yield* response.json)
+  const response = yield* client.execute(
+    HttpClientRequest.get(`${opts.apiBaseUrl}${opts.path}`).pipe(
+      HttpClientRequest.setHeader('Authorization', `Bearer ${opts.token}`),
+      HttpClientRequest.setHeader('Accept', 'application/vnd.github+json'),
+      HttpClientRequest.setHeader('X-GitHub-Api-Version', '2022-11-28'),
+    ),
+  )
+  if (response.status < 200 || response.status >= 300)
+    return yield* new PipelineReportGitHubApiError({
+      message: `GitHub API ${opts.path}: HTTP ${response.status}`,
+      path: opts.path,
+      status: response.status,
+    })
+  return yield* Schema.decodeEffect(opts.schema)(yield* response.json)
 })
 
-export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect')(function* (opts: {
-  readonly repository: string
-  readonly runId: number
-  readonly attempt: number
-  readonly workflowId: number
-  readonly token: string
-  readonly grafanaBaseUrl: string
-  readonly generatedAtUtc: string
-  readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
-  readonly apiBaseUrl?: string
-}) {
-  const apiBaseUrl = (opts.apiBaseUrl ?? 'https://api.github.com').replace(/\/+$/u, '')
-  const repoPath = opts.repository.split('/').map(encodeURIComponent).join('/')
-  const get = <T extends Schema.Schema<unknown>>(path: string, schema: T) => githubJson({ path, schema, token: opts.token, apiBaseUrl })
-  const jobs: PipelineJob[] = []
-  for (let page = 1; ; page++) {
-    const payload = yield* get(`/repos/${repoPath}/actions/runs/${opts.runId}/jobs?filter=all&per_page=100&page=${page}`, JobsPage)
-    jobs.push(...payload.jobs)
-    if (jobs.length >= payload.total_count || payload.jobs.length === 0) break
-  }
-  const wantedKeys = new Set(jobs.filter((job) => job.run_attempt === opts.attempt && isBuildJob(job.name)).flatMap((job) => {
-    const identity = pipelineJobIdentityForName(job.name)
-    return identity === undefined ? [] : [canonicalJobKey(identity).toString('hex')]
-  }))
-  const counts: Record<string, number> = {}
-  const baselines: { id: number; jobs: PipelineJob[] }[] = []
-  let examined = 0
-  for (let page = 1; ; page++) {
-    const payload = yield* get(`/repos/${repoPath}/actions/runs?branch=main&event=push&status=completed&per_page=100&page=${page}`, RunsPage)
-    const candidates = payload.workflow_runs.filter((run) => run.workflow_id === opts.workflowId && run.head_branch === 'main' && run.event === 'push' && run.status === 'completed' && run.conclusion === 'success')
-    for (const run of candidates) {
-      if (baselines.length === maxBaselineRuns || [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7)) break
-      const candidateJobs: PipelineJob[] = []
-      for (let jobsPage = 1; ; jobsPage++) {
-        const response = yield* get(`/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${jobsPage}`, JobsPage)
-        candidateJobs.push(...response.jobs.filter((job) => job.run_attempt === run.run_attempt))
-        if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
-      }
-      baselines.push({ id: run.id, jobs: candidateJobs })
-      const candidateDurations = new Map<string, number>()
-      const duplicateKeys = new Set<string>()
-      for (const job of candidateJobs) {
-        const identity = pipelineJobIdentityForName(job.name)
-        const duration = wallTimeMs(job)
-        if (identity === undefined || job.conclusion !== 'success' || duration === undefined) continue
-        const key = canonicalJobKey(identity).toString('hex')
-        if (candidateDurations.has(key)) duplicateKeys.add(key)
-        else candidateDurations.set(key, duration)
-      }
-      for (const key of candidateDurations.keys()) {
-        if (duplicateKeys.has(key) || !wantedKeys.has(key) || (counts[key] ?? 0) >= 7) continue
-        counts[key] = (counts[key] ?? 0) + 1
-      }
+export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect')(
+  function* (opts: {
+    readonly repository: string
+    readonly runId: number
+    readonly attempt: number
+    readonly workflowId: number
+    readonly token: string
+    readonly grafanaBaseUrl: string
+    readonly generatedAtUtc: string
+    readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
+    readonly apiBaseUrl?: string
+  }) {
+    const apiBaseUrl = (opts.apiBaseUrl ?? 'https://api.github.com').replace(/\/+$/u, '')
+    const repoPath = opts.repository.split('/').map(encodeURIComponent).join('/')
+    const get = <T extends Schema.Schema<unknown>>(path: string, schema: T) =>
+      githubJson({ path, schema, token: opts.token, apiBaseUrl })
+    const jobs: PipelineJob[] = []
+    for (let page = 1; ; page++) {
+      const payload = yield* get(
+        `/repos/${repoPath}/actions/runs/${opts.runId}/jobs?filter=all&per_page=100&page=${page}`,
+        JobsPage,
+      )
+      jobs.push(...payload.jobs)
+      if (jobs.length >= payload.total_count || payload.jobs.length === 0) break
     }
-    examined += payload.workflow_runs.length
-    if (baselines.length === maxBaselineRuns || [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) || examined >= payload.total_count || payload.workflow_runs.length === 0) break
-  }
-  return buildPipelineReport({ ...opts, jobs, baselines })
-})
+    const wantedKeys = new Set(
+      jobs
+        .filter((job) => job.run_attempt === opts.attempt && isBuildJob(job.name))
+        .flatMap((job) => {
+          const identity = pipelineJobIdentityForName(job.name)
+          return identity === undefined ? [] : [canonicalJobKey(identity).toString('hex')]
+        }),
+    )
+    const counts: Record<string, number> = {}
+    const baselines: { id: number; jobs: PipelineJob[] }[] = []
+    let examined = 0
+    for (let page = 1; ; page++) {
+      const payload = yield* get(
+        `/repos/${repoPath}/actions/runs?branch=main&event=push&status=completed&per_page=100&page=${page}`,
+        RunsPage,
+      )
+      const candidates = payload.workflow_runs.filter(
+        (run) =>
+          run.workflow_id === opts.workflowId &&
+          run.head_branch === 'main' &&
+          run.event === 'push' &&
+          run.status === 'completed' &&
+          run.conclusion === 'success',
+      )
+      for (const run of candidates) {
+        if (
+          baselines.length === maxBaselineRuns ||
+          [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7)
+        )
+          break
+        const candidateJobs: PipelineJob[] = []
+        for (let jobsPage = 1; ; jobsPage++) {
+          const response = yield* get(
+            `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${jobsPage}`,
+            JobsPage,
+          )
+          candidateJobs.push(...response.jobs.filter((job) => job.run_attempt === run.run_attempt))
+          if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
+        }
+        baselines.push({ id: run.id, jobs: candidateJobs })
+        const candidateDurations = new Map<string, number>()
+        const duplicateKeys = new Set<string>()
+        for (const job of candidateJobs) {
+          const identity = pipelineJobIdentityForName(job.name)
+          const duration = wallTimeMs(job)
+          if (identity === undefined || job.conclusion !== 'success' || duration === undefined)
+            continue
+          const key = canonicalJobKey(identity).toString('hex')
+          if (candidateDurations.has(key)) duplicateKeys.add(key)
+          else candidateDurations.set(key, duration)
+        }
+        for (const key of candidateDurations.keys()) {
+          if (duplicateKeys.has(key) || !wantedKeys.has(key) || (counts[key] ?? 0) >= 7) continue
+          counts[key] = (counts[key] ?? 0) + 1
+        }
+      }
+      examined += payload.workflow_runs.length
+      if (
+        baselines.length === maxBaselineRuns ||
+        [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) ||
+        examined >= payload.total_count ||
+        payload.workflow_runs.length === 0
+      )
+        break
+    }
+    return buildPipelineReport({ ...opts, jobs, baselines })
+  },
+)

@@ -695,37 +695,58 @@ const renderRecordsTable = (records: readonly WorkflowReportRecord[], timeZone: 
 ]
 
 const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
-  if (record.kind !== 'pipeline-traces') return [escapeMarkdownTableCell(record.summary ?? 'Jobs API report unavailable')]
+  if (record.kind !== 'pipeline-traces')
+    return [escapeMarkdownTableCell(record.summary ?? 'Jobs API report unavailable')]
   const data = record.data
   if (data === undefined || !Array.isArray(data.rows)) {
     throw new Error('Pipeline traces report rows are missing')
   }
   const rows = data.rows as readonly Record<string, unknown>[]
   const escaped = (value: unknown): string =>
-    escapeMarkdownTableCell(String(value ?? 'unavailable')).replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    escapeMarkdownTableCell(String(value ?? 'unavailable'))
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
   const lines = [
     escaped(record.summary),
     '',
     '| Job | Status | Wall time | Delta vs main p50 | Trace |',
     '| --- | --- | --- | --- | --- |',
     ...rows.map((row) => {
-      const trace = typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl)
-        ? `[Explore](${row.traceUrl})`
-        : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId)
-          ? `\`${row.traceId}\` (link unavailable)`
-          : 'unavailable'
+      const trace =
+        typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl)
+          ? `[Explore](${row.traceUrl})`
+          : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId)
+            ? `\`${row.traceId}\` (link unavailable)`
+            : 'unavailable'
       return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
     }),
     '',
-    `Main baseline samples (by job): ${Object.entries(data.baselineCounts ?? {}).map(([key, count]) => `${escaped(key)} n=${escaped(count)}`).join(', ') || 'unavailable'}.`,
+    `Main baseline samples (by job): ${
+      Object.entries(data.baselineCounts ?? {})
+        .map(([key, count]) => `${escaped(key)} n=${escaped(count)}`)
+        .join(', ') || 'unavailable'
+    }.`,
     `Selected main run IDs: ${Array.isArray(data.baselineRunIds) ? data.baselineRunIds.map(escaped).join(', ') || 'none' : 'none'}.`,
     'Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.',
   ]
   if (typeof data.gantt === 'string') {
-    lines.push('', '<details>', '<summary>Pipeline timeline</summary>', '', '```mermaid', data.gantt, '```', '', '</details>')
+    lines.push(
+      '',
+      '<details>',
+      '<summary>Pipeline timeline</summary>',
+      '',
+      '```mermaid',
+      data.gantt,
+      '```',
+      '',
+      '</details>',
+    )
   }
   if (typeof data.omittedBars === 'number' && data.omittedBars > 0) {
-    lines.push('', `${data.omittedBars} job(s) without a start time are omitted from the timeline, not measured as zero.`)
+    lines.push(
+      '',
+      `${data.omittedBars} job(s) without a start time are omitted from the timeline, not measured as zero.`,
+    )
   }
   return lines
 }
@@ -750,33 +771,36 @@ const renderWorkflowReportCommentBodyUnbounded = (opts: {
     return record === undefined ? [] : [record]
   })
 
-  const pipelineRecords = latestRecords.filter((record) => record.kind === 'pipeline-traces' || record.kind === 'pipeline-traces-error')
-  const visibleLines = pipelineRecords.length > 0
-    ? [`## ${opts.title}`, '', ...pipelineRecords.flatMap(renderPipelineTraces)]
-    : latestRecords.length === 0
-      ? [`## ${opts.title}`, '', opts.noRecordsMessage]
-      : [
-          `## ${opts.title}`,
-          '',
-          ...renderRecordsTable(latestRecords, opts.state.timeZone),
-          ...(opts.includeHistory === false
-            ? []
-            : [
-                '',
-                '<details>',
-                '<summary>Report history</summary>',
-                '',
-                ...opts.state.entries.flatMap((entry) => [
-                  `### ${escapeMarkdownTableCell(entry.label)} · ${escapeMarkdownTableCell(formatTimestamp(entry.createdAtUtc, opts.state.timeZone))}`,
+  const pipelineRecords = latestRecords.filter(
+    (record) => record.kind === 'pipeline-traces' || record.kind === 'pipeline-traces-error',
+  )
+  const visibleLines =
+    pipelineRecords.length > 0
+      ? [`## ${opts.title}`, '', ...pipelineRecords.flatMap(renderPipelineTraces)]
+      : latestRecords.length === 0
+        ? [`## ${opts.title}`, '', opts.noRecordsMessage]
+        : [
+            `## ${opts.title}`,
+            '',
+            ...renderRecordsTable(latestRecords, opts.state.timeZone),
+            ...(opts.includeHistory === false
+              ? []
+              : [
                   '',
-                  ...(entry.records.length === 0
-                    ? [opts.noRecordsMessage]
-                    : renderRecordsTable(entry.records, opts.state.timeZone)),
+                  '<details>',
+                  '<summary>Report history</summary>',
                   '',
+                  ...opts.state.entries.flatMap((entry) => [
+                    `### ${escapeMarkdownTableCell(entry.label)} · ${escapeMarkdownTableCell(formatTimestamp(entry.createdAtUtc, opts.state.timeZone))}`,
+                    '',
+                    ...(entry.records.length === 0
+                      ? [opts.noRecordsMessage]
+                      : renderRecordsTable(entry.records, opts.state.timeZone)),
+                    '',
+                  ]),
+                  '</details>',
                 ]),
-                '</details>',
-              ]),
-        ]
+          ]
   return `${visibleLines.join('\n')}\n\n${renderWorkflowReportManagedState(opts.state)}\n`
 }
 

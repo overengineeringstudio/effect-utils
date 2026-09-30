@@ -7,9 +7,6 @@ import { Effect, Option } from 'effect'
 import { Command, Flag as Options } from 'effect/cli'
 
 import { runNetlifyDeploy } from './deploy-netlify.ts'
-import { collectPipelineReport } from './pipeline-report.ts'
-import { deriveJobTraceId } from './pipeline-trace-identity.ts'
-import { encodeWorkflowReportRecordLine } from './workflow-report.ts'
 import { runVercelDeploy } from './deploy-vercel.ts'
 import {
   collectWorkflowReportBundle,
@@ -23,6 +20,8 @@ import {
   workflowReportRecordLineMarker,
   type WorkflowReportManagedComment,
 } from './mod.ts'
+import { collectPipelineReport } from './pipeline-report.ts'
+import { deriveJobTraceId } from './pipeline-trace-identity.ts'
 import {
   decodeQuarantineLedgerJson,
   expiredQuarantineEntries,
@@ -31,6 +30,7 @@ import {
   renderQuarantineSummaryLine,
   resolveQuarantineEntry,
 } from './quarantine.ts'
+import { encodeWorkflowReportRecordLine } from './workflow-report.ts'
 
 const nonEmptyTextOption = (opts: { readonly name: string; readonly description: string }) =>
   Options.String(opts.name).pipe(Options.withDescription(opts.description))
@@ -85,21 +85,35 @@ const writeTextFile = (opts: { readonly path: string; readonly text: string }) =
 const pipelineReportCollectCommand = Command.make(
   'collect',
   {
-    repository: nonEmptyTextOption({ name: 'repository', description: 'Namespaced GitHub repository (owner/repo)' }),
+    repository: nonEmptyTextOption({
+      name: 'repository',
+      description: 'Namespaced GitHub repository (owner/repo)',
+    }),
     runId: Options.Int('run-id').pipe(Options.withDescription('Current workflow run ID')),
-    attempt: Options.Int('attempt').pipe(Options.withDescription('Current workflow attempt number')),
-    workflowId: Options.Int('workflow-id').pipe(Options.withDescription('GitHub workflow ID for main-run selection')),
+    attempt: Options.Int('attempt').pipe(
+      Options.withDescription('Current workflow attempt number'),
+    ),
+    workflowId: Options.Int('workflow-id').pipe(
+      Options.withDescription('GitHub workflow ID for main-run selection'),
+    ),
     grafanaBaseUrl: Options.String('grafana-base-url').pipe(
       Options.withDescription('Grafana origin; without it trace IDs remain visible but unlinked'),
       Options.withDefault(''),
     ),
-    outputPath: nonEmptyTextOption({ name: 'output-path', description: 'Marked WorkflowReportRecord JSONL output' }),
-    apiBaseUrl: Options.String('api-base-url').pipe(Options.withDescription('GitHub API base URL'), Options.withDefault('https://api.github.com')),
+    outputPath: nonEmptyTextOption({
+      name: 'output-path',
+      description: 'Marked WorkflowReportRecord JSONL output',
+    }),
+    apiBaseUrl: Options.String('api-base-url').pipe(
+      Options.withDescription('GitHub API base URL'),
+      Options.withDefault('https://api.github.com'),
+    ),
   },
   ({ repository, runId, attempt, workflowId, grafanaBaseUrl, outputPath, apiBaseUrl }) =>
     Effect.gen(function* () {
       const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
-      if (token === undefined || token.length === 0) return yield* Effect.die('GH_TOKEN or GITHUB_TOKEN is required')
+      if (token === undefined || token.length === 0)
+        return yield* Effect.die('GH_TOKEN or GITHUB_TOKEN is required')
       const generatedAtUtc = new Date().toISOString()
       const record = yield* collectPipelineReport({
         repository,
@@ -113,23 +127,27 @@ const pipelineReportCollectCommand = Command.make(
         traceIdForJob: (runIdentity, identity) =>
           deriveJobTraceId({ runId: runIdentity, ...identity }),
       }).pipe(
-        Effect.catch((cause) => Effect.succeed({
-          _tag: 'WorkflowReportRecord' as const,
-          schemaVersion: 1 as const,
-          id: `pipeline-traces:${runId}:${attempt}`,
-          kind: 'pipeline-traces-error',
-          subject: { id: 'pipeline-traces', label: `Run ${runId} · attempt ${attempt}` },
-          status: 'neutral' as const,
-          title: 'Pipeline traces unavailable',
-          summary: `Jobs API report unavailable: ${String(cause)}`,
-          createdAtUtc: generatedAtUtc,
-        })),
+        Effect.catch((cause) =>
+          Effect.succeed({
+            _tag: 'WorkflowReportRecord' as const,
+            schemaVersion: 1 as const,
+            id: `pipeline-traces:${runId}:${attempt}`,
+            kind: 'pipeline-traces-error',
+            subject: { id: 'pipeline-traces', label: `Run ${runId} · attempt ${attempt}` },
+            status: 'neutral' as const,
+            title: 'Pipeline traces unavailable',
+            summary: `Jobs API report unavailable: ${String(cause)}`,
+            createdAtUtc: generatedAtUtc,
+          }),
+        ),
       )
       const line = `${encodeWorkflowReportRecordLine(record)}\n`
       writeTextFile({ path: outputPath, text: line })
       process.stdout.write(line)
     }),
-).pipe(Command.withDescription('Collect current and main Jobs API facts into a Pipeline traces report'))
+).pipe(
+  Command.withDescription('Collect current and main Jobs API facts into a Pipeline traces report'),
+)
 
 export const pipelineReportCommand = Command.make('pipeline-report').pipe(
   Command.withSubcommands([pipelineReportCollectCommand]),
@@ -684,6 +702,11 @@ export const workflowReportCommand = Command.make('workflow-report').pipe(
 
 /** Root CLI command for CI automation helpers. */
 export const ciToolsCommand = Command.make('ci-tools').pipe(
-  Command.withSubcommands([workflowReportCommand, pipelineReportCommand, deployCommand, quarantineCommand]),
+  Command.withSubcommands([
+    workflowReportCommand,
+    pipelineReportCommand,
+    deployCommand,
+    quarantineCommand,
+  ]),
   Command.withDescription('CI automation helpers'),
 )

@@ -9,7 +9,7 @@ set -euo pipefail
 
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
-ci_tools="${CI_TOOLS_BIN:-$(nix build .#ci-tools --no-link --print-out-paths)/bin/ci-tools}"
+ci_tools="${CI_TOOLS_BIN:-$(nix build .#ci-tools-compiled --no-link --print-out-paths)/bin/ci-tools}"
 workflow_id="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --jq .workflow_id)"
 "$ci_tools" pipeline-report collect \
   --repository "$GH_REPO" \
