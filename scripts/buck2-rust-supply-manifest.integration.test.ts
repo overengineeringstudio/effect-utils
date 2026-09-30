@@ -19,9 +19,8 @@ const makeFixture = ({ escapes = false }: { readonly escapes?: boolean } = {}) =
   temporaryRoots.push(temporaryRoot)
   const root = path.join(temporaryRoot, 'repository')
   const workspace = path.join(root, 'consumer')
-  const provider = escapes
-    ? path.join(temporaryRoot, 'outside')
-    : path.join(root, '.staged/provider')
+  const provider =
+    escapes === true ? path.join(temporaryRoot, 'outside') : path.join(root, '.staged/provider')
   const cargoHome = path.join(temporaryRoot, 'cargo-home')
   const supplyDir = path.join(temporaryRoot, 'supply')
   for (const dir of [workspace, provider, cargoHome, supplyDir, path.join(root, 'repos')]) {
