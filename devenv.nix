@@ -1002,6 +1002,8 @@ in
       exec ${pkgs.bun}/bin/bun test src/*.test.ts
     ''
   );
+  tasks."test:ci:buck2-tools".description = lib.mkForce config.tasks."test:buck2-tools".description;
+  tasks."test:ci:buck2-tools".exec = lib.mkForce config.tasks."test:buck2-tools".exec;
 
   # The Buck2 genie projection suite lives outside packages/@overeng, so the
   # per-package `test:<pkg>` tasks and the root Vitest projects list both miss
