@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:1e5e6705476db0480262cb179023e2f5a4f5d876d4503193b41cf8f439132305
+# Store fingerprint: sha256:1de3c05169c5318394bb4140f533a6e3567d6a8a9f14e9507229b75c41473179
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -41947,6 +41947,7 @@ pnpm_store_view(
     name = "view_packages_overeng_utils_storybook_ad47b984871c",
     runtime = ":assemble-store.ts",
     direct = {
+        "@blazediff/core": "@blazediff+core@1.9.1",
         "@effect/opentelemetry": "@effect+opentelemetry@4.0.0-rc.118_@opentelemetry+api-logs@0.222.0_@opentelemetry+api@1.9.1_@openteleme_1eac378340ecf660",
         "@effect/platform-node": "@effect+platform-node@4.0.0-rc.118_effect@4.0.0-rc.118_redis@6.2.1_@opentelemetry+api@1.9.1",
         "@effect/vitest": "@effect+vitest@4.0.0-rc.118_effect@4.0.0-rc.118_vitest@4.1.9",
