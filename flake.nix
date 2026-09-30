@@ -400,7 +400,11 @@ rec {
       # gitSources maps GitHub owner/repo to a pinned flake input (or local path);
       # absent keys retain the reviewed GitHub archive fetch and digest.
       lib.mkBuck2CargoArchives =
-        { pkgs, thirdPartyBuckFiles, gitSources ? { } }:
+        {
+          pkgs,
+          thirdPartyBuckFiles,
+          gitSources ? { },
+        }:
         import ./nix/workspace-tools/lib/buck2-cargo-archives.nix {
           inherit pkgs thirdPartyBuckFiles gitSources;
         };

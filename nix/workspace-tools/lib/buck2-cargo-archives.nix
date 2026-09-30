@@ -99,25 +99,31 @@ let
                 || (builtins.isString input && lib.hasPrefix "/" input)
                 || (builtins.isAttrs input && input ? outPath && rev != null)
               ) "buck2-cargo-archives: gitSources.${repo} must be a path or a pinned flake input with rev";
-              assert lib.assertMsg (
-                rev == null || rev == pin.rev
-              ) "buck2-cargo-archives: gitSources.${repo} rev ${toString rev} does not match Cargo.lock rev ${pin.rev}";
-              pkgs.runCommand "buck2-git-source-${lib.replaceStrings [ "/" ] [ "-" ] repo}-${pin.rev}" {
-                nativeBuildInputs = [ pkgs.gnutar pkgs.gzip pkgs.coreutils ];
-              } ''
-                set -euo pipefail
-                mkdir -p "$out"
-                tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-                  --format=posix --pax-option=delete=atime,delete=ctime \
-                  --transform='flags=r;s|^\.|${pin.strip_prefix}|' \
-                  -C ${lib.escapeShellArg (toString src)} \
-                  -cf - . | gzip -n > "$out/archive.tgz"
-                printf '%s\n%s\n' '${pin.repo}' '${pin.rev}' > "$out/source.sha256"
-                sha256sum "$out/archive.tgz" | cut -d' ' -f1 >> "$out/source.sha256"
-              '';
+              assert lib.assertMsg (rev == null || rev == pin.rev)
+                "buck2-cargo-archives: gitSources.${repo} rev ${toString rev} does not match Cargo.lock rev ${pin.rev}";
+              pkgs.runCommand "buck2-git-source-${lib.replaceStrings [ "/" ] [ "-" ] repo}-${pin.rev}"
+                {
+                  nativeBuildInputs = [
+                    pkgs.gnutar
+                    pkgs.gzip
+                    pkgs.coreutils
+                  ];
+                }
+                ''
+                  set -euo pipefail
+                  mkdir -p "$out"
+                  tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+                    --format=posix --pax-option=delete=atime,delete=ctime \
+                    --transform='flags=r;s|^\.|${pin.strip_prefix}|' \
+                    -C ${lib.escapeShellArg (toString src)} \
+                    -cf - . | gzip -n > "$out/archive.tgz"
+                  printf '%s\n%s\n' '${pin.repo}' '${pin.rev}' > "$out/source.sha256"
+                  sha256sum "$out/archive.tgz" | cut -d' ' -f1 >> "$out/source.sha256"
+                '';
         }
       ) pins.archives;
-  archives = lib.concatMap parseGraph thirdPartyBuckFiles ++ lib.concatMap parseGitArchives thirdPartyBuckFiles;
+  archives =
+    lib.concatMap parseGraph thirdPartyBuckFiles ++ lib.concatMap parseGitArchives thirdPartyBuckFiles;
   archivesByDigest = builtins.listToAttrs (
     map (archive: {
       name = archive.sha256;
@@ -132,13 +138,15 @@ pkgs.linkFarm "buck2-cargo-archives" (
       sha256 = archive.sha256;
     in
     if archive.source or null == null then
-      [ {
-        name = "${sha256}.tgz";
-        path = pkgs.fetchurl {
-          inherit (archive) url sha256;
+      [
+        {
           name = "${sha256}.tgz";
-        };
-      } ]
+          path = pkgs.fetchurl {
+            inherit (archive) url sha256;
+            name = "${sha256}.tgz";
+          };
+        }
+      ]
     else
       [
         {
