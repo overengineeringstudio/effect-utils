@@ -32,6 +32,39 @@
 let
   lib = pkgs.lib;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  # The owning Cargo workspace supplies release overrides; Cargo's defaults
+  # apply when it does not declare them (including producer-only native rules).
+  releaseProfile =
+    if cargoWorkspaceRoot == null then
+      { }
+    else
+      ((builtins.fromTOML (builtins.readFile (repositoryRoot + "/${cargoWorkspaceRoot}/Cargo.toml"))).profile or { }).release or { };
+  cargoToggle = value: if value then "yes" else "no";
+  releaseSettings = {
+    opt_level = toString (releaseProfile."opt-level" or 3);
+    debug =
+      let
+        value = releaseProfile.debug or false;
+      in
+      if builtins.isBool value then (if value then "2" else "0") else toString value;
+    lto =
+      let
+        value = releaseProfile.lto or false;
+      in
+      if builtins.isBool value then (if value then "fat" else "off") else value;
+    codegen_units = toString (releaseProfile."codegen-units" or 16);
+    panic = releaseProfile.panic or "unwind";
+    strip =
+      let
+        value = releaseProfile.strip or false;
+      in
+      if builtins.isBool value then (if value then "symbols" else "none") else value;
+    debug_assertions = cargoToggle (releaseProfile."debug-assertions" or false);
+    overflow_checks = cargoToggle (releaseProfile."overflow-checks" or false);
+  };
+  releaseArgs = lib.concatMapStringsSep "" (
+    name: " --config ${lib.escapeShellArg "rust_profile.${name}=${releaseSettings.${name}}"}"
+  ) (builtins.attrNames releaseSettings);
   # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
   # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
   cliBuildStamp = product.cliBuildStamp or null;
@@ -92,6 +125,8 @@ let
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+    lib.optionalString (product.kind == "native") " --config rust_profile.mode=release${releaseArgs}"
+  }${
     lib.concatMapStringsSep "" (
       package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
     ) nativeStorePackages

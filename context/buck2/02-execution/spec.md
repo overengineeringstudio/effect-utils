@@ -116,6 +116,20 @@ products cross the bridge (BUCK-R10, roadmap Phase 5).
 execute a script when its shebang interpreter is another script. Other Rust
 tool wrappers remain separate, including the Linux linker environment.
 
+The Rust toolchain has two configured profiles. Normal `buck2 build`, `test`,
+and `check` use the dev profile (`-Copt-level=0`); the Nix native-product
+recipe passes `--config rust_profile.mode=release`. A Buck `config_setting`
+selects the toolchain flags, so the choice is part of configured analysis and
+the action key rather than a per-crate edit. The recipe reads the owning
+workspace's `Cargo.toml` `[profile.release]` and passes its opt-level, debug,
+LTO, codegen-units, panic, strip, debug-assertions, and overflow-checks
+settings as Buck config values. Unspecified values use Cargo release defaults
+(3, 0, off, 16, unwind, none, no, no). All crates in that product graph,
+including third-party crates and build scripts, receive the selected
+toolchain flags. Package-specific Cargo profile overrides require a
+package-aware rule projection; the current Cargo projector does not read
+profiles, so the shared workspace profile is the supported boundary.
+
 ## Compiled JavaScript Executables
 
 `bun_compiled_product_executable` refines EXEC-R01, EXEC-R02, EXEC-R06,
