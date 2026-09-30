@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, realpathSync } from 'node:fs'
+import { copyFile } from 'node:fs/promises'
 import path from 'node:path'
 
 // Reindeer cannot omit a foreign Source::Local target without also pruning its
@@ -183,6 +184,9 @@ await Bun.write(
   supplyManifest,
   `[package]\nname = "buck2-foreign-supply"\nversion = "0.0.0"\nedition = "2021"\n\n[workspace]\nresolver = "2"\n\n[dependencies]\n${entries.join('\n')}\n`,
 )
+// Cargo must replace the original workspace's root package entries with the
+// synthetic root, but needs the seed to retain previously locked yanked crates.
+await copyFile(path.join(workspace, 'Cargo.lock'), path.join(supplyDir, 'Cargo.lock'))
 await Bun.write(path.join(supplyDir, 'src/lib.rs'), '// Dependency-only Reindeer workspace.\n')
 const supplied = cargoMetadata({ manifest: supplyManifest, locked: false })
 const sourceKey = (pkg: {
@@ -231,3 +235,7 @@ for (const pkg of derivedLock.package.filter((entry) => entry.source !== undefin
     )
   }
 }
+// Reconciliation may rewrite only the synthetic root: source, feature and
+// checksum checks above reject dependency drift; this proves the final lock
+// is stable before Reindeer consumes it.
+cargoMetadata({ manifest: supplyManifest, locked: true })
