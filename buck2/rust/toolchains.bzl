@@ -106,7 +106,6 @@ def _release_flags():
     return [
         "-Copt-level=" + settings["opt_level"],
         "-Cdebuginfo=" + settings["debug"],
-        "-Clto=" + settings["lto"],
         "-Ccodegen-units=" + settings["codegen_units"],
         "-Cpanic=" + settings["panic"],
         "-Cstrip=" + settings["strip"],
@@ -125,7 +124,7 @@ def _native_rust_toolchain_impl(ctx):
             archiver = RunInfo(args = [ctx.attrs.archiver]),
             compile_env = ctx.attrs.compile_env,
             compiler = RunInfo(args = [ctx.attrs.compiler]),
-            identity = ctx.attrs.identity + ";rustc_flags=" + ",".join(ctx.attrs.rustc_flags),
+            identity = ctx.attrs.identity + ";rustc_flags=" + ",".join(ctx.attrs.rustc_flags) + ";rustc_binary_flags=" + ",".join(ctx.attrs.rustc_binary_flags),
             linker = RunInfo(args = [ctx.attrs.linker]),
             target_platform_abi = platform.abi,
             target_platform_architecture = platform.architecture,
@@ -143,6 +142,7 @@ def _native_rust_toolchain_impl(ctx):
             panic_runtime = PanicRuntime(ctx.attrs.panic_runtime),
             rustc_env = ctx.attrs.compile_env,
             rustc_flags = ctx.attrs.rustc_flags,
+            rustc_binary_flags = ctx.attrs.rustc_binary_flags,
             rustc_target_triple = ctx.attrs.target_triple,
             rustdoc = RunInfo(args = [ctx.attrs.rustdoc]),
             rustdoc_env = ctx.attrs.compile_env,
@@ -161,6 +161,7 @@ _native_rust_toolchain = rule(
         "linker": attrs.string(),
         "panic_runtime": attrs.enum(["unwind", "abort"], default = "unwind"),
         "rustc_flags": attrs.list(attrs.string()),
+        "rustc_binary_flags": attrs.list(attrs.string()),
         "rustdoc": attrs.string(),
         "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
         "target_triple": attrs.string(),
@@ -329,6 +330,10 @@ def native_rust_toolchains(capabilities, generation, target_platform):
         "@rules//buck2/rust:release": release_flags,
         "DEFAULT": ["-Copt-level=0"],
     })
+    rustc_binary_flags = select({
+        "@rules//buck2/rust:release": ["-Clto=" + read_config("rust_profile", "lto", "off")],
+        "DEFAULT": [],
+    })
     panic_runtime = select({
         "@rules//buck2/rust:release": read_config("rust_profile", "panic", "unwind"),
         "DEFAULT": "unwind",
@@ -343,6 +348,7 @@ def native_rust_toolchains(capabilities, generation, target_platform):
         linker = metadata["rust-linker"]["executableStorePath"],
         panic_runtime = panic_runtime,
         rustc_flags = rustc_flags,
+        rustc_binary_flags = rustc_binary_flags,
         rustdoc = metadata["rust-rustdoc"]["executableStorePath"],
         target_platform = target_platform,
         target_triple = target_triple,
