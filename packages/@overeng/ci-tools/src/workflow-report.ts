@@ -747,6 +747,11 @@ const renderPipelineTraces = (opts: {
         .join(', ') || 'unavailable'
     }.`,
     `Selected main run IDs: ${Array.isArray(data.baselineRunIds) === true ? data.baselineRunIds.map(escaped).join(', ') || 'none' : 'none'}.`,
+    ...(Array.isArray(data.skippedBaselineRunIds) === true && data.skippedBaselineRunIds.length > 0
+      ? [
+          `Skipped main run IDs (Jobs API unavailable): ${data.skippedBaselineRunIds.map(escaped).join(', ')}.`,
+        ]
+      : []),
     'Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.',
   ]
   if (typeof data.gantt === 'string' && opts.includeGantt !== false) {

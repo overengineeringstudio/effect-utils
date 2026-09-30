@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Duration, Effect, Schedule, Schema } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
@@ -67,6 +67,7 @@ export type PipelineReportData = {
   readonly gantt?: string
   readonly omittedBars: number
   readonly baselineRunIds: readonly number[]
+  readonly skippedBaselineRunIds: readonly number[]
   readonly baselineCounts: Readonly<Record<string, number>>
   readonly counts: Readonly<Record<string, number>>
 }
@@ -85,6 +86,7 @@ const PipelineReportDataSchema = Schema.Struct({
   gantt: Schema.optional(Schema.String),
   omittedBars: Schema.Finite,
   baselineRunIds: Schema.Array(Schema.Finite),
+  skippedBaselineRunIds: Schema.Array(Schema.Finite),
   baselineCounts: Schema.Record(Schema.String, Schema.Finite),
   counts: Schema.Record(Schema.String, Schema.Finite),
 })
@@ -173,6 +175,7 @@ export const buildPipelineReport = (opts: {
   readonly attempt: number
   readonly jobs: readonly PipelineJob[]
   readonly baselines: readonly { readonly id: number; readonly jobs: readonly PipelineJob[] }[]
+  readonly skippedBaselineRunIds?: readonly number[]
   readonly generatedAtUtc: string
   readonly grafanaBaseUrl: string
   readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
@@ -306,6 +309,7 @@ export const buildPipelineReport = (opts: {
     rows,
     ...(gantt === undefined ? {} : { gantt }),
     omittedBars,
+    skippedBaselineRunIds: opts.skippedBaselineRunIds ?? [],
     baselineRunIds,
     baselineCounts,
     counts,
@@ -330,7 +334,31 @@ class PipelineReportGitHubApiError extends Schema.TaggedError<PipelineReportGitH
   message: Schema.String,
   path: Schema.String,
   status: Schema.Finite,
+  retryAfterMs: Schema.optional(Schema.Finite),
 }) {}
+
+const retryAfterMs = (header: string | undefined): number | undefined => {
+  if (header === undefined) return undefined
+  const secondsValue = Number(header)
+  const delay =
+    Number.isFinite(secondsValue) === true ? secondsValue * 1000 : Date.parse(header) - Date.now()
+  return Number.isFinite(delay) === true ? Math.max(0, delay) : undefined
+}
+
+const githubRetrySchedule = Schedule.exponential('1 second').pipe(
+  Schedule.modifyDelay(({ duration, input }) =>
+    Effect.succeed(
+      Math.min(
+        5_000,
+        Math.max(
+          Duration.toMillis(duration),
+          input instanceof PipelineReportGitHubApiError ? (input.retryAfterMs ?? 0) : 0,
+        ),
+      ),
+    ),
+  ),
+  Schedule.upTo({ times: 3 }),
+)
 
 const githubJson = Effect.fn('ci-tools.pipeline-report.github-json')(function* <
   T extends Schema.Schema<unknown>,
@@ -348,12 +376,16 @@ const githubJson = Effect.fn('ci-tools.pipeline-report.github-json')(function* <
       HttpClientRequest.setHeader('X-GitHub-Api-Version', '2022-11-28'),
     ),
   )
-  if (response.status < 200 || response.status >= 300)
+  if (response.status < 200 || response.status >= 300) {
+    const retryAfter =
+      response.status === 429 ? retryAfterMs(response.headers['retry-after']) : undefined
     return yield* new PipelineReportGitHubApiError({
       message: `GitHub API ${opts.path}: HTTP ${response.status}`,
       path: opts.path,
       status: response.status,
+      ...(retryAfter === undefined ? {} : { retryAfterMs: retryAfter }),
     })
+  }
   return yield* Schema.decodeEffect(opts.schema)(yield* response.json)
 })
 
@@ -378,13 +410,22 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     }: {
       readonly path: string
       readonly schema: T
-    }) => githubJson({ path, schema, token: opts.token, apiBaseUrl })
+    }) =>
+      githubJson({ path, schema, token: opts.token, apiBaseUrl }).pipe(
+        Effect.retry({
+          schedule: githubRetrySchedule,
+          while: (error) =>
+            error instanceof PipelineReportGitHubApiError
+              ? (error.status === 429 || error.status >= 500) && (error.retryAfterMs ?? 0) <= 5_000
+              : error._tag === 'HttpClientError' && error.reason._tag === 'TransportError',
+        }),
+      )
     const workflowId =
       opts.workflowId ??
       (yield* get({
         path: `/repos/${repoPath}/actions/runs/${opts.runId}`,
         schema: WorkflowIdentity,
-      })).workflow_id
+      }).pipe(Effect.catch(() => Effect.succeed(undefined))))?.workflow_id
     const jobs: PipelineJob[] = []
     for (let page = 1; ; page++) {
       const payload = yield* get({
@@ -404,12 +445,16 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     )
     const counts: Record<string, number> = {}
     const baselines: { id: number; jobs: PipelineJob[] }[] = []
+    const skippedBaselineRunIds: number[] = []
+    if (workflowId === undefined) return buildPipelineReport({ ...opts, jobs, baselines })
+    let inspectedBaselines = 0
     let examined = 0
     for (let page = 1; ; page++) {
       const payload = yield* get({
         path: `/repos/${repoPath}/actions/runs?branch=main&event=push&status=completed&per_page=100&page=${page}`,
         schema: RunsPage,
-      })
+      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (payload === undefined) break
       const candidates = payload.workflow_runs.filter(
         (run) =>
           run.workflow_id === workflowId &&
@@ -420,18 +465,26 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
       )
       for (const run of candidates) {
         if (
-          baselines.length === maxBaselineRuns ||
+          inspectedBaselines === maxBaselineRuns ||
           [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) === true
         )
           break
-        const candidateJobs: PipelineJob[] = []
-        for (let jobsPage = 1; ; jobsPage++) {
-          const response = yield* get({
-            path: `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${jobsPage}`,
-            schema: JobsPage,
-          })
-          candidateJobs.push(...response.jobs.filter((job) => job.run_attempt === run.run_attempt))
-          if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
+        inspectedBaselines++
+        const candidateJobs = yield* Effect.gen(function* () {
+          const result: PipelineJob[] = []
+          for (let jobsPage = 1; ; jobsPage++) {
+            const response = yield* get({
+              path: `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${jobsPage}`,
+              schema: JobsPage,
+            })
+            result.push(...response.jobs.filter((job) => job.run_attempt === run.run_attempt))
+            if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
+          }
+          return result
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (candidateJobs === undefined) {
+          skippedBaselineRunIds.push(run.id)
+          continue
         }
         baselines.push({ id: run.id, jobs: candidateJobs })
         const candidateDurations = new Map<string, number>()
@@ -457,13 +510,13 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
       }
       examined += payload.workflow_runs.length
       if (
-        baselines.length === maxBaselineRuns ||
+        inspectedBaselines === maxBaselineRuns ||
         [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) === true ||
         examined >= payload.total_count ||
         payload.workflow_runs.length === 0
       )
         break
     }
-    return buildPipelineReport({ ...opts, jobs, baselines })
+    return buildPipelineReport({ ...opts, jobs, baselines, skippedBaselineRunIds })
   },
 )
