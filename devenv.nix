@@ -352,6 +352,18 @@ let
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  # Editor views the source-side test partition executes through: every source test package,
+  # the repository root (`genie:buck2:test` runs `bun test genie/buck2/` from it), and the
+  # packages `devenv-modules:test` runs from source (Genie's compiled-staging proof and the
+  # ci-tools deploy/report task e2e fixtures).
+  testPublicationPackagePaths = lib.unique (
+    [
+      "."
+      "packages/@overeng/ci-tools"
+      "packages/@overeng/genie"
+    ]
+    ++ map (pkg: pkg.path) sourceTestPackages
+  );
   typescriptPublicationRootPredicate = ''
     typescript_publication_root() {
       local member_root repository_root
@@ -680,7 +692,7 @@ in
           "check:devenv-eval-inputs"
           "lint:check"
           "nix:check:quick"
-          "buck2:editor:publish"
+          "buck2:editor:publish:test"
           "test:run"
           "weaver:diff"
         ];
@@ -759,7 +771,7 @@ in
       ];
     })
     (taskModules.test {
-      installTask = "buck2:editor:publish";
+      installTask = "buck2:editor:publish:test";
       packages = sourceTestPackages;
       extraTests = [
         "devenv-modules:test"
@@ -863,7 +875,7 @@ in
     trace.exec "lint:check:lockfile" "exec genie --check"
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
-  tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish:test" ];
   tasks."devenv-modules:test".env.OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
   tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish" ];
@@ -981,7 +993,7 @@ in
   # Bun: the pnpm-lock projection it imports reads Bun.YAML.
   tasks."genie:buck2:test" = {
     description = "Run the Buck2 genie projection and staged-runtime guards under pinned Bun";
-    after = [ "buck2:editor:publish" ];
+    after = [ "buck2:editor:publish:test" ];
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
@@ -1244,6 +1256,12 @@ in
       "packages/@overeng/utils"
     ];
     traceScope = "playwright";
+  };
+
+  tasks."buck2:editor:publish:test" = scopedEditorViewPublisher {
+    description = "Atomically publish the editor dependency views the source-side tests execute through";
+    packagePaths = testPublicationPackagePaths;
+    traceScope = "test";
   };
 
   tasks."buck2:editor:check" = {

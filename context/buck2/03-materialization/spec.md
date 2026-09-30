@@ -168,6 +168,17 @@ This does not change the standalone freshness contract: `genie:check` still
 runs after bootstrap without invoking `genie:run`, so it cannot repair the
 projection it proves.
 
+`buck2:editor:publish:test` publishes only the views the source-side test
+partition executes through: every source test package, the repository root,
+and the packages `devenv-modules:test` runs from source. Test lanes, the
+`check:all` aggregate, and its observability profile depend on it instead of the
+whole-workspace publisher, so a test run does not rebuild views no test reads.
+Views outside that set refresh only through `buck2:editor:publish` or
+`buck2:editor:materialize`, which setup runs. Two publishers sharing the
+`packages/.editor-view` state root must never be scheduled without an ordering
+edge: the publication lock fails fast instead of waiting, so
+`scripts/devenv-task-graph-check.mjs` rejects such a task graph.
+
 Missing, malformed, escaping, dangling, incomplete, or stale state fails with
 the recorded and current identities. `buck2:editor:recover-lock` is the only
 recovery surface; it requires both `EDITOR_VIEW_PACKAGE` and the exact printed
