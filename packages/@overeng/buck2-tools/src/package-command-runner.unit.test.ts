@@ -507,6 +507,32 @@ describe('post-build portability assertions', () => {
     )
   })
 
+  it('keeps scanning after nested template strings before an undici module', () => {
+    const root = '/tmp/portable-root'
+    const prefix = "var formatShellArg = (arg) => `'${arg.replaceAll(\"'\", `'\"'\"'`)}'`;\n"
+    const moduleComment =
+      '// .closure/dependencies/entry_undici/entry/node_modules/undici/index.js\n'
+    const declaration = `var __filename = "${root}/.closure/dependencies/entry_undici/entry/node_modules/undici/index.js";`
+    const bundle = prefix + moduleComment + declaration + '\nvar Client = require_client();'
+
+    expect(normalizePortableCommonJsGlobals({ bundle, root })).toBe(
+      prefix +
+        moduleComment +
+        'var __filename = import.meta.filename;\nvar Client = require_client();',
+    )
+  })
+
+  it('skips nested interpolation strings, comments and regexes without losing later declarations', () => {
+    const root = '/tmp/portable-root'
+    const prefix =
+      'const text = `start ${ { value: `nested ${ /}/.test("}") /* } */ ? "yes" : "no" }` }.value } end`;\n'
+    const declaration = `var __filename = "${root}/undici/index.js";`
+
+    expect(normalizePortableCommonJsGlobals({ bundle: prefix + declaration, root })).toBe(
+      prefix + 'var __filename = import.meta.filename;',
+    )
+  })
+
   it('rewrites dirname in the middle of a declaration without changing its siblings', () => {
     const root = '/tmp/portable-root'
     const bundle = `var Client = require_client(), __dirname = "${root}/undici", Dispatcher;`

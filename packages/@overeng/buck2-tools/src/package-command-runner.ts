@@ -808,7 +808,74 @@ const normalizePortableCommonJsGlobals = ({
     let cursor = start + 1
     while (cursor < bundle.length) {
       if (bundle[cursor] === '\\') cursor += 2
-      else if (bundle[cursor++] === quote) return cursor
+      else if (bundle[cursor] === quote) return cursor + 1
+      else if (quote === '`' && bundle[cursor] === '$' && bundle[cursor + 1] === '{') {
+        cursor = skipTemplateExpression(cursor + 2)
+      } else cursor++
+    }
+    return cursor
+  }
+  // Template interpolations contain JavaScript, including nested templates.
+  // Skipping only to the next backtick leaves the scanner inside a string
+  // from the interpolation and can hide later CommonJS declarations.
+  const skipTemplateExpression = (start: number): number => {
+    let cursor = start
+    let depth = 1
+    let canStartRegex = true
+    while (cursor < bundle.length && depth > 0) {
+      const char = bundle[cursor]!
+      const next = bundle[cursor + 1]
+      if (char === '/' && next === '/') {
+        const end = bundle.indexOf('\n', cursor + 2)
+        cursor = end < 0 ? bundle.length : end
+        continue
+      }
+      if (char === '/' && next === '*') {
+        const end = bundle.indexOf('*/', cursor + 2)
+        cursor = end < 0 ? bundle.length : end + 2
+        continue
+      }
+      if (char === '/' && canStartRegex === true) {
+        let end = cursor + 1
+        let inClass = false
+        while (end < bundle.length && bundle[end] !== '\n') {
+          if (bundle[end] === '\\') end += 2
+          else if (bundle[end] === '[') {
+            inClass = true
+            end++
+          } else if (bundle[end] === ']') {
+            inClass = false
+            end++
+          } else if (bundle[end] === '/' && inClass === false) break
+          else end++
+        }
+        if (bundle[end] === '/') {
+          cursor = end + 1
+          while (isJavaScriptIdentifierChar(bundle[cursor]) === true) cursor++
+          canStartRegex = false
+          continue
+        }
+      }
+      if (char === '"' || char === "'" || char === '`') {
+        cursor = skipQuoted(cursor)
+        canStartRegex = false
+        continue
+      }
+      if (isJavaScriptIdentifierChar(char) === true) {
+        const beginning = cursor
+        do {
+          cursor++
+        } while (isJavaScriptIdentifierChar(bundle[cursor]) === true)
+        const name = bundle.slice(beginning, cursor)
+        canStartRegex = name === 'return' || name === 'throw' || name === 'case'
+        continue
+      }
+      if (char === '{') depth++
+      else if (char === '}') depth--
+      if (char !== ' ' && char !== '\n' && char !== '\t' && char !== '\r') {
+        canStartRegex = '=([{,:;!?&|'.includes(char)
+      }
+      cursor++
     }
     return cursor
   }
