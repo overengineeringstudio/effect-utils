@@ -190,6 +190,12 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 }
 RUST
+cat > "$work/rust-fixture/Cargo.toml" <<'TOML'
+[package]
+name = "consumer-root-rust"
+version = "0.1.0"
+edition = "2021"
+TOML
 cat > "$work/rust-fixture/BUCK" <<'BUCK'
 load("@prelude//:prelude.bzl", "native")
 load("@rules//buck2/products:defs.bzl", "build_product")
