@@ -379,7 +379,7 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
         },
       ],
     })
-    const gantt = report.data!.gantt!
+    const gantt = report.data!.gantt as string
     const lines = gantt.split('\n')
     const taskLines = lines.slice(5)
     expect(lines).toContain('    dateFormat YYYY-MM-DD HH:mm:ss')
