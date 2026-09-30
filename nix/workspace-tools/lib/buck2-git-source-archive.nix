@@ -7,7 +7,10 @@
   src,
   expectedSha256 ? null,
 }:
-pkgs.runCommand "buck2-git-source-${pkgs.lib.replaceStrings [ "/" ] [ "-" ] (pkgs.lib.removePrefix "https://github.com/" repo)}-${rev}"
+pkgs.runCommand
+  "buck2-git-source-${
+    pkgs.lib.replaceStrings [ "/" ] [ "-" ] (pkgs.lib.removePrefix "https://github.com/" repo)
+  }-${rev}"
   {
     nativeBuildInputs = [
       pkgs.gnutar
