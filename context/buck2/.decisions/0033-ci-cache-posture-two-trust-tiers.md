@@ -89,6 +89,27 @@ products built exclusively from this public repository and public dependency
 inputs belong to the public tier. Publication still refuses source paths
 outside the repository and private-repository dependency inputs.
 
+## Amendment 1
+
+Accepted 2026-09-30 by Johannes (q2, q5, q6).
+
+The [Namespace compatibility spike](../.experiments/2026-09-30-namespace-remote-execution.md)
+proves Buck2 AC/CAS/TLS and real Linux RE with plain `host:443` addresses and
+`tls = true`; unchanged-head hits after `clean` are proven. The tested CLI also
+provides `nsc reapi setup buck2`. This supersedes the interoperability uncertainty
+above, not the public-tier trust gate.
+
+Main-only writes are **not enforceable with the tested setup**. The bearer from
+`--storage=read-only` can update the AC and execute after switching to RW
+storage/scheduler endpoints. User/tenant token scope does not attenuate it.
+Different `--key` clusters share AC hits; keys are not isolation.
+
+The public tier therefore stays on self-hosted bazel-remote. Replacement is
+deferred until a non-escalatable reader and branch-scoped writer identity pass
+the escalation rerun and the remaining reuse/outage gates.
+[Decision 0039](./0039-namespace-first-remote-candidate-adoption-deferred.md)
+records the cache-first re-entry tracks and retargets Phase 7 to Namespace.
+
 ## Dotfiles lead brief
 
 Target: add a public-repository Buck2 cache tier; do not alter the private cache.
