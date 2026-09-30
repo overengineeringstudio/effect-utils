@@ -278,7 +278,9 @@ const resolveNixProjectionInput = async (
       (executablePath !== outputRoot &&
         executablePath.startsWith(`${outputRoot}${NodePath.sep}`) === false)
     ) {
-      throw new TypeError(`capability executable escapes its Nix output: ${input.capability.toolId}`)
+      throw new TypeError(
+        `capability executable escapes its Nix output: ${input.capability.toolId}`,
+      )
     }
     await access(executablePath, 1)
   }
@@ -292,7 +294,7 @@ const resolveNixProjectionInput = async (
   if (closureStorePaths.includes(outputRoot) === false) {
     throw new TypeError(`capability closure omits its Nix output: ${input.capability.toolId}`)
   }
-  if (isDirectory) {
+  if (executablePath === undefined) {
     return {
       kind: 'directory',
       capability: input.capability,

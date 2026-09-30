@@ -20,7 +20,10 @@ let
     in
     builtins.match "[a-z0-9]+(-[a-z0-9]+)*" name != null
     && !(builtins.elem name (map (capability: capability.toolId) producerCapabilities))
-    && builtins.elem extra.kind [ "directory" "executable" ]
+    && builtins.elem extra.kind [
+      "directory"
+      "executable"
+    ]
     && extra ? package
     && builtins.isString extra.protocol
     && extra.protocol != ""
@@ -63,7 +66,8 @@ let
   platform =
     if pkgs.stdenv.hostPlatform.isDarwin then "aarch64-macos" else pkgs.stdenv.hostPlatform.system;
 in
-assert pkgs.lib.assertMsg _validExtras "buck2-capabilities: extra capabilities must be unique, named lowercase-kebab, and declare kind, package, protocol, and executable for executable inputs";
+assert pkgs.lib.assertMsg _validExtras
+  "buck2-capabilities: extra capabilities must be unique, named lowercase-kebab, and declare kind, package, protocol, and executable for executable inputs";
 pkgs.runCommand "buck2-capabilities"
   {
     nativeBuildInputs = [ pkgs.bun ];
@@ -72,8 +76,8 @@ pkgs.runCommand "buck2-capabilities"
     };
   }
   ''
-  bun ${src}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
-    --input ${input} \
-    --output "$out" \
-    --platform ${platform}
-''
+    bun ${src}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
+      --input ${input} \
+      --output "$out" \
+      --platform ${platform}
+  ''
