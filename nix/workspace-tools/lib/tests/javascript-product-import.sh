@@ -70,8 +70,9 @@ write_descriptor() {
   local capabilities="${6:-[]}"
   local modules="${7:-[]}"
   local module_path="${8:-tool.js}"
+  local runtime_kind="${9:-node}"
   cat >"$target" <<JSON
-{"externalCapabilities":$capabilities,"externalModules":$modules,"integrity":"$integrity","modulePath":"$module_path","platform":$platform,"productKind":"$product_kind","productName":"$product_name","provenance":{"configuredTarget":"fixture//x:y (fixture//p:javascript_portable#deadbeef)","dependencyClosureIdentity":"runtime=node;package_tree=fixture//x:package_tree","module":"fixture//x:y-module"},"runtimeContract":"$runtime_contract","runtimeContractVersion":"v1","runtimeKind":"node","schema":"effect-utils/javascript-product/v2","sizeBytes":$size,"target":"fixture//x:y"}
+{"externalCapabilities":$capabilities,"externalModules":$modules,"integrity":"$integrity","modulePath":"$module_path","platform":$platform,"productKind":"$product_kind","productName":"$product_name","provenance":{"configuredTarget":"fixture//x:y (fixture//p:javascript_portable#deadbeef)","dependencyClosureIdentity":"runtime=node;package_tree=fixture//x:package_tree","module":"fixture//x:y-module"},"runtimeContract":"$runtime_contract","runtimeContractVersion":"v1","runtimeKind":"$runtime_kind","schema":"effect-utils/javascript-product/v2","sizeBytes":$size,"target":"fixture//x:y"}
 JSON
 }
 
@@ -172,6 +173,18 @@ jq -e --arg q "'" '
   (.script | contains("ln -s /stub/native-linux-x64"))
 ' <<<"$wrapper" >/dev/null
 echo "javascript-product-import-test: GREEN wrapper contract reaches the installer"
+
+# GREEN: a Bun product's wrapper disables Bun's runtime auto-install, so a bare
+# import missing from the shipped closure fails instead of resolving unpinned.
+write_descriptor "$tmp/bun-runtime.json" fixture cli javascript-esm \
+  "$portable" '[]' '[]' tool.js bun
+write_case "$tmp/bun-runtime.nix" "$tmp/bun-runtime.json"
+jq -e '
+  (.script | contains("makeWrapper /stub/bun/bin/bun")) and
+  (.script | contains("--add-flags \"--no-install $out/libexec/$module_path\""))
+' <<<"$(eval_case "$tmp/bun-runtime.nix")" >/dev/null
+jq -e '.script | contains("--no-install") | not' <<<"$valid" >/dev/null
+echo "javascript-product-import-test: GREEN Bun wrapper disables runtime auto-install"
 
 # The descriptor bytes have an independently supplied content address.
 write_case "$tmp/wrong-descriptor-digest.nix" "$tmp/product.json" "" \
