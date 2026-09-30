@@ -14,6 +14,8 @@
   # `mkPrivateProductTarballs` `archiveRoot`: the only source of private product
   # archives for live (non-sandboxed) Buck builds.
   privateProductRoot ? null,
+  # Consumer-owned capability bindings appended to this root's toolchain cell.
+  extraToolchainsBuck ? "",
   projectIgnore ? [
     "**/__pycache__"
     "**/dist"
@@ -117,7 +119,8 @@ let
         runner = "@rules//:packages/@overeng/buck2-tools/src/typescript-runner.ts",
         visibility = ["PUBLIC"],
     )
-  '';
+  ''
+  + extraToolchainsBuck;
 in
 assert lib.assertMsg (
   builtins.isString cellName
@@ -167,6 +170,8 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   privateProductRoot == null || lib.hasPrefix "/nix/store/" "${privateProductRoot}"
 ) "mkConsumerBuckRoot: privateProductRoot must be a Nix store path";
+assert lib.assertMsg (builtins.isString extraToolchainsBuck)
+  "mkConsumerBuckRoot: extraToolchainsBuck must be a Buck declaration string";
 pkgs.runCommand "${cellName}-buck2-root"
   {
     passthru = {

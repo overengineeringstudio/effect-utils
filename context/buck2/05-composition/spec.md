@@ -66,6 +66,34 @@ its digest, and its closure, and renders the per-tool `BUCK`, `manifest.json`,
 and generation-keyed `defs.bzl`. Toolchains load `capabilities//:defs.bzl`.
 Consumer roots take the same output from effect-utils' flake.
 
+Consumer-specific native inputs extend that producer projection through
+`effect-utils.lib.mkBuck2Capabilities { pkgs; extraCapabilities = { … }; }`;
+the result replaces the capability output in both the consumer's Nix-built
+standalone root and its local `buck2:materialize-root` path. The producer
+manifest remains authoritative for shared tools. Extension keys are unique
+lowercase-kebab capability IDs and cannot shadow a producer ID. Each entry
+declares `kind = "directory" | "executable"`, a Nix `package`, a `protocol`,
+and `executable = "bin/<name>"` only for executable inputs. The shared
+projector merges entries, resolves every immutable `/nix/store` output and its
+complete `closureInfo` requisites, and emits a single generation.
+
+```text
+producer buck2-member.json ─┐
+                             ├─> one capability projection ─> consumer root + local root
+consumer extraCapabilities ─┘          │
+                                       └─> Buck store_directory / support_tool
+```
+
+Executables retain `native-executable/v1` manifests. Directory inputs have
+`immutable-directory/v1` manifests with a `directoryStorePath`, the complete
+sorted store closure, and a SHA-256 digest of the immutable output path (not
+of an unbounded directory walk). Their Buck target exports the directory and
+manifest from the same generation, so `$(location //buck2/toolchains:<input>)`
+in a Reindeer buildscript environment is a declared action input, not ambient
+host state. The consumer owns the Nix derivation and the local Buck declaration;
+the generic rules contain no consumer or vendor-specific source paths
+(COMP-R03, COMP-R05).
+
 `buck2-member.json` (schema version 2) declares only capabilities:
 
 ```json

@@ -375,6 +375,20 @@ rec {
 
       # Build a materialized standalone Buck root for a consumer checkout.
       lib.mkConsumerBuckRoot = args: import ./nix/buck2-products/consumer-root.nix args;
+      # Consumers extend the same capability projection with named, immutable
+      # Nix inputs; producer tool declarations remain owned by buck2-member.json.
+      lib.mkBuck2Capabilities =
+        {
+          pkgs,
+          extraCapabilities ? { },
+        }:
+        let
+          base = self.packages.${pkgs.stdenv.hostPlatform.system}.buck2-capabilities;
+        in
+        import ./nix/buck2-capabilities.nix {
+          inherit pkgs extraCapabilities;
+          inherit (base.passthru) capabilityPackages src;
+        };
 
       # Stage private package products (decision 0037) for pnpm and Buck consumers
       # from the producer manifest's substituted store paths.

@@ -5,56 +5,99 @@ import process from 'node:process'
 
 import type { BuckMemberCapability } from '../buck2-manifest.ts'
 
-/**
- * Manifest capability plus its exact Nix realization, executable identity, and complete
- * immutable runtime closure (`closureStorePaths` is sorted and includes `nixOutputPath`).
- */
-type ResolvedCapability = {
-  readonly capability: BuckMemberCapability
-  readonly nixOutputPath: string
-  readonly executablePath: string
-  readonly executableDigest: `sha256:${string}`
-  readonly closureStorePaths: readonly string[]
+type DirectoryCapability = {
+  readonly toolId: string
+  readonly protocol: string
+  readonly flakePackage: string
+  readonly kind: 'directory'
 }
+
+/** Exact Nix realization and complete immutable closure of one projected input. */
+type ResolvedCapability =
+  | {
+      readonly kind: 'executable'
+      readonly capability: BuckMemberCapability
+      readonly nixOutputPath: string
+      readonly executablePath: string
+      readonly executableDigest: `sha256:${string}`
+      readonly closureStorePaths: readonly string[]
+    }
+  | {
+      readonly kind: 'directory'
+      readonly capability: DirectoryCapability
+      readonly nixOutputPath: string
+      readonly closureStorePaths: readonly string[]
+    }
 
 /** Supported host tuples for materialized capability projections. */
 export type CapabilityProjectionPlatform = 'aarch64-linux' | 'aarch64-macos' | 'x86_64-linux'
 
 /** Immutable manifest describing one exact projected capability realization. */
-export type CapabilityProjectionManifest = {
-  readonly closureIdentity: string
-  readonly closureStorePaths: readonly string[]
-  readonly contentDigest: string
-  readonly executableStorePath: string
-  readonly executionPlatform: CapabilityProjectionPlatform
-  readonly protocol: string
-  readonly runtimeContract: 'native-executable/v1'
-  readonly schema: 'effect-utils/buck2-support-tools/v1'
-  readonly toolId: string
-}
+export type CapabilityProjectionManifest =
+  | {
+      readonly closureIdentity: string
+      readonly closureStorePaths: readonly string[]
+      readonly contentDigest: string
+      readonly executableStorePath: string
+      readonly executionPlatform: CapabilityProjectionPlatform
+      readonly protocol: string
+      readonly runtimeContract: 'native-executable/v1'
+      readonly schema: 'effect-utils/buck2-support-tools/v1'
+      readonly toolId: string
+    }
+  | {
+      readonly closureIdentity: string
+      readonly closureStorePaths: readonly string[]
+      readonly contentDigest: string
+      readonly directoryStorePath: string
+      readonly executionPlatform: CapabilityProjectionPlatform
+      readonly protocol: string
+      readonly runtimeContract: 'immutable-directory/v1'
+      readonly schema: 'effect-utils/buck2-store-inputs/v1'
+      readonly toolId: string
+    }
 
-/** Converts a resolved capability into its portable projection manifest. */
+/** Converts an exact Nix realization into the matching capability manifest. */
 export const makeCapabilityProjectionManifest = ({
   platform,
   resolved,
 }: {
   readonly platform: CapabilityProjectionPlatform
   readonly resolved: ResolvedCapability
-}): CapabilityProjectionManifest => ({
-  closureIdentity: resolved.nixOutputPath,
-  closureStorePaths: resolved.closureStorePaths,
-  contentDigest: resolved.executableDigest.slice('sha256:'.length),
-  executableStorePath: resolved.executablePath,
-  executionPlatform: platform,
-  protocol: resolved.capability.protocol,
-  runtimeContract: 'native-executable/v1',
-  schema: 'effect-utils/buck2-support-tools/v1',
-  toolId: resolved.capability.toolId,
-})
+}): CapabilityProjectionManifest =>
+  resolved.kind === 'directory'
+    ? {
+        closureIdentity: resolved.nixOutputPath,
+        closureStorePaths: resolved.closureStorePaths,
+        // Nix store paths name verified immutable contents; this digest identifies
+        // the directory realization rather than hashing an arbitrary filesystem walk.
+        contentDigest: createHash('sha256').update(resolved.nixOutputPath).digest('hex'),
+        directoryStorePath: resolved.nixOutputPath,
+        executionPlatform: platform,
+        protocol: resolved.capability.protocol,
+        runtimeContract: 'immutable-directory/v1',
+        schema: 'effect-utils/buck2-store-inputs/v1',
+        toolId: resolved.capability.toolId,
+      }
+    : {
+        closureIdentity: resolved.nixOutputPath,
+        closureStorePaths: resolved.closureStorePaths,
+        contentDigest: resolved.executableDigest.slice('sha256:'.length),
+        executableStorePath: resolved.executablePath,
+        executionPlatform: platform,
+        protocol: resolved.capability.protocol,
+        runtimeContract: 'native-executable/v1',
+        schema: 'effect-utils/buck2-support-tools/v1',
+        toolId: resolved.capability.toolId,
+      }
 
 /** Generated Buck package exposing one projected capability executable and manifest. */
 export const capabilityToolBuckBytes =
   'export_file(name = "executable", src = "executable", visibility = ["PUBLIC"])\n' +
+  'export_file(name = "manifest", src = "manifest.json", visibility = ["PUBLIC"])\n'
+/** Generated Buck package exposing one immutable directory and its manifest. */
+export const capabilityDirectoryBuckBytes =
+  'export_file(name = "directory", src = "directory", visibility = ["PUBLIC"])\n' +
   'export_file(name = "manifest", src = "manifest.json", visibility = ["PUBLIC"])\n'
 /** Generated Buck package marker for the capability projection root. */
 export const capabilityRootBuckBytes = '# Generated from exact Nix realizations.\n'
@@ -88,10 +131,13 @@ export const renderCapabilityProjectionDefs = ({
     `GENERATION = "${generation}"`,
     'CAPABILITIES = {',
     `  "${platform}": {`,
-    ...manifests.map(
-      (manifest) =>
-        `    "${manifest.toolId}": {"generation": "${generation}", "contentDigest": "${manifest.contentDigest}", "closureIdentity": "${manifest.closureIdentity}", "executableStorePath": "${manifest.executableStorePath}", "closureStorePaths": [${manifest.closureStorePaths.map((path) => `"${path}"`).join(', ')}]},`,
-    ),
+    ...manifests.map((manifest) => {
+      const pathField =
+        manifest.runtimeContract === 'immutable-directory/v1'
+          ? `"directoryStorePath": "${manifest.directoryStorePath}"`
+          : `"executableStorePath": "${manifest.executableStorePath}"`
+      return `    "${manifest.toolId}": {"generation": "${generation}", "contentDigest": "${manifest.contentDigest}", "closureIdentity": "${manifest.closureIdentity}", ${pathField}, "closureStorePaths": [${manifest.closureStorePaths.map((path) => `"${path}"`).join(', ')}]},`
+    }),
     '  },',
     '}',
     '',
@@ -111,7 +157,13 @@ export const projectResolvedCapabilities = async ({
     makeCapabilityProjectionManifest({ platform, resolved: resolvedCapability }),
   )
   const files = manifests.flatMap((manifest) => [
-    { path: `${platform}/${manifest.toolId}/BUCK`, bytes: capabilityToolBuckBytes },
+    {
+      path: `${platform}/${manifest.toolId}/BUCK`,
+      bytes:
+        manifest.runtimeContract === 'immutable-directory/v1'
+          ? capabilityDirectoryBuckBytes
+          : capabilityToolBuckBytes,
+    },
     { path: `${platform}/${manifest.toolId}/manifest.json`, bytes: manifestBytes(manifest) },
   ])
   const generation = computeCapabilityProjectionGeneration(files)
@@ -121,11 +173,21 @@ export const projectResolvedCapabilities = async ({
     manifests.map(async (manifest) => {
       const directory = NodePath.join(generationRoot, manifest.toolId)
       await mkdir(directory)
-      await symlink(manifest.executableStorePath, NodePath.join(directory, 'executable'))
+      if (manifest.runtimeContract === 'immutable-directory/v1') {
+        await symlink(manifest.directoryStorePath, NodePath.join(directory, 'directory'))
+      } else {
+        await symlink(manifest.executableStorePath, NodePath.join(directory, 'executable'))
+      }
       await writeFile(NodePath.join(directory, 'manifest.json'), manifestBytes(manifest), {
         flag: 'wx',
       })
-      await writeFile(NodePath.join(directory, 'BUCK'), capabilityToolBuckBytes, { flag: 'wx' })
+      await writeFile(
+        NodePath.join(directory, 'BUCK'),
+        manifest.runtimeContract === 'immutable-directory/v1'
+          ? capabilityDirectoryBuckBytes
+          : capabilityToolBuckBytes,
+        { flag: 'wx' },
+      )
     }),
   )
   await writeFile(NodePath.join(projectionPath, 'BUCK'), capabilityRootBuckBytes, { flag: 'wx' })
@@ -138,7 +200,7 @@ export const projectResolvedCapabilities = async ({
 }
 
 type NixCapabilityProjectionInput = {
-  readonly capability: BuckMemberCapability
+  readonly capability: BuckMemberCapability | DirectoryCapability
   readonly closurePathsFile: string
   readonly nixOutputPath: string
 }
@@ -169,11 +231,20 @@ const decodeNixProjectionInput = (value: unknown): readonly NixCapabilityProject
       typeof toolId !== 'string' ||
       typeof protocol !== 'string' ||
       typeof flakePackage !== 'string' ||
-      typeof executable !== 'string' ||
       typeof closurePathsFile !== 'string' ||
       typeof nixOutputPath !== 'string'
     ) {
       throw new TypeError('capability projection entry contains a non-string field')
+    }
+    if ('kind' in capability && capability.kind === 'directory') {
+      return {
+        capability: { toolId, protocol, flakePackage, kind: 'directory' },
+        closurePathsFile,
+        nixOutputPath,
+      }
+    }
+    if (typeof executable !== 'string' || 'kind' in capability) {
+      throw new TypeError('capability projection executable must name a relative executable')
     }
     return {
       capability: { toolId, protocol, flakePackage, executable },
@@ -192,18 +263,10 @@ const resolveNixProjectionInput = async (
   input: NixCapabilityProjectionInput,
 ): Promise<ResolvedCapability> => {
   const outputRoot = await realpath(input.nixOutputPath)
-  const executablePath = await realpath(NodePath.join(outputRoot, input.capability.executable))
   const outputInfo = await stat(outputRoot)
-  const executableInfo = await stat(executablePath)
-  if (
-    outputInfo.isDirectory() === false ||
-    executableInfo.isFile() === false ||
-    (executablePath !== outputRoot &&
-      executablePath.startsWith(`${outputRoot}${NodePath.sep}`) === false)
-  ) {
-    throw new TypeError(`capability executable escapes its Nix output: ${input.capability.toolId}`)
+  if (outputInfo.isDirectory() === false) {
+    throw new TypeError(`capability output must be a directory: ${input.capability.toolId}`)
   }
-  await access(executablePath, 1)
   const closureStorePaths = [
     ...new Set(
       (await readFile(input.closurePathsFile, 'utf8'))
@@ -214,7 +277,26 @@ const resolveNixProjectionInput = async (
   if (closureStorePaths.includes(outputRoot) === false) {
     throw new TypeError(`capability closure omits its Nix output: ${input.capability.toolId}`)
   }
+  if ('kind' in input.capability) {
+    return {
+      kind: 'directory',
+      capability: input.capability,
+      nixOutputPath: outputRoot,
+      closureStorePaths,
+    }
+  }
+  const executablePath = await realpath(NodePath.join(outputRoot, input.capability.executable))
+  const executableInfo = await stat(executablePath)
+  if (
+    executableInfo.isFile() === false ||
+    (executablePath !== outputRoot &&
+      executablePath.startsWith(`${outputRoot}${NodePath.sep}`) === false)
+  ) {
+    throw new TypeError(`capability executable escapes its Nix output: ${input.capability.toolId}`)
+  }
+  await access(executablePath, 1)
   return {
+    kind: 'executable',
     capability: input.capability,
     nixOutputPath: outputRoot,
     executablePath,
