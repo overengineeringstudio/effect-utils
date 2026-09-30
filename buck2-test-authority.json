@@ -46,6 +46,7 @@
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts",
+        "src/pipeline-report.integration.test.ts",
         "src/workflow-report.e2e.test.ts"
       ],
       "packageName": "ci-tools",
@@ -90,15 +91,17 @@
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts",
+        "src/pipeline-report.integration.test.ts",
         "src/workflow-report.e2e.test.ts"
       ],
       "unboundedTaskName": "test:ci-tools:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api_collect",
       "excludes": [],
       "packageName": "ci-tools",
       "packagePath": "packages/@overeng/ci-tools",
-      "runner": "bun",
+      "runner": "vitest",
       "selectedTestFiles": ["src/pipeline-report.integration.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
