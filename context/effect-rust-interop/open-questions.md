@@ -1,0 +1,12 @@
+# Open questions: Effect–Rust interop foundation
+
+The implementation/admission work is tracked by [effect-utils#1549](https://github.com/overengineeringstudio/effect-utils/issues/1549). These questions refine the [draft spec](./spec.md); confirmed decisions remain in [.decisions](./.decisions/0001-tiered-delivery.md).
+
+| Question                                            | Resolution evidence                                                                                                                                                     | Spec                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Package and crate name                              | Public naming/import choice before publishing                                                                                                                           | [DQ1](./spec.md#design-questions) |
+| Generator bakeoff and semantic-keyword dialect      | Bidirectional runtime codecs, diagnostics, deterministic generation, shared conformance vectors; custom compiler if alternatives fall short                             | [DQ2](./spec.md#design-questions) |
+| Full-range u64/i64 transport                        | Losslessness on all runtimes, then throughput, then readability and size                                                                                                | [DQ3](./spec.md#design-questions) |
+| Panic retirement/rebuild reclamation                | Repeated poisoning and whole-memory accounting beyond healthy cancellation                                                                                              | [DQ4](./spec.md#design-questions) |
+| Buck wasm32/bindgen/aggregator/shared-library rules | Reproducible product and runtime admission proof; experimental 8–15 engineer-day estimate is not measured duration                                                      | [DQ5](./spec.md#design-questions) |
+| Neutral IDL                                         | Effect-Schema-level expressiveness plus excellent codegen; separately tracked in [effect-utils#1547](https://github.com/overengineeringstudio/effect-utils/issues/1547) | [DQ6](./spec.md#design-questions) |
