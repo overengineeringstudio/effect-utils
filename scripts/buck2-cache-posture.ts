@@ -14,8 +14,7 @@ export type TrustedArchiveOrigin = {
   readonly urlPrefix: string
 }
 
-/** Parse the reviewed trusted archive destination from tracked Buck config. */
-export const trustedArchiveOriginFromConfig = (text: string): TrustedArchiveOrigin => {
+const buckConfigValues = (text: string): Record<string, string> => {
   let section = ''
   const values: Record<string, string> = {}
   for (const rawLine of text.split(/\r?\n/u)) {
@@ -30,6 +29,12 @@ export const trustedArchiveOriginFromConfig = (text: string): TrustedArchiveOrig
     if (equals !== -1)
       values[`${section}.${line.slice(0, equals).trim()}`] = line.slice(equals + 1).trim()
   }
+  return values
+}
+
+/** Parse the reviewed trusted archive destination from tracked Buck config. */
+export const trustedArchiveOriginFromConfig = (text: string): TrustedArchiveOrigin => {
+  const values = buckConfigValues(text)
   const urlPrefix = values['archive_origin.trusted_url_prefix']
   const tier = values['archive_origin.trusted_tier']
   if (urlPrefix === undefined || /^https?:\/\/.+\/cas\/$/u.test(urlPrefix) === false)
@@ -182,20 +187,7 @@ export const reconcileStandaloneCachePostureForInvocation = async ({
 
   const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
   const local = readFileSync(resolve(repoRoot, '.buckconfig.local'), 'utf8')
-  const values: Record<string, string> = {}
-  let section = ''
-  for (const rawLine of `${tracked}\n${local}`.split(/\r?\n/u)) {
-    const line = rawLine.replace(/#.*$/u, '').trim()
-    if (line === '') continue
-    const sectionMatch = /^\[([^\]]+)\]$/u.exec(line)
-    if (sectionMatch !== null) {
-      section = sectionMatch[1] ?? ''
-      continue
-    }
-    const equals = line.indexOf('=')
-    if (equals !== -1)
-      values[`${section}.${line.slice(0, equals).trim()}`] = line.slice(equals + 1).trim()
-  }
+  const values = buckConfigValues(`${tracked}\n${local}`)
   if (values['buck2.remote_cache_enabled'] === 'false') return true
 
   const available = await probeRemoteCacheCapabilities({
@@ -248,11 +240,12 @@ const probeRemoteCacheCapabilities = async ({
       remaining = Math.floor(remaining / 128)
       length.push(octet | (remaining > 0 ? 0x80 : 0))
     } while (remaining > 0)
-    const request = Buffer.concat([Buffer.from([0x0a, ...length]), name])
-    const frame = Buffer.allocUnsafe(request.length + 5)
+    const frame = Buffer.allocUnsafe(name.length + length.length + 6)
     frame[0] = 0
-    frame.writeUInt32BE(request.length, 1)
-    request.copy(frame, 5)
+    frame.writeUInt32BE(frame.length - 5, 1)
+    frame[5] = 0x0a
+    frame.set(length, 6)
+    name.copy(frame, 6 + length.length)
 
     const headers: Record<string, string> = {
       ':method': 'POST',
