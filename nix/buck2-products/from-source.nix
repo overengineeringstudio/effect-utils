@@ -34,11 +34,12 @@ let
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
   # The owning Cargo workspace supplies release overrides; Cargo's defaults
   # apply when it does not declare them (including producer-only native rules).
-  releaseProfile =
+  cargoManifest =
     if cargoWorkspaceRoot == null then
       { }
     else
-      ((builtins.fromTOML (builtins.readFile (repositoryRoot + "/${cargoWorkspaceRoot}/Cargo.toml"))).profile or { }).release or { };
+      builtins.fromTOML (builtins.readFile (repositoryRoot + "/${cargoWorkspaceRoot}/Cargo.toml"));
+  releaseProfile = (cargoManifest.profile or { }).release or { };
   cargoToggle = value: if value then "yes" else "no";
   releaseSettings = {
     opt_level = toString (releaseProfile."opt-level" or 3);
