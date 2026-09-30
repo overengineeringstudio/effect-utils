@@ -169,9 +169,9 @@ export const reconcileStandaloneCachePosture = ({
 }
 
 /**
- * Preflight only the cache endpoint Buck will use in this checkout. A failed
- * capability RPC disables the cache for this invocation; the next invocation
- * first restores its normal posture and probes again.
+ * Preflight only the cache endpoint Buck will use in this checkout. Read-only
+ * invocations fail open; publishers must reach the cache before they run.
+ * The next read-only invocation restores its normal posture and probes again.
  */
 export const reconcileStandaloneCachePostureForInvocation = async ({
   repoRoot,
@@ -199,6 +199,13 @@ export const reconcileStandaloneCachePostureForInvocation = async ({
     deadlineMs,
   })
   if (available) return true
+  if ((env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== '') {
+    const message =
+      'REAPI GetCapabilities failed for cache publisher; refusing to run without remote cache'
+    if (env['GITHUB_ACTIONS'] === 'true')
+      process.stderr.write(`::error title=Buck2 cache::${message}\n`)
+    return fail(message)
+  }
 
   reconcileStandaloneCachePosture({
     repoRoot,

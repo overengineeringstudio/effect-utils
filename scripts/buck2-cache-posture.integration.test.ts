@@ -321,7 +321,7 @@ describe('Buck2 REAPI capability preflight', () => {
       server.close()
     }
   })
-  it('rejects a gRPC error despite a reachable HTTP/2 server, without logging credentials', async () => {
+  it('fails closed for a publisher when the gRPC capabilities request fails', async () => {
     const root = makeRoot()
     const server = createGrpcServer()
     const receivedHeaders: string[] = []
@@ -355,16 +355,21 @@ describe('Buck2 REAPI capability preflight', () => {
         stderr: 'pipe',
         env: {
           ...process.env,
-          BUCK2_PUBLIC_CACHE_READ_ONLY: '1',
+          GITHUB_ACTIONS: 'true',
           BUCK2_CACHE_WRITE_BASIC_AUTH: credential,
         },
       })
       const stderr = await new Response(run.stderr).text()
-      expect(await run.exited).toBe(0)
+      expect(await run.exited).toBe(1)
       expect(receivedHeaders).toEqual([`Basic ${credential}`])
-      expect(stderr).toContain('buck2_reapi_fail_open_total 1')
+      expect(stderr).toContain('REAPI GetCapabilities failed for cache publisher')
+      expect(stderr).toContain('::error title=Buck2 cache::')
+      expect(stderr).not.toContain('buck2_reapi_fail_open_total')
       expect(stderr).not.toContain(credential)
-      expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).not.toContain(credential)
+      const posture = readFileSync(join(root, '.buckconfig.local'), 'utf8')
+      expect(posture).toContain('allow_cache_uploads = true')
+      expect(posture).not.toContain('remote_cache_enabled = false')
+      expect(posture).not.toContain(credential)
     } finally {
       server.close()
     }
