@@ -144,6 +144,7 @@ const advisoryCheckContexts: Record<string, true> = {
   'ci/measurements-report': true,
   'notify-alignment': true,
   'pipeline-attempt-close': true,
+  'pipeline-traces': true,
 }
 // Dispatch-only lanes (see OPT_IN_CI_JOB_NAMES in genie/ci.ts) are non-advisory but do
 // not run on every pull request, so branch protection cannot require them: an absent lane
@@ -152,8 +153,6 @@ const optInCheckContexts = new Set([
   'devenv-perf',
   'pr-a-inert-buck',
   'trusted-buck2-remote-cache-proof',
-  'evidence-attempt-close',
-  'evidence-pr-link',
 ])
 const mainOnlyCheckContexts: Record<string, true> = {
   'test-integration-notion': true,
@@ -293,59 +292,6 @@ describe('protected-main archive seeding', () => {
     )
     expect(generatedSeedPnpmArchivesJob).toContain("github.ref == 'refs/heads/main'")
     expect(generatedCiWorkflowYamlSource).not.toContain('trusted-cache.example')
-  })
-})
-
-describe('CI evidence upload isolation', () => {
-  it('joins the tailnet only after build work, immediately before upload or attempt-close', () => {
-    const jobKeys = workflowJobKeys(generatedCiWorkflowYamlSource)
-    const join = 'uses: tailscale/github-action@v4'
-    const joinGate =
-      "      - if: ${{ always() && env.EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}\n        uses: tailscale/github-action@v4"
-    const seal = 'name: Seal and publish pipeline evidence'
-    for (const [index, jobKey] of jobKeys.entries()) {
-      const start = generatedCiWorkflowYamlSource.indexOf(`  ${jobKey}:\n`)
-      const end =
-        index + 1 < jobKeys.length
-          ? generatedCiWorkflowYamlSource.indexOf(`  ${jobKeys[index + 1]}:\n`, start + 1)
-          : generatedCiWorkflowYamlSource.length
-      const job = generatedCiWorkflowYamlSource.slice(start, end)
-      if (job.includes(seal) === false) continue
-      const joinIndex = job.indexOf(join)
-      expect(joinIndex, `${jobKey}: missing tailnet join`).toBeGreaterThan(-1)
-      const lastBuildTask = job.lastIndexOf('tasks run ')
-      if (lastBuildTask >= 0) {
-        expect(joinIndex, `${jobKey}: build task must finish before joining`).toBeGreaterThan(
-          lastBuildTask,
-        )
-      }
-      expect(
-        job.slice(joinIndex).match(/      - name: /g),
-        `${jobKey}: join is not the last pre-seal step`,
-      ).toHaveLength(1)
-      expect(job.indexOf(seal), `${jobKey}: evidence must follow join`).toBeGreaterThan(joinIndex)
-      expect(job.slice(joinIndex, job.indexOf(seal))).toContain('continue-on-error: true')
-      expect(job.slice(joinIndex, job.indexOf(seal))).toContain('args: --accept-dns=true')
-      expect(job.slice(0, job.indexOf(seal))).toContain(joinGate)
-    }
-    const lintJob = generatedCiWorkflowYamlSource.slice(
-      generatedCiWorkflowYamlSource.indexOf('  lint:\n'),
-      generatedCiWorkflowYamlSource.indexOf('  test:\n'),
-    )
-    expect(lintJob).toContain('tasks run ')
-    expect(lintJob.indexOf(join)).toBeGreaterThan(lintJob.lastIndexOf('tasks run '))
-    const closeJob = generatedCiWorkflowYamlSource.slice(
-      generatedCiWorkflowYamlSource.indexOf('  pipeline-attempt-close:\n'),
-    )
-    const closeStep = 'name: Link started job roots'
-    const closeJoinGate =
-      "      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && env.TS_EVIDENCE_CLIENT_ID != '' && env.TS_EVIDENCE_AUDIENCE != '' }}\n        uses: tailscale/github-action@v4"
-    expect(closeJob.slice(0, closeJob.indexOf(closeStep))).toContain(closeJoinGate)
-    expect(closeJob.indexOf(join)).toBeLessThan(closeJob.indexOf(closeStep))
-    expect(closeJob.slice(closeJob.indexOf(join))).not.toContain('nix build')
-    expect(closeJob.slice(closeJob.indexOf(join), closeJob.indexOf(closeStep))).toContain(
-      'continue-on-error: true',
-    )
   })
 })
 
@@ -1894,10 +1840,6 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
     expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')
     expect(generatedCiWorkflowYamlSource).toContain("format('manual-run-{0}', github.run_id)")
-    expect(generatedCiWorkflowYamlSource).toContain("format('label-{0}', github.event.label.name)")
-    expect(generatedCiWorkflowYamlSource).toContain(
-      "inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request'",
-    )
     expect(ciWorkflowSource).toContain(
       '| What changed? | Group | Probe | Baseline -> current | Raw change | Impact | Confidence |',
     )

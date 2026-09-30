@@ -95,17 +95,30 @@ export const standardCIEnv = ({ trustTier }: { readonly trustTier: CiTrustTier }
 type CiConcurrencyOptions = {
   readonly matrix?: boolean
   readonly measurementBaselineBackfill?: boolean
+  /** False only when the workflow explicitly excludes labeled/unlabeled PR activity. */
+  readonly labelEvents?: boolean
 }
 
-const ciConcurrencyScope = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>) =>
-  opts?.measurementBaselineBackfill === true
-    ? "${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}"
-    : "${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code') }}"
+const ciConcurrencyScope = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>) => {
+  const manual = "github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id)"
+  const labels = opts?.labelEvents === false
+    ? "'code'"
+    : "(github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')"
+  return opts?.measurementBaselineBackfill === true
+    ? `\${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (${manual} || ${labels}) }}`
+    : `\${{ ${manual} || ${labels} }}`
+}
 
-const ciCancelInProgress = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>) =>
-  opts?.measurementBaselineBackfill === true
-    ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
-    : "${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
+const ciCancelInProgress = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>) => {
+  if (opts?.labelEvents === false) {
+    return opts.measurementBaselineBackfill === true
+      ? "\${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}"
+      : true
+  }
+  return opts?.measurementBaselineBackfill === true
+    ? "\${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
+    : "\${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
+}
 
 export const ciJobConcurrency = ({ jobId, ...opts }: { jobId: string } & CiConcurrencyOptions) =>
   ({
@@ -158,12 +171,24 @@ const supportsMeasurementBaselineBackfill = (on: GitHubWorkflowArgs['on']) =>
   'workflow_dispatch' in on &&
   on.workflow_dispatch !== null
 
+const excludesLabelEvents = (on: GitHubWorkflowArgs['on']): boolean => {
+  if (typeof on !== 'object' || on === null || Array.isArray(on)) return false
+  return [on.pull_request, on.pull_request_target].every(
+    (trigger) =>
+      trigger === undefined ||
+      (trigger !== null &&
+        'types' in trigger &&
+        Array.isArray(trigger.types) &&
+        trigger.types.every((type) => type !== 'labeled' && type !== 'unlabeled')),
+  )
+}
+
 const withDefaultJobConcurrency = ({
   jobs,
   ...opts
 }: { jobs: GitHubWorkflowArgs['jobs'] } & Pick<
   CiConcurrencyOptions,
-  'measurementBaselineBackfill'
+  'measurementBaselineBackfill' | 'labelEvents'
 >): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
     Object.entries(jobs).map(([jobId, job]) => [
@@ -228,6 +253,7 @@ export const ciWorkflow = ({ trustTier, binaryCaches, ...args }: CiWorkflowArgs)
           ? withDefaultJobConcurrency({
               jobs,
               measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
+              labelEvents: !excludesLabelEvents(on),
             })
           : jobs,
     }),

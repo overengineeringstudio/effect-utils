@@ -27,6 +27,7 @@ export const buck2TypeScriptAdmission = {
     },
   ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
+  testDataRoots: [{ root: 'src', extensions: ['.json'] }],
   tests: [
     {
       name: 'test',
@@ -40,8 +41,17 @@ export const buck2TypeScriptAdmission = {
         'src/deploy-netlify.live.e2e.test.ts',
         'src/deploy-vercel.e2e.test.ts',
         'src/deploy-vercel.live.e2e.test.ts',
+        'src/pipeline-report.integration.test.ts',
         'src/workflow-report.e2e.test.ts',
       ],
+    },
+    {
+      name: 'test_pipeline_report_local_api',
+      runner: 'vitest',
+      config: 'vitest.pipeline-report.config.ts',
+      testFiles: ['src/pipeline-report.integration.test.ts'],
+      tools: { BUN_BIN: '//buck2/toolchains:tool_bun' },
+      labels: ['local-only'],
     },
   ],
 } as const satisfies Buck2TypeScriptAdmission
