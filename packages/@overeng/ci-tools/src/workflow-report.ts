@@ -698,7 +698,7 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
   if (record.kind !== 'pipeline-traces')
     return [escapeMarkdownTableCell(record.summary ?? 'Jobs API report unavailable')]
   const data = record.data
-  if (data === undefined || !Array.isArray(data.rows)) {
+  if (data === undefined || Array.isArray(data.rows) === false) {
     throw new Error('Pipeline traces report rows are missing')
   }
   const rows = data.rows as readonly Record<string, unknown>[]
@@ -713,9 +713,9 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
     '| --- | --- | --- | --- | --- |',
     ...rows.map((row) => {
       const trace =
-        typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl)
+        typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl) === true
           ? `[Explore](${row.traceUrl})`
-          : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId)
+          : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId) === true
             ? `\`${row.traceId}\` (link unavailable)`
             : 'unavailable'
       return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
@@ -726,7 +726,7 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
         .map(([key, count]) => `${escaped(key)} n=${escaped(count)}`)
         .join(', ') || 'unavailable'
     }.`,
-    `Selected main run IDs: ${Array.isArray(data.baselineRunIds) ? data.baselineRunIds.map(escaped).join(', ') || 'none' : 'none'}.`,
+    `Selected main run IDs: ${Array.isArray(data.baselineRunIds) === true ? data.baselineRunIds.map(escaped).join(', ') || 'none' : 'none'}.`,
     'Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.',
   ]
   if (typeof data.gantt === 'string') {

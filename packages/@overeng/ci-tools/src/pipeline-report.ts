@@ -32,9 +32,12 @@ const RunsPage = Schema.Struct({ total_count: Schema.Finite, workflow_runs: Sche
 export type PipelineJob = typeof Job.Type
 export type PipelineRun = typeof Run.Type
 
+/** Decodes paginated GitHub Jobs API facts used for attempt and main baselines. */
 export const decodePipelineJobsPage = Schema.decodeUnknownSync(JobsPage)
+/** Decodes GitHub workflow-run candidates before selecting successful main pushes. */
 export const decodePipelineRunsPage = Schema.decodeUnknownSync(RunsPage)
 
+/** One provider job's rendered status, duration, baseline delta, and optional trace link. */
 export type PipelineRow = {
   readonly job: string
   readonly status: string
@@ -44,6 +47,7 @@ export type PipelineRow = {
   readonly traceUrl?: string
 }
 
+/** Typed data retained with the report for its table, gantt, and baseline audit. */
 export type PipelineReportData = {
   readonly rows: readonly PipelineRow[]
   readonly gantt?: string
@@ -69,13 +73,14 @@ const PipelineReportDataSchema = Schema.Struct({
   baselineCounts: Schema.Record(Schema.String, Schema.Finite),
   counts: Schema.Record(Schema.String, Schema.Finite),
 })
+/** Validates a decoded record's timeline and baseline counts before rendering. */
 export const decodePipelineReportData = Schema.decodeUnknownSync(PipelineReportDataSchema)
 
 const wallTimeMs = (job: PipelineJob): number | undefined => {
   if (job.conclusion === 'skipped' || job.status !== 'completed') return undefined
   if (job.started_at === null || job.completed_at === null) return undefined
   const duration = Date.parse(job.completed_at) - Date.parse(job.started_at)
-  return Number.isFinite(duration) && duration >= 0 ? duration : undefined
+  return Number.isFinite(duration) === true && duration >= 0 ? duration : undefined
 }
 
 const jobStatus = (job: PipelineJob): string =>
@@ -90,7 +95,7 @@ const signedSeconds = (ms: number): string =>
   `${ms >= 0 ? '+' : '-'}${(Math.abs(ms) / 1000).toFixed(1)}s`
 
 const median = (samples: readonly number[]): number => {
-  const sorted = [...samples].sort((a, b) => a - b)
+  const sorted = samples.toSorted((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
   return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
 }
@@ -127,7 +132,7 @@ export const pipelineGrafanaTraceUrl = (opts: {
 
 const mermaidLabel = (name: string): string =>
   name
-    .replace(/[\r\n:;#%\[\]<>`]/gu, ' ')
+    .replace(/[\r\n:;#%[\]<>`]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()
     .slice(0, 100)
@@ -138,14 +143,15 @@ const canonicalKey = (identity: PipelineJobIdentity): string =>
     .join('')}`
 
 // Historical attempts still expose the two retired finalizer names in Jobs API.
-const nonBuildJobNames = [
+const nonBuildJobNames = new Set([
   'pipeline-traces',
   'pipeline-attempt-close',
   'evidence-attempt-close',
   'evidence-pr-link',
-]
-const isBuildJob = (name: string): boolean => !nonBuildJobNames.includes(name)
+])
+const isBuildJob = (name: string): boolean => nonBuildJobNames.has(name) === false
 
+/** Builds the attempt-scoped report from provider jobs and bounded main-run baselines. */
 export const buildPipelineReport = (opts: {
   readonly repository: string
   readonly runId: number
@@ -175,7 +181,7 @@ export const buildPipelineReport = (opts: {
       if (identity === undefined || candidate.conclusion !== 'success' || duration === undefined)
         continue
       const key = canonicalJobKey(identity).toString('hex')
-      if (durations.has(key)) duplicates.add(key)
+      if (durations.has(key) === true) duplicates.add(key)
       else durations.set(key, duration)
     }
     for (const key of duplicates) durations.delete(key)
@@ -187,7 +193,8 @@ export const buildPipelineReport = (opts: {
   let omittedBars = 0
   const bars: string[] = []
   const rows = current.map((job, index): PipelineRow => {
-    const identity = duplicateNames.has(job.name) ? undefined : pipelineJobIdentityForName(job.name)
+    const identity =
+      duplicateNames.has(job.name) === true ? undefined : pipelineJobIdentityForName(job.name)
     const key = identity === undefined ? job.name : canonicalKey(identity)
     const status = jobStatus(job)
     counts[status] = (counts[status] ?? 0) + 1
@@ -217,7 +224,12 @@ export const buildPipelineReport = (opts: {
       job.started_at === null || status === 'skipped' ? undefined : Date.parse(job.started_at)
     const end =
       job.completed_at === null ? Date.parse(opts.generatedAtUtc) : Date.parse(job.completed_at)
-    if (start !== undefined && Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+    if (
+      start !== undefined &&
+      Number.isFinite(start) === true &&
+      Number.isFinite(end) === true &&
+      end >= start
+    ) {
       const label = mermaidLabel(`${key} (${status})`)
       bars.push(
         `${label} :${status === 'unfinished' ? 'active, ' : ''}job${index}, ${new Date(start).toISOString()}, ${new Date(end).toISOString()}`,
@@ -250,7 +262,7 @@ export const buildPipelineReport = (opts: {
     .map((job) => Date.parse(job.started_at!))
   const earliest = Math.min(...starts)
   const gantt =
-    bars.length === 0 || !Number.isFinite(earliest)
+    bars.length === 0 || Number.isFinite(earliest) === false
       ? undefined
       : [
           'gantt',
@@ -274,7 +286,7 @@ export const buildPipelineReport = (opts: {
     id: `pipeline-traces:${opts.runId}:${opts.attempt}`,
     kind: 'pipeline-traces',
     subject: { id: 'pipeline-traces', label: `Run ${opts.runId} · attempt ${opts.attempt}` },
-    status: counts.failure ? 'failure' : 'neutral',
+    status: (counts.failure ?? 0) > 0 ? 'failure' : 'neutral',
     title: 'Pipeline traces',
     summary: `${rows.length} jobs; ${counts.success ?? 0} successful, ${counts.failure ?? 0} failed, ${counts.cancelled ?? 0} cancelled, ${counts.skipped ?? 0} skipped`,
     createdAtUtc: opts.generatedAtUtc,
@@ -315,6 +327,7 @@ const githubJson = Effect.fn('ci-tools.pipeline-report.github-json')(function* <
   return yield* Schema.decodeEffect(opts.schema)(yield* response.json)
 })
 
+/** Reads bounded GitHub API pages and computes one final report record for a run attempt. */
 export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect')(
   function* (opts: {
     readonly repository: string
@@ -329,14 +342,19 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
   }) {
     const apiBaseUrl = (opts.apiBaseUrl ?? 'https://api.github.com').replace(/\/+$/u, '')
     const repoPath = opts.repository.split('/').map(encodeURIComponent).join('/')
-    const get = <T extends Schema.Schema<unknown>>(path: string, schema: T) =>
-      githubJson({ path, schema, token: opts.token, apiBaseUrl })
+    const get = <T extends Schema.Schema<unknown>>({
+      path,
+      schema,
+    }: {
+      readonly path: string
+      readonly schema: T
+    }) => githubJson({ path, schema, token: opts.token, apiBaseUrl })
     const jobs: PipelineJob[] = []
     for (let page = 1; ; page++) {
-      const payload = yield* get(
-        `/repos/${repoPath}/actions/runs/${opts.runId}/jobs?filter=all&per_page=100&page=${page}`,
-        JobsPage,
-      )
+      const payload = yield* get({
+        path: `/repos/${repoPath}/actions/runs/${opts.runId}/jobs?filter=all&per_page=100&page=${page}`,
+        schema: JobsPage,
+      })
       jobs.push(...payload.jobs)
       if (jobs.length >= payload.total_count || payload.jobs.length === 0) break
     }
@@ -352,10 +370,10 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     const baselines: { id: number; jobs: PipelineJob[] }[] = []
     let examined = 0
     for (let page = 1; ; page++) {
-      const payload = yield* get(
-        `/repos/${repoPath}/actions/runs?branch=main&event=push&status=completed&per_page=100&page=${page}`,
-        RunsPage,
-      )
+      const payload = yield* get({
+        path: `/repos/${repoPath}/actions/runs?branch=main&event=push&status=completed&per_page=100&page=${page}`,
+        schema: RunsPage,
+      })
       const candidates = payload.workflow_runs.filter(
         (run) =>
           run.workflow_id === opts.workflowId &&
@@ -367,15 +385,15 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
       for (const run of candidates) {
         if (
           baselines.length === maxBaselineRuns ||
-          [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7)
+          [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) === true
         )
           break
         const candidateJobs: PipelineJob[] = []
         for (let jobsPage = 1; ; jobsPage++) {
-          const response = yield* get(
-            `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${jobsPage}`,
-            JobsPage,
-          )
+          const response = yield* get({
+            path: `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${jobsPage}`,
+            schema: JobsPage,
+          })
           candidateJobs.push(...response.jobs.filter((job) => job.run_attempt === run.run_attempt))
           if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
         }
@@ -388,18 +406,23 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
           if (identity === undefined || job.conclusion !== 'success' || duration === undefined)
             continue
           const key = canonicalJobKey(identity).toString('hex')
-          if (candidateDurations.has(key)) duplicateKeys.add(key)
+          if (candidateDurations.has(key) === true) duplicateKeys.add(key)
           else candidateDurations.set(key, duration)
         }
         for (const key of candidateDurations.keys()) {
-          if (duplicateKeys.has(key) || !wantedKeys.has(key) || (counts[key] ?? 0) >= 7) continue
+          if (
+            duplicateKeys.has(key) === true ||
+            wantedKeys.has(key) === false ||
+            (counts[key] ?? 0) >= 7
+          )
+            continue
           counts[key] = (counts[key] ?? 0) + 1
         }
       }
       examined += payload.workflow_runs.length
       if (
         baselines.length === maxBaselineRuns ||
-        [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) ||
+        [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) === true ||
         examined >= payload.total_count ||
         payload.workflow_runs.length === 0
       )

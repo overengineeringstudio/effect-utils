@@ -149,6 +149,7 @@ const pipelineReportCollectCommand = Command.make(
   Command.withDescription('Collect current and main Jobs API facts into a Pipeline traces report'),
 )
 
+/** Collects a GitHub Actions run's job timings and renders its managed PR report record. */
 export const pipelineReportCommand = Command.make('pipeline-report').pipe(
   Command.withSubcommands([pipelineReportCollectCommand]),
   Command.withDescription('GitHub Jobs API pipeline report collector'),
