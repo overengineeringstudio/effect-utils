@@ -198,7 +198,7 @@ export const reconcileStandaloneCachePostureForInvocation = async ({
     env,
     deadlineMs,
   })
-  if (available) return true
+  if (available === true) return true
   if ((env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== '') {
     const message =
       'REAPI GetCapabilities failed for cache publisher; refusing to run without remote cache'
@@ -239,7 +239,7 @@ const probeRemoteCacheCapabilities = async ({
     if (address === undefined) return false
     const url = new URL(address)
     if (url.protocol !== 'grpc:' && url.protocol !== 'grpcs:') return false
-    const authority = `${tls || url.protocol === 'grpcs:' ? 'https' : 'http'}://${url.host}`
+    const authority = `${tls === true || url.protocol === 'grpcs:' ? 'https' : 'http'}://${url.host}`
     const name = Buffer.from(instanceName)
     const length: number[] = []
     let remaining = name.length
@@ -275,7 +275,7 @@ const probeRemoteCacheCapabilities = async ({
       const client = connect(authority)
       let settled = false
       const finish = (result: boolean) => {
-        if (settled) return
+        if (settled === true) return
         settled = true
         clearTimeout(timer)
         client.destroy()
