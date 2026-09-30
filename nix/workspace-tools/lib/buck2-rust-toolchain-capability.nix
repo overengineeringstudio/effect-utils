@@ -55,13 +55,18 @@ let
   };
   packages = lib.mapAttrs (
     name: package:
-    pkgs.writeShellScriptBin executableNames.${name} ''
-      ${lib.optionalString (name == "rust-linker" && pkgs.stdenv.hostPlatform.isLinux) ''
-        export NIX_DONT_SET_RPATH=1
-        export NIX_LDFLAGS=
-      ''}
-      exec ${lib.escapeShellArg "${package}/bin/${executableNames.${name}}"} "$@"
-    ''
+    # cargo_build_script uses this executable directly as a #! interpreter.
+    # Darwin's kernel cannot interpret a script whose interpreter is another script.
+    if name == "rust-shell" then
+      package
+    else
+      pkgs.writeShellScriptBin executableNames.${name} ''
+        ${lib.optionalString (name == "rust-linker" && pkgs.stdenv.hostPlatform.isLinux) ''
+          export NIX_DONT_SET_RPATH=1
+          export NIX_LDFLAGS=
+        ''}
+        exec ${lib.escapeShellArg "${package}/bin/${executableNames.${name}}"} "$@"
+      ''
   ) upstreamPackages;
   tools = lib.mapAttrs (name: package: "${package}/bin/${executableNames.${name}}") packages;
   identity = lib.concatStringsSep ";" (
