@@ -1,0 +1,1 @@
+{"fields":["a","b","c","d","e"],"integers":{"i64":{"bits":64,"signed":true},"u64":{"bits":64,"signed":false}},"owner":"Rust u64/i64"}
