@@ -770,6 +770,7 @@ in
       extraTests = [
         "devenv-modules:test"
         "genie:buck2:test"
+        "genie:rust-ci:test"
       ];
       packageConcurrency = 4;
       retainVitestJson = true;
@@ -979,6 +980,20 @@ in
       exec ${pkgs.bun}/bin/bun test src/*.test.ts
     ''
   );
+
+  tasks."genie:rust-ci:test" = {
+    description = "Run bootstrap-safe plain-flake Rust CI helper tests";
+    exec = trace.exec "genie:rust-ci:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun test genie/ci-workflow/rust.unit.test.ts
+    '';
+    execIfModified = [
+      "genie/ci-workflow/**/*.ts"
+      "genie/ci.ts"
+      "packages/@overeng/genie/src/runtime/**/*.ts"
+    ];
+  };
 
   # The Buck2 genie projection suite lives outside packages/@overeng, so the
   # per-package `test:<pkg>` tasks and the root Vitest projects list both miss
