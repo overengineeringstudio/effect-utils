@@ -46,29 +46,30 @@ Task-level durations are not included. Trace links may be empty while export, in
 
 \`\`\`mermaid
 gantt
-    title Pipeline jobs (from 2026-09-28T19:28:04.000Z)
-    dateFormat YYYY-MM-DDTHH:mm:ss.SSSZ
+    title Pipeline jobs (start 2026-09-28 19:28:04 UTC; axis in local time)
+    dateFormat YYYY-MM-DD HH:mm:ssZZ
     axisFormat %H:%M
+    todayMarker off
     section Jobs
-    lint (success) :job3, 2026-09-28T19:30:31.000Z, 2026-09-28T19:35:35.000Z
-    default-ref-policy (success) :job4, 2026-09-28T19:28:30.000Z, 2026-09-28T19:29:23.000Z
-    source-shape (success) :job5, 2026-09-28T19:32:00.000Z, 2026-09-28T19:32:11.000Z
-    test runner=namespace-profile-linux-x86-64 (success) :job6, 2026-09-28T19:32:00.000Z, 2026-09-28T19:49:48.000Z
-    test-playwright-utils (success) :job7, 2026-09-28T19:32:00.000Z, 2026-09-28T19:37:18.000Z
-    weaver (success) :job9, 2026-09-28T19:32:00.000Z, 2026-09-28T19:36:53.000Z
-    test runner=namespace-profile-macos-arm64 (success) :job10, 2026-09-28T19:28:22.000Z, 2026-09-28T19:56:21.000Z
-    pr-reviews-resolved (success) :job11, 2026-09-28T19:28:04.000Z, 2026-09-28T19:28:08.000Z
-    nix-closure-sizes (success) :job12, 2026-09-28T19:33:04.000Z, 2026-09-28T19:37:55.000Z
-    pnpm-regression (success) :job13, 2026-09-28T19:33:03.000Z, 2026-09-28T19:38:20.000Z
-    pnpm-builder-contract (success) :job14, 2026-09-28T19:34:01.000Z, 2026-09-28T19:37:41.000Z
-    test-integration-restate (success) :job15, 2026-09-28T19:33:03.000Z, 2026-09-28T19:40:47.000Z
-    typecheck (success) :job16, 2026-09-28T19:34:00.000Z, 2026-09-28T19:38:50.000Z
-    devenv-perf (cancelled) :job17, 2026-09-28T19:29:44.000Z, 2026-09-28T21:00:12.000Z
-    test-playwright-tui-react (success) :job18, 2026-09-28T19:33:04.000Z, 2026-09-28T19:39:37.000Z
-    bootstrap-cold-proof (success) :job19, 2026-09-28T19:34:00.000Z, 2026-09-28T19:37:10.000Z
-    bundle-smoke (success) :job20, 2026-09-28T19:35:00.000Z, 2026-09-28T19:39:58.000Z
-    test-megarepo-cold-gc (success) :job22, 2026-09-28T19:35:02.000Z, 2026-09-28T19:48:23.000Z
-    cargo (success) :job23, 2026-09-28T19:34:00.000Z, 2026-09-28T19:39:40.000Z
+    pr-reviews-resolved (success) :job11, 2026-09-28 19:28:04+0000, 4s
+    test runner=namespace-profile-macos-arm64 (success) :job10, 2026-09-28 19:28:22+0000, 1679s
+    default-ref-policy (success) :job4, 2026-09-28 19:28:30+0000, 53s
+    devenv-perf (cancelled) :done, job17, 2026-09-28 19:29:44+0000, 5428s
+    lint (success) :job3, 2026-09-28 19:30:31+0000, 304s
+    source-shape (success) :job5, 2026-09-28 19:32:00+0000, 11s
+    test runner=namespace-profile-linux-x86-64 (success) :job6, 2026-09-28 19:32:00+0000, 1068s
+    test-playwright-utils (success) :job7, 2026-09-28 19:32:00+0000, 318s
+    weaver (success) :job9, 2026-09-28 19:32:00+0000, 293s
+    pnpm-regression (success) :job13, 2026-09-28 19:33:03+0000, 317s
+    test-integration-restate (success) :job15, 2026-09-28 19:33:03+0000, 464s
+    nix-closure-sizes (success) :job12, 2026-09-28 19:33:04+0000, 291s
+    test-playwright-tui-react (success) :job18, 2026-09-28 19:33:04+0000, 393s
+    typecheck (success) :job16, 2026-09-28 19:34:00+0000, 290s
+    bootstrap-cold-proof (success) :job19, 2026-09-28 19:34:00+0000, 190s
+    cargo (success) :job23, 2026-09-28 19:34:00+0000, 340s
+    pnpm-builder-contract (success) :job14, 2026-09-28 19:34:01+0000, 220s
+    bundle-smoke (success) :job20, 2026-09-28 19:35:00+0000, 298s
+    test-megarepo-cold-gc (success) :job22, 2026-09-28 19:35:02+0000, 801s
 \`\`\`
 
 </details>
