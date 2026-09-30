@@ -655,6 +655,9 @@ in
   imports = [
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
+    (repoFlake.devenvModules.tasks.github-ruleset {
+      repo = "overengineeringstudio/effect-utils";
+    })
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
     (import ./nix/devenv-modules/otel.nix { traceShellEntry = false; })
     # Hermetic native-devenv + effect-utils task-tree capture. Ambient mode
@@ -1034,17 +1037,6 @@ in
       name = "bundle:smoke";
       targets = [ "effect_utils//packages/@overeng/pty-effect:bundle_smoke" ];
     };
-  };
-
-  tasks."gh:apply-settings" = {
-    after = [ "genie:run" ];
-    exec = trace.exec "gh:apply-settings" ''
-      set -euo pipefail
-      ruleset_id=$(gh api repos/overengineeringstudio/effect-utils/rulesets --jq '.[0].id')
-      gh api "repos/overengineeringstudio/effect-utils/rulesets/$ruleset_id" --method PUT --input .github/repo-settings.json
-      echo "Applied repo-settings.json to ruleset $ruleset_id"
-    '';
-    description = "Apply .github/repo-settings.json to GitHub ruleset";
   };
 
   tasks."cargo:test:buck2-foundation" = {

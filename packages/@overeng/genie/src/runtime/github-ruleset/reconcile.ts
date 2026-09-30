@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
+import { Schema } from 'effect'
+
 /** Whether to only report drift or update the remote ruleset in place. */
 export type RulesetMode = 'check' | 'apply'
 
@@ -219,14 +221,22 @@ const findRuleset = async ({
   return match
 }
 
-const ghJson = async ({
+/** Shared GitHub CLI transport; JSON bodies are sent on stdin, never temporary files. */
+export const ghJson = async ({
   endpoint,
   args = [],
+  body,
 }: {
   readonly endpoint: string
   readonly args?: ReadonlyArray<string>
+  readonly body?: unknown
 }): Promise<unknown> => {
-  const proc = Bun.spawn(['gh', 'api', endpoint, ...args], {
+  const inputArgs = body === undefined ? [] : ['--input', '-']
+  const proc = Bun.spawn(['gh', 'api', endpoint, ...args, ...inputArgs], {
+    stdin:
+      body === undefined
+        ? 'ignore'
+        : new TextEncoder().encode(Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))(body)),
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -242,5 +252,7 @@ const ghJson = async ({
     )
   }
 
-  return stdout.trim() === '' ? undefined : JSON.parse(stdout)
+  return stdout.trim() === ''
+    ? undefined
+    : Schema.decodeSync(Schema.fromJsonString(Schema.Unknown))(stdout)
 }
