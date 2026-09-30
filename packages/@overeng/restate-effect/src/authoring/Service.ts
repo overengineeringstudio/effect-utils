@@ -68,11 +68,7 @@ export type SuccessOf<C, M extends string> =
     : never
 /** The decoded declared-error type of `contract`'s handler `M` (`never` if none). */
 export type ErrorOf<C, M extends string> =
-  C extends Contract<any, infer H>
-    ? M extends keyof H
-      ? SpecError<H[M]>
-      : never
-    : never
+  C extends Contract<any, infer H> ? (M extends keyof H ? SpecError<H[M]> : never) : never
 /** The handler-name union of `contract`. */
 export type MethodsOf<C> = C extends Contract<any, infer H> ? keyof H & string : never
 
@@ -533,9 +529,7 @@ export type WorkflowRunSuccessOf<C> =
     : never
 /** The decoded `run` declared-error of a Workflow contract (`never` if none). */
 export type WorkflowRunErrorOf<C> =
-  C extends WorkflowContract<any, any, infer Run, any, any>
-    ? SpecError<Run>
-    : never
+  C extends WorkflowContract<any, any, infer Run, any, any> ? SpecError<Run> : never
 /** The combined signal+query map of a Workflow contract. */
 type WorkflowSignalQueryMap<C> =
   C extends WorkflowContract<any, any, any, infer Sig, infer Qry> ? Sig & Qry : never
