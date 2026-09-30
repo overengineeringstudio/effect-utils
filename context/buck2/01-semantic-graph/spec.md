@@ -113,7 +113,6 @@ Alias selection does not override individual Buck edges.
 This is per-consumer instantiation (decision q20); a repository-wide Cargo
 universe is a separate composition policy ([dotfiles#4220](https://github.com/schickling/dotfiles/issues/4220)).
 
-
 ## Conformance
 
 A binding or projector change must prove: equal input produces equal bytes;

@@ -254,7 +254,7 @@ describe('Cargo-resolved supply aliases', () => {
             alias: fixture.key,
           },
           {
-            manifestPath: virtual ? 'consumer/member/Cargo.toml' : 'consumer/Cargo.toml',
+            manifestPath: virtual === true ? 'consumer/member/Cargo.toml' : 'consumer/Cargo.toml',
             name: fixture.key,
             package: 'nix',
             version: '0.29.0',

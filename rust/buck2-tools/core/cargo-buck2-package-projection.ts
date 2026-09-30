@@ -335,7 +335,6 @@ const cargoBuck2PackageProjectionFor = ({
     repo,
     thirdPartyBuckPath,
     workspaceMembers,
-    workspaceRoot,
   } = definition
   const repoRoot = realpathSync(repo.rootPath)
   const projectionModulePath = validateAbsoluteRepoPath({
@@ -968,7 +967,7 @@ const cargoBuck2PackageProjectionFor = ({
       (foreign) =>
         resolveBuildScript({ member: foreign, packagePath: foreign.packagePath, repo }) ===
         undefined,
-    )
+    ) === true
       ? []
       : [
           'load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")',
@@ -1297,7 +1296,7 @@ const findCargoWorkspaceRoot = ({
   while (directory !== '.') {
     const candidate = `${directory}/Cargo.toml`
     if (
-      existsSync(repo.resolve(candidate)) &&
+      existsSync(repo.resolve(candidate)) === true &&
       (Bun.TOML.parse(repo.readText(candidate)) as CargoWorkspace).workspace !== undefined
     ) {
       return directory
@@ -1483,19 +1482,21 @@ const resolveDependency = ({
   }
   // Reindeer names a public alias after the rename only when the workspace root package
   // declares that rename; otherwise (and always in virtual workspaces) it carries the package name.
-  const dependencyKind = field.includes('dev-dependencies.')
-    ? 'dev'
-    : field.includes('build-dependencies.')
-      ? 'build'
-      : 'normal'
-  const dependencyTarget = field.startsWith('target.')
-    ? field.slice(
-        'target.'.length,
-        field.lastIndexOf(
-          `.${dependencyKind === 'normal' ? 'dependencies' : `${dependencyKind}-dependencies`}.`,
-        ),
-      )
-    : undefined
+  const dependencyKind =
+    field.includes('dev-dependencies.') === true
+      ? 'dev'
+      : field.includes('build-dependencies.') === true
+        ? 'build'
+        : 'normal'
+  const dependencyTarget =
+    field.startsWith('target.') === true
+      ? field.slice(
+          'target.'.length,
+          field.lastIndexOf(
+            `.${dependencyKind === 'normal' ? 'dependencies' : `${dependencyKind}-dependencies`}.`,
+          ),
+        )
+      : undefined
   const resolved = context.cargoResolution?.dependencies.find(
     (dependency) =>
       dependency.manifestPath === member.manifestPath &&
@@ -1610,9 +1611,10 @@ const resolveMemberPathDependency = ({
   return {
     defaultFeatures: request.defaultFeatures,
     features: request.features,
-    label: context.foreignPackageByPath.has(dependencyPath)
-      ? `//${context.foreignTargetPackage}:${foreignTargetName(dependencyMember)}`
-      : `//${dependencyPath}:lib`,
+    label:
+      context.foreignPackageByPath.has(dependencyPath) === true
+        ? `//${context.foreignTargetPackage}:${foreignTargetName(dependencyMember)}`
+        : `//${dependencyPath}:lib`,
     name: dependencyName,
     ...(request.optional === true ? { optional: true as const } : {}),
     requestSource,
@@ -2115,11 +2117,9 @@ const dependenciesNamed = ({
 /** Cargo validates every declared feature item, enabled or not. */
 const validateFeatureItem = ({
   state,
-  feature,
   item,
 }: {
   readonly state: MemberFeatures
-  readonly feature: string
   readonly item: string
 }): void => {
   const slash = item.indexOf('/')
@@ -2172,7 +2172,7 @@ const resolveWorkspaceFeatures = ({
 
   const memberPathsByLabel = new Map(
     members.map((member) => [
-      context.foreignPackageByPath.has(member.packagePath)
+      context.foreignPackageByPath.has(member.packagePath) === true
         ? `//${context.foreignTargetPackage}:${foreignTargetName(member)}`
         : `//${member.packagePath}:lib`,
       member.packagePath,
@@ -2342,8 +2342,8 @@ const resolveWorkspaceFeatures = ({
   }
 
   for (const state of states.values()) {
-    for (const [feature, items] of Object.entries(state.declared)) {
-      for (const item of items) validateFeatureItem({ state, feature, item })
+    for (const items of Object.values(state.declared)) {
+      for (const item of items) validateFeatureItem({ state, item })
     }
   }
   for (const state of states.values()) {
