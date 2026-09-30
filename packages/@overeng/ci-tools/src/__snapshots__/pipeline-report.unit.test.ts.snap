@@ -46,9 +46,10 @@ Task-level durations are not included. Trace links may be empty while export, in
 
 \`\`\`mermaid
 gantt
-    title Pipeline jobs (from 2026-09-28T19:28:04.000Z)
+    title Pipeline jobs (UTC, from 2026-09-28 19:28:04)
     dateFormat YYYY-MM-DD HH:mm:ss
     axisFormat %H:%M
+    todayMarker off
     section Jobs
     pr-reviews-resolved (success) :job11, 2026-09-28 19:28:04, 4s
     test runner=namespace-profile-macos-arm64 (success) :job10, 2026-09-28 19:28:22, 1679s

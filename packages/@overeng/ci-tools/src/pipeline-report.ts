@@ -314,9 +314,10 @@ export const buildPipelineReport = (opts: {
       ? undefined
       : [
           'gantt',
-          `    title Pipeline jobs (from ${new Date(earliest).toISOString()})`,
+          `    title Pipeline jobs (UTC, from ${new Date(earliest).toISOString().slice(0, 19).replace('T', ' ')})`,
           '    dateFormat YYYY-MM-DD HH:mm:ss',
           '    axisFormat %H:%M',
+          '    todayMarker off',
           '    section Jobs',
           ...bars.toSorted((a, b) => a.start - b.start).map((bar) => `    ${bar.text}`),
         ].join('\n')
