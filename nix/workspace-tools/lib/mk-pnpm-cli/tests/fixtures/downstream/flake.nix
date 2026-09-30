@@ -327,10 +327,17 @@
               touch "$out"
             '';
         checks.pnpm-prepared-bin-semantics =
-          pkgs.runCommand "pnpm-prepared-bin-semantics" { nativeBuildInputs = [ pkgs.nodejs_24 pkgs.yq-go ]; } ''
-            bash ${effectUtilsSource}/nix/workspace-tools/lib/tests/pnpm-prepared-bin-semantics.sh ${effectUtilsSource}
-            touch "$out"
-          '';
+          pkgs.runCommand "pnpm-prepared-bin-semantics"
+            {
+              nativeBuildInputs = [
+                pkgs.nodejs_24
+                pkgs.yq-go
+              ];
+            }
+            ''
+              bash ${effectUtilsSource}/nix/workspace-tools/lib/tests/pnpm-prepared-bin-semantics.sh ${effectUtilsSource}
+              touch "$out"
+            '';
         # Lockfile-derived directories must stay canonical and beneath the
         # lockfile directory; `..` anywhere (including one that would dodge the
         # source-input check), empty segments, absolute paths, undecodable escapes
