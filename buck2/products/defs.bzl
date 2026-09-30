@@ -1,7 +1,7 @@
 """Language-neutral portable build-product packaging contract."""
 
 load("//buck2/materialization.bzl", "PackageTreeInfo")
-load("//buck2/package_tools.bzl", "JavaScriptModuleInfo")
+load("//buck2/package_tools.bzl", "JavaScriptModuleInfo", "PackageCommandRuntimeInfo", "package_command_runtime_inputs")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
@@ -24,12 +24,6 @@ def _validate_product_name(value):
         if character not in allowed:
             fail("javascript_product product_name contains an unsupported character: {}".format(character))
 
-def _runner(ctx):
-    return cmd_args(
-        ctx.attrs._runner[DefaultInfo].default_outputs[0],
-        format = "{}/package-command-runner.ts",
-    )
-
 
 def _javascript_product_impl(ctx):
     _validate_product_name(ctx.attrs.product_name)
@@ -38,7 +32,7 @@ def _javascript_product_impl(ctx):
     toolchain = ctx.attrs._bun[BunToolchainInfo]
     args = cmd_args([
         toolchain.executable,
-        _runner(ctx),
+        package_command_runtime_inputs(ctx),
         "product-descriptor",
         "--descriptor",
         descriptor.as_output(),
@@ -85,7 +79,7 @@ _javascript_product = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
     },
 )
@@ -262,7 +256,7 @@ def _bun_compiled_product_executable_impl(ctx):
         cmd_args(
             [
                 bundler.executable,
-                _runner(ctx),
+                package_command_runtime_inputs(ctx),
                 "compile-executable",
                 "--module", module.module,
                 "--module-descriptor", module.descriptor,
@@ -314,7 +308,7 @@ _bun_compiled_product_executable = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
     },
 )

@@ -342,6 +342,9 @@ export const catalog = defineCatalog({
   // Build tools
   // TypeScript 7's npm package provides the native compiler plus its process-backed unstable API.
   typescript: '7.0.2',
+  // Pure-JS parser for build-time bundle rewrites (TypeScript 7 has no in-process parser).
+  acorn: '8.18.0',
+  'acorn-walk': '8.3.5',
   // TypeScript 7 removed its classic in-process JSONC helper; this is VS Code's zero-dependency parser.
   'jsonc-parser': '3.3.1',
   '@playwright/test': '1.63.0',

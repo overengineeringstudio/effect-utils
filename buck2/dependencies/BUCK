@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:1de3c05169c5318394bb4140f533a6e3567d6a8a9f14e9507229b75c41473179
+# Store fingerprint: sha256:4e320be1b2d22dc8e405782e8c0f30f8409f50f1ed9ddb752ebdf4f776d2da6d
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -3809,6 +3809,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/acorn-jsx/-/acorn-jsx-5.3.2.tgz",
     sha256 = "d967b05e40c5396a56d70e0d3150477b969cb6cc1058d68bc2b95ab0159158cc",
     size_bytes = 7635,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_acorn_walk_8_3_5_71dffb6ee59a",
+    package_name = "acorn-walk",
+    url = "https://registry.npmjs.org/acorn-walk/-/acorn-walk-8.3.5.tgz",
+    sha256 = "4ee2ff737c58ac95afb2969a3c6134ffc1e78a99e178e75ba54c602aa4d3ffcd",
+    size_bytes = 9793,
     bins = {
     },
 )
@@ -11954,6 +11964,17 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_acorn_walk_8_3_5_71dffb6ee59a",
+    package = ":package_acorn_walk_8_3_5_71dffb6ee59a",
+    store_key = "acorn-walk@8.3.5",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+        "acorn": ":entry_acorn_8_18_0_c7901d4af178",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_acorn_8_18_0_c7901d4af178",
     package = ":package_acorn_8_18_0_c7901d4af178",
     store_key = "acorn@8.18.0",
@@ -16804,6 +16825,8 @@ pnpm_store_view(
     direct = {
         "@types/bun": "@types+bun@1.4.2",
         "@types/node": "@types+node@26.5.0",
+        "acorn": "acorn@8.18.0",
+        "acorn-walk": "acorn-walk@8.3.5",
         "typescript": "typescript@7.0.2",
         "vitest": "vitest@4.1.9_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@4.1.9_happy-dom@20._f830263be88a0e28",
     },
@@ -16832,6 +16855,8 @@ pnpm_store_view(
             "@vitest+snapshot@4.1.9": ":entry_vitest_snapshot_4_1_9_ec932be7c07c",
             "@vitest+spy@4.1.9": ":entry_vitest_spy_4_1_9_2406448ba679",
             "@vitest+utils@4.1.9": ":entry_vitest_utils_4_1_9_3bc12a2806d5",
+            "acorn-walk@8.3.5": ":entry_acorn_walk_8_3_5_71dffb6ee59a",
+            "acorn@8.18.0": ":entry_acorn_8_18_0_c7901d4af178",
             "assertion-error@2.0.1": ":entry_assertion_error_2_0_1_a366b9348753",
             "buffer-image-size@0.6.4": ":entry_buffer_image_size_0_6_4_22c01178368e",
             "bun-types@1.4.2": ":entry_bun_types_1_4_2_258616998fcf",
@@ -16904,6 +16929,8 @@ pnpm_store_view(
             "@vitest+snapshot@4.1.9": ":entry_vitest_snapshot_4_1_9_ec932be7c07c",
             "@vitest+spy@4.1.9": ":entry_vitest_spy_4_1_9_2406448ba679",
             "@vitest+utils@4.1.9": ":entry_vitest_utils_4_1_9_3bc12a2806d5",
+            "acorn-walk@8.3.5": ":entry_acorn_walk_8_3_5_71dffb6ee59a",
+            "acorn@8.18.0": ":entry_acorn_8_18_0_c7901d4af178",
             "assertion-error@2.0.1": ":entry_assertion_error_2_0_1_a366b9348753",
             "buffer-image-size@0.6.4": ":entry_buffer_image_size_0_6_4_22c01178368e",
             "bun-types@1.4.2": ":entry_bun_types_1_4_2_258616998fcf",
@@ -16977,6 +17004,8 @@ pnpm_store_view(
             "@vitest+snapshot@4.1.9": ":entry_vitest_snapshot_4_1_9_ec932be7c07c",
             "@vitest+spy@4.1.9": ":entry_vitest_spy_4_1_9_2406448ba679",
             "@vitest+utils@4.1.9": ":entry_vitest_utils_4_1_9_3bc12a2806d5",
+            "acorn-walk@8.3.5": ":entry_acorn_walk_8_3_5_71dffb6ee59a",
+            "acorn@8.18.0": ":entry_acorn_8_18_0_c7901d4af178",
             "assertion-error@2.0.1": ":entry_assertion_error_2_0_1_a366b9348753",
             "buffer-image-size@0.6.4": ":entry_buffer_image_size_0_6_4_22c01178368e",
             "bun-types@1.4.2": ":entry_bun_types_1_4_2_258616998fcf",
@@ -17050,6 +17079,8 @@ pnpm_store_view(
             "@vitest+snapshot@4.1.9": ":entry_vitest_snapshot_4_1_9_ec932be7c07c",
             "@vitest+spy@4.1.9": ":entry_vitest_spy_4_1_9_2406448ba679",
             "@vitest+utils@4.1.9": ":entry_vitest_utils_4_1_9_3bc12a2806d5",
+            "acorn-walk@8.3.5": ":entry_acorn_walk_8_3_5_71dffb6ee59a",
+            "acorn@8.18.0": ":entry_acorn_8_18_0_c7901d4af178",
             "assertion-error@2.0.1": ":entry_assertion_error_2_0_1_a366b9348753",
             "buffer-image-size@0.6.4": ":entry_buffer_image_size_0_6_4_22c01178368e",
             "bun-types@1.4.2": ":entry_bun_types_1_4_2_258616998fcf",
@@ -17099,6 +17130,7 @@ pnpm_store_view(
         },
     },
     bins = {
+        "acorn": "acorn@8.18.0\tbin/acorn",
         "tsc": "typescript@7.0.2\tbin/tsc",
         "vitest": "vitest@4.1.9_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@4.1.9_happy-dom@20._f830263be88a0e28\tvitest.mjs",
     },

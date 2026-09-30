@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:49cfe97d484dffab22398117ff79540c0ecf3d6d136039cd660fafbfc28c0878",
+  "lockfileFingerprint": "sha256:5531f630ad827452b5b61c2436a223658574f3e31922e297f51aa4fac1b6fbee",
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
@@ -3395,6 +3395,15 @@
       "sha256": "d967b05e40c5396a56d70e0d3150477b969cb6cc1058d68bc2b95ab0159158cc",
       "sizeBytes": 7635
     },
+    "acorn-walk@8.3.5": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-HEHNfbars9v4pgpW6SO1KSPkfoS0xVOM/9UzkJltjlsHZmJasxg8aXkuZa7SMf8vKGIBhpUsPluQSqhJFCqebw==",
+      "packageIdentity": "acorn-walk@8.3.5",
+      "registryUrl": "https://registry.npmjs.org/acorn-walk/-/acorn-walk-8.3.5.tgz",
+      "sha256": "4ee2ff737c58ac95afb2969a3c6134ffc1e78a99e178e75ba54c602aa4d3ffcd",
+      "sizeBytes": 9793
+    },
     "acorn@8.18.0": {
       "bins": {
         "acorn": "bin/acorn"
@@ -6685,5 +6694,5 @@
       "sizeBytes": 4529
     }
   },
-  "fingerprint": "sha256:c39a4bce661c38495008b49137c9f75b4c0388720ba939812c72abc2ab0d0544"
+  "fingerprint": "sha256:c645a38631d606aa48411c5d86cde960e4a7b6905a9c56056b30b4590e9a113f"
 }
