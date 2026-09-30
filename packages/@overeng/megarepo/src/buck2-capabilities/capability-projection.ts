@@ -267,23 +267,6 @@ const resolveNixProjectionInput = async (
   if (outputInfo.isDirectory() === false) {
     throw new TypeError(`capability output must be a directory: ${input.capability.toolId}`)
   }
-  const isDirectory = 'kind' in input.capability
-  const executablePath = isDirectory
-    ? undefined
-    : await realpath(NodePath.join(outputRoot, input.capability.executable))
-  if (executablePath !== undefined) {
-    const executableInfo = await stat(executablePath)
-    if (
-      executableInfo.isFile() === false ||
-      (executablePath !== outputRoot &&
-        executablePath.startsWith(`${outputRoot}${NodePath.sep}`) === false)
-    ) {
-      throw new TypeError(
-        `capability executable escapes its Nix output: ${input.capability.toolId}`,
-      )
-    }
-    await access(executablePath, 1)
-  }
   const closureStorePaths = [
     ...new Set(
       (await readFile(input.closurePathsFile, 'utf8'))
@@ -294,7 +277,7 @@ const resolveNixProjectionInput = async (
   if (closureStorePaths.includes(outputRoot) === false) {
     throw new TypeError(`capability closure omits its Nix output: ${input.capability.toolId}`)
   }
-  if (executablePath === undefined) {
+  if ('kind' in input.capability) {
     return {
       kind: 'directory',
       capability: input.capability,
@@ -302,6 +285,16 @@ const resolveNixProjectionInput = async (
       closureStorePaths,
     }
   }
+  const executablePath = await realpath(NodePath.join(outputRoot, input.capability.executable))
+  const executableInfo = await stat(executablePath)
+  if (
+    executableInfo.isFile() === false ||
+    (executablePath !== outputRoot &&
+      executablePath.startsWith(`${outputRoot}${NodePath.sep}`) === false)
+  ) {
+    throw new TypeError(`capability executable escapes its Nix output: ${input.capability.toolId}`)
+  }
+  await access(executablePath, 1)
   return {
     kind: 'executable',
     capability: input.capability,
