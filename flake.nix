@@ -206,7 +206,7 @@ rec {
           semconv-model = semconv-model-capability;
         };
         buck2Rules = import ./nix/buck2-rules {
-          inherit pkgs buck2;
+          inherit pkgs buck2 pnpmArchives;
           src = rootPath;
         };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {

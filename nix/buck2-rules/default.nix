@@ -2,6 +2,7 @@
   pkgs,
   buck2,
   src,
+  pnpmArchives,
 }:
 
 let
@@ -40,6 +41,15 @@ pkgs.runCommand "buck2-rules"
       mkdir -p "$out/${builtins.dirOf path}"
       cp ${lib.escapeShellArg "${src}/${path}"} "$out/${lib.escapeShellArg path}"
     '') files}
+    # The published rules cell has no pnpm store view: stage the two pinned,
+    # pure-JavaScript parser packages as a self-contained runner source tree.
+    for package in acorn acorn-walk; do
+      mkdir -p "$out/packages/@overeng/buck2-tools/node_modules/$package"
+    done
+    tar -xzf ${pnpmArchives.passthru.archivesByIdentity."acorn@8.18.0"} \
+      --strip-components=1 -C "$out/packages/@overeng/buck2-tools/node_modules/acorn"
+    tar -xzf ${pnpmArchives.passthru.archivesByIdentity."acorn-walk@8.3.5"} \
+      --strip-components=1 -C "$out/packages/@overeng/buck2-tools/node_modules/acorn-walk"
     cp ${./inventory.json} "$out/inventory.json"
     cat > "$out/BUCK" <<'BUCK'
     alias(
@@ -87,6 +97,8 @@ pkgs.runCommand "buck2-rules"
     BUCK
     mkdir -p "$out/packages/@overeng/buck2-tools"
     cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
+    load("//buck2/package_tools.bzl", "package_command_runtime")
+
     filegroup(
         name = "package_tree_runtime",
         srcs = {
@@ -97,12 +109,23 @@ pkgs.runCommand "buck2-rules"
     )
 
     filegroup(
-        name = "package_command_runtime",
+        name = "package_command_runtime_files",
         srcs = {
             "package-command-runner.ts": "src/package-command-runner.ts",
             "real-path.ts": "src/real-path.ts",
             "typescript-runner.ts": "src/typescript-runner.ts",
+            "node_modules/acorn/package.json": "node_modules/acorn/package.json",
+            "node_modules/acorn/dist/acorn.mjs": "node_modules/acorn/dist/acorn.mjs",
+            "node_modules/acorn-walk/package.json": "node_modules/acorn-walk/package.json",
+            "node_modules/acorn-walk/dist/walk.mjs": "node_modules/acorn-walk/dist/walk.mjs",
         },
+        visibility = ["PUBLIC"],
+    )
+
+    package_command_runtime(
+        name = "package_command_runtime",
+        files = ":package_command_runtime_files",
+        vendored_files = ":package_command_runtime_files",
         visibility = ["PUBLIC"],
     )
 

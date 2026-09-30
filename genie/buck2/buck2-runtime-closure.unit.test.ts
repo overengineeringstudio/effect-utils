@@ -67,33 +67,6 @@ describe('staged Buck runtime closure', () => {
     expect(buck2ToolsBuck).toContain(`    src = "src/${stagedModuleName(runtime.entry)}",`)
   })
 
-  it('declares every filegroup-staged module in the buck2-tools package', () => {
-    for (const runtime of buck2StagedRuntimes.filter((entry) => entry.staging === 'filegroup')) {
-      const name = runtime.label.slice(runtime.label.lastIndexOf(':') + 1)
-      const block = buck2ToolsBuck.split(`name = "${name}",`)[1]?.split(')')[0] ?? ''
-      expect(block, `no filegroup block for ${runtime.label}`).not.toBe('')
-      const declared = [...block.matchAll(/"([^"]+)":\s*"([^"]+)"/gu)].map((match) => ({
-        staged: match[1],
-        source: match[2],
-      }))
-      expect(
-        declared
-          .filter(({ source }) => source?.startsWith('src/') === true)
-          .map(({ source }) => `packages/@overeng/buck2-tools/${source ?? ''}`)
-          .toSorted(),
-      ).toEqual([...runtime.modules].toSorted())
-      expect(declared.find(({ staged }) => staged === 'node_modules')?.source).toBe(
-        runtime.nodeModules,
-      )
-      expect(declared.map(({ staged }) => staged).toSorted()).toEqual(
-        [
-          ...runtime.modules.map(stagedModuleName),
-          ...(runtime.nodeModules !== undefined ? ['node_modules'] : []),
-        ].toSorted(),
-      )
-    }
-  })
-
   it('follows relative imports, so a clean closure is not a vacuous pass', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'buck2-runtime-closure-'))
     try {

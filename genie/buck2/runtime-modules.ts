@@ -105,11 +105,21 @@ const renderRuntime = (runtime: Buck2StagedRuntime): string => {
     runtime.nodeModules === undefined
       ? ''
       : `\n        "node_modules": ${JSON.stringify(runtime.nodeModules)},`
-  return `filegroup(
-    name = ${JSON.stringify(name)},
+  const filesName = runtime.nodeModules === undefined ? name : `${name}_files`
+  const filegroup = `filegroup(
+    name = ${JSON.stringify(filesName)},
     srcs = {
 ${sources}${nodeModules}
     },
+    visibility = ["PUBLIC"],
+)`
+  if (runtime.nodeModules === undefined) return filegroup
+  return `${filegroup}
+
+package_command_runtime(
+    name = ${JSON.stringify(name)},
+    files = ":${filesName}",
+    dependency_view = ${JSON.stringify(runtime.nodeModules)},
     visibility = ["PUBLIC"],
 )`
 }
@@ -119,5 +129,8 @@ export const withBuck2ToolsRuntimes = <TData>(projection: GenieOutput<TData>): G
   createGenieOutput({
     ...projection,
     stringify: (context) =>
-      `${projection.stringify(context)}\n${buck2StagedRuntimes.map(renderRuntime).join('\n\n')}\n`,
+      `load("//buck2/package_tools.bzl", "package_command_runtime")
+${projection.stringify(context)}
+${buck2StagedRuntimes.map(renderRuntime).join('\n\n')}
+`,
   })

@@ -1,6 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
+load("//buck2/package_tools.bzl", "package_command_runtime")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
@@ -182,13 +183,20 @@ filegroup(
 )
 
 filegroup(
-    name = "package_command_runtime",
+    name = "package_command_runtime_files",
     srcs = {
         "package-command-runner.ts": "src/package-command-runner.ts",
         "real-path.ts": "src/real-path.ts",
         "typescript-runner.ts": "src/typescript-runner.ts",
         "node_modules": ":node_modules",
     },
+    visibility = ["PUBLIC"],
+)
+
+package_command_runtime(
+    name = "package_command_runtime",
+    files = ":package_command_runtime_files",
+    dependency_view = ":node_modules",
     visibility = ["PUBLIC"],
 )
 

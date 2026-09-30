@@ -11,6 +11,11 @@ JavaScriptModuleInfo = provider(fields = {
     "dependency_closure_identity": str,
 })
 
+PackageCommandRuntimeInfo = provider(fields = {
+    "runtime": Artifact,
+    "read_roots": provider_field(list[Artifact]),
+})
+
 
 
 PackageCheckInfo = provider(fields = {
@@ -37,18 +42,33 @@ def _relative(value, field):
         if part in ["", ".", ".."]:
             fail("{} must be a normalized relative path: {}".format(field, value))
 
+def _package_command_runtime_impl(ctx):
+    view = ctx.attrs.dependency_view
+    vendored_files = ctx.attrs.vendored_files
+    if (view == None and vendored_files == None) or (view != None and vendored_files != None):
+        fail("package_command_runtime requires exactly one declared or vendored dependency closure")
+    runtime = ctx.attrs.files[DefaultInfo].default_outputs[0]
+    read_roots = view[PnpmDeclaredClosureInfo].read_roots if view != None else vendored_files[DefaultInfo].default_outputs
+    return [
+        DefaultInfo(default_output = runtime),
+        PackageCommandRuntimeInfo(runtime = runtime, read_roots = read_roots),
+    ]
+
+package_command_runtime = rule(
+    impl = _package_command_runtime_impl,
+    attrs = {
+        "files": attrs.dep(providers = [DefaultInfo]),
+        "dependency_view": attrs.option(attrs.dep(providers = [PnpmDeclaredClosureInfo]), default = None),
+        "vendored_files": attrs.option(attrs.dep(providers = [DefaultInfo]), default = None),
+    },
+)
+
 def package_command_runtime_inputs(ctx):
-    """Stages the runner and every destination of its linked dependency view."""
-    runtime = cmd_args(
-        ctx.attrs._runner[DefaultInfo].default_outputs[0],
-        format = "{}/package-command-runner.ts",
-    )
-    # The staged node_modules view links into pnpm store-entry artifacts. A
-    # filegroup stages only the view itself; consumers must also declare every
-    # symlink destination as an action input under deferred materialization.
+    """Stages a runner and the read roots of its declared parser closure."""
+    runner = ctx.attrs._runner[PackageCommandRuntimeInfo]
     return cmd_args(
-        runtime,
-        hidden = ctx.attrs._runner_node_modules[PnpmDeclaredClosureInfo].read_roots,
+        cmd_args(runner.runtime, format = "{}/package-command-runner.ts"),
+        hidden = runner.read_roots,
     )
 
 def _runner_args(ctx, mode, output = None):
@@ -118,11 +138,7 @@ package_bin_check = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
-        )),
-        "_runner_node_modules": attrs.default_only(attrs.dep(
-            default = "//packages/@overeng/buck2-tools:node_modules",
-            providers = [PnpmDeclaredClosureInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
@@ -159,11 +175,7 @@ package_bin_build = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
-        )),
-        "_runner_node_modules": attrs.default_only(attrs.dep(
-            default = "//packages/@overeng/buck2-tools:node_modules",
-            providers = [PnpmDeclaredClosureInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
@@ -224,11 +236,7 @@ package_bin = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
-        )),
-        "_runner_node_modules": attrs.default_only(attrs.dep(
-            default = "//packages/@overeng/buck2-tools:node_modules",
-            providers = [PnpmDeclaredClosureInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
@@ -340,11 +348,7 @@ _package_bin_artifact = rule(
         ),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
-        )),
-        "_runner_node_modules": attrs.default_only(attrs.dep(
-            default = "//packages/@overeng/buck2-tools:node_modules",
-            providers = [PnpmDeclaredClosureInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",

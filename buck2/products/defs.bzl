@@ -1,8 +1,7 @@
 """Language-neutral portable build-product packaging contract."""
 
-load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
-load("//buck2/package_tools.bzl", "JavaScriptModuleInfo", "package_command_runtime_inputs")
+load("//buck2/package_tools.bzl", "JavaScriptModuleInfo", "PackageCommandRuntimeInfo", "package_command_runtime_inputs")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
@@ -80,11 +79,7 @@ _javascript_product = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
-        )),
-        "_runner_node_modules": attrs.default_only(attrs.dep(
-            default = "//packages/@overeng/buck2-tools:node_modules",
-            providers = [PnpmDeclaredClosureInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
     },
 )
@@ -313,11 +308,7 @@ _bun_compiled_product_executable = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
-        )),
-        "_runner_node_modules": attrs.default_only(attrs.dep(
-            default = "//packages/@overeng/buck2-tools:node_modules",
-            providers = [PnpmDeclaredClosureInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
     },
 )
