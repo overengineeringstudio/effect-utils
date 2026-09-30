@@ -110,6 +110,12 @@ Rust admission converges through the same provider and platform contracts;
 complete-lock Nix vendoring remains the transitional packaging boundary until
 products cross the bridge (BUCK-R10, roadmap Phase 5).
 
+`cargo_build_script` writes a launcher whose shebang is the projected
+`rust-shell` executable (EXEC-R02). That capability exposes the native
+`pkgs.bash` binary directly, not a `writeShellScriptBin` wrapper: macOS cannot
+execute a script when its shebang interpreter is another script. Other Rust
+tool wrappers remain separate, including the Linux linker environment.
+
 ## Compiled JavaScript Executables
 
 `bun_compiled_product_executable` refines EXEC-R01, EXEC-R02, EXEC-R06,
