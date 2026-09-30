@@ -14,9 +14,7 @@
  * Separating capture from comparison — capture writes a named directory,
  * comparison is an offline pass over directories — is the real repair, and it
  * would make "this claim rests on these capture sets" expressible directly
- * instead of narrated. It is deliberately NOT attempted here: this change
- * repairs the readiness signal, and one semantic change at a time is what keeps
- * a measurement attributable to the thing that caused it.
+ * instead of narrated. That protocol remains outside this runner's contract.
  *
  * @module
  */
@@ -39,10 +37,14 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { StringDecoder } from 'node:string_decoder'
 import { fileURLToPath } from 'node:url'
 
+import { diff as countMismatchedPixels } from '@blazediff/core'
+import { PNG } from 'pngjs'
+
 import { storyGateReportEnvVar, storyGateRunCompleteMarker } from './completion-reporter.ts'
 import {
   excludedStoryMarker,
   settledStoryMarker,
+  storyScreenshotComparatorOptions,
   type StorySettleRecord,
   storySettleConfig,
   unsettledStoryMarker,
@@ -614,6 +616,37 @@ const countThemeVariation = ({
 }
 
 /**
+ * Use the same comparator and threshold as the browser's screenshot assertion.
+ * PNG encoding bytes and subpixel anti-aliasing can vary while the screenshot
+ * still passes the actual pixel contract. Dimensions and structural differences
+ * must continue to count as nondeterminism.
+ */
+export const sameScreenshotPixels = ({
+  referencePng,
+  actualPng,
+}: {
+  referencePng: Buffer
+  actualPng: Buffer
+}): boolean => {
+  const reference = PNG.sync.read(referencePng)
+  const actual = PNG.sync.read(actualPng)
+  if (reference.width !== actual.width || reference.height !== actual.height) return false
+  return (
+    countMismatchedPixels(
+      reference.data,
+      actual.data,
+      undefined,
+      reference.width,
+      reference.height,
+      {
+        threshold: storyScreenshotComparatorOptions.threshold,
+        includeAA: storyScreenshotComparatorOptions.includeAA,
+      },
+    ) === storyScreenshotComparatorOptions.allowedMismatchedPixels
+  )
+}
+
+/**
  * Split a set of same-tree captures three ways: reproduced everywhere, differed
  * on the second capture, differed only on the third.
  *
@@ -643,9 +676,12 @@ const countThemeVariation = ({
 export const classifyStability = ({
   captures,
   captureMs,
+  sameVisualCapture,
 }: {
   captures: readonly Map<string, string>[]
   captureMs: readonly number[]
+  /** Called only for byte-different captures; indices start at zero for the first probe. */
+  sameVisualCapture?: (storyKey: string, laterCaptureIndex: number) => boolean
 }): StoryGateReport['stability'] => {
   const keys = new Set(captures.flatMap((capture) => [...capture.keys()]))
   const differedOnSecond: string[] = []
@@ -660,8 +696,17 @@ export const classifyStability = ({
     }
     const hash = captures[0]?.get(key)
     let firstDiffering = -1
-    for (const [index, capture] of captures.slice(1).entries()) {
-      if (capture.get(key) !== hash && firstDiffering === -1) firstDiffering = index
+    for (
+      let captureIndex = 1;
+      captureIndex < captures.length && firstDiffering === -1;
+      captureIndex += 1
+    ) {
+      if (
+        captures[captureIndex]!.get(key) !== hash &&
+        sameVisualCapture?.(key, captureIndex) !== true
+      ) {
+        firstDiffering = captureIndex - 1
+      }
     }
     if (firstDiffering === -1) reproduced += 1
     else if (firstDiffering === 0) differedOnSecond.push(key)
@@ -1181,6 +1226,24 @@ interface VitestJsonAssertion {
   readonly file?: string
 }
 
+/**
+ * Collection failures have no assertions, so comparing only executed stories
+ * silently drops an entire CSF module from both sides of a baseline.
+ */
+export const assertCaptureCollectionComplete = (
+  testResults: readonly {
+    readonly name?: string
+    readonly collectionErrors?: readonly string[]
+  }[],
+): void => {
+  const failed = testResults.flatMap((file) =>
+    (file.collectionErrors ?? []).map((error) => `${file.name ?? '<unknown>'}: ${error}`),
+  )
+  if (failed.length !== 0) {
+    throw new Error(`[story-gate] Failed to collect story modules:\n${failed.join('\n')}`)
+  }
+}
+
 const parseAssertions = ({
   reportFile,
   output,
@@ -1194,9 +1257,11 @@ const parseAssertions = ({
   const report = JSON.parse(readFileSync(reportFile, 'utf8')) as {
     readonly testResults?: readonly {
       readonly name?: string
+      readonly collectionErrors?: readonly string[]
       readonly assertionResults?: readonly VitestJsonAssertion[]
     }[]
   }
+  assertCaptureCollectionComplete(report.testResults ?? [])
   return (report.testResults ?? []).flatMap((file) => {
     if (file.name === undefined) return file.assertionResults ?? []
     // Hoisted: one basename per FILE rather than per assertion, and assigning
@@ -1857,9 +1922,15 @@ export const runStoryGate = async ({
       } satisfies BaselineCaptureEvidence),
     )
 
+    const captureDirs = [...probeDirs, baselineDir]
     const measured = classifyStability({
-      captures: [...probeDirs.map(hashCaptures), hashCaptures(baselineDir)],
+      captures: captureDirs.map(hashCaptures),
       captureMs,
+      sameVisualCapture: (key, laterCaptureIndex) =>
+        sameScreenshotPixels({
+          referencePng: readFileSync(join(captureDirs[0]!, key)),
+          actualPng: readFileSync(join(captureDirs[laterCaptureIndex]!, key)),
+        }),
     })
     writeFileSync(stabilityPath, JSON.stringify(measured))
     for (const probeDir of probeDirs) rmSync(probeDir, { recursive: true, force: true })

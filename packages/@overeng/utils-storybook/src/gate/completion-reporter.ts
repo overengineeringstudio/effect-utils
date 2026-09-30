@@ -27,6 +27,7 @@ interface StoryGateReporterAssertion {
 interface StoryGateReporterResult {
   readonly name: string
   readonly assertionResults: readonly StoryGateReporterAssertion[]
+  readonly collectionErrors: readonly string[]
 }
 
 /** Minimal report shape consumed by the derived-baseline runner. */
@@ -38,6 +39,9 @@ export interface StoryGateReporterOutput {
 export const storyGateReporterOutput = (testModules: TestModules): StoryGateReporterOutput => ({
   testResults: testModules.map((module) => ({
     name: module.moduleId,
+    collectionErrors: module
+      .errors()
+      .map((error) => error.stack ?? error.message ?? JSON.stringify(error)),
     assertionResults: [...module.children.allTests()].map((test) => {
       const result = test.result()
       return {

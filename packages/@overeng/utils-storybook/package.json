@@ -37,6 +37,10 @@
       "default": "./src/gate/setup.ts"
     }
   },
+  "dependencies": {
+    "@blazediff/core": "1.9.1",
+    "pngjs": "7.0.0"
+  },
   "devDependencies": {
     "@effect/opentelemetry": "4.0.0-rc.118",
     "@effect/platform-node": "4.0.0-rc.118",
@@ -47,6 +51,7 @@
     "@storybook/addon-a11y": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",
+    "@types/pngjs": "6.0.5",
     "@types/react": "19.2.18",
     "@vitest/browser": "4.1.9",
     "@vitest/browser-playwright": "4.1.9",
