@@ -561,7 +561,9 @@ export const translatePnpmLock = ({
     unmatchedWorkspacePatches.length === 0
       ? workspacePatches
       : Object.fromEntries(
-          sortedEntries(workspacePatches).filter(([identity]) => lockedPatches[identity] !== undefined),
+          sortedEntries(workspacePatches).filter(
+            ([identity]) => lockedPatches[identity] !== undefined,
+          ),
         )
 
   const packageRecords = recordField({
