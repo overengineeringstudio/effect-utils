@@ -68,9 +68,11 @@ const cargoMetadata = ({
 
 const metadata = cargoMetadata({ manifest: path.join(workspace, 'Cargo.toml'), locked: true })
 const byId = new Map(metadata.packages.map((entry) => [entry.id, entry]))
+// Cargo preserves symlink spellings in manifest_path; compare physical paths
+// on both sides without changing package IDs or the authoritative Cargo graph.
 const externalPaths = metadata.packages
   .filter((entry) => entry.source === null && !metadata.workspace_members.includes(entry.id))
-  .map((entry) => entry.manifest_path)
+  .map((entry) => realpathSync(entry.manifest_path))
 const declarationPath = path.join(workspace, 'foreign-packages.json')
 if (existsSync(declarationPath) === false) {
   if (externalPaths.length > 0) {
@@ -106,12 +108,7 @@ for (const manifestPath of foreignPaths) {
   if (resolved.startsWith(`${root}${path.sep}`) === false) {
     throw new Error(`foreign package manifest escapes repository: ${manifestPath}`)
   }
-  const packageInfo = metadata.packages.find((entry) => entry.manifest_path === resolved)
-  if (
-    packageInfo === undefined ||
-    packageInfo.source !== null ||
-    externalPaths.includes(resolved) === false
-  ) {
+  if (externalPaths.includes(resolved) === false) {
     throw new Error(
       `foreign package is absent from the external path dependency graph: ${manifestPath}`,
     )
