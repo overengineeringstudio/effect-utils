@@ -29,6 +29,7 @@ const Run = Schema.Struct({
   workflow_id: Schema.Finite,
 })
 const RunsPage = Schema.Struct({ total_count: Schema.Finite, workflow_runs: Schema.Array(Run) })
+const WorkflowIdentity = Schema.Struct({ workflow_id: Schema.Finite })
 export type PipelineJob = typeof Job.Type
 export type PipelineRun = typeof Run.Type
 
@@ -188,7 +189,7 @@ export const buildPipelineReport = (opts: {
     return { id: baseline.id, durations }
   })
 
-  const baselineRunIds = new Set<number>()
+  const baselineRunIds = opts.baselines.map((baseline) => baseline.id)
   const counts: Record<string, number> = {}
   let omittedBars = 0
   const bars: string[] = []
@@ -206,7 +207,6 @@ export const buildPipelineReport = (opts: {
         const duration = baseline.durations.get(identityKey)
         if (duration === undefined) continue
         samples.push(duration)
-        baselineRunIds.add(baseline.id)
         if (samples.length === 7) break
       }
     }
@@ -276,7 +276,7 @@ export const buildPipelineReport = (opts: {
     rows,
     ...(gantt === undefined ? {} : { gantt }),
     omittedBars,
-    baselineRunIds: [...baselineRunIds],
+    baselineRunIds,
     baselineCounts,
     counts,
   }
@@ -333,7 +333,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     readonly repository: string
     readonly runId: number
     readonly attempt: number
-    readonly workflowId: number
+    readonly workflowId?: number
     readonly token: string
     readonly grafanaBaseUrl: string
     readonly generatedAtUtc: string
@@ -349,6 +349,12 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
       readonly path: string
       readonly schema: T
     }) => githubJson({ path, schema, token: opts.token, apiBaseUrl })
+    const workflowId =
+      opts.workflowId ??
+      (yield* get({
+        path: `/repos/${repoPath}/actions/runs/${opts.runId}`,
+        schema: WorkflowIdentity,
+      })).workflow_id
     const jobs: PipelineJob[] = []
     for (let page = 1; ; page++) {
       const payload = yield* get({
@@ -376,7 +382,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
       })
       const candidates = payload.workflow_runs.filter(
         (run) =>
-          run.workflow_id === opts.workflowId &&
+          run.workflow_id === workflowId &&
           run.head_branch === 'main' &&
           run.event === 'push' &&
           run.status === 'completed' &&

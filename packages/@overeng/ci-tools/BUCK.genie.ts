@@ -44,6 +44,13 @@ export const buck2TypeScriptAdmission = {
         'src/workflow-report.e2e.test.ts',
       ],
     },
+    {
+      name: 'test_pipeline_report_local_api',
+      runner: 'bun',
+      testFiles: ['src/pipeline-report.integration.test.ts'],
+      tools: { BUN_BIN: '//buck2/toolchains:tool_bun' },
+      labels: ['local-only'],
+    },
   ],
 } as const satisfies Buck2TypeScriptAdmission
 

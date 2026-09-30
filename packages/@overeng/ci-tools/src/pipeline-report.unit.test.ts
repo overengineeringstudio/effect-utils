@@ -13,6 +13,7 @@ import {
 import { deriveJobTraceId } from './pipeline-trace-identity.ts'
 import {
   deriveWorkflowReportManagedState,
+  extractWorkflowReportManagedState,
   renderWorkflowReportCommentBody,
   type WorkflowReportRecord,
 } from './workflow-report.ts'
@@ -75,6 +76,25 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
         (row) => row.job === 'typecheck',
       )?.delta,
     ).toMatch(/^[+-]\d+\.\ds \(-?\d+\.\d%; n=7\)$/u)
+  })
+
+  it('lists selected main runs even when none supplies an admissible duration', () => {
+    const typecheck = options.jobs.find((job) => job.name === 'typecheck')!
+    const report = buildPipelineReport({
+      ...options,
+      baselines: [
+        { id: baselineIds[0]!, jobs: [] },
+        { id: baselineIds[1]!, jobs: [{ ...typecheck, conclusion: 'failure' }] },
+      ],
+    })
+    const data = report.data!
+    expect(data.baselineRunIds).toEqual(baselineIds.slice(0, 2))
+    expect((data.baselineCounts as Record<string, number>).typecheck).toBe(0)
+    expect(
+      (data.rows as readonly { job: string; delta: string }[]).find(
+        (row) => row.job === 'typecheck',
+      )?.delta,
+    ).toBe('no main baseline')
   })
 
   it('leaves unknown provider names without trace or baseline; skipped and unfinished jobs never acquire a duration', () => {
@@ -176,6 +196,65 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     const body = render(buildPipelineReport({ ...options, grafanaBaseUrl: '' }))
     expect(body).toContain('`a0123456789abcdef0123456789abcde` (link unavailable)')
     expect(body).not.toContain('[Explore](')
+  })
+
+  it('replaces old pipeline records instead of growing the embedded comment state', () => {
+    const record = buildPipelineReport(options)
+    const priorState = deriveWorkflowReportManagedState({
+      stateId: 'pipeline-traces',
+      entryId: 'old-run/1',
+      entryLabel: 'Old run',
+      createdAtUtc: options.generatedAtUtc,
+      records: [record],
+    })
+    const currentState = deriveWorkflowReportManagedState({
+      stateId: 'pipeline-traces',
+      priorState,
+      entryId: 'new-run/1',
+      entryLabel: 'New run',
+      createdAtUtc: options.generatedAtUtc,
+      records: [{ ...record, id: 'pipeline-traces:new-run:1' }],
+    })
+    const body = renderWorkflowReportCommentBody({
+      title: 'Pipeline traces',
+      noRecordsMessage: 'Jobs API report unavailable.',
+      state: currentState,
+    })
+    expect(body).not.toContain('old-run/1')
+    expect(extractWorkflowReportManagedState(body)?.entries.map((entry) => entry.entryId)).toEqual([
+      'new-run/1',
+    ])
+    expect(extractWorkflowReportManagedState(body)?.entries[0]?.records[0]?.data).toBeUndefined()
+  })
+
+  it('bounds the 29-job comment before GitHub rejection while noting omitted table rows', () => {
+    const report = buildPipelineReport(options)
+    const data = report.data!
+    const rows = data.rows as readonly { job: string; traceUrl?: string }[]
+    expect(rows).toHaveLength(29)
+    const oversized = {
+      ...report,
+      data: {
+        ...data,
+        rows: rows.map((row) =>
+          Object.assign({}, row, {
+            traceUrl: `https://grafana.example.test/explore?${'x'.repeat(4_000)}`,
+          }),
+        ),
+      },
+    }
+    const body = render(oversized)
+    expect(body.length).toBeLessThanOrEqual(60_000)
+    expect(body).toMatch(/\d+ additional job row\(s\) omitted to fit the GitHub comment limit\./u)
+    expect(body).toContain('<summary>Pipeline timeline</summary>')
+    expect(extractWorkflowReportManagedState(body)?.entries[0]?.records[0]?.data).toBeUndefined()
+
+    const hugeTimeline = render({
+      ...report,
+      data: { ...data, gantt: `gantt\n${'x'.repeat(70_000)}` },
+    })
+    expect(hugeTimeline.length).toBeLessThanOrEqual(60_000)
+    expect(hugeTimeline).toContain('Pipeline timeline omitted to fit the GitHub comment limit.')
   })
 
   it('renders the managed comment with a collapsed timeline', () => {

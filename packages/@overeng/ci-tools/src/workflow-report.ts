@@ -591,7 +591,7 @@ export const deriveWorkflowReportManagedState = (opts: {
     )
   }
 
-  const maxEntries = opts.maxEntries ?? 50
+  const maxEntries = opts.stateId === 'pipeline-traces' ? 1 : (opts.maxEntries ?? 50)
   const priorState =
     opts.priorState ??
     decodeWorkflowReportManagedState({
@@ -626,13 +626,18 @@ export const deriveWorkflowReportManagedState = (opts: {
     ...priorState.entries.filter((entry) => entry.entryId !== opts.entryId),
   ].slice(0, maxEntries)
 
-  const recordOrder = [
-    ...new Set([
-      ...opts.records.map((record) => record.subject.id),
-      ...priorState.recordOrder,
-      ...priorState.entries.flatMap((entry) => entry.records.map((record) => record.subject.id)),
-    ]),
-  ]
+  const recordOrder =
+    opts.stateId === 'pipeline-traces'
+      ? [...new Set(opts.records.map((record) => record.subject.id))]
+      : [
+          ...new Set([
+            ...opts.records.map((record) => record.subject.id),
+            ...priorState.recordOrder,
+            ...priorState.entries.flatMap((entry) =>
+              entry.records.map((record) => record.subject.id),
+            ),
+          ]),
+        ]
 
   return decodeWorkflowReportManagedState({
     _tag: 'WorkflowReportManagedState',
@@ -694,7 +699,12 @@ const renderRecordsTable = (records: readonly WorkflowReportRecord[], timeZone: 
   ),
 ]
 
-const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
+const renderPipelineTraces = (opts: {
+  readonly record: WorkflowReportRecord
+  readonly maxRows?: number | undefined
+  readonly includeGantt?: boolean | undefined
+}): string[] => {
+  const { record } = opts
   if (record.kind !== 'pipeline-traces')
     return [escapeMarkdownTableCell(record.summary ?? 'Jobs API report unavailable')]
   const data = record.data
@@ -702,6 +712,7 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
     throw new Error('Pipeline traces report rows are missing')
   }
   const rows = data.rows as readonly Record<string, unknown>[]
+  const visibleRows = opts.maxRows === undefined ? rows : rows.slice(0, opts.maxRows)
   const escaped = (value: unknown): string =>
     escapeMarkdownTableCell(String(value ?? 'unavailable'))
       .replaceAll('<', '&lt;')
@@ -711,7 +722,7 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
     '',
     '| Job | Status | Wall time | Delta vs main p50 | Trace |',
     '| --- | --- | --- | --- | --- |',
-    ...rows.map((row) => {
+    ...visibleRows.map((row) => {
       const trace =
         typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl) === true
           ? `[Explore](${row.traceUrl})`
@@ -720,6 +731,12 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
             : 'unavailable'
       return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
     }),
+    ...(visibleRows.length === rows.length
+      ? []
+      : [
+          `${rows.length - visibleRows.length} additional job row(s) omitted to fit the GitHub comment limit.`,
+          '',
+        ]),
     '',
     `Main baseline samples (by job): ${
       Object.entries(data.baselineCounts ?? {})
@@ -729,7 +746,7 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
     `Selected main run IDs: ${Array.isArray(data.baselineRunIds) === true ? data.baselineRunIds.map(escaped).join(', ') || 'none' : 'none'}.`,
     'Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.',
   ]
-  if (typeof data.gantt === 'string') {
+  if (typeof data.gantt === 'string' && opts.includeGantt !== false) {
     lines.push(
       '',
       '<details>',
@@ -742,6 +759,9 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
       '</details>',
     )
   }
+  if (typeof data.gantt === 'string' && opts.includeGantt === false) {
+    lines.push('', 'Pipeline timeline omitted to fit the GitHub comment limit.')
+  }
   if (typeof data.omittedBars === 'number' && data.omittedBars > 0) {
     lines.push(
       '',
@@ -751,11 +771,33 @@ const renderPipelineTraces = (record: WorkflowReportRecord): string[] => {
   return lines
 }
 
+// The pipeline comment replaces its entry each run; keep only identity metadata in the
+// hidden state, not a second copy of the table and gantt already visible in the comment.
+const embeddedWorkflowReportState = (
+  state: WorkflowReportManagedState,
+): WorkflowReportManagedState =>
+  state.stateId === 'pipeline-traces'
+    ? {
+        ...state,
+        entries: state.entries.slice(0, 1).map((entry) =>
+          Object.assign({}, entry, {
+            records: entry.records.map((record) => {
+              const stored = { ...record }
+              delete stored.data
+              return stored
+            }),
+          }),
+        ),
+      }
+    : state
+
 const renderWorkflowReportCommentBodyUnbounded = (opts: {
   readonly title: string
   readonly noRecordsMessage: string
   readonly state: WorkflowReportManagedState
   readonly includeHistory?: boolean
+  readonly maxPipelineRows?: number
+  readonly includePipelineGantt?: boolean
 }) => {
   const latestBySubject = new Map<string, WorkflowReportRecord>()
   for (const entry of opts.state.entries) {
@@ -776,7 +818,17 @@ const renderWorkflowReportCommentBodyUnbounded = (opts: {
   )
   const visibleLines =
     pipelineRecords.length > 0
-      ? [`## ${opts.title}`, '', ...pipelineRecords.flatMap(renderPipelineTraces)]
+      ? [
+          `## ${opts.title}`,
+          '',
+          ...pipelineRecords.flatMap((record) =>
+            renderPipelineTraces({
+              record,
+              maxRows: opts.maxPipelineRows,
+              includeGantt: opts.includePipelineGantt,
+            }),
+          ),
+        ]
       : latestRecords.length === 0
         ? [`## ${opts.title}`, '', opts.noRecordsMessage]
         : [
@@ -801,7 +853,7 @@ const renderWorkflowReportCommentBodyUnbounded = (opts: {
                   '</details>',
                 ]),
           ]
-  return `${visibleLines.join('\n')}\n\n${renderWorkflowReportManagedState(opts.state)}\n`
+  return `${visibleLines.join('\n')}\n\n${renderWorkflowReportManagedState(embeddedWorkflowReportState(opts.state))}\n`
 }
 
 const githubCommentBodyMaxLength = 65_536
@@ -828,6 +880,47 @@ export const renderWorkflowReportCommentBody = (opts: {
     ...opts,
     state: { ...opts.state, entries: retainedEntries },
   })
+  if (
+    opts.state.stateId === 'pipeline-traces' &&
+    body.length > workflowReportCommentBodyMaxLength
+  ) {
+    const rows = retainedEntries[0]?.records.find((record) => record.kind === 'pipeline-traces')
+      ?.data?.rows
+    if (Array.isArray(rows) === true) {
+      let low = 0
+      let high = rows.length - 1
+      let fitted: string | undefined
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2)
+        const candidate = renderWorkflowReportCommentBodyUnbounded({
+          ...opts,
+          state: { ...opts.state, entries: retainedEntries },
+          maxPipelineRows: middle,
+        })
+        if (candidate.length <= workflowReportCommentBodyMaxLength) {
+          fitted = candidate
+          low = middle + 1
+        } else high = middle - 1
+      }
+      if (fitted !== undefined) return fitted
+    }
+
+    const noGantt = renderWorkflowReportCommentBodyUnbounded({
+      ...opts,
+      state: { ...opts.state, entries: retainedEntries },
+      maxPipelineRows: 0,
+      includePipelineGantt: false,
+    })
+    if (noGantt.length <= workflowReportCommentBodyMaxLength) return noGantt
+
+    // Pathological provider text must still leave a managed, updateable comment.
+    const emptyState: WorkflowReportManagedState = {
+      ...opts.state,
+      recordOrder: [],
+      entries: [],
+    }
+    return `## Pipeline traces\n\nReport details exceeded the GitHub comment limit.\n\n${renderWorkflowReportManagedState(emptyState)}\n`
+  }
   if (body.length > githubCommentBodyMaxLength) {
     throw new Error(
       `Current workflow report entry exceeds the GitHub comment limit (${body.length} > ${githubCommentBodyMaxLength} characters)`,

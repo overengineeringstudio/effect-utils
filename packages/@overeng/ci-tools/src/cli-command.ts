@@ -94,7 +94,10 @@ const pipelineReportCollectCommand = Command.make(
       Options.withDescription('Current workflow attempt number'),
     ),
     workflowId: Options.Int('workflow-id').pipe(
-      Options.withDescription('GitHub workflow ID for main-run selection'),
+      Options.withDescription(
+        'Optional GitHub workflow ID; otherwise resolve from the current run',
+      ),
+      Options.optional,
     ),
     grafanaBaseUrl: Options.String('grafana-base-url').pipe(
       Options.withDescription('Grafana origin; without it trace IDs remain visible but unlinked'),
@@ -119,7 +122,7 @@ const pipelineReportCollectCommand = Command.make(
         repository,
         runId,
         attempt,
-        workflowId,
+        ...(Option.isSome(workflowId) === true ? { workflowId: workflowId.value } : {}),
         grafanaBaseUrl,
         apiBaseUrl,
         generatedAtUtc,

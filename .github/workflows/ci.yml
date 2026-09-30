@@ -9234,12 +9234,12 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
       - name: Publish Pipeline traces
         shell: bash
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

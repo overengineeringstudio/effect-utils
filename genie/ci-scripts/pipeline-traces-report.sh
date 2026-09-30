@@ -10,12 +10,10 @@ set -euo pipefail
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 ci_tools="${CI_TOOLS_BIN:-$(nix build .#ci-tools-compiled --no-link --print-out-paths)/bin/ci-tools}"
-workflow_id="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --jq .workflow_id)"
 "$ci_tools" pipeline-report collect \
   --repository "$GH_REPO" \
   --run-id "$GITHUB_RUN_ID" \
   --attempt "$GITHUB_RUN_ATTEMPT" \
-  --workflow-id "$workflow_id" \
   --grafana-base-url "${GRAFANA_BASE_URL:-}" \
   --output-path "$scratch/record.jsonl" > "$scratch/collect.log"
 "$ci_tools" workflow-report collect-bundle \
