@@ -43,6 +43,9 @@ experiments (as tested hypotheses).
   pin (v1.37.0) catching up to the now-RC CICD set and on a coordinated
   rename across the spool, exporter, and dashboards. The build path must
   not carry two schemes indefinitely.
+- Blocks: replacement of the remaining `ci.*` keys in
+  [05 OTLP delivery](./05-otlp-delivery/spec.md) and downstream dashboards.
+  The [roadmap](./roadmap.md) tracks the coordinated migration.
 
 ## OQ5: Collector access — resolved
 
@@ -64,6 +67,8 @@ experiments (as tested hypotheses).
   [issue #1394](https://github.com/overengineeringstudio/effect-utils/issues/1394)
   with the study's evidence; the event-log adapter crate lands in the same
   Rust workspace.
+- The [roadmap](./roadmap.md) tracks the remaining rewrite slices; issue
+  #1394 owns implementation scope rather than a design decision in this lane.
 - **Findings for other owners (q8):** serial `tsgo_emit` chain and 8-slot
   contention ([02-execution](../02-execution/open-questions.md)), uncached
   editor bootstrap and the publish tail
@@ -71,3 +76,48 @@ experiments (as tested hypotheses).
   service upload/materialization latency
   ([04-reuse](../04-reuse/open-questions.md)). Recorded there; this lane owns
   only their measurement.
+
+## OQ7: How can task-level PR reads be isolated? — open, not gating
+
+- Blocks: task duration, action critical path, and per-task seven-run baselines
+  in [06 trace access](./06-trace-access/spec.md). The
+  [roadmap](./roadmap.md) already records the separate Tempo buck2 tenant and
+  authenticated read proxy. Resolve the writer/Grafana cutover and proxy
+  policy that binds CI identity to this repository's run/attempt and
+  allowlisted aggregates, forbids arbitrary TraceQL and caller-supplied
+  tenant headers, and measures complete matching task spans from seven
+  successful main runs before changing the PR report.
+
+## OQ8: Is Tempo readback complete across spaced bursts? — open upstream, not gating
+
+- Blocks: relying on readback across spaced writes in
+  [05 OTLP delivery](./05-otlp-delivery/spec.md). Tempo 3.0.3 can lose tail
+  spans when bursts are read between writes
+  ([grafana/tempo#8002](https://github.com/grafana/tempo/issues/8002)).
+  The single job-end export burst mitigates the observed pattern; upstream
+  resolution and a spaced-burst readback measurement would close the question.
+
+## OQ9: Does Tempo 3.1 shut down cleanly after sustained uptime? — open
+
+- Blocks: reliable switches that restart the Tempo service owned outside
+  this lane. Tempo 3.0.3 can hang on SIGTERM after roughly an hour when
+  live-store complete queues stop, causing a switch to fail and roll back.
+  [grafana/tempo#7983](https://github.com/grafana/tempo/issues/7983) is
+  closed with a fix in v3.1.0-rc.1; upgrade to 3.1 and re-measure shutdown
+  and switch behavior after comparable uptime.
+
+## OQ10: What policy admits labeled forks to export? — open
+
+- Blocks: extending the fork spool-only policy in
+  [05 OTLP delivery](./05-otlp-delivery/spec.md). Resolve who can apply or
+  remove the gating label, how the job verifies that decision without trusting
+  fork-controlled input, and what network permission a labeled fork receives
+  before allowing any collector export.
+
+## OQ11: How can local hosts export by default? — open
+
+- Blocks: default local export in
+  [05 OTLP delivery](./05-otlp-delivery/spec.md). Local runs currently
+  export only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Resolve
+  endpoint discovery and safe behavior for hosts without collector access,
+  without routing local telemetry to an unintended endpoint.
