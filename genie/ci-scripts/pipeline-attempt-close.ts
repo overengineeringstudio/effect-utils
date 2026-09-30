@@ -4,7 +4,7 @@ import {
   type WorkflowRun,
 } from '../../packages/@overeng/ci-tools/src/pipeline-attempt-close.ts'
 
-const api = async <A>(route: string, token: string): Promise<A> => {
+const api = async <A>({ route, token }: { route: string; token: string }): Promise<A> => {
   const response = await fetch(`https://api.github.com/repos/${route}`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -12,7 +12,7 @@ const api = async <A>(route: string, token: string): Promise<A> => {
       'X-GitHub-Api-Version': '2022-11-28',
     },
   })
-  if (!response.ok) throw new Error(`Jobs API ${response.status}: ${route}`)
+  if (response.ok === false) throw new Error(`Jobs API ${response.status}: ${route}`)
   return (await response.json()) as A
 }
 
@@ -24,24 +24,25 @@ export const finalizeAttempt = async (input: {
   spool: string
 }) => {
   const { repository, runId, attempt, token, spool } = input
-  const run = await api<WorkflowRun>(`${repository}/actions/runs/${runId}`, token)
+  const run = await api<WorkflowRun>({ route: `${repository}/actions/runs/${runId}`, token })
   const jobs: Job[] = []
   for (let page = 1; ; page++) {
-    const response = await api<{ jobs: Job[] }>(
-      `${repository}/actions/runs/${runId}/attempts/${attempt}/jobs?per_page=100&page=${page}`,
+    // oxlint-disable-next-line no-await-in-loop -- The next page is needed only when this page is full.
+    const response = await api<{ jobs: Job[] }>({
+      route: `${repository}/actions/runs/${runId}/jobs?filter=latest&per_page=100&page=${page}`,
       token,
-    )
+    })
     jobs.push(...response.jobs)
     if (response.jobs.length < 100) break
   }
   const id = `ci/github/${encodeURIComponent(repository)}/${runId}/${attempt}`
-  const { traceId, jobLinks, payload } = closePayload(
-    id,
+  const { traceId, jobLinks, payload } = closePayload({
+    runId: id,
     attempt,
     jobs,
     run,
-    new Date().toISOString(),
-  )
+    closedAt: new Date().toISOString(),
+  })
   await Bun.write(`${spool}/spans/pipeline-close.jsonl`, `${JSON.stringify(payload)}\n`)
   console.log(`pipeline close run=${id} trace=${traceId} unverified_job_links=${jobLinks}`)
 }

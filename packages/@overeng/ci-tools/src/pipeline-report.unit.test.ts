@@ -223,6 +223,54 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     )
   })
 
+  it('keeps latest jobs from a partial rerun at their own trace attempts and baseline durations', () => {
+    const name = 'test (namespace-profile-linux-x86-64)'
+    const steps = [pipelineIdentityStepName, pipelineDevenvStepName, pipelineExportStepName].map(
+      (stepName) => ({ name: stepName, status: 'completed', conclusion: 'success' }),
+    )
+    const previous = { ...options.jobs.find((job) => job.name === name)!, run_attempt: 1, steps }
+    const rerun = {
+      ...options.jobs.find((job) => job.name === 'typecheck')!,
+      run_attempt: 2,
+      steps,
+    }
+    const report = buildPipelineReport({
+      ...options,
+      attempt: 2,
+      jobs: [previous, rerun],
+      baselines: [
+        {
+          id: baselineIds[0]!,
+          jobs: [
+            baselines[0]!.jobs.find((job) => job.name === name)!,
+            baselines[0]!.jobs.find((job) => job.name === 'typecheck')!,
+          ],
+        },
+      ],
+      traceIdForJob: (runId, identity) => deriveJobTraceId({ runId, ...identity }),
+    })
+    const rows = report.data!.rows as readonly PipelineRow[]
+    expect(rows).toHaveLength(2)
+    expect(
+      rows.find((row) => row.job === 'test[runner=namespace-profile-linux-x86-64]')?.traceId,
+    ).toBe(
+      deriveJobTraceId({
+        runId: `ci/github/overengineeringstudio%2Feffect-utils/${options.runId}/1`,
+        ...pipelineJobIdentityForName(name)!,
+      }),
+    )
+    expect(rows.find((row) => row.job === 'typecheck')?.traceId).toBe(
+      deriveJobTraceId({
+        runId: `ci/github/overengineeringstudio%2Feffect-utils/${options.runId}/2`,
+        ...pipelineJobIdentityForName('typecheck')!,
+      }),
+    )
+    expect(report.data!.baselineCounts).toMatchObject({
+      typecheck: 1,
+      'test[runner=namespace-profile-linux-x86-64]': 1,
+    })
+  })
+
   it('uses the exact by-ID Grafana URL and rejects malformed trace IDs', () => {
     expect(
       pipelineGrafanaTraceUrl({

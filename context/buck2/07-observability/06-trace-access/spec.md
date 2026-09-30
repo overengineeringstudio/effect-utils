@@ -16,7 +16,7 @@ Draft.
 
 ```text
 PR attempt close (after build jobs settle)
-  ├─ Jobs API: current attempt jobs (all pages)         -> job table + gantt
+  ├─ Jobs API: latest execution of each job (all pages)  -> job table + gantt
   ├─ Workflow Runs API: newest completed successful main pushes (at most 20)
   │    └─ Jobs API: each selected run's jobs            -> p50 baseline
   └─ 01 deterministic job trace IDs + Grafana base URL -> Explore links
@@ -33,8 +33,10 @@ rows and the baseline.
 
 ## Job Facts
 
-Read the current workflow run's jobs for its **current attempt**, following
-pagination and filtering `run_attempt`. Map each Jobs API `name` through
+Read the current workflow run's jobs with `filter=latest`, following
+pagination so partial reruns retain jobs that last ran in earlier attempts.
+Use each job's `run_attempt` for its trace identity and attempt-close link.
+Map each Jobs API `name` through
 [01's finite generated-workflow name mapping](../01-run-identity/spec.md)
 to its job identifier and named matrix dimensions before deriving the
 canonical `K` bytes. Reject duplicate or unrecognized names rather than
@@ -78,9 +80,11 @@ of a fabricated delta. Compare like-for-like matrix-qualified keys rather
 than provider display order or run number. Main runs remain the source
 even after Tempo retention.
 
+Each GitHub API GET has a 20-second timeout and retries transient 5xx, 429, network failures and timeouts with at most three bounded exponential backoffs, respecting `Retry-After` when it fits the retry budget. Collection has a 90-second deadline: on expiry, workflow metadata or main-run listing failure, render the current jobs with an explicit baseline-incomplete reason and the samples already collected; if a selected main run's jobs remain unavailable, omit its samples, retain its ID in the skipped-run audit and report the reduced `n`.
+
 ## Gantt
 
-Render a Mermaid `gantt` inside a collapsed `<details>` block in the comment when at least one job has a start time. Its axis starts at the earliest observed job start in the attempt. Each completed job bar spans `started_at` to `completed_at`; an unfinished job extends to the report generation time with an `unfinished` label; skipped and never-started jobs appear in the table only. Bar labels contain job key and conclusion; external names are sanitized for Mermaid syntax. Show a textual note for omitted rows so a missing bar is not read as zero duration.
+Render a Mermaid `gantt` inside a collapsed `<details>` block in the comment when at least one job has a start time. Its axis starts at the earliest observed latest job start. Each completed job bar spans `started_at` to `completed_at`; an unfinished job extends to the report generation time with an `unfinished` label; skipped and never-started jobs appear in the table only. Bar labels contain job key and conclusion; external names are sanitized for Mermaid syntax. Show a textual note for omitted rows so a missing bar is not read as zero duration.
 
 ## Deterministic Grafana Links
 
@@ -98,7 +102,7 @@ For each executed job with a 01 job trace ID, construct:
 
 ## Comment Contract
 
-The existing sticky comment gets one Buck2 observability section, replacing the section for the same run attempt. The ci-tools workflow-report table renderer produces the job table; the reporter adds no per-job workflow outputs or other YAML to build jobs. The section shows summary counts, the job table, the collapsed gantt, baseline notes (`n` and selected run IDs), and a statement that task-level durations are not included. It never embeds GitHub tokens, fleet endpoints, or raw Tempo query results. A missing Jobs API response renders an explicit failure note and leaves the Buck result unchanged. Forks keep the workflow's no-write guard.
+The existing sticky comment gets one Buck2 observability section, replacing the section for the same run attempt. The ci-tools workflow-report table renderer produces the job table; the reporter adds no per-job workflow outputs or other YAML to build jobs. The section shows summary counts, the job table, the collapsed gantt, baseline notes (`n` and selected and skipped run IDs), and a statement that task-level durations are not included. It never embeds GitHub tokens, fleet endpoints, or raw Tempo query results. Missing current-run jobs render an explicit failure note and leave the Buck result unchanged; missing baseline jobs do not suppress the table. Forks keep the workflow's no-write guard.
 
 ## Conformance
 

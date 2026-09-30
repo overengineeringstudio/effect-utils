@@ -12,7 +12,7 @@ const job = (name: string, attempt: number, started: string | null) => ({
   completed_at: started,
 })
 
-test('attempt close links only uniquely matched started jobs in this attempt, without claiming persistence', () => {
+test('attempt close links latest jobs from each job’s own attempt without claiming persistence', () => {
   const { traceId, payload } = closePayload({
     runId: run,
     attempt: 2,
@@ -32,7 +32,7 @@ test('attempt close links only uniquely matched started jobs in this attempt, wi
   expect(root.traceId).toBe(traceId)
   expect(root.startTimeUnixNano).toBe('1790676060000000000') // this attempt's first job, not the prior run's creation
   expect(root.endTimeUnixNano).toBe('1790676720000000000')
-  expect(root.links).toHaveLength(3) // two started jobs and previous attempt root
+  expect(root.links).toHaveLength(4) // three started jobs and previous attempt root
   expect(root.links[0]!.traceId).toBe(
     deriveJobTraceId({
       runId: run,
@@ -43,9 +43,16 @@ test('attempt close links only uniquely matched started jobs in this attempt, wi
   expect(root.links[1]!.traceId).toBe(
     deriveJobTraceId({ runId: run, job: 'typecheck', dimensions: {} }),
   )
+  expect(root.links[2]!.traceId).toBe(
+    deriveJobTraceId({
+      runId: 'ci/github/overengineeringstudio%2Feffect-utils/421/1',
+      job: 'lint',
+      dimensions: {},
+    }),
+  )
   expect(
     root.links
-      .slice(0, 2)
+      .slice(0, 3)
       .every((link) => link.attributes?.[0]?.value.stringValue === 'unverified'),
   ).toBe(true)
 })
