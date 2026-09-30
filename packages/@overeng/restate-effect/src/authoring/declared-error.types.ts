@@ -17,7 +17,9 @@ import {
 type Assert<T extends true> = T
 type Equals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
-type HandlerError<THandler extends (...args: never[]) => unknown> = Effect.Error<ReturnType<THandler>>
+type HandlerError<THandler extends (...args: never[]) => unknown> = Effect.Error<
+  ReturnType<THandler>
+>
 
 class Rejected extends Schema.TaggedError<Rejected>()('Rejected', { reason: Schema.String }) {}
 const declared = { input: Schema.Void, success: Schema.Void, error: Rejected }
@@ -45,7 +47,12 @@ const objectLive = RestateObject.implement<typeof object>({
 })
 const workflow = RestateWorkflow.contract({
   name: 'declared-error-workflow',
-  def: { state: {}, payload: declared, signals: { reject: declared }, queries: { accept: infallible } },
+  def: {
+    state: {},
+    payload: declared,
+    signals: { reject: declared },
+    queries: { accept: infallible },
+  },
 })
 const workflowLive = RestateWorkflow.implement<typeof workflow>({
   contractValue: workflow,
