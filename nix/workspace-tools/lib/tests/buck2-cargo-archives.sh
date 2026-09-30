@@ -72,4 +72,5 @@ if nix build --impure --no-link --expr "$expr" > "$fixture/error" 2>&1; then
   exit 1
 fi
 grep -Fq 'does not match git-archives.json' "$fixture/error"
+nix build --impure --no-link --expr "$common import (repo + \"/nix/workspace-tools/lib/tests/buck2-git-source-archive-hardlinks.nix\") { inherit pkgs; }"
 echo 'buck2-cargo-archives-test: PASS local source, deterministic archive, digest and rev checks'
