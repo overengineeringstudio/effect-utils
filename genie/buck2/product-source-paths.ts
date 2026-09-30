@@ -17,5 +17,10 @@ export const projectBuckProductSourcePaths = ({
   readonly additionalPaths?: readonly string[]
   readonly rootPaths?: readonly string[]
 }): readonly string[] =>
-  [...new Set([...rootPaths, ...projectPnpmPackageClosure({ pkg }).workspaceClosureDirs, ...additionalPaths])]
-    .toSorted()
+  [
+    ...new Set([
+      ...rootPaths,
+      ...projectPnpmPackageClosure({ pkg }).workspaceClosureDirs,
+      ...additionalPaths,
+    ]),
+  ].toSorted()

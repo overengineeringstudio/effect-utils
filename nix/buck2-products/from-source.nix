@@ -109,20 +109,22 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   (producerCommit == null) == (sourcePaths != null)
 ) "buck2-products: published recipes require producerCommit; scoped consumer recipes must omit it";
-assert lib.assertMsg (
-  sourcePaths == null
-  || (
-    builtins.isList sourcePaths
-    && sourcePaths != [ ]
-    && lib.all (
-      path:
-      builtins.isString path
-      && builtins.match "[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*" path != null
-      && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" path)
-    ) sourcePaths
-    && repositorySource == null
+assert lib.assertMsg
+  (
+    sourcePaths == null
+    || (
+      builtins.isList sourcePaths
+      && sourcePaths != [ ]
+      && lib.all (
+        path:
+        builtins.isString path
+        && builtins.match "[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*" path != null
+        && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" path)
+      ) sourcePaths
+      && repositorySource == null
+    )
   )
-) "buck2-products: sourcePaths must be nonempty safe relative paths and cannot be combined with repositorySource";
+  "buck2-products: sourcePaths must be nonempty safe relative paths and cannot be combined with repositorySource";
 assert lib.assertMsg (
   (sourcePaths == null) == (rootProjection == null)
 ) "buck2-products: scoped sourcePaths require a separate rootProjection";

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo="$(git rev-parse --show-toplevel)"
+repo="${1:-$(git rev-parse --show-toplevel)}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/repo/packages/app" "$work/repo/packages/unrelated"
