@@ -32,6 +32,7 @@ assert_symlink_target() {
 }
 
 cp -R "$fixture"/. "$workspace"/
+chmod -R u+w "$workspace"
 mkdir -p \
   "$workspace/node_modules/@fixture" \
   "$workspace/packages/scoped/node_modules/.bin" \
@@ -81,6 +82,49 @@ printf '[".","packages/present","packages/missing"]\n' \
   > "$importer_sandbox/absent"
 [ "$(cat "$importer_sandbox/absent")" = "packages/missing" ] ||
   fail 'absent lockfile importer discovery did not match staged manifests'
+
+# The managed-package-manager document has its own root importer. Only the
+# project document's importer keys participate in staged-manifest pruning.
+cat > "$importer_sandbox/pnpm-lock.yaml" <<'YAML'
+---
+lockfileVersion: '9.0'
+importers:
+  .:
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.7.0
+        version: 12.7.0
+---
+lockfileVersion: '9.0'
+importers:
+  .: {}
+  packages/present: {}
+  packages/missing: {}
+packages: {}
+YAML
+(
+  cd "$importer_sandbox"
+  yq eval-all --output-format=json \
+    '[select(.importers != null)] | .[-1].importers | keys' pnpm-lock.yaml \
+    | node "$absent_importers" pnpm-lock.yaml > absent
+  [ "$(cat absent)" = "packages/missing" ] ||
+    fail 'multi-document lockfile selected the wrong importer graph'
+  PNPM_ABSENT_IMPORTER=packages/missing \
+    yq eval --inplace 'del(.importers[strenv(PNPM_ABSENT_IMPORTER)])' pnpm-lock.yaml
+  [ "$(yq eval-all --output-format=json '[select(.importers != null)] | .[-1].importers | keys' pnpm-lock.yaml | node "$absent_importers" pnpm-lock.yaml)" = "" ] ||
+    fail 'pruned lockfile still contains an absent project importer'
+  [ "$(yq eval --output-format=json 'select(documentIndex == 0) | .importers.".".packageManagerDependencies.pnpm.version' pnpm-lock.yaml)" = '"12.7.0"' ] ||
+    fail 'pruning discarded the managed-package-manager document'
+)
+cat > "$importer_sandbox/pnpm-lock.yaml" <<'YAML'
+lockfileVersion: '9.0'
+importers:
+  .: {}
+  packages/present: {}
+  packages/missing: {}
+YAML
+[ "$(yq eval-all --output-format=json '[select(.importers != null)] | .[-1].importers | keys' "$importer_sandbox/pnpm-lock.yaml" | node "$absent_importers" "$importer_sandbox/pnpm-lock.yaml")" = "packages/missing" ] ||
+  fail 'single-document lockfile importer discovery changed'
 if printf '["../outside"]\n' \
   | node "$absent_importers" "$importer_sandbox/pnpm-lock.yaml" \
     2>"$importer_sandbox/escape-error"; then

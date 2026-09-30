@@ -81,7 +81,8 @@ let
 
     const findTopLevelSection = (lines, sectionName) => {
       const header = sectionName + ":";
-      const startIndex = lines.findIndex((line) => line.startsWith(header));
+      const documentStart = lines.lastIndexOf("---");
+      const startIndex = lines.findIndex((line, index) => index > documentStart && line.startsWith(header));
       if (startIndex === -1) return undefined;
       const value = lines[startIndex].slice(header.length).trim();
       if (value !== "" && !/^\{\s*\}$/.test(value)) {
@@ -213,8 +214,8 @@ let
         return lines.join("\n");
       }
 
-      const importersIndex = lines.findIndex((line) => line === "importers:");
-      const insertionIndex = importersIndex === -1 ? lines.length : importersIndex;
+      const importers = findTopLevelSection(lines, "importers");
+      const insertionIndex = importers === undefined ? lines.length : importers.startIndex;
       lines.splice(insertionIndex, 0, "patchedDependencies:", ...rendered, "");
       return lines.join("\n");
     };
