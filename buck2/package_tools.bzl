@@ -37,7 +37,8 @@ def _relative(value, field):
         if part in ["", ".", ".."]:
             fail("{} must be a normalized relative path: {}".format(field, value))
 
-def _runner(ctx):
+def package_command_runtime_inputs(ctx):
+    """Stages the runner and every destination of its linked dependency view."""
     runtime = cmd_args(
         ctx.attrs._runner[DefaultInfo].default_outputs[0],
         format = "{}/package-command-runner.ts",
@@ -55,7 +56,7 @@ def _runner_args(ctx, mode, output = None):
     toolchain = ctx.attrs._bun[BunToolchainInfo]
     args = cmd_args([
         toolchain.executable,
-        _runner(ctx),
+        package_command_runtime_inputs(ctx),
         mode,
         toolchain.executable,
         package_tree.tree,
@@ -260,7 +261,7 @@ def _package_bundle_impl(ctx):
     )
     args = cmd_args([
         toolchain.executable,
-        _runner(ctx),
+        package_command_runtime_inputs(ctx),
         "bundle",
         toolchain.executable,
         package_tree.tree,

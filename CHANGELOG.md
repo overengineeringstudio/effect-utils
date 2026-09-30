@@ -292,6 +292,7 @@ All notable changes to this project will be documented in this file.
   `missingAuthPolicy=skip`. Regenerate consumer workflows to pick this up.
 
 ### Fixed
+
 - **Buck2 artifact imports**: Reject embedded realized Nix store paths while
   accepting binaries that contain only the `/nix/store/` parser prefix.
 - **PR snapshot CI helpers**: Omit empty job-level `CACHIX_AUTH_TOKEN` values
