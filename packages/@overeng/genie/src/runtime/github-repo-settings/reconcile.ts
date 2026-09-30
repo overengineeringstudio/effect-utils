@@ -7,7 +7,8 @@ import {
   type RulesetMode,
 } from '../github-ruleset/reconcile.ts'
 import { diffGithubRepositorySettings } from './comparison.ts'
-import { GithubRepoSettings, GithubRepositorySettings, GithubRulesetPayload } from './mod.ts'
+import type { GithubRepoSettings as GithubRepoSettingsData } from './mod.ts'
+import { GithubRepoSettings, GithubRepositorySettings, GithubRulesetPayload } from './schema.ts'
 
 export class GithubRepoSettingsError extends Schema.TaggedError<GithubRepoSettingsError>()(
   'GithubRepoSettingsError',
@@ -40,7 +41,7 @@ const RulesetSummary = Schema.Struct({ id: Schema.Int, name: Schema.NonEmptyStri
 const RulesetPages = Schema.Array(Schema.Array(RulesetSummary))
 const JsonObject = Schema.Record(Schema.String, Schema.Unknown)
 /** Read both the repository envelope and historical single-ruleset files. */
-export const decodeGithubRepoSettings = (value: unknown): GithubRepoSettings => {
+export const decodeGithubRepoSettings = (value: unknown): GithubRepoSettingsData => {
   const object = Schema.decodeUnknownSync(JsonObject)(value)
   const settings =
     'rulesets' in object || 'repository' in object

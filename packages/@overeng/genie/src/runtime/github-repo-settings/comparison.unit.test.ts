@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import { githubRuleset } from '../github-ruleset/mod.ts'
 import {
@@ -7,11 +7,12 @@ import {
   normalizeGithubRepositorySettingsForComparison,
 } from './comparison.ts'
 import {
-  GithubRepoSettings,
-  GithubRulesetPayload,
-  GithubRepositorySettings,
   githubRepoSettings,
+  type GithubRepoSettings as GithubRepoSettingsData,
+  type GithubRepositorySettings as GithubRepositorySettingsData,
+  type GithubRulesetPayload as GithubRulesetPayloadData,
 } from './mod.ts'
+import { GithubRepoSettings, GithubRulesetPayload, GithubRepositorySettings } from './schema.ts'
 
 const decodeRepository = Schema.decodeUnknownSync(GithubRepositorySettings)
 
@@ -122,6 +123,21 @@ describe('repository settings payload', () => {
         rulesets: [ruleset, ruleset],
       }),
     ).toThrow()
+  })
+
+  it('rejects duplicate ruleset names in the builder without the reconcile-side schema', () => {
+    const ruleset = githubRuleset({ name: 'protect-main', enforcement: 'active', rules: [] })
+    expect(() => githubRepoSettings({ repository: {}, rulesets: [ruleset, ruleset] })).toThrow(
+      /duplicated: protect-main/,
+    )
+  })
+
+  it('keeps the npm-free builder types and the reconcile-side schemas on one wire shape', () => {
+    expectTypeOf<Required<typeof GithubRepositorySettings.Type>>().toEqualTypeOf<
+      Required<GithubRepositorySettingsData>
+    >()
+    expectTypeOf<typeof GithubRulesetPayload.Type>().toEqualTypeOf<GithubRulesetPayloadData>()
+    expectTypeOf<typeof GithubRepoSettings.Type>().toEqualTypeOf<GithubRepoSettingsData>()
   })
 
   it('preserves open rule parameters and defaults an omitted target to branch', () => {

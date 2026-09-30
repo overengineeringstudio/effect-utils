@@ -336,6 +336,7 @@
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
+        "src/runtime/peer-facade-imports.unit.test.ts",
         "src/runtime/weaver/rust-constants.unit.test.ts"
       ],
       "packageName": "genie",
@@ -370,6 +371,7 @@
         "src/runtime/package-json/catalog.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
         "src/runtime/package-json/validators/recompose.unit.test.ts",
+        "src/runtime/peer-facade-imports.unit.test.ts",
         "src/runtime/pnpm-workspace/pnpm-workspace.unit.test.ts",
         "src/runtime/projection-artifact/projection-artifact.unit.test.ts",
         "src/runtime/repo-context/repo-context.unit.test.ts",
@@ -410,6 +412,7 @@
         "src/runtime/package-json/catalog.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
         "src/runtime/package-json/validators/recompose.unit.test.ts",
+        "src/runtime/peer-facade-imports.unit.test.ts",
         "src/runtime/pnpm-workspace/pnpm-workspace.unit.test.ts",
         "src/runtime/projection-artifact/projection-artifact.unit.test.ts",
         "src/runtime/repo-context/repo-context.unit.test.ts",
@@ -425,6 +428,7 @@
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
+        "src/runtime/peer-facade-imports.unit.test.ts",
         "src/runtime/weaver/rust-constants.unit.test.ts"
       ],
       "unboundedTaskName": "test:genie:unbounded"
