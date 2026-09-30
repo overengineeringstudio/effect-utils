@@ -78,6 +78,42 @@ def _checked_platform(ctx):
     return platform
 
 
+def _release_flags():
+    settings = {
+        "opt_level": read_config("rust_profile", "opt_level", "3"),
+        "debug": read_config("rust_profile", "debug", "0"),
+        "lto": read_config("rust_profile", "lto", "local"),
+        "codegen_units": read_config("rust_profile", "codegen_units", "16"),
+        "panic": read_config("rust_profile", "panic", "unwind"),
+        "strip": read_config("rust_profile", "strip", "none"),
+        "debug_assertions": read_config("rust_profile", "debug_assertions", "no"),
+        "overflow_checks": read_config("rust_profile", "overflow_checks", "no"),
+    }
+    allowed = {
+        "opt_level": ["0", "1", "2", "3", "s", "z"],
+        "debug": ["0", "1", "2", "line-directives-only", "line-tables-only", "limited", "full", "none"],
+        "lto": ["local", "off", "thin", "fat"],
+        "panic": ["unwind", "abort"],
+        "strip": ["none", "debuginfo", "symbols"],
+        "debug_assertions": ["yes", "no"],
+        "overflow_checks": ["yes", "no"],
+    }
+    for name, choices in allowed.items():
+        if settings[name] not in choices:
+            fail("invalid rust_profile.{}: {}".format(name, settings[name]))
+    if not settings["codegen_units"].isdigit() or int(settings["codegen_units"]) < 1:
+        fail("rust_profile.codegen_units must be a positive integer")
+    return [
+        "-Copt-level=" + settings["opt_level"],
+        "-Cdebuginfo=" + settings["debug"],
+        "-Ccodegen-units=" + settings["codegen_units"],
+        "-Cpanic=" + settings["panic"],
+        "-Cstrip=" + settings["strip"],
+        "-Cdebug-assertions=" + settings["debug_assertions"],
+        "-Coverflow-checks=" + settings["overflow_checks"],
+    ]
+
+
 def _native_rust_toolchain_impl(ctx):
     platform = _checked_platform(ctx)
     if not ctx.attrs.identity:
@@ -88,7 +124,7 @@ def _native_rust_toolchain_impl(ctx):
             archiver = RunInfo(args = [ctx.attrs.archiver]),
             compile_env = ctx.attrs.compile_env,
             compiler = RunInfo(args = [ctx.attrs.compiler]),
-            identity = ctx.attrs.identity,
+            identity = ctx.attrs.identity + ";rustc_flags=" + ",".join(ctx.attrs.rustc_flags) + ";rustc_binary_flags=" + ",".join(ctx.attrs.rustc_binary_flags),
             linker = RunInfo(args = [ctx.attrs.linker]),
             target_platform_abi = platform.abi,
             target_platform_architecture = platform.architecture,
@@ -103,11 +139,10 @@ def _native_rust_toolchain_impl(ctx):
             default_edition = "2021",
             doctests = False,
             nightly_features = False,
-            panic_runtime = PanicRuntime("unwind"),
+            panic_runtime = PanicRuntime(ctx.attrs.panic_runtime),
             rustc_env = ctx.attrs.compile_env,
-            # Buck defaults to rustc opt-level 0; make it explicit so Prelude
-            # also supplies Cargo build scripts' required OPT_LEVEL for cc-rs.
-            rustc_flags = ["-Copt-level=0"],
+            rustc_flags = ctx.attrs.rustc_flags,
+            rustc_binary_flags = ctx.attrs.rustc_binary_flags,
             rustc_target_triple = ctx.attrs.target_triple,
             rustdoc = RunInfo(args = [ctx.attrs.rustdoc]),
             rustdoc_env = ctx.attrs.compile_env,
@@ -124,6 +159,9 @@ _native_rust_toolchain = rule(
         "compiler": attrs.string(),
         "identity": attrs.string(),
         "linker": attrs.string(),
+        "panic_runtime": attrs.enum(["unwind", "abort"], default = "unwind"),
+        "rustc_flags": attrs.list(attrs.string()),
+        "rustc_binary_flags": attrs.list(attrs.string()),
         "rustdoc": attrs.string(),
         "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
         "target_triple": attrs.string(),
@@ -284,6 +322,23 @@ def native_rust_toolchains(capabilities, generation, target_platform):
         target_triple = target_triple,
         **compatibility
     )
+    profile = read_config("rust_profile", "mode", "dev")
+    if profile not in ("dev", "release"):
+        fail("rust_profile.mode must be dev or release, got {}".format(profile))
+    release_flags = _release_flags()
+    rustc_flags = select({
+        "@rules//buck2/rust:release": release_flags,
+        "DEFAULT": ["-Copt-level=0"],
+    })
+    lto = read_config("rust_profile", "lto", "local")
+    rustc_binary_flags = select({
+        "@rules//buck2/rust:release": [] if lto == "local" else ["-Clto=" + lto],
+        "DEFAULT": [],
+    })
+    panic_runtime = select({
+        "@rules//buck2/rust:release": read_config("rust_profile", "panic", "unwind"),
+        "DEFAULT": "unwind",
+    })
     _native_rust_toolchain(
         name = "rust",
         archiver = metadata["rust-archiver"]["executableStorePath"],
@@ -292,6 +347,9 @@ def native_rust_toolchains(capabilities, generation, target_platform):
         compiler = metadata["rust-compiler"]["executableStorePath"],
         identity = identity,
         linker = metadata["rust-linker"]["executableStorePath"],
+        panic_runtime = panic_runtime,
+        rustc_flags = rustc_flags,
+        rustc_binary_flags = rustc_binary_flags,
         rustdoc = metadata["rust-rustdoc"]["executableStorePath"],
         target_platform = target_platform,
         target_triple = target_triple,

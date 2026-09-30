@@ -32,6 +32,35 @@
 let
   lib = pkgs.lib;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  # Cargo manifests in consumer roots live in repositorySource, which can be a
+  # derivation. Read the staged workspace at build time, not repositoryRoot at
+  # evaluation time: the latter belongs to this rules package.
+  releaseProfileArgs = lib.escapeShellArg ''
+    import sys
+    import tomllib
+
+    with open(sys.argv[1], "rb") as manifest:
+        profile = tomllib.load(manifest).get("profile", {}).get("release", {})
+
+    def toggle(value):
+        return "yes" if value else "no"
+
+    debug = profile.get("debug", False)
+    lto = profile.get("lto", False)
+    strip = profile.get("strip", False)
+    settings = {
+        "opt_level": str(profile.get("opt-level", 3)),
+        "debug": str(2 if debug else 0) if isinstance(debug, bool) else str(debug),
+        "lto": ("fat" if lto else "local") if isinstance(lto, bool) else str(lto),
+        "codegen_units": str(profile.get("codegen-units", 16)),
+        "panic": str(profile.get("panic", "unwind")),
+        "strip": ("symbols" if strip else "none") if isinstance(strip, bool) else str(strip),
+        "debug_assertions": toggle(profile.get("debug-assertions", False)),
+        "overflow_checks": toggle(profile.get("overflow-checks", False)),
+    }
+    for name, value in settings.items():
+        print(f"rust_profile.{name}={value}")
+  '';
   # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
   # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
   cliBuildStamp = product.cliBuildStamp or null;
@@ -92,6 +121,8 @@ let
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+    lib.optionalString (product.kind == "native") " --config rust_profile.mode=release"
+  }${
     lib.concatMapStringsSep "" (
       package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
     ) nativeStorePackages
@@ -160,7 +191,8 @@ let
       buck2
       pkgs.cacert
       pkgs.jq
-    ];
+    ]
+    ++ lib.optionals (cargoWorkspaceRoot != null) [ pkgs.python3 ];
 
     dontConfigure = true;
     dontFixup = true;
@@ -194,16 +226,24 @@ let
         fi
       ''}
 
-      artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg target})"
+      rust_profile_args=()
+      ${lib.optionalString (cargoWorkspaceRoot != null) ''
+        release_settings="$(${pkgs.python3}/bin/python3 -c ${releaseProfileArgs} ${lib.escapeShellArg "${cargoWorkspaceRoot}/Cargo.toml"})"
+        while IFS= read -r setting; do
+          rust_profile_args+=(--config "$setting")
+        done <<< "$release_settings"
+      ''}
+
+      artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg target})"
       test -f "$artifact"
       cp "$artifact" ${lib.escapeShellArg outputName}
       ${lib.optionalString hasDescriptor ''
-        descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg "${target}[descriptor]"})"
+        descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg "${target}[descriptor]"})"
         test -f "$descriptor"
         jq -cS . "$descriptor" > descriptor.json
       ''}
       ${lib.optionalString (runtimeClosureTarget != null) ''
-        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg runtimeClosureTarget})"
+        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg runtimeClosureTarget})"
         test -f "$runtime_closure/descriptor.json"
         cp -R "$runtime_closure" runtime-closure
       ''}

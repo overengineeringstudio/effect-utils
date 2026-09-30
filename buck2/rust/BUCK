@@ -1,1 +1,11 @@
+load("@prelude//:prelude.bzl", "native")
+
 # Public Rust rule and toolchain APIs live in defs.bzl and toolchains.bzl.
+
+# The product build selects this from the command line; ordinary test and
+# check targets retain the fast profile without changing their toolchain.
+native.config_setting(
+    name = "release",
+    values = {"rust_profile.mode": "release"},
+    visibility = ["PUBLIC"],
+)
