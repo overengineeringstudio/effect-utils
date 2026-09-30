@@ -317,6 +317,16 @@ REPO_ROOT="$ROOT" "$BUN" -e '
     console.error("foreign registry archive is not pinned to the authoritative Cargo.lock")
     process.exit(1)
   }
+  const yanked = lock.package.find((entry) => entry.name === "yoke-derive")
+  if (
+    yanked?.version !== "0.8.3" ||
+    !yanked.checksum ||
+    !graph.includes(`name = "yoke-derive"`) ||
+    !graph.includes(`sha256 = "${yanked.checksum}"`)
+  ) {
+    console.error("foreign supply dropped the locked yanked yoke-derive release")
+    process.exit(1)
+  }
   // pulp 0.22.3 is a registry crate whose build.rs unwraps all three parts.
   // Reindeer must set them for compilation and execution without a per-crate env fixup.
   for (const [rule, name] of [["rust_binary", "pulp-0.22-build-script-build"], ["buildscript_run", "pulp-0.22-build-script-run"]]) {

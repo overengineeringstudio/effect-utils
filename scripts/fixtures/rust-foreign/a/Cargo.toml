@@ -7,6 +7,8 @@ edition = "2021"
 unicode-width = "0.2.0"
 renamed_itoa = { package = "itoa", version = "1.0.15" }
 pulp = "=0.22.3"
+# A yanked but already locked release must survive foreign supply projection.
+yoke-derive = "=0.8.3"
 
 [workspace]
 resolver = "2"
