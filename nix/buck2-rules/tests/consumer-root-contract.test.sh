@@ -14,7 +14,14 @@ root="$(nix build --impure --no-link --print-out-paths --expr '
   in flake.lib.mkConsumerBuckRoot {
     inherit pkgs;
     rules = flake.packages.${system}.buck2-rules;
-    capabilities = flake.packages.${system}.buck2-capabilities;
+    capabilities = flake.lib.mkBuck2Capabilities {
+      inherit pkgs;
+      extraCapabilities.fixture-data = {
+        kind = "directory";
+        package = pkgs.writeTextDir "payload.txt" "declared vendor payload\n";
+        protocol = "fixture/vendor-payload/v1";
+      };
+    };
     cellName = "fixture";
   }
 ')"
@@ -64,6 +71,28 @@ cleanup() {
 trap cleanup EXIT
 cp -R "$root/." "$work/"
 chmod -R u+w "$work"
+cat >> "$work/buck2/toolchains/BUCK" <<'BUCK'
+
+load("@rules//buck2/toolchains:configured.bzl", "store_directory")
+
+store_directory(
+    name = "fixture_data",
+    input_id = "fixture-data",
+    protocol = "fixture/vendor-payload/v1",
+    visibility = ["PUBLIC"],
+)
+BUCK
+mkdir -p "$work/vendor"
+cat > "$work/vendor/BUCK" <<'BUCK'
+load("@prelude//:prelude.bzl", "native")
+
+native.genrule(
+    name = "consume",
+    srcs = ["//buck2/toolchains:fixture_data"],
+    out = "payload.txt",
+    cmd = "cat $(location //buck2/toolchains:fixture_data)/payload.txt > $OUT",
+)
+BUCK
 
 # A consumer package must analyze `bun_compiled_product_executable`. Its rule
 # defaults (`//buck2/toolchains:bun`, `:bun_compile_runtime`) resolve in the
@@ -138,6 +167,8 @@ BUCK
   buck2 --isolation-dir consumer-root-contract uquery \
     'set(rules//:package_tree_runtime rules//:package_command_runtime rules//packages/@overeng/buck2-tools:typescript-runner.ts)' >/dev/null
   buck2 --isolation-dir consumer-root-contract uquery 'rules//buck2/dependencies:runtime-closure.ts' >/dev/null
+  vendor_output="$(buck2 --isolation-dir consumer-root-contract build fixture//vendor:consume --show-simple-output)"
+  [[ "$(cat "$vendor_output")" == "declared vendor payload" ]]
   buck2 --isolation-dir consumer-root-contract cquery 'fixture//closure:runtime' >/dev/null
   exec_deps="$(buck2 --isolation-dir consumer-root-contract cquery 'deps(fixture//compiled:compiled, 1, exec_deps())')"
   printf '%s\n' "$exec_deps" | grep -F 'rules//buck2/toolchains:bun_compile_runtime' >/dev/null
@@ -196,7 +227,14 @@ product="$(nix build --impure --no-link --print-out-paths --expr '
     pkgs = import flake.inputs.nixpkgs { inherit system; };
   in (flake.lib.mkBuckProductFromSource { inherit pkgs; }) {
     repositorySource = source;
-    capabilities = flake.packages.${system}.buck2-capabilities;
+    capabilities = flake.lib.mkBuck2Capabilities {
+      inherit pkgs;
+      extraCapabilities.fixture-data = {
+        kind = "directory";
+        package = pkgs.writeTextDir "payload.txt" "declared vendor payload\n";
+        protocol = "fixture/vendor-payload/v1";
+      };
+    };
     pnpmArchives = flake.packages.${system}.buck2-pnpm-archives;
     producerCommit = "0000000000000000000000000000000000000000";
     product = {
