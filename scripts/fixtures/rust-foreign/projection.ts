@@ -1,7 +1,13 @@
 import { defineCargoBuck2PackageProjection } from '../../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
 
 const fixtureRoot = 'scripts/fixtures/rust-foreign'
-const projectWorkspace = (workspace: 'a' | 'b', members: readonly string[]) =>
+const projectWorkspace = ({
+  workspace,
+  members,
+}: {
+  readonly workspace: 'a' | 'b'
+  readonly members: readonly string[]
+}) =>
   defineCargoBuck2PackageProjection({
     repoName: 'effect-utils',
     repoImportMetaUrl: import.meta.url,
@@ -15,5 +21,13 @@ const projectWorkspace = (workspace: 'a' | 'b', members: readonly string[]) =>
     ],
   })
 
-export const consumerProjection = projectWorkspace('a', ['Cargo.toml', 'app/Cargo.toml'])
-export const providerProjection = projectWorkspace('b', ['crates/shared/Cargo.toml'])
+/** Consumer fixture projection. */
+export const consumerProjection = projectWorkspace({
+  workspace: 'a',
+  members: ['Cargo.toml', 'app/Cargo.toml'],
+})
+/** Provider fixture projection. */
+export const providerProjection = projectWorkspace({
+  workspace: 'b',
+  members: ['crates/shared/Cargo.toml'],
+})

@@ -27,7 +27,7 @@ const makeVersionFixture = ({
   const provider = path.join(temporaryRoot, '.staged/provider')
   const cargoHome = path.join(temporaryRoot, 'cargo-home')
   const supplyDir = path.join(temporaryRoot, 'supply')
-  const member = virtual ? path.join(workspace, 'member') : workspace
+  const member = virtual === true ? path.join(workspace, 'member') : workspace
   const vendor = path.join(temporaryRoot, 'vendor')
   for (const dir of [member, provider, cargoHome, supplyDir, path.join(workspace, '.cargo')]) {
     mkdirSync(dir, { recursive: true })
@@ -59,13 +59,13 @@ const makeVersionFixture = ({
     mkdirSync(path.join(dir, 'src'))
     writeFileSync(path.join(dir, 'src/lib.rs'), '')
   }
-  const key = renamed ? 'current-nix' : 'nix'
+  const key = renamed === true ? 'current-nix' : 'nix'
   writeFileSync(
     path.join(member, 'Cargo.toml'),
-    `[package]\nname = "consumer"\nversion = "0.1.0"\nedition = "2021"\n\n${virtual ? '' : '[workspace]\nresolver = "2"\n\n'}[dependencies]\nprovider = { path = "${virtual ? '../../provider' : '../provider'}" }\n${key} = { ${renamed ? 'package = "nix", ' : ''}version = "0.29", default-features = false, features = ["new-api"] }\n\n[build-dependencies]\n${key} = { ${renamed ? 'package = "nix", ' : ''}version = "0.28", default-features = false, features = ["old-api"] }\n\n[target.'cfg(unix)'.dev-dependencies]\n${key} = { ${renamed ? 'package = "nix", ' : ''}version = "0.29", default-features = false, features = ["new-api"] }\n`,
+    `[package]\nname = "consumer"\nversion = "0.1.0"\nedition = "2021"\n\n${virtual === true ? '' : '[workspace]\nresolver = "2"\n\n'}[dependencies]\nprovider = { path = "${virtual === true ? '../../provider' : '../provider'}" }\n${key} = { ${renamed === true ? 'package = "nix", ' : ''}version = "0.29", default-features = false, features = ["new-api"] }\n\n[build-dependencies]\n${key} = { ${renamed === true ? 'package = "nix", ' : ''}version = "0.28", default-features = false, features = ["old-api"] }\n\n[target.'cfg(unix)'.dev-dependencies]\n${key} = { ${renamed === true ? 'package = "nix", ' : ''}version = "0.29", default-features = false, features = ["new-api"] }\n`,
   )
   writeFileSync(path.join(member, 'build.rs'), 'fn main() {}\n')
-  if (virtual) {
+  if (virtual === true) {
     writeFileSync(
       path.join(workspace, 'Cargo.toml'),
       '[workspace]\nmembers = ["member"]\nresolver = "2"\n',
@@ -211,7 +211,7 @@ describe('foreign Cargo package paths', () => {
 describe('Cargo-resolved supply aliases', () => {
   for (const virtual of [false, true]) {
     for (const renamed of [false, true]) {
-      it(`keeps the newer ${renamed ? 'renamed' : 'canonical'} consumer edge in a ${virtual ? 'virtual' : 'root-package'} workspace`, () => {
+      it(`keeps the newer ${renamed === true ? 'renamed' : 'canonical'} consumer edge in a ${virtual === true ? 'virtual' : 'root-package'} workspace`, () => {
         const fixture = makeVersionFixture({ virtual, renamed })
         const lockBefore = readFileSync(path.join(fixture.workspace, 'Cargo.lock'), 'utf8')
         const result = fixture.run()
@@ -220,7 +220,7 @@ describe('Cargo-resolved supply aliases', () => {
           readFileSync(path.join(fixture.supplyDir, 'Cargo.toml'), 'utf8'),
         )
         expect(supply.dependencies[fixture.key]).toEqual({
-          ...(renamed ? { package: 'nix' } : {}),
+          ...(renamed === true ? { package: 'nix' } : {}),
           version: '=0.29.0',
           'default-features': false,
           features: ['new-api'],
@@ -237,7 +237,7 @@ describe('Cargo-resolved supply aliases', () => {
         )
         expect(resolution.dependencies).toEqual([
           {
-            manifestPath: virtual ? 'consumer/member/Cargo.toml' : 'consumer/Cargo.toml',
+            manifestPath: virtual === true ? 'consumer/member/Cargo.toml' : 'consumer/Cargo.toml',
             name: fixture.key,
             package: 'nix',
             version: '0.28.0',
@@ -245,7 +245,7 @@ describe('Cargo-resolved supply aliases', () => {
             alias: oldAlias,
           },
           {
-            manifestPath: virtual ? 'consumer/member/Cargo.toml' : 'consumer/Cargo.toml',
+            manifestPath: virtual === true ? 'consumer/member/Cargo.toml' : 'consumer/Cargo.toml',
             name: fixture.key,
             package: 'nix',
             version: '0.29.0',

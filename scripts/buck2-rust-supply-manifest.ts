@@ -147,7 +147,11 @@ const localPackages = metadata.packages
   .filter((pkg) => pkg.source === null)
   .toSorted((a, b) => {
     const priority = (pkg: Package) =>
-      pkg.id === metadata.resolve.root ? 0 : metadata.workspace_members.includes(pkg.id) ? 1 : 2
+      pkg.id === metadata.resolve.root
+        ? 0
+        : metadata.workspace_members.includes(pkg.id) === true
+          ? 1
+          : 2
     return priority(a) - priority(b) || a.manifest_path.localeCompare(b.manifest_path)
   })
 const resolvedDependencies = localPackages.flatMap((declaring) =>
@@ -188,28 +192,29 @@ const resolvedDependencies = localPackages.flatMap((declaring) =>
 )
 const aliasesById = new Map<string, string>()
 const usedNames = new Set<string>()
-const assignAlias = (pkg: Package, preferred: string) => {
+const assignAlias = ({ pkg, preferred }: { readonly pkg: Package; readonly preferred: string }) => {
   const existing = aliasesById.get(pkg.id)
   if (existing !== undefined) return existing
   let key = preferred
-  if (usedNames.has(key)) {
+  if (usedNames.has(key) === true) {
     key = `buck2-supply-${pkg.name}-${pkg.version}`.replaceAll(/[^A-Za-z0-9_-]/g, '-')
-    if (usedNames.has(key)) {
+    if (usedNames.has(key) === true) {
       key = `${key}-${createHash('sha256').update(pkg.id).digest('hex').slice(0, 12)}`
     }
   }
-  if (usedNames.has(key)) throw new Error(`ambiguous Cargo package supply alias: ${pkg.id}`)
+  if (usedNames.has(key) === true)
+    throw new Error(`ambiguous Cargo package supply alias: ${pkg.id}`)
   usedNames.add(key)
   aliasesById.set(pkg.id, key)
   return key
 }
 for (const dependency of resolvedDependencies) {
-  assignAlias(dependency.pkg, dependency.name)
+  assignAlias({ pkg: dependency.pkg, preferred: dependency.name })
 }
 const entries = selected
   .toSorted((a, b) => a.id.localeCompare(b.id))
   .map((pkg) => {
-    const key = assignAlias(pkg, pkg.name)
+    const key = assignAlias({ pkg, preferred: pkg.name })
     const attrs: string[] = []
     if (key !== pkg.name) attrs.push(`package = ${JSON.stringify(pkg.name)}`)
     if (pkg.source?.startsWith('registry+https://github.com/rust-lang/crates.io-index') === true) {
@@ -298,7 +303,7 @@ await Bun.write(
       dependencies: resolvedDependencies
         .map(({ pkg, ...dependency }) => ({
           ...dependency,
-          alias: assignAlias(pkg, dependency.name),
+          alias: assignAlias({ pkg, preferred: dependency.name }),
         }))
         .toSorted(
           (a, b) =>
