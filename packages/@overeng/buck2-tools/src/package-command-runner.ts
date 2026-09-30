@@ -15,6 +15,9 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 
 import type { BunPlugin } from 'bun'
 
+import { parse } from 'acorn'
+import { simple } from 'acorn-walk'
+
 import { canonicalizePath, realpathThroughName } from './real-path.ts'
 import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
 
@@ -764,18 +767,6 @@ const assertPortableModuleComments = (bundle: string): void => {
   }
 }
 
-const isJavaScriptIdentifierChar = (char: string | undefined): boolean => {
-  if (char === undefined) return false
-  const code = char.charCodeAt(0)
-  return (
-    (code >= 65 && code <= 90) ||
-    (code >= 97 && code <= 122) ||
-    (code >= 48 && code <= 57) ||
-    char === '_' ||
-    char === '$'
-  )
-}
-
 /**
  * Rewrites Bun's build-host paths for CommonJS globals to their runtime ESM
  * equivalents.
@@ -801,185 +792,46 @@ const normalizePortableCommonJsGlobals = ({
     const canonicalSourcePath = canonicalizePath(sourcePath)
     return canonicalSourcePath === buildRoot || canonicalSourcePath.startsWith(`${buildRoot}${sep}`)
   }
-  // Only visit code tokens. A text-only declaration match could erase a leaked
-  // build root from a comment, string, template, or regular-expression literal.
-  const skipQuoted = (start: number): number => {
-    const quote = bundle[start]
-    let cursor = start + 1
-    while (cursor < bundle.length) {
-      if (bundle[cursor] === '\\') cursor += 2
-      else if (bundle[cursor] === quote) return cursor + 1
-      else if (quote === '`' && bundle[cursor] === '$' && bundle[cursor + 1] === '{') {
-        cursor = skipTemplateExpression(cursor + 2)
-      } else cursor++
-    }
-    return cursor
-  }
-  // Template interpolations contain JavaScript, including nested templates.
-  // Skipping only to the next backtick leaves the scanner inside a string
-  // from the interpolation and can hide later CommonJS declarations.
-  const skipTemplateExpression = (start: number): number => {
-    let cursor = start
-    let depth = 1
-    let canStartRegex = true
-    while (cursor < bundle.length && depth > 0) {
-      const char = bundle[cursor]!
-      const next = bundle[cursor + 1]
-      if (char === '/' && next === '/') {
-        const end = bundle.indexOf('\n', cursor + 2)
-        cursor = end < 0 ? bundle.length : end
-        continue
-      }
-      if (char === '/' && next === '*') {
-        const end = bundle.indexOf('*/', cursor + 2)
-        cursor = end < 0 ? bundle.length : end + 2
-        continue
-      }
-      if (char === '/' && canStartRegex === true) {
-        let end = cursor + 1
-        let inClass = false
-        while (end < bundle.length && bundle[end] !== '\n') {
-          if (bundle[end] === '\\') end += 2
-          else if (bundle[end] === '[') {
-            inClass = true
-            end++
-          } else if (bundle[end] === ']') {
-            inClass = false
-            end++
-          } else if (bundle[end] === '/' && inClass === false) break
-          else end++
-        }
-        if (bundle[end] === '/') {
-          cursor = end + 1
-          while (isJavaScriptIdentifierChar(bundle[cursor]) === true) cursor++
-          canStartRegex = false
-          continue
-        }
-      }
-      if (char === '"' || char === "'" || char === '`') {
-        cursor = skipQuoted(cursor)
-        canStartRegex = false
-        continue
-      }
-      if (isJavaScriptIdentifierChar(char) === true) {
-        const beginning = cursor
-        do {
-          cursor++
-        } while (isJavaScriptIdentifierChar(bundle[cursor]) === true)
-        const name = bundle.slice(beginning, cursor)
-        canStartRegex = name === 'return' || name === 'throw' || name === 'case'
-        continue
-      }
-      if (char === '{') depth++
-      else if (char === '}') depth--
-      if (char !== ' ' && char !== '\n' && char !== '\t' && char !== '\r') {
-        canStartRegex = '=([{,:;!?&|'.includes(char)
-      }
-      cursor++
-    }
-    return cursor
-  }
+  // Parse declarations rather than guessing whether a slash or backtick begins
+  // a regex or nested template. Literal-looking text in comments, regexes and
+  // strings must never be rewritten to conceal a leaked build root.
   const edits: { start: number; end: number; replacement: string }[] = []
-  let inVar = false
-  let atBinding = false
-  let depth = 0
-  let canStartRegex = true
-  for (let cursor = 0; cursor < bundle.length;) {
-    const char = bundle[cursor]!
-    const next = bundle[cursor + 1]
-    if (char === '/' && next === '/') {
-      cursor = bundle.indexOf('\n', cursor + 2)
-      if (cursor < 0) break
-      continue
-    }
-    if (char === '/' && next === '*') {
-      const end = bundle.indexOf('*/', cursor + 2)
-      cursor = end < 0 ? bundle.length : end + 2
-      continue
-    }
-    if (char === '/' && canStartRegex === true) {
-      let end = cursor + 1
-      let inClass = false
-      while (end < bundle.length && bundle[end] !== '\n') {
-        if (bundle[end] === '\\') end += 2
-        else if (bundle[end] === '[') {
-          inClass = true
-          end++
-        } else if (bundle[end] === ']') {
-          inClass = false
-          end++
-        } else if (bundle[end] === '/' && inClass === false) break
-        else end++
-      }
-      if (bundle[end] === '/') {
-        cursor = end + 1
-        while (isJavaScriptIdentifierChar(bundle[cursor]) === true) cursor++
-        canStartRegex = false
-        continue
-      }
-    }
-    if (char === '"' || char === "'" || char === '`') {
-      cursor = skipQuoted(cursor)
-      canStartRegex = false
-      continue
-    }
-    if (isJavaScriptIdentifierChar(char) === true) {
-      const start = cursor
-      do {
-        cursor++
-      } while (isJavaScriptIdentifierChar(bundle[cursor]) === true)
-      const name = bundle.slice(start, cursor)
-      if (name === 'var' && (inVar === false || depth > 0)) {
-        inVar = true
-        atBinding = true
-        depth = 0
-      } else if (inVar === true && atBinding === true) {
-        atBinding = false
-        if (name === '__dirname' || name === '__filename') {
-          let literal = cursor
-          while (/\s/.test(bundle[literal] ?? '') === true) literal++
-          if (bundle[literal] === '=') {
-            do {
-              literal++
-            } while (/\s/.test(bundle[literal] ?? '') === true)
-            if (bundle[literal] === '"') {
-              const end = skipQuoted(literal)
-              let after = end
-              while (/\s/.test(bundle[after] ?? '') === true) after++
-              if (bundle[after] === ',' || bundle[after] === ';') {
-                const sourcePath: unknown = JSON.parse(bundle.slice(literal, end))
-                if (typeof sourcePath !== 'string' || isBuildPath(sourcePath) === false) {
-                  fail(`bundle ${name} path escapes the build root: ${String(sourcePath)}`)
-                }
-                edits.push({
-                  start: literal,
-                  end,
-                  replacement:
-                    name === '__dirname' ? 'import.meta.dirname' : 'import.meta.filename',
-                })
-              }
-            }
+  if (bundle.includes('__dirname') || bundle.includes('__filename')) {
+    simple(parse(bundle, { ecmaVersion: 'latest', sourceType: 'module' }), {
+      VariableDeclaration(declaration) {
+        if (declaration.kind !== 'var') return
+        for (const { id, init } of declaration.declarations) {
+          if (
+            id.type !== 'Identifier' ||
+            (id.name !== '__dirname' && id.name !== '__filename') ||
+            init?.type !== 'Literal' ||
+            typeof init.value !== 'string'
+          ) {
+            continue
           }
+          if (isBuildPath(init.value) === false) {
+            fail(`bundle ${id.name} path escapes the build root: ${init.value}`)
+          }
+          edits.push({
+            start: init.start,
+            end: init.end,
+            replacement: id.name === '__dirname' ? 'import.meta.dirname' : 'import.meta.filename',
+          })
         }
-      }
-      canStartRegex = name === 'return' || name === 'throw' || name === 'case'
-      continue
-    }
-    if (inVar === true) {
-      if (char === '(' || char === '[' || char === '{') depth++
-      else if (char === ')' || char === ']' || char === '}') depth--
-      else if (depth === 0 && char === ',') atBinding = true
-      else if (depth === 0 && char === ';') inVar = false
-    }
-    if (char !== ' ' && char !== '\n' && char !== '\t' && char !== '\r') {
-      canStartRegex = '=([{,:;!?&|'.includes(char)
-    }
-    cursor++
+      },
+    })
   }
   let normalized = bundle
-  for (let index = edits.length - 1; index >= 0; index--) {
-    const { start, end, replacement } = edits[index]!
-    normalized = normalized.slice(0, start) + replacement + normalized.slice(end)
+  if (edits.length > 0) {
+    edits.sort((left, right) => left.start - right.start)
+    const parts: string[] = []
+    let start = 0
+    for (const edit of edits) {
+      parts.push(bundle.slice(start, edit.start), edit.replacement)
+      start = edit.end
+    }
+    parts.push(bundle.slice(start))
+    normalized = parts.join('')
   }
   for (const rootSpelling of lexicalBuildRoot === buildRoot
     ? [buildRoot]

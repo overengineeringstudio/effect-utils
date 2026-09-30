@@ -533,6 +533,16 @@ describe('post-build portability assertions', () => {
     )
   })
 
+  it('does not stop an interpolation at braces in a regex after an arrow', () => {
+    const root = '/tmp/portable-root'
+    const prefix = 'const test = `${() => /[{]/.test(value)}`;\n'
+    const declaration = `var __filename = "${root}/undici/index.js";`
+
+    expect(normalizePortableCommonJsGlobals({ bundle: prefix + declaration, root })).toBe(
+      prefix + 'var __filename = import.meta.filename;',
+    )
+  })
+
   it('rewrites dirname in the middle of a declaration without changing its siblings', () => {
     const root = '/tmp/portable-root'
     const bundle = `var Client = require_client(), __dirname = "${root}/undici", Dispatcher;`
@@ -573,7 +583,7 @@ describe('post-build portability assertions', () => {
   })
 
   it('leaves a declaration-looking regular expression untouched', () => {
-    const bundle = 'const pattern = /var __filename = "relative\\\\/x", Client;/;'
+    const bundle = 'const pattern = /var __filename = "relative\\/x", Client;/;'
     expect(normalizePortableCommonJsGlobals({ bundle, root: '/tmp/portable-root' })).toBe(bundle)
   })
 

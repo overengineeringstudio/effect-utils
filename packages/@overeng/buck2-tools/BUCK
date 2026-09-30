@@ -187,6 +187,7 @@ filegroup(
         "package-command-runner.ts": "src/package-command-runner.ts",
         "real-path.ts": "src/real-path.ts",
         "typescript-runner.ts": "src/typescript-runner.ts",
+        "node_modules": ":node_modules",
     },
     visibility = ["PUBLIC"],
 )

@@ -292,10 +292,9 @@ All notable changes to this project will be documented in this file.
   `missingAuthPolicy=skip`. Regenerate consumer workflows to pick this up.
 
 ### Fixed
-- **Buck2 JavaScript products**: Preserve lexical synchronization across
-  nested template interpolations when normalizing CommonJS `__filename` and
-  `__dirname`. Bundles containing nested template strings before a dependency
-  module (including undici) no longer leak their absolute build root.
+- **Buck2 JavaScript products**: Parse bundled JavaScript declarations when
+  normalizing CommonJS `__filename` and `__dirname`, so nested templates and
+  regexes cannot hide a later dependency module's build path (including undici).
 - **Buck2 artifact imports**: Reject embedded realized Nix store paths while
   accepting binaries that contain only the `/nix/store/` parser prefix.
 - **PR snapshot CI helpers**: Omit empty job-level `CACHIX_AUTH_TOKEN` values

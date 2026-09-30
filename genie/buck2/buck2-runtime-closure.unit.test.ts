@@ -74,14 +74,20 @@ describe('staged Buck runtime closure', () => {
       expect(block, `no filegroup block for ${runtime.label}`).not.toBe('')
       const declared = [...block.matchAll(/"([^"]+)":\s*"([^"]+)"/gu)].map((match) => ({
         staged: match[1],
-        source: `packages/@overeng/buck2-tools/${match[2] ?? ''}`,
+        source: match[2],
       }))
-      expect(declared.map(({ source }) => source).toSorted()).toEqual(
-        [...runtime.modules].toSorted(),
+      expect(
+        declared
+          .filter(({ source }) => source?.startsWith('src/') === true)
+          .map(({ source }) => `packages/@overeng/buck2-tools/${source ?? ''}`)
+          .toSorted(),
+      ).toEqual([...runtime.modules].toSorted())
+      expect(declared.find(({ staged }) => staged === 'node_modules')?.source).toBe(
+        runtime.nodeModules,
       )
-      // The tree is flat, so the entry passed as `runtime_entry` is a bare name.
       expect(declared.map(({ staged }) => staged).toSorted()).toEqual(
-        runtime.modules.map(stagedModuleName).toSorted(),
+        [...runtime.modules.map(stagedModuleName), ...(runtime.nodeModules ? ['node_modules'] : [])]
+          .toSorted(),
       )
     }
   })

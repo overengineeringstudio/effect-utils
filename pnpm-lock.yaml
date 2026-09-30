@@ -95,6 +95,13 @@ importers:
         version: 7.0.2
 
   packages/@overeng/buck2-tools:
+    dependencies:
+      acorn:
+        specifier: 8.18.0
+        version: 8.18.0
+      acorn-walk:
+        specifier: 8.3.5
+        version: 8.3.5
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
@@ -4137,6 +4144,10 @@ packages:
     peerDependencies:
       acorn: ^6.0.0 || ^7.0.0 || ^8.0.0
 
+  acorn-walk@8.3.5:
+    resolution: {integrity: sha512-HEHNfbars9v4pgpW6SO1KSPkfoS0xVOM/9UzkJltjlsHZmJasxg8aXkuZa7SMf8vKGIBhpUsPluQSqhJFCqebw==}
+    engines: {node: '>=0.4.0'}
+
   acorn@8.18.0:
     resolution: {integrity: sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==}
     engines: {node: '>=0.4.0'}
@@ -7453,6 +7464,10 @@ snapshots:
   '@xterm/xterm@6.0.0': {}
 
   acorn-jsx@5.3.2(acorn@8.18.0):
+    dependencies:
+      acorn: 8.18.0
+
+  acorn-walk@8.3.5:
     dependencies:
       acorn: 8.18.0
 
