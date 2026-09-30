@@ -121,4 +121,3 @@ experiments (as tested hypotheses).
   export only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Resolve
   endpoint discovery and safe behavior for hosts without collector access,
   without routing local telemetry to an unintended endpoint.
-
