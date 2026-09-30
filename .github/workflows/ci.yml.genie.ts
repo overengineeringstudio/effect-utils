@@ -692,6 +692,7 @@ const extraJobs: Record<string, any> = {
             'set -euo pipefail',
             'FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"',
             'export FINGERPRINT_BIN',
+            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --filter @overeng/buck2-tools... --frozen-lockfile --ignore-scripts --config.minimum-release-age=0',
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \\',
             '  genie/buck2/typescript-package-projection.unit.test.ts \\',
             '  genie/buck2/javascript-candidates.unit.test.ts \\',

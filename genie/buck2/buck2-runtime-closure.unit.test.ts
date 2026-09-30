@@ -86,8 +86,10 @@ describe('staged Buck runtime closure', () => {
         runtime.nodeModules,
       )
       expect(declared.map(({ staged }) => staged).toSorted()).toEqual(
-        [...runtime.modules.map(stagedModuleName), ...(runtime.nodeModules ? ['node_modules'] : [])]
-          .toSorted(),
+        [
+          ...runtime.modules.map(stagedModuleName),
+          ...(runtime.nodeModules !== undefined ? ['node_modules'] : []),
+        ].toSorted(),
       )
     }
   })

@@ -13,10 +13,9 @@ import { builtinModules } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-import type { BunPlugin } from 'bun'
-
 import { parse } from 'acorn'
 import { simple } from 'acorn-walk'
+import type { BunPlugin } from 'bun'
 
 import { canonicalizePath, realpathThroughName } from './real-path.ts'
 import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
@@ -796,7 +795,7 @@ const normalizePortableCommonJsGlobals = ({
   // a regex or nested template. Literal-looking text in comments, regexes and
   // strings must never be rewritten to conceal a leaked build root.
   const edits: { start: number; end: number; replacement: string }[] = []
-  if (bundle.includes('__dirname') || bundle.includes('__filename')) {
+  if (bundle.includes('__dirname') === true || bundle.includes('__filename') === true) {
     simple(parse(bundle, { ecmaVersion: 'latest', sourceType: 'module' }), {
       VariableDeclaration(declaration) {
         if (declaration.kind !== 'var') return
