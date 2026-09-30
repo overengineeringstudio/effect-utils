@@ -425,7 +425,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
       (yield* get({
         path: `/repos/${repoPath}/actions/runs/${opts.runId}`,
         schema: WorkflowIdentity,
-      }).pipe(Effect.catch(() => Effect.succeed(undefined))))?.workflow_id
+      }).pipe(Effect.orElseSucceed(() => undefined)))?.workflow_id
     const jobs: PipelineJob[] = []
     for (let page = 1; ; page++) {
       const payload = yield* get({
@@ -453,7 +453,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
       const payload = yield* get({
         path: `/repos/${repoPath}/actions/runs?branch=main&event=push&status=completed&per_page=100&page=${page}`,
         schema: RunsPage,
-      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      }).pipe(Effect.orElseSucceed(() => undefined))
       if (payload === undefined) break
       const candidates = payload.workflow_runs.filter(
         (run) =>
@@ -481,7 +481,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
             if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
           }
           return result
-        }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        }).pipe(Effect.orElseSucceed(() => undefined))
         if (candidateJobs === undefined) {
           skippedBaselineRunIds.push(run.id)
           continue
