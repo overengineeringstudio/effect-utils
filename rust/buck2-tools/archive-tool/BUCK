@@ -4,7 +4,7 @@
 # Projection source: rust/buck2-tools/archive-tool/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:f0e0a046d8a497fae6a1045c3d8eef3c1ae028d6fdced509bfa8a766ee521111
+# Semantic fingerprint: sha256:fda564f62714914fa402a6ca1f225df8ef12768f45763cb5b87ba9de9bf52623
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/BUCK.genie.ts, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/archive-tool/src/**/*.rs, rust/buck2-tools/archive-tool/tests/**/*.rs, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -52,6 +52,7 @@ native.rust_binary(
         "CARGO_PKG_README": "",
         "CARGO_PKG_RUST_VERSION": "",
         "CARGO_CRATE_NAME": "buck2_archive_tool",
+        "CARGO_MANIFEST_DIR": "rust/buck2-tools/archive-tool",
         "CARGO_BIN_NAME": "buck2-archive-tool",
     },
     visibility = [

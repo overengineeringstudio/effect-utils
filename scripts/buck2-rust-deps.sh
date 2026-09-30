@@ -71,10 +71,11 @@ const dir = config.third_party_dir;
 if (typeof dir !== "string" || dir === "") throw new Error("third_party_dir must be a non-empty root-level string");
 if (/[\u0000-\u001f\u007f]/.test(dir)) throw new Error("third_party_dir must not contain control characters");
 if (config.vendor !== false) throw new Error("vendor must be the root-level boolean false");
+if (config.cargo_env !== true) throw new Error("cargo_env must be the root-level boolean true (Cargo package metadata for compilation and build scripts)");
 process.stdout.write(dir);
 ' "$config"
 )"; then
-  echo "buck2-rust-deps: invalid ${config#"$root"/} (must select root-level vendor = false and third_party_dir)" >&2
+  echo "buck2-rust-deps: invalid ${config#"$root"/} (must select root-level vendor = false, cargo_env = true and third_party_dir)" >&2
   exit 1
 fi
 configured_third_party="$(cd "$workspace/$reindeer_third_party" && pwd -P)"
@@ -88,6 +89,16 @@ for fixup in "$third_party"/fixups/*/fixups.toml; do
   [ -f "$fixup" ] || continue
   if grep -nE '^[[:space:]]*(omit_srcs|extra_srcs)[[:space:]]*=' "$fixup"; then
     echo "buck2-rust-deps: non-vendored fixup uses a discarded source key: ${fixup#"$root"/}" >&2
+    fixup_violations=1
+  else
+    grep_status=$?
+    if [ "$grep_status" -ne 1 ]; then
+      echo "buck2-rust-deps: failed to inspect fixup: ${fixup#"$root"/}" >&2
+      exit "$grep_status"
+    fi
+  fi
+  if grep -nE '^[[:space:]]*cargo_env[[:space:]]*=' "$fixup"; then
+    echo "buck2-rust-deps: per-crate cargo_env overrides the full root-level Cargo package environment: ${fixup#"$root"/}; remove the override" >&2
     fixup_violations=1
   else
     grep_status=$?

@@ -84,7 +84,7 @@ describe('Cargo Buck2 package projection', () => {
 
   it('binds the graph path to Reindeer and rejects control characters', () => {
     const mismatchedConfig = path.join(fixtureRoot, 'components/rust/mismatch-reindeer.toml')
-    writeFileSync(mismatchedConfig, 'vendor = false\nthird_party_dir = "."\n')
+    writeFileSync(mismatchedConfig, 'vendor = false\ncargo_env = true\nthird_party_dir = "."\n')
     try {
       expect(() =>
         defineCargoBuck2PackageProjection({
@@ -183,7 +183,7 @@ const renderCargoFixture = ({
         )
         .join('')}`,
     )
-    write('rust/reindeer.toml', 'vendor = false\nthird_party_dir = "third-party"\n')
+    write('rust/reindeer.toml', 'vendor = false\ncargo_env = true\nthird_party_dir = "third-party"\n')
     write(
       'rust/third-party/BUCK',
       thirdPartyTargets
@@ -306,6 +306,7 @@ describe('Cargo compile-time package identity', () => {
       CARGO_PKG_README: '',
       CARGO_PKG_RUST_VERSION: '1.85',
       CARGO_CRATE_NAME: 'tailnet_relay',
+      CARGO_MANIFEST_DIR: 'rust/relay',
     })
     expect(library).not.toHaveProperty('CARGO_BIN_NAME')
     expect(compileEnvironment(rules['tailnet-relay'])).toMatchObject({
@@ -323,6 +324,19 @@ describe('Cargo compile-time package identity', () => {
     expect(compileEnvironment(rules['tailnet-relay-build-script-build'])).not.toHaveProperty(
       'CARGO_BIN_NAME',
     )
+    const run = rendered.match(/^buildscript_run\(\n[\s\S]*?^\)$/m)?.[0]
+    if (run === undefined) throw new Error('Cargo target has no build-script run')
+    expect(compileEnvironment(run)).toMatchObject({
+      CARGO_PKG_NAME: 'tailnet-relay',
+      CARGO_PKG_VERSION: '1.2.3-rc.4+meta',
+      CARGO_PKG_VERSION_MAJOR: '1',
+      CARGO_PKG_VERSION_MINOR: '2',
+      CARGO_PKG_VERSION_PATCH: '3',
+      CARGO_PKG_VERSION_PRE: 'rc.4',
+      CARGO_PKG_LICENSE: 'MIT',
+      CARGO_PKG_LICENSE_FILE: 'LICENSE.txt',
+      CARGO_CRATE_NAME: 'build_script_build',
+    })
   })
 
   it('selects the first present package README unless the manifest disables it', () => {

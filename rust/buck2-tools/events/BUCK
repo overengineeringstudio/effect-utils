@@ -4,7 +4,7 @@
 # Projection source: rust/buck2-tools/events/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:98fd1f607247dc65144c48201154c6aababe9fb3bab2189fe78fa990ef3f26d3
+# Semantic fingerprint: sha256:8f91dbac16b1ef4a0d792f0114bbddb71bfa5db81f4cd118a0f1faa5ff426538
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/BUCK.genie.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/events/src/**/*.rs, rust/buck2-tools/events/tests/**/*.rs, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -69,6 +69,7 @@ native.rust_library(
         "CARGO_PKG_README": "",
         "CARGO_PKG_RUST_VERSION": "",
         "CARGO_CRATE_NAME": "buck2_events",
+        "CARGO_MANIFEST_DIR": "rust/buck2-tools/events",
     },
     visibility = [
         "PUBLIC",
@@ -116,6 +117,7 @@ native.rust_binary(
         "CARGO_PKG_README": "",
         "CARGO_PKG_RUST_VERSION": "",
         "CARGO_CRATE_NAME": "buck2_events",
+        "CARGO_MANIFEST_DIR": "rust/buck2-tools/events",
         "CARGO_BIN_NAME": "buck2-events",
     },
     visibility = [
