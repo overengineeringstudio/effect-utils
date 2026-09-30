@@ -28,15 +28,22 @@
 #   - optional `after = [ ... ]` for package-specific prerequisites
 #
 # Provides:
-#   - test:run - Run all tests
-#   - test:watch - Run tests in watch mode
-#   - test:<name> - Run tests for specific package (when packages provided)
+#   - test:run - Run all tests (`aggregateTask`)
+#   - test:watch - Run tests in watch mode (`primary` import only)
+#   - test:<name> - Run tests for specific package (when packages provided; `taskPrefix`)
+#
+# A non-primary import with a distinct `aggregateTask`/`taskPrefix` schedules the same package
+# suites behind a different install task. Report and span identities stay `test:<name>`, and
+# the primary import alone owns `test:watch` and the vitest CLI guard.
 {
   packages ? [ ],
   installTask ? "pnpm:install",
   extraTests ? [ ],
   packageConcurrency ? null,
   retainVitestJson ? false,
+  aggregateTask ? "test:run",
+  taskPrefix ? "test:",
+  primary ? true,
 }:
 { lib, pkgs, ... }:
 let
@@ -117,10 +124,10 @@ let
     size: items:
     if items == [ ] then [ ] else [ (lib.take size items) ] ++ chunkList size (lib.drop size items);
 
-  packageTestTaskNames = map (pkg: "test:${pkg.name}") packages;
+  packageTestTaskNames = map (pkg: "${taskPrefix}${pkg.name}") packages;
   packageTestBatches =
     if hasPackageConcurrency then chunkList validatedPackageConcurrency packageTestTaskNames else [ ];
-  packageTestBatchTaskName = index: "test:run:batch:${toString index}";
+  packageTestBatchTaskName = index: "${aggregateTask}:batch:${toString index}";
   lastPackageTestBatchTaskName = packageTestBatchTaskName (builtins.length packageTestBatches - 1);
 
   mkTestTask =
@@ -130,7 +137,7 @@ let
         if hasPackageConcurrency then builtins.div pkg.__testIndex validatedPackageConcurrency else 0;
     in
     {
-      "test:${pkg.name}" = {
+      "${taskPrefix}${pkg.name}" = {
         description = "Run tests for ${pkg.name}";
         exec = trace.exec "test:${pkg.name}" (vitestExec {
           name = "test:${pkg.name}";
@@ -160,31 +167,33 @@ let
 
   mkPackageTestBatchTask = index: taskNames: {
     "${packageTestBatchTaskName index}" = {
-      description = "Complete test:run package batch ${toString (index + 1)}";
+      description = "Complete ${aggregateTask} package batch ${toString (index + 1)}";
       after = taskNames;
     };
   };
 
   guardedTasks = {
-    "test:run" = {
+    "${aggregateTask}" = {
       guard = "vitest";
       description = "Run all tests";
       exec =
         if hasPackages then
           null
         else
-          trace.exec "test:run" (vitestExec {
-            name = "test:run";
+          trace.exec aggregateTask (vitestExec {
+            name = aggregateTask;
           });
       after =
         if hasPackages then
           if hasPackageConcurrency then
             [ lastPackageTestBatchTaskName ] ++ extraTests
           else
-            map (pkg: "test:${pkg.name}") packages ++ extraTests
+            packageTestTaskNames ++ extraTests
         else
           [ "genie:run" ];
     };
+  }
+  // lib.optionalAttrs primary {
     "test:watch" = {
       guard = "vitest";
       description = "Run tests in watch mode";
@@ -194,7 +203,7 @@ let
   };
 in
 {
-  packages = cliGuard.fromTasks guardedTasks;
+  packages = lib.optionals primary (cliGuard.fromTasks guardedTasks);
 
   tasks = lib.mkMerge (
     (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packagesWithIndexes else [ ])

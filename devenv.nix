@@ -352,6 +352,18 @@ let
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  # Editor views the source-side test partition executes through: every source test package,
+  # the repository root (`genie:buck2:test` runs `bun test genie/buck2/` from it), and the
+  # packages `devenv-modules:test` runs from source (Genie's compiled-staging proof and the
+  # ci-tools deploy/report task e2e fixtures).
+  testPublicationPackagePaths = lib.unique (
+    [
+      "."
+      "packages/@overeng/ci-tools"
+      "packages/@overeng/genie"
+    ]
+    ++ map (pkg: pkg.path) sourceTestPackages
+  );
   typescriptPublicationRootPredicate = ''
     typescript_publication_root() {
       local member_root repository_root
@@ -768,6 +780,22 @@ in
       packageConcurrency = 4;
       retainVitestJson = true;
     })
+    # CI-only copy of the source-side partition behind the test-scoped publisher. It
+    # schedules the same suites and writes the same `test:<name>` reports, so `test:ci`
+    # runs the identical baseline gate without publishing every workspace editor view.
+    (taskModules.test {
+      installTask = "buck2:editor:publish:test";
+      packages = sourceTestPackages;
+      extraTests = [
+        "devenv-modules:test:ci"
+        "genie:buck2:test:ci"
+      ];
+      packageConcurrency = 4;
+      retainVitestJson = true;
+      aggregateTask = "test:ci";
+      taskPrefix = "test:ci:";
+      primary = false;
+    })
     # Per-lane Buck `test:<package>` tasks, each pulling in its unbounded complement.
     { tasks = buck2TestLaneTasks; }
     (taskModules.storybook {
@@ -878,6 +906,7 @@ in
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
     NODE_OPTIONS = "--import=${./. + "/packages/@overeng/pty-effect/test/node-pty-native-hook.ts"}";
   };
+  tasks."test:ci:pty-effect:unbounded".env = config.tasks."test:pty-effect:unbounded".env;
 
   tasks."lint:check:format".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:format".exec = lib.mkForce (buck2BuildExec {
@@ -1246,6 +1275,12 @@ in
     traceScope = "playwright";
   };
 
+  tasks."buck2:editor:publish:test" = scopedEditorViewPublisher {
+    description = "Atomically publish the editor dependency views the source-side tests execute through";
+    packagePaths = testPublicationPackagePaths;
+    traceScope = "test";
+  };
+
   tasks."buck2:editor:check" = {
     description = "Fail when any published workspace editor dependency view is stale";
     after = [ "genie:check" ];
@@ -1414,6 +1449,16 @@ in
         --buck2-cwd "$root"
     ''
   );
+  tasks."test:ci".after = [ "test:buck2:unit" ];
+  tasks."test:ci".exec = lib.mkForce config.tasks."test:run".exec;
+  tasks."devenv-modules:test:ci" = {
+    inherit (config.tasks."devenv-modules:test") description exec env;
+    after = [ "buck2:editor:publish:test" ];
+  };
+  tasks."genie:buck2:test:ci" = {
+    inherit (config.tasks."genie:buck2:test") description exec execIfModified;
+    after = [ "buck2:editor:publish:test" ];
+  };
 
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.

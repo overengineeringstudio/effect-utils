@@ -462,16 +462,17 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     },
     extraSteps: [frozenLockfileStep],
   }),
-  // Bounded unit-test execution is Buck-owned: `test:run` waits on the single `test:buck2:unit`
-  // invocation, source-only packages, and each lane's exact unbounded complement. Explicit
-  // live/e2e owners remain separate jobs. The baseline gate reads Buck collection artifacts and
-  // retained source summaries, and also proves every lane's recorded census exactly matches its
-  // actual collection. CI must not shard this lane: the gate needs both partitions in one job.
+  // Bounded unit-test execution is Buck-owned: `test:ci` waits on the single `test:buck2:unit`
+  // invocation, source-only packages, and each lane's exact unbounded complement, publishing only
+  // the editor views those source suites execute through. Explicit live/e2e owners remain
+  // separate jobs. The baseline gate reads Buck collection artifacts and retained source
+  // summaries, and also proves every lane's recorded census exactly matches its actual
+  // collection. CI must not shard this lane: the gate needs both partitions in one job.
   test: multiPlatformJob({
     timeoutMinutes: 90,
     name: 'Unit tests',
     env: githubTokenEnv(),
-    run: runDevenvTasksBefore('test:run'),
+    run: runDevenvTasksBefore('test:ci'),
     // Darwin leg of the compiled-executable proof; `build-products` covers Linux x86_64.
     afterSteps: [
       { ...compiledProductsSmokeStep, if: "matrix.runner == 'namespace-profile-macos-arm64'" },
