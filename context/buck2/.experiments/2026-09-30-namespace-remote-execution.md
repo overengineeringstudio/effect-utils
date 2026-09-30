@@ -16,7 +16,7 @@ operations enough to justify replacing the public cache or local execution?
 
 1. Use the prelude-less [probe kit](./2026-09-30-namespace-remote-execution/BUCK.fixture)
    with a remote-only executor. Obtain endpoints through `nsc bazel setup
-   --static -o json`; use plain `host:443`, TLS, and bearer expansion in the
+--static -o json`; use plain `host:443`, TLS, and bearer expansion in the
    Buck daemon environment. Compare a remote input hash with local `sha256sum`,
    clean Buck state, and repeat. Probe default Linux/Darwin workers and named
    pools whose startup scripts realize Nix paths before registration.
@@ -46,14 +46,14 @@ Large JSON and evidence archives are not checked in.
 
 ### Protocol and worker probes
 
-| Probe | Worker preparation | Result | Wall |
-| --- | --- | --- | ---: |
-| `//:env`, `//:hash` | Default Linux | 2 remote actions; hash matches local bytes | 6 s |
-| Same after `clean` | Default Linux | 100% AC hits; 0 remote commands | <1 s |
-| `//:nix_hello` | Linux Nix startup pool | Absolute `/nix/store` executable runs | 14 s cold |
-| `//:env` | Default macOS arm64 | Darwin 25.3, arm64 | 17 s |
-| `//:nix_hello` | Darwin Nix startup pool | Absolute Darwin `/nix/store` executable runs | 75 s cold |
-| `//:caps_tools` | Linux capability pool, 212 tool-closure paths / 3.35 GiB | `tsgo`, `bun`, `rustc`, `node` run remotely | 22 s cold |
+| Probe               | Worker preparation                                       | Result                                       |      Wall |
+| ------------------- | -------------------------------------------------------- | -------------------------------------------- | --------: |
+| `//:env`, `//:hash` | Default Linux                                            | 2 remote actions; hash matches local bytes   |       6 s |
+| Same after `clean`  | Default Linux                                            | 100% AC hits; 0 remote commands              |      <1 s |
+| `//:nix_hello`      | Linux Nix startup pool                                   | Absolute `/nix/store` executable runs        | 14 s cold |
+| `//:env`            | Default macOS arm64                                      | Darwin 25.3, arm64                           |      17 s |
+| `//:nix_hello`      | Darwin Nix startup pool                                  | Absolute Darwin `/nix/store` executable runs | 75 s cold |
+| `//:caps_tools`     | Linux capability pool, 212 tool-closure paths / 3.35 GiB | `tsgo`, `bun`, `rustc`, `node` run remotely  | 22 s cold |
 
 AC, CAS, TLS, and RE work without a Buck2 protocol change. Buck2 rejects a
 `https://` address; it accepts plain `host:443` with `tls = true`.
@@ -69,20 +69,20 @@ semaphore. Remote workers autoscaled to four 8x16 instances. Package and test
 steps preceded quick in each stage, so these quick counts are not the counts
 of a direct clean quick invocation.
 
-| Stage | Surface | Wall, s | Remote | Local | AC hits |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Local, cache disabled | Typecheck + emit | 4.808 | 0 | 193 | 0 |
-| Local | Unit test | 0.555 | 0 | 1 | 0 |
-| Local | Quick after package/test | 41.481 | 0 | 1,083 | 0 |
-| Fresh pool, cold action keys | Typecheck + emit | 58.331 | 193 | 0 | 0 |
-| Fresh pool | Unit test | 3.482 | 1 | 0 | 0 |
-| Fresh pool | Quick after package/test | 136.778 | 1,070 | 13 | 0 |
-| After clean | Typecheck + emit | 2.387 | 0 | 0 | 193 |
-| After clean | Unit test | 0.769 | 0 | 0 | 1 |
-| After clean | Quick after package/test | 3.955 | 0 | 0 | 1,083 |
-| Source-comment edit | Typecheck + emit | 9.338 | 3 | 0 | 0 |
-| Source-comment edit | Unit test | 3.265 | 1 | 0 | 0 |
-| Source-comment edit | Quick after package/test | 66.452 | 81 | 6 | 0 |
+| Stage                        | Surface                  | Wall, s | Remote | Local | AC hits |
+| ---------------------------- | ------------------------ | ------: | -----: | ----: | ------: |
+| Local, cache disabled        | Typecheck + emit         |   4.808 |      0 |   193 |       0 |
+| Local                        | Unit test                |   0.555 |      0 |     1 |       0 |
+| Local                        | Quick after package/test |  41.481 |      0 | 1,083 |       0 |
+| Fresh pool, cold action keys | Typecheck + emit         |  58.331 |    193 |     0 |       0 |
+| Fresh pool                   | Unit test                |   3.482 |      1 |     0 |       0 |
+| Fresh pool                   | Quick after package/test | 136.778 |  1,070 |    13 |       0 |
+| After clean                  | Typecheck + emit         |   2.387 |      0 |     0 |     193 |
+| After clean                  | Unit test                |   0.769 |      0 |     0 |       1 |
+| After clean                  | Quick after package/test |   3.955 |      0 |     0 |   1,083 |
+| Source-comment edit          | Typecheck + emit         |   9.338 |      3 |     0 |       0 |
+| Source-comment edit          | Unit test                |   3.265 |      1 |     0 |       0 |
+| Source-comment edit          | Quick after package/test |  66.452 |     81 |     6 |       0 |
 
 - All reached rows succeeded. The package test passed 18 tests remotely,
   including after the edit. `//:quick` is not proof that every unit-test lane ran.
@@ -112,13 +112,13 @@ slots cold; five supplied 20 warm. The client budget was 32 outstanding RE
 requests, not a server-side eight-worker cap. Peak actual worker commands were
 6 cold / 9 warm; client Execute peaks were 16 / 20.
 
-| Row | Wall, s | Local | Remote | AC hits | Relative to local mean |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Local cold 1, 8 slots | 34.668 | 1,276 | 0 | 0 | — |
-| Local cold 2, 8 slots | 36.053 | 1,276 | 0 | 0 | — |
-| RE cold, fresh pool | 235.276 | 13 | 1,263 | 0 | 6.65× |
-| RE clean-client AC reuse | 5.105 | 0 | 0 | 1,276 | 0.14× |
-| RE warm workers, AC bypassed | 130.680 | 13 | 1,263 | 0 | 3.70× |
+| Row                          | Wall, s | Local | Remote | AC hits | Relative to local mean |
+| ---------------------------- | ------: | ----: | -----: | ------: | ---------------------: |
+| Local cold 1, 8 slots        |  34.668 | 1,276 |      0 |       0 |                      — |
+| Local cold 2, 8 slots        |  36.053 | 1,276 |      0 |       0 |                      — |
+| RE cold, fresh pool          | 235.276 |    13 |  1,263 |       0 |                  6.65× |
+| RE clean-client AC reuse     |   5.105 |     0 |      0 |   1,276 |                  0.14× |
+| RE warm workers, AC bypassed | 130.680 |    13 |  1,263 |       0 |                  3.70× |
 
 Local mean was 35.360 s. Cold means cold workers and action keys, not virgin
 CAS. Warm execution bypassed AC reads, server cache lookup, and writes, but
@@ -126,14 +126,14 @@ retained worker/tool/CAS state; a fifth worker also booted during that row.
 Two local samples and one sample per remote posture do not establish a general
 provider speed ranking.
 
-| Attribution | Cold RE | Warm-worker RE |
-| --- | ---: | ---: |
-| Median actual command | 11.790 ms | 11.221 ms |
-| Median client `Re/Execute` stage | 127.644 ms | 132.355 ms |
-| Summed server queue time | 1,994.420 s | 301.018 s |
-| Summed actual command execution | 95.123 s | 87.836 s |
-| RE downloads | 700,238,932 bytes | 699,203,001 bytes |
-| Materialized output | 69,786 files / 1,000,603,375 bytes | Same |
+| Attribution                      |                            Cold RE |    Warm-worker RE |
+| -------------------------------- | ---------------------------------: | ----------------: |
+| Median actual command            |                          11.790 ms |         11.221 ms |
+| Median client `Re/Execute` stage |                         127.644 ms |        132.355 ms |
+| Summed server queue time         |                        1,994.420 s |         301.018 s |
+| Summed actual command execution  |                           95.123 s |          87.836 s |
+| RE downloads                     |                  700,238,932 bytes | 699,203,001 bytes |
+| Materialized output              | 69,786 files / 1,000,603,375 bytes |              Same |
 
 The cold graph had 561 archive extractions and 547 normalized store-entry
 commands. These roughly 1,100 tiny actions consumed only 17.171 summed worker
@@ -151,17 +151,17 @@ retained critical-path reconstruction assigns an exact fraction to it.
 
 ### Trust experiments
 
-| Experiment | Observed result | Boundary conclusion |
-| --- | --- | --- |
-| RW seeded action; clean; RO endpoint read | 1 AC hit / 0 remote, 1.266 s | Reads work |
-| RO endpoint uncached action | Upload denied, `PERMISSION_DENIED`, 1.366 s | Endpoint denies uploads, not proof of worker execution |
-| Same RO setup bearer; switch to RW storage/scheduler | Uncached action executes remotely, 2.407 s | Bearer is not reader-only |
-| Direct RO `UpdateActionResult` | Denied | Endpoint restriction works |
-| Same bearer, RW `UpdateActionResult` with identical result | Accepted | Reader bearer escalates to AC write authority |
-| Same bearer, scheduler `Execute`, skip cache | Accepted, 3 operation messages | Reader bearer escalates to execution; separate build proves execution |
-| Unique action on key A, clean, key B | A: 1 remote, 5.574 s; B: 1 AC hit, 1.265 s | `--key` does not isolate AC |
-| User/tenant tokens with 15-minute expiry | Both grant execution/storage writes; RO setup forwards same bearer | Membership scope is not a reader role |
-| Revoke both created tokens, retry setup | Both rejected as revoked | Revocation works |
+| Experiment                                                 | Observed result                                                    | Boundary conclusion                                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| RW seeded action; clean; RO endpoint read                  | 1 AC hit / 0 remote, 1.266 s                                       | Reads work                                                            |
+| RO endpoint uncached action                                | Upload denied, `PERMISSION_DENIED`, 1.366 s                        | Endpoint denies uploads, not proof of worker execution                |
+| Same RO setup bearer; switch to RW storage/scheduler       | Uncached action executes remotely, 2.407 s                         | Bearer is not reader-only                                             |
+| Direct RO `UpdateActionResult`                             | Denied                                                             | Endpoint restriction works                                            |
+| Same bearer, RW `UpdateActionResult` with identical result | Accepted                                                           | Reader bearer escalates to AC write authority                         |
+| Same bearer, scheduler `Execute`, skip cache               | Accepted, 3 operation messages                                     | Reader bearer escalates to execution; separate build proves execution |
+| Unique action on key A, clean, key B                       | A: 1 remote, 5.574 s; B: 1 AC hit, 1.265 s                         | `--key` does not isolate AC                                           |
+| User/tenant tokens with 15-minute expiry                   | Both grant execution/storage writes; RO setup forwards same bearer | Membership scope is not a reader role                                 |
+| Revoke both created tokens, retry setup                    | Both rejected as revoked                                           | Revocation works                                                      |
 
 RO and RW interactive setup returned the same bearer. The test updated an
 existing identical ActionResult, not poisoned content. Arbitrary cross-key CAS
@@ -174,11 +174,11 @@ public execution domain.
 
 ### Total complexity and economics
 
-| Stage | Surfaces touched | Persistent integration burden | Machinery removed after proof |
-| --- | ---: | --- | --- |
-| S1 public shared cache | 14 | Endpoint/root rendering, posture, CI auth, server denial/outage proof, onboarding, workspace/federation/billing, fleet retirement | Public bazel-remote process, storage, auth, ingress, activation, public-only monitoring |
-| S2 Linux RE | +10 touched; 18 distinct cumulative | Platform/test routing, action portability, complete closure publication, immutable pool lifecycle/GC, invocation flags, quota and native evidence | No additional deployed machinery; avoids proposed public NativeLink scheduler/workers |
-| S3 macOS RE | +5 touched; 19 distinct cumulative | Darwin capability publication, OS-specific startup/routing, trusted-only workers, selected jobs and spend limits | No additional deployed machinery |
+| Stage                  |                    Surfaces touched | Persistent integration burden                                                                                                                     | Machinery removed after proof                                                           |
+| ---------------------- | ----------------------------------: | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| S1 public shared cache |                                  14 | Endpoint/root rendering, posture, CI auth, server denial/outage proof, onboarding, workspace/federation/billing, fleet retirement                 | Public bazel-remote process, storage, auth, ingress, activation, public-only monitoring |
+| S2 Linux RE            | +10 touched; 18 distinct cumulative | Platform/test routing, action portability, complete closure publication, immutable pool lifecycle/GC, invocation flags, quota and native evidence | No additional deployed machinery; avoids proposed public NativeLink scheduler/workers   |
+| S3 macOS RE            |  +5 touched; 19 distinct cumulative | Darwin capability publication, OS-specific startup/routing, trusted-only workers, selected jobs and spend limits                                  | No additional deployed machinery                                                        |
 
 The increments count stage-touched groups, including groups modified again;
 they are not 10 and 5 entirely new surfaces. The measured prototype is five
