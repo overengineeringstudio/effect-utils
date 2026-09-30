@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 9 ]; then
-  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <bun> <supply-manifest-script>" >&2
+if [ "$#" -lt 9 ] || [ "$#" -gt 10 ]; then
+  echo "usage: $0 <generate|check> <repository-root> <workspace-root> <third-party-buck> <reindeer> <cargo> <rustc> <bun> <supply-manifest-script> [git-sources-json]" >&2
   exit 64
 fi
 
@@ -15,6 +15,7 @@ cargo="$6"
 rustc="$7"
 bun="$8"
 supply_manifest_script="$9"
+git_sources_file="${10:-}"
 
 case "$mode" in
   generate | check) ;;
@@ -163,20 +164,24 @@ if [ "$((archive_count + git_archive_count))" -eq 0 ] || [ "$sha256_count" -ne "
 fi
 
 # Git sources: Reindeer's `git_fetch` carries no digest. Each (repo, rev) must
-# resolve through `[buck] git_fetch = "git_archive"` to a GitHub commit tarball
-# whose sha256 the sidecar pins; both modes fetch the tarball and verify it.
+# resolve through `[buck] git_fetch = "git_archive"` to a sidecar pin. Public
+# GitHub tarballs are fetched and verified; declared Nix inputs supply their
+# deterministic source tarball without an unauthenticated GitHub request.
 git_archives="$third_party/git-archives.json"
 git_archives_candidate="$(mktemp "$third_party/.git-archives.json.next.XXXXXX")"
 trap 'cleanup; rm -f "$git_archives_candidate"' EXIT
 # shellcheck disable=SC2016 # JavaScript template literals, not shell expansions.
 if ! "$bun" -e '
-const [candidatePath, sidecarPath, outputPath] = process.argv.slice(1);
+const [candidatePath, sidecarPath, outputPath, sourceConfigPath] = process.argv.slice(1);
 const origin = process.env.BUCK2_RUST_DEPS_GITHUB_ORIGIN ?? "https://github.com";
 const schema = "effect-utils/buck2-git-archives/v1";
 const fail = (message) => {
   console.error(`buck2-rust-deps: ${message}`);
   process.exit(1);
 };
+const gitSources = sourceConfigPath === "" ? {} : JSON.parse(await Bun.file(sourceConfigPath).text());
+if (gitSources === null || Array.isArray(gitSources) || typeof gitSources !== "object")
+  fail("git source configuration must map GitHub owner/repo to a pinned source");
 const graph = await Bun.file(candidatePath).text();
 if (/^git_fetch[(]$/m.test(graph))
   fail("git dependencies need [buck] git_fetch = \"git_archive\" so every git source is sha256-pinned");
@@ -188,6 +193,10 @@ for (const [, body] of graph.matchAll(/^git_archive[(]\n([\s\S]*?)^[)]$/gm)) {
   const github = repo.match(/^https:[/][/]github[.]com[/]([A-Za-z0-9_.-]+)[/]([A-Za-z0-9_.-]+?)(?:[.]git)?[/]?$/);
   if (github === null) fail(`git_archive supports only https://github.com/<owner>/<repo> sources: ${repo}`);
   sources.set(`${repo} ${rev}`, { repo, rev, owner: github[1], name: github[2] });
+}
+for (const declared of Object.keys(gitSources)) {
+  if (![...sources.values()].some((source) => `${source.owner}/${source.name}` === declared))
+    fail(`gitSources.${declared} does not match a generated git_archive repository`);
 }
 const sidecarFile = Bun.file(sidecarPath);
 const pinned = (await sidecarFile.exists()) ? JSON.parse(await sidecarFile.text()) : undefined;
@@ -209,11 +218,28 @@ const topLevelPrefix = (tarball) => {
 const archives = [];
 for (const source of [...sources.values()].toSorted((a, b) => (`${a.repo} ${a.rev}` < `${b.repo} ${b.rev}` ? -1 : 1))) {
   const url = `https://github.com/${source.owner}/${source.name}/archive/${source.rev}.tar.gz`;
+  const previous = pinned?.archives?.find((pin) => pin.repo === source.repo && pin.rev === source.rev);
+  const override = gitSources[`${source.owner}/${source.name}`];
+  if (pinned?.archives?.some((pin) => pin.repo === source.repo && pin.source === "nix") && override === undefined)
+    fail(`${source.repo}@${source.rev} has a Nix source pin but no declared gitSources input`);
+  if (override !== undefined) {
+    if (override.rev !== source.rev || typeof override.archive !== "string")
+      fail(`gitSources.${source.owner}/${source.name} must match Cargo.lock rev ${source.rev} and provide an archive`);
+    const tarball = new Uint8Array(await Bun.file(override.archive).arrayBuffer());
+    const sha256 = new Bun.CryptoHasher("sha256").update(tarball).digest("hex");
+    const strip_prefix = topLevelPrefix(tarball);
+    const expectedPrefix = `${source.name}-${source.rev}`;
+    if (strip_prefix !== expectedPrefix)
+      fail(`gitSources.${source.owner}/${source.name} archive prefix ${strip_prefix} does not match ${expectedPrefix}`);
+    if (previous !== undefined && (previous.source !== "nix" || previous.sha256 !== sha256))
+      fail(`${source.repo}@${source.rev} no longer matches its pinned Nix source sha256 ${previous.sha256}; delete this pin from ${sidecarPath}, then re-run generate`);
+    archives.push({ repo: source.repo, rev: source.rev, url, sha256, strip_prefix, source: "nix" });
+    continue;
+  }
   const response = await fetch(`${origin}/${source.owner}/${source.name}/archive/${source.rev}.tar.gz`);
   if (response.ok !== true) fail(`fetching ${url} failed: ${response.status}`);
   const tarball = new Uint8Array(await response.arrayBuffer());
   const sha256 = new Bun.CryptoHasher("sha256").update(tarball).digest("hex");
-  const previous = pinned?.archives?.find((pin) => pin.repo === source.repo && pin.rev === source.rev);
   if (previous !== undefined && previous.sha256 !== sha256)
     fail(
       `${url} no longer matches its pinned sha256 ${previous.sha256} (fetched ${sha256}). ` +
@@ -224,7 +250,7 @@ for (const source of [...sources.values()].toSorted((a, b) => (`${a.repo} ${a.re
 }
 if (archives.length > 0)
   await Bun.write(outputPath, `${JSON.stringify({ schema, archives }, null, 2)}\n`);
-' "$candidate" "$git_archives" "$git_archives_candidate"; then
+' "$candidate" "$git_archives" "$git_archives_candidate" "$git_sources_file"; then
   exit 1
 fi
 

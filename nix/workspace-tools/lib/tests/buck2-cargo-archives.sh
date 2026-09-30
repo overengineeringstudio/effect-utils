@@ -8,6 +8,10 @@ mkdir -p "$fixture/third-party" "$fixture/source/src"
 printf 'pub fn demo() -> u32 { 42 }\n' > "$fixture/source/src/lib.rs"
 ln -s lib.rs "$fixture/source/src/current.rs"
 printf 'git_archive(\n)\n' > "$fixture/third-party/BUCK"
+# Real Reindeer graphs can exceed 20,000 lines; Git rule detection must not overflow Nix's stack.
+for ((line = 0; line < 22000; line++)); do
+  printf '# generated graph line %d\n' "$line"
+done >> "$fixture/third-party/BUCK"
 rev=0123456789abcdef0123456789abcdef01234567
 pin=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 prefix=demo-0123456789abcdef0123456789abcdef01234567
@@ -49,4 +53,23 @@ if nix eval --impure --raw --expr "$common toString (archives { inherit pkgs; th
   exit 1
 fi
 grep -Fq 'does not match Cargo.lock rev' "$fixture/error"
+pin="$actual"
+cat > "$fixture/third-party/git-archives.json" <<EOF
+{"schema":"effect-utils/buck2-git-archives/v1","archives":[{"repo":"https://github.com/owner/demo.git","rev":"$rev","url":"https://github.com/owner/demo/archive/$rev.tar.gz","sha256":"$pin","strip_prefix":"$prefix","source":"nix"}]}
+EOF
+root="$(nix build --impure --no-link --print-out-paths --expr "$expr")"
+test "$(nix hash file --type sha256 --base16 "$root/$pin.tgz")" = "$pin"
+bun "$repo_root/buck2/dependencies/nix-archive.ts" --root "$root" --sha256 "$pin" --source-repo 'https://github.com/owner/demo.git' --source-rev "$rev" --output "$fixture/pinned.tgz"
+cmp "$root/$pin.tgz" "$fixture/pinned.tgz"
+if nix eval --impure --raw --expr "$common toString (archives { inherit pkgs; thirdPartyBuckFiles = [ buck ]; })" > "$fixture/error" 2>&1; then
+  echo 'buck2-cargo-archives-test: Nix source pin accepted without an override' >&2
+  exit 1
+fi
+grep -Fq 'requires gitSources.owner/demo' "$fixture/error"
+printf 'pub fn changed() -> u32 { 99 }\n' > "$fixture/source/src/lib.rs"
+if nix build --impure --no-link --expr "$expr" > "$fixture/error" 2>&1; then
+  echo 'buck2-cargo-archives-test: source bytes drifted from the pinned sha256' >&2
+  exit 1
+fi
+grep -Fq 'does not match git-archives.json' "$fixture/error"
 echo 'buck2-cargo-archives-test: PASS local source, deterministic archive, digest and rev checks'

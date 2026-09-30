@@ -89,11 +89,12 @@ All notable changes to this project will be documented in this file.
   inherited secrets passed to reusable workflows via `secrets: inherit`.
 
 ### Added
-- **Buck2 Cargo Git sources**: `mkBuck2CargoArchives` accepts
-  `gitSources."owner/repo" = inputs.repo` for private Git dependencies.
-  The flake input rev must match the Cargo-locked commit. Nix supplies a
-  deterministic source archive and Buck verifies its digest and source identity;
-  undeclared Git sources still use the reviewed GitHub tarball digest.
+- **Buck2 Cargo Git sources**: `mkBuck2CargoArchives` and the
+  `buck2-rust-deps` task module accept `gitSources."owner/repo" = inputs.repo`
+  for private Git dependencies. Generate/check pins the deterministic source
+  archive from the flake input without an anonymous GitHub fetch, and Nix/Buck
+  verify its digest and Cargo-locked rev. Undeclared Git sources still use the
+  reviewed GitHub tarball digest.
 
 - **Buck2 Rust foreign Cargo paths**: Declare cross-workspace first-party
   packages once in `<workspaceRoot>/foreign-packages.json` as

@@ -171,20 +171,26 @@ manifest; the derivation itself is the substitution identity.
 
 `mkBuck2CargoArchives { pkgs; thirdPartyBuckFiles; gitSources ? {}; }` supplies
 `nix_store.crates_root` from the Reindeer graphs and their `git-archives.json`
-sidecars (BRIDGE-R08). Registry crates and GitHub repositories without an
-override use the reviewed archive URL and SHA-256 unchanged. A consumer can
-declare `gitSources."owner/repo" = inputs.repo;` for a GitHub Git dependency.
-The flake input must expose a `rev` equal to the sidecar's Cargo-locked 40-hex
-commit; a plain Nix path is allowed for a local source fixture. A mismatch
-fails Nix evaluation.
+sidecars (BRIDGE-R08). Registry crates and undeclared GitHub repositories use
+the reviewed archive URL and SHA-256 unchanged. A consumer declares
+`gitSources."owner/repo" = inputs.repo;` both in this Nix archive projection
+and in the `buck2-rust-deps` task module for a private Git dependency. The
+flake input's `rev` must equal the graph's Cargo-locked 40-hex commit; a plain
+Nix path is allowed only in the archive builder's local fixture.
 
-For an override, Nix archives the declared source beneath the sidecar's
-`strip_prefix` with sorted entries, fixed timestamp/ownership, and gzip without
-an input timestamp. The GitHub tarball's reviewed SHA-256 remains the Buck
-lookup key; the Nix store projection also carries the generated source archive
-digest and `(repo, rev)`. Buck checks those three fields and the copied bytes
-before `extract-git-archive`. Without this manifest, Buck still checks the
-reviewed GitHub byte digest. Neither mode fetches from inside the sandbox.
+The task module and product builder use the same deterministic Nix source
+archive: entries under `<repo>-<rev>`, sorted, fixed timestamp/ownership, and
+gzip without an input timestamp. The task gate writes a `source: "nix"` pin
+with that archive's SHA-256, skips the unauthenticated GitHub fetch, and on
+`check` verifies the current source bytes and revision against the sidecar.
+Buck uses the digest as its lookup key and verifies the copied bytes and
+source `(repo, rev)` manifest before `extract-git-archive`. An earlier
+GitHub-byte pin with an override retains its reviewed lookup digest and checks
+the separate source digest manifest. A `source: "nix"` pin without a declared
+override fails instead of falling back to an unauthenticated fetch. Neither
+mode fetches inside the sandbox. `source` is a repository-local sidecar
+discriminator: omission means the reviewed GitHub bytes, `"nix"` means pinned
+Nix source bytes, and unknown values are rejected.
 
 ### Compiled-executable products
 

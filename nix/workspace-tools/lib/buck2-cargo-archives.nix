@@ -1,8 +1,8 @@
 # Offline crate supply for sandboxed Buck builds (`mkBuckProductFromSource`).
 #
 # Registry archives and ordinary Git archives retain their reviewed byte digests.
-# A declared Git source instead supplies a deterministic tarball, accompanied by
-# its source digest so Buck can verify those different bytes before extraction.
+# A declared Git source supplies a deterministic tarball, pinned directly by
+# its SHA-256 for private sources and verified against the source manifest.
 {
   pkgs,
   # Reindeer graph files (`third-party/BUCK`) as paths.
@@ -40,7 +40,10 @@ let
       archives = map parseBlock blocks;
     in
     assert lib.assertMsg
-      (archives != [ ] || lib.hasInfix "\ngit_archive(\n" ("\n" + builtins.readFile file))
+      (
+        archives != [ ]
+        || builtins.length (lib.splitString "\ngit_archive(\n" ("\n" + builtins.readFile file)) > 1
+      )
       "buck2-cargo-archives: ${toString file} declares no crate_archive (Reindeer [buck] http_archive = \"crate_archive\")";
     archives;
   parseGitArchives =
@@ -56,7 +59,7 @@ let
       assert lib.assertMsg (
         pins.schema or null == "effect-utils/buck2-git-archives/v1"
       ) "buck2-cargo-archives: ${toString sidecar} must carry schema effect-utils/buck2-git-archives/v1";
-      assert lib.assertMsg (lib.hasInfix "\ngit_archive(\n" ("\n" + graphText))
+      assert lib.assertMsg (builtins.length (lib.splitString "\ngit_archive(\n" ("\n" + graphText)) > 1)
         "buck2-cargo-archives: ${toString sidecar} pins git sources but ${toString file} declares no git_archive";
       map (
         pin:
@@ -66,6 +69,10 @@ let
         assert lib.assertMsg (
           builtins.match "https://github.com/[^\"]+[.]tar[.]gz" pin.url != null
         ) "buck2-cargo-archives: ${toString sidecar} ${pin.repo} needs a GitHub archive url";
+        assert lib.assertMsg (builtins.elem (pin.source or "github") [
+          "github"
+          "nix"
+        ]) "buck2-cargo-archives: ${toString sidecar} ${pin.repo} has unknown source type";
         {
           inherit (pin) sha256 url;
           source =
@@ -88,6 +95,8 @@ let
               builtins.match "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" repo != null
             ) "buck2-cargo-archives: ${toString sidecar} has invalid GitHub repo ${pin.repo}";
             if input == null then
+              assert lib.assertMsg ((pin.source or "github") != "nix")
+                "buck2-cargo-archives: ${pin.repo}@${pin.rev} requires gitSources.${repo} (Nix source archive pin)";
               null
             else
               assert lib.assertMsg (
@@ -101,25 +110,13 @@ let
               ) "buck2-cargo-archives: gitSources.${repo} must be a path or a pinned flake input with rev";
               assert lib.assertMsg (rev == null || rev == pin.rev)
                 "buck2-cargo-archives: gitSources.${repo} rev ${toString rev} does not match Cargo.lock rev ${pin.rev}";
-              pkgs.runCommand "buck2-git-source-${lib.replaceStrings [ "/" ] [ "-" ] repo}-${pin.rev}"
-                {
-                  nativeBuildInputs = [
-                    pkgs.gnutar
-                    pkgs.gzip
-                    pkgs.coreutils
-                  ];
-                }
-                ''
-                  set -euo pipefail
-                  mkdir -p "$out"
-                  tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-                    --format=posix --pax-option=delete=atime,delete=ctime \
-                    --transform='flags=r;s|^\.|${pin.strip_prefix}|' \
-                    -C ${lib.escapeShellArg (toString src)} \
-                    -cf - . | gzip -n > "$out/archive.tgz"
-                  printf '%s\n%s\n' '${pin.repo}' '${pin.rev}' > "$out/source.sha256"
-                  sha256sum "$out/archive.tgz" | cut -d' ' -f1 >> "$out/source.sha256"
-                '';
+              import ./buck2-git-source-archive.nix {
+                inherit pkgs src;
+                repo = pin.repo;
+                rev = pin.rev;
+                stripPrefix = pin.strip_prefix;
+                expectedSha256 = if (pin.source or "github") == "nix" then pin.sha256 else null;
+              };
         }
       ) pins.archives;
   archives =

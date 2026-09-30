@@ -7,7 +7,7 @@ GATE=gate
 gate() {
   local -a args=("$@")
   if [ "${args[5]}" = /fake/cargo ]; then args[5]="$FAKE_CARGO"; fi
-  "$ROOT/scripts/buck2-rust-deps.sh" "${args[@]}" "$ROOT/scripts/buck2-rust-supply-manifest.ts"
+  "$ROOT/scripts/buck2-rust-deps.sh" "${args[@]}" "$ROOT/scripts/buck2-rust-supply-manifest.ts" "${TEST_GIT_SOURCES:-}"
 }
 TASK_MODULE="$ROOT/nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
 TEMP_ROOT="$(mktemp -d)"
@@ -232,6 +232,39 @@ if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_RE
 fi
 grep -Fq 'no longer matches its pinned sha256' "$TEMP_ROOT/git-drift-error" || fail "git archive drift was not diagnosed"
 grep -Fq 'delete this pin from' "$TEMP_ROOT/git-drift-error" || fail "git archive drift error does not name the remedy"
+
+# A declared Nix source pins locally produced bytes without fetching GitHub.
+source_archive="$TEMP_ROOT/local-source.tgz"
+cp "$github_archive" "$source_archive"
+source_config="$TEMP_ROOT/git-sources.json"
+printf '{"owner/demo":{"rev":"0123456789abcdef0123456789abcdef01234567","archive":"%s"}}\n' "$source_archive" > "$source_config"
+rm "$git_archives"
+export TEST_GIT_SOURCES="$source_config"
+export BUCK2_RUST_DEPS_GITHUB_ORIGIN="file://$TEMP_ROOT/no-github"
+"$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+grep -Fq '"source": "nix"' "$git_archives" || fail "declared source did not select the Nix archive pin"
+source_digest="$(sha256sum "$source_archive" | cut -d' ' -f1)"
+grep -Fq "\"sha256\": \"$source_digest\"" "$git_archives" || fail "declared source digest was not pinned"
+"$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+unset TEST_GIT_SOURCES
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/missing-source-error"; then
+  fail "gate accepted a Nix source pin with no declared override"
+fi
+grep -Fq 'no declared gitSources input' "$TEMP_ROOT/missing-source-error" || fail "missing private source override was not diagnosed"
+export TEST_GIT_SOURCES="$source_config"
+printf '{"owner/demo":{"rev":"ffffffffffffffffffffffffffffffffffffffff","archive":"%s"}}\n' "$source_archive" > "$source_config"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/source-rev-error"; then
+  fail "gate accepted a Nix source at another commit"
+fi
+grep -Fq 'must match Cargo.lock rev' "$TEMP_ROOT/source-rev-error" || fail "source rev mismatch was not diagnosed"
+printf '{"owner/demo":{"rev":"0123456789abcdef0123456789abcdef01234567","archive":"%s"}}\n' "$source_archive" > "$source_config"
+printf 'pub fn changed_again() {}\n' > "$TEMP_ROOT/tree/demo-0123456789abcdef0123456789abcdef01234567/src/lib.rs"
+tar -C "$TEMP_ROOT/tree" -czf "$source_archive" demo-0123456789abcdef0123456789abcdef01234567
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/source-drift-error"; then
+  fail "gate accepted source archive drift at the pinned rev"
+fi
+grep -Fq 'no longer matches its pinned Nix source sha256' "$TEMP_ROOT/source-drift-error" || fail "source archive drift was not diagnosed"
+unset TEST_GIT_SOURCES
 
 export FAKE_REINDEER_BEHAVIOR=git-fetch
 if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/git-fetch-error"; then

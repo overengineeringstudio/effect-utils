@@ -142,9 +142,14 @@ def pinned_git_archive(pins):
         sha256 = pin["sha256"]
         if len(sha256) != 64 or sha256.lower() != sha256:
             fail("git_archive {} needs a lowercase hex sha256".format(name))
+        source_kind = pin.get("source", "github")
+        if source_kind not in ("github", "nix"):
+            fail("git_archive {} has unknown source type {}".format(name, source_kind))
 
         # Reindeer addresses the checkout as `<name without .git>/<path in repo>`.
         out = name.removesuffix(".git")
+        if source_kind == "nix" and read_config("nix_store", "crates_root", "") == "":
+            fail("git_archive {}: {}@{} needs nix_store.crates_root for its pinned Nix source archive".format(name, repo, rev))
         if read_config("nix_store", "crates_root", "") == "":
             native.http_archive(
                 name = name,
