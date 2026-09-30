@@ -27,9 +27,6 @@
   runtimeClosureTarget ? null,
   # Nix-built native packages used by lockfile store entries (not view links).
   nativeStorePackages ? [ ],
-  # Native tools used by a consumer's Buck build scripts (also declare them as
-  # capabilities so Buck actions receive their immutable inputs).
-  extraNativeBuildInputs ? [ ],
 }:
 
 let
@@ -163,8 +160,7 @@ let
       buck2
       pkgs.cacert
       pkgs.jq
-    ]
-    ++ extraNativeBuildInputs;
+    ];
 
     dontConfigure = true;
     dontFixup = true;
