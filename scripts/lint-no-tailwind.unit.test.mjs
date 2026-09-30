@@ -29,7 +29,7 @@ const fixtures = [
 ]
 
 test('reports dependency, import, config, and CSS violations with source lines', () => {
-  deepStrictEqual(inspectTailwind(fixtures), [
+  deepStrictEqual(inspectTailwind({ files: fixtures }), [
     'docs/package.json:3: devDependencies.@tailwindcss/vite is a Tailwind dependency; remove it and use StyleX',
     'docs/src/site.css:2: Tailwind CSS directive; replace it with StyleX or @overeng/stylex-tokens/preflight.css',
     'docs/src/site.css:3: Tailwind CSS directive; replace it with StyleX or @overeng/stylex-tokens/preflight.css',
@@ -44,7 +44,7 @@ test('reports dependency, import, config, and CSS violations with source lines',
 })
 
 test('permits StyleX and ignores commented Tailwind directives', () => {
-  deepStrictEqual(inspectTailwind(fixtures.slice(-1)), [])
+  deepStrictEqual(inspectTailwind({ files: fixtures.slice(-1) }), [])
 })
 
 test('path-scoped exceptions leave library packages guarded', () => {
@@ -52,7 +52,7 @@ test('path-scoped exceptions leave library packages guarded', () => {
     { path: 'docs/**', reason: 'Published documentation app uses Tailwind' },
     { path: 'packages/@local/**/example/**', reason: 'Standalone example app' },
   ]
-  deepStrictEqual(inspectTailwind(fixtures, exceptions), [
+  deepStrictEqual(inspectTailwind({ files: fixtures, exceptions }), [
     'packages/core/package.json:1: peerDependencies.tailwindcss is a Tailwind dependency; remove it and use StyleX',
     'packages/core/src/index.ts:2: Tailwind import tailwindcss/plugin; replace it with StyleX',
     'packages/@local/demo/src/site.css:1: Tailwind CSS directive; replace it with StyleX or @overeng/stylex-tokens/preflight.css',
@@ -62,12 +62,21 @@ test('path-scoped exceptions leave library packages guarded', () => {
 test('reads checked-in exception arrays and rejects malformed declarations', () => {
   const exceptions = parseTailwindExceptions('[{"path":"docs/**","reason":"Published docs app"}]')
   deepStrictEqual(
-    inspectTailwind(fixtures, exceptions).some((message) => message.startsWith('docs/')),
+    inspectTailwind({ files: fixtures, exceptions }).some((message) => message.startsWith('docs/')),
     false,
   )
   throws(() => parseTailwindExceptions('{"path":"docs/**"}'), /must contain an array/)
-  throws(() => inspectTailwind([], [null]), /Invalid Tailwind exception/)
-  throws(() => inspectTailwind([], [{ path: 'docs/**', reason: 4 }]), /Invalid Tailwind exception/)
-  throws(() => inspectTailwind([], [{ path: 'docs/**', reason: '' }]), /nonempty reason/)
-  throws(() => inspectTailwind([], [{ path: 'docs', reason: 'too broad' }]), /path ending/)
+  throws(() => inspectTailwind({ files: [], exceptions: [null] }), /Invalid Tailwind exception/)
+  throws(
+    () => inspectTailwind({ files: [], exceptions: [{ path: 'docs/**', reason: 4 }] }),
+    /Invalid Tailwind exception/,
+  )
+  throws(
+    () => inspectTailwind({ files: [], exceptions: [{ path: 'docs/**', reason: '' }] }),
+    /nonempty reason/,
+  )
+  throws(
+    () => inspectTailwind({ files: [], exceptions: [{ path: 'docs', reason: 'too broad' }] }),
+    /path ending/,
+  )
 })
