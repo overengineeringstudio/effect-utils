@@ -34,7 +34,7 @@ mkdir -p "$fixture/extracted"
 tar -xzf "$archive" -C "$fixture/extracted"
 test "$(readlink "$fixture/extracted/$prefix/src/current.rs")" = lib.rs
 test "$(cat "$fixture/extracted/$prefix/src/current.rs")" = 'pub fn demo() -> u32 { 42 }'
-actual="$(sha256sum "$archive" | cut -d' ' -f1)"
+actual="$(nix hash file --type sha256 --base16 "$archive")"
 test "$actual" != "$pin"
 test "$(nix build --impure --no-link --print-out-paths --expr "$expr")" = "$root"
 bun "$repo_root/buck2/dependencies/nix-archive.ts" --root "$root" --sha256 "$pin" --source-repo 'https://github.com/owner/demo.git' --source-rev "$rev" --output "$fixture/copied.tgz"
