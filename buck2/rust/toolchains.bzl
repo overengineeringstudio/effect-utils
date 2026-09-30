@@ -82,7 +82,7 @@ def _release_flags():
     settings = {
         "opt_level": read_config("rust_profile", "opt_level", "3"),
         "debug": read_config("rust_profile", "debug", "0"),
-        "lto": read_config("rust_profile", "lto", "off"),
+        "lto": read_config("rust_profile", "lto", "local"),
         "codegen_units": read_config("rust_profile", "codegen_units", "16"),
         "panic": read_config("rust_profile", "panic", "unwind"),
         "strip": read_config("rust_profile", "strip", "none"),
@@ -91,8 +91,8 @@ def _release_flags():
     }
     allowed = {
         "opt_level": ["0", "1", "2", "3", "s", "z"],
-        "debug": ["0", "1", "2", "line-tables-only", "limited", "full", "none"],
-        "lto": ["off", "thin", "fat"],
+        "debug": ["0", "1", "2", "line-directives-only", "line-tables-only", "limited", "full", "none"],
+        "lto": ["local", "off", "thin", "fat"],
         "panic": ["unwind", "abort"],
         "strip": ["none", "debuginfo", "symbols"],
         "debug_assertions": ["yes", "no"],
@@ -330,8 +330,9 @@ def native_rust_toolchains(capabilities, generation, target_platform):
         "@rules//buck2/rust:release": release_flags,
         "DEFAULT": ["-Copt-level=0"],
     })
+    lto = read_config("rust_profile", "lto", "local")
     rustc_binary_flags = select({
-        "@rules//buck2/rust:release": ["-Clto=" + read_config("rust_profile", "lto", "off")],
+        "@rules//buck2/rust:release": [] if lto == "local" else ["-Clto=" + lto],
         "DEFAULT": [],
     })
     panic_runtime = select({

@@ -51,7 +51,7 @@ let
     settings = {
         "opt_level": str(profile.get("opt-level", 3)),
         "debug": str(2 if debug else 0) if isinstance(debug, bool) else str(debug),
-        "lto": ("fat" if lto else "off") if isinstance(lto, bool) else str(lto),
+        "lto": ("fat" if lto else "local") if isinstance(lto, bool) else str(lto),
         "codegen_units": str(profile.get("codegen-units", 16)),
         "panic": str(profile.get("panic", "unwind")),
         "strip": ("symbols" if strip else "none") if isinstance(strip, bool) else str(strip),
