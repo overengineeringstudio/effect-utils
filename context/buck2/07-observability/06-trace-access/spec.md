@@ -80,7 +80,7 @@ of a fabricated delta. Compare like-for-like matrix-qualified keys rather
 than provider display order or run number. Main runs remain the source
 even after Tempo retention.
 
-GitHub API GETs retry transient 5xx, 429 and network failures with at most three bounded exponential backoffs, respecting `Retry-After` when it fits the retry budget. If a selected main run's jobs remain unavailable, omit that run's samples, retain its ID in the skipped-run audit, and report the reduced `n`; only unavailable current-run jobs prevent the table from rendering.
+Each GitHub API GET has a 20-second timeout and retries transient 5xx, 429, network failures and timeouts with at most three bounded exponential backoffs, respecting `Retry-After` when it fits the retry budget. Collection has a 90-second deadline: on expiry, workflow metadata or main-run listing failure, render the current jobs with an explicit baseline-incomplete reason and the samples already collected; if a selected main run's jobs remain unavailable, omit its samples, retain its ID in the skipped-run audit and report the reduced `n`.
 
 ## Gantt
 

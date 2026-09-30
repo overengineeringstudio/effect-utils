@@ -752,6 +752,9 @@ const renderPipelineTraces = (opts: {
           `Skipped main run IDs (Jobs API unavailable): ${data.skippedBaselineRunIds.map(escaped).join(', ')}.`,
         ]
       : []),
+    ...(typeof data.baselineIncompleteReason === 'string'
+      ? [`Baseline incomplete: ${escaped(data.baselineIncompleteReason)}.`]
+      : []),
     'Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.',
   ]
   if (typeof data.gantt === 'string' && opts.includeGantt !== false) {

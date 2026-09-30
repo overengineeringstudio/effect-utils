@@ -6,8 +6,11 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
+import { Effect } from 'effect'
+import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import { expect, it } from 'vitest'
 
+import { collectPipelineReport } from './pipeline-report.ts'
 import {
   deriveWorkflowReportManagedState,
   parseMarkedWorkflowReportJsonl,
@@ -189,4 +192,123 @@ it.each([
     }
   },
   30_000,
+)
+
+it.each([
+  { failedStage: 'metadata', reason: 'workflow metadata unavailable' },
+  { failedStage: 'runs', reason: 'main run listing unavailable' },
+])(
+  'discloses incomplete baselines when $failedStage lookup fails',
+  async ({ failedStage, reason }) => {
+    const server = createServer((request, response) => {
+      const data =
+        request.url?.includes('/jobs?') === true
+          ? fixture('pr-36472422441-jobs.json')
+          : { message: 'Not found' }
+      response.writeHead(request.url?.includes('/jobs?') === true ? 200 : 404, {
+        'Content-Type': 'application/json',
+      })
+      response.end(JSON.stringify(data))
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (address === null || typeof address === 'string')
+      throw new Error('Expected an ephemeral HTTP port for the local GitHub API')
+    try {
+      const record = await Effect.runPromise(
+        collectPipelineReport({
+          repository: 'overengineeringstudio/effect-utils',
+          runId: 36472422441,
+          attempt: 1,
+          ...(failedStage === 'runs' ? { workflowId: 219217938 } : {}),
+          token: 'local-test-token',
+          grafanaBaseUrl: '',
+          generatedAtUtc: '2026-09-28T20:00:00.000Z',
+          traceIdForJob: () => undefined,
+          apiBaseUrl: `http://127.0.0.1:${address.port}`,
+        }).pipe(Effect.provide(FetchHttpClient.layer)),
+      )
+      expect(record.kind).toBe('pipeline-traces')
+      expect(record.data!.rows).toEqual(
+        expect.arrayContaining([expect.objectContaining({ job: 'typecheck' })]),
+      )
+      expect(record.data!.baselineIncompleteReason).toBe(reason)
+      const body = renderWorkflowReportCommentBody({
+        title: 'Pipeline traces',
+        noRecordsMessage: 'Jobs API report unavailable.',
+        state: deriveWorkflowReportManagedState({
+          stateId: 'pipeline-traces',
+          entryId: '36472422441/1',
+          entryLabel: 'PR run 36472422441',
+          createdAtUtc: record.createdAtUtc,
+          records: [record],
+        }),
+      })
+      expect(body).toContain(`Baseline incomplete: ${reason}.`)
+      expect(body).not.toContain('Jobs API report unavailable:')
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  },
+)
+
+it.each([
+  { stalled: false, timeoutMs: 250 },
+  { stalled: true, timeoutMs: 1_700 },
+])(
+  'stops baseline collection at its deadline despite $stalled API calls',
+  async ({ stalled, timeoutMs }) => {
+    const runs = fixture('main-runs.json') as { workflow_runs: unknown[]; total_count: number }
+    let stalledRequests = 0
+    const server = createServer((request, response) => {
+      const url = request.url!
+      if (url.includes(`/runs/${baselineIds[1]}/jobs?`) === true) {
+        stalledRequests++
+        if (stalled === true) return // Per-request timeout interrupts an unresponsive GET.
+        response.writeHead(429, { 'Retry-After': '5' })
+        response.end('rate limited')
+        return
+      }
+      const runId = Number(url.match(/\/actions\/runs\/(\d+)\/jobs/u)?.[1])
+      const data =
+        url.includes('/actions/runs?') === true
+          ? { ...runs, total_count: 9, workflow_runs: runs.workflow_runs.slice(0, 9) }
+          : runId === 36472422441
+            ? fixture('pr-36472422441-jobs.json')
+            : fixture(`main-${runId}-jobs.json`)
+      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify(data))
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (address === null || typeof address === 'string')
+      throw new Error('Expected an ephemeral HTTP port for the local GitHub API')
+    const started = Date.now()
+    try {
+      const record = await Effect.runPromise(
+        collectPipelineReport({
+          repository: 'overengineeringstudio/effect-utils',
+          runId: 36472422441,
+          attempt: 1,
+          workflowId: 219217938,
+          token: 'local-test-token',
+          grafanaBaseUrl: '',
+          generatedAtUtc: '2026-09-28T20:00:00.000Z',
+          traceIdForJob: () => undefined,
+          apiBaseUrl: `http://127.0.0.1:${address.port}`,
+          requestTimeoutMs: 50,
+          collectionTimeoutMs: timeoutMs,
+        }).pipe(Effect.provide(FetchHttpClient.layer)),
+      )
+      expect(record.kind).toBe('pipeline-traces')
+      expect(record.data!.baselineCounts).toMatchObject({ typecheck: 1 })
+      expect(record.data!.skippedBaselineRunIds).toEqual([baselineIds[1]])
+      expect(record.data!.baselineIncompleteReason).toBe('collection deadline exceeded')
+      expect(stalledRequests).toBe(stalled === true ? 2 : 1)
+      expect(Date.now() - started).toBeLessThan(timeoutMs + 1_000)
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  },
 )
