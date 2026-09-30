@@ -2,6 +2,14 @@
 
 - `effect-utils` is a public repository but used in the context of private repositories. It's very important to never commit sensitive information to this repository including information from/about private repositories.
 
+# Language choice
+
+Rust is the default for build/infra tooling, engines, and host-state CLIs. TypeScript needs a reason and means Effect; plain TS is only for trivial glue/config.
+Repo exceptions: the genie engine and `*.genie.ts` authoring stay TS; JS-runtime adapters (e.g. Bun build in buck2-tools) stay TS.
+Remaining buck2-tools TS modules are legacy, maintained in place, and move only on the triggers in [#1522](https://github.com/overengineeringstudio/effect-utils/issues/1522), not proactively.
+Content-address is planned as an Effect contract plus a Rust byte engine; interop remains a draft design.
+The fleet policy is maintained in the maintainers' dotfiles.
+
 # Development Commands
 
 Use `devenv tasks run <task>` (devenv tasks) to execute tasks with dependencies:
