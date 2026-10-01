@@ -1,9 +1,11 @@
 [package]
 name = "foreign-consumer"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+workspace = ".."
 
 [dependencies]
 foreign-shared = { path = "../../b/crates/shared" }
 memchr = "2.7.5"
+renamed_itoa = { package = "itoa", version = "1.0.15" }
 old_toml_datetime = { package = "toml_datetime", version = "0.6.11" }

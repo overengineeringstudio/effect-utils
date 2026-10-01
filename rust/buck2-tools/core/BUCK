@@ -25,6 +25,30 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/bin/buck2-fingerprint.rs",
+    src = "src/bin/buck2-fingerprint.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/fingerprint.rs",
+    src = "src/fingerprint.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
 native.rust_library(
     name = "lib",
     crate = "buck2_tool_core",

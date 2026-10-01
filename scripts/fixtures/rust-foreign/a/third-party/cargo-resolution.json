@@ -1,0 +1,84 @@
+{
+  "dependencies": [
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/a/app/Cargo.toml",
+      "name": "memchr",
+      "package": "memchr",
+      "version": "2.8.3",
+      "kind": "normal",
+      "alias": "memchr"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/a/app/Cargo.toml",
+      "name": "old_toml_datetime",
+      "package": "toml_datetime",
+      "version": "0.6.11",
+      "kind": "normal",
+      "alias": "old_toml_datetime"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/a/app/Cargo.toml",
+      "name": "renamed_itoa",
+      "package": "itoa",
+      "version": "1.0.18",
+      "kind": "normal",
+      "alias": "renamed_itoa"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/a/Cargo.toml",
+      "name": "pulp",
+      "package": "pulp",
+      "version": "0.22.3",
+      "kind": "normal",
+      "alias": "pulp"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/a/Cargo.toml",
+      "name": "renamed_itoa",
+      "package": "itoa",
+      "version": "1.0.18",
+      "kind": "normal",
+      "alias": "renamed_itoa"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/a/Cargo.toml",
+      "name": "unicode-width",
+      "package": "unicode-width",
+      "version": "0.2.2",
+      "kind": "normal",
+      "alias": "unicode-width"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/a/Cargo.toml",
+      "name": "yoke-derive",
+      "package": "yoke-derive",
+      "version": "0.8.3",
+      "kind": "normal",
+      "alias": "yoke-derive"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml",
+      "name": "itoa",
+      "package": "itoa",
+      "version": "1.0.18",
+      "kind": "normal",
+      "alias": "renamed_itoa"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml",
+      "name": "toml_datetime",
+      "package": "toml_datetime",
+      "version": "1.1.1+spec-1.1.0",
+      "kind": "normal",
+      "alias": "toml_datetime"
+    },
+    {
+      "manifestPath": "scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml",
+      "name": "unicode-width",
+      "package": "unicode-width",
+      "version": "0.2.2",
+      "kind": "normal",
+      "alias": "unicode-width"
+    }
+  ]
+}
