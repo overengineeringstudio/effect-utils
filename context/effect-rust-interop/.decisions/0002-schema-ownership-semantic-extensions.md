@@ -35,3 +35,9 @@ Typify plus validation and the Effect 4 compiler are a baseline, not a settled b
 ## Specification
 
 [Schema ownership and semantic codecs](../spec.md#schema-ownership-and-semantic-codecs-r02r04-r14).
+
+## Amendment 1
+
+The generator and integer bakeoffs are resolved, superseding the baseline and pending bakeoff in the original Consequences section. [B1](../.experiments/b1-schema-compiler.md) found no existing stack meeting all six must-haves. Choose [the owned TS compiler](./0007-owned-schema-compiler.md): live Effect SchemaAST, reuse of Effect's emitter, schemars 1.x plus the Rust helper crate, strict cross-engine regex, and a required versioned vocabulary.
+
+[B2](../.experiments/b2-integer-wire.md) selects canonical decimal-string JSON with required integer widths; [the binary decision](./0011-binary-bulk.md) selects Borsh bulk frames. [Generated Rust](./0009-generated-rust-shape.md) is A-stream, not Typify plus a second validator. Shared authoring ownership and executable parity remain unchanged.

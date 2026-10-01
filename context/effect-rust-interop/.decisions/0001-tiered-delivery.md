@@ -34,3 +34,7 @@ Consumers retain domain services and choose a Layer explicitly. Native products 
 ## Specification
 
 [Delivery and responsibility](../spec.md#delivery-and-responsibility-r01-r05-r07).
+
+## Amendment 1
+
+Native admission guarantees **unwind panics only**, not double panics, OOM, process faults, or addon unload. Products requiring hard crash isolation declare it and use the subprocess tier; a dedicated JS Worker does not contain native process death. [B3](../.experiments/b3-panic-reclamation.md) caught every exercised generated unwind boundary but double-panic children terminated with SIGABRT. This clarifies the original tier decision without expanding its guarantee.

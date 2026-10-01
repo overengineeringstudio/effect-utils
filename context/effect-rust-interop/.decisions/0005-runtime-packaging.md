@@ -35,3 +35,7 @@ Inline delivery increases JS and prevents independent wasm caching. URL consumer
 ## Specification
 
 [Runtime packaging and admission](../spec.md#runtime-packaging-and-admission-r06-r07-r09).
+
+## Amendment 1
+
+[K2](../.experiments/k2-build-admission.md) found Bun also matches `node`; order `bun` **before** `node`, retaining `workerd` first. Darwin Node-API products need `-Clink-arg=-Wl,-undefined,dynamic_lookup` to resolve `_napi_*` symbols from the host runtime. This is macOS Node-API-specific, not a global linker option. All six wasm/native/app × Node/Bun smokes passed on x86_64-linux, aarch64-linux, and aarch64-darwin. Local workerd and browser execution remain out-of-tree proof, not production Cloudflare or complete Buck capability admission.
