@@ -20,6 +20,9 @@ const repositoryStaticTarget = '//buck2/static:check' as const
 const fullAuthorityTargets = [
   '//buck2/toolchains:archive_tool',
   '//buck2/toolchains:product_tool',
+  ...['wasm-adapter:wasm', 'napi-adapter:napi', 'app:app'].flatMap((product) =>
+    ['node', 'bun'].map((runtime) => `//rust/effect-rust-fixtures/${product}-smoke-${runtime}`),
+  ),
 ] as const
 
 export const planRootBuckAggregates = ({

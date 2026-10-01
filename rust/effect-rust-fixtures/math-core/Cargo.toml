@@ -1,0 +1,9 @@
+[package]
+name = "math-core"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "math_core"
