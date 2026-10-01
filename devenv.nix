@@ -770,7 +770,7 @@ in
       extraTests = [
         "devenv-modules:test"
         "genie:buck2:test"
-        "genie:rust-ci:test"
+        "genie:ci-workflow:test"
       ];
       packageConcurrency = 4;
       retainVitestJson = true;
@@ -981,12 +981,14 @@ in
     ''
   );
 
-  tasks."genie:rust-ci:test" = {
-    description = "Run bootstrap-safe plain-flake Rust CI helper tests";
-    exec = trace.exec "genie:rust-ci:test" ''
+  tasks."genie:ci-workflow:test" = {
+    description = "Run bootstrap-safe genie CI workflow helper tests (runner labels, plain-flake Rust jobs)";
+    exec = trace.exec "genie:ci-workflow:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun test genie/ci-workflow/rust.unit.test.ts
+      # `./` makes these exact paths; bare arguments are suffix filters that
+      # also match the copies Buck stages under buck-out.
+      exec ${pkgs.bun}/bin/bun test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts
     '';
     execIfModified = [
       "genie/ci-workflow/**/*.ts"

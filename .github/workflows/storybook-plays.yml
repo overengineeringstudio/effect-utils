@@ -18,8 +18,7 @@ concurrency:
 
 jobs:
   test-storybook-plays:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
     permissions:
       contents: read

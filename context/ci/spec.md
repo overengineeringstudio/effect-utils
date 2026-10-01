@@ -121,8 +121,13 @@ flake input store path. Workflow sources can then import through that symlink:
 ```ts
 import { githubWorkflow, githubWorkflowEvent } from '../../repos/effect-utils/genie/external.ts'
 import {
-  cargoFmtJob, cargoClippyJob, cargoNextestJob, plainFlakeGenieCheckJob,
-  namespaceRunner, RUNNER_PROFILES, defaultActionlintConfig,
+  cargoFmtJob,
+  cargoClippyJob,
+  cargoNextestJob,
+  plainFlakeGenieCheckJob,
+  namespaceRunner,
+  RUNNER_PROFILES,
+  defaultActionlintConfig,
 } from '../../repos/effect-utils/genie/ci-workflow.ts'
 
 export default githubWorkflow({
@@ -160,7 +165,7 @@ Nextest retries default to two; an explicit zero disables retries. Omit
 
 The freshness job runs `nix develop -c genie --check` and does not prepare a
 megarepo, install npm packages, or assume devenv tasks. The focused pure tests run
-through `devenv tasks run genie:rust-ci:test` and are included in `test:run`.
+through `devenv tasks run genie:ci-workflow:test` and are included in `test:run`.
 
 ## Traceability
 
