@@ -122,6 +122,10 @@ export const normalizeDesiredGithubRepositorySettings = (
   return Object.fromEntries(Object.entries(desired).filter(([, value]) => value !== undefined))
 }
 
+/** Typed ruleset interfaces lack the open wire record's index signature; copy them into one. */
+const toWireRecord = (value: object): { readonly [key: string]: unknown } =>
+  Object.fromEntries(Object.entries(value))
+
 /** GitHub defaults an omitted ruleset target to `branch`; the generated file states it explicitly. */
 const toRulesetPayload = (ruleset: GithubRulesetArgs): GithubRulesetPayload => {
   rejectUnknownFields({
@@ -137,12 +141,11 @@ const toRulesetPayload = (ruleset: GithubRulesetArgs): GithubRulesetPayload => {
     name,
     enforcement,
     target,
-    // Spreads turn the typed interfaces into plain objects, which match the open wire records.
-    ...(conditions === undefined ? {} : { conditions: { ...conditions } }),
+    ...(conditions === undefined ? {} : { conditions: toWireRecord(conditions) }),
     rules,
     ...(bypass_actors === undefined
       ? {}
-      : { bypass_actors: bypass_actors.map((actor) => ({ ...actor })) }),
+      : { bypass_actors: bypass_actors.map((actor) => toWireRecord(actor)) }),
   }
 }
 
