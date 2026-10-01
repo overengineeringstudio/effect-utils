@@ -59,6 +59,49 @@ export const pipelineJobIdentityForName = (name: string): PipelineJobIdentity | 
 /** All known job identifiers, used to check the generator's declarations. */
 export const pipelineJobIdentifierSet = new Set([...pipelineJobIds, 'test'])
 
+/** Jobs API fields that locate one job row within a run's attempts. */
+export type AttemptJob = {
+  readonly name: string
+  readonly run_attempt: number
+  readonly started_at: string | null
+  readonly completed_at: string | null
+}
+
+/**
+ * Selects the latest attempt's jobs from a `filter=all` listing and resolves each job's execution
+ * attempt. A partial rerun reports carried-over jobs under the new `run_attempt`, but their
+ * producer ran (and exported its trace) in the earliest attempt whose same-named job has identical
+ * `started_at` and `completed_at`.
+ */
+export const latestJobsWithExecutionAttempt = <J extends AttemptJob>(
+  all: readonly J[],
+): (J & { readonly executionAttempt: number })[] => {
+  const latest = all.reduce((max, job) => Math.max(max, job.run_attempt), 0)
+  const byAttemptAndName = new Map<string, J[]>()
+  for (const job of all) {
+    const key = `${job.run_attempt}\0${job.name}`
+    byAttemptAndName.set(key, [...(byAttemptAndName.get(key) ?? []), job])
+  }
+  return all
+    .filter((job) => job.run_attempt === latest)
+    .map((job) => {
+      let executionAttempt = job.run_attempt
+      while (executionAttempt > 1) {
+        const earlier = byAttemptAndName.get(`${executionAttempt - 1}\0${job.name}`)
+        const copy = earlier?.length === 1 ? earlier[0]! : undefined
+        if (
+          copy === undefined ||
+          job.started_at === null ||
+          copy.started_at !== job.started_at ||
+          copy.completed_at !== job.completed_at
+        )
+          break
+        executionAttempt--
+      }
+      return Object.assign({}, job, { executionAttempt })
+    })
+}
+
 const names = [
   ...pipelineJobIds.map((job) => ({
     name: job === 'ci-measurements-report' ? 'ci/measurements-report' : job,

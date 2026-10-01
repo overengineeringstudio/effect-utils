@@ -3,6 +3,7 @@ import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
 import {
+  latestJobsWithExecutionAttempt,
   pipelineDevenvStepName,
   pipelineExportStepName,
   pipelineIdentityStepName,
@@ -179,6 +180,7 @@ export const buildPipelineReport = (opts: {
   readonly repository: string
   readonly runId: number
   readonly attempt: number
+  /** The run's `filter=all` jobs; carried-over rerun jobs keep their execution attempt. */
   readonly jobs: readonly PipelineJob[]
   readonly baselines: readonly { readonly id: number; readonly jobs: readonly PipelineJob[] }[]
   readonly skippedBaselineRunIds?: readonly number[]
@@ -187,7 +189,7 @@ export const buildPipelineReport = (opts: {
   readonly grafanaBaseUrl: string
   readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
 }): WorkflowReportRecord => {
-  const current = opts.jobs.filter((job) => isBuildJob(job.name))
+  const current = latestJobsWithExecutionAttempt(opts.jobs).filter((job) => isBuildJob(job.name))
   const duplicateNames = new Set<string>()
   const countsByName: Record<string, number> = {}
   for (const job of current) countsByName[job.name] = (countsByName[job.name] ?? 0) + 1
@@ -283,7 +285,7 @@ export const buildPipelineReport = (opts: {
       instrumented === false
         ? undefined
         : opts.traceIdForJob(
-            `ci/github/${encodeURIComponent(opts.repository)}/${opts.runId}/${job.run_attempt}`,
+            `ci/github/${encodeURIComponent(opts.repository)}/${opts.runId}/${job.executionAttempt}`,
             identity,
           )
     const traceUrl =
@@ -461,7 +463,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     const jobs: PipelineJob[] = []
     for (let page = 1; ; page++) {
       const payload = yield* get({
-        path: `/repos/${repoPath}/actions/runs/${opts.runId}/jobs?filter=latest&per_page=100&page=${page}`,
+        path: `/repos/${repoPath}/actions/runs/${opts.runId}/jobs?filter=all&per_page=100&page=${page}`,
         schema: JobsPage,
       })
       jobs.push(...payload.jobs)

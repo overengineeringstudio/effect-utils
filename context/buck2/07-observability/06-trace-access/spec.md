@@ -33,9 +33,10 @@ rows and the baseline.
 
 ## Job Facts
 
-Read the current workflow run's jobs with `filter=latest`, following
-pagination so partial reruns retain jobs that last ran in earlier attempts.
-Use each job's `run_attempt` for its trace identity and attempt-close link.
+Read the current workflow run's jobs once with `filter=all`, following
+pagination, and report the latest attempt's rows. Use each job's execution
+attempt ([01](../01-run-identity/spec.md)) for its trace identity and
+attempt-close link, not its `run_attempt`, which carried-over rows share.
 Map each Jobs API `name` through
 [01's finite generated-workflow name mapping](../01-run-identity/spec.md)
 to its job identifier and named matrix dimensions before deriving the
