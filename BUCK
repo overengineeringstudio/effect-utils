@@ -310,6 +310,12 @@ check_aggregate(
         "effect_utils//packages/@overeng/utils:test",
         "//buck2/toolchains:archive_tool",
         "//buck2/toolchains:product_tool",
+        "//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-node",
+        "//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-bun",
+        "//rust/effect-rust-fixtures/napi-adapter:napi-smoke-node",
+        "//rust/effect-rust-fixtures/napi-adapter:napi-smoke-bun",
+        "//rust/effect-rust-fixtures/app:app-smoke-node",
+        "//rust/effect-rust-fixtures/app:app-smoke-bun",
     ],
     visibility = ["PUBLIC"],
 )
