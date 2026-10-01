@@ -1,10 +1,15 @@
-import { normalizeDesiredGithubRepositorySettings, type GithubRepositorySettings } from './mod.ts'
+import {
+  normalizeDesiredGithubRepositorySettings,
+  type GithubRepositorySettings,
+} from '../../runtime/github-repo-settings/mod.ts'
 
+/** Desired repository fields and the remote values for exactly those fields. */
 export type GithubRepositorySettingsComparison = {
   readonly desired: GithubRepositorySettings
   readonly actual: Readonly<Record<string, unknown>>
 }
 
+/** One desired repository field whose remote value differs. */
 export type GithubRepositorySettingsDifference = {
   readonly field: string
   readonly desired: GithubRepositorySettings[keyof GithubRepositorySettings]

@@ -5,16 +5,18 @@ import {
   ghJson,
   type RulesetDiff,
   type RulesetMode,
-} from '../github-ruleset/reconcile.ts'
+} from '../../runtime/github-ruleset/reconcile.ts'
 import { diffGithubRepositorySettings } from './comparison.ts'
-import type { GithubRepoSettings as GithubRepoSettingsData } from './mod.ts'
+import type { GithubRepoSettings as GithubRepoSettingsData } from '../../runtime/github-repo-settings/mod.ts'
 import { GithubRepoSettings, GithubRepositorySettings, GithubRulesetPayload } from './schema.ts'
 
+/** Invalid desired settings, ambiguous remote state, or a failed GitHub API call. */
 export class GithubRepoSettingsError extends Schema.TaggedError<GithubRepoSettingsError>()(
   'GithubRepoSettingsError',
   { message: Schema.String, cause: Schema.optional(Schema.Defect()) },
 ) {}
 
+/** Target repository and generated settings file for one reconcile run. */
 export type GithubRepoSettingsOptions = {
   readonly repo: string
   readonly file: string
@@ -22,6 +24,7 @@ export type GithubRepoSettingsOptions = {
   readonly ruleset?: string | undefined
 }
 
+/** Per-field drift for repository settings and each named ruleset. */
 export type GithubRepoSettingsReport = {
   readonly repo: string
   readonly changed: boolean
@@ -72,7 +75,7 @@ export const reconcileGithubRepoSettings = async ({
   )
   if (
     options.ruleset !== undefined &&
-    !desired.rulesets.some((ruleset) => ruleset.name === options.ruleset)
+    desired.rulesets.some((ruleset) => ruleset.name === options.ruleset) === false
   ) {
     throw new GithubRepoSettingsError({
       message: `${options.file} has no ruleset named \`${options.ruleset}\``,
@@ -98,26 +101,27 @@ export const reconcileGithubRepoSettings = async ({
             args: ['--paginate', '--slurp'],
           }),
         ).flat()
-  const plannedRulesets = []
-  for (const ruleset of desired.rulesets) {
-    const matches = summaries.filter((summary) => summary.name === ruleset.name)
-    if (matches.length > 1) {
-      throw new GithubRepoSettingsError({
-        message: `repo ${options.repo} has multiple rulesets named \`${ruleset.name}\``,
-      })
-    }
-    const summary = matches[0]
-    const diffs =
-      summary === undefined
-        ? [{ field: 'ruleset', desired: ruleset, actual: undefined }]
-        : diffGithubRuleset({
-            desired: ruleset,
-            actual: Schema.decodeUnknownSync(JsonObject)(
-              await ghJson({ endpoint: `repos/${options.repo}/rulesets/${summary.id}` }),
-            ),
-          })
-    plannedRulesets.push({ payload: ruleset, id: summary?.id, diffs })
-  }
+  const plannedRulesets = await Promise.all(
+    desired.rulesets.map(async (ruleset) => {
+      const matches = summaries.filter((summary) => summary.name === ruleset.name)
+      if (matches.length > 1) {
+        throw new GithubRepoSettingsError({
+          message: `repo ${options.repo} has multiple rulesets named \`${ruleset.name}\``,
+        })
+      }
+      const summary = matches[0]
+      const diffs =
+        summary === undefined
+          ? [{ field: 'ruleset', desired: ruleset, actual: undefined }]
+          : diffGithubRuleset({
+              desired: ruleset,
+              actual: Schema.decodeUnknownSync(JsonObject)(
+                await ghJson({ endpoint: `repos/${options.repo}/rulesets/${summary.id}` }),
+              ),
+            })
+      return { payload: ruleset, id: summary?.id, diffs }
+    }),
+  )
 
   const changed =
     repositoryDiffs.length > 0 || plannedRulesets.some((ruleset) => ruleset.diffs.length > 0)
@@ -133,6 +137,8 @@ export const reconcileGithubRepoSettings = async ({
     let id = ruleset.id
     const created = mode === 'apply' && id === undefined
     if (mode === 'apply' && ruleset.diffs.length > 0) {
+      // Writes stay serial so the first failed write stops every later mutation.
+      // eslint-disable-next-line no-await-in-loop
       const result = await ghJson({
         endpoint:
           id === undefined
@@ -165,8 +171,8 @@ export const formatGithubRepoSettingsReport = ({
   readonly mode: RulesetMode
   readonly report: GithubRepoSettingsReport
 }): string => {
-  if (!report.changed) return `ok: ${report.repo} matches generated repository settings`
-  const action = mode === 'apply' && report.applied ? 'applied' : 'drift'
+  if (report.changed === false) return `ok: ${report.repo} matches generated repository settings`
+  const action = mode === 'apply' && report.applied === true ? 'applied' : 'drift'
   return [
     `${action}: ${report.repo} repository settings`,
     ...report.repository.map(

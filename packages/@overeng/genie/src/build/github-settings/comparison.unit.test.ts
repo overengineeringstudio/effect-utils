@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
-import { githubRuleset } from '../github-ruleset/mod.ts'
+import { githubRuleset } from '../../runtime/github-ruleset/mod.ts'
 import {
   diffGithubRepositorySettings,
   normalizeGithubRepositorySettingsForComparison,
@@ -11,7 +11,7 @@ import {
   type GithubRepoSettings as GithubRepoSettingsData,
   type GithubRepositorySettings as GithubRepositorySettingsData,
   type GithubRulesetPayload as GithubRulesetPayloadData,
-} from './mod.ts'
+} from '../../runtime/github-repo-settings/mod.ts'
 import { GithubRepoSettings, GithubRulesetPayload, GithubRepositorySettings } from './schema.ts'
 
 const decodeRepository = Schema.decodeUnknownSync(GithubRepositorySettings)

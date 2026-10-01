@@ -36,13 +36,4 @@ export {
   type RulesetMode,
 } from '../github-ruleset/reconcile.ts'
 
-export {
-  decodeGithubRepoSettings,
-  formatGithubRepoSettingsReport,
-  GithubRepoSettingsError,
-  reconcileGithubRepoSettings,
-  type GithubRepoSettingsOptions,
-  type GithubRepoSettingsReport,
-} from '../github-repo-settings/reconcile.ts'
-
 export * from '../repo-context/mod.ts'

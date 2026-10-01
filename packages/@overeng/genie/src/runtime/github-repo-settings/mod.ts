@@ -2,8 +2,8 @@
  * Consumer-facing repository settings builder.
  *
  * Plain-flake consumers import this module from a Nix store path without any `node_modules`, so it
- * must stay free of npm imports. Full wire decoding lives in `schema.ts` on the reconcile side,
- * which ships inside the bundled Genie product.
+ * must stay free of npm imports. Full wire decoding lives in `src/build/github-settings/schema.ts`
+ * on the reconcile side, which ships inside the bundled Genie product.
  */
 
 import type { GenieOutput } from '../core.ts'
@@ -53,6 +53,7 @@ export type GithubRepoSettings = {
   readonly rulesets: ReadonlyArray<GithubRulesetPayload>
 }
 
+/** Builder input: repository PATCH fields plus rulesets as raw args or `githubRuleset` outputs. */
 export type GithubRepoSettingsArgs = {
   readonly repository: GithubRepositorySettings
   readonly rulesets: readonly (GithubRulesetArgs | GenieOutput<GithubRulesetArgs>)[]
@@ -180,10 +181,3 @@ export const githubRepoSettings = (
       ) + '\n',
   }
 }
-
-export {
-  diffGithubRepositorySettings,
-  normalizeGithubRepositorySettingsForComparison,
-  type GithubRepositorySettingsDifference,
-  type GithubRepositorySettingsComparison,
-} from './comparison.ts'
