@@ -138,6 +138,39 @@ dylibs cannot use it. Package-specific Cargo profile overrides require a
 package-aware rule projection; the current Cargo projector does not read
 profiles, so the shared workspace profile is the supported boundary.
 
+### Rust Interop Products
+
+`buck2/rust/interop.bzl` owns Rust products for JavaScript runtimes. They use
+the root Cargo workspace and the strict Reindeer graph; a Cargo library declares
+`crate-type = ["cdylib", "rlib"]` and the Cargo projection emits the wrapper.
+
+- `rust_wasm_bindgen_library` transitions its crate to the `//buck2/rust:wasm32`
+  target constraint. The executor stays native: `//buck2/toolchains:rust`
+  selects the attested wasm rustc, the C/C++ toolchain links with the attested
+  `wasm-ld` (`LinkerType("wasm")`), and `rust/third-party/PACKAGE` selects the
+  Reindeer `wasm32` platform. The fleet profile is `opt-level=s`, fat LTO and
+  stripped symbols, with no forced codegen-unit count; `profile` overrides
+  `opt_level`, `lto` and `strip`. The action runs the pinned `wasm-bindgen`
+  (matching the crate pin) for `nodejs` and `web`, then `wasm-opt` with
+  `WASM_OPT_FLAGS` (explicit features, never `--all-features`). The package
+  uses conditional exports: `workerd` → precompiled `Module`, `node` → CJS
+  glue, `bun`/`browser`/`default` → inline bytes, and `./url` → explicit URL.
+  The unused default-URL path is removed from the web glue, and the action
+  fails if the pinned generator's glue shape changes.
+- `rust_napi_library` packages the native cdylib as `<name>.node` and rejects
+  wasm or `panic=abort` toolchains. It builds only on the matching native
+  executor; there are no cross builds.
+- `rust_wasm_aggregator` takes an application manifest (group → cores) and
+  generates one Rust crate and one wasm product per group in `buck-out`, plus a
+  TS entry that re-exports the `eager` group and exposes every other group as a
+  dynamic-import loader; nothing generated is committed. The output is a copied
+  directory, so runtimes and bundlers resolve the groups from the entry's real
+  path. Unknown, duplicate, or unassigned cores fail analysis.
+- `rust_interop_smoke` loads a product or aggregator in the admitted Node or
+  Bun (`runtime`), asserts that the runtime resolved its own export condition,
+  and records a verdict artifact; `//:all` includes the fixture smokes under
+  `rust/effect-rust-fixtures` for both runtimes.
+
 ## Compiled JavaScript Executables
 
 `bun_compiled_product_executable` refines EXEC-R01, EXEC-R02, EXEC-R06,
