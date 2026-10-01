@@ -954,6 +954,9 @@ in
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
+  # Explicit digest-tool input for the JavaScript product contract test, including
+  # its direct `devenv shell -- bash ...` CI invocation.
+  env.JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN = "${pkgs.openssl}/bin/openssl";
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
   env.RESTATE_SERVER_BIN = "${restate}/bin/restate-server";
