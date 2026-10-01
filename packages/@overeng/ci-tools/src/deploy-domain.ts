@@ -258,6 +258,7 @@ export class ProviderProjectLookupFailed extends Schema.TaggedError<ProviderProj
 )('ProviderProjectLookupFailed', {
   ...DeployFailureFields,
   transient: Schema.Boolean,
+  retryAfterMs: Schema.optional(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
 }) {
   override get message(): string {
     return `${this.provider} project lookup failed for ${this.target}`
