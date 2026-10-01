@@ -35,3 +35,11 @@ Recovery is configurable with a solid containment default. Healthy-cancel counts
 ## Specification
 
 [Runtime lifecycle and panic containment](../spec.md#runtime-lifecycle-and-panic-containment-r10-r11-r15-r16).
+
+## Amendment 1
+
+[B3](../.experiments/b3-panic-reclamation.md) selects in-process lexical rebuild by default, with retire-only and dedicated Worker execution explicit. Init fails initial Layer construction only; failed rebuild is a defect, not a new method-level Init failure. Input streams expose Sinks and output streams expose Streams. Native catches cover future polls, AsyncTask compute/resolve/reject, and owned cleanup before settlement; containment is restricted to unwind panics. See [the boundary API decision](./0008-idiomatic-boundary-api.md).
+
+## Amendment 2
+
+[W](../.experiments/w-workerd-memory.md) resolves local workerd retention as delayed GC, not a foundation leak. **Retirement guarantees unreachability, not prompt release.** The runtime Layer is isolate-scoped, not per-request. Large-linear-memory product admission remains open pending Cloudflare production and mitigation measurements. Pressure hints and retired-bytes budgets are not selected defaults; see [the workerd decision](./0012-workerd-memory-contract.md).

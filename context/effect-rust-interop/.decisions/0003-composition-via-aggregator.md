@@ -35,3 +35,7 @@ The shared wasm profile uses opt-level s, fat LTO, strip, and pinned wasm-opt -O
 ## Specification
 
 [Application composition and build profile](../spec.md#application-composition-and-build-profile-r08-r09).
+
+## Amendment 1
+
+Application manifests list **adapter crates only**; Rust export signatures and expressions are not TypeScript strings. The [export attribute](./0008-idiomatic-boundary-api.md) owns build-time export metadata; Buck consumes it to generate bindings, service factories, and crate re-exports. The original eager/lazy group and shared-runtime decision remains intact. [K2](../.experiments/k2-build-admission.md) exercised eager and lazy products; the emitted package uses copied output rather than symlinks that resolve group imports against the source tree.
