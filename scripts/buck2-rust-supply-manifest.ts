@@ -177,7 +177,8 @@ const resolvedDependencies = localPackages.flatMap((declaring) =>
           version: pkg.version,
           pkg,
           kind: dependency.kind ?? 'normal',
-          ...(dependency.target === null ? {} : { target: dependency.target }),
+          // Absent (JSON omits undefined) for unconditional edges.
+          target: dependency.target ?? undefined,
         }))
     })
     .toSorted(
@@ -301,9 +302,14 @@ await Bun.write(
   `${JSON.stringify(
     {
       dependencies: resolvedDependencies
-        .map(({ pkg, ...dependency }) => ({
-          ...dependency,
-          alias: assignAlias({ pkg, preferred: dependency.name }),
+        .map((dependency) => ({
+          manifestPath: dependency.manifestPath,
+          name: dependency.name,
+          package: dependency.package,
+          version: dependency.version,
+          kind: dependency.kind,
+          target: dependency.target,
+          alias: assignAlias({ pkg: dependency.pkg, preferred: dependency.name }),
         }))
         .toSorted(
           (a, b) =>
