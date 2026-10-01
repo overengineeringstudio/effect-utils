@@ -29,6 +29,20 @@
       "version": "0.1.0"
     },
     {
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/bjrkjyq2h6haz4i2a14df2wzg17h68x0/overeng-devbar.tgz",
+      "name": "@overeng/devbar",
+      "provenance": {
+        "producerCommit": "82f633cfa265fdcb8b10760091c2fa6e1842e86e",
+        "productDigest": "4004b7a2aa77b0c38255da87e0396f4973639af441b39be9befc3ffdf11c6ab3",
+        "schema": "effect-utils/buck-product-provenance/v1",
+        "target": "effect_utils//packages/@overeng/devbar:dist-package"
+      },
+      "sha256": "4004b7a2aa77b0c38255da87e0396f4973639af441b39be9befc3ffdf11c6ab3",
+      "size": 18490,
+      "storePath": "/nix/store/bjrkjyq2h6haz4i2a14df2wzg17h68x0-overeng-devbar-buck2-from-source-0.1.0",
+      "version": "0.1.0"
+    },
+    {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/7jamxd0z7jcyyf2yac9zpm0004ra4rrk/overeng-effect-ai-claude-cli.tgz",
       "name": "@overeng/effect-ai-claude-cli",
       "provenance": {
@@ -323,11 +337,11 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/c3v073gbf094yz7rpndn6pyr19zcpa4z/ci-tools.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/1ci8w9y1qdnmn6b6h15h5cjxkqnjmkj2/ci-tools.js",
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-5VlOF9uZj1rJXRiJ1Iud5qeUk4znZs1zNjfWB2baNaM=",
+        "integrity": "sha256-BVihoahRF8XuOHcHb7m9WyMVJ+7WUquEi1PN0kcDO5g=",
         "modulePath": "ci-tools.js",
         "platform": {
           "abi": "any",
@@ -345,20 +359,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 851363,
+        "sizeBytes": 852271,
         "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
       },
-      "descriptorSha256": "4074bccab045217790d3021e24f5404dd99cd5b42018109e4b3fc9f97b7b6bd3",
+      "descriptorSha256": "c32cba516cb938444da29d915cbf99d6fa53f47ddceac08041353921236b744f",
       "name": "ci-tools",
       "provenance": {
-        "producerCommit": "ce81d8c902bd3b15028b0de4ae1c51af429e2f7b",
-        "productDigest": "e5594e17db998f5ac95d1889d48b9de6a794938ce766cd733637d60766da35a3",
+        "producerCommit": "7e828be05d17216805dda94adb0cf3c60a0bf0b8",
+        "productDigest": "0558a1a1a85117c5ee3877076fb9bd5b231527eed652ab848b53cdd247033b98",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
       },
-      "sha256": "e5594e17db998f5ac95d1889d48b9de6a794938ce766cd733637d60766da35a3",
-      "size": 851363,
-      "storePath": "/nix/store/c3v073gbf094yz7rpndn6pyr19zcpa4z-ci-tools-buck2-from-source-0.0.0",
+      "sha256": "0558a1a1a85117c5ee3877076fb9bd5b231527eed652ab848b53cdd247033b98",
+      "size": 852271,
+      "storePath": "/nix/store/1ci8w9y1qdnmn6b6h15h5cjxkqnjmkj2-ci-tools-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
