@@ -125,8 +125,12 @@ reads the owning workspace's `Cargo.toml` `[profile.release]` (including
 derivation-backed consumer roots) and passes its opt-level, debug, LTO,
 codegen-units, panic, strip, debug-assertions, and overflow-checks settings
 as Buck config values. Unspecified values use Cargo release defaults
-(3, 0, local thin LTO, 16, unwind, none, no, no); false or absent `lto`
-leaves rustc's local thin LTO enabled, while `lto = "off"` disables it.
+(3, 0, local thin LTO, 16, unwind, debuginfo strip, no, no); false or absent
+`lto` leaves rustc's local thin LTO enabled, while `lto = "off"` disables it.
+Absent `strip` follows Cargo (1.77 and later): `debuginfo` when debug is off,
+`none` otherwise. The final link then also drops the DWARF of static native
+libraries, which can name `/nix/store` source paths, for example from a
+Zig-built archive.
 The selected compile flags apply to
 all crates in the product graph, including third-party crates and build
 scripts; LTO applies only at the final binary link because Rust proc-macro
