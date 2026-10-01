@@ -1514,10 +1514,10 @@ const allCiJobs: Record<string, any> = {
   'notify-alignment': notifyAlignmentJob({
     targetRepo: 'schickling/megarepo-all',
     needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
-    runner: [
-      'namespace-profile-linux-x86-64',
-      'namespace-features:github.run-id=${{ github.run_id }}',
-    ],
+    runner: namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
   }),
 }
 const declaredJobIds = new Set([
