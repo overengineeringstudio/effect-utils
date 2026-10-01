@@ -24,6 +24,7 @@ export const internalPackages = [
   'effect-schema-form',
   'effect-schema-form-aria',
   'genie',
+  'genie-smalltalk',
   'gh-ci-utils',
   'kdl',
   'kdl-effect',

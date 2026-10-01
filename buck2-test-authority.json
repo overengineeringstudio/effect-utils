@@ -343,6 +343,20 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/genie-smalltalk:test_collect",
+      "excludes": [],
+      "packageName": "genie-smalltalk",
+      "packagePath": "packages/@overeng/genie-smalltalk",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/mod.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/genie-smalltalk:test",
+      "taskName": "test:genie-smalltalk",
+      "testFiles": ["src/mod.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/genie:test_collect",
       "excludes": [
         "src/build/mod.integration.test.ts",

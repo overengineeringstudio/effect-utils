@@ -1,0 +1,159 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/genie-smalltalk/BUCK.genie.ts
+# Projection schema version: 12
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:e398a1d4a23d6974800583e03c46161d8ea2c349ce98763a26834491548254d6
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/devbar/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-gateway/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie-smalltalk/BUCK.genie.ts, packages/@overeng/genie-smalltalk/BUCK.genie.ts, packages/@overeng/genie-smalltalk/package.json.genie.ts, packages/@overeng/genie-smalltalk/package.json.genie.ts, packages/@overeng/genie-smalltalk/src/**/*.css, packages/@overeng/genie-smalltalk/src/**/*.cts, packages/@overeng/genie-smalltalk/src/**/*.js, packages/@overeng/genie-smalltalk/src/**/*.mts, packages/@overeng/genie-smalltalk/src/**/*.spec.cjs, packages/@overeng/genie-smalltalk/src/**/*.spec.jsx, packages/@overeng/genie-smalltalk/src/**/*.spec.mjs, packages/@overeng/genie-smalltalk/src/**/*.test.cjs, packages/@overeng/genie-smalltalk/src/**/*.test.jsx, packages/@overeng/genie-smalltalk/src/**/*.test.mjs, packages/@overeng/genie-smalltalk/src/**/*.ts, packages/@overeng/genie-smalltalk/src/**/*.tsx, packages/@overeng/genie-smalltalk/src/**/__snapshots__/*.snap, packages/@overeng/genie-smalltalk/tsconfig.json.genie.ts, packages/@overeng/genie/BUCK.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-storybook/package.json.genie.ts, packages/@overeng/utils/package.json.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
+load("//buck2:editor_view.bzl", "editor_view_inputs")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/mod.ts",
+    "src/mod.unit.test.ts",
+])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/genie-smalltalk",
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "packages/@overeng/genie-smalltalk",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/genie-smalltalk",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
+    files = {
+        "package.json": "package.json",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/genie/dist": "//packages/@overeng/genie:dist",
+        "node_modules/@overeng/genie/package.json": "//packages/@overeng/genie:package.json",
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/genie/node_modules": "//packages/@overeng/genie:package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "test_package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
+    files = {
+        "package.json": "package.json",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+        "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/genie/dist": "//packages/@overeng/genie:dist",
+        "node_modules/@overeng/genie/package.json": "//packages/@overeng/genie:package.json",
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/genie/node_modules": "//packages/@overeng/genie:package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+editor_view_inputs(
+    name = "editor_view_inputs",
+    editor_inputs = ":editor_inputs",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/genie:package.json",
+        "//packages/@overeng/utils-dev:package.json",
+    ],
+    output = "overeng-genie-smalltalk.tgz",
+    visibility = ["PUBLIC"],
+)
+
+vitest_test(
+    name = "test",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_collect",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
