@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+import type { GithubRepoSettings as GithubRepoSettingsData } from '../../runtime/github-repo-settings/mod.ts'
 import {
   diffGithubRuleset,
   ghJson,
@@ -7,7 +8,6 @@ import {
   type RulesetMode,
 } from '../../runtime/github-ruleset/reconcile.ts'
 import { diffGithubRepositorySettings } from './comparison.ts'
-import type { GithubRepoSettings as GithubRepoSettingsData } from '../../runtime/github-repo-settings/mod.ts'
 import { GithubRepoSettings, GithubRepositorySettings, GithubRulesetPayload } from './schema.ts'
 
 /** Invalid desired settings, ambiguous remote state, or a failed GitHub API call. */

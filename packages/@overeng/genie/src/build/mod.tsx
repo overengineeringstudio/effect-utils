@@ -30,8 +30,8 @@ import {
   type GenieSummary,
   type GenieMode,
 } from '../core/schema.ts'
-import { githubSettingsCommand } from './github-settings/cli.ts'
 import { GenieApp } from './app.ts'
+import { githubSettingsCommand } from './github-settings/cli.ts'
 import { GenieView } from './view.tsx'
 
 export {
