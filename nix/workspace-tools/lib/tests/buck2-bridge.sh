@@ -207,6 +207,12 @@ dynamic_import="$(build_expr "$dynamic_import_expr")"
 # substitute a descriptor-bearing attrset for the source Buck derivation.
 source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
   descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+  # The fixture is a Rust native product: like real ones, its staged source
+  # carries the Cargo workspace whose release profile the recipe reads.
+  repositorySource = pkgs.runCommand \"buck2-bridge-rust-source\" { } ''
+    mkdir -p \$out/rust
+    printf '%s\\n' '[workspace]' > \$out/rust/Cargo.toml
+  '';
   builder = import (repo + \"/nix/buck2-products/from-source.nix\") {
     inherit pkgs;
     buck2 = pkgs.writeShellScriptBin \"buck2\" \"exit 1\";
@@ -232,7 +238,7 @@ source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDG
       importNative = true;
       expectedPlatform = descriptor.platform;
       runtimeKind = \"elf-dynamic\";
-      repositorySource = exported;
+      inherit repositorySource;
       capabilities = pkgs.runCommand \"empty-buck-capabilities\" { } \"mkdir \$out\";
       pnpmArchives = pkgs.runCommand \"empty-pnpm-archives\" { } \"mkdir \$out\";
       producerCommit = \"0000000000000000000000000000000000000000\";
