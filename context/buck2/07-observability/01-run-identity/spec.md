@@ -210,9 +210,10 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
   Every job root carries `cicd.pipeline.run.id`; nested tasks share its
   trace.
 - Lifecycle: each completed job exports its job trace at job end after
-  the task-span join. Attempt close uses only this attempt's started,
-  uniquely mapped Jobs API rows, including started failed/cancelled jobs,
-  and omits unstarted/skipped/other-attempt rows. Links carry
+  the task-span join. Attempt close takes the latest attempt's started,
+  uniquely mapped rows from `filter=all`, including started failed/cancelled
+  jobs, links each at its execution attempt, and drops unstarted/skipped
+  rows and rows listed only under earlier attempts. Links carry
   `buck2.job_trace.link_state=unverified`, even if the root never arrived
   in Tempo. Export failure retains the local retry spool; no server
   synthesizes missing jobs. A new trace links back to an outer caller;
