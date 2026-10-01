@@ -35,32 +35,7 @@ let
   # Cargo manifests in consumer roots live in repositorySource, which can be a
   # derivation. Read the staged workspace at build time, not repositoryRoot at
   # evaluation time: the latter belongs to this rules package.
-  releaseProfileArgs = lib.escapeShellArg ''
-    import sys
-    import tomllib
-
-    with open(sys.argv[1], "rb") as manifest:
-        profile = tomllib.load(manifest).get("profile", {}).get("release", {})
-
-    def toggle(value):
-        return "yes" if value else "no"
-
-    debug = profile.get("debug", False)
-    lto = profile.get("lto", False)
-    strip = profile.get("strip", False)
-    settings = {
-        "opt_level": str(profile.get("opt-level", 3)),
-        "debug": str(2 if debug else 0) if isinstance(debug, bool) else str(debug),
-        "lto": ("fat" if lto else "local") if isinstance(lto, bool) else str(lto),
-        "codegen_units": str(profile.get("codegen-units", 16)),
-        "panic": str(profile.get("panic", "unwind")),
-        "strip": ("symbols" if strip else "none") if isinstance(strip, bool) else str(strip),
-        "debug_assertions": toggle(profile.get("debug-assertions", False)),
-        "overflow_checks": toggle(profile.get("overflow-checks", False)),
-    }
-    for name, value in settings.items():
-        print(f"rust_profile.{name}={value}")
-  '';
+  releaseProfileScript = ../workspace-tools/lib/cargo-release-profile.py;
   # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
   # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
   cliBuildStamp = product.cliBuildStamp or null;
@@ -228,7 +203,7 @@ let
 
       rust_profile_args=()
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
-        release_settings="$(${pkgs.python3}/bin/python3 -c ${releaseProfileArgs} ${lib.escapeShellArg "${cargoWorkspaceRoot}/Cargo.toml"})"
+        release_settings="$(${pkgs.python3}/bin/python3 ${releaseProfileScript} ${lib.escapeShellArg "${cargoWorkspaceRoot}/Cargo.toml"})"
         while IFS= read -r setting; do
           rust_profile_args+=(--config "$setting")
         done <<< "$release_settings"
