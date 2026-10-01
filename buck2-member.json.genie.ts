@@ -258,6 +258,36 @@ const manifestProjection = {
       flakePackage: 'buck2-rust-shell',
       executable: 'bin/bash',
     },
+    {
+      toolId: 'rust-wasm-compiler',
+      protocol: 'effect-utils/buck2-rust-tool/v1',
+      flakePackage: 'buck2-rust-wasm-compiler',
+      executable: 'bin/rustc',
+    },
+    {
+      toolId: 'rust-wasm-rustdoc',
+      protocol: 'effect-utils/buck2-rust-tool/v1',
+      flakePackage: 'buck2-rust-wasm-rustdoc',
+      executable: 'bin/rustdoc',
+    },
+    {
+      toolId: 'rust-wasm-linker',
+      protocol: 'llvm/wasm-ld/v21',
+      flakePackage: 'buck2-rust-wasm-linker',
+      executable: 'bin/wasm-ld',
+    },
+    {
+      toolId: 'wasm-bindgen',
+      protocol: 'rustwasm/wasm-bindgen/v0.2.127',
+      flakePackage: 'buck2-wasm-bindgen',
+      executable: 'bin/wasm-bindgen',
+    },
+    {
+      toolId: 'wasm-opt',
+      protocol: 'webassembly/binaryen/v132',
+      flakePackage: 'buck2-wasm-opt',
+      executable: 'bin/wasm-opt',
+    },
   ],
 } as const satisfies Omit<BuckMemberManifest, 'schemaVersion'>
 

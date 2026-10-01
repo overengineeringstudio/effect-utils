@@ -1,0 +1,15 @@
+[package]
+name = "effect-rust-fixture-wasm"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "effect_rust_fixture_wasm"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hash-core = { path = "../hash-core" }
+math-core = { path = "../math-core" }
+wasm-bindgen.workspace = true
