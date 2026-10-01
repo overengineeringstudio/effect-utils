@@ -223,52 +223,39 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     )
   })
 
-  it('keeps latest jobs from a partial rerun at their own trace attempts and baseline durations', () => {
-    const name = 'test (namespace-profile-linux-x86-64)'
-    const steps = [pipelineIdentityStepName, pipelineDevenvStepName, pipelineExportStepName].map(
-      (stepName) => ({ name: stepName, status: 'completed', conclusion: 'success' }),
-    )
-    const previous = { ...options.jobs.find((job) => job.name === name)!, run_attempt: 1, steps }
-    const rerun = {
-      ...options.jobs.find((job) => job.name === 'typecheck')!,
-      run_attempt: 2,
-      steps,
-    }
+  it('keeps carried-over jobs of recorded partial rerun 36785512545 at their execution attempt', () => {
+    const runId = 36785512545
+    const jobs = decodePipelineJobsPage(fixture(`pr-${runId}-jobs-all.json`)).jobs
     const report = buildPipelineReport({
       ...options,
+      runId,
       attempt: 2,
-      jobs: [previous, rerun],
-      baselines: [
-        {
-          id: baselineIds[0]!,
-          jobs: [
-            baselines[0]!.jobs.find((job) => job.name === name)!,
-            baselines[0]!.jobs.find((job) => job.name === 'typecheck')!,
-          ],
-        },
-      ],
-      traceIdForJob: (runId, identity) => deriveJobTraceId({ runId, ...identity }),
+      jobs,
+      traceIdForJob: (jobRunId, identity) => deriveJobTraceId({ runId: jobRunId, ...identity }),
     })
+    const traceAt = (name: string, attempt: number) =>
+      deriveJobTraceId({
+        runId: `ci/github/overengineeringstudio%2Feffect-utils/${runId}/${attempt}`,
+        ...pipelineJobIdentityForName(name)!,
+      })
     const rows = report.data!.rows as readonly PipelineRow[]
-    expect(rows).toHaveLength(2)
+    const traced = rows.filter((row) => row.traceId !== undefined)
+    expect(traced).toHaveLength(16)
+    expect(rows.find((row) => row.job === 'lint')?.traceId).toBe(traceAt('lint', 1))
+    expect(rows.find((row) => row.job === 'typecheck')?.traceId).toBe(traceAt('typecheck', 1))
+    expect(
+      rows.find((row) => row.job === 'test[runner=namespace-profile-macos-arm64]')?.traceId,
+    ).toBe(traceAt('test (namespace-profile-macos-arm64)', 1))
+    const rerun = 'test (namespace-profile-linux-x86-64)'
     expect(
       rows.find((row) => row.job === 'test[runner=namespace-profile-linux-x86-64]')?.traceId,
-    ).toBe(
-      deriveJobTraceId({
-        runId: `ci/github/overengineeringstudio%2Feffect-utils/${options.runId}/1`,
-        ...pipelineJobIdentityForName(name)!,
-      }),
+    ).toBe(traceAt(rerun, 2))
+    const attemptOneTraces = new Set(
+      jobs.flatMap((job) =>
+        pipelineJobIdentityForName(job.name) === undefined ? [] : [traceAt(job.name, 1)],
+      ),
     )
-    expect(rows.find((row) => row.job === 'typecheck')?.traceId).toBe(
-      deriveJobTraceId({
-        runId: `ci/github/overengineeringstudio%2Feffect-utils/${options.runId}/2`,
-        ...pipelineJobIdentityForName('typecheck')!,
-      }),
-    )
-    expect(report.data!.baselineCounts).toMatchObject({
-      typecheck: 1,
-      'test[runner=namespace-profile-linux-x86-64]': 1,
-    })
+    expect(traced.filter((row) => attemptOneTraces.has(row.traceId!))).toHaveLength(15)
   })
 
   it('uses the exact by-ID Grafana URL and rejects malformed trace IDs', () => {
