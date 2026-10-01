@@ -247,8 +247,11 @@ export const defineCargoBuck2PackageProjection = ({
       manifest,
       workspaceRoot: foreignWorkspaceRoot,
       workspace:
-        (Bun.TOML.parse(repo.readText(`${foreignWorkspaceRoot}/Cargo.toml`)) as CargoWorkspace)
-          .workspace ?? {},
+        (
+          Bun.TOML.parse(
+            repo.readText(path.posix.join(foreignWorkspaceRoot, 'Cargo.toml')),
+          ) as CargoWorkspace
+        ).workspace ?? {},
     }
   })
   if (foreignPackages.length > 0 && cargoResolution === undefined) {
@@ -595,6 +598,21 @@ const cargoBuck2PackageProjectionFor = ({
             .map((input) => input.path.slice(packagePath.length + 1)),
         ]),
   ])
+  // The files a consumer's foreign instance of this library reads (see foreign-packages.json).
+  const instanceFiles = sorted([
+    ...new Set([
+      'Cargo.toml',
+      ...librarySources,
+      ...(buildScript === undefined
+        ? []
+        : [
+            buildScript.path,
+            ...buildScript.inputs
+              .filter((input) => input.label === undefined)
+              .map((input) => input.path.slice(packagePath.length + 1)),
+          ]),
+    ]),
+  ])
   // Cargo exposes these variables at compile time, including empty strings
   // for missing manifest fields. See the Cargo reference:
   // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates
@@ -656,16 +674,14 @@ const cargoBuck2PackageProjectionFor = ({
     CARGO_PKG_RUST_VERSION: packageField('rust-version'),
   }
 
-  const foreignProjections =
+  // Only the host shard renders the consumer's foreign instances.
+  const hostedForeignPackages =
     foreignMember === undefined && packagePath === context.foreignTargetPackage
-      ? foreignPackages.map((foreign) =>
-          cargoBuck2PackageProjectionFor({
-            definition,
-            sourceUrl,
-            foreignMember: foreign,
-          }),
-        )
+      ? foreignPackages
       : []
+  const foreignProjections = hostedForeignPackages.map((foreign) =>
+    cargoBuck2PackageProjectionFor({ definition, sourceUrl, foreignMember: foreign }),
+  )
   const semanticInputPaths = sorted([
     ...generatorSourcePaths,
     cargoManifestPath,
@@ -676,7 +692,13 @@ const cargoBuck2PackageProjectionFor = ({
     ...workspaceMembers.map((workspaceMember) => workspaceMember.manifestPath),
     ...foreignPackages.flatMap((foreignPackage) => [
       foreignPackage.manifestPath,
-      `${foreignPackage.workspaceRoot}/Cargo.toml`,
+      path.posix.join(
+        requireValue({
+          value: foreignPackage.workspaceRoot,
+          field: `${foreignPackage.manifestPath} workspace root`,
+        }),
+        'Cargo.toml',
+      ),
       `${foreignPackage.packagePath}/src/**/*.rs`,
     ]),
     projectionSource,
@@ -812,7 +834,13 @@ const cargoBuck2PackageProjectionFor = ({
   if (buildScript !== undefined) {
     const buildScriptBuild = `${packageName}-build-script-build`
     const buildScriptLauncher = `${packageName}-build-script`
-    const packageFiles = sorted([...new Set(['Cargo.toml', buildScript.path, ...sources])])
+    const packageFiles = sorted([
+      ...new Set([
+        'Cargo.toml',
+        buildScript.path,
+        ...(foreignMember === undefined ? sources : librarySources),
+      ]),
+    ])
     const duplicateInputs = buildScript.inputs
       .filter(
         (input) =>
@@ -963,7 +991,7 @@ const cargoBuck2PackageProjectionFor = ({
         ]
       : []),
     ...(buildScript === undefined &&
-    foreignPackages.every(
+    hostedForeignPackages.every(
       (foreign) =>
         resolveBuildScript({ member: foreign, packagePath: foreign.packagePath, repo }) ===
         undefined,
@@ -986,18 +1014,16 @@ const cargoBuck2PackageProjectionFor = ({
     '',
     // A library may be instantiated by consumers of other Cargo workspaces (foreign-packages.json),
     // which compile these exact files against their own third-party graph.
-    ...(library === undefined ? [] : workspaceContractSources)
-      .filter((file) => file !== 'BUCK' && file !== 'BUCK.genie.ts')
-      .flatMap((file) => [
-        'native.export_file(',
-        `    name = ${starlarkString(`cargo-source/${file}`)},`,
-        `    src = ${starlarkString(file)},`,
-        '    visibility = ["PUBLIC"],',
-        ')',
-        '',
-      ]),
+    ...(library === undefined ? [] : instanceFiles).flatMap((file) => [
+      'native.export_file(',
+      `    name = ${starlarkString(`cargo-source/${file}`)},`,
+      `    src = ${starlarkString(file)},`,
+      '    visibility = ["PUBLIC"],',
+      ')',
+      '',
+    ]),
     ...rules,
-    foreignRules,
+    ...(foreignRules === '' ? [] : [foreignRules]),
   ].join('\n')
 
   return createGenieOutput({ data: semanticData, stringify: () => rendered })
@@ -1293,17 +1319,17 @@ const findCargoWorkspaceRoot = ({
     return path.posix.normalize(path.posix.join(packagePath, manifest.package.workspace))
   }
   let directory = packagePath
-  while (directory !== '.') {
-    const candidate = `${directory}/Cargo.toml`
+  for (;;) {
+    const candidate = path.posix.join(directory, 'Cargo.toml')
     if (
       existsSync(repo.resolve(candidate)) === true &&
       (Bun.TOML.parse(repo.readText(candidate)) as CargoWorkspace).workspace !== undefined
     ) {
       return directory
     }
+    if (directory === '.') return packagePath
     directory = path.posix.dirname(directory)
   }
-  return packagePath
 }
 
 const normalizeDependencyRequest = ({

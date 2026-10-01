@@ -49,12 +49,6 @@ native.export_file(
     visibility = ["PUBLIC"],
 )
 
-native.export_file(
-    name = "cargo-source/tests/fingerprint.rs",
-    src = "tests/fingerprint.rs",
-    visibility = ["PUBLIC"],
-)
-
 native.rust_library(
     name = "lib",
     crate = "buck2_tool_core",
@@ -134,4 +128,3 @@ native.rust_binary(
         "PUBLIC",
     ],
 )
-

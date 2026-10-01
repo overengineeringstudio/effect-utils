@@ -147,78 +147,6 @@ native.export_file(
     visibility = ["PUBLIC"],
 )
 
-native.export_file(
-    name = "cargo-source/tests/capture_cli.rs",
-    src = "tests/capture_cli.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/equivalence.rs",
-    src = "tests/equivalence.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/goldens.rs",
-    src = "tests/goldens.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/inspect_cli.rs",
-    src = "tests/inspect_cli.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/inspect_m6_cli.rs",
-    src = "tests/inspect_m6_cli.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/isolation.rs",
-    src = "tests/isolation.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/m10_contract.rs",
-    src = "tests/m10_contract.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/m6_goldens.rs",
-    src = "tests/m6_goldens.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/properties.rs",
-    src = "tests/properties.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/receiver.rs",
-    src = "tests/receiver.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/run_cli.rs",
-    src = "tests/run_cli.rs",
-    visibility = ["PUBLIC"],
-)
-
-native.export_file(
-    name = "cargo-source/tests/spanmetrics.rs",
-    src = "tests/spanmetrics.rs",
-    visibility = ["PUBLIC"],
-)
-
 native.rust_library(
     name = "lib",
     crate = "otelite",
@@ -359,4 +287,3 @@ build_product(
     product_name = "otelite",
     target_platform = host_platform_label(),
 )
-

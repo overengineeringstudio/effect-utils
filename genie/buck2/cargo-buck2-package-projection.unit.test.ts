@@ -121,6 +121,7 @@ const renderCargoFixture = ({
   thirdPartyTargets = ['serde'],
   foreignPackages = {},
   extraFiles = [],
+  rootManifest,
   projectOptions = {},
   render,
 }: {
@@ -137,6 +138,8 @@ const renderCargoFixture = ({
   >
   /** Repository-relative files outside any member (for example build script inputs). */
   readonly extraFiles?: readonly string[]
+  /** Repository-root Cargo.toml, for foreign packages owned by a root workspace. */
+  readonly rootManifest?: string
   readonly render: string
   readonly projectOptions?: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>
 }): string => {
@@ -208,6 +211,7 @@ const renderCargoFixture = ({
       write('rust/third-party/cargo-resolution.json', '{"dependencies":[]}\n')
     }
     for (const file of extraFiles) write(file, '// fixture\n')
+    if (rootManifest !== undefined) write('Cargo.toml', rootManifest)
     for (const [memberPath, member] of Object.entries(members)) {
       if (memberPath !== '.') {
         write(`rust/${memberPath}/Cargo.toml`, memberManifest(memberPath, member.manifest))
@@ -1115,6 +1119,33 @@ describe('Cargo features', () => {
       expect(rules['foreign-shared-lib']).toContain('features = [\n        "x",\n    ],')
       expect(rules['foreign-shared-lib']).not.toContain('"y"')
     }
+  })
+
+  it('inherits foreign metadata from a repository-root workspace', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared" }',
+            files: ['src/lib.rs'],
+          },
+        },
+        rootManifest:
+          '[workspace]\nresolver = "2"\nmembers = ["shared"]\n\n[workspace.package]\nversion = "0.3.0"\nedition = "2021"\n',
+        foreignPackages: {
+          shared: {
+            manifest:
+              '[package]\nname = "shared"\nversion.workspace = true\nedition.workspace = true\n',
+            files: ['src/lib.rs'],
+            projected: true,
+          },
+        },
+        render: 'pkg',
+      }),
+    )
+    expect(rules['foreign-shared-lib']).toContain('"CARGO_PKG_VERSION": "0.3.0",')
+    expect(rules['foreign-shared-lib']).toContain('edition = "2021",')
   })
 
   it('rejects feature requests and optional activation on target-specific member edges', () => {

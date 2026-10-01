@@ -51,6 +51,19 @@ const makeVersionFixture = ({
       JSON.stringify({ files: {}, package: '0'.repeat(64) }),
     )
   }
+  // A library whose target name differs from its package name: Cargo's resolve
+  // node names the edge `md5`, not `md_5`.
+  const md5 = path.join(vendor, 'md-5-0.10.0')
+  mkdirSync(path.join(md5, 'src'), { recursive: true })
+  writeFileSync(
+    path.join(md5, 'Cargo.toml'),
+    '[package]\nname = "md-5"\nversion = "0.10.0"\nedition = "2021"\n\n[lib]\nname = "md5"\n',
+  )
+  writeFileSync(path.join(md5, 'src/lib.rs'), 'pub struct Digest;\n')
+  writeFileSync(
+    path.join(md5, '.cargo-checksum.json'),
+    JSON.stringify({ files: {}, package: '0'.repeat(64) }),
+  )
   writeFileSync(
     path.join(workspace, '.cargo/config.toml'),
     `[source.crates-io]\nreplace-with = "fixture"\n\n[source.fixture]\ndirectory = ${JSON.stringify(vendor)}\n`,
@@ -73,7 +86,7 @@ const makeVersionFixture = ({
   }
   writeFileSync(
     path.join(provider, 'Cargo.toml'),
-    '[package]\nname = "provider"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n\n[dependencies]\nnix = { version = "0.28", default-features = false, features = ["old-api"] }\n\n[build-dependencies]\nnew-nix = { package = "nix", version = "0.29", default-features = false, features = ["new-api"] }\n',
+    '[package]\nname = "provider"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n\n[dependencies]\nmd-5 = "0.10"\nnix = { version = "0.28", default-features = false, features = ["old-api"] }\n\n[build-dependencies]\nnew-nix = { package = "nix", version = "0.29", default-features = false, features = ["new-api"] }\n',
   )
   writeFileSync(path.join(provider, 'build.rs'), 'fn main() {}\n')
   writeFileSync(
@@ -260,6 +273,14 @@ describe('Cargo-resolved supply aliases', () => {
             version: '0.29.0',
             kind: 'normal',
             alias: fixture.key,
+          },
+          {
+            manifestPath: 'provider/Cargo.toml',
+            name: 'md-5',
+            package: 'md-5',
+            version: '0.10.0',
+            kind: 'normal',
+            alias: 'md-5',
           },
           {
             manifestPath: 'provider/Cargo.toml',

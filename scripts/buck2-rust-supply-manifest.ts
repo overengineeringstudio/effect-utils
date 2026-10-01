@@ -28,6 +28,7 @@ type Package = {
     readonly kind: 'dev' | 'build' | null
     readonly target: string | null
   }[]
+  readonly targets: readonly { readonly name: string; readonly kind: readonly string[] }[]
 }
 type Metadata = {
   readonly packages: readonly Package[]
@@ -159,11 +160,20 @@ const resolvedDependencies = localPackages.flatMap((declaring) =>
     .flatMap((dep) => {
       const pkg = byId.get(dep.pkg)
       if (pkg === undefined || pkg.source === null) return []
+      // Resolve node names are the extern crate name: the rename when one is declared,
+      // otherwise the dependency's library target name (`md-5` exposes `md5`).
+      const libName = pkg.targets
+        .find((target) =>
+          target.kind.some((kind) => ['lib', 'rlib', 'proc-macro'].includes(kind) === true),
+        )
+        ?.name.replaceAll('-', '_')
       return declaring.dependencies
         .filter(
           (dependency) =>
             dependency.name === pkg.name &&
-            (dependency.rename ?? dependency.name).replaceAll('-', '_') === dep.name &&
+            (dependency.rename === null
+              ? libName === dep.name
+              : dependency.rename.replaceAll('-', '_') === dep.name) &&
             dep.dep_kinds.some(
               (kind) => kind.kind === dependency.kind && kind.target === dependency.target,
             ),

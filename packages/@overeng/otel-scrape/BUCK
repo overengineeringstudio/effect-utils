@@ -94,12 +94,6 @@ native.export_file(
     visibility = ["PUBLIC"],
 )
 
-native.export_file(
-    name = "cargo-source/tests/cli.rs",
-    src = "tests/cli.rs",
-    visibility = ["PUBLIC"],
-)
-
 native.rust_library(
     name = "lib",
     crate = "otel_scrape",
@@ -210,4 +204,3 @@ build_product(
     product_name = "otel-scrape",
     target_platform = host_platform_label(),
 )
-

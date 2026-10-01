@@ -61,4 +61,3 @@ native.rust_binary(
         "PUBLIC",
     ],
 )
-

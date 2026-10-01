@@ -69,4 +69,3 @@ native.rust_library(
         "PUBLIC",
     ],
 )
-
