@@ -492,6 +492,12 @@ let
       port = 6017;
       playTests = true;
     }
+    {
+      path = "packages/@overeng/devbar";
+      name = "devbar";
+      port = 6018;
+      playTests = true;
+    }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
   # Repository-specific semantic inputs read by Genie sources. The shared

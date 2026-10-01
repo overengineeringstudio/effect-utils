@@ -1,17 +1,17 @@
-import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import { buck2TypeScriptAdmission as effectSocketAdmission } from '../../context/effect/socket/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as opentuiAdmission } from '../../context/opentui/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as agentSessionIngestAdmission } from '../../packages/@overeng/agent-session-ingest/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as devbarAdmission } from '../../packages/@overeng/devbar/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiClaudeCliAdmission } from '../../packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiGatewayAdmission } from '../../packages/@overeng/effect-ai-gateway/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectPathAdmission } from '../../packages/@overeng/effect-path/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectReactAdmission } from '../../packages/@overeng/effect-react/BUCK.genie.ts'
-import { buck2TypeScriptAdmission as effectRpcExplorerAdmission } from '../../packages/@overeng/effect-rpc-explorer/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcExplorerReactAdmission } from '../../packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRpcExplorerAdmission } from '../../packages/@overeng/effect-rpc-explorer/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackAdmission } from '../../packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackBasicAdmission } from '../../packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAriaAdmission } from '../../packages/@overeng/effect-schema-form-aria/BUCK.genie.ts'
@@ -42,6 +42,7 @@ import { buck2TypeScriptAdmission as tuiStoriesAdmission } from '../../packages/
 import { buck2TypeScriptAdmission as utilsDevAdmission } from '../../packages/@overeng/utils-dev/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsStorybookAdmission } from '../../packages/@overeng/utils-storybook/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsAdmission } from '../../packages/@overeng/utils/BUCK.genie.ts'
+import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import {
   buck2TestCollectionTargetSuffix,
   discoverCollectableTestModules,
@@ -81,6 +82,7 @@ export const buck2TypeScriptAdmissions = {
   buck2Tools: buck2ToolsAdmission,
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,
+  devbar: devbarAdmission,
   effectAiClaudeCli: effectAiClaudeCliAdmission,
   effectAiGateway: effectAiGatewayAdmission,
   effectDistributedLock: effectDistributedLockAdmission,

@@ -12,6 +12,7 @@
     "packages/@overeng/buck2-tools",
     "packages/@overeng/ci-tools",
     "packages/@overeng/content-address",
+    "packages/@overeng/devbar",
     "packages/@overeng/effect-ai-claude-cli",
     "packages/@overeng/effect-ai-gateway",
     "packages/@overeng/effect-distributed-lock",
