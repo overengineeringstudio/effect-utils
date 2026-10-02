@@ -1258,6 +1258,32 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/otel-browser:test_collect",
+      "excludes": [],
+      "packageName": "otel-browser",
+      "packagePath": "packages/@overeng/otel-browser",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/BrowserTelemetry.integration.test.ts",
+        "src/SpanRing.unit.test.ts",
+        "src/Traceparent.integration.test.ts",
+        "src/ui/ui.unit.test.ts",
+        "src/vite.integration.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/otel-browser:test",
+      "taskName": "test:otel-browser",
+      "testFiles": [
+        "src/BrowserTelemetry.integration.test.ts",
+        "src/SpanRing.unit.test.ts",
+        "src/Traceparent.integration.test.ts",
+        "src/ui/ui.unit.test.ts",
+        "src/vite.integration.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/otel-contract:test_collect",
       "excludes": [
         "src/otel-scrape/profile-link.unit.test.ts",
@@ -1269,6 +1295,7 @@
       "packagePath": "packages/@overeng/otel-contract",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/Traceparent.unit.test.ts",
         "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.unit.test.ts",
         "src/otel-scrape/registry.gen.unit.test.ts",
@@ -1282,6 +1309,7 @@
       "target": "effect_utils//packages/@overeng/otel-contract:test",
       "taskName": "test:otel-contract",
       "testFiles": [
+        "src/Traceparent.unit.test.ts",
         "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.unit.test.ts",
         "src/otel-scrape/registry.gen.unit.test.ts",
