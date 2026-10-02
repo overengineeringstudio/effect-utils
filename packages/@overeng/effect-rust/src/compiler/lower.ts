@@ -1,4 +1,4 @@
-import { Schema, SchemaAST } from 'effect'
+import { Exit, Schema, SchemaAST } from 'effect'
 
 import { discriminator } from '../schema/discriminator.ts'
 import { assertPortablePattern } from '../schema/pattern.ts'
@@ -10,6 +10,11 @@ import {
   type Type,
   type Width,
 } from './ir.ts'
+
+// ECMAScript String.prototype.trim whitespace, not Rust regex's Unicode \s.
+const trimWhitespace =
+  '\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
+const trimmedPattern = `^([^${trimWhitespace}]([\u0000-\u{10ffff}]*[^${trimWhitespace}])?)?$`
 
 const portableChecks = ({
   ast,
@@ -60,6 +65,17 @@ const portableChecks = ({
         return reject(path, `Invalid ${key} bound`, 'Use a safe integer bound')
       return value
     }
+    const pattern = ({ source, flags }: { source: string; flags: 'u' | 'iu' }) => {
+      if (result.pattern !== undefined)
+        return reject(
+          path,
+          'Pattern intersections need a reviewed lowering',
+          'Combine constraints into one portable named Wire.pattern',
+        )
+      assertPortablePattern(source, flags, `${path}/pattern`)
+      result.pattern = source
+      result.flags = flags
+    }
     switch (representation.id) {
       case 'effect/schema/isInt':
         result.integer = true
@@ -79,21 +95,22 @@ const portableChecks = ({
         const flags = Reflect.get(object, 'flags')
         if (typeof source !== 'string' || (flags !== 'u' && flags !== 'iu'))
           return reject(path, 'Non-portable pattern', 'Use Wire.pattern(src, u or iu)')
-        if (check.annotations?.['x-effect-rust-pattern'] !== source)
+        // The pinned built-in pattern check full-matches the admitted anchored grammar.
+        pattern({ source, flags })
+        break
+      }
+      case 'effect/schema/isTrimmed':
+        pattern({ source: trimmedPattern, flags: 'u' })
+        break
+      case 'effect/schema/isMinLength': {
+        const minimum = number('minLength')
+        if (minimum !== 0 && minimum !== 1)
           return reject(
             path,
-            'ECMAScript end-anchor semantics are not portable',
-            'Replace Schema.isPattern with Wire.pattern to enforce full-string matching',
+            'UTF-16 length is not a code-point length',
+            'Use Schema.isMinCodePoints; only nonempty (length >= 1) is equivalent',
           )
-        if (result.pattern !== undefined)
-          return reject(
-            path,
-            'Pattern intersections need a reviewed lowering',
-            'Combine constraints into one portable named Wire.pattern',
-          )
-        assertPortablePattern(source, flags, `${path}/pattern`)
-        result.pattern = source
-        result.flags = flags
+        result.minLength = Math.max(result.minLength ?? 0, minimum)
         break
       }
       case 'effect/schema/isMinCodePoints':
@@ -225,11 +242,22 @@ export const lower = (
         'Unregistered transformation',
         'Use explicit Wire semantic codecs; arbitrary transformations cannot cross the Rust boundary',
       )
-    if (ast.context?.constructorDefault !== undefined)
+    const constructorDefault = ast.context?.constructorDefault
+    if (
+      constructorDefault !== undefined &&
+      !(
+        ast._tag === 'Literal' &&
+        typeof ast.literal === 'string' &&
+        ast.checks === undefined &&
+        Exit.isExit(constructorDefault) === true &&
+        Exit.isSuccess(constructorDefault) === true &&
+        constructorDefault.value === ast.literal
+      )
+    )
       reject(
         path,
         'Constructor default is not a portable wire contract',
-        'Make the field required or optional explicitly',
+        'Use a required tagged literal with its constant constructor default, or an explicit optional field',
       )
     if (ast._tag === 'Boolean') {
       if (ast.checks !== undefined) portableChecks({ ast, path })
@@ -267,6 +295,22 @@ export const lower = (
     return undefined
   }
   const type = ({ ast, path }: { ast: SchemaAST.AST; path: string }): Type => {
+    // optionalKey clones the AST only to change key context. Reuse the original
+    // nominal definition, never structurally merge independent filters/codecs.
+    if (ast.context?.isOptional === true && ast.context.constructorDefault === undefined) {
+      const original = [...roots.keys(), ...names.keys()].find(
+        (candidate) =>
+          candidate !== ast &&
+          candidate.context?.isOptional !== true &&
+          candidate.context?.constructorDefault === undefined &&
+          (candidate.context?.isMutable ?? false) === ast.context?.isMutable &&
+          candidate.context?.annotations === ast.context?.annotations &&
+          Object.keys(ast).every(
+            (key) => key === 'context' || Reflect.get(ast, key) === Reflect.get(candidate, key),
+          ),
+      )
+      if (original !== undefined) return type({ ast: original, path })
+    }
     if (ast._tag === 'Suspend') {
       const seen = new Set<SchemaAST.AST>()
       let current: SchemaAST.AST = ast
