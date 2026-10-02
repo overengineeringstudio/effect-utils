@@ -1,0 +1,57 @@
+import { Schema } from 'effect'
+import { AdmissionError } from '../compiler/ir.ts'
+
+/** Deliberately small intersection of ECMAScript Unicode and Rust regex syntax.
+ * Full-string anchors avoid the engines' different unanchored/end-line rules.
+ */
+export const assertPortablePattern = (source: string, flags: string = 'u', path = '$/pattern'): void => {
+  const fail = (feature: string): never => { throw new AdmissionError(path, feature, 'Use a full-string anchored portable pattern with u or iu; remove lookaround, backreferences and engine-specific escapes') }
+  if (flags !== 'u' && flags !== 'iu') fail(`Non-portable flags ${flags}`)
+  if (!source.startsWith('^') || !source.endsWith('$')) fail('Full-string ^ and $ anchors required')
+  let inClass = false
+  let groups = 0
+  for (let index = 1; index < source.length - 1; index++) {
+    const character = source[index]!
+    if (character === '\\') {
+      const escaped = source[++index]
+      if (escaped === 'p') {
+        const property = source.slice(index + 1).match(/^\{(L|N|Nd|Letter|Number|Decimal_Number)\}/)
+        if (!property) fail('Unsupported Unicode property')
+        index += property![0].length
+      } else if (escaped === undefined || !'\\^$.*+?()[]{}|/-'.includes(escaped)) fail(`Non-portable escape \\${escaped}`)
+      continue
+    }
+    if (character === '[' && !inClass) { inClass = true; continue }
+    if (character === ']' && inClass) { inClass = false; continue }
+    if (inClass) { if (character === '&' || character === '[') fail('Class set operations are not portable'); continue }
+    if (character === '(') { if (source[index + 1] === '?') fail('Special groups and lookaround are not portable'); groups++; continue }
+    if (character === ')') { if (--groups < 0) fail('Unbalanced group'); continue }
+    if (character === '|' && groups === 0) fail('Alternation must be enclosed in a fully anchored group')
+    if (character === '.' || character === '^' || character === '$') fail('Dot and interior anchors are not portable')
+    if ('*+?}'.includes(character) && (source[index + 1] === '?' || source[index + 1] === '+')) fail('Lazy and possessive quantifiers are not portable')
+    if (character === '{') {
+      const quantifier = source.slice(index).match(/^\{(\d+)(?:,(\d*))?\}/)
+      if (!quantifier) fail('Invalid bounded quantifier')
+      if (Number(quantifier![1]) > 10000 || (quantifier![2] && Number(quantifier![2]) > 10000)) fail('Quantifier exceeds portable limit')
+      index += quantifier![0].length - 1
+    }
+  }
+  if (inClass || groups !== 0) fail('Unbalanced pattern')
+  try { new RegExp(source, flags) } catch { fail('Invalid regex syntax') }
+}
+
+/** Filter used with Schema.String.check(Wire.pattern(...)). */
+export const pattern = (source: string, flags: 'u' | 'iu' = 'u') => {
+  assertPortablePattern(source, flags)
+  // JS $ also matches before a final newline; Rust $ does not. Require the match to consume all input.
+  const regexp = new RegExp(source, flags)
+  return Schema.makeFilter<string>((value) => {
+    const match = regexp.exec(value)
+    return match !== null && match.index === 0 && match[0].length === value.length
+  }, {
+    expected: `a string matching portable pattern ${source}`,
+    representation: { id: 'effect/schema/isPattern', payload: { source, flags } },
+    'x-effect-rust-pattern': source,
+    'x-effect-rust-pattern-flags': flags,
+  })
+}
