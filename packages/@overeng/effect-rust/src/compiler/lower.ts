@@ -123,7 +123,7 @@ const admitsNull = ({
   seen = new Set<SchemaAST.AST>(),
 }: {
   node: SchemaAST.AST
-  seen?: Set<AST>
+  seen?: Set<SchemaAST.AST>
 }): boolean => {
   if (seen.has(node) === true) return false
   seen.add(node)

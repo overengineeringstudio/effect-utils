@@ -234,7 +234,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
   }: {
     readonly generation: Generation<TApi>
     readonly start: Start<TApi, T>
-    readonly callOptions?: CallOptions<TError>
+    readonly callOptions?: CallOptions<TError> | undefined
   }): Effect.Effect<T, TError> =>
     Effect.callback<T, TError>((resume) => {
       if (generation.state !== 'healthy') {
@@ -376,7 +376,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       Effect.gen(function* () {
         const generation = yield* generationEffect
         const handle = yield* Effect.acquireRelease(
-          invokeOn({
+          invokeOn<OutputHandle, TError>({
             generation,
             start: (invocation) => open(invocation, chunkBytes),
             callOptions,
