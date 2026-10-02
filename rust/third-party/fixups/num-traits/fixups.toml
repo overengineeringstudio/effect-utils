@@ -1,0 +1,2 @@
+# Probe the admitted compiler's f64::total_cmp support through Cargo autocfg.
+buildscript.run = true
