@@ -1,0 +1,97 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/effect-rust-fixtures/math-interop/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:12efa84fb4c67053ae8dd3f3c211a8539687890fbd0d44f483df0301cce2a4e8
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/BUCK.genie.ts, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/math-interop/src/**/*.rs, rust/effect-rust-fixtures/math-interop/tests/**/*.rs, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/effect-rust-fixtures/math-interop",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/contract.rs",
+        "src/lib.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/contract.rs",
+    src = "src/contract.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "math_interop",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/contract.rs",
+        "src/lib.rs",
+    ],
+    deps = [
+        "//rust/effect-rust-fixtures/math-core:lib",
+        "//rust/effect-rust:lib",
+        "//rust/third-party:borsh",
+        "//rust/third-party:chrono",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+    ] + select({"//buck2/rust:wasm32_config": [], "DEFAULT": ["//rust/third-party:napi","//rust/third-party:napi-derive"]}) + select({
+        "//buck2/rust:wasm32_config": [
+            "//rust/third-party:js-sys",
+            "//rust/third-party:serde-wasm-bindgen",
+            "//rust/third-party:wasm-bindgen",
+            "//rust/third-party:wasm-bindgen-futures",
+        ],
+        "DEFAULT": [],
+    }),
+    edition = "2021",
+    features = [
+        "default",
+        "napi",
+        "wasm",
+    ],
+    env = {
+        "CARGO_PKG_NAME": "math-interop",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "math_interop",
+        "CARGO_MANIFEST_DIR": "rust/effect-rust-fixtures/math-interop",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+export_file(name = "vectors", src = "vectors.json", visibility = ["PUBLIC"])

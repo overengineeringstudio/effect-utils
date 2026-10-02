@@ -4,7 +4,7 @@
 # Projection source: rust/effect-rust-fixtures/app/BUCK.genie.ts
 # Projection generator: effect-utils/rust/wasm-aggregator-fixture
 # Projection schema version: 1
-# Semantic fingerprint: sha256:ede65f832888a0bd05b1b503bb53a1bf844e5b6fe9d324cc0f343d0edaa4de94
+# Semantic fingerprint: sha256:a66cda87c0738434c1ea0a6a3559d1d4bb376e9cd37b24d22380c170c8dc8a4b
 # Semantic inputs: rust/effect-rust-fixtures/app/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -20,27 +20,9 @@ rust_wasm_aggregator(
         "math_core"
     ]
 },
-    cores = {
-    "hash_core": {
-        "crate": "//rust/effect-rust-fixtures/hash-core:lib",
-        "exports": {
-            "sha256Hex": {
-                "args": "input: &[u8]",
-                "returns": "String",
-                "expression": "hash_core::sha256_hex(input)"
-            }
-        }
-    },
-    "math_core": {
-        "crate": "//rust/effect-rust-fixtures/math-core:lib",
-        "exports": {
-            "add": {
-                "args": "left: i32, right: i32",
-                "returns": "i32",
-                "expression": "math_core::add(left, right)"
-            }
-        }
-    }
+    crates = {
+    "hash_core": "//rust/effect-rust-fixtures/hash-interop:lib",
+    "math_core": "//rust/effect-rust-fixtures/math-interop:lib"
 },
 )
 
