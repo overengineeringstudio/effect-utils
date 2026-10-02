@@ -123,7 +123,7 @@ export const inspectTailwind = ({ files, exceptions = [] }) => {
 }
 
 /** Inspect tracked and unignored local source selected by consumer Git pathspecs. */
-export const checkRepository = (root, pathspecs = ['.']) => {
+export const checkRepository = ({ root, pathspecs = ['.'] }) => {
   let exceptions = []
   try {
     exceptions = parseTailwindExceptions(readFileSync(`${root}/${exceptionFile}`, 'utf8'))
@@ -161,7 +161,10 @@ if (
 ) {
   try {
     const pathspecs = process.argv.slice(2)
-    const violations = checkRepository(process.cwd(), pathspecs.length === 0 ? ['.'] : pathspecs)
+    const violations = checkRepository({
+      root: process.cwd(),
+      pathspecs: pathspecs.length === 0 ? ['.'] : pathspecs,
+    })
     if (violations.length > 0) {
       console.error(
         `Tailwind is forbidden by lint:check:no-tailwind (${violations.length} violation(s)):\n${violations.join('\n')}\nMigrate to StyleX; for approved exceptions, declare path-scoped { path, reason } entries in ${exceptionFile}.`,
