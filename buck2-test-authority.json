@@ -63,6 +63,7 @@
         "src/pipeline-report.integration.test.ts",
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -81,6 +82,7 @@
         "src/pipeline-report.integration.test.ts",
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -117,6 +119,7 @@
         "src/pipeline-report.integration.test.ts",
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -132,6 +135,7 @@
         "src/pipeline-attempt-close.test.ts",
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"

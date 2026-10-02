@@ -43,6 +43,210 @@ const generatedCiWorkflowYamlSource = readFileSync(
   'utf8',
 )
 const generatedCiWorkflowTriggers = generatedCiWorkflowYamlSource.split('\njobs:\n')[0] ?? ''
+
+describe('pipeline traces image attachment', () => {
+  // Modes that run the checked-in GitBucket adapter instead of a stub uploader.
+  const adapterModes: ReadonlySet<string> = new Set(['challenge-429', 'upload-timeout'])
+  it.each([
+    'absent',
+    'dry-run',
+    'success',
+    'dark-upload-failure',
+    'private-url',
+    'multiple-urls',
+    'raster-failure',
+    'oversized',
+    'challenge-429',
+    'upload-timeout',
+  ] as const)('preserves atomic report publication for %s', (mode) => {
+    const root = mkdtempSync(join(tmpdir(), 'pipeline-traces-assets-'))
+    const bin = join(root, 'bin')
+    mkdirSync(bin)
+    const executable = (name: string, body: string) => {
+      const path = join(bin, name)
+      writeFileSync(path, `#!/usr/bin/env bash\nset -euo pipefail\n${body}\n`)
+      chmodSync(path, 0o755)
+      return path
+    }
+    const record = {
+      kind: 'pipeline-traces',
+      data: { rows: [{ job: 'build', status: 'success' }], omittedBars: 0 },
+    }
+    // The real collector emits marker-prefixed JSONL, never bare JSON records.
+    writeFileSync(join(root, 'original.jsonl'), `WORKFLOW_REPORT_V1: ${JSON.stringify(record)}\n`)
+    const ciTools = executable(
+      'ci-tools',
+      `
+command="$1 $2"
+shift 2
+while (( $# )); do
+  case "$1" in
+    --output-path|--output-dir|--summary-path|--comment-body-path|--comment-id-path|--input-paths-json|--bundle-path) key="$1"; value="$2"; shift 2 ;;
+    *) shift; continue ;;
+  esac
+  case "$command:$key" in
+    'pipeline-report collect:--output-path') cp "$FIXTURE_ROOT/original.jsonl" "$value" ;;
+    'pipeline-waterfall --input:--output-dir') mkdir -p "$value"; printf '<svg/>' | tee "$value/light.svg" > "$value/dark.svg" ;;
+    'workflow-report collect-bundle:--input-paths-json') input="$(jq -r '.[0]' <<< "$value")" ;;
+    'workflow-report collect-bundle:--output-path') sed -n 's/^WORKFLOW_REPORT_V1: //p' "$input" | jq -s '{records: .}' > "$value" ;;
+    'workflow-report render-comment-body:--bundle-path') cp "$value" "$FIXTURE_ROOT/published.json" ;;
+    'workflow-report render-comment-body:--summary-path') printf 'report rendered\\n' > "$value" ;;
+    'workflow-report render-comment-body:--comment-body-path') printf 'comment rendered\\n' > "$value" ;;
+    'workflow-report find-comment:--comment-id-path') : > "$value" ;;
+  esac
+done`,
+    )
+    executable('gh', "printf '[]\\n'")
+    executable('nix', 'printf "%s\\n" "$FIXTURE_ROOT"')
+    executable(
+      'pipeline-waterfall-rasterizer',
+      `
+[[ "$FIXTURE_MODE" != raster-failure ]] || exit 1
+if [[ "$FIXTURE_MODE" == oversized ]]; then
+  truncate -s 5242881 "$2"
+else
+  printf '\\x89PNG\\r\\n\\x1a\\nfixture' > "$2"
+fi`,
+    )
+    const uploader = executable(
+      'asset uploader',
+      `
+printf '%s\\n' "$1" >> "$FIXTURE_ROOT/uploads"
+theme="$(basename "$1" .png)"
+case "$FIXTURE_MODE" in
+  dark-upload-failure) printf 'secret-bearing diagnostic\\n' >&2; [[ "$theme" != dark ]] || exit 1 ;;
+  private-url) printf 'https://private.invalid/%s.png\\n' "$theme"; exit 0 ;;
+  multiple-urls) printf 'https://gitbucket.schickling.dev/one\\nhttps://gitbucket.schickling.dev/two\\n'; exit 0 ;;
+esac
+if [[ "$theme" == light ]]; then hash="${'a'.repeat(64)}"; else hash="${'b'.repeat(64)}"; fi
+printf 'https://gitbucket.schickling.dev/api/get/%s\\n' "$hash"`,
+    )
+    // The checked-in GitBucket adapter runs against stubbed curl/ssh-keygen boundaries.
+    // challenge-429: the server rejects the challenge with a body and diagnostics that carry
+    // secrets. upload-timeout: authentication succeeds and the upload times out after the
+    // server already sent 200 headers, so the reason must be the exit code, not the status.
+    // Every request records its endpoint and --max-time so the per-stage bounds are pinned.
+    executable(
+      'curl',
+      `
+output='' max_time='' url=''
+while (( $# )); do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    --max-time) max_time="$2"; shift 2 ;;
+    https://*) url="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+printf '%s %s\\n' "\${url##*/}" "$max_time" >> "$FIXTURE_ROOT/curl-requests"
+if [[ "$FIXTURE_MODE" == challenge-429 ]]; then
+  printf '{"message":"secret-response-body"}' > "$output"
+  printf 'curl: (22) The requested URL returned error: 429 secret-response-body\\n' >&2
+  printf '429'
+  exit 22
+fi
+case "$url" in
+  */ssh-challenge) printf '{"challenge":"fixture-challenge"}' > "$output" ;;
+  */ssh-verify) printf '{"access_token":"secret-response-body"}' > "$output" ;;
+  */upload) printf 'curl: (28) Operation timed out secret-response-body\\n' >&2; printf '200'; exit 28 ;;
+esac
+printf '200'`,
+    )
+    executable('ssh-keygen', "printf 'fixture-signature\\n'")
+    try {
+      const result = spawnSync(
+        'bash',
+        [join(ciWorkflowModuleRoot, 'genie/ci-scripts/pipeline-traces-report.sh')],
+        {
+          encoding: 'utf8',
+          timeout: 10_000,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH ?? ''}`,
+            GH_TOKEN: 'fixture',
+            GH_REPO: 'fixture/repository',
+            PR_NUMBER: '1',
+            GITHUB_RUN_ID: '2',
+            GITHUB_RUN_ATTEMPT: '1',
+            CI_TOOLS_BIN: ciTools,
+            PIPELINE_REPORT_DRY_RUN: mode === 'dry-run' ? '1' : '0',
+            GITHUB_STEP_SUMMARY: join(root, 'summary.md'),
+            PIPELINE_TRACES_PUBLIC_ASSET_COMMAND:
+              mode === 'absent' || adapterModes.has(mode) === true ? '' : uploader,
+            PIPELINE_TRACES_ASSET_SSH_KEY:
+              adapterModes.has(mode) === true ? 'fixture-key-material' : '',
+            PIPELINE_TRACES_ASSET_USERNAME: adapterModes.has(mode) === true ? 'fixture-user' : '',
+            FIXTURE_ROOT: root,
+            FIXTURE_MODE: mode,
+          },
+        },
+      )
+      expect(result.status, result.stderr).toBe(0)
+      if (mode === 'dry-run') {
+        expect(result.stdout).toContain('report rendered')
+        expect(existsSync(join(root, 'summary.md'))).toBe(false)
+      } else {
+        expect(readFileSync(join(root, 'summary.md'), 'utf8')).toBe('report rendered\n')
+      }
+      for (const secret of [
+        'secret-bearing diagnostic',
+        'secret-response-body',
+        'fixture-key-material',
+      ])
+        expect(result.stdout + result.stderr).not.toContain(secret)
+      if (mode === 'challenge-429')
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-light failed (challenge http 429); retaining jobs-only Mermaid report.',
+        )
+      if (mode === 'upload-timeout') {
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-light failed (upload exit 28); retaining jobs-only Mermaid report.',
+        )
+        // Authentication stays short; only the content upload gets the longer deadline.
+        expect(readFileSync(join(root, 'curl-requests'), 'utf8')).toBe(
+          'ssh-challenge 8\nssh-verify 8\nupload 40\n',
+        )
+      }
+      // An uploader whose last line is not the sanitized contract keeps the generic text.
+      if (mode === 'dark-upload-failure')
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-dark failed; retaining jobs-only Mermaid report.',
+        )
+      const published = JSON.parse(readFileSync(join(root, 'published.json'), 'utf8'))
+      expect(published).toEqual({
+        records: [
+          mode === 'success'
+            ? {
+                ...record,
+                data: {
+                  ...record.data,
+                  waterfall: {
+                    lightUrl: `https://gitbucket.schickling.dev/api/get/${'a'.repeat(64)}`,
+                    darkUrl: `https://gitbucket.schickling.dev/api/get/${'b'.repeat(64)}`,
+                  },
+                },
+              }
+            : record,
+        ],
+      })
+      if (mode === 'absent' || mode === 'dry-run' || mode === 'success') {
+        expect(result.stdout).not.toContain('::warning::')
+      } else {
+        expect(result.stdout).toContain('::warning::')
+      }
+      if (
+        mode === 'absent' ||
+        mode === 'dry-run' ||
+        mode === 'raster-failure' ||
+        mode === 'oversized'
+      ) {
+        expect(existsSync(join(root, 'uploads'))).toBe(false)
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 const generatedStorybookPlaysWorkflowYamlSource = readFileSync(
   new URL(
     ['../../../../../../.github/workflows', 'storybook-plays.yml'].join('/'),

@@ -268,6 +268,14 @@ rec {
             buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
             otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+            # Both the rasterizer and fonts follow this repository's locked nixpkgs.
+            # Ignore runner fonts so identical SVGs have a deterministic font closure.
+            pipeline-waterfall-rasterizer = pkgs.writeShellScriptBin "pipeline-waterfall-rasterizer" ''
+              exec ${pkgs.resvg}/bin/resvg \
+                --skip-system-fonts \
+                --use-fonts-dir ${pkgs.dejavu_fonts}/share/fonts/truetype \
+                "$@"
+            '';
             "megarepo-source-deps-support" = megarepoSourceDepsSupport;
             "megarepo-source-product-pnpm-deps" =
               megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
