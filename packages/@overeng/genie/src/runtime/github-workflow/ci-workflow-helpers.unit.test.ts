@@ -1345,6 +1345,7 @@ describe('ci workflow standard job helpers', () => {
               'Resolve devenv',
               'Bootstrap cold-proof (R32)',
               'CI runtime and native dependency policy regression checks',
+              'Downstream flake-input regression',
             ]
             const scriptBackedNixAuthMissing = generatedSteps
               .filter(({ step }) => scriptBackedNixStepNames.includes(step.name))

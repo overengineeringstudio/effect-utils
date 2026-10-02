@@ -514,6 +514,16 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
           ].join('\n'),
         ),
       },
+      // Retained public outputs (`lib.mkOxlintNpm`, `packages.genie`,
+      // `packages.oxlint-npm`) applied from a downstream flake input; nothing
+      // else exercises them through `--override-input`.
+      {
+        name: 'Downstream flake-input regression',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          'bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"',
+        ),
+      },
     ],
   }),
   'bundle-smoke': job({

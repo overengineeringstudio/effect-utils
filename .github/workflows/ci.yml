@@ -1968,6 +1968,10 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/nix-gc-race-retry.test.sh
           bash genie/ci-scripts/ci-measurement-comparison.test.sh
           bash genie/ci-scripts/native-dep-policy-audit.test.sh
+      - name: Downstream flake-input regression
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"'
       - name: Audit native dependency policy
         shell: bash
         env:
