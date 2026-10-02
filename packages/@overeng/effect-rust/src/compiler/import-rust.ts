@@ -289,7 +289,7 @@ export const importRustSchema = (
   }: {
     definition: Definition
     path: string
-    preferred?: string
+    preferred?: string | undefined
   }): Type => {
     const key = preferred ?? allocate(`${rootName}_${path.split('/').at(-1) ?? 'Value'}`)
     defs[key] = definition
@@ -316,7 +316,7 @@ export const importRustSchema = (
   }: {
     input: unknown
     path: string
-    preferred?: string
+    preferred?: string | undefined
     property?: boolean
   }): Type => {
     const node = object({ value: input, path })
