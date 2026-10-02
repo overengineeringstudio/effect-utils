@@ -26,7 +26,7 @@
     "effect": "4.0.0-rc.118",
     "typescript": "7.0.2",
     "vite": "8.2.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
     "@effect/ai-openai-compat": "4.0.0-rc.118",
