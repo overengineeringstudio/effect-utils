@@ -9,8 +9,10 @@ license.workspace = true
 name = "effect_rust_fixture_napi"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["napi"]
+napi = []
+
 [dependencies]
-hash-core = { path = "../hash-core" }
-math-core = { path = "../math-core" }
-napi.workspace = true
-napi-derive.workspace = true
+hash-interop = { path = "../hash-interop", features = ["napi"] }
+math-interop = { path = "../math-interop", features = ["napi"] }

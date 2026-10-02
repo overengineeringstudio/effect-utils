@@ -110,6 +110,60 @@ def rust_napi_library(name, crate, out_name = None, **kwargs):
     )
 
 
+def _service_impl(ctx):
+    if ctx.attrs.wasm == None and ctx.attrs.napi == None:
+        fail("rust_interop_service needs a wasm or napi product")
+    package = ctx.actions.declare_output("service", dir = True)
+    compiler = ctx.attrs.compiler[DefaultInfo]
+    if len(compiler.default_outputs) != 1:
+        fail("compiler must expose exactly one package tree")
+    command = cmd_args([
+        ctx.attrs._bun[BunToolchainInfo].executable,
+        ctx.attrs._generator,
+        "--output", package.as_output(),
+        "--service", ctx.attrs.service,
+        "--package", ctx.attrs.package_name,
+        "--compiler", compiler.default_outputs[0],
+    ], hidden = compiler.other_outputs)
+    for kind, product in [("wasm", ctx.attrs.wasm), ("napi", ctx.attrs.napi)]:
+        if product != None:
+            info = product[RustInteropProductInfo]
+            if info.kind != kind:
+                fail("rust_interop_service " + kind + " expects a " + kind + " product, got " + info.kind)
+            command.add("--" + kind, info.package)
+    # Schema records are read by instantiating the product (wasm preferred; the addon needs the host).
+    ctx.actions.run(command, category = "rust_interop_service", local_only = True)
+    return [DefaultInfo(default_output = package)]
+
+_rust_interop_service = rule(impl = _service_impl, attrs = {
+    "service": attrs.string(),
+    "package_name": attrs.string(),
+    "wasm": attrs.option(attrs.dep(providers = [RustInteropProductInfo]), default = None),
+    "napi": attrs.option(attrs.dep(providers = [RustInteropProductInfo]), default = None),
+    "compiler": attrs.dep(providers = [DefaultInfo]),
+    "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
+    "_generator": attrs.default_only(attrs.source(default = "//buck2/rust:interop-service.ts")),
+})
+
+
+def rust_interop_service(name, service, wasm = None, napi = None, package_name = None, compiler = "//packages/@overeng/effect-rust:package_tree", **kwargs):
+    """One Effect `Context.Service` class per adapter crate, fed by whichever products are built.
+
+    `layerWasm` exists only with a wasm product, `layerNative` only with a napi product.
+    Serde domain arguments/results are imported through the effect-rust contract compiler.
+    """
+    _rust_interop_service(
+        name = name,
+        service = service,
+        package_name = package_name or name,
+        wasm = wasm,
+        napi = napi,
+        compiler = compiler,
+        exec_compatible_with = host_execution_constraints(),
+        **kwargs
+    )
+
+
 def _aggregator_source_impl(ctx):
     return [DefaultInfo(default_output = ctx.actions.write("src/lib.rs", ctx.attrs.source))]
 
@@ -138,8 +192,8 @@ def _identifier(value):
     return value and value[0] in alphabet and all([c in alphabet + "0123456789" for c in value.elems()])
 
 
-def rust_wasm_aggregator(name, manifest, cores, wasm_bindgen = "//rust/third-party:wasm-bindgen", profile = {}, **kwargs):
-    """Generate the app's Rust crate and TS entry in buck-out, never a Cargo workspace."""
+def rust_wasm_aggregator(name, manifest, crates, profile = {}, **kwargs):
+    """Link adapter re-exports; macro manifests own the generated TS contract."""
     if not manifest or "eager" not in manifest:
         fail("aggregator manifest must declare its eager group")
     assigned = {}
@@ -151,29 +205,18 @@ def rust_wasm_aggregator(name, manifest, cores, wasm_bindgen = "//rust/third-par
         if not names:
             fail("aggregator groups must contain at least one core")
         alias = group.replace("-", "_")
-        source = ["use wasm_bindgen::prelude::*;"]
-        dependencies = {"wasm_bindgen": wasm_bindgen}
-        exported = {}
+        source = []
+        dependencies = {}
         for core in names:
-            if core not in cores:
-                fail("unknown aggregator core: " + core)
+            if core not in crates:
+                fail("unknown aggregator crate: " + core)
             if core in assigned:
                 fail("core assigned more than once: " + core)
             if not _identifier(core):
                 fail("core keys must be Rust crate identifiers: " + core)
             assigned[core] = group
-            definition = cores[core]
-            dependencies[core] = definition["crate"]
-            for export, signature in definition["exports"].items():
-                if not _identifier(export) or export in exported:
-                    fail("invalid or duplicate aggregator export: " + export)
-                exported[export] = True
-                source.extend([
-                    '#[wasm_bindgen(js_name = ' + export + ')]',
-                    'pub fn export_' + str(len(exported)) + '(' + signature["args"] + ') -> ' + signature["returns"] + ' {',
-                    '    ' + signature["expression"],
-                    '}',
-                ])
+            dependencies[core] = crates[core]
+            source.append("pub use " + core + "::*;")
         source_name = name + "-" + group + "-source"
         crate_name = name + "-" + group + "-crate"
         product_name = name + "-" + group
@@ -193,9 +236,9 @@ def rust_wasm_aggregator(name, manifest, cores, wasm_bindgen = "//rust/third-par
             entry.append('export * as eager from "./eager/web/inline.js"')
         else:
             entry.append('export const ' + alias + ' = () => import("./' + group + '/web/inline.js")')
-    unused = [core for core in cores if core not in assigned]
+    unused = [core for core in crates if core not in assigned]
     if unused:
-        fail("unassigned aggregator cores: " + ", ".join(unused))
+        fail("unassigned aggregator crates: " + ", ".join(unused))
     _aggregator(name = name, groups = groups, manifest = manifest, entry = "\n".join(entry) + "\n", **kwargs)
 
 
@@ -218,6 +261,49 @@ rust_interop_smoke = rule(impl = _smoke_impl, attrs = {
     "product": attrs.dep(providers = [RustInteropProductInfo]),
     "runtime": attrs.enum(["node", "bun"], default = "node"),
     "script": attrs.source(),
+    "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
+    "_node": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:tool_node", providers = [BuckSupportToolInfo])),
+})
+
+def _service_smoke_impl(ctx):
+    compiler = ctx.attrs.compiler[DefaultInfo].default_outputs[0]
+    service = ctx.attrs.service[DefaultInfo].default_outputs[0]
+    # Node does not strip TypeScript inside node_modules: exercise the emitted package.
+    runtime_dist = ctx.attrs.runtime_dist[DefaultInfo].default_outputs[0]
+    runtime_manifest = ctx.actions.write_json("runtime-package.json", {
+        "name": "@overeng/effect-rust",
+        "type": "module",
+        "exports": {".": "./dist/src/mod.js", "./runtime": "./dist/src/runtime/interop.js", "./schema": "./dist/src/schema/mod.js", "./compiler": "./dist/src/compiler/mod.js"},
+    })
+    tree = ctx.actions.copied_dir("fixture", {
+        "service": service,
+        "service-smoke.ts": ctx.attrs.script,
+        "vectors.json": ctx.attrs.vectors,
+        "node_modules/effect": compiler.project("node_modules/effect"),
+        "node_modules/@overeng/effect-rust/package.json": runtime_manifest,
+        "node_modules/@overeng/effect-rust/dist": runtime_dist,
+    })
+    if ctx.attrs.runtime == "bun":
+        executable = ctx.attrs._bun[BunToolchainInfo].executable
+    else:
+        node = ctx.attrs._node[BuckSupportToolInfo]
+        executable = cmd_args(node.store_path, hidden = [node.executable, node.manifest])
+    command = cmd_args([executable, tree.project("service-smoke.ts"), tree.project("service"), tree.project("vectors.json")], hidden = [tree])
+    verdict = ctx.actions.declare_output("service-smoke.json")
+    ctx.actions.run(command, env = {"RUST_INTEROP_SMOKE_OUTPUT": verdict.as_output()}, category = "rust_interop_service_smoke", local_only = True)
+    return [DefaultInfo(default_output = verdict), RunInfo(args = command), ExternalRunnerTestInfo(
+        type = "rust_interop",
+        command = [command],
+        default_executor = CommandExecutorConfig(local_enabled = True, remote_enabled = False, remote_cache_enabled = root_remote_cache_enabled(), allow_cache_uploads = root_allow_cache_uploads(), use_windows_path_separators = False),
+    )]
+
+rust_interop_service_smoke = rule(impl = _service_smoke_impl, attrs = {
+    "service": attrs.dep(),
+    "compiler": attrs.dep(default = "//packages/@overeng/effect-rust:package_tree"),
+    "runtime_dist": attrs.dep(default = "//packages/@overeng/effect-rust:dist"),
+    "runtime": attrs.enum(["node", "bun"], default = "node"),
+    "script": attrs.source(),
+    "vectors": attrs.source(),
     "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
     "_node": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:tool_node", providers = [BuckSupportToolInfo])),
 })
