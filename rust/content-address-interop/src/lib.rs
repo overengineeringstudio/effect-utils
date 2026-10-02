@@ -82,15 +82,25 @@ pub async fn hash_tree(
                 read_path,
             } => {
                 hasher.begin_entry(&path, mode, EntryKind::File);
-                let bytes =
-                    source
-                        .read(&read_path)
+                let mut offset = 0;
+                loop {
+                    let bytes = source
+                        .read_range(&read_path, offset, 256 * 1024)
                         .await
                         .map_err(|error| ContentAddressError::Read {
-                            path: read_path,
+                            path: read_path.clone(),
                             message: error.to_string(),
                         })?;
-                hasher.update(&bytes);
+                    if bytes.is_empty() {
+                        break;
+                    }
+                    hasher.update(&bytes);
+                    offset += bytes.len() as u64;
+                    source.yield_now().await.map_err(|error| ContentAddressError::Read {
+                        path: read_path.clone(),
+                        message: error.to_string(),
+                    })?;
+                }
             }
         }
     }
@@ -110,8 +120,10 @@ pub fn describe(
         tag: ContentAddressContract1::ContentDescriptor,
         digest: ContentDigest::new(content_address_core::hash(&bytes).to_string())
             .expect("core digest satisfies the generated descriptor contract"),
-        byte_length: NonNegativeInt::new(bytes.len().to_string())
-            .expect("allocated byte lengths fit the generated safe-integer contract"),
+        byte_length: NonNegativeInt::new(
+            u64::try_from(bytes.len()).expect("allocated byte lengths fit u64"),
+        )
+        .expect("allocated byte lengths fit the generated safe-integer contract"),
         media_type,
         codec: None,
         schema_version: None,

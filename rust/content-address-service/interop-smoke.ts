@@ -9,7 +9,7 @@ import { scheduler } from 'node:timers/promises'
 
 import { Effect, Exit, Fiber, Stream } from 'effect'
 
-import { Interop } from '@overeng/effect-rust'
+import { ContractJson, Interop } from '@overeng/effect-rust'
 
 const [serviceDirectory, contractSchema] = process.argv.slice(2)
 assert.ok(
@@ -22,7 +22,9 @@ const directory = resolve(serviceDirectory)
 const require = createRequire(import.meta.url)
 // The generated service lives in the runtime-selected product directory.
 // eslint-disable-next-line import/no-dynamic-require -- Load the actual generated Buck service product selected by the smoke rule.
-const { ContentAddressCore } = await import(resolve(directory, 'service.ts'))
+const { ContentAddressCore } = await import(resolve(directory, 'dist/service.js'))
+// eslint-disable-next-line import/no-dynamic-require -- Decode the actual compiler-generated descriptor schema.
+const Contracts = await import(resolve(directory, 'dist/contracts.js'))
 const bytes = Buffer.from('abc')
 const expected = 'sha256:' + createHash('sha256').update(bytes).digest('hex')
 const records = [
@@ -59,20 +61,38 @@ for (const [name, api] of [
   state.write(bytes.subarray(0, 1))
   state.write(bytes.subarray(1))
   assert.equal(state.finish(), expected)
-  const reads: string[] = []
-  const job = api.hashTree(async (path: string) => {
-    reads.push(path)
-    return bytes
+  const reads: Array<readonly [string, string, number]> = []
+  let yields = 0
+  const job = api.hashTree(async (request: Interop.SourceRequest) => {
+    if (request.kind === 'yield') {
+      yields++
+      await scheduler.yield()
+      return Buffer.alloc(0)
+    }
+    assert.equal(request.kind, 'readRange', 'Rust byte engine uses bounded reads')
+    if (request.kind !== 'readRange') throw new Error('Unexpected whole-file read')
+    reads.push([request.path, request.offset, request.maxBytes])
+    assert.ok(request.maxBytes > 0)
+    const offset = BigInt(request.offset)
+    const start = offset >= BigInt(bytes.length) ? bytes.length : Number(offset)
+    return bytes.subarray(start, start + 1)
   }, records)
   assert.equal(job.mode, 'abortable')
   // eslint-disable-next-line no-await-in-loop -- Complete the raw wasm lifecycle before exercising the native product.
   assert.equal(await job.result, expectedTree)
-  assert.deepEqual(reads, ['/host/file'])
+  assert.deepEqual(reads.map(([path, offset]) => [path, offset]), [
+    ['/host/file', '0'], ['/host/file', '1'], ['/host/file', '2'], ['/host/file', '3'],
+  ])
+  assert.equal(yields, 3, 'every nonempty CPU chunk yields to the host event loop')
   const descriptor = api.describe(bytes, 'text/plain')
   assert.equal(descriptor.digest, expected)
-  assert.equal(descriptor.byteLength, '3')
+  assert.equal(descriptor.byteLength, 3)
   assert.equal(descriptor.mediaType, 'text/plain')
   assert.deepEqual(api.validateDescriptor(descriptor), descriptor)
+  assert.deepEqual(
+    ContractJson.encodeValue(Contracts.ContentDescriptor)(ContractJson.decodeValue(Contracts.ContentDescriptor)(descriptor)),
+    descriptor,
+  )
   assert.throws(() => api.describe(bytes, ' text/plain'))
   assert.throws(() => api.validateDescriptor({ ...descriptor, surprise: true }))
   assert.throws(() => api.validateDescriptor({ ...descriptor, digest: expected.toUpperCase() }))
@@ -95,10 +115,12 @@ for (const [name, api] of [
     `${name} raw hash, streamed hash, ordered tree, descriptor validation, cancellation passed`,
   )
 }
-const readHostFile = Effect.fn('ContentAddressSmoke.readHostFile')((path: string) =>
+const readHostRange = Effect.fn('ContentAddressSmoke.readHostRange')((path: string, offset: bigint, maxBytes: number) =>
   Effect.sync(() => {
     assert.equal(path, '/host/file')
-    return bytes
+    assert.ok(maxBytes > 0)
+    const start = offset >= BigInt(bytes.length) ? bytes.length : Number(offset)
+    return bytes.subarray(start, start + 1)
   }),
 )
 const program = Effect.scoped(
@@ -112,7 +134,10 @@ const program = Effect.scoped(
       ),
       expected,
     )
-    const source = yield* Interop.hostCapability('abortable', readHostFile)
+    const source = yield* Interop.hostSource('abortable', {
+      read: () => Effect.die('Rust byte engine must not read a whole file'),
+      readRange: readHostRange,
+    })
     assert.equal(yield* service.hashTree(source, records), expectedTree)
     const descriptor = yield* service.describe(bytes, 'text/plain')
     assert.deepEqual(yield* service.validateDescriptor(descriptor), descriptor)
@@ -120,8 +145,9 @@ const program = Effect.scoped(
     assert.ok(Exit.isFailure(invalid))
     const { promise: started, resolve: entered } = Promise.withResolvers<void>()
     let finalized = false
-    const never = yield* Interop.hostCapability('abortable', () =>
-      Effect.gen(function* () {
+    const never = yield* Interop.hostSource('abortable', {
+      read: () => Effect.die('Rust byte engine must not read a whole file'),
+      readRange: () => Effect.gen(function* () {
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => {
             finalized = true
@@ -130,7 +156,7 @@ const program = Effect.scoped(
         entered()
         return yield* Effect.never
       }),
-    )
+    })
     const fiber = yield* Effect.forkChild(service.hashTree(never, records))
     yield* Effect.promise(() => started)
     yield* Fiber.interrupt(fiber)
@@ -164,7 +190,7 @@ if (process.env.RUST_INTEROP_SMOKE_OUTPUT !== undefined) {
     JSON.stringify({
       runtime,
       rawProducts: ['wasm/nodejs/content_address_core.js', 'native/index.cjs'],
-      generatedProduct: 'service.ts',
+      generatedProduct: 'dist/service.js',
       layers: [`layerWasm.${runtime}`, `layerNative.${runtime}`],
       contractSchema,
       forcedGc: true,

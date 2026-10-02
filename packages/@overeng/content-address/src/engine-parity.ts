@@ -6,12 +6,11 @@ import { loadavg } from 'node:os'
 import { resolve } from 'node:path'
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { type Context, Effect, FileSystem, Layer, Schema, Stream } from 'effect'
+import { ContentAddressCore } from 'content-address-core-service'
+import { Effect, FileSystem, Layer, Schema, Stream } from 'effect'
 
-import { type Interop, Wire } from '@overeng/effect-rust'
+import { ContractJson } from '@overeng/effect-rust'
 
-import type { RustByteEngine } from './engine.ts'
-import { DescriptorWire } from './interop-contract.ts'
 import {
   ContentAddressEngine,
   ContentDescriptor,
@@ -35,18 +34,6 @@ assert.ok(
   'Pass generated service directory and result JSON path',
 )
 const directory = resolve(directoryArgument)
-interface CoreTag {
-  readonly contentAddressCore: unique symbol
-}
-interface GeneratedModule {
-  readonly ContentAddressCore: Context.Service<CoreTag, RustByteEngine<Error>> & {
-    readonly layerWasm: Readonly<Record<'node' | 'bun', () => Layer.Layer<CoreTag, Interop.Init>>>
-    readonly layerNative: Readonly<Record<'node' | 'bun', () => Layer.Layer<CoreTag, Interop.Init>>>
-  }
-}
-// The real product is runtime-selected, exactly like the foundation fixture smoke.
-// eslint-disable-next-line import/no-dynamic-require -- Load the actual generated service product selected by the parity-runner argument.
-const { ContentAddressCore }: GeneratedModule = await import(`${directory}/service.ts`)
 const require = createRequire(import.meta.url)
 // oxlint-disable-next-line import/no-commonjs, import/no-dynamic-require -- Inspect the actual runtime-selected generated CommonJS native product.
 const native = require(`${directory}/native/index.cjs`)
@@ -70,36 +57,20 @@ const layers = [
     ),
   ],
 ] as const
-const projection = (input: unknown) => {
-  const descriptor = Schema.decodeUnknownSync(ContentDescriptor, { onExcessProperty: 'error' })(
-    input,
-  )
-  return {
-    ...descriptor,
-    byteLength: String(descriptor.byteLength),
-    ...(descriptor.schemaVersion === undefined
-      ? {}
-      : { schemaVersion: String(descriptor.schemaVersion) }),
-  }
-}
+const decodeDescriptor = Schema.decodeUnknownSync(ContentDescriptor, { onExcessProperty: 'error' })
+const decodeContractDescriptor = ContractJson.decodeValue(ContentDescriptor)
 let descriptorChecks = 0
 for (const vector of descriptorVectors) {
-  const decode = () => projection(vector.input)
   if (vector.accept === true) {
-    const expected = decode()
-    assert.deepEqual(Wire.decode(DescriptorWire)(expected), expected, vector.name)
+    const expected = decodeDescriptor(vector.input)
+    assert.deepEqual(decodeContractDescriptor(expected), expected, vector.name)
     assert.deepEqual(native.validateDescriptor(expected), expected, vector.name)
     assert.deepEqual(wasm.validateDescriptor(expected), expected, vector.name)
   } else {
-    assert.throws(decode, vector.name)
+    assert.throws(() => decodeDescriptor(vector.input), vector.name)
     // Send rejected inputs independently to Rust, not merely through the TS validator.
-    const input = vector.input
-    assert.ok(input !== null && typeof input === 'object')
-    const adapted = { ...input }
-    if ('byteLength' in adapted) adapted.byteLength = String(adapted.byteLength)
-    if ('schemaVersion' in adapted) adapted.schemaVersion = String(adapted.schemaVersion)
-    assert.throws(() => native.validateDescriptor(adapted), vector.name)
-    assert.throws(() => wasm.validateDescriptor(adapted), vector.name)
+    assert.throws(() => native.validateDescriptor(vector.input), vector.name)
+    assert.throws(() => wasm.validateDescriptor(vector.input), vector.name)
   }
   descriptorChecks++
 }

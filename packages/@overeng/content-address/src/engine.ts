@@ -2,7 +2,7 @@ import { join, relative, resolve } from 'node:path'
 
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
-import { Context, Effect, FileSystem, Layer, Schema, Sink, Stream } from 'effect'
+import { Context, Effect, FileSystem, Layer, Option, Schema, Sink, Stream } from 'effect'
 
 import { Interop } from '@overeng/effect-rust'
 
@@ -42,7 +42,7 @@ export interface RustByteEngine<TError> {
   readonly hash: (bytes: Uint8Array) => Effect.Effect<string, TError>
   readonly hasher: () => Sink.Sink<string, Uint8Array, never, TError>
   readonly hashTree: (
-    source: Interop.HostCapability<readonly [string], Uint8Array>,
+    source: Interop.HostSource,
     records: readonly TreeEntry[],
   ) => Effect.Effect<string, TError>
 }
@@ -218,9 +218,17 @@ const makeRust = <TError>(core: RustByteEngine<TError>): ContentAddressEngineApi
     const records = yield* treeEntries(root)
     return yield* Effect.scoped(
       Effect.gen(function* () {
-        const source = yield* Interop.hostCapability('abortable', (path: string) =>
-          fs.readFile(path),
-        )
+        const source = yield* Interop.hostSource('abortable', {
+          read: (path) => fs.readFile(path),
+          readRange: (path, offset, maxBytes) =>
+            Effect.scoped(
+              Effect.gen(function* () {
+                const file = yield* fs.open(path)
+                yield* file.seek(offset, 'start')
+                return Option.getOrElse(yield* file.readAlloc(maxBytes), () => new Uint8Array(0))
+              }),
+            ),
+        })
         return yield* core
           .hashTree(source, records)
           .pipe(Effect.map(decodeDigest), Effect.mapError(ioError(root)))
