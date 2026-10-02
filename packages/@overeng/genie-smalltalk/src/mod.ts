@@ -176,11 +176,18 @@ const RenderOperation = Schema.Struct({
   arrays: Schema.optionalKey(Schema.Literals(['replace', 'union'])),
 })
 
+/** Resume a specific OMP transcript, or continue the latest session in its session directory. */
+export const OmpResumeSchema = Schema.Union([
+  Schema.Literal('latest'),
+  Schema.Struct({ transcript: Text }),
+]).annotate({ identifier: 'St.OmpResume' })
+
 /** OMP harness selection for a seat. */
 export const OmpSchema = Schema.Struct({
   kind: Schema.Literal('omp'),
   model: Text,
   effort: Schema.Literals(['low', 'medium', 'high']),
+  resume: Schema.optionalKey(OmpResumeSchema),
 }).annotate({ identifier: 'St.Omp' })
 
 const AgentSchemaFields = Schema.Struct({
@@ -337,14 +344,20 @@ const decode = <S extends Schema.ConstraintDecoder<unknown>>({
   readonly input: unknown
 }): S['Type'] => Schema.decodeUnknownSync(schema, { onExcessProperty: 'error' })(input)
 
-/** Decodes an OMP harness selection. */
+/** Decodes an OMP harness selection, including optional conversation recovery. */
 export const omp = ({
   model,
   effort,
+  resume,
 }: {
   readonly model: string
   readonly effort: 'low' | 'medium' | 'high'
-}): typeof OmpSchema.Type => decode({ schema: OmpSchema, input: { kind: 'omp', model, effort } })
+  readonly resume?: typeof OmpResumeSchema.Encoded
+}): typeof OmpSchema.Type =>
+  decode({
+    schema: OmpSchema,
+    input: { kind: 'omp', model, effort, ...(resume === undefined ? {} : { resume }) },
+  })
 
 /** Decodes and renders a resource node. */
 export const resource = (input: typeof ResourceSchema.Encoded): Node => {
@@ -541,6 +554,17 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
         children: [
           child({ name: 'model', value: a.harness.model }),
           child({ name: 'effort', value: a.harness.effort }),
+          ...(a.harness.resume === undefined
+            ? []
+            : [
+                node({
+                  name: 'args',
+                  args:
+                    a.harness.resume === 'latest'
+                      ? ['--continue']
+                      : ['--resume', a.harness.resume.transcript],
+                }),
+              ]),
         ],
       }),
     )
