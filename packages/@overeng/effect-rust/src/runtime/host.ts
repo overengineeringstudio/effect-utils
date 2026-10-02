@@ -1,6 +1,6 @@
 import { Context, Effect, Exit, Schema } from 'effect'
 
-import { U64 } from '../schema/wire.ts'
+import * as ContractJson from '../schema/contract-json.ts'
 import { Input, Transport } from './errors.ts'
 
 /** Whether cancellation interrupts host work or waits for it to settle. */
@@ -97,22 +97,37 @@ const sourceRequest = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal('readRange'),
     path: Schema.String,
-    offset: U64,
+    offset: Schema.BigInt.check(
+      Schema.isBetweenBigInt({ minimum: 0n, maximum: 18446744073709551615n }),
+    ),
     maxBytes: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 4294967295 })),
   }),
   Schema.Struct({ kind: Schema.Literal('yield') }),
 ])
+const decodeSourceRequest = Schema.decodeUnknownEffect(ContractJson.valueCodec(sourceRequest), {
+  onExcessProperty: 'error',
+})
 
 /** Native and wasm use the same protocol, including canonical decimal u64 offsets. */
-export type SourceRequest = typeof sourceRequest.Encoded
+export type SourceRequest =
+  | { readonly kind: 'read'; readonly path: string }
+  | {
+      readonly kind: 'readRange'
+      readonly path: string
+      readonly offset: string
+      readonly maxBytes: number
+    }
+  | { readonly kind: 'yield' }
+/** Request callback shared by Node-API and wasm adapter bridges. */
 export type SourceCallback = (request: SourceRequest) => Promise<Uint8Array>
+/** Scoped Source bridge with range reads and cooperative host task yielding. */
 export type HostSource = HostCapability<readonly [SourceRequest], Uint8Array>
 
 /** A cancellable event-loop task, not a microtask-only scheduler yield. */
 export const eventLoopYield: Effect.Effect<void> = Effect.callback<void>((resume) => {
   const task = setTimeout(() => resume(Effect.void), 0)
   return Effect.sync(() => clearTimeout(task))
-}).pipe(Effect.withSpan('effect-rust.eventLoopYield'))
+})
 
 /** Reads and cooperative yields share scope ownership, cancellation and quiescence. */
 export const hostSource = Effect.fn('effect-rust.hostSource')(function* <TError, TServices>(
@@ -122,9 +137,7 @@ export const hostSource = Effect.fn('effect-rust.hostSource')(function* <TError,
   return yield* hostCapability(
     mode,
     Effect.fn('effect-rust.Source.call')(function* (request: SourceRequest) {
-      const decoded = yield* Schema.decodeUnknownEffect(sourceRequest, { onExcessProperty: 'error' })(
-        request,
-      ).pipe(
+      const decoded = yield* decodeSourceRequest(request).pipe(
         Effect.mapError(
           (cause) =>
             new Input({ operation: 'Source', message: 'Invalid host Source request', cause }),

@@ -140,11 +140,89 @@ cargoBuck2PackageProjection({
 
 ## Portable contracts
 
-`Wire` provides width-annotated integers (`U64` / `I64` decode decimal strings to bigint), millisecond timestamps, constrained strings, patches, strict JSON, Borsh frames, and typed-array columns. `Wire.decode` / `encode` reject unknown fields by default. `decodeJson` rejects duplicate keys, noncanonical or unsafe JSON integers, and nesting beyond 128; `encodeJson` sorts keys with the tag key first. Give constrained string schemas an identifier and use `Schema.String.check(Wire.pattern(source, flags))`.
+Author contracts with ordinary Effect Schema nodes and checks. Bounded
+`Schema.Int` and bounded `Schema.BigInt`, tagged structs/unions, records, brands,
+code-point limits and supported portable patterns lower directly. Give nested
+constrained strings a stable `identifier`. Naked unbounded integers, opaque
+predicates and arbitrary transformations are not portable.
 
-`Wire.Patch(schema)` distinguishes omitted, null, and present values as `Absent`, `Null`, and `Value`. `Wire.TimestampMillis` requires an explicit RFC3339 offset and exact millisecond precision and canonicalizes output to `.sssZ`. `Wire.frame(schema, { contractId, version })` validates by default, supports explicit `.trusted` codecs, and includes the mandatory `[contract_id u32 LE][version u16 LE]` header. `Wire.columns({ field: 'u64' | 'u32' | ... })` allocates fixed-width columns and validates their types and equal lengths.
+`EffectRust` supplies string-keyed metadata only where domain validation cannot
+decide the boundary: `[EffectRust.width]` optionally pins integer storage,
+`[EffectRust.timestampPrecision]: 'millis'` selects strict DateTimeUtc transport,
+`[EffectRust.excess]: 'ignore'` explicitly changes a struct's default rejection
+of unknown fields, and `[EffectRust.nonExhaustive]: true` selects Rust API
+evolution policy without accepting unknown runtime tags.
+
+```ts
+import { Schema } from 'effect'
+import { Borsh, ContractJson, EffectRust } from '@overeng/effect-rust'
+
+const Deployment = Schema.TaggedStruct('Deployment', {
+  count: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
+  revision: Schema.BigInt.check(
+    Schema.isBetweenBigInt({ minimum: 0n, maximum: 18446744073709551615n }),
+  ),
+  updatedAt: Schema.DateTimeUtc.annotate({
+    [EffectRust.timestampPrecision]: 'millis',
+  }),
+  owner: Schema.optionalKey(Schema.NullOr(Schema.String)),
+})
+
+const json = ContractJson.codec(Deployment)
+const decode = Schema.decodeUnknownSync(json)
+const encode = Schema.encodeSync(json)
+const frame = Borsh.frame(Deployment, { contractId: 0x01020304, version: 1 })
+```
+
+`ContractJson.codec` is an ordinary Effect string codec preserving the authored
+domain type. Bigints use canonical decimal JSON strings, never JSON numbers.
+Timestamps require calendar-valid RFC3339 with an explicit offset and no
+submillisecond loss, and canonicalize to `.sssZ`. JSON decoding rejects duplicate
+keys, noncanonical or unsafe JSON integers and nesting beyond 128. Canonical
+encoding sorts keys with the discriminator first. `decodeValue` / `encodeValue`
+provide the corresponding strict boundary for already-parsed JSON.
+
+`Schema.optionalKey(Schema.NullOr(T))` represents Patch directly in TypeScript:
+missing, `null` and a present value stay distinct. Generated Rust keeps
+`Patch<T>` for those three states; there is no tagged Patch ADT in the
+TypeScript domain or JSON.
+
+Integer storage is the smallest admitted width fitting the authored bounds,
+unless `[EffectRust.width]` pins a compatible wider width. Original subrange
+constraints remain independently enforced. Changing an inferred or pinned
+width changes binary layout and requires a frame version bump.
+`Borsh.frame(schema, { contractId, version })` validates by default, supports
+explicit `.trusted` codecs and includes the mandatory
+`[contract_id u32 LE][version u16 LE]` header. `Columns.make(numericStructSchema)`
+allocates fixed-width columns derived from the same inferred/pinned schema
+widths and validates their types, authored bounds and equal lengths. Safe
+number fields wider than 32 bits use 64-bit typed-array storage without
+changing their numeric JSON representation; bigint fields remain decimal
+strings on JSON boundaries.
 
 `Compiler.compile(contracts, { crateName, vectors, frames })` is a deterministic, in-memory compiler returning `{ ir, files }`: a standalone Rust contract crate, versioned JSON Schema, generated Effect Schema source, optional frame codecs, and shared vector tests. Build/filesystem orchestration belongs to the caller. `./runtime`, `./schema`, and `./compiler` subpaths expose the same boundaries independently.
+
+For an existing Cargo workspace, use the discriminated member mode rather than
+editing a generated manifest:
+
+```ts
+Compiler.compile(contracts, {
+  crateName: 'deployment-contract',
+  schemaMetadata: 'schemars',
+  cargo: {
+    mode: 'workspace',
+    workspace: '..',
+    inherit: ['version', 'edition', 'license'],
+    dependencies: 'workspace',
+  },
+})
+```
+
+`schemaMetadata: 'schemars'` emits `JsonSchema` implementations directly from
+the same validated IR as Rust and JSON Schema; adapters do not maintain a
+second schema definition. Standalone mode owns its manifest and dependency
+versions; workspace mode inherits the explicitly selected package metadata
+and workspace dependency versions.
 
 ### Built-in admission and generated support
 
@@ -159,7 +237,7 @@ intersection rather than silently discarding either check.
 
 Pinned Effect's built-in `Schema.isPattern` is admitted with `u` or `iu` when
 the pattern satisfies the same fully anchored portable grammar as
-`Wire.pattern`. Multiline/global/sticky flags, unanchored patterns, and opaque
+`EffectRust.pattern`. Multiline/global/sticky flags, unanchored patterns, and opaque
 filters remain rejected. A final newline is not accepted unless the portable
 pattern itself consumes it.
 
@@ -170,12 +248,11 @@ Arbitrary runtime defaults and `tagDefaultOmit` remain rejected.
 
 `optionalKey` wrappers retain the underlying named codec rather than generating
 another nominal type. `Schema.optional(T)` is admitted at object keys:
-`Wire.encodeJson` omits an own `undefined` value only where the schema declares
+`ContractJson.encode` omits an own `undefined` value only where the schema declares
 that key optional, including nested objects. Required keys, array elements
 and record values still reject `undefined`; omission does not admit `null`
-unless `T` already does. In-memory `Wire.encode` / `decode` retain the Effect
-schema's presence semantics; JSON collapses own-undefined and missing keys.
-`Patch.Absent`, `Patch.Null` and `Patch.Value` remain distinct.
+unless `T` already does. Ordinary Effect Schema validation retains the authored
+presence semantics; JSON collapses own-undefined and missing optional keys.
 
 Generated Rust helpers and dependencies follow the emitted definitions:
 decimal `U64`/`I64`, `TimestampMillis`, and `Patch` support appear only when
@@ -212,9 +289,11 @@ typescriptPackage({
 })
 ```
 
-The package graph supplies the generated sources and declarations to
-typechecking, managed editor publication and runtime package trees. The
-`effect-rust-fixture-consumer` fixture imports the actual generated tag.
+The package graph supplies generated declarations and runtime artifacts to
+typechecking, managed editor publication and runtime package trees. Generated
+products do not carry copied `node_modules`; their admitted consumer supplies
+the declared dependencies. The `effect-rust-fixture-consumer` fixture imports the
+actual generated tag and runs both wasm and native Layers under Node and Bun.
 
 ## Developer verification without a Buck daemon
 

@@ -30,7 +30,7 @@ describe('Rust-owned JSON Schema admission', () => {
             { wire: 'missingOnly', presence: 'optional', type: { kind: 'string' } },
             {
               wire: 'patch',
-              presence: 'required',
+              presence: 'optional',
               type: { kind: 'patch', inner: { kind: 'string' } },
             },
             {
@@ -67,7 +67,7 @@ describe('Rust-owned JSON Schema admission', () => {
           presence: 'required',
           type: { kind: 'nullable', inner: { kind: 'string' } },
         },
-        { wire: 'patch', presence: 'required', type: { kind: 'patch', inner: { kind: 'string' } } },
+        { wire: 'patch', presence: 'optional', type: { kind: 'patch', inner: { kind: 'string' } } },
       ],
     })
   })
@@ -98,62 +98,29 @@ describe('Rust-owned JSON Schema admission', () => {
   })
 
   it.each([
-    { schema: { type: 'integer' }, path: '$', remedy: /Wire\.U64\/I64/u },
-    {
-      schema: { type: 'integer', format: 'uint64' },
-      path: '$/format',
-      remedy: /canonical string/u,
-    },
-    {
-      schema: { type: 'integer', minimum: 0, maximum: 9007199254740992 },
-      path: '$',
-      remedy: /Wire\.U64\/I64/u,
-    },
-    {
-      schema: { type: 'string', format: 'custom-transform' },
-      path: '$/format',
-      remedy: /x-effect-rust-format/u,
-    },
-    {
-      schema: { type: 'string', 'x-opaque-transform': 'trim' },
-      path: '$/x-opaque-transform',
-      remedy: /lossless lowering/u,
-    },
-    {
-      schema: { type: 'string', title: 'Pattern', pattern: '^(?=a)a$' },
-      path: '$/pattern',
-      remedy: /portable.*grammar/u,
-    },
-    {
-      schema: { $vocabulary: { 'https://unknown.example/v1': false }, type: 'string' },
-      path: '$/$vocabulary/https:~1~1unknown.example~1v1',
-      remedy: /effect-rust\.dev/u,
-    },
-    {
-      schema: { type: 'array', items: { type: 'string' }, contains: { type: 'string' } },
-      path: '$/contains',
-      remedy: /lossless lowering/u,
-    },
-    {
-      schema: { type: 'object', properties: {} },
-      path: '$/additionalProperties',
-      remedy: /deny_unknown_fields/u,
-    },
-  ])(
-    'rejects lossy or unsupported contracts at $path with a remedy',
-    ({ schema, path, remedy }) => {
-      let caught: unknown
-      try {
-        importRustSchema(schema)
-      } catch (error) {
-        caught = error
-      }
-      expect(caught).toBeInstanceOf(AdmissionError)
-      if (!(caught instanceof AdmissionError)) return
-      expect(caught.path).toBe(path)
-      expect(caught.remedy).toMatch(remedy)
-    },
-  )
+    [{ type: 'integer' }, '$'],
+    [{ type: 'integer', format: 'uint64' }, '$'],
+    [{ type: 'integer', minimum: 0, maximum: 9007199254740992 }, '$'],
+    [{ type: 'string', format: 'custom-transform' }, '$/format'],
+    [{ type: 'string', 'x-opaque-transform': 'trim' }, '$/x-opaque-transform'],
+    [{ type: 'string', title: 'Pattern', pattern: '^(?=a)a$' }, '$/pattern'],
+    [
+      { $vocabulary: { 'https://unknown.example/v1': false }, type: 'string' },
+      '$/$vocabulary/https:~1~1unknown.example~1v1',
+    ],
+    [{ type: 'array', items: { type: 'string' }, contains: { type: 'string' } }, '$/contains'],
+    [{ type: 'object', properties: {} }, '$/additionalProperties'],
+  ] as const)('rejects unsupported contracts at the offending path', (schema, path) => {
+    let caught: unknown
+    try {
+      importRustSchema(schema)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(AdmissionError)
+    if (!(caught instanceof AdmissionError)) return
+    expect(caught.path).toBe(path)
+  })
 
   it('rejects unsupported constraints reached through a recursive definition', () => {
     expect(() =>

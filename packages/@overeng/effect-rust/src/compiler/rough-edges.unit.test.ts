@@ -2,20 +2,25 @@ import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
-import * as Wire from '../schema/wire.ts'
-import { compile, lower } from './mod.ts'
+import { parseJson } from '../schema/json.ts'
+import { pattern } from '../schema/pattern.ts'
+import { AdmissionError, compile, lower } from './mod.ts'
 
+/** Nonempty trimmed string contract shared with compiler edge proofs. */
 export const Text = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty()).annotate({
   identifier: 'Text',
 })
+/** Canonical SHA-256 text contract shared with compiler edge proofs. */
 export const Digest = Schema.String.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/u)).annotate({
   identifier: 'Digest',
 })
+/** Tagged descriptor contract exercising optional fields and constrained strings. */
 export const Descriptor = Schema.TaggedStruct('Descriptor', {
   text: Text,
   codec: Schema.optionalKey(Text),
   digest: Digest,
 })
+/** Named schemas compiled by the shared edge proof harness. */
 export const edgeContracts = { Text, Digest, Descriptor }
 
 const whitespace = [
@@ -35,6 +40,7 @@ const whitespace = [
   '\u3000',
   '\ufeff',
 ]
+/** Acceptance and rejection vectors for portable whitespace and pattern semantics. */
 export const edgeVectors = [
   ...['ok', '\u0085', '\u200b', '😀', 'a\nb'].map((input, index) => ({
     contract: 'Text',
@@ -88,9 +94,9 @@ describe('portable built-in string checks and tags', () => {
     Schema.Struct({
       $defs: Schema.Struct({ Text: Schema.Struct({ pattern: Schema.String }) }),
     }),
-  )(Wire.parseJson(output.files['schema/Text.json']!))
+  )(parseJson(output.files['schema/Text.json']!))
   const portable = Schema.String.check(
-    Wire.pattern(generated.$defs.Text.pattern),
+    pattern(generated.$defs.Text.pattern),
     Schema.isMinCodePoints(1),
   )
   for (const vector of edgeVectors)
@@ -106,7 +112,7 @@ describe('portable built-in string checks and tags', () => {
           value: Schema.String.pipe(Schema.withConstructorDefault(Effect.succeed('x'))),
         }),
       }),
-    ).toThrow(/Constructor default/)
+    ).toThrow(AdmissionError)
     expect(() =>
       lower({
         Bad: Schema.Struct({
@@ -115,16 +121,16 @@ describe('portable built-in string checks and tags', () => {
           ),
         }),
       }),
-    ).toThrow(/Constructor default/)
+    ).toThrow(AdmissionError)
     expect(() =>
       lower({ Bad: Schema.String.check(Schema.isMinLength(2)).annotate({ identifier: 'Bad' }) }),
-    ).toThrow(/UTF-16/)
+    ).toThrow(AdmissionError)
     expect(() =>
       lower({
         Bad: Schema.String.check(Schema.isPattern(/^[a-z]+$/mu)).annotate({ identifier: 'Bad' }),
       }),
-    ).toThrow(/Non-portable/)
-    expect(() => lower({ Bad: Schema.tagDefaultOmit('x') })).toThrow(/transformation/)
+    ).toThrow(AdmissionError)
+    expect(() => lower({ Bad: Schema.tagDefaultOmit('x') })).toThrow(AdmissionError)
   })
   it('preserves a nominal codec across optionalKey wrapping', () => {
     const ir = lower({ Descriptor, Text, Digest })

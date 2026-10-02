@@ -2,7 +2,8 @@ import { describe, it } from '@effect/vitest'
 import { Schema } from 'effect'
 import { expect } from 'vitest'
 
-import * as Wire from '../schema/wire.ts'
+import * as ContractJson from '../schema/contract-json.ts'
+import { canonicalJson, parseJson } from '../schema/json.ts'
 import { AdmissionError, compile } from './mod.ts'
 
 const Optional = Schema.Struct({
@@ -22,8 +23,8 @@ describe('schema-aware JSON omission', () => {
       }),
     })
     expect(ordinary.ir).toEqual(exact.ir)
-    expect(Wire.parseJson(ordinary.files['schema/Request.json']!)).toEqual(
-      Wire.parseJson(exact.files['schema/Request.json']!),
+    expect(parseJson(ordinary.files['schema/Request.json']!)).toEqual(
+      parseJson(exact.files['schema/Request.json']!),
     )
     expect(ordinary.ir.defs.Request).toMatchObject({
       fields: [
@@ -31,7 +32,7 @@ describe('schema-aware JSON omission', () => {
         { wire: 'field', type: { kind: 'string' }, presence: 'optional' },
         {
           wire: 'nullable',
-          type: { kind: 'nullable', inner: { kind: 'string' } },
+          type: { kind: 'patch', inner: { kind: 'string' } },
           presence: 'optional',
         },
       ],
@@ -39,20 +40,17 @@ describe('schema-aware JSON omission', () => {
   })
 
   it('serializes missing and own undefined as omission, retaining value and explicit null', () => {
-    const encode = Wire.encodeJson(Optional)
+    const encode = ContractJson.encode(Optional)
     const missing = { required: 'r' }
     const ownUndefined = { required: 'r', field: undefined, nullable: undefined }
-    expect(Wire.decode(Optional)(missing)).toEqual(missing)
-    expect(Wire.decode(Optional)(ownUndefined)).toEqual(ownUndefined)
     expect(encode(missing)).toBe('{"required":"r"}')
     expect(encode(ownUndefined)).toBe('{"required":"r"}')
     expect(Object.hasOwn(ownUndefined, 'field')).toBe(true)
-    expect(Wire.decodeJson(Optional)(encode(ownUndefined))).toEqual(missing)
+    expect(ContractJson.decode(Optional)(encode(ownUndefined))).toEqual(missing)
     const present = { required: 'r', field: 'v', nullable: null }
-    expect(Wire.decodeJson(Optional)(encode(present))).toEqual(present)
+    expect(ContractJson.decode(Optional)(encode(present))).toEqual(present)
     expect(encode(present)).toBe('{"field":"v","nullable":null,"required":"r"}')
-    expect(() => Wire.decodeJson(Optional)('{"required":"r","field":null}')).toThrow()
-    expect(() => encode(Wire.decode(Optional)({ required: 'r', field: null }))).toThrow()
+    expect(() => ContractJson.decode(Optional)('{"required":"r","field":null}')).toThrow()
   })
 
   it('recurses through nested structs, array items, records and tagged union members', () => {
@@ -73,11 +71,11 @@ describe('schema-aware JSON omission', () => {
       records: { entry: { field: undefined } },
       tagged: { _tag: 'Item' as const, inner: { field: undefined } },
     }
-    const text = Wire.encodeJson(Request)(value)
+    const text = ContractJson.encode(Request)(value)
     expect(text).toBe(
       '{"items":[{},{"field":"v"}],"nested":{},"records":{"entry":{}},"tagged":{"_tag":"Item","inner":{}}}',
     )
-    expect(Wire.decodeJson(Request)(text)).toEqual({
+    expect(ContractJson.decode(Request)(text)).toEqual({
       nested: {},
       items: [{}, { field: 'v' }],
       records: { entry: {} },
@@ -86,34 +84,31 @@ describe('schema-aware JSON omission', () => {
     expect(value.items[0]).toEqual({ field: undefined })
   })
 
-  it('keeps optionalKey and Patch missing/null/value semantics', () => {
+  it('keeps raw optional nullable fields absent, null or valued without a TypeScript ADT', () => {
     const Request = Schema.Struct({
       exact: Schema.optionalKey(Schema.NullOr(Schema.String)),
-      patch: Wire.Patch(Schema.String),
+      patch: Schema.optionalKey(Schema.NullOr(Schema.String)),
     })
     compile({ Request })
     for (const [text, decoded] of [
-      ['{}', { patch: { _tag: 'Absent' } }],
-      ['{"exact":null,"patch":null}', { exact: null, patch: { _tag: 'Null' } }],
-      ['{"exact":"v","patch":"p"}', { exact: 'v', patch: { _tag: 'Value', value: 'p' } }],
+      ['{}', {}],
+      ['{"exact":null,"patch":null}', { exact: null, patch: null }],
+      ['{"exact":"v","patch":"p"}', { exact: 'v', patch: 'p' }],
     ] as const) {
-      expect(Wire.decodeJson(Request)(text)).toEqual(decoded)
-      expect(Wire.encodeJson(Request)(decoded)).toBe(text)
+      expect(ContractJson.decode(Request)(text)).toEqual(decoded)
+      expect(ContractJson.encode(Request)(decoded)).toBe(text)
     }
-    expect(() => Wire.decode(Request)({ exact: undefined })).toThrow()
-    expect(() => Wire.decode(Request)({ patch: undefined })).toThrow()
   })
 
   it('rejects undefined required keys, array elements and record values even when Effect accepts them', () => {
     const required = Schema.Struct({ value: Schema.UndefinedOr(Schema.String) })
     const array = Schema.Array(Schema.UndefinedOr(Schema.String))
     const record = Schema.Record(Schema.String, Schema.UndefinedOr(Schema.String))
-    expect(() => Wire.encodeJson(required)({ value: undefined })).toThrow()
-    expect(() => Wire.encodeJson(array)([undefined])).toThrow()
-    expect(() => Wire.encodeJson(record)({ entry: undefined })).toThrow()
-    expect(() => Wire.canonicalJson({ value: undefined })).toThrow()
-    expect(() => Wire.decodeJson(Optional)('{}')).toThrow()
-    expect(() => Wire.decode(Optional)({ required: undefined })).toThrow()
+    expect(() => ContractJson.encode(required)({ value: undefined })).toThrow()
+    expect(() => ContractJson.encode(array)([undefined])).toThrow()
+    expect(() => ContractJson.encode(record)({ entry: undefined })).toThrow()
+    expect(() => canonicalJson({ value: undefined })).toThrow()
+    expect(() => ContractJson.decode(Optional)('{}')).toThrow()
     for (const schema of [required, array, record])
       expect(() => compile({ Request: schema })).toThrow(AdmissionError)
     for (const schema of [

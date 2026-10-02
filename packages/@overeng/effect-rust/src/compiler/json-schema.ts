@@ -1,4 +1,4 @@
-import { reject, type ContractIR, type Definition, type Type } from './ir.ts'
+import { integerRanges, reject, type ContractIR, type Definition, type Type } from './ir.ts'
 
 /** Versioned vocabulary: consumers must implement these keywords, not silently ignore them. */
 export const EFFECT_RUST_VOCABULARY = 'https://effect-rust.dev/schema/v1'
@@ -11,18 +11,14 @@ export const EFFECT_RUST_KEYWORDS = [
   'x-effect-rust-excess',
   'x-effect-rust-non-exhaustive',
   'x-effect-rust-patch',
+  'x-effect-rust-minimum',
+  'x-effect-rust-maximum',
 ] as const
 /** JSON Schema object emitted with the versioned effect-rust vocabulary. */
 export type JsonSchemaObject = { readonly [key: string]: unknown }
 
 const pointer = (name: string): string =>
   encodeURIComponent(name.replaceAll('~', '~0').replaceAll('/', '~1'))
-const integerRanges = {
-  u8: [0, 255],
-  u16: [0, 65535],
-  u32: [0, 4294967295],
-  i32: [-2147483648, 2147483647],
-} as const
 
 /** Emits the JSON control-plane contract, including lossless wire codec semantics. */
 // eslint-disable-next-line overeng/named-args -- Preserve the public emitJsonSchema positional SDK signature.
@@ -47,9 +43,9 @@ export const emitJsonSchema = (ir: ContractIR, root: string): JsonSchemaObject =
         const [minimum, maximum] = integerRanges[value.width]
         return {
           type: 'integer',
-          format: value.width === 'i32' ? 'int32' : `uint${value.width.slice(1)}`,
-          minimum,
-          maximum,
+          format: `${value.width.startsWith('i') === true ? 'int' : 'uint'}${value.width.slice(1)}`,
+          minimum: value.minimum ?? minimum,
+          maximum: value.maximum ?? maximum,
           'x-effect-rust-width': value.width,
         }
       }
@@ -60,6 +56,8 @@ export const emitJsonSchema = (ir: ContractIR, root: string): JsonSchemaObject =
           pattern: value.kind === 'u64' ? '^(0|[1-9][0-9]*)$' : '^(0|-?[1-9][0-9]*)$',
           'x-effect-rust-width': value.kind,
           'x-effect-rust-format': `${value.kind}-decimal`,
+          ...(value.minimum === undefined ? {} : { 'x-effect-rust-minimum': value.minimum }),
+          ...(value.maximum === undefined ? {} : { 'x-effect-rust-maximum': value.maximum }),
         }
       case 'dateTime':
         return { type: 'string', format: 'date-time', 'x-effect-rust-format': 'date-time-millis' }
@@ -70,7 +68,7 @@ export const emitJsonSchema = (ir: ContractIR, root: string): JsonSchemaObject =
           return reject(
             '$',
             'Patch is only representable at an object property',
-            'Place Wire.Patch on a struct field; absence is not a standalone JSON value',
+            'Place optionalKey(NullOr(T)) on a struct field; absence is not a standalone JSON value',
           )
         return {
           anyOf: [{ type: 'null' }, type({ value: value.inner })],

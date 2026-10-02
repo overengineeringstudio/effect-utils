@@ -11,30 +11,33 @@ export const buck2TypeScriptAdmission = {
   generatedDependencies: {
     'effect-rust-fixture': '//rust/effect-rust-fixtures/service:service',
   },
-  workspaceSiblings: [{
-    packageName: '@overeng/effect-rust',
-    packagePath: 'packages/@overeng/effect-rust',
-    distTarget: '//packages/@overeng/effect-rust:dist',
-  }],
+  workspaceSiblings: [
+    {
+      packageName: '@overeng/effect-rust',
+      packagePath: 'packages/@overeng/effect-rust',
+      distTarget: '//packages/@overeng/effect-rust:dist',
+    },
+  ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
 } as const satisfies Buck2TypeScriptAdmission
 
 const projection = buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)
 export default createGenieOutput({
   data: projection.data,
-  stringify: (ctx) => [
-    'load("//buck2/rust:interop.bzl", "rust_interop_consumer_smoke")',
-    '',
-    projection.stringify(ctx),
-    ...['node', 'bun'].flatMap((runtime) => [
-      'rust_interop_consumer_smoke(',
-      `    name = "consumer-smoke-${runtime}",`,
-      '    package_tree = ":package_tree",',
-      '    dist = ":dist",',
-      `    runtime = "${runtime}",`,
-      '    visibility = ["PUBLIC"],',
-      ')',
+  stringify: (ctx) =>
+    [
+      'load("//buck2/rust:interop.bzl", "rust_interop_consumer_smoke")',
       '',
-    ]),
-  ].join('\n'),
+      projection.stringify(ctx),
+      ...['node', 'bun'].flatMap((runtime) => [
+        'rust_interop_consumer_smoke(',
+        `    name = "consumer-smoke-${runtime}",`,
+        '    package_tree = ":package_tree",',
+        '    dist = ":dist",',
+        `    runtime = "${runtime}",`,
+        '    visibility = ["PUBLIC"],',
+        ')',
+        '',
+      ]),
+    ].join('\n'),
 })
