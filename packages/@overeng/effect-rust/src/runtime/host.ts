@@ -1,4 +1,7 @@
-import { Context, Effect, Exit } from 'effect'
+import { Context, Effect, Exit, Schema } from 'effect'
+
+import { U64 } from '../schema/wire.ts'
+import { Input, Transport } from './errors.ts'
 
 /** Whether cancellation interrupts host work or waits for it to settle. */
 export type CancellationMode = 'abortable' | 'settle-only'
@@ -71,4 +74,80 @@ export const hostCapability = Effect.fn('effect-rust.hostCapability')(function* 
     live: Effect.sync(() => pending.size),
   }
   return capability
+})
+
+/** Effect-owned file reads. There is no implicit open handle or file snapshot. */
+export interface Source<TError = never, TServices = never> {
+  /** Whole-file read; no size bound is implied. */
+  readonly read: (path: string) => Effect.Effect<Uint8Array, TError, TServices>
+  /**
+   * At most maxBytes bytes from the absolute byte offset. maxBytes is a positive
+   * u32 and offset is a u64. Short reads are allowed, not proof of EOF; an empty
+   * response reports EOF at this offset. The host owns file-change consistency.
+   */
+  readonly readRange: (
+    path: string,
+    offset: bigint,
+    maxBytes: number,
+  ) => Effect.Effect<Uint8Array, TError, TServices>
+}
+
+const sourceRequest = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('read'), path: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal('readRange'),
+    path: Schema.String,
+    offset: U64,
+    maxBytes: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 4294967295 })),
+  }),
+  Schema.Struct({ kind: Schema.Literal('yield') }),
+])
+
+/** Native and wasm use the same protocol, including canonical decimal u64 offsets. */
+export type SourceRequest = typeof sourceRequest.Encoded
+export type SourceCallback = (request: SourceRequest) => Promise<Uint8Array>
+export type HostSource = HostCapability<readonly [SourceRequest], Uint8Array>
+
+/** A cancellable event-loop task, not a microtask-only scheduler yield. */
+export const eventLoopYield: Effect.Effect<void> = Effect.callback<void>((resume) => {
+  const task = setTimeout(() => resume(Effect.void), 0)
+  return Effect.sync(() => clearTimeout(task))
+}).pipe(Effect.withSpan('effect-rust.eventLoopYield'))
+
+/** Reads and cooperative yields share scope ownership, cancellation and quiescence. */
+export const hostSource = Effect.fn('effect-rust.hostSource')(function* <TError, TServices>(
+  mode: CancellationMode,
+  source: Source<TError, TServices>,
+) {
+  return yield* hostCapability(
+    mode,
+    Effect.fn('effect-rust.Source.call')(function* (request: SourceRequest) {
+      const decoded = yield* Schema.decodeUnknownEffect(sourceRequest, { onExcessProperty: 'error' })(
+        request,
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new Input({ operation: 'Source', message: 'Invalid host Source request', cause }),
+        ),
+      )
+      if (decoded.kind === 'yield') {
+        yield* eventLoopYield
+        return new Uint8Array(0)
+      }
+      const bytes = yield* decoded.kind === 'read'
+        ? source.read(decoded.path)
+        : source.readRange(decoded.path, decoded.offset, decoded.maxBytes)
+      if (
+        !(bytes instanceof Uint8Array) ||
+        (decoded.kind === 'readRange' && bytes.byteLength > decoded.maxBytes)
+      ) {
+        return yield* new Transport({
+          operation: 'Source',
+          message: 'Host Source must return Uint8Array within the requested maxBytes',
+          cause: bytes,
+        })
+      }
+      return bytes
+    }),
+  )
 })
