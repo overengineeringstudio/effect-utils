@@ -39,12 +39,12 @@ import { importRustSchema } from './import-rust.ts'
 import { tagFields, type ContractIR } from './ir.ts'
 import { emitJsonSchema } from './json-schema.ts'
 import { lower } from './lower.ts'
-import { emitRust } from './rust.ts'
+import { emitRust, type RustOptions } from './rust.ts'
 export { lower } from './lower.ts'
 export { emitJsonSchema, EFFECT_RUST_KEYWORDS, EFFECT_RUST_VOCABULARY } from './json-schema.ts'
 export { importRustSchema } from './import-rust.ts'
 export { emitRust } from './rust.ts'
-export type { RustOptions, RustVector, RustOutput } from './rust.ts'
+export type { CargoInheritedMetadata, CargoOptions, RustOptions, RustVector, RustOutput } from './rust.ts'
 export { AdmissionError, tagFields } from './ir.ts'
 export type { ContractIR, Definition, Field, Type, Width } from './ir.ts'
 
@@ -56,10 +56,8 @@ export interface Vector {
   readonly accept: boolean
   readonly canonical?: unknown
 }
-/** Crate identity, shared vectors and optional framed contract outputs. */
-export interface CompileOptions {
-  readonly crateName?: string
-  readonly vectors?: readonly Vector[]
+/** Rust crate options plus optional framed contract outputs. */
+export interface CompileOptions extends RustOptions {
   readonly frames?: Readonly<Record<string, FrameOptions>>
 }
 /**

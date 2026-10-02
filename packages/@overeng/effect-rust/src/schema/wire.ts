@@ -1,4 +1,4 @@
-import { Option, Schema, SchemaTransformation } from 'effect'
+import { Option, Schema, SchemaAST, SchemaTransformation } from 'effect'
 
 import type { Width } from '../compiler/ir.ts'
 import { makeFrame, makeColumns } from './borsh.ts'
@@ -140,11 +140,73 @@ export const decodeJson =
   <TSchema extends Schema.ConstraintDecoder<unknown>>(schema: TSchema) =>
   (text: string) =>
     decode(schema)(parseJson(text))
+
+/** Work on the validated encoded shape, never on decoded semantic values such as Patch. */
+const omitOptionalUndefined = ({
+  ast,
+  value,
+  depth = 0,
+}: {
+  ast: SchemaAST.AST
+  value: unknown
+  depth?: number
+}): unknown => {
+  // Canonical JSON remains responsible for rejecting excessive depth and non-JSON values.
+  if (depth > 128) return value
+  if (ast._tag === 'Suspend')
+    return omitOptionalUndefined({ ast: ast.thunk(), value, depth })
+  if (ast._tag === 'Union') {
+    const member = ast.types.find((candidate) => Schema.is(Schema.make(candidate))(value))
+    return member === undefined
+      ? value
+      : omitOptionalUndefined({ ast: member, value, depth })
+  }
+  if (
+    ast._tag === 'Arrays' &&
+    Array.isArray(value) === true &&
+    ast.elements.length === 0 &&
+    ast.rest.length === 1
+  )
+    return value.map((item) =>
+      omitOptionalUndefined({ ast: ast.rest[0]!, value: item, depth: depth + 1 }),
+    )
+  if (
+    ast._tag !== 'Objects' ||
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value) === true
+  )
+    return value
+  const fields = new Map(ast.propertySignatures.map((field) => [String(field.name), field.type]))
+  const output: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value)) {
+    const field = fields.get(key)
+    if (item === undefined && field !== undefined && SchemaAST.isOptional(field) === true)
+      continue
+    const target =
+      field ??
+      ast.indexSignatures.find((signature) => Schema.is(Schema.make(signature.parameter))(key))
+        ?.type
+    Object.defineProperty(output, key, {
+      value:
+        target === undefined
+          ? item
+          : omitOptionalUndefined({ ast: target, value: item, depth: depth + 1 }),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
+  }
+  return output
+}
+
 /** Canonical JSON with each tagged union's discriminator first; the tag set comes from the schema, like Rust `TAG_FIELDS`. */
 export const encodeJson = <TSchema extends Schema.ConstraintEncoder<unknown>>(schema: TSchema) => {
   const keys = tagKeys(schema.ast)
   const encoder = encode(schema)
-  return (value: TSchema['Type']): string => canonicalJson(encoder(value), keys)
+  const encodedAST = SchemaAST.toEncoded(schema.ast)
+  return (value: TSchema['Type']): string =>
+    canonicalJson(omitOptionalUndefined({ ast: encodedAST, value: encoder(value) }), keys)
 }
 /** Constructs checked and trusted Borsh frame codecs from a live contract schema. */
 export const frame = makeFrame

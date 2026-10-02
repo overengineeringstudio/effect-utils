@@ -150,6 +150,23 @@ const admitsNull = ({
   return false
 }
 
+/** Pinned Schema.optional wraps T in an optional-key Union([T, Undefined]). */
+const optionalFieldValue = ({ ast }: { ast: SchemaAST.AST }): SchemaAST.AST => {
+  if (
+    SchemaAST.isOptional(ast) === true &&
+    ast._tag === 'Union' &&
+    ast.types.length === 2 &&
+    ast.types.some((member) => member._tag === 'Undefined') === true &&
+    ast.checks === undefined &&
+    ast.encodingChecks === undefined &&
+    ast.encoding === undefined &&
+    ast.context?.constructorDefault === undefined &&
+    ast.options?.mode !== 'oneOf'
+  )
+    return ast.types.find((member) => member._tag !== 'Undefined') ?? ast
+  return ast
+}
+
 const identifier = (value: string): string => value.replace(/[^A-Za-z0-9_]/g, '_')
 /** Lowers live Effect schemas into the portable contract IR, rejecting lossy constructs. */
 // eslint-disable-next-line overeng/named-args -- Preserve the public lower positional SDK signature.
@@ -490,7 +507,7 @@ export const lower = (
           return reject(path, 'Non-string field name', 'Use string JSON keys')
         return {
           wire: field.name,
-          type: type({ ast: field.type, path: `${path}/${field.name}` }),
+          type: type({ ast: optionalFieldValue({ ast: field.type }), path: `${path}/${field.name}` }),
           presence: SchemaAST.isOptional(field.type) === true ? 'optional' : 'required',
         }
       })
