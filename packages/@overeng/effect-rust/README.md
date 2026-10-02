@@ -68,6 +68,14 @@ An abortable job's `cancel` acknowledgment means Rust has dropped its future and
 
 `yield* Interop.hostCapability('abortable' | 'settle-only', (...args) => effect)` captures the Layer's dependencies. Each host operation gets its own Scope; its Promise settles only after its Effect finalizers. `capability.call(signal, ...args)` is the generated Rust host callback. Abortable callbacks interrupt on the signal; settle-only callbacks are allowed to finish. `quiesce` awaits outstanding host operations. Generated abortable jobs must await both the Rust cancellation acknowledgment and their invocation's outstanding host callbacks before acknowledging interruption.
 
+Cancellation is cooperative, not CPU preemption. `Source.read(path)` currently
+returns one owned whole-file byte buffer; it is not a bounded streaming or
+range-read capability. An abortable read can quiesce pending I/O, but a
+synchronous long-running Rust loop on the wasm thread prevents the host from
+delivering cancellation until it yields. Use a dedicated Worker when browser
+main-thread responsiveness is required; do not advertise I/O cancellation as
+preemptive computation.
+
 ### Input Sinks and output Streams
 
 - `runtime.inputSink(open)` acquires an input handle with `write(bytes)`, consuming `finish()`, and `close()`. Writes are acknowledged before the next chunk or upstream pull. Successful `finish` consumes the handle; failed or interrupted use closes it through the Scope.
@@ -97,6 +105,14 @@ For `input_stream`, use `returns = "String"` (or the actual finish-result type) 
 
 Frame exports require explicit `contract_id` and `version` metadata and Borsh row derives. Rows should declare `#[borsh(crate = "borsh")]` so the derive uses the explicit crate namespace in hermetic Buck builds. The TypeScript frame codec and Rust adapter must agree on both header values and the payload layout.
 
+The current Buck products consume the same admitted Rust `:lib` provider;
+they do not independently activate Cargo's `wasm` or `napi` feature. An adapter
+used by both products must already admit both features (the pilot uses
+`default = ["wasm", "napi"]`). Keep its dependencies target-specific and its
+exports gated by both feature and target architecture. Workspace feature
+unification can make a wasm-only default appear to work in fixtures; do not
+rely on an unrelated member to enable the native backend.
+
 ## Portable contracts
 
 `Wire` provides width-annotated integers (`U64` / `I64` decode decimal strings to bigint), millisecond timestamps, constrained strings, patches, strict JSON, Borsh frames, and typed-array columns. `Wire.decode` / `encode` reject unknown fields by default. `decodeJson` rejects duplicate keys, noncanonical or unsafe JSON integers, and nesting beyond 128; `encodeJson` sorts keys with the tag key first. Give constrained string schemas an identifier and use `Schema.String.check(Wire.pattern(source, flags))`.
@@ -104,3 +120,101 @@ Frame exports require explicit `contract_id` and `version` metadata and Borsh ro
 `Wire.Patch(schema)` distinguishes omitted, null, and present values as `Absent`, `Null`, and `Value`. `Wire.TimestampMillis` requires an explicit RFC3339 offset and exact millisecond precision and canonicalizes output to `.sssZ`. `Wire.frame(schema, { contractId, version })` validates by default, supports explicit `.trusted` codecs, and includes the mandatory `[contract_id u32 LE][version u16 LE]` header. `Wire.columns({ field: 'u64' | 'u32' | ... })` allocates fixed-width columns and validates their types and equal lengths.
 
 `Compiler.compile(contracts, { crateName, vectors, frames })` is a deterministic, in-memory compiler returning `{ ir, files }`: a standalone Rust contract crate, versioned JSON Schema, generated Effect Schema source, optional frame codecs, and shared vector tests. Build/filesystem orchestration belongs to the caller. `./runtime`, `./schema`, and `./compiler` subpaths expose the same boundaries independently.
+
+### Built-in admission and generated support
+
+Named strings may use `Schema.isTrimmed()` and `Schema.isNonEmpty()` (or
+`Schema.isMinLength(1)`). Trimmed validation uses the exact ECMAScript `trim`
+whitespace set: U+0009–000D, U+0020, U+00A0, U+1680, U+2000–200A,
+U+2028–2029, U+202F, U+205F, U+3000, and U+FEFF. U+0085 and U+200B are not
+trim whitespace. Interior whitespace is allowed. Other UTF-16 length bounds
+are not interchangeable with code-point bounds; use the explicit code-point
+checks. Combining trimmed and a separate pattern still requires a reviewed
+intersection rather than silently discarding either check.
+
+Pinned Effect's built-in `Schema.isPattern` is admitted with `u` or `iu` when
+the pattern satisfies the same fully anchored portable grammar as
+`Wire.pattern`. Multiline/global/sticky flags, unanchored patterns, and opaque
+filters remain rejected. A final newline is not accepted unless the portable
+pattern itself consumes it.
+
+`Schema.TaggedStruct` and `Schema.tag` constant string-literal constructor
+defaults are admitted without evaluating user code. The encoded discriminator
+remains **required**: construction defaults are not decoding defaults.
+Arbitrary runtime defaults and `tagDefaultOmit` remain rejected.
+
+`optionalKey` wrappers retain the underlying named codec rather than generating
+another nominal type. `Schema.optional` still needs a JSON presence-policy
+decision: its own-property `undefined` is not a JSON value, and the current
+strict `Wire.encodeJson` rejects it. Do not use `null` as a substitute for
+omission or for `Patch.Absent`.
+
+Generated Rust helpers and dependencies follow the emitted definitions:
+decimal `U64`/`I64`, `TimestampMillis`, and `Patch` support appear only when
+used; `chrono` requires timestamps, and `regex` requires timestamps or a
+pattern. Strict JSON support and Borsh/frame APIs remain part of every generated
+contract crate. Borsh opt-out is not an implicit compiler optimization.
+
+### Acquired engines versus pure module helpers
+
+A Layer selects an implementation for an **acquired service**, not for an
+already-imported pure module function. Keep existing pure helpers explicitly
+JavaScript; acquire an application-owned engine facade inside a caller-owned
+Scope for runtime-selected work. That facade can expose the same pure
+signatures when its implementation genuinely supports synchronous calls.
+Existing Effect operations can consult an optional engine service without
+adding a mandatory backend to unrelated consumers.
+
+Generated Service methods remain Effects. Do not hide `runSync`, a global
+backend variable, or an asynchronously initialized instance behind a module
+helper to imitate pure calls. Typed generated-Service package dependencies
+must be admitted by the build/package graph; copying a build output into
+`node_modules` is a local smoke technique, not package admission.
+
+## Developer verification without a Buck daemon
+
+Use the current platform's repository-admitted immutable executables from
+`.buck2/capabilities/defs.bzl`. Cargo alone on `PATH` is insufficient: set
+`RUSTC`, `RUSTDOC`, `CC`, `CXX`, and both Cargo linker overrides. The wasm
+compiler sysroot must include `wasm32-unknown-unknown`; the packager requires
+the admitted `wasm-bindgen` and `wasm-opt` paths.
+
+For x86_64 Linux, this source-running recipe resolves the existing capabilities
+rather than baking Nix store hashes into documentation:
+
+```sh
+eval "$(bun -e '
+const text = await Bun.file(".buck2/capabilities/defs.bzl").text();
+const capabilities = JSON.parse(
+  text.slice(text.indexOf("{")).replace(/,\s*([}\]])/g, "$1"),
+)["x86_64-linux"];
+for (const [variable, id] of Object.entries({
+  CARGO: "cargo", RUSTC: "rust-compiler", RUSTDOC: "rust-rustdoc",
+  CC: "rust-c-compiler", CXX: "rust-cxx-compiler",
+  CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: "rust-linker",
+  CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER: "rust-wasm-linker",
+  WASM_BINDGEN: "wasm-bindgen", WASM_OPT: "wasm-opt",
+  BUN: "bun", NODE: "node",
+})) console.log(`export ${variable}=${JSON.stringify(capabilities[id].executableStorePath)}`);
+')"
+export CARGO_BUILD_JOBS=6
+"$CARGO" test --manifest-path rust/Cargo.toml -p effect-rust --features contract
+"$CARGO" build --manifest-path rust/Cargo.toml -p effect-rust-fixture-napi --release
+"$CARGO" build --manifest-path rust/Cargo.toml -p effect-rust-fixture-wasm \
+  --release --target wasm32-unknown-unknown
+```
+
+Package the resulting adapters with `buck2/rust/interop-package.ts`, then run
+`rust/effect-rust-fixtures/smoke.mjs` against both package directories. Generate
+the service with `buck2/rust/interop-service.ts`; run
+`rust/effect-rust-fixtures/service-smoke.ts` with the service directory and
+`rust/effect-rust-fixtures/math-interop/vectors.json`. Use `$BUN` for TypeScript
+source. Node source examples require `$NODE --experimental-transform-types`
+when they reach parameter-property declarations; plain type stripping is not
+enough. Node cannot transform TypeScript inside `node_modules`, so use compiled
+`dist` for such dependencies. The Buck service-smoke rules already stage
+compiled runtime output.
+
+Direct Cargo/Bun fixture smokes prove adapter, packaging, and runtime behavior.
+They do not prove Buck daemon startup, action execution, or exact production
+optimization settings; report those separately.

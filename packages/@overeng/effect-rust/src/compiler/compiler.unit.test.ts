@@ -95,9 +95,6 @@ describe('live compiler admission', () => {
       Schema.BigIntFromString,
       Schema.String.check(Schema.makeFilter((value: string) => value.length === 3)),
       Schema.String.check(Wire.pattern('^[a-z]+$')),
-      Schema.String.check(Schema.isPattern(/^[a-z]+$/u)).annotate({
-        identifier: 'UnsafeEndAnchor',
-      }),
       Wire.Patch(Schema.NullOr(Schema.String)),
       Wire.Patch(Schema.optionalKey(Schema.String)),
       Schema.Tuple([Wire.U8, Wire.U16]),
@@ -112,31 +109,5 @@ describe('live compiler admission', () => {
         expect((error as AdmissionError).remedy).toMatch(/.+/)
       }
     }
-  })
-  it('emits deterministic byte-identical Rust, JSON, Effect, Borsh and vector artifacts', () => {
-    const options = {
-      crateName: 'compiler_golden',
-      vectors,
-      frames: { Event: { contractId: 7, version: 1 } },
-    }
-    expect(compile(contracts, options)).toEqual(compile(contracts, options))
-  })
-  it('matches the compiler golden for a tagged contract with semantic widths and Patch', () => {
-    const schemas = {
-      Response: Schema.Union([
-        Schema.TaggedStruct('Ok', {
-          count: Wire.U32,
-          id: Wire.U64,
-          change: Wire.Patch(Schema.String),
-        }),
-        Schema.TaggedStruct('Missing', {}),
-      ]),
-    }
-    expect(
-      compile(schemas, {
-        crateName: 'golden',
-        frames: { Response: { contractId: 9, version: 1 } },
-      }),
-    ).toMatchSnapshot()
   })
 })

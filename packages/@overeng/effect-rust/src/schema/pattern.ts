@@ -88,7 +88,7 @@ export const assertPortablePattern = (
 // eslint-disable-next-line overeng/named-args -- Preserve the public pattern positional SDK signature.
 export const pattern = (source: string, flags: 'u' | 'iu' = 'u') => {
   assertPortablePattern(source, flags)
-  // JS $ also matches before a final newline; Rust $ does not. Require the match to consume all input.
+  // Require complete consumption explicitly, even if future admitted patterns change.
   const regexp = new RegExp(source, flags)
   return Schema.makeFilter<string>(
     (value) => {
