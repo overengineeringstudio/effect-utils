@@ -416,25 +416,36 @@ const runGitCommandWithRetry = ({ args, cwd }: { args: ReadonlyArray<string>; cw
     }),
   )
 
+/** Git records the clone argument in origin; leave authentication to the configured credential helper. */
+const withoutHttpCredentials = (value: string): string => {
+  if (/^https?:\/\/[^/]*@/i.test(value) === false) return value
+  const url = new URL(value)
+  url.username = ''
+  url.password = ''
+  return url.href
+}
+
 /**
  * Clone a git repository
  */
-export const clone = (args: { url: string; targetPath: string; bare?: boolean }) =>
-  Effect.gen(function* () {
+export const clone = (args: { url: string; targetPath: string; bare?: boolean }) => {
+  const url = withoutHttpCredentials(args.url)
+  return Effect.gen(function* () {
     const cmdArgs = ['clone']
     if (args.bare === true) {
       cmdArgs.push('--bare')
     }
-    cmdArgs.push(args.url, args.targetPath)
+    cmdArgs.push(url, args.targetPath)
     yield* runGitCommandWithRetry({ args: cmdArgs })
   }).pipe(
     Observability.withGitUrlSpan({
       name: 'git/clone',
-      label: args.url,
-      url: args.url,
+      label: url,
+      url,
       bare: args.bare ?? false,
     }),
   )
+}
 
 /**
  * Fetch updates from remote
@@ -730,9 +741,10 @@ export const listRefShortNames = (args: { bareRepoPath: string; namespace: 'head
  * Configures fetch refspec so remote tracking refs are created on fetch.
  * (git clone --bare doesn't set this up by default)
  */
-export const cloneBare = (args: { url: string; targetPath: string }) =>
-  Effect.gen(function* () {
-    yield* clone({ url: args.url, targetPath: args.targetPath, bare: true })
+export const cloneBare = (args: { url: string; targetPath: string }) => {
+  const url = withoutHttpCredentials(args.url)
+  return Effect.gen(function* () {
+    yield* clone({ url, targetPath: args.targetPath, bare: true })
     yield* runGitCommand({
       args: ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
       cwd: args.targetPath,
@@ -740,10 +752,11 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
   }).pipe(
     Observability.withGitUrlSpan({
       name: 'git/clone-bare',
-      label: args.url,
-      url: args.url,
+      label: url,
+      url,
     }),
   )
+}
 
 /**
  * Fetch all refs from remote in a bare repo
