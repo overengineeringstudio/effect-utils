@@ -46,13 +46,13 @@
     "@storybook/react-vite": "10.6.0",
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
-    "@vitest/browser-playwright": "4.1.9",
+    "@vitest/browser-playwright": "5.0.3",
     "effect": "4.0.0-rc.118",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
     "storybook": "10.6.0",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "dependenciesMeta": {
     "@overeng/tui-react": {
@@ -73,7 +73,7 @@
     "storybook": "10.6.0",
     "typescript": "7.0.2",
     "vite": "8.2.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
     "@effect/atom-react": "4.0.0-rc.118",
@@ -86,7 +86,7 @@
     "@storybook/react-vite": "^10.6.0",
     "@types/react": "^19.2.18",
     "@types/react-reconciler": "^0.33.0",
-    "@vitest/browser-playwright": "^4.1.9",
+    "@vitest/browser-playwright": "^5.0.3",
     "effect": "4.0.0-rc.118",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
