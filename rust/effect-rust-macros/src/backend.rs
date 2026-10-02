@@ -16,7 +16,7 @@ impl Backend {
             Wire::Json(_) => match self { Self::Wasm => quote!(wasm_bindgen::JsValue), Self::Napi => quote!(serde_json::Value) },
             Wire::Source(_, _) => match self {
                 Self::Wasm => quote!(js_sys::Function),
-                Self::Napi => quote!(napi::threadsafe_function::ThreadsafeFunction<String, napi::bindgen_prelude::Promise<napi::bindgen_prelude::Buffer>, String, napi::Status, false>),
+                Self::Napi => quote!(napi::threadsafe_function::ThreadsafeFunction<serde_json::Value, napi::bindgen_prelude::Promise<napi::bindgen_prelude::Buffer>, serde_json::Value, napi::Status, false>),
             },
         }
     }
@@ -56,25 +56,31 @@ impl Backend {
                 let construct = match self {
                     Self::Wasm => quote! {
                         let callback = #name.clone();
-                        let #name: #ty = effect_rust::host::Source::new(move |path: &str, _token| {
-                            let callback = callback.clone(); let path = path.to_owned();
+                        let #name: #ty = effect_rust::host::Source::new(move |request, _token| {
+                            let callback = callback.clone();
                             Box::pin(async move {
-                                let value = callback.call1(&wasm_bindgen::JsValue::UNDEFINED, &wasm_bindgen::JsValue::from_str(&path))
+                                let argument = serde::Serialize::serialize(&request, &serde_wasm_bindgen::Serializer::json_compatible())
+                                    .map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
+                                let value = callback.call1(&wasm_bindgen::JsValue::UNDEFINED, &argument)
                                     .map_err(|error| effect_rust::host::Error::failed(format!("{error:?}")))?;
                                 let value = wasm_bindgen_futures::JsFuture::from(js_sys::Promise::resolve(&value)).await
                                     .map_err(|error| effect_rust::host::Error::failed(format!("{error:?}")))?;
-                                if !value.is_instance_of::<js_sys::Uint8Array>() { return Err(effect_rust::host::Error::failed("host read must return Uint8Array")); }
-                                Ok(js_sys::Uint8Array::new(&value).to_vec())
+                                if !value.is_instance_of::<js_sys::Uint8Array>() { return Err(effect_rust::host::Error::failed("host Source must return Uint8Array")); }
+                                let bytes = value.unchecked_into::<js_sys::Uint8Array>();
+                                request.check_response_len(bytes.length() as usize)?;
+                                Ok(bytes.to_vec())
                             })
                         }).with_cancellation(__token.clone());
                     },
                     Self::Napi => quote! {
                         let callback = std::sync::Arc::new(#name);
-                        let #name: #ty = effect_rust::host::Source::new(move |path: &str, _token| {
-                            let callback = callback.clone(); let path = path.to_owned();
+                        let #name: #ty = effect_rust::host::Source::new(move |request, _token| {
+                            let callback = callback.clone();
                             Box::pin(async move {
-                                let promise = callback.call_async_catch(path).await.map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
+                                let argument = serde_json::to_value(request).map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
+                                let promise = callback.call_async_catch(argument).await.map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
                                 let bytes = promise.await.map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
+                                request.check_response_len(bytes.len())?;
                                 Ok(bytes.to_vec())
                             })
                         }).with_cancellation(__token.clone());
