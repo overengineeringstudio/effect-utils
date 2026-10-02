@@ -32,12 +32,13 @@
  * the remaining keys sorted by UTF-16 code unit.
  */
 import { Schema } from 'effect'
-import { canonicalJson } from '../schema/json.ts'
+
 import type { FrameOptions } from '../schema/borsh.ts'
-import { tagFields, type ContractIR } from './ir.ts'
-import { lower } from './lower.ts'
-import { emitJsonSchema } from './json-schema.ts'
+import { canonicalJson } from '../schema/json.ts'
 import { importRustSchema } from './import-rust.ts'
+import { tagFields, type ContractIR } from './ir.ts'
+import { emitJsonSchema } from './json-schema.ts'
+import { lower } from './lower.ts'
 import { emitRust } from './rust.ts'
 export { lower } from './lower.ts'
 export { emitJsonSchema, EFFECT_RUST_KEYWORDS, EFFECT_RUST_VOCABULARY } from './json-schema.ts'
@@ -48,43 +49,79 @@ export { AdmissionError, tagFields } from './ir.ts'
 export type { ContractIR, Definition, Field, Type, Width } from './ir.ts'
 
 /** Shared acceptance vector: `input`/`canonical` are JSON data; decoders see `JSON.stringify(input)`. */
-export interface Vector { readonly contract: string; readonly name: string; readonly input: unknown; readonly accept: boolean; readonly canonical?: unknown }
-export interface CompileOptions { readonly crateName?: string; readonly vectors?: readonly Vector[]; readonly frames?: Readonly<Record<string, FrameOptions>> }
+export interface Vector {
+  readonly contract: string
+  readonly name: string
+  readonly input: unknown
+  readonly accept: boolean
+  readonly canonical?: unknown
+}
+/** Crate identity, shared vectors and optional framed contract outputs. */
+export interface CompileOptions {
+  readonly crateName?: string
+  readonly vectors?: readonly Vector[]
+  readonly frames?: Readonly<Record<string, FrameOptions>>
+}
 /**
  * `files` maps package-relative paths to contents: `Cargo.toml`, `src/lib.rs`, and per contract `schema/<Name>.json`,
  * `effect/<Name>.ts`, optional `effect/<Name>.frame.ts`, plus `effect/vectors.unit.test.ts` when vectors are given.
  */
-export interface CompileOutput { readonly ir: ContractIR; readonly files: Readonly<Record<string, string>> }
+export interface CompileOutput {
+  readonly ir: ContractIR
+  readonly files: Readonly<Record<string, string>>
+}
 
 /** Selects the schema-valued exports of a contract module namespace (`import * as Contracts from './contracts.ts'`). */
-export const contractsOf = (module: Readonly<Record<string, unknown>>): Readonly<Record<string, Schema.Constraint>> =>
-  Object.fromEntries(Object.entries(module).filter((entry): entry is [string, Schema.Constraint] => Schema.isSchema(entry[1])))
+export const contractsOf = (
+  module: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, Schema.Constraint>> =>
+  Object.fromEntries(
+    Object.entries(module).filter((entry): entry is [string, Schema.Constraint] =>
+      Schema.isSchema(entry[1]),
+    ),
+  )
 
 /** Pure deterministic compiler; filesystem/build orchestration belongs to the caller. Throws {@link AdmissionError}. */
-export const compile = (contracts: Readonly<Record<string, Schema.Constraint>>, options: CompileOptions = {}): CompileOutput => {
+// eslint-disable-next-line overeng/named-args -- Preserve the public compile positional SDK signature.
+export const compile = (
+  contracts: Readonly<Record<string, Schema.Constraint>>,
+  options: CompileOptions = {},
+): CompileOutput => {
   const ir = lower(contracts, options.crateName ?? 'contracts')
   const rust = emitRust(ir, options)
   const files: Record<string, string> = { 'Cargo.toml': rust.cargoToml, 'src/lib.rs': rust.source }
+  // eslint-disable-next-line unicorn/no-array-sort -- This array is freshly constructed here; sorting in place avoids an unnecessary copy.
   for (const name of Object.keys(contracts).sort()) {
     const document = emitJsonSchema(ir, name)
     files[`schema/${name}.json`] = JSON.stringify(document, null, 2) + '\n'
     files[`effect/${name}.ts`] = importRustSchema(document, name).source
     const frame = options.frames?.[name]
-    if (frame) files[`effect/${name}.frame.ts`] = `import { Wire } from '@overeng/effect-rust'\nimport { ${name} } from './${name}.ts'\nexport const codec = Wire.frame(${name}, ${JSON.stringify(frame)})\n`
+    if (frame !== undefined)
+      files[`effect/${name}.frame.ts`] =
+        `import { Wire } from '@overeng/effect-rust'\nimport { ${name} } from './${name}.ts'\nexport const codec = Wire.frame(${name}, ${JSON.stringify(frame)})\n`
   }
-  if (options.vectors) files['effect/vectors.unit.test.ts'] = emitVitest(ir, options.vectors)
+  if (options.vectors !== undefined)
+    files['effect/vectors.unit.test.ts'] = emitVitest(ir, options.vectors)
   return { ir, files }
 }
 /** Each shared vector is a named consumer-visible test: strict JSON text decode, then byte-exact canonical encode. */
+// eslint-disable-next-line overeng/named-args -- Preserve the public emitVitest positional SDK signature.
 export const emitVitest = (ir: ContractIR, vectors: readonly Vector[]): string => {
   const tags = tagFields(ir)
-  const imports = [...new Set(vectors.map((vector) => vector.contract))].sort().map((name) => `import { ${name} } from './${name}.ts'`).join('\n')
-  const tests = vectors.map((vector) => {
-    const text = JSON.stringify(JSON.stringify(vector.input))
-    const body = vector.accept
-      ? `const value = Wire.decodeJson(${vector.contract})(${text})\n  expect(Wire.encodeJson(${vector.contract})(value)).toBe(${JSON.stringify(canonicalJson(vector.canonical ?? vector.input, tags))})`
-      : `expect(() => Wire.decodeJson(${vector.contract})(${text})).toThrow()`
-    return `it(${JSON.stringify(`${vector.contract}/${vector.name}`)}, () => {\n  ${body}\n})`
-  }).join('\n')
+  const imports = [...new Set(vectors.map((vector) => vector.contract))]
+    // eslint-disable-next-line unicorn/no-array-sort -- This array is freshly constructed here; sorting in place avoids an unnecessary copy.
+    .sort()
+    .map((name) => `import { ${name} } from './${name}.ts'`)
+    .join('\n')
+  const tests = vectors
+    .map((vector) => {
+      const text = JSON.stringify(JSON.stringify(vector.input))
+      const body =
+        vector.accept === true
+          ? `const value = Wire.decodeJson(${vector.contract})(${text})\n  expect(Wire.encodeJson(${vector.contract})(value)).toBe(${JSON.stringify(canonicalJson(vector.canonical ?? vector.input, tags))})`
+          : `expect(() => Wire.decodeJson(${vector.contract})(${text})).toThrow()`
+      return `it(${JSON.stringify(`${vector.contract}/${vector.name}`)}, () => {\n  ${body}\n})`
+    })
+    .join('\n')
   return `import { it } from '@effect/vitest'\nimport { expect } from 'vitest'\nimport { Wire } from '@overeng/effect-rust'\n${imports}\n${tests}\n`
 }
