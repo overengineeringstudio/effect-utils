@@ -104,6 +104,12 @@ interface Generation<TApi> {
 const isRustJob = <T>(value: T | PromiseLike<T> | RustJob<T>): value is RustJob<T> =>
   typeof value === 'object' && value !== null && '_tag' in value && value._tag === 'RustJob'
 
+const isPromiseLike = <T>(value: T | PromiseLike<T>): value is PromiseLike<T> =>
+  value !== null &&
+  (typeof value === 'object' || typeof value === 'function') &&
+  'then' in value &&
+  typeof value.then === 'function'
+
 const retiredDefect = (generation: number) => new Error(`Rust generation ${generation} is retired`)
 
 /** B3's registry, with interruption acknowledgments and scope-owned handles. */
@@ -279,10 +285,12 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
           settlement = Promise.resolve(started.result).then((value) => {
             finish(Effect.succeed(value))
           }, rejected)
-        } else {
+        } else if (isPromiseLike(started) === true) {
           settlement = Promise.resolve(started).then((value) => {
             finish(Effect.succeed(value))
           }, rejected)
+        } else {
+          finish(Effect.succeed(started))
         }
       } catch (cause) {
         rejected(cause)

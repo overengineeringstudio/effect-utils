@@ -6,10 +6,11 @@
 import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { scheduler } from 'node:timers/promises'
 
-import { DateTime, Effect, Exit, Schema } from 'effect'
+import { DateTime, Effect, Exit, Schema, Stream } from 'effect'
 
-import { Wire } from '@overeng/effect-rust'
+import { Interop, Wire } from '@overeng/effect-rust'
 
 const [directory, vectorsPath] = process.argv.slice(2)
 assert.ok(
@@ -63,52 +64,82 @@ const order = {
   placedAt: DateTime.makeUnsafe('2026-10-02T12:00:00.500Z'),
   note: { _tag: 'Value', value: 'gift' },
 }
-const program = Effect.gen(function* () {
-  const fixture = yield* EffectRustFixture
-  const quote = yield* fixture.quoteOrder(order, { kind: 'percent', percent: 10 })
-  assert.equal(quote.kind, 'priced')
-  assert.equal(quote.note, 'gift')
-  assert.equal(quote.receipt.orderId, 9007199254740993n)
-  assert.equal(quote.receipt.totalCents, 675n)
-  assert.equal(DateTime.formatIso(quote.receipt.placedAt), '2026-10-02T12:00:00.500Z')
-  const free = yield* fixture.quoteOrder(
-    { ...order, note: { _tag: 'Null' } },
-    { kind: 'fixed', amountCents: 18446744073709551615n },
-  )
-  assert.deepEqual(free, { kind: 'free', orderId: 9007199254740993n })
-  // Contract encoding rejects the brand before Rust is called.
-  const invalid = yield* Effect.exit(fixture.quoteOrder({ ...order, sku: 'abc' }, { kind: 'none' }))
-  assert.ok(
-    Exit.isFailure(invalid) && String(invalid.cause).includes('Input'),
-    'invalid brand fails with Interop.Input',
-  )
-  const overflow = yield* fixture
-    .quoteOrder(
-      { ...order, quantity: 4294967295, unitPriceCents: 18446744073709551615n },
-      { kind: 'none' },
+const program = Effect.scoped(
+  Effect.gen(function* () {
+    const fixture = yield* EffectRustFixture
+    const quote = yield* fixture.quoteOrder(order, { kind: 'percent', percent: 10 })
+    assert.equal(quote.kind, 'priced')
+    assert.equal(quote.note, 'gift')
+    assert.equal(quote.receipt.orderId, 9007199254740993n)
+    assert.equal(quote.receipt.totalCents, 675n)
+    assert.equal(DateTime.formatIso(quote.receipt.placedAt), '2026-10-02T12:00:00.500Z')
+    const free = yield* fixture.quoteOrder(
+      { ...order, note: { _tag: 'Null' } },
+      { kind: 'fixed', amountCents: 18446744073709551615n },
     )
-    .pipe(Effect.flip)
-  assert.ok(overflow instanceof ArithmeticError)
-  assert.deepEqual(overflow.reason, { _tag: 'PriceOverflow', quantity: 4294967295 })
-  assert.equal(
-    yield* fixture.sha256Hex(new TextEncoder().encode('abc')),
-    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-  )
-  return quote.receipt.totalCents
-})
+    assert.deepEqual(free, { kind: 'free', orderId: 9007199254740993n })
+    // Contract encoding rejects the brand before Rust is called.
+    const invalid = yield* Effect.exit(
+      fixture.quoteOrder({ ...order, sku: 'abc' }, { kind: 'none' }),
+    )
+    assert.ok(
+      Exit.isFailure(invalid) && String(invalid.cause).includes('Input'),
+      'invalid brand fails with Interop.Input',
+    )
+    const overflow = yield* fixture
+      .quoteOrder(
+        { ...order, quantity: 4294967295, unitPriceCents: 18446744073709551615n },
+        { kind: 'none' },
+      )
+      .pipe(Effect.flip)
+    assert.ok(overflow instanceof ArithmeticError)
+    assert.deepEqual(overflow.reason, { _tag: 'PriceOverflow', quantity: 4294967295 })
+    assert.equal(
+      Effect.runSync(fixture.sha256Hex(new TextEncoder().encode('abc'))),
+      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    )
+    const bytes = new TextEncoder().encode('abc')
+    const digest = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    assert.equal(
+      yield* Stream.run(
+        Stream.fromArray([bytes.subarray(0, 1), bytes.subarray(1)]),
+        fixture.hasher(),
+      ),
+      digest,
+    )
+    const source = yield* Interop.hostCapability('abortable', () => Effect.succeed(bytes))
+    assert.equal(yield* fixture.hashAll(source, ['/host/file']), digest)
+    return quote.receipt.totalCents
+  }),
+)
 const runtime = process.versions.bun === undefined ? 'node' : 'bun'
+const collectors = globalThis as typeof globalThis & {
+  readonly Bun?: { readonly gc: (full: boolean) => void }
+  readonly gc?: () => void
+}
+const collect = runtime === 'bun' ? () => collectors.Bun!.gc(true) : collectors.gc
+assert.equal(typeof collect, 'function', 'Run Node with --expose-gc for the retirement regression')
 for (const [name, layer] of [
   [`layerWasm.${runtime}`, EffectRustFixture.layerWasm[runtime]({ panicPolicy: 'rebuild' })],
   [`layerNative.${runtime}`, EffectRustFixture.layerNative[runtime]()],
 ] as const) {
   // eslint-disable-next-line no-await-in-loop -- Verify and release the wasm runtime before starting native verification, preserving ordered fail-fast execution.
   const total = await Effect.runPromise(program.pipe(Effect.provide(layer)))
+  // Released bindgen stream/host wrappers must remain safe when finalization runs.
+  collect!()
+  // eslint-disable-next-line no-await-in-loop -- Drain each released runtime's finalizers before initializing the next transport.
+  await scheduler.yield()
   console.log(`${name}: quoteOrder total ${total}`)
 }
 console.log(`${vectors.length} shared vectors agree; generated statics verified on ${runtime}`)
 if (process.env.RUST_INTEROP_SMOKE_OUTPUT !== undefined) {
   writeFileSync(
     process.env.RUST_INTEROP_SMOKE_OUTPUT,
-    JSON.stringify({ runtime, vectors: vectors.length, layers: ['wasm', 'native'] }) + '\n',
+    JSON.stringify({
+      runtime,
+      vectors: vectors.length,
+      layers: ['wasm', 'native'],
+      forcedGc: true,
+    }) + '\n',
   )
 }
