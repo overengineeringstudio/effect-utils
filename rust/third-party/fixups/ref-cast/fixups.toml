@@ -1,0 +1,2 @@
+# The build script writes the version-scoped private module included by lib.rs.
+buildscript.run = true
