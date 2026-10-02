@@ -714,7 +714,6 @@ const renderPipelineTraces = (opts: {
     throw new Error('Pipeline traces report rows are missing')
   }
   const rows = data.rows as readonly Record<string, unknown>[]
-  const visibleRows = opts.maxRows === undefined ? rows : rows.slice(0, opts.maxRows)
   const escaped = (value: unknown): string =>
     escapeMarkdownTableCell(
       String(value ?? 'unavailable')
@@ -727,13 +726,16 @@ const renderPipelineTraces = (opts: {
       .replaceAll(']', '\\]')
       .replaceAll('*', '\\*')
       .replaceAll('_', '\\_')
+  // Image visibility depends only on valid URLs: the <picture> line is tiny, so fitting the
+  // comment never trades it away; only the much larger Mermaid fallback is omitted to fit.
   const images = data.waterfall as { lightUrl?: unknown; darkUrl?: unknown } | undefined
   const showImages =
-    opts.includeGantt !== false &&
     typeof images?.lightUrl === 'string' &&
     typeof images.darkUrl === 'string' &&
     pipelineWaterfallImageUrl(images.lightUrl) &&
     pipelineWaterfallImageUrl(images.darkUrl)
+  const showGantt =
+    showImages === false && typeof data.gantt === 'string' && opts.includeGantt !== false
   const tableRow = (row: Record<string, unknown>): string => {
     const trace =
       row.status !== 'skipped' && row.status !== 'unfinished' && row.instrumented === false
@@ -745,9 +747,12 @@ const renderPipelineTraces = (opts: {
             : 'unavailable'
     return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
   }
-  const selected = compactPipelineRows(visibleRows as unknown as readonly PipelineRow[])
-  const compact = visibleRows.filter((row) => selected.has(row as unknown as PipelineRow))
-  const rest = visibleRows.filter((row) => !selected.has(row as unknown as PipelineRow))
+  // Select inline rows from ALL rows so trimming to fit only ever drops collapsed rows:
+  // failures, error conclusions, slowest jobs and regressions are never omitted.
+  const selected = compactPipelineRows(rows as unknown as readonly PipelineRow[])
+  const compact = rows.filter((row) => selected.has(row as unknown as PipelineRow))
+  const allRest = rows.filter((row) => !selected.has(row as unknown as PipelineRow))
+  const rest = opts.maxRows === undefined ? allRest : allRest.slice(0, opts.maxRows)
   const table = (tableRows: readonly Record<string, unknown>[]): string[] => [
     '| Job | Status | Wall time | Delta vs main p50 | Trace |',
     '| --- | --- | --- | --- | --- |',
@@ -761,7 +766,9 @@ const renderPipelineTraces = (opts: {
           `<picture><source media="(prefers-color-scheme: dark)" srcset="${images!.darkUrl}"><img src="${images!.lightUrl}" alt="Pipeline jobs and steps waterfall"></picture>`,
           '',
         ]
-      : ['Image unavailable; jobs-only Mermaid timeline below.', '']),
+      : showGantt === true
+        ? ['Image unavailable; jobs-only Mermaid timeline below.', '']
+        : []),
     ...table(compact),
     ...(rest.length === 0
       ? []
@@ -774,10 +781,10 @@ const renderPipelineTraces = (opts: {
           '',
           '</details>',
         ]),
-    ...(visibleRows.length === rows.length
+    ...(rest.length === allRest.length
       ? []
       : [
-          `${rows.length - visibleRows.length} additional job row(s) omitted to fit the GitHub comment limit.`,
+          `${allRest.length - rest.length} additional job row(s) omitted to fit the GitHub comment limit.`,
           '',
         ]),
     '',
@@ -797,7 +804,7 @@ const renderPipelineTraces = (opts: {
       : []),
     'Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.',
   ]
-  if (showImages === false && typeof data.gantt === 'string' && opts.includeGantt !== false) {
+  if (showGantt === true && typeof data.gantt === 'string') {
     lines.push(
       '',
       '<details>',
@@ -810,7 +817,7 @@ const renderPipelineTraces = (opts: {
       '</details>',
     )
   }
-  if (typeof data.gantt === 'string' && opts.includeGantt === false) {
+  if (showImages === false && typeof data.gantt === 'string' && opts.includeGantt === false) {
     lines.push('', 'Pipeline timeline omitted to fit the GitHub comment limit.')
   }
   if (typeof data.omittedBars === 'number' && data.omittedBars > 0) {

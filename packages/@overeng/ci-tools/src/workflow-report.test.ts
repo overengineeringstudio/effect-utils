@@ -595,4 +595,42 @@ describe('pipeline waterfall comment consumers', () => {
     expect(retained?.entries[0]?.records[0]?.id).toBe('pipeline-traces:123:2')
     expect(retained?.entries[0]?.records[0]?.data).toBeUndefined()
   })
+
+  it('never trims failures or error conclusions that sit past the fitting cutoff', () => {
+    const oversized = Array.from({ length: 80 }, (_, index) => ({
+      ...row(`job-${index}`, 1_000 + index),
+      instrumented: true,
+      traceUrl: `https://grafana.example.test/explore?${'q'.repeat(2000)}`,
+    }))
+    const body = render({
+      ...data,
+      rows: [
+        ...oversized,
+        { ...row('late-failure', 10), status: 'failure' },
+        { ...row('late-timeout', 10), status: 'timed_out' },
+      ],
+    })
+    expect(body.length).toBeLessThanOrEqual(60_000)
+    expect(body).toMatch(/\d+ additional job row\(s\) omitted to fit the GitHub comment limit\./u)
+    const inline = body.slice(0, body.indexOf('<details>'))
+    expect(inline).toContain('| late-failure | failure |')
+    expect(inline).toContain('| late-timeout | timed\\_out |')
+  })
+
+  it('keeps a valid image when the Mermaid fallback must be omitted, and only announces a fallback that renders', () => {
+    const hugeGantt = `gantt\n${'    filler (success) :job, 2026-10-01 00:00:00+0000, 1s\n'.repeat(2_000)}`
+    const withImages = render({ ...data, gantt: hugeGantt })
+    expect(withImages).toContain('<picture>')
+    expect(withImages).not.toContain('Image unavailable')
+    expect(withImages).not.toContain('Pipeline timeline omitted')
+
+    const { waterfall: _waterfall, ...withoutImages } = data
+    const omitted = render({ ...withoutImages, gantt: hugeGantt })
+    expect(omitted.length).toBeLessThanOrEqual(60_000)
+    expect(omitted).not.toContain('```mermaid')
+    expect(omitted).toContain('Pipeline timeline omitted to fit the GitHub comment limit.')
+    expect(omitted).not.toContain('Image unavailable')
+
+    expect(render(withoutImages)).toContain('Image unavailable; jobs-only Mermaid timeline below.')
+  })
 })

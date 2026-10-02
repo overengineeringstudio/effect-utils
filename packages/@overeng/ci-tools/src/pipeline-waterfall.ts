@@ -169,21 +169,31 @@ export const renderPipelineWaterfall = ({
   const out = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" role="img" aria-label="Pipeline jobs and steps waterfall"><style>text{font-family:DejaVu Sans,sans-serif;font-size:11px;fill:${colors.fg}}.muted{fill:${colors.muted}}</style><rect width="${width}" height="${height}" fill="${colors.bg}"/><text x="12" y="22" font-size="16">Pipeline jobs + steps · attempt ${timeline.attempt}</text><text class="muted" x="12" y="42">Chronological; up to four timed steps/job (non-success first, then longest). Dashed idle breaks.</text><text class="muted" x="12" y="58">Origin ${escapeXml(segments.length === 0 ? 'unavailable' : new Date(origin).toISOString())}</text><text class="muted" x="12" y="72">blue: success · red: failed/timed out/other error · amber: in progress · grey: cancelled/skipped/neutral</text>`,
   ]
-  // Piecewise segments compress small spans: segment starts always keep their labels
-  // and in-segment tick labels are dropped when they would collide with any label.
+  // Piecewise segments compress small spans and many idle gaps squeeze breaks together, so
+  // every axis label and gap caption is placed left to right only where it does not collide.
+  // Captions that cannot be placed are summarized at the left of the caption band instead.
   const labelWidth = 64
+  const captionCharWidth = 6.5
   let labelEnd = -Infinity
+  let captionEnd = plotStart
+  const hiddenGaps: number[] = []
   for (const [index, segment] of segments.entries()) {
     const x = position(segment.from)
     const nextStart = index + 1 < segments.length ? position(segments[index + 1]!.from) : Infinity
-    labelEnd = x + 3 + labelWidth
+    const startLabelled = x + 3 >= labelEnd
+    if (startLabelled === true) labelEnd = x + 3 + labelWidth
     out.push(
-      `<line x1="${x}" x2="${x}" y1="${top - 4}" y2="${height - 32}" stroke="${colors.grid}"/><text class="muted" x="${x + 3}" y="${top - 8}">T+${duration(segment.from - origin)}</text>`,
+      `<line x1="${x}" x2="${x}" y1="${top - 4}" y2="${height - 32}" stroke="${colors.grid}"/>${startLabelled === true ? `<text class="muted" x="${x + 3}" y="${top - 8}">T+${duration(segment.from - origin)}</text>` : ''}`,
     )
     if (index > 0) {
       const gap = segment.from - segments[index - 1]!.to
+      const caption = `${duration(gap)} idle (compressed)`
+      const captionX = x - breakWidth
+      const captioned = captionX >= captionEnd
+      if (captioned === true) captionEnd = captionX + caption.length * captionCharWidth
+      else hiddenGaps.push(gap)
       out.push(
-        `<rect x="${x - breakWidth}" y="${top}" width="${breakWidth}" height="${rows.length * 20}" fill="${colors.bg}" stroke="${colors.muted}" stroke-dasharray="3 3"><title>${duration(gap)} idle gap compressed</title></rect><text class="muted" x="${x - breakWidth}" y="${height - 16}">${duration(gap)} idle (compressed)</text>`,
+        `<rect x="${captionX}" y="${top}" width="${breakWidth}" height="${rows.length * 20}" fill="${colors.bg}" stroke="${colors.muted}" stroke-dasharray="3 3"><title>${duration(gap)} idle gap compressed</title></rect>${captioned === true ? `<text class="muted" x="${captionX}" y="${height - 16}">${caption}</text>` : ''}`,
       )
     }
     const step = Math.max(30_000, Math.ceil((segment.to - segment.from) / 4 / 30_000) * 30_000)
@@ -196,6 +206,10 @@ export const renderPipelineWaterfall = ({
       )
     }
   }
+  if (hiddenGaps.length > 0)
+    out.push(
+      `<text class="muted" x="12" y="${height - 16}">${hiddenGaps.length} more idle gaps compressed, ${duration(hiddenGaps.reduce((sum, gap) => sum + gap, 0))} total</text>`,
+    )
   for (const [index, row] of rows.entries()) {
     const y = top + index * 20
     const label = row.label.length > 44 ? `${row.label.slice(0, 43)}…` : row.label

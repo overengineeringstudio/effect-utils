@@ -243,6 +243,42 @@ describe('pipeline jobs and steps waterfall', () => {
     expect(rerun.x - earlier.x - earlier.width).toBeLessThan(earlier.width)
   })
 
+  it('never overlaps axis labels or idle-gap captions across many gaps and still accounts for every gap', () => {
+    const svg = renderPipelineWaterfall({
+      timeline: {
+        attempt: 1,
+        jobs: Array.from({ length: 12 }, (_, index) => ({
+          name: `Job ${index}`,
+          status: 'success',
+          attempt: 1,
+          start: index * 3_600_000,
+          end: index * 3_600_000 + 60_000,
+          steps: [],
+        })),
+      },
+      theme: 'light',
+    })
+    const texts = [
+      ...svg.matchAll(/<text class="muted" x="([\d.]+)" y="([\d.]+)">([^<]+)<\/text>/gu),
+    ]
+    const axis = texts.filter((match) => match[3]!.startsWith('T+'))
+    const captions = texts.filter((match) => match[3]!.endsWith('idle (compressed)'))
+    expect(axis.length).toBeGreaterThan(1)
+    expect(captions.length).toBeGreaterThan(0)
+    for (const group of [axis, captions]) {
+      for (let index = 1; index < group.length; index++) {
+        const previous = group[index - 1]!
+        // Axis labels reserve 64px; captions reserve their estimated rendered width.
+        const reserved = previous[3]!.startsWith('T+') === true ? 64 : previous[3]!.length * 6.5
+        expect(Number(group[index]![1])).toBeGreaterThanOrEqual(Number(previous[1]) + reserved)
+      }
+    }
+    const hidden = svg.match(/>(\d+) more idle gaps compressed, (\d+)m 0s total</u)
+    expect(hidden).not.toBeNull()
+    expect(Number(hidden![1]) + captions.length).toBe(11)
+    expect(Number(hidden![2])).toBe(Number(hidden![1]) * 59)
+  })
+
   it('keeps skipped and untimed jobs visible without inventing zero-duration bars', () => {
     const svg = renderPipelineWaterfall({
       timeline: {
