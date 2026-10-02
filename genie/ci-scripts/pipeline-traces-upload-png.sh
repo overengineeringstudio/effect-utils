@@ -38,16 +38,16 @@ fail() {
   printf 'gitbucket-upload: %s %s\n' "$1" "$2" >&3
   exit 1
 }
-# request STAGE MAX_SECONDS OUTPUT CURL_ARGS...: the body goes to OUTPUT only; a failure
-# is reported by HTTP status when the server answered, else by curl's exit code
-# (a timeout therefore reads `<stage> exit 28`).
+# request STAGE MAX_SECONDS OUTPUT CURL_ARGS...: the body goes to OUTPUT only. An HTTP
+# error status (curl --fail, exit 22) is reported as `http NNN`; any other failure by
+# curl's exit code, so a timeout reads `<stage> exit 28` even after headers arrived.
 request() {
   local stage="$1" max_time="$2" output="$3" status code=0
   shift 3
   status="$(curl --fail --silent --show-error --connect-timeout 3 --max-time "$max_time" \
     --output "$output" --write-out '%{http_code}' "$@")" || code=$?
   (( code == 0 )) && return 0
-  [[ "$status" =~ ^[1-9][0-9]{2}$ ]] && fail "$stage" "http $status"
+  (( code == 22 )) && [[ "$status" =~ ^[1-9][0-9]{2}$ ]] && fail "$stage" "http $status"
   fail "$stage" "exit $code"
 }
 printf '%s\n' "$PIPELINE_TRACES_ASSET_SSH_KEY" > "$scratch/key"

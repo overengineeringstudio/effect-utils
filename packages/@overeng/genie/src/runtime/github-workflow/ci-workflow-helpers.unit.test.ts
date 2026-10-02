@@ -123,7 +123,8 @@ printf 'https://gitbucket.schickling.dev/api/get/%s\\n' "$hash"`,
     )
     // The checked-in GitBucket adapter runs against stubbed curl/ssh-keygen boundaries.
     // challenge-429: the server rejects the challenge with a body and diagnostics that carry
-    // secrets. upload-timeout: authentication succeeds and the upload hits curl's deadline.
+    // secrets. upload-timeout: authentication succeeds and the upload times out after the
+    // server already sent 200 headers, so the reason must be the exit code, not the status.
     // Every request records its endpoint and --max-time so the per-stage bounds are pinned.
     executable(
       'curl',
@@ -147,7 +148,7 @@ fi
 case "$url" in
   */ssh-challenge) printf '{"challenge":"fixture-challenge"}' > "$output" ;;
   */ssh-verify) printf '{"access_token":"secret-response-body"}' > "$output" ;;
-  */upload) printf 'curl: (28) Operation timed out secret-response-body\\n' >&2; printf '000'; exit 28 ;;
+  */upload) printf 'curl: (28) Operation timed out secret-response-body\\n' >&2; printf '200'; exit 28 ;;
 esac
 printf '200'`,
     )
