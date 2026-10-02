@@ -5,6 +5,7 @@ export default cargoBuck2PackageProjection({
   wasmBindgen: {
     name: 'wasm',
     outName: 'effect_rust_fixture',
+    visibility: ['PUBLIC'],
     smoke: { script: '//rust/effect-rust-fixtures:smoke', runtimes: ['node', 'bun'] },
   },
 })
