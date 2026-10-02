@@ -46,8 +46,10 @@ Service classes use `defineStatics(Service, { make, wasm?, native? })` with gene
 - `Init` is a typed construction failure only. A failed rebuild is a defect, never a new `Init` error in an operation's error channel.
 - `Input`, `Transport`, and `Unsupported` are foundation `Schema.TaggedError` classes. Domain error enums are generated separately, preserving their reason union.
 - A wasm trap poisons its entire generation: every pending Effect dies with the trap, Rust handles are retired without destructors, and glue is released. The default `panicPolicy: 'rebuild'` constructs fresh glue and an instance before further calls; `'retire'` permanently denies further calls. Calls and streams bound to the old generation cannot use the rebuilt instance accidentally.
+- Generated lexical wasm glue uses instance-local finalization registries. Live instances run bindgen finalizers normally; retiring an instance disables its delayed destructors before clearing wasm references, so garbage collection after Scope release cannot dereference retired glue.
 - Native adapters expose caught panics with the `RUST_PANIC:` envelope, which is also a defect. The native build must enable unwinding and guard every export.
 - The Layer's Scope owns the runtime. `Effect.provide(layer)` releases it when that Effect finishes. Use `Layer.build(layer)` in a caller-owned Scope if the service must live across multiple operations.
+- Runtime acquisition is asynchronous. Once acquired, a synchronous export remains synchronous and can be evaluated with `Effect.runSync`; only PromiseLike results and explicit `RustJob` results suspend.
 
 ### Interruption and host capabilities
 
