@@ -48,7 +48,7 @@ mod sealed {
     pub trait Sealed {}
 }
 
-/// Declares whether cancelling a read may drop the pending host operation.
+/// Declares whether cancelling a host call may drop the pending operation.
 pub trait Mode: sealed::Sealed {
     const ABORTABLE: bool;
 }
@@ -75,36 +75,69 @@ pub type ReadFuture<'a> = Pin<Box<dyn Future<Output = Result<Bytes, Error>> + 'a
 #[cfg(not(target_arch = "wasm32"))]
 pub type ReadFuture<'a> = Pin<Box<dyn Future<Output = Result<Bytes, Error>> + Send + 'a>>;
 
-#[cfg(target_arch = "wasm32")]
-type Read = dyn for<'a> Fn(&'a str, CancellationToken) -> ReadFuture<'a>;
-#[cfg(not(target_arch = "wasm32"))]
-type Read = dyn for<'a> Fn(&'a str, CancellationToken) -> ReadFuture<'a> + Send + Sync;
+/// Operations dispatched through the same scope-owned host boundary.
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Request<'a> {
+    Read { path: &'a str },
+    ReadRange {
+        path: &'a str,
+        #[serde(serialize_with = "serialize_offset")]
+        offset: u64,
+        #[serde(rename = "maxBytes")]
+        max_bytes: u32,
+    },
+    Yield,
+}
 
-/// A clonable Rust capability. Clones share both the callback and cancellation.
+fn serialize_offset<S: serde::Serializer>(offset: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_str(offset)
+}
+
+impl Request<'_> {
+    /// Validates a response before backend adapters allocate or copy its bytes.
+    /// # Errors
+    /// Rejects oversized range responses and nonempty yield acknowledgements.
+    pub fn check_response_len(self, length: usize) -> Result<(), Error> {
+        match self {
+            Self::ReadRange { max_bytes, .. } if length > max_bytes as usize =>
+                Err(Error::failed("host readRange response exceeds maxBytes")),
+            Self::Yield if length != 0 => Err(Error::failed("host yield must return an empty acknowledgement")),
+            _ => Ok(()),
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+type Call = dyn for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a>;
+#[cfg(not(target_arch = "wasm32"))]
+type Call = dyn for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a> + Send + Sync;
+
+/// A clonable Rust capability. Clones share the host callback and cancellation.
 ///
 /// For `SettleOnly`, callbacks must not drop the operation in response to their
-/// token: `read` keeps polling until settlement, then reports cancellation.
+/// token: host calls keep polling until settlement, then report cancellation.
 pub struct Source<M: Mode = Abortable> {
-    read: Shared<Read>,
+    call: Shared<Call>,
     cancellation: CancellationToken,
     mode: PhantomData<M>,
 }
 
 impl<M: Mode> Clone for Source<M> {
     fn clone(&self) -> Self {
-        Self { read: self.read.clone(), cancellation: self.cancellation.clone(), mode: PhantomData }
+        Self { call: self.call.clone(), cancellation: self.cancellation.clone(), mode: PhantomData }
     }
 }
 
 impl<M: Mode> Source<M> {
     #[cfg(target_arch = "wasm32")]
-    pub fn new(callback: impl for<'a> Fn(&'a str, CancellationToken) -> ReadFuture<'a> + 'static) -> Self {
-        Self { read: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
+    pub fn new(callback: impl for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a> + 'static) -> Self {
+        Self { call: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(callback: impl for<'a> Fn(&'a str, CancellationToken) -> ReadFuture<'a> + Send + Sync + 'static) -> Self {
-        Self { read: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
+    pub fn new(callback: impl for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a> + Send + Sync + 'static) -> Self {
+        Self { call: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
     }
 
     /// Binds this capability to a caller-owned cancellation scope.
@@ -119,19 +152,49 @@ impl<M: Mode> Source<M> {
         &self.cancellation
     }
 
+    /// Reads the whole file into an owned buffer. No size bound is implied.
     /// # Errors
-    /// Preserves host failures; cancelled abortable reads drop their future,
-    /// while settle-only reads report cancellation only after host settlement.
+    /// Preserves host failures and reports cancellation according to the mode.
     pub async fn read(&self, path: &str) -> Result<Bytes, Error> {
+        self.call(Request::Read { path }).await
+    }
+
+    /// Reads at most `max_bytes` bytes starting at the absolute byte `offset`.
+    ///
+    /// `max_bytes` must be positive. A short read is permitted and is not proof
+    /// of EOF; an empty result reports EOF at that offset. Calls do not share an
+    /// implicit file handle or snapshot: hosts define consistency when files
+    /// change between reads.
+    /// # Errors
+    /// Rejects zero bounds and oversized host responses, and preserves host
+    /// failures/cancellation. Adapters validate the bound before copying bytes.
+    pub async fn read_range(&self, path: &str, offset: u64, max_bytes: u32) -> Result<Bytes, Error> {
+        if max_bytes == 0 { return Err(Error::failed("maxBytes must be positive")); }
+        self.call(Request::ReadRange { path, offset, max_bytes }).await
+    }
+
+    /// Cooperatively returns control to the host event loop between CPU chunks.
+    ///
+    /// The host must schedule an event-loop task, not just a microtask or token
+    /// check. This is not CPU preemption; callers choose their chunk boundaries.
+    /// # Errors
+    /// Preserves host failures and reports cancellation according to the mode.
+    pub async fn yield_now(&self) -> Result<(), Error> {
+        self.call(Request::Yield).await.map(|_| ())
+    }
+
+    async fn call(&self, request: Request<'_>) -> Result<Bytes, Error> {
         self.cancellation.check()?;
-        let future = (self.read)(path, self.cancellation.clone());
-        if M::ABORTABLE {
-            cancel_future(&self.cancellation, future).await?
+        let future = (self.call)(request, self.cancellation.clone());
+        let bytes = if M::ABORTABLE {
+            cancel_future(&self.cancellation, future).await??
         } else {
             let result = future.await;
             self.cancellation.check()?;
-            result
-        }
+            result?
+        };
+        request.check_response_len(bytes.len())?;
+        Ok(bytes)
     }
 }
 
@@ -235,6 +298,61 @@ mod tests {
         let mut read = pin!(source.read("not-started"));
         assert_eq!(read.as_mut().poll(&mut Context::from_waker(Waker::noop())), Poll::Ready(Err(Error::Cancelled)));
         assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn range_reads_preserve_exact_offsets_short_reads_and_eof() {
+        let source = Source::<Abortable>::new(|request, _token| Box::pin(async move {
+            match request {
+                Request::ReadRange { path: "file", offset: 9_007_199_254_740_993, max_bytes: 4 } => Ok(vec![7, 8]),
+                Request::ReadRange { path: "file", offset: u64::MAX, max_bytes: 4 } => Ok(vec![]),
+                _ => panic!("unexpected host request"),
+            }
+        }));
+        let mut context = Context::from_waker(Waker::noop());
+        assert_eq!(pin!(source.read_range("file", 9_007_199_254_740_993, 4)).poll(&mut context), Poll::Ready(Ok(vec![7, 8])));
+        assert_eq!(pin!(source.read_range("file", u64::MAX, 4)).poll(&mut context), Poll::Ready(Ok(vec![])));
+    }
+
+    #[test]
+    fn invalid_bounds_do_not_dispatch_and_oversized_responses_fail() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let source = Source::<Abortable>::new({
+            let calls = calls.clone();
+            move |_request, _token| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                Box::pin(async { Ok(vec![1, 2]) })
+            }
+        });
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(matches!(pin!(source.read_range("file", 0, 0)).poll(&mut context), Poll::Ready(Err(Error::Failed { .. }))));
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+        assert!(matches!(pin!(source.read_range("file", 0, 1)).poll(&mut context), Poll::Ready(Err(Error::Failed { .. }))));
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn cancellation_during_yield_prevents_the_next_chunk() {
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let source = Source::<Abortable>::new({
+            let dropped = dropped.clone();
+            move |request, token| {
+                assert!(matches!(request, Request::Yield));
+                let guard = DropCount(dropped.clone());
+                Box::pin(async move {
+                    let _guard = guard;
+                    token.cancelled().await;
+                    Ok(vec![])
+                })
+            }
+        });
+        let mut context = Context::from_waker(Waker::noop());
+        let mut yielding = pin!(source.yield_now());
+        assert_eq!(yielding.as_mut().poll(&mut context), Poll::Pending);
+        source.cancellation().cancel();
+        assert_eq!(yielding.as_mut().poll(&mut context), Poll::Ready(Err(Error::Cancelled)));
+        assert_eq!(dropped.load(Ordering::Relaxed), 1);
+        assert_eq!(pin!(source.read_range("must-not-read", 0, 1)).poll(&mut context), Poll::Ready(Err(Error::Cancelled)));
     }
 
     #[test]

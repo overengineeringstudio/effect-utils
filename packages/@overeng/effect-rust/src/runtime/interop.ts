@@ -4,7 +4,17 @@ import { Init } from './errors.ts'
 import { makeRuntime, type InstanceFactory, type Runtime, type RuntimeOptions } from './instance.ts'
 
 export { Init, Input, Transport, Unsupported } from './errors.ts'
-export { hostCapability, type CancellationMode, type HostCapability } from './host.ts'
+export {
+  eventLoopYield,
+  hostCapability,
+  hostSource,
+  type CancellationMode,
+  type HostCapability,
+  type HostSource,
+  type Source,
+  type SourceCallback,
+  type SourceRequest,
+} from './host.ts'
 export {
   chunkProfiles,
   type CallOptions,

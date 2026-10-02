@@ -83,9 +83,12 @@ pub fn export_error(item: TokenStream) -> TokenStream {
 /// Async exports return `{ _tag: "RustJob", mode, result: Promise, cancel }`.
 /// Abortable cancellation drops Rust work before its acknowledgement resolves;
 /// settle-only cancellation waits for Rust work to finish. A `host::Source`
-/// argument is a JS callback `read(path) -> Promise<Uint8Array>` (Buffer also
-/// works natively). The service adapter owns cancellation of the JS operation
-/// itself; the raw job guarantees no subsequent Rust reads after acknowledgement.
+/// argument is a callback taking `{ kind: "read", path }`,
+/// `{ kind: "readRange", path, offset: "<canonical u64>", maxBytes }`, or
+/// `{ kind: "yield" }`. It returns `Promise<Uint8Array>` (Buffer natively):
+/// range responses must fit the bound and yield returns an empty acknowledgement
+/// after an event-loop task. The service adapter owns JS cancellation/quiescence;
+/// the raw job guarantees no subsequent Rust host calls after acknowledgement.
 ///
 /// Expected errors are JS Errors with `RUST_ERROR:` plus tag-first JSON;
 /// native panics become `RUST_PANIC:` defects. Each export embeds compact JSON
