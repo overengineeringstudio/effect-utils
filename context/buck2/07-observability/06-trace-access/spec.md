@@ -142,9 +142,12 @@ resvg and DejaVu font closure. Upload PNGs to the existing public GitBucket
 content-addressed store; comments reference immutable public HTTPS URLs under
 `gitbucket.schickling.dev`, not a mutable asset branch or authenticated endpoint.
 Use a theme-aware picture pair only after both uploads and URL validation
-succeed. PNGs must be nonempty and at most 5 MiB each; SVG generation,
-rasterization, and each upload have bounded execution times. A partial pair
-is not attached.
+succeed. PNGs must be nonempty and at most 5 MiB each; SVG generation and
+rasterization have bounded execution times. The adapter's SSH challenge and
+verify requests are bounded to 8 seconds; the upload request to 40 seconds,
+because GitBucket commits fresh objects to its GitHub-backed store; each
+adapter invocation to 60 seconds, so the pair adds at most two minutes. A
+partial pair is not attached.
 
 The publication credential is present only in the Pipeline traces report step,
 not in workflow-wide or job-wide environment. The checked-in PNG adapter uses
@@ -163,7 +166,10 @@ registration and secret provisioning are separate operator actions.
 Missing credentials, rasterization failure, upload failure, or invalid URLs
 leave the original usable report intact and select the deterministic jobs-only
 Mermaid fallback. Failures emit controlled stage diagnostics without raw
-secret-bearing stderr. Dry-run never uploads. Image handling adds no Tempo
+secret-bearing stderr: an upload failure may append only the adapter's
+sanitized `<challenge|sign|verify|upload|url> <http NNN|exit N>` reason, never
+response bodies, tokens, key material or signing output. Dry-run never uploads.
+Image handling adds no Tempo
 reads, task spans, task annotations, or per-build-job workflow steps.
 
 ### Jobs-Only Mermaid Fallback

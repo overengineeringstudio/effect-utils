@@ -40,7 +40,8 @@ ci_tools="${CI_TOOLS_BIN:-$(nix build .#ci-tools-compiled --no-link --print-out-
 # never echo raw renderer/rasterizer/uploader stderr in GitHub warnings.
 # Any render/raster/upload failure retains the original report, including when
 # only one upload succeeds. Rasterization uses the repo-locked resvg/font closure.
-# Each PNG must be nonempty and <= 5 MiB; each upload has a 30s timeout.
+# Each PNG must be nonempty and <= 5 MiB; each adapter invocation has a 60s timeout
+# (two uploads, so image publication adds at most 2 x 60s to the report step).
 waterfall_stage=configuration
 if [[ -z "${PIPELINE_TRACES_PUBLIC_ASSET_COMMAND:-}" && -n "${PIPELINE_TRACES_ASSET_SSH_KEY:-}" ]]; then
   PIPELINE_TRACES_PUBLIC_ASSET_COMMAND="$(dirname "${BASH_SOURCE[0]}")/pipeline-traces-upload-png.sh"
@@ -71,7 +72,7 @@ attach_waterfall() {
   # Validate both local files before uploading either; only attach a complete pair.
   for theme in light dark; do
     waterfall_stage="upload-$theme"
-    timeout --kill-after=5s 30s "$PIPELINE_TRACES_PUBLIC_ASSET_COMMAND" \
+    timeout --kill-after=5s 60s "$PIPELINE_TRACES_PUBLIC_ASSET_COMMAND" \
       "$scratch/waterfall/$theme.png" \
       > "$scratch/url-$theme" 2> "$scratch/upload-$theme.log" || return 1
     waterfall_stage="url-$theme"
@@ -88,7 +89,15 @@ attach_waterfall() {
 }
 if [[ "${PIPELINE_REPORT_DRY_RUN:-0}" != 1 && -n "${PIPELINE_TRACES_PUBLIC_ASSET_COMMAND:-}" ]]; then
   if ! attach_waterfall; then
-    echo "::warning::Pipeline waterfall stage $waterfall_stage failed; retaining jobs-only Mermaid report."
+    # Only the uploader's sanitized final line may reach the public warning, and only
+    # when it exactly matches the stage/status contract; everything else stays in scratch.
+    waterfall_reason=''
+    upload_reason_pattern='^gitbucket-upload: (challenge|sign|verify|upload|url) (http [0-9]{3}|exit [0-9]+)$'
+    if [[ "$waterfall_stage" == upload-* && -f "$scratch/$waterfall_stage.log" ]]; then
+      upload_reason="$(tail -n 1 "$scratch/$waterfall_stage.log")"
+      [[ "$upload_reason" =~ $upload_reason_pattern ]] && waterfall_reason=" (${upload_reason#gitbucket-upload: })"
+    fi
+    echo "::warning::Pipeline waterfall stage $waterfall_stage failed$waterfall_reason; retaining jobs-only Mermaid report."
   fi
 fi
 gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments?per_page=100" --paginate --slurp | jq 'add' > "$scratch/comments.json"

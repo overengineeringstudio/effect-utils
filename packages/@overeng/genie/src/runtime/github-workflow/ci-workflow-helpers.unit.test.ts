@@ -45,6 +45,8 @@ const generatedCiWorkflowYamlSource = readFileSync(
 const generatedCiWorkflowTriggers = generatedCiWorkflowYamlSource.split('\njobs:\n')[0] ?? ''
 
 describe('pipeline traces image attachment', () => {
+  // Modes that run the checked-in GitBucket adapter instead of a stub uploader.
+  const adapterModes: ReadonlySet<string> = new Set(['challenge-429', 'upload-timeout'])
   it.each([
     'absent',
     'dry-run',
@@ -54,6 +56,8 @@ describe('pipeline traces image attachment', () => {
     'multiple-urls',
     'raster-failure',
     'oversized',
+    'challenge-429',
+    'upload-timeout',
   ] as const)('preserves atomic report publication for %s', (mode) => {
     const root = mkdtempSync(join(tmpdir(), 'pipeline-traces-assets-'))
     const bin = join(root, 'bin')
@@ -101,7 +105,7 @@ done`,
 if [[ "$FIXTURE_MODE" == oversized ]]; then
   truncate -s 5242881 "$2"
 else
-  printf 'PNG fixture' > "$2"
+  printf '\\x89PNG\\r\\n\\x1a\\nfixture' > "$2"
 fi`,
     )
     const uploader = executable(
@@ -117,6 +121,37 @@ esac
 if [[ "$theme" == light ]]; then hash="${'a'.repeat(64)}"; else hash="${'b'.repeat(64)}"; fi
 printf 'https://gitbucket.schickling.dev/api/get/%s\\n' "$hash"`,
     )
+    // The checked-in GitBucket adapter runs against stubbed curl/ssh-keygen boundaries.
+    // challenge-429: the server rejects the challenge with a body and diagnostics that carry
+    // secrets. upload-timeout: authentication succeeds and the upload hits curl's deadline.
+    // Every request records its endpoint and --max-time so the per-stage bounds are pinned.
+    executable(
+      'curl',
+      `
+output='' max_time='' url=''
+while (( $# )); do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    --max-time) max_time="$2"; shift 2 ;;
+    https://*) url="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+printf '%s %s\\n' "\${url##*/}" "$max_time" >> "$FIXTURE_ROOT/curl-requests"
+if [[ "$FIXTURE_MODE" == challenge-429 ]]; then
+  printf '{"message":"secret-response-body"}' > "$output"
+  printf 'curl: (22) The requested URL returned error: 429 secret-response-body\\n' >&2
+  printf '429'
+  exit 22
+fi
+case "$url" in
+  */ssh-challenge) printf '{"challenge":"fixture-challenge"}' > "$output" ;;
+  */ssh-verify) printf '{"access_token":"secret-response-body"}' > "$output" ;;
+  */upload) printf 'curl: (28) Operation timed out secret-response-body\\n' >&2; printf '000'; exit 28 ;;
+esac
+printf '200'`,
+    )
+    executable('ssh-keygen', "printf 'fixture-signature\\n'")
     try {
       const result = spawnSync(
         'bash',
@@ -135,9 +170,11 @@ printf 'https://gitbucket.schickling.dev/api/get/%s\\n' "$hash"`,
             CI_TOOLS_BIN: ciTools,
             PIPELINE_REPORT_DRY_RUN: mode === 'dry-run' ? '1' : '0',
             GITHUB_STEP_SUMMARY: join(root, 'summary.md'),
-            PIPELINE_TRACES_PUBLIC_ASSET_COMMAND: mode === 'absent' ? '' : uploader,
-            PIPELINE_TRACES_ASSET_SSH_KEY: '',
-            PIPELINE_TRACES_ASSET_USERNAME: '',
+            PIPELINE_TRACES_PUBLIC_ASSET_COMMAND:
+              mode === 'absent' || adapterModes.has(mode) === true ? '' : uploader,
+            PIPELINE_TRACES_ASSET_SSH_KEY:
+              adapterModes.has(mode) === true ? 'fixture-key-material' : '',
+            PIPELINE_TRACES_ASSET_USERNAME: adapterModes.has(mode) === true ? 'fixture-user' : '',
             FIXTURE_ROOT: root,
             FIXTURE_MODE: mode,
           },
@@ -150,7 +187,30 @@ printf 'https://gitbucket.schickling.dev/api/get/%s\\n' "$hash"`,
       } else {
         expect(readFileSync(join(root, 'summary.md'), 'utf8')).toBe('report rendered\n')
       }
-      expect(result.stdout + result.stderr).not.toContain('secret-bearing diagnostic')
+      for (const secret of [
+        'secret-bearing diagnostic',
+        'secret-response-body',
+        'fixture-key-material',
+      ])
+        expect(result.stdout + result.stderr).not.toContain(secret)
+      if (mode === 'challenge-429')
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-light failed (challenge http 429); retaining jobs-only Mermaid report.',
+        )
+      if (mode === 'upload-timeout') {
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-light failed (upload exit 28); retaining jobs-only Mermaid report.',
+        )
+        // Authentication stays short; only the content upload gets the longer deadline.
+        expect(readFileSync(join(root, 'curl-requests'), 'utf8')).toBe(
+          'ssh-challenge 8\nssh-verify 8\nupload 40\n',
+        )
+      }
+      // An uploader whose last line is not the sanitized contract keeps the generic text.
+      if (mode === 'dark-upload-failure')
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-dark failed; retaining jobs-only Mermaid report.',
+        )
       const published = JSON.parse(readFileSync(join(root, 'published.json'), 'utf8'))
       expect(published).toEqual({
         records: [
