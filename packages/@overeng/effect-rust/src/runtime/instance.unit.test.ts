@@ -8,7 +8,7 @@ import {
   type RustJob,
   type Runtime,
 } from './instance.ts'
-import { wasmLayer } from './interop.ts'
+import { isolateRuntime, wasmLayer } from './interop.ts'
 
 // Real wasm trap and identity exports, without a Rust toolchain or cached bindgen glue.
 const module = new WebAssembly.Module(
@@ -64,20 +64,25 @@ const assertDefect = <T, TError>(exit: Exit.Exit<T, TError>) => {
 }
 
 describe('instance generations', () => {
-  it.effect(
-    'executes synchronous exports with runSync after asynchronous runtime acquisition',
-    () =>
-      Effect.gen(function* () {
-        const fixture = fake()
-        const runtime = yield* makeRuntime('test', { load: fixture.load })
-        expect(Effect.runSync(runtime.call(({ api }) => api.value(42)))).toBe(42)
-        expect(Effect.runSync(runtime.snapshot)).toMatchObject({ jobs: 0, state: 'healthy' })
-        // eslint-disable-next-line unicorn/no-thenable -- This non-callable then property proves ordinary data is not treated as PromiseLike.
-        const value = { then: 'ordinary data' }
-        expect(Effect.runSync(runtime.call(() => value))).toBe(value)
-        expect(Effect.runSync(runtime.call(() => undefined))).toBeUndefined()
-      }),
-  )
+  it('executes synchronous exports with runSync after asynchronous runtime acquisition', async () => {
+    const fixture = fake()
+    class Core extends Context.Service<Core, Runtime<FakeApi>>()('test/sync-Core') {}
+    const managed = isolateRuntime(
+      wasmLayer.node(Core, { load: fixture.load, make: (runtime) => runtime }),
+    )
+    try {
+      const runtime = await managed.runPromise(Core)
+      expect(Effect.runSync(runtime.call(({ api }) => api.value(42)))).toBe(42)
+      expect(Effect.runSync(runtime.snapshot)).toMatchObject({ jobs: 0, state: 'healthy' })
+      // eslint-disable-next-line unicorn/no-thenable -- This non-callable then property proves ordinary data is not treated as PromiseLike.
+      const value = { then: 'ordinary data' }
+      expect(Effect.runSync(runtime.call(() => value))).toBe(value)
+      expect(Effect.runSync(runtime.call(() => undefined))).toBeUndefined()
+    } finally {
+      await managed.dispose()
+    }
+    expect(fixture.counts()).toEqual({ loads: 1, releases: 1, live: 0 })
+  })
 
   it.effect('traps kill every pending Effect, retire glue, and rebuild before the next call', () =>
     Effect.gen(function* () {
