@@ -49,6 +49,25 @@ Canonical JSON descriptors hash the canonical UTF-8 JSON bytes and stamp `codec:
 
 Descriptor APIs are the base layer. They may be used independently when a caller only needs stable identity or verification.
 
+### Byte engine selection
+
+The synchronous descriptor/hash helper signatures remain unchanged. Pure top-level helpers use the JavaScript implementation. Effect store writes and verification honor an optional `ContentAddressEngine` service; absent a layer, they retain the existing JavaScript behavior.
+
+`ContentAddressEngine.layerJs` selects JavaScript. For a generated `ContentAddressCore` service package built by `//rust/content-address-service:service`, select Rust with:
+
+```ts
+const engine = ContentAddressEngine.layerRust(ContentAddressCore).pipe(
+  Layer.provide(ContentAddressCore.layerWasm.node()),
+)
+// Replace layerWasm.node() with layerNative.node() or the corresponding Bun static.
+```
+
+The service exposes the same synchronous hashing/descriptor functions, an incremental byte `Sink` (`hasher()`), and filesystem `hashTree(root)`. Canonical JSON and manifests remain Effect-owned. `hashTree` uses the existing action-runner protocol in `rust/buck2-tools/core/src/fingerprint.rs`: preorder, UTF-16 sibling ordering, root path `.`, permission bits `0o7777`, u32 big-endian UTF-8 text frames for path/mode/kind and symlink target, and unframed file bytes. This is distinct from the editor-view `effect-utils/tree-digest/v1` protocol.
+
+`ContentDescriptor` in `src/schema.ts` remains authoritative. `src/interop-contract.ts` projects safe integer fields to bounded canonical decimal strings and expresses string constraints through the portable wire vocabulary; `src/generate-contract.ts` compiles those Effect schemas into `rust/content-address-contract` for the standalone generated `describe`/`validateDescriptor` exports. The Effect engine constructs public descriptors from the Rust-computed digest and validates metadata with the original Effect schema, preserving the existing number and JavaScript-string semantics. Regenerate with `bun packages/@overeng/content-address/src/generate-contract.ts`, then run the ordinary Genie projections.
+
+The Rust async tree export receives an abortable host Source for byte reads; filesystem traversal and symlink discovery remain in Effect. The current host Source reads each file in one allocation, whereas the JS tree engine streams file chunks. Shared deterministic vectors and real-tree/store/manifest checks run with `src/engine-parity.ts <generated-service-directory> <results.json>` on Bun and Node (`--experimental-transform-types` when running source rather than compiled output). This durable runner exercises the actual generated wasm/native products against JS, including public metadata semantics and mode/symlink identity; its manifest fixture uses the `engine-parity` role. The same command records directional 1 KiB/1 MiB/100 MiB and tree benchmarks with machine load.
+
 ## Object Paths
 
 Object paths are derived mechanically from the digest:

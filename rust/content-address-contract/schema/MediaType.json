@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$vocabulary": {
+    "https://effect-rust.dev/schema/v1": true
+  },
+  "title": "MediaType",
+  "$ref": "#/$defs/MediaType",
+  "$defs": {
+    "Codec": {
+      "title": "Codec",
+      "type": "string",
+      "pattern": "^[^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?$",
+      "x-effect-rust-pattern": "^[^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?$",
+      "x-effect-rust-pattern-flags": "u"
+    },
+    "content_address_contract_1": {
+      "title": "content_address_contract_1",
+      "type": "string",
+      "enum": ["ContentDescriptor"]
+    },
+    "ContentAddress_Codec": {
+      "title": "ContentAddress_Codec",
+      "type": "string",
+      "pattern": "^[^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?$",
+      "x-effect-rust-pattern": "^[^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?$",
+      "x-effect-rust-pattern-flags": "u"
+    },
+    "ContentAddress_NonNegativeInt": {
+      "title": "ContentAddress_NonNegativeInt",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,14}|[1-8][0-9]{15}|900[0-6][0-9]{12}|90070[0-9]{11}|90071[0-8][0-9]{10}|900719[0-8][0-9]{9}|9007199[0-1][0-9]{8}|90071992[0-4][0-9]{7}|900719925[0-3][0-9]{6}|9007199254[0-6][0-9]{5}|90071992547[0-3][0-9]{4}|9007199254740[0-8][0-9]{2}|90071992547409[0-8][0-9]{1}|9007199254740990|9007199254740991)$",
+      "x-effect-rust-pattern": "^(0|[1-9][0-9]{0,14}|[1-8][0-9]{15}|900[0-6][0-9]{12}|90070[0-9]{11}|90071[0-8][0-9]{10}|900719[0-8][0-9]{9}|9007199[0-1][0-9]{8}|90071992[0-4][0-9]{7}|900719925[0-3][0-9]{6}|9007199254[0-6][0-9]{5}|90071992547[0-3][0-9]{4}|9007199254740[0-8][0-9]{2}|90071992547409[0-8][0-9]{1}|9007199254740990|9007199254740991)$",
+      "x-effect-rust-pattern-flags": "u"
+    },
+    "ContentDescriptor": {
+      "title": "ContentDescriptor",
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "$ref": "#/$defs/content_address_contract_1"
+        },
+        "digest": {
+          "$ref": "#/$defs/ContentDigest"
+        },
+        "byteLength": {
+          "$ref": "#/$defs/NonNegativeInt"
+        },
+        "mediaType": {
+          "$ref": "#/$defs/MediaType"
+        },
+        "codec": {
+          "$ref": "#/$defs/ContentAddress_Codec"
+        },
+        "schemaVersion": {
+          "$ref": "#/$defs/ContentAddress_NonNegativeInt"
+        }
+      },
+      "required": ["_tag", "digest", "byteLength", "mediaType"],
+      "additionalProperties": false,
+      "x-effect-rust-excess": "error"
+    },
+    "ContentDigest": {
+      "title": "ContentDigest",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "x-effect-rust-pattern": "^sha256:[a-f0-9]{64}$",
+      "x-effect-rust-pattern-flags": "u"
+    },
+    "MediaType": {
+      "title": "MediaType",
+      "type": "string",
+      "pattern": "^[^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?$",
+      "x-effect-rust-pattern": "^[^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?$",
+      "x-effect-rust-pattern-flags": "u"
+    },
+    "NonNegativeInt": {
+      "title": "NonNegativeInt",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,14}|[1-8][0-9]{15}|900[0-6][0-9]{12}|90070[0-9]{11}|90071[0-8][0-9]{10}|900719[0-8][0-9]{9}|9007199[0-1][0-9]{8}|90071992[0-4][0-9]{7}|900719925[0-3][0-9]{6}|9007199254[0-6][0-9]{5}|90071992547[0-3][0-9]{4}|9007199254740[0-8][0-9]{2}|90071992547409[0-8][0-9]{1}|9007199254740990|9007199254740991)$",
+      "x-effect-rust-pattern": "^(0|[1-9][0-9]{0,14}|[1-8][0-9]{15}|900[0-6][0-9]{12}|90070[0-9]{11}|90071[0-8][0-9]{10}|900719[0-8][0-9]{9}|9007199[0-1][0-9]{8}|90071992[0-4][0-9]{7}|900719925[0-3][0-9]{6}|9007199254[0-6][0-9]{5}|90071992547[0-3][0-9]{4}|9007199254740[0-8][0-9]{2}|90071992547409[0-8][0-9]{1}|9007199254740990|9007199254740991)$",
+      "x-effect-rust-pattern-flags": "u"
+    }
+  }
+}

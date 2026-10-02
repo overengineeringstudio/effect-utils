@@ -15,6 +15,9 @@ members = [
   "effect-rust-fixtures/math-core",
   "effect-rust-fixtures/wasm-adapter",
   "effect-rust-fixtures/napi-adapter",
+  "content-address-core",
+  "content-address-contract",
+  "content-address-interop",
 ]
 
 [workspace.package]

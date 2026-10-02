@@ -22,9 +22,15 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/bytes.ts",
+    "src/engine-parity.ts",
+    "src/engine.ts",
+    "src/generate-contract.ts",
+    "src/interop-contract.ts",
     "src/mod.ts",
     "src/mod.unit.test.ts",
     "src/schema.ts",
+    "src/vectors.ts",
 ])
 
 static_source_set(
@@ -66,18 +72,27 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_content_address_a119c50f74bb",
     files = {
         "package.json": "package.json",
+        "src/bytes.ts": "src/bytes.ts",
+        "src/engine-parity.ts": "src/engine-parity.ts",
+        "src/engine.ts": "src/engine.ts",
+        "src/generate-contract.ts": "src/generate-contract.ts",
+        "src/interop-contract.ts": "src/interop-contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/schema.ts": "src/schema.ts",
+        "src/vectors.ts": "src/vectors.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/effect-rust/dist": "//packages/@overeng/effect-rust:dist",
+        "node_modules/@overeng/effect-rust/package.json": "//packages/@overeng/effect-rust:package.json",
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/effect-rust/node_modules": "//packages/@overeng/effect-rust:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
     strip_project_references = True,
@@ -91,19 +106,28 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_content_address_a119c50f74bb",
     files = {
         "package.json": "package.json",
+        "src/bytes.ts": "src/bytes.ts",
+        "src/engine-parity.ts": "src/engine-parity.ts",
+        "src/engine.ts": "src/engine.ts",
+        "src/generate-contract.ts": "src/generate-contract.ts",
+        "src/interop-contract.ts": "src/interop-contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/schema.ts": "src/schema.ts",
+        "src/vectors.ts": "src/vectors.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },
     workspace_dist = {
+        "node_modules/@overeng/effect-rust/dist": "//packages/@overeng/effect-rust:dist",
+        "node_modules/@overeng/effect-rust/package.json": "//packages/@overeng/effect-rust:package.json",
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/effect-rust/node_modules": "//packages/@overeng/effect-rust:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
     strip_project_references = True,
@@ -140,6 +164,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/effect-rust:package.json",
         "//packages/@overeng/utils-dev:package.json",
     ],
     output = "overeng-content-address.tgz",
