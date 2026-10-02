@@ -72,12 +72,12 @@ identity: moving or discarding a cache does not change dependency identity.
 
 ## Import Policy
 
-| Context           | Import method | Gate                                      |
-| ----------------- | ------------- | ----------------------------------------- |
-| Linux local dev   | `auto`        | cache files and root have equal device ID |
-| Darwin local dev  | `auto`        | pnpm filesystem-capability selection      |
-| CI                | `auto`        | job-local Store Cache                     |
-| Nix archives      | no pnpm install | independent of live-install policy      |
+| Context          | Import method   | Gate                                      |
+| ---------------- | --------------- | ----------------------------------------- |
+| Linux local dev  | `auto`          | cache files and root have equal device ID |
+| Darwin local dev | `auto`          | pnpm filesystem-capability selection      |
+| CI               | `auto`          | job-local Store Cache                     |
+| Nix archives     | no pnpm install | independent of live-install policy        |
 
 Linux fails before installation when device IDs differ; it does not silently
 copy and turn a zero-copy goal into per-worktree duplication. On a filesystem

@@ -15,12 +15,12 @@ This spec defines deterministic projection after dependency data exists:
 
 ## Requirement Trace
 
-| Section                 | Requirements                                                                       |
-| ----------------------- | ---------------------------------------------------------------------------------- |
-| Bin Projection          | DMP.PROJ-R01, DMP.PROJ-R02, DMP.PROJ-R03, DMP.PROJ-R04, DMP.PROJ-R05, DMP.PROJ-R06 |
-| Report Shape            | DMP.PROJ-R07                                                                       |
-| Edge Cases              | DMP.PROJ-R02, DMP.PROJ-R04, DMP.PROJ-R05                                           |
-| Dependency authority    | DMP.PROJ-R09                                                                       |
+| Section              | Requirements                                                                       |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| Bin Projection       | DMP.PROJ-R01, DMP.PROJ-R02, DMP.PROJ-R03, DMP.PROJ-R04, DMP.PROJ-R05, DMP.PROJ-R06 |
+| Report Shape         | DMP.PROJ-R07                                                                       |
+| Edge Cases           | DMP.PROJ-R02, DMP.PROJ-R04, DMP.PROJ-R05                                           |
+| Dependency authority | DMP.PROJ-R09                                                                       |
 
 ## Bin Projection
 

@@ -51,9 +51,36 @@ export type PipelineJobIdentity = {
   readonly dimensions: Readonly<Record<string, string>>
 }
 
-/** Never guess a canonical key for an unknown or ambiguous provider job name. */
-export const pipelineJobIdentityForName = (name: string): PipelineJobIdentity | undefined =>
-  duplicateNames.has(name) === true ? undefined : identities.get(name)
+/** Resolves provider job names against one workflow definition's declared jobs and runner matrix. */
+export const pipelineJobIdentityResolver = (workflow: {
+  readonly jobIds: readonly string[]
+  readonly runnerProfiles: readonly string[]
+}): ((name: string) => PipelineJobIdentity | undefined) => {
+  const identities = new Map<string, PipelineJobIdentity>()
+  const duplicateNames = new Set<string>()
+  const names = [
+    ...workflow.jobIds.map((job) => ({
+      name: job === 'ci-measurements-report' ? 'ci/measurements-report' : job,
+      identity: { job, dimensions: {} },
+    })),
+    ...workflow.runnerProfiles.map((runner) => ({
+      name: `test (${runner})`,
+      identity: { job: 'test', dimensions: { runner } },
+    })),
+  ]
+  for (const { name, identity } of names) {
+    if (identities.has(name) === true) duplicateNames.add(name)
+    identities.set(name, identity)
+  }
+  /* Never guess a canonical key for an unknown or ambiguous provider job name. */
+  return (name) => (duplicateNames.has(name) === true ? undefined : identities.get(name))
+}
+
+/** Resolves provider job names against the generated CI workflow of this commit. */
+export const pipelineJobIdentityForName = pipelineJobIdentityResolver({
+  jobIds: pipelineJobIds,
+  runnerProfiles: pipelineRunnerProfiles,
+})
 
 /** All known job identifiers, used to check the generator's declarations. */
 export const pipelineJobIdentifierSet = new Set([...pipelineJobIds, 'test'])
@@ -99,22 +126,4 @@ export const latestJobsWithExecutionAttempt = <J extends AttemptJob>(
       }
       return Object.assign({}, job, { executionAttempt })
     })
-}
-
-const names = [
-  ...pipelineJobIds.map((job) => ({
-    name: job === 'ci-measurements-report' ? 'ci/measurements-report' : job,
-    identity: { job, dimensions: {} },
-  })),
-  ...pipelineRunnerProfiles.map((runner) => ({
-    name: `test (${runner})`,
-    identity: { job: 'test', dimensions: { runner } },
-  })),
-]
-
-const identities = new Map<string, PipelineJobIdentity>()
-const duplicateNames = new Set<string>()
-for (const { name, identity } of names) {
-  if (identities.has(name) === true) duplicateNames.add(name)
-  identities.set(name, identity)
 }

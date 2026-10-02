@@ -25,24 +25,24 @@ fixture checks
         -> cross-system/default gate
 ```
 
-| Tier                      | Purpose                                                 | Typical cadence                        | Examples                                             |
-| ------------------------- | ------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------- |
-| Fixture checks            | Fast contract regressions                               | change/CI                              | policy audit, live install and source-input helpers |
-| Synthetic proofs          | Reproduce failure modes and decision logic              | change or targeted                     | shared prune repro, lifecycle sentinel, doctor model |
-| Real-workload benchmarks  | Measure correctness and cache efficiency on real graphs | before defaults                        | isolated vs shared APFS/ext4 profiles                |
-| Cross-system/default gate | Prevent unsafe platform generalization                  | before default                         | Darwin/Linux live-install and sharing evidence      |
+| Tier                      | Purpose                                                 | Typical cadence    | Examples                                             |
+| ------------------------- | ------------------------------------------------------- | ------------------ | ---------------------------------------------------- |
+| Fixture checks            | Fast contract regressions                               | change/CI          | policy audit, live install and source-input helpers  |
+| Synthetic proofs          | Reproduce failure modes and decision logic              | change or targeted | shared prune repro, lifecycle sentinel, doctor model |
+| Real-workload benchmarks  | Measure correctness and cache efficiency on real graphs | before defaults    | isolated vs shared APFS/ext4 profiles                |
+| Cross-system/default gate | Prevent unsafe platform generalization                  | before default     | Darwin/Linux live-install and sharing evidence       |
 
 ## Correctness Matrix
 
-| Surface                | Required evidence                                                                                        | Owning subsystem                                                                                        |
-| ---------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Strict pnpm policy     | Reject lifecycle/build override flags before pnpm runs; prove sentinel scripts do not run.               | [01-live-pnpm](../01-live-pnpm/spec.md)                                                                 |
-| Dependency identity    | Install incompatible peer graphs in both orders; prove pnpm-selected edges and type identity are stable. | [01-live-pnpm](../01-live-pnpm/spec.md)                                                                 |
-| Bin projection         | Manifest fixture plus pnpm-linker oracle cases; prove missing/stale bins are repaired without scripts.   | [02-projections](../02-projections/spec.md)                                                             |
-| Native packages        | Shared lockfile-policy audit and explicit runtime dependency checks.                                   | [Shared native policy](../03-nix-prepared-deps/02-native-node-packages/spec.md) |
-| Shared store authority | Root-local topology proof, shared-content immutability, and raw-prune refusal.                           | [04-store-authority](../04-store-authority/spec.md)                                                     |
-| External build adapter | Stable declared-input evidence; no live pnpm mutation.                                                   | Consumer-owned; Buck adapters are specified in [`context/buck2`](../../buck2/spec.md)                   |
-| Observability          | Fixture records for phase, timing, size, reuse, profile link, and safe paths.                            | [06-observability](../06-observability/spec.md)                                                         |
+| Surface                | Required evidence                                                                                        | Owning subsystem                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Strict pnpm policy     | Reject lifecycle/build override flags before pnpm runs; prove sentinel scripts do not run.               | [01-live-pnpm](../01-live-pnpm/spec.md)                                               |
+| Dependency identity    | Install incompatible peer graphs in both orders; prove pnpm-selected edges and type identity are stable. | [01-live-pnpm](../01-live-pnpm/spec.md)                                               |
+| Bin projection         | Manifest fixture plus pnpm-linker oracle cases; prove missing/stale bins are repaired without scripts.   | [02-projections](../02-projections/spec.md)                                           |
+| Native packages        | Shared lockfile-policy audit and explicit runtime dependency checks.                                     | [Shared native policy](../03-nix-prepared-deps/02-native-node-packages/spec.md)       |
+| Shared store authority | Root-local topology proof, shared-content immutability, and raw-prune refusal.                           | [04-store-authority](../04-store-authority/spec.md)                                   |
+| External build adapter | Stable declared-input evidence; no live pnpm mutation.                                                   | Consumer-owned; Buck adapters are specified in [`context/buck2`](../../buck2/spec.md) |
+| Observability          | Fixture records for phase, timing, size, reuse, profile link, and safe paths.                            | [06-observability](../06-observability/spec.md)                                       |
 
 ## Benchmark Matrix
 
