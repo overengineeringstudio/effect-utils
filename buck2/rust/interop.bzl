@@ -7,7 +7,8 @@ load("//buck2/products:defs.bzl", "BuildProductInfo")
 load("//buck2/rust:toolchains.bzl", "WASM_OPT_FLAGS")
 load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
-load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
+load("//buck2:materialization.bzl", "GeneratedPackageInfo", "PackageTreeInfo")
 
 RustInteropProductInfo = provider(fields = {"package": Artifact, "kind": str})
 
@@ -184,6 +185,7 @@ def rust_wasm_guest(name, crate, product_name, entrypoint, harness, recipe, tool
 def _service_impl(ctx):
     if ctx.attrs.wasm == None and ctx.attrs.napi == None:
         fail("rust_interop_service needs a wasm or napi product")
+    sources = ctx.actions.declare_output("service-sources", dir = True)
     package = ctx.actions.declare_output("service", dir = True)
     compiler = ctx.attrs.compiler[DefaultInfo]
     if len(compiler.default_outputs) != 1:
@@ -191,7 +193,7 @@ def _service_impl(ctx):
     command = cmd_args([
         ctx.attrs._bun[BunToolchainInfo].executable,
         ctx.attrs._generator,
-        "--output", package.as_output(),
+        "--output", sources.as_output(),
         "--service", ctx.attrs.service,
         "--package", ctx.attrs.package_name,
         "--compiler", compiler.default_outputs[0],
@@ -204,7 +206,22 @@ def _service_impl(ctx):
             command.add("--" + kind, info.package)
     # Schema records are read by instantiating the product (wasm preferred; the addon needs the host).
     ctx.actions.run(command, category = "rust_interop_service", local_only = True)
-    return [DefaultInfo(default_output = package)]
+    dependencies = ctx.attrs.compiler[PnpmDeclaredClosureInfo]
+    runtime_dist = ctx.attrs.runtime_dist[DefaultInfo].default_outputs[0]
+    tsgo = ctx.attrs._tsgo[EffectTsgoToolchainInfo]
+    ctx.actions.run(cmd_args([
+        ctx.attrs._bun[BunToolchainInfo].executable,
+        ctx.attrs._package_generator,
+        "--source", sources,
+        "--output", package.as_output(),
+        "--compiler", compiler.default_outputs[0],
+        "--runtime-dist", runtime_dist,
+        "--tsgo", tsgo.executable,
+    ], hidden = dependencies.read_roots), category = "rust_interop_service_package", local_only = True)
+    return [
+        DefaultInfo(default_output = package),
+        GeneratedPackageInfo(package_name = ctx.attrs.package_name, package = package, read_roots = [package]),
+    ]
 
 _rust_interop_service = rule(impl = _service_impl, attrs = {
     "service": attrs.string(),
@@ -212,6 +229,9 @@ _rust_interop_service = rule(impl = _service_impl, attrs = {
     "wasm": attrs.option(attrs.dep(providers = [RustInteropProductInfo]), default = None),
     "napi": attrs.option(attrs.dep(providers = [RustInteropProductInfo]), default = None),
     "compiler": attrs.dep(providers = [DefaultInfo]),
+    "runtime_dist": attrs.dep(default = "//packages/@overeng/effect-rust:dist"),
+    "_tsgo": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:effect_tsgo", providers = [EffectTsgoToolchainInfo])),
+    "_package_generator": attrs.default_only(attrs.source(default = "//buck2/rust:interop-service-package.ts")),
     "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
     "_generator": attrs.default_only(attrs.source(default = "//buck2/rust:interop-service.ts")),
 })
@@ -374,6 +394,40 @@ rust_interop_service_smoke = rule(impl = _service_smoke_impl, attrs = {
     "runtime": attrs.enum(["node", "bun"], default = "node"),
     "script": attrs.source(),
     "vectors": attrs.source(),
+    "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
+    "_node": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:tool_node", providers = [BuckSupportToolInfo])),
+})
+
+def _consumer_smoke_impl(ctx):
+    package_tree = ctx.attrs.package_tree[PackageTreeInfo]
+    dist = ctx.attrs.dist[DefaultInfo].default_outputs[0]
+    tree = ctx.actions.copied_dir("consumer", {
+        "package.json": package_tree.tree.project("package.json"),
+        "dist": dist,
+        "node_modules": package_tree.tree.project("node_modules"),
+    })
+    if ctx.attrs.runtime == "bun":
+        executable = ctx.attrs._bun[BunToolchainInfo].executable
+    else:
+        node = ctx.attrs._node[BuckSupportToolInfo]
+        executable = cmd_args(node.store_path, hidden = [node.executable, node.manifest])
+    command = cmd_args([executable, tree.project("dist/src/mod.js")], hidden = [tree] + package_tree.read_roots)
+    verdict = ctx.actions.declare_output("consumer-smoke.json")
+    ctx.actions.run(command, env = {"RUST_INTEROP_SMOKE_OUTPUT": verdict.as_output()}, category = "rust_interop_consumer_smoke", local_only = True)
+    return [
+        DefaultInfo(default_output = verdict),
+        RunInfo(args = command),
+        ExternalRunnerTestInfo(
+            type = "rust_interop",
+            command = [command],
+            default_executor = CommandExecutorConfig(local_enabled = True, remote_enabled = False, remote_cache_enabled = root_remote_cache_enabled(), allow_cache_uploads = root_allow_cache_uploads(), use_windows_path_separators = False),
+        ),
+    ]
+
+rust_interop_consumer_smoke = rule(impl = _consumer_smoke_impl, attrs = {
+    "package_tree": attrs.dep(providers = [PackageTreeInfo]),
+    "dist": attrs.dep(),
+    "runtime": attrs.enum(["node", "bun"]),
     "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
     "_node": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:tool_node", providers = [BuckSupportToolInfo])),
 })

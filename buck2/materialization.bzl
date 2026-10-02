@@ -10,6 +10,12 @@ PackageTreeInfo = provider(fields = {
     "tree": Artifact,
 })
 
+GeneratedPackageInfo = provider(fields = {
+    "package_name": str,
+    "package": Artifact,
+    "read_roots": provider_field(list[Artifact]),
+})
+
 def _unique_artifacts(artifacts):
     seen = {}
     roots = []
@@ -73,6 +79,14 @@ def _package_tree_impl(ctx):
         args.add("--workspace-dependency-view", destination, package_tree.tree)
         args.add(cmd_args(hidden = package_tree.read_roots))
         read_roots = _unique_artifacts(read_roots + package_tree.read_roots)
+    for package_name in sorted(ctx.attrs.generated_dependencies.keys()):
+        _require_relative_path(package_name, "generated package name")
+        product = ctx.attrs.generated_dependencies[package_name][GeneratedPackageInfo]
+        if product.package_name != package_name:
+            fail("generated dependency name does not match product: {}".format(package_name))
+        args.add("--workspace-file", "node_modules/" + package_name, product.package)
+        args.add(cmd_args(hidden = product.read_roots))
+        read_roots = _unique_artifacts(read_roots + product.read_roots)
     for link_path in sorted(ctx.attrs.workspace_links.keys()):
         target_path = ctx.attrs.workspace_links[link_path]
         _require_relative_path(link_path, "workspace link")
@@ -118,6 +132,11 @@ _package_tree = cache_guarded_rule(
         "workspace_dependency_views": attrs.dict(
             key = attrs.string(),
             value = attrs.dep(providers = [PackageTreeInfo]),
+            default = {},
+        ),
+        "generated_dependencies": attrs.dict(
+            key = attrs.string(),
+            value = attrs.dep(providers = [GeneratedPackageInfo]),
             default = {},
         ),
         "strip_project_references": attrs.bool(default = False),

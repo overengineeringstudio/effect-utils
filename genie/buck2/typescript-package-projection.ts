@@ -693,6 +693,9 @@ export type Buck2WorkspacePackageGenerator = {
   }
 }
 
+/** Absolute Buck package-product label, resolved in the owning cell. */
+export type BuckTarget = `${string}//${string}:${string}`
+
 export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly packageName: string
   readonly packagePath: string
@@ -700,6 +703,8 @@ export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly rulesCell?: `@${string}`
   readonly sourceRoots: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
+  /** Generated package products participate in build, editor and runtime package views. */
+  readonly generatedDependencies?: Readonly<Record<string, BuckTarget>>
   /** Consumer roots supply their own Genie registry; the platform root defaults to its own. */
   readonly workspacePackages?: readonly Buck2WorkspacePackageGenerator[]
   /** Project-level authority declarations; one package may own more than one root project. */
@@ -720,6 +725,7 @@ export const buck2TypeScriptPackageProjection = ({
   rulesCell,
   sourceRoots,
   workspaceSiblings = [],
+  generatedDependencies = {},
   workspacePackages = rootWorkspacePackages,
   authorities,
   tests,
@@ -814,6 +820,22 @@ export const buck2TypeScriptPackageProjection = ({
   )?.data
   if (packageManifest === undefined) {
     throw new Error(`${packagePath}: missing workspace package generator`)
+  }
+  const generatedDependencyEntries = sortedEntries(generatedDependencies)
+  for (const [name, target] of generatedDependencyEntries) {
+    const segments = name.split('/')
+    const validName = name.startsWith('@')
+      ? segments.length === 2 && segments[0] !== '@'
+      : segments.length === 1
+    if (validName === false || segments.some((segment) => safeSourceSegment(segment) === false)) {
+      throw new Error(`${packagePath}: unsafe generated dependency package name ${name}`)
+    }
+    if (target.includes('//') === false || target.includes(':') === false) {
+      throw new Error(`${packagePath}: generated dependency requires an absolute Buck target: ${target}`)
+    }
+    if (workspaceSiblings.some((sibling) => sibling.packageName === name)) {
+      throw new Error(`${packagePath}: dependency ${name} is both generated and a workspace sibling`)
+    }
   }
   const workspaceNames = new Set(
     [
@@ -1070,6 +1092,7 @@ export const buck2TypeScriptPackageProjection = ({
     ),
     dependencyLabel,
     dependencyView,
+    generatedDependencies,
     packageName,
     packagePath,
     packageSources,
@@ -1093,7 +1116,7 @@ export const buck2TypeScriptPackageProjection = ({
   }
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-typescript-package-projection',
-    schemaVersion: 12,
+    schemaVersion: 13,
     semanticData: data,
   })
 
@@ -1154,7 +1177,7 @@ export const buck2TypeScriptPackageProjection = ({
   const stringify = (): string => {
     const lines = [
       `# Projection source: ${projectionSource}`,
-      '# Projection schema version: 12',
+      '# Projection schema version: 13',
       '# Projection generator: effect-utils/genie/buck2-typescript-package-projection',
       `# Semantic fingerprint: ${fingerprint}`,
       `# Semantic inputs: ${semanticInputs.join(', ')}`,
@@ -1237,6 +1260,7 @@ export const buck2TypeScriptPackageProjection = ({
       )},`,
       ...renderMap({ name: 'files', entries: packageFileEntries }),
       ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
+      ...renderMap({ name: 'generated_dependencies', entries: generatedDependencyEntries }),
       ...renderMap({
         name: 'workspace_dependency_views',
         entries: workspaceDependencyViewEntries,
@@ -1255,6 +1279,7 @@ export const buck2TypeScriptPackageProjection = ({
             `    dependency_view = ${starlarkString(dependencyView)},`,
             ...renderMap({ name: 'files', entries: testPackageFileEntries }),
             ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
+            ...renderMap({ name: 'generated_dependencies', entries: generatedDependencyEntries }),
             ...renderMap({
               name: 'workspace_dependency_views',
               entries: workspaceDependencyViewEntries,

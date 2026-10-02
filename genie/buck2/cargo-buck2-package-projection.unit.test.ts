@@ -124,6 +124,7 @@ const renderCargoFixture = ({
   rootManifest,
   projectOptions = {},
   render,
+  prepareFixture,
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
   readonly edition?: string
@@ -142,6 +143,7 @@ const renderCargoFixture = ({
   readonly rootManifest?: string
   readonly render: string
   readonly projectOptions?: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>
+  readonly prepareFixture?: (root: string) => void
 }): string => {
   const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
   const write = (relativePath: string, content: string) => {
@@ -219,6 +221,7 @@ const renderCargoFixture = ({
       for (const file of member.files) write(`rust/${memberPath}/${file}`, '// fixture\n')
       write(`rust/${memberPath}/BUCK.genie.ts`, '// Runtime-only projection fixture.\n')
     }
+    prepareFixture?.(root)
     const project = defineCargoBuck2PackageProjection({
       repoName: 'discovery-fixture',
       repoImportMetaUrl: pathToFileURL(path.join(root, 'projection.ts')).href,
@@ -236,6 +239,64 @@ const renderCargoFixture = ({
     rmSync(root, { recursive: true, force: true })
   }
 }
+
+describe('Cargo compile-time resources', () => {
+  const renderResource = (
+    resources: NonNullable<CargoBuck2PackageProjectionOptions['compileTimeResources']>,
+    prepareFixture?: (root: string) => void,
+  ) => renderCargoFixture({
+    members: { pkg: { manifest: '[package]\nname = "pkg"', files: ['src/lib.rs', 'schema.json'] } },
+    extraFiles: ['shared/schema.json'],
+    render: 'pkg',
+    projectOptions: { compileTimeResources: resources },
+    prepareFixture,
+  })
+
+  it('changes freshness for local bytes, destinations and generated targets', () => {
+    const local = [{ path: 'rust/pkg/schema.json' }]
+    const fingerprint = (output: string) => output.match(/^# Semantic fingerprint: (.+)$/m)?.[1]
+    const initial = fingerprint(renderResource(local))
+    expect(fingerprint(renderResource(local, (root) =>
+      writeFileSync(path.join(root, 'rust/pkg/schema.json'), '{"changed":true}\n'),
+    ))).not.toBe(initial)
+    expect(fingerprint(renderResource([{ path: 'rust/pkg/schema.json', destination: 'data/schema.json' }]))).not.toBe(initial)
+    expect(fingerprint(renderResource([{ label: '//generated:schema', destination: 'schema.json' }]))).not.toBe(
+      fingerprint(renderResource([{ label: '//generated:other', destination: 'schema.json' }])),
+    )
+  })
+
+  it('rejects traversal, unsafe destinations and Rust/resource collisions', () => {
+    expect(() => renderResource([{ path: 'rust/pkg/../pkg/schema.json' }])).toThrow('normalized repository-relative path')
+    for (const destination of ['../schema.json', '/schema.json', 'data\\schema.json', 'C:/schema.json']) {
+      expect(() => renderResource([{ path: 'rust/pkg/schema.json', destination }])).toThrow('normalized crate-relative path')
+    }
+    for (const destination of ['src/lib.rs', 'src/lib.rs/child']) {
+      expect(() => renderResource([{ path: 'rust/pkg/schema.json', destination }])).toThrow('collides')
+    }
+    expect(() => renderResource([
+      { path: 'rust/pkg/schema.json' },
+      { label: '//generated:schema', destination: 'schema.json' },
+    ])).toThrow('collides')
+  })
+
+  it('requires explicit destinations for external and generated labels', () => {
+    expect(() => renderResource([{ path: 'shared/schema.json' }])).toThrow('explicit destination')
+    expect(() => renderResource([{ path: 'shared/schema.json', destination: 'schema.json' }])).toThrow('needs a label')
+    expect(() => renderResource([{ label: '//generated:bad\nlabel', destination: 'schema.json' }])).toThrow('Buck target label')
+  })
+
+  it('rejects local symlink escape', () => {
+    const outside = mkdtempSync(path.join(tmpdir(), 'cargo-resource-outside-'))
+    try {
+      writeFileSync(path.join(outside, 'schema.json'), '{}')
+      expect(() => renderResource([{ path: 'rust/pkg/escape.json' }], (root) =>
+        symlinkSync(path.join(outside, 'schema.json'), path.join(root, 'rust/pkg/escape.json')),
+      )).toThrow('resolves outside the repository')
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+})
 
 /** The rendered `native.*` rule blocks keyed by target name. */
 const renderedRules = (rendered: string): Readonly<Record<string, string>> =>
