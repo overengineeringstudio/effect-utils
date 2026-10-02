@@ -211,6 +211,11 @@
       "description": "@overeng/effect-rpc-tanstack package · Set: manual"
     },
     {
+      "name": "system:effect-rust",
+      "color": "a371f7",
+      "description": "@overeng/effect-rust package · Set: manual"
+    },
+    {
       "name": "system:effect-schema-form",
       "color": "a371f7",
       "description": "@overeng/effect-schema-form package · Set: manual"

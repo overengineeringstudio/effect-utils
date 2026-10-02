@@ -16,6 +16,7 @@ import effectRpcExplorerReactPkg from './packages/@overeng/effect-rpc-explorer-r
 import effectRpcExplorerPkg from './packages/@overeng/effect-rpc-explorer/package.json.genie.ts'
 import effectRpcTanstackBasicPkg from './packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts'
 import effectRpcTanstackPkg from './packages/@overeng/effect-rpc-tanstack/package.json.genie.ts'
+import effectRustPkg from './packages/@overeng/effect-rust/package.json.genie.ts'
 import effectSchemaFormAriaPkg from './packages/@overeng/effect-schema-form-aria/package.json.genie.ts'
 import effectSchemaFormPkg from './packages/@overeng/effect-schema-form/package.json.genie.ts'
 import geniePkg from './packages/@overeng/genie/package.json.genie.ts'
@@ -62,6 +63,7 @@ export const rootWorkspacePackages = [
   effectRpcExplorerReactPkg,
   effectRpcTanstackBasicPkg,
   effectRpcTanstackPkg,
+  effectRustPkg,
   effectSchemaFormAriaPkg,
   effectSchemaFormPkg,
   geniePkg,
