@@ -13,11 +13,12 @@
  *
  * Vocabulary `https://effect-rust.dev/schema/v1` ({@link EFFECT_RUST_VOCABULARY}); the complete keyword list is
  * {@link EFFECT_RUST_KEYWORDS}:
- * - `x-effect-rust-width`: `u8` | `u16` | `u32` | `i32` on `type: integer` (alternatively schemars `format`
- *   `uint8` | `uint16` | `uint32` | `int32`; bounds, if present, must equal the full width range);
+ * - `x-effect-rust-width`: `u8` | `u16` | `u32` | `i8` | `i16` | `i32` | `u64` | `i64` on `type: integer`;
+ *   authored minimum/maximum stay independent of storage. Numeric 64-bit storage requires explicit safe-integer bounds.
  *   `u64` | `i64` on `type: string` together with the matching `x-effect-rust-format`.
  * - `x-effect-rust-format`: `u64-decimal` | `i64-decimal` (canonical base-10 string; `pattern` may only repeat the
  *   canonical decimal pattern) or `date-time-millis` (`format: date-time`, RFC 3339 with offset, millisecond precision).
+ *   Decimal subranges use canonical string `x-effect-rust-minimum`/`x-effect-rust-maximum`.
  * - `x-effect-rust-pattern` + `x-effect-rust-pattern-flags` (`u` default | `iu`): portable full-string regex on a named
  *   string definition; `pattern` may be present but must be identical. Optional `minLength`/`maxLength` count code points.
  * - `x-effect-rust-excess`: `error` (default) | `ignore` on struct objects. Structs always carry
@@ -44,7 +45,13 @@ export { lower } from './lower.ts'
 export { emitJsonSchema, EFFECT_RUST_KEYWORDS, EFFECT_RUST_VOCABULARY } from './json-schema.ts'
 export { importRustSchema } from './import-rust.ts'
 export { emitRust } from './rust.ts'
-export type { CargoInheritedMetadata, CargoOptions, RustOptions, RustVector, RustOutput } from './rust.ts'
+export type {
+  CargoInheritedMetadata,
+  CargoOptions,
+  RustOptions,
+  RustVector,
+  RustOutput,
+} from './rust.ts'
 export { AdmissionError, tagFields } from './ir.ts'
 export type { ContractIR, Definition, Field, Type, Width } from './ir.ts'
 
@@ -96,7 +103,7 @@ export const compile = (
     const frame = options.frames?.[name]
     if (frame !== undefined)
       files[`effect/${name}.frame.ts`] =
-        `import { Wire } from '@overeng/effect-rust'\nimport { ${name} } from './${name}.ts'\nexport const codec = Wire.frame(${name}, ${JSON.stringify(frame)})\n`
+        `import { Borsh } from '@overeng/effect-rust'\nimport { ${name} } from './${name}.ts'\nexport const codec = Borsh.frame(${name}, ${JSON.stringify(frame)})\n`
   }
   if (options.vectors !== undefined)
     files['effect/vectors.unit.test.ts'] = emitVitest(ir, options.vectors)
@@ -116,10 +123,10 @@ export const emitVitest = (ir: ContractIR, vectors: readonly Vector[]): string =
       const text = JSON.stringify(JSON.stringify(vector.input))
       const body =
         vector.accept === true
-          ? `const value = Wire.decodeJson(${vector.contract})(${text})\n  expect(Wire.encodeJson(${vector.contract})(value)).toBe(${JSON.stringify(canonicalJson(vector.canonical ?? vector.input, tags))})`
-          : `expect(() => Wire.decodeJson(${vector.contract})(${text})).toThrow()`
+          ? `const value = ContractJson.decode(${vector.contract})(${text})\n  expect(ContractJson.encode(${vector.contract})(value)).toBe(${JSON.stringify(canonicalJson(vector.canonical ?? vector.input, tags))})`
+          : `expect(() => ContractJson.decode(${vector.contract})(${text})).toThrow()`
       return `it(${JSON.stringify(`${vector.contract}/${vector.name}`)}, () => {\n  ${body}\n})`
     })
     .join('\n')
-  return `import { it } from '@effect/vitest'\nimport { expect } from 'vitest'\nimport { Wire } from '@overeng/effect-rust'\n${imports}\n${tests}\n`
+  return `import { it } from '@effect/vitest'\nimport { expect } from 'vitest'\nimport { ContractJson } from '@overeng/effect-rust'\n${imports}\n${tests}\n`
 }

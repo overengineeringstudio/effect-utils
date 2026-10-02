@@ -221,6 +221,11 @@
       "description": "@overeng/effect-rust package · Set: manual"
     },
     {
+      "name": "system:effect-rust-fixture-consumer",
+      "color": "a371f7",
+      "description": "@overeng/effect-rust-fixture-consumer package · Set: manual"
+    },
+    {
       "name": "system:effect-schema-form",
       "color": "a371f7",
       "description": "@overeng/effect-schema-form package · Set: manual"

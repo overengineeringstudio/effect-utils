@@ -575,7 +575,12 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   const sources = discoverRustSources({ packagePath, repo })
-  const resources = resolveCompileTimeResources({ compileTimeResources, packagePath, repo, sources })
+  const resources = resolveCompileTimeResources({
+    compileTimeResources,
+    packagePath,
+    repo,
+    sources,
+  })
   const { binaries: declaredBinaries, library } = discoverCargoTargets({
     member,
     packageName,
@@ -661,9 +666,13 @@ const cargoBuck2PackageProjectionFor = ({
     'BUCK.genie.ts',
     'Cargo.toml',
     ...sources,
-    ...resources.filter((resource) => resource.label === undefined).map((resource) =>
-      requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(packagePath.length + 1),
-    ),
+    ...resources
+      .filter((resource) => resource.label === undefined)
+      .map((resource) =>
+        requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(
+          packagePath.length + 1,
+        ),
+      ),
     ...(buildScript === undefined
       ? []
       : [
@@ -678,9 +687,13 @@ const cargoBuck2PackageProjectionFor = ({
     ...new Set([
       'Cargo.toml',
       ...librarySources,
-      ...resources.filter((resource) => resource.label === undefined).map((resource) =>
-        requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(packagePath.length + 1),
-      ),
+      ...resources
+        .filter((resource) => resource.label === undefined)
+        .map((resource) =>
+          requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(
+            packagePath.length + 1,
+          ),
+        ),
       ...(buildScript === undefined
         ? []
         : [
@@ -782,13 +795,15 @@ const cargoBuck2PackageProjectionFor = ({
     projectionSource,
     `${packagePath}/src/**/*.rs`,
     `${packagePath}/tests/**/*.rs`,
-    ...resources.flatMap((resource) => resource.path === undefined ? [] : [resource.path]),
+    ...resources.flatMap((resource) => (resource.path === undefined ? [] : [resource.path])),
   ])
-  const resourceFingerprints: Readonly<Record<string, string>> = Object.fromEntries(resources.flatMap((resource) =>
-    resource.path === undefined || resource.fingerprint === undefined
-      ? []
-      : [[resource.path, resource.fingerprint]],
-  ))
+  const resourceFingerprints: Readonly<Record<string, string>> = Object.fromEntries(
+    resources.flatMap((resource) =>
+      resource.path === undefined || resource.fingerprint === undefined
+        ? []
+        : [[resource.path, resource.fingerprint]],
+    ),
+  )
   const graphFingerprints = Object.fromEntries(
     semanticInputPaths
       .filter((input) => input.endsWith('/**/*.rs') === false && input.endsWith('.ts') === false)
@@ -896,14 +911,22 @@ const cargoBuck2PackageProjectionFor = ({
       ? renderSources({ name: 'srcs', values: ruleSources, foreignMember })
       : [
           '    srcs = {',
-          ...ruleSources.map((file) =>
-            `        ${starlarkString(file)}: ${starlarkString(sourceLabel({ file, foreignMember }))},`,
+          ...ruleSources.map(
+            (file) =>
+              `        ${starlarkString(file)}: ${starlarkString(sourceLabel({ file, foreignMember }))},`,
           ),
-          ...resources.map((resource) =>
-            `        ${starlarkString(resource.destination)}: ${starlarkString(resource.label ?? sourceLabel({
-              file: requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(packagePath.length + 1),
-              foreignMember,
-            }))},`,
+          ...resources.map(
+            (resource) =>
+              `        ${starlarkString(resource.destination)}: ${starlarkString(
+                resource.label ??
+                  sourceLabel({
+                    file: requireValue({
+                      value: resource.path,
+                      field: 'local compileTimeResources path',
+                    }).slice(packagePath.length + 1),
+                    foreignMember,
+                  }),
+              )},`,
           ),
           '    },',
         ]),
@@ -2182,50 +2205,96 @@ const resolveCompileTimeResources = ({
   readonly sources: readonly string[]
 }): readonly ResolvedCompileTimeResource[] => {
   const destinations = [...sources]
-  return (compileTimeResources ?? []).map((resource, index) => {
-    const field = `compileTimeResources[${index}]`
-    assertKnownKeys({ value: resource, allowed: ['path', 'label', 'destination'], field })
-    if (resource.path !== undefined) {
-      validateRepoPath({ repo, value: resource.path, field: `${field}.path` })
-      if (statSync(repo.resolve(resource.path)).isFile() === false) {
-        throw new Error(`${field}.path must be a file: ${resource.path}`)
+  return (compileTimeResources ?? [])
+    .map((resource, index) => {
+      const field = `compileTimeResources[${index}]`
+      assertKnownKeys({ value: resource, allowed: ['path', 'label', 'destination'], field })
+      if (resource.path !== undefined) {
+        validateRepoPath({ repo, value: resource.path, field: `${field}.path` })
+        if (statSync(repo.resolve(resource.path)).isFile() === false) {
+          throw new Error(`${field}.path must be a file: ${resource.path}`)
+        }
       }
-    }
-    const inPackage = resource.path?.startsWith(`${packagePath}/`) === true
-    if (resource.label !== undefined &&
-      /^(?:(?:@?[A-Za-z0-9_.-]+)?\/\/[A-Za-z0-9_./@-]*)?:[A-Za-z0-9_.+=,@~/-]+$/.test(resource.label) === false) {
-      throw new Error(`${field}.label must be a Buck target label`)
-    }
-    if (inPackage === false && (resource.label === undefined || resource.destination === undefined)) {
-      throw new Error(`${field} external or generated resource needs a label and explicit destination`)
-    }
-    if (inPackage === true && resource.label !== undefined) {
-      throw new Error(`${field} inside ${packagePath} takes no label`)
-    }
-    const destination = resource.destination ?? requireValue({
-      value: resource.path, field: `${field}.path`,
-    }).slice(packagePath.length + 1)
-    if (destination === '' || path.posix.isAbsolute(destination) === true || /^[A-Za-z]:/.test(destination) === true ||
-      destination.includes('\\') === true || path.posix.normalize(destination) !== destination ||
-      // oxlint-disable-next-line no-control-regex -- Resource destinations must reject ASCII control characters.
-      /[\u0000-\u001f\u007f]/.test(destination) === true ||
-      destination.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
-      throw new Error(`${field}.destination must be a normalized crate-relative path: ${destination}`)
-    }
-    if (destinations.some((existing) => existing === destination ||
-      existing.startsWith(`${destination}/`) || destination.startsWith(`${existing}/`))) {
-      throw new Error(`${field}.destination collides with a Rust source or resource: ${destination}`)
-    }
-    destinations.push(destination)
-    return {
-      destination,
-      ...(resource.label === undefined ? {} : { label: resource.label }),
-      ...(resource.path === undefined ? {} : {
-        path: resource.path,
-        fingerprint: `sha256:${createHash('sha256').update(readFileSync(repo.resolve(resource.path))).digest('hex')}`,
-      }),
-    }
-  }).toSorted((left, right) => compareStrings({ left: left.destination, right: right.destination }))
+      const inPackage = resource.path?.startsWith(`${packagePath}/`) === true
+      if (resource.label !== undefined) {
+        const label =
+          /^(?:(?:@?[A-Za-z0-9_.-]+)?\/\/([A-Za-z0-9_./@-]*))?:([A-Za-z0-9_.+=,@~/-]+)$/.exec(
+            resource.label,
+          )
+        if (
+          label === null ||
+          [label[1], label[2]].some(
+            (part) =>
+              part !== undefined &&
+              part !== '' &&
+              part
+                .split('/')
+                .some((segment) => segment === '' || segment === '.' || segment === '..') === true,
+          ) === true
+        ) {
+          throw new Error(`${field}.label must be a normalized Buck target label`)
+        }
+      }
+      if (
+        inPackage === false &&
+        (resource.label === undefined || resource.destination === undefined)
+      ) {
+        throw new Error(
+          `${field} external or generated resource needs a label and explicit destination`,
+        )
+      }
+      if (inPackage === true && resource.label !== undefined) {
+        throw new Error(`${field} inside ${packagePath} takes no label`)
+      }
+      const destination =
+        resource.destination ??
+        requireValue({
+          value: resource.path,
+          field: `${field}.path`,
+        }).slice(packagePath.length + 1)
+      if (
+        destination === '' ||
+        path.posix.isAbsolute(destination) === true ||
+        /^[A-Za-z]:/.test(destination) === true ||
+        destination.includes('\\') === true ||
+        path.posix.normalize(destination) !== destination ||
+        // oxlint-disable-next-line no-control-regex -- Resource destinations must reject ASCII control characters.
+        /[\u0000-\u001f\u007f]/.test(destination) === true ||
+        destination
+          .split('/')
+          .some((segment) => segment === '' || segment === '.' || segment === '..') === true
+      ) {
+        throw new Error(
+          `${field}.destination must be a normalized crate-relative path: ${destination}`,
+        )
+      }
+      if (
+        destinations.some(
+          (existing) =>
+            existing === destination ||
+            existing.startsWith(`${destination}/`) === true ||
+            destination.startsWith(`${existing}/`) === true,
+        ) === true
+      ) {
+        throw new Error(
+          `${field}.destination collides with a Rust source or resource: ${destination}`,
+        )
+      }
+      destinations.push(destination)
+      return Object.assign(
+        { destination },
+        resource.label === undefined ? {} : { label: resource.label },
+        resource.path === undefined
+          ? {}
+          : {
+              path: resource.path,
+              fingerprint: `sha256:${createHash('sha256')
+                .update(readFileSync(repo.resolve(resource.path)))
+                .digest('hex')}`,
+            },
+      )
+    })
+    .toSorted((left, right) => compareStrings({ left: left.destination, right: right.destination }))
 }
 
 type ResolvedBuildScript = {

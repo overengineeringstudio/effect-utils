@@ -1,6 +1,15 @@
 import { canonicalJson } from '../schema/json.ts'
 import { assertPortablePattern } from '../schema/pattern.ts'
-import { reject, tagFields, type ContractIR, type Definition, type Field, type Type } from './ir.ts'
+import {
+  integerRanges,
+  reject,
+  tagFields,
+  type ContractIR,
+  type Definition,
+  type Field,
+  type Type,
+  type Width,
+} from './ir.ts'
 import { emitRustMetadata } from './rust-metadata.ts'
 import { rustSupport } from './rust-template.ts'
 
@@ -51,6 +60,18 @@ const reserved: Readonly<Record<string, true>> = Object.fromEntries(
     'U8',
     'U16',
     'U32',
+    'I8',
+    'I16',
+    'BoundedU8',
+    'BoundedU16',
+    'BoundedU32',
+    'BoundedI8',
+    'BoundedI16',
+    'BoundedI32',
+    'BoundedU64',
+    'BoundedI64',
+    'BoundedNumberU64',
+    'BoundedNumberI64',
     'I32',
     'U64',
     'I64',
@@ -152,7 +173,16 @@ export const emitRust = (ir: ContractIR, options: RustOptions = {}): RustOutput 
   // Every named definition is emitted as a public contract, including vector-only contracts.
   // Walk nested containers without following refs: their targets are scanned exactly once below.
   const features = { u64: false, i64: false, timestamp: false, patch: false, regex: false }
+  const bounded = new Set<Width | 'number-u64' | 'number-i64'>()
   const collectFeatures = (type: Type): void => {
+    if (type.kind === 'int' && (type.width === 'u64' || type.width === 'i64')) {
+      bounded.add(type.width === 'u64' ? 'number-u64' : 'number-i64')
+    } else if (
+      (type.kind === 'int' || type.kind === 'u64' || type.kind === 'i64') &&
+      type.minimum !== undefined
+    ) {
+      bounded.add(type.kind === 'int' ? type.width : type.kind)
+    }
     switch (type.kind) {
       case 'u64':
       case 'i64':
@@ -289,15 +319,23 @@ export const emitRust = (ir: ContractIR, options: RustOptions = {}): RustOutput 
       case 'bool':
         return 'bool'
       case 'u64':
-        return 'U64'
       case 'i64':
-        return 'I64'
+        return type.minimum === undefined
+          ? type.kind.toUpperCase()
+          : `Bounded${type.kind.toUpperCase()}<${type.minimum}, ${type.maximum}>`
       case 'dateTime':
         return 'TimestampMillis'
       case 'null':
         return 'Null'
-      case 'int':
-        return { u8: 'U8', u16: 'U16', u32: 'U32', i32: 'I32' }[type.width]
+      case 'int': {
+        if (type.width === 'u64' || type.width === 'i64') {
+          const [minimum, maximum] = integerRanges[type.width]
+          return `BoundedNumber${type.width.toUpperCase()}<${type.minimum ?? minimum}, ${type.maximum ?? maximum}>`
+        }
+        return type.minimum === undefined
+          ? type.width.toUpperCase()
+          : `Bounded${type.width.toUpperCase()}<${type.minimum}, ${type.maximum}>`
+      }
       case 'nullable':
         return `Option<${rustType({ type: type.inner, owner, direct, path: `${path}/inner` })}>`
       case 'patch':
@@ -471,10 +509,10 @@ impl borsh::BorshDeserialize for ${name} {
         const patch = resolveAlias({ type: definition.type }).kind === 'patch'
         const metadata = options.schemaMetadata === 'schemars'
         const aliasDerive =
-          metadata && keyAllowed({ type: definition.type })
+          metadata === true && keyAllowed({ type: definition.type }) === true
             ? derive.replace('PartialEq, Eq,', 'PartialEq, Eq, PartialOrd, Ord, Hash,')
             : derive
-        return recursive(wireName) === true || metadata
+        return recursive(wireName) === true || metadata === true
           ? `${doc}${patch === true ? '#[derive(Default)]\n' : ''}${aliasDerive}\n#[serde(transparent)]\npub struct ${name}(#[borsh(bound(serialize = "", deserialize = ""))] pub ${type});${patch === true ? `\nimpl ${name} { pub fn is_absent(&self) -> bool { self.0.is_absent() } }` : ''}`
           : `${doc}pub type ${name} = ${type};`
       }
@@ -600,39 +638,77 @@ ${conversions.join('\n')}`
   })
   const cargo: CargoOptions = options.cargo ?? { mode: 'standalone' }
   if (cargo.mode === 'standalone') {
-    if (cargo.workspace !== undefined || cargo.inherit !== undefined || cargo.dependencies !== undefined)
-      reject('$/cargo', 'Standalone Cargo options contain workspace ownership', 'Use workspace mode to inherit package metadata or dependencies')
+    if (
+      cargo.workspace !== undefined ||
+      cargo.inherit !== undefined ||
+      cargo.dependencies !== undefined
+    )
+      reject(
+        '$/cargo',
+        'Standalone Cargo options contain workspace ownership',
+        'Use workspace mode to inherit package metadata or dependencies',
+      )
   } else {
     if (cargo.mode !== 'workspace' || cargo.dependencies !== 'workspace')
-      reject('$/cargo', 'Invalid Cargo ownership mode', 'Use standalone mode or workspace mode with dependencies: workspace')
-    if (cargo.workspace.length === 0 || cargo.workspace.includes('\0'))
-      reject('$/cargo/workspace', 'Invalid workspace path', 'Provide a nonempty Cargo workspace path without NUL characters')
-    if (cargo.inherit.some((key) => key !== 'version' && key !== 'edition' && key !== 'license'))
-      reject('$/cargo/inherit', 'Unsupported package metadata inheritance', 'Choose version, edition or license')
+      reject(
+        '$/cargo',
+        'Invalid Cargo ownership mode',
+        'Use standalone mode or workspace mode with dependencies: workspace',
+      )
+    if (cargo.workspace.length === 0 || cargo.workspace.includes('\0') === true)
+      reject(
+        '$/cargo/workspace',
+        'Invalid workspace path',
+        'Provide a nonempty Cargo workspace path without NUL characters',
+      )
+    if (
+      cargo.inherit.some((key) => key !== 'version' && key !== 'edition' && key !== 'license') ===
+      true
+    )
+      reject(
+        '$/cargo/inherit',
+        'Unsupported package metadata inheritance',
+        'Choose version, edition or license',
+      )
   }
   const workspace = cargo.mode === 'workspace'
-  const inherited = new Set(workspace ? cargo.inherit : [])
+  const inherited = new Set(workspace === true ? cargo.inherit : [])
   const dependencies = [
     { name: 'serde', version: '1.0.228', features: ['derive'] },
     { name: 'serde_json', version: '1', features: ['unbounded_depth'] },
-    ...(features.timestamp ? [{ name: 'chrono', version: '0.4', features: ['std'], defaultFeatures: false }] : []),
-    ...(features.regex ? [{ name: 'regex', version: '1', features: workspace ? ['std', 'unicode'] : [] }] : []),
+    ...(features.timestamp === true
+      ? [{ name: 'chrono', version: '0.4', features: ['std'], defaultFeatures: false }]
+      : []),
+    ...(features.regex === true
+      ? [{ name: 'regex', version: '1', features: workspace === true ? ['std', 'unicode'] : [] }]
+      : []),
     { name: 'serde_path_to_error', version: '0.1.20', features: [] },
     { name: 'borsh', version: '1.5', features: ['derive', 'de_strict_order'] },
-    ...(options.schemaMetadata === 'schemars' ? [{ name: 'schemars', version: '1', features: ['std'], defaultFeatures: false }] : []),
+    ...(options.schemaMetadata === 'schemars'
+      ? [{ name: 'schemars', version: '1', features: ['std'], defaultFeatures: false }]
+      : []),
   ]
   const dependencyLines = dependencies.map((dependency) => {
-    if (workspace === false && dependency.features.length === 0 && !('defaultFeatures' in dependency))
+    if (
+      workspace === false &&
+      dependency.features.length === 0 &&
+      !('defaultFeatures' in dependency)
+    )
       return `${dependency.name} = ${literal(dependency.version)}`
-    const ownership = workspace ? 'workspace = true' : `version = ${literal(dependency.version)}`
+    const ownership =
+      workspace === true ? 'workspace = true' : `version = ${literal(dependency.version)}`
     // Workspace dependencies own defaults; member feature requests are additive in Cargo.
-    const defaults = workspace === false && 'defaultFeatures' in dependency ? ', default-features = false' : ''
-    const requested = dependency.features.length === 0 ? '' : `, features = [${dependency.features.map(literal).join(', ')}]`
+    const defaults =
+      workspace === false && 'defaultFeatures' in dependency ? ', default-features = false' : ''
+    const requested =
+      dependency.features.length === 0
+        ? ''
+        : `, features = [${dependency.features.map(literal).join(', ')}]`
     return `${dependency.name} = { ${ownership}${defaults}${requested} }`
   })
-  const cargoToml = `[package]\nname = ${literal(crateName)}\n${inherited.has('version') ? 'version.workspace = true' : 'version = "0.1.0"'}\n${inherited.has('edition') ? 'edition.workspace = true' : 'edition = "2024"'}\n${inherited.has('license') ? 'license.workspace = true\n' : ''}${workspace ? `workspace = ${JSON.stringify(cargo.workspace)}\n` : ''}publish = false\n\n${workspace ? '' : '[workspace]\n\n'}[dependencies]\n${dependencyLines.join('\n')}\n`
+  const cargoToml = `[package]\nname = ${literal(crateName)}\n${inherited.has('version') === true ? 'version.workspace = true' : 'version = "0.1.0"'}\n${inherited.has('edition') === true ? 'edition.workspace = true' : 'edition = "2024"'}\n${inherited.has('license') === true ? 'license.workspace = true\n' : ''}${workspace === true ? `workspace = ${JSON.stringify(cargo.workspace)}\n` : ''}publish = false\n\n${workspace === true ? '' : '[workspace]\n\n'}[dependencies]\n${dependencyLines.join('\n')}\n`
   return {
     cargoToml,
-    source: `// Generated by @overeng/effect-rust emitRust from contract ${ir.contract.replaceAll('\n', ' ')}; IR v${ir.irVersion}.\n${rustSupport(features)}\nconst TAG_FIELDS: &[&str] = &[${tags.map(literal).join(', ')}];\n\n${entries.map(([name, definition]) => emitDefinition({ wireName: name, definition })).join('\n\n')}\n${options.schemaMetadata === 'schemars' ? `\n${emitRustMetadata({ ir, names: rustNames, literal })}\n` : ''}${tests.length === 0 ? '' : `\n#[cfg(test)]\nmod contract_vectors {\n    use super::*;\n${tests.join('\n\n')}\n}\n`}`,
+    source: `// Generated by @overeng/effect-rust emitRust from contract ${ir.contract.replaceAll('\n', ' ')}; IR v${ir.irVersion}.\n${rustSupport({ ...features, bounded: [...bounded] })}\nconst TAG_FIELDS: &[&str] = &[${tags.map(literal).join(', ')}];\n\n${entries.map(([name, definition]) => emitDefinition({ wireName: name, definition })).join('\n\n')}\n${options.schemaMetadata === 'schemars' ? `\n${emitRustMetadata({ ir, names: rustNames, literal })}\n` : ''}${tests.length === 0 ? '' : `\n#[cfg(test)]\nmod contract_vectors {\n    use super::*;\n${tests.join('\n\n')}\n}\n`}`,
   }
 }

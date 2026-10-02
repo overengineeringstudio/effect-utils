@@ -217,7 +217,7 @@ const apiType = ({
   wire: string
 }): string => {
   const name = codec({ entry, position })
-  if (name !== undefined) return `typeof Contracts.${name}.Encoded`
+  if (name !== undefined) return 'unknown'
   if (wire.startsWith('host::Source') === true) return 'Interop.SourceCallback'
   return isWide(wire) === true ? 'string' : tsType(wire)
 }
@@ -227,16 +227,17 @@ const effectSchema = (wire: string): string => {
   const type = tsType(wire)
   if (type === 'string') return 'Schema.String'
   if (type === 'number') return 'Schema.Int'
-  if (type === 'bigint') return wire.startsWith('u') === true ? 'Wire.U64' : 'Wire.I64'
+  if (type === 'bigint')
+    return wire.startsWith('u') === true
+      ? "Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: 0n, maximum: 18446744073709551615n })).annotate({ [EffectRust.width]: 'u64' })"
+      : "Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: -9223372036854775808n, maximum: 9223372036854775807n })).annotate({ [EffectRust.width]: 'i64' })"
   if (type === 'boolean') return 'Schema.Boolean'
   throw new Error(`Error reason field type ${wire} is not representable`)
 }
 
-const usesWire =
-  codecs.size > 0 ||
-  errors.some((error) =>
-    error.variants.some((variant) => variant.fields.some((field) => isWide(field.type))),
-  )
+const usesWidthAnnotation = errors.some((error) =>
+  error.variants.some((variant) => variant.fields.some((field) => isWide(field.type))),
+)
 // Arguments only encode and results only decode; emit exactly the directions used.
 const encoders = new Set(
   exportEntries.flatMap((entry) =>
@@ -264,7 +265,7 @@ const effectImports = [
 const source = [
   '// Generated from the compiled effect-rust export manifest and contract schemas. Do not edit.',
   `import { ${effectImports.join(', ')} } from 'effect'`,
-  `import { Interop${usesWire === true ? ', Wire' : ''} } from '@overeng/effect-rust'`,
+  `import { Interop${codecs.size > 0 || usesErrors === true ? ', ContractJson' : ''}${usesWidthAnnotation === true ? ', EffectRust' : ''} } from '@overeng/effect-rust'`,
   ...(contracts === undefined ? [] : ["import * as Contracts from './contracts.ts'"]),
   '',
   'const decodeBoundary = (operation: string, cause: unknown): Effect.Effect<never, Interop.Input | Interop.Transport> => {',
@@ -287,10 +288,14 @@ if (codecs.size > 0) {
       : [
           'const decodeOutput = <A>(operation: string, decode: () => A) => Effect.try({ try: decode, catch: (cause) => new Interop.Transport({ operation, message: message(cause), cause }) })',
         ]),
-    // eslint-disable-next-line unicorn/no-array-sort -- This private Set-values array is sorted in place to avoid a redundant copy.
-    ...[...encoders].sort().map((name) => `const encode${name} = Wire.encode(Contracts.${name})`),
-    // eslint-disable-next-line unicorn/no-array-sort -- This private Set-values array is sorted in place to avoid a redundant copy.
-    ...[...decoders].sort().map((name) => `const decode${name} = Wire.decode(Contracts.${name})`),
+    ...[...encoders]
+      // eslint-disable-next-line unicorn/no-array-sort -- This private Set-values array is sorted in place to avoid a redundant copy.
+      .sort()
+      .map((name) => `const encode${name} = ContractJson.encodeValue(Contracts.${name})`),
+    ...[...decoders]
+      // eslint-disable-next-line unicorn/no-array-sort -- This private Set-values array is sorted in place to avoid a redundant copy.
+      .sort()
+      .map((name) => `const decode${name} = ContractJson.decodeValue(Contracts.${name})`),
   )
 }
 source.push('')
@@ -309,6 +314,7 @@ for (const entry of exportEntries) {
   )
   source.push(
     `export const ${definition.name}Reason = ${variants.length === 1 ? variants[0] : `Schema.Union([${variants.join(', ')}])`}`,
+    `const decode${definition.name}Reason = ContractJson.decodeValue(${definition.name}Reason)`,
     `export class ${definition.name} extends Schema.TaggedError<${definition.name}>()(${JSON.stringify(definition.name)}, { reason: ${definition.name}Reason }) {}`,
     `const decode${definition.name} = (cause: unknown): Effect.Effect<never, ${definition.name} | Interop.Input | Interop.Transport> => {`,
     `  if (!(cause instanceof Error) || !cause.message.startsWith('RUST_ERROR:')) return decodeBoundary(${JSON.stringify(definition.name)}, cause)`,
@@ -316,7 +322,7 @@ for (const entry of exportEntries) {
     '    const reason = yield* Effect.try({ try: () => JSON.parse(cause.message.slice(11)) as unknown, catch: () => cause }).pipe(Effect.orDie)',
     `    if (typeof reason !== 'object' || reason === null || !(${JSON.stringify(definition.tagKey)} in reason)) return yield* Effect.die(cause)`,
     `    const { ${JSON.stringify(definition.tagKey)}: _tag, ...fields } = reason`,
-    `    const decoded = yield* Schema.decodeUnknownEffect(${definition.name}Reason, { onExcessProperty: 'error' })({ ...fields, _tag }).pipe(Effect.orDie)`,
+    `    const decoded = yield* Effect.try({ try: () => decode${definition.name}Reason({ ...fields, _tag }), catch: () => cause }).pipe(Effect.orDie)`,
     `    return yield* Effect.fail(new ${definition.name}({ reason: decoded }))`,
     '  })',
     '}',

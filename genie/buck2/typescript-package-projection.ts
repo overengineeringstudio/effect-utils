@@ -823,18 +823,42 @@ export const buck2TypeScriptPackageProjection = ({
   }
   const generatedDependencyEntries = sortedEntries(generatedDependencies)
   for (const [name, target] of generatedDependencyEntries) {
-    const segments = name.split('/')
-    const validName = name.startsWith('@')
-      ? segments.length === 2 && segments[0] !== '@'
-      : segments.length === 1
-    if (validName === false || segments.some((segment) => safeSourceSegment(segment) === false)) {
+    const validName = /^(?:@[A-Za-z0-9][A-Za-z0-9._-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)
+    if (validName === false) {
       throw new Error(`${packagePath}: unsafe generated dependency package name ${name}`)
     }
-    if (target.includes('//') === false || target.includes(':') === false) {
-      throw new Error(`${packagePath}: generated dependency requires an absolute Buck target: ${target}`)
+    const label = /^(?:@?[A-Za-z0-9_.-]+)?\/\/([A-Za-z0-9_./@-]*):([A-Za-z0-9_.+=,@~/-]+)$/.exec(
+      target,
+    )
+    if (
+      label === null ||
+      [label[1], label[2]].some(
+        (part) =>
+          part !== undefined &&
+          part !== '' &&
+          part
+            .split('/')
+            .some((segment) => segment === '' || segment === '.' || segment === '..') === true,
+      ) === true
+    ) {
+      throw new Error(
+        `${packagePath}: generated dependency requires a normalized absolute Buck target: ${target}`,
+      )
     }
-    if (workspaceSiblings.some((sibling) => sibling.packageName === name)) {
-      throw new Error(`${packagePath}: dependency ${name} is both generated and a workspace sibling`)
+    if (workspaceSiblings.some((sibling) => sibling.packageName === name) === true) {
+      throw new Error(
+        `${packagePath}: dependency ${name} is both generated and a workspace sibling`,
+      )
+    }
+    if (
+      [
+        packageManifest.dependencies,
+        packageManifest.devDependencies,
+        packageManifest.optionalDependencies,
+        packageManifest.peerDependencies,
+      ].some((dependencies) => Object.hasOwn(dependencies ?? {}, name)) === true
+    ) {
+      throw new Error(`${packagePath}: dependency ${name} is both generated and manifest-declared`)
     }
   }
   const workspaceNames = new Set(
@@ -928,10 +952,11 @@ export const buck2TypeScriptPackageProjection = ({
   // config loads have to be staged: they live beside `package.json`, outside every source root.
   const testConfigEntries = [
     ...new Set(
-      (tests ?? []).flatMap((target) => [
-        ...(target.runner === 'vitest' ? [target.config ?? defaultVitestConfig] : []),
-        ...(target.configInputs ?? []),
-      ]),
+      (tests ?? []).flatMap((target) =>
+        (target.runner === 'vitest' ? [target.config ?? defaultVitestConfig] : []).concat(
+          target.configInputs ?? [],
+        ),
+      ),
     ),
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
@@ -964,8 +989,6 @@ export const buck2TypeScriptPackageProjection = ({
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
     .map((authorityProjectFile) => [authorityProjectFile, authorityProjectFile] as const)
-  const identityEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
-    files.map((file) => [file, file] as const)
   // The compile tree: typecheck, emit and the editor read it, so it carries the TypeScript
   // census and nothing a runner alone collects. A `.jsx` spec, a snapshot baseline, a Vitest
   // config or a committed fixture in here would widen every compile action's identity for
@@ -1320,3 +1343,6 @@ export const buck2TypeScriptPackageProjection = ({
 
   return createGenieOutput({ data, stringify })
 }
+
+const identityEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
+  files.map((file) => [file, file] as const)

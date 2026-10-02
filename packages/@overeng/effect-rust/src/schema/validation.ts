@@ -1,12 +1,13 @@
 import { Schema, SchemaAST } from 'effect'
 
+import { excess } from './effect-rust.ts'
+
 const needsPreparation = (root: SchemaAST.AST): boolean => {
   const seen = new Set<SchemaAST.AST>()
   const visit = (ast: SchemaAST.AST): boolean => {
     if (seen.has(ast) === true) return false
     seen.add(ast)
-    if (Schema.resolveAnnotations(Schema.make(ast))?.['x-effect-rust-excess'] === 'ignore')
-      return true
+    if (Schema.resolveAnnotations(Schema.make(ast))?.[excess] === 'ignore') return true
     if (ast.encoding !== undefined) return visit(SchemaAST.toEncoded(ast))
     if (ast._tag === 'Suspend') return visit(ast.thunk())
     if (ast._tag === 'Objects')
@@ -21,7 +22,7 @@ const needsPreparation = (root: SchemaAST.AST): boolean => {
   return visit(root)
 }
 /** Per-object ignore is explicit; every other object remains strict at the boundary. */
-const prepare = ({
+export const prepare = ({
   ast,
   input,
   depth = 0,
@@ -72,7 +73,7 @@ const prepare = ({
     Array.isArray(input) === true
   )
     return input
-  const ignore = Schema.resolveAnnotations(Schema.make(ast))?.['x-effect-rust-excess'] === 'ignore'
+  const ignore = Schema.resolveAnnotations(Schema.make(ast))?.[excess] === 'ignore'
   const fields = new Map(ast.propertySignatures.map((field) => [String(field.name), field.type]))
   const output: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(input)) {

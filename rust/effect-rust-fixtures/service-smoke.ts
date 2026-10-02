@@ -10,7 +10,7 @@ import { scheduler } from 'node:timers/promises'
 
 import { DateTime, Deferred, Effect, Exit, Fiber, Schema, Stream } from 'effect'
 
-import { Interop, Wire } from '@overeng/effect-rust'
+import { ContractJson, Interop } from '@overeng/effect-rust'
 
 const [directory, vectorsPath] = process.argv.slice(2)
 assert.ok(
@@ -21,8 +21,10 @@ assert.ok(
 // own types are checked by compiling the package, not through this script.
 // eslint-disable-next-line import/no-dynamic-require -- Contract codecs are loaded from the runtime-selected generated Buck service package under test.
 const Contracts = await import(resolve(directory, 'contracts.ts'))
-// eslint-disable-next-line import/no-dynamic-require -- Service statics are loaded from the runtime-selected generated Buck service package under test.
-const { EffectRustFixture, ArithmeticError, SourceError } = await import(resolve(directory, 'service.ts'))
+const { EffectRustFixture, ArithmeticError, SourceError } = await import(
+  // eslint-disable-next-line import/no-dynamic-require -- Service statics are loaded from the runtime-selected generated Buck service package under test.
+  resolve(directory, 'service.ts')
+)
 
 // Canonical JSON: the `kind` discriminator first, remaining keys by UTF-16 code unit.
 const canonical = (value: unknown): string => {
@@ -48,12 +50,16 @@ const vectors = Schema.decodeUnknownSync(Vectors)(JSON.parse(readFileSync(vector
 for (const vector of vectors) {
   const label = `${vector.contract}/${vector.name}`
   const codec = codecs[vector.contract]
-  const decode = () => Wire.decodeJson(codec)(JSON.stringify(vector.input))
+  const decode = () => ContractJson.decode(codec)(JSON.stringify(vector.input))
   if (vector.accept === false) {
     assert.throws(decode, undefined, `${label} must be rejected`)
     continue
   }
-  assert.equal(Wire.encodeJson(codec)(decode()), canonical(vector.canonical ?? vector.input), label)
+  assert.equal(
+    ContractJson.encode(codec)(decode()),
+    canonical(vector.canonical ?? vector.input),
+    label,
+  )
 }
 
 const order = {
@@ -62,7 +68,7 @@ const order = {
   quantity: 3,
   unitPriceCents: 250n,
   placedAt: DateTime.makeUnsafe('2026-10-02T12:00:00.500Z'),
-  note: { _tag: 'Value', value: 'gift' },
+  note: 'gift',
 }
 const program = Effect.scoped(
   Effect.gen(function* () {
@@ -74,7 +80,7 @@ const program = Effect.scoped(
     assert.equal(quote.receipt.totalCents, 675n)
     assert.equal(DateTime.formatIso(quote.receipt.placedAt), '2026-10-02T12:00:00.500Z')
     const free = yield* fixture.quoteOrder(
-      { ...order, note: { _tag: 'Null' } },
+      { ...order, note: null },
       { kind: 'fixed', amountCents: 18446744073709551615n },
     )
     assert.deepEqual(free, { kind: 'free', orderId: 9007199254740993n })
@@ -125,23 +131,41 @@ const program = Effect.scoped(
             if (path === '/wide') return new Uint8Array([9])
             // A deliberately short host read, including before EOF.
             const start = offset >= BigInt(rangeBytes.length) ? rangeBytes.length : Number(offset)
-            return rangeBytes.subarray(start, start + Math.min(maxBytes, path === '/short' ? 1 : maxBytes))
+            return rangeBytes.subarray(
+              start,
+              start + Math.min(maxBytes, path === '/short' ? 1 : maxBytes),
+            )
           }),
-          () => Effect.sync(() => { rangeFinalizers++ }),
+          () =>
+            Effect.sync(() => {
+              rangeFinalizers++
+            }),
         ),
     })
     assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 2n, 3))], [99, 100, 101])
     assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 4n, 9))], [101, 102])
     assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 6n, 3))], [])
     assert.deepEqual([...(yield* fixture.readRange(ranged, '/wide', 9007199254740993n, 1))], [9])
-    assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 18446744073709551615n, 1))], [])
+    assert.deepEqual(
+      [...(yield* fixture.readRange(ranged, '/range', 18446744073709551615n, 1))],
+      [],
+    )
     assert.deepEqual(calls, [
-      ['/range', 2n, 3], ['/range', 4n, 9], ['/range', 6n, 3],
-      ['/wide', 9007199254740993n, 1], ['/range', 18446744073709551615n, 1],
+      ['/range', 2n, 3],
+      ['/range', 4n, 9],
+      ['/range', 6n, 3],
+      ['/wide', 9007199254740993n, 1],
+      ['/range', 18446744073709551615n, 1],
     ])
     assert.equal(rangeFinalizers, 5, 'read scopes close before their bytes reach Rust')
-    assert.equal(yield* fixture.hashRanges(ranged, '/short', 4), yield* fixture.sha256Hex(rangeBytes))
-    assert.deepEqual(calls.slice(5).map(([, offset]) => offset), [0n, 1n, 2n, 3n, 4n, 5n, 6n])
+    assert.equal(
+      yield* fixture.hashRanges(ranged, '/short', 4),
+      yield* fixture.sha256Hex(rangeBytes),
+    )
+    assert.deepEqual(
+      calls.slice(5).map(([, offset]) => offset),
+      [0n, 1n, 2n, 3n, 4n, 5n, 6n],
+    )
     assert.equal(rangeFinalizers, 12, 'short-read continuation and EOF both finalize')
     const oversized = yield* Interop.hostSource('abortable', {
       read: () => Effect.succeed(bytes),
@@ -174,10 +198,11 @@ const program = Effect.scoped(
             }
             return bytes.subarray(Number(offset), Number(offset) + 1)
           }),
-          () => Effect.promise(async () => {
-            await Promise.resolve()
-            cancellationFinalizers++
-          }),
+          () =>
+            Effect.promise(async () => {
+              await Promise.resolve()
+              cancellationFinalizers++
+            }),
         ),
     })
     const hashing = yield* fixture.hashRanges(cancellable, '/cancel', 2).pipe(Effect.forkChild)
@@ -185,9 +210,17 @@ const program = Effect.scoped(
     const cancelled = yield* Fiber.interrupt(hashing)
     assert.ok(Exit.isFailure(cancelled), 'timer cancellation reaches the still-running Rust job')
     assert.equal(cancellationReads, 1, 'cancellation after the yield prevents the next CPU chunk')
-    assert.equal(cancellationFinalizers, 1, 'cancel acknowledgement includes host Effect finalizers')
+    assert.equal(
+      cancellationFinalizers,
+      1,
+      'cancel acknowledgement includes host Effect finalizers',
+    )
     yield* cancellable.quiesce
-    assert.equal(yield* cancellable.live, 0, 'yield and read callbacks are quiescent before release')
+    assert.equal(
+      yield* cancellable.live,
+      0,
+      'yield and read callbacks are quiescent before release',
+    )
     return quote.receipt.totalCents
   }),
 )
