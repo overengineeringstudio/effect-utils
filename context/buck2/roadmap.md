@@ -204,6 +204,26 @@ ingester, auth front, store, archive, and Tempo volume measurement). It
 carries no admission of its own; measured bottlenecks it surfaced are
 recorded as findings in the owning subsystems' open questions.
 
+### Restricted public-waterfall publisher
+
+The PR waterfall reuses GitBucket's immutable public content-addressed store
+([trace-access spec](./07-observability/06-trace-access/spec.md#public-immutable-images-and-failure-path)).
+Johannes accepted GitHub-account SSH authentication for end-to-end publication
+as a temporary compromise; a separate key is revocable but not upload-only.
+
+**Sequence:** Define and enforce a restricted GitBucket publisher credential
+for public PNG publication, prove both successful light/dark publication and
+denial of unrelated account operations, then switch the report step and revoke
+its broader credential. Credential registration remains separate from renderer
+changes; keep the secret report-step-scoped and retain Mermaid fallback.
+
+**Dissolution target:** Remove account-scoped publisher authentication from
+the report step once the restricted path is supported and proven. The unresolved
+credential boundary is tracked in
+[OQ4](./open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
+and trace-access DQ1; this security follow-up does not change the chosen CAS
+host or the V2 D2 T2 presentation.
+
 ## Cross-phase gates
 
 - One authority transfer, ledger row, and deletion entry form the review unit.

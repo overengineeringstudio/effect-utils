@@ -9221,6 +9221,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GRAFANA_BASE_URL: ${{ vars.GRAFANA_BASE_URL }}
+          PIPELINE_TRACES_PUBLIC_ASSET_COMMAND: ${{ vars.PIPELINE_TRACES_PUBLIC_ASSET_COMMAND }}
+          PIPELINE_TRACES_ASSET_SSH_KEY: ${{ secrets.PIPELINE_TRACES_ASSET_SSH_KEY }}
+          PIPELINE_TRACES_ASSET_USERNAME: ${{ vars.PIPELINE_TRACES_ASSET_USERNAME }}
         run: bash genie/ci-scripts/pipeline-traces-report.sh
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pipeline-traces"

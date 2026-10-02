@@ -1,10 +1,12 @@
 /* oxlint-disable overeng/jsdoc-require-exports, overeng/named-args -- Wire-contract exports mirror JSON field names; validators use value/path pairs for precise errors. */
+import type { PipelineRow } from './pipeline-report.ts'
+import { compactPipelineRows, pipelineWaterfallImageUrl } from './pipeline-waterfall.ts'
 
 /**
  * Bootstrap-safe workflow-report wire contract for CI (issue #884 closure).
  *
  * Constants, types, JSON schemas, decoders/encoders, and the managed-comment renderer for the
- * `WORKFLOW_REPORT_V1` protocol. This module imports NOTHING at runtime (no `effect`, no `./deploy-*`),
+ * `WORKFLOW_REPORT_V1` protocol. Runtime imports are limited to pure rendering (no `effect`, no `./deploy-*`),
  * so genie generator sources can import these symbols pre-install without dragging a runtime-only
  * package into their bootstrap import closure. `mod.ts` re-exports the whole surface, so runtime
  * consumers are unaffected.
@@ -714,26 +716,64 @@ const renderPipelineTraces = (opts: {
   const rows = data.rows as readonly Record<string, unknown>[]
   const visibleRows = opts.maxRows === undefined ? rows : rows.slice(0, opts.maxRows)
   const escaped = (value: unknown): string =>
-    escapeMarkdownTableCell(String(value ?? 'unavailable'))
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
+    escapeMarkdownTableCell(
+      String(value ?? 'unavailable')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;'),
+    )
+      .replaceAll('`', '\\`')
+      .replaceAll('[', '\\[')
+      .replaceAll(']', '\\]')
+      .replaceAll('*', '\\*')
+      .replaceAll('_', '\\_')
+  const images = data.waterfall as { lightUrl?: unknown; darkUrl?: unknown } | undefined
+  const showImages =
+    opts.includeGantt !== false &&
+    typeof images?.lightUrl === 'string' &&
+    typeof images.darkUrl === 'string' &&
+    pipelineWaterfallImageUrl(images.lightUrl) &&
+    pipelineWaterfallImageUrl(images.darkUrl)
+  const tableRow = (row: Record<string, unknown>): string => {
+    const trace =
+      row.status !== 'skipped' && row.status !== 'unfinished' && row.instrumented === false
+        ? 'not instrumented'
+        : typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl) === true
+          ? `[Explore](${row.traceUrl})`
+          : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId) === true
+            ? `\`${row.traceId}\` (link unavailable)`
+            : 'unavailable'
+    return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
+  }
+  const selected = compactPipelineRows(visibleRows as unknown as readonly PipelineRow[])
+  const compact = visibleRows.filter((row) => selected.has(row as unknown as PipelineRow))
+  const rest = visibleRows.filter((row) => !selected.has(row as unknown as PipelineRow))
+  const table = (tableRows: readonly Record<string, unknown>[]): string[] => [
+    '| Job | Status | Wall time | Delta vs main p50 | Trace |',
+    '| --- | --- | --- | --- | --- |',
+    ...tableRows.map(tableRow),
+  ]
   const lines = [
     escaped(record.summary),
     '',
-    '| Job | Status | Wall time | Delta vs main p50 | Trace |',
-    '| --- | --- | --- | --- | --- |',
-    ...visibleRows.map((row) => {
-      const trace =
-        row.status !== 'skipped' && row.status !== 'unfinished' && row.instrumented === false
-          ? 'not instrumented'
-          : typeof row.traceUrl === 'string' &&
-              /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl) === true
-            ? `[Explore](${row.traceUrl})`
-            : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId) === true
-              ? `\`${row.traceId}\` (link unavailable)`
-              : 'unavailable'
-      return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
-    }),
+    ...(showImages === true
+      ? [
+          `<picture><source media="(prefers-color-scheme: dark)" srcset="${images!.darkUrl}"><img src="${images!.lightUrl}" alt="Pipeline jobs and steps waterfall"></picture>`,
+          '',
+        ]
+      : ['Image unavailable; jobs-only Mermaid timeline below.', '']),
+    ...table(compact),
+    ...(rest.length === 0
+      ? []
+      : [
+          '',
+          '<details>',
+          `<summary>All other jobs (${rest.length})</summary>`,
+          '',
+          ...table(rest),
+          '',
+          '</details>',
+        ]),
     ...(visibleRows.length === rows.length
       ? []
       : [
@@ -757,7 +797,7 @@ const renderPipelineTraces = (opts: {
       : []),
     'Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.',
   ]
-  if (typeof data.gantt === 'string' && opts.includeGantt !== false) {
+  if (showImages === false && typeof data.gantt === 'string' && opts.includeGantt !== false) {
     lines.push(
       '',
       '<details>',

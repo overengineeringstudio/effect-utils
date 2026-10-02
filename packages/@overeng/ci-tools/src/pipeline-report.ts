@@ -11,6 +11,7 @@ import {
   type PipelineJobIdentity,
 } from './pipeline-job-names.ts'
 import { canonicalJobKey } from './pipeline-trace-identity.ts'
+import type { PipelineTimeline } from './pipeline-waterfall.ts'
 import type { WorkflowReportRecord } from './workflow-report.ts'
 
 const NullableString = Schema.Union([Schema.String, Schema.Null])
@@ -18,6 +19,8 @@ const JobStep = Schema.Struct({
   name: Schema.String,
   status: Schema.String,
   conclusion: NullableString,
+  started_at: Schema.optional(NullableString),
+  completed_at: Schema.optional(NullableString),
 })
 const Job = Schema.Struct({
   name: Schema.String,
@@ -63,6 +66,9 @@ export type PipelineRow = {
   readonly delta: string
   readonly instrumented: boolean
   readonly traceId?: string
+  readonly wallTimeMs?: number
+  readonly deltaMs?: number
+  readonly baselineMs?: number
   readonly traceUrl?: string
 }
 
@@ -70,6 +76,8 @@ export type PipelineRow = {
 export type PipelineReportData = {
   readonly rows: readonly PipelineRow[]
   readonly gantt?: string
+  readonly timeline?: PipelineTimeline
+  readonly waterfall?: { readonly lightUrl: string; readonly darkUrl: string }
   readonly omittedBars: number
   readonly baselineRunIds: readonly number[]
   readonly skippedBaselineRunIds: readonly number[]
@@ -86,10 +94,36 @@ const PipelineRowSchema = Schema.Struct({
   instrumented: Schema.Boolean,
   traceId: Schema.optional(Schema.String),
   traceUrl: Schema.optional(Schema.String),
+  wallTimeMs: Schema.optional(Schema.Finite),
+  deltaMs: Schema.optional(Schema.Finite),
+  baselineMs: Schema.optional(Schema.Finite),
 })
 const PipelineReportDataSchema = Schema.Struct({
   rows: Schema.Array(PipelineRowSchema),
   gantt: Schema.optional(Schema.String),
+  waterfall: Schema.optional(Schema.Struct({ lightUrl: Schema.String, darkUrl: Schema.String })),
+  timeline: Schema.optional(
+    Schema.Struct({
+      attempt: Schema.Finite,
+      jobs: Schema.Array(
+        Schema.Struct({
+          name: Schema.String,
+          status: Schema.String,
+          attempt: Schema.Finite,
+          start: Schema.optional(Schema.Finite),
+          end: Schema.optional(Schema.Finite),
+          steps: Schema.Array(
+            Schema.Struct({
+              name: Schema.String,
+              status: Schema.String,
+              start: Schema.Finite,
+              end: Schema.Finite,
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
   omittedBars: Schema.Finite,
   baselineRunIds: Schema.Array(Schema.Finite),
   skippedBaselineRunIds: Schema.Array(Schema.Finite),
@@ -99,6 +133,10 @@ const PipelineReportDataSchema = Schema.Struct({
 })
 /** Validates a decoded record's timeline and baseline counts before rendering. */
 export const decodePipelineReportData = Schema.decodeUnknownSync(PipelineReportDataSchema)
+/** Decodes the JSON file handed to the waterfall renderer by the CI attachment step. */
+export const decodePipelineReportDataJson = Schema.decodeUnknownSync(
+  Schema.fromJsonString(PipelineReportDataSchema),
+)
 
 const wallTimeMs = (job: PipelineJob): number | undefined => {
   if (job.conclusion === 'skipped' || job.status !== 'completed') return undefined
@@ -304,6 +342,9 @@ export const buildPipelineReport = (opts: {
       delta,
       instrumented,
       ...(traceId === undefined ? {} : { traceId }),
+      ...(wallMs === undefined ? {} : { wallTimeMs: wallMs }),
+      ...(p50 === undefined ? {} : { baselineMs: p50 }),
+      ...(wallMs === undefined || p50 === undefined ? {} : { deltaMs: wallMs - p50 }),
       ...(traceUrl === undefined ? {} : { traceUrl }),
     }
   })
@@ -325,6 +366,50 @@ export const buildPipelineReport = (opts: {
         ].join('\n')
   const data: PipelineReportData = {
     rows,
+    timeline: {
+      attempt: opts.attempt,
+      jobs: current.map((job, index) => {
+        const start =
+          job.started_at === null || job.conclusion === 'skipped' ? NaN : Date.parse(job.started_at)
+        const end = Date.parse(job.completed_at ?? opts.generatedAtUtc)
+        const timed = Number.isFinite(start) && Number.isFinite(end) && end >= start
+        return {
+          name: rows[index]!.job,
+          status: jobStatus(job),
+          attempt: job.executionAttempt,
+          start: timed === true ? start : undefined,
+          end: timed === true ? end : undefined,
+          steps:
+            timed === true
+              ? job.steps.flatMap((step) => {
+                  if (step.conclusion === 'skipped' || step.started_at == null) return []
+                  const stepStart = Math.max(start, Date.parse(step.started_at))
+                  const stepEnd = Math.min(
+                    end,
+                    Date.parse(
+                      step.completed_at ?? (step.status === 'completed' ? '' : opts.generatedAtUtc),
+                    ),
+                  )
+                  return Number.isFinite(stepStart) === true &&
+                    Number.isFinite(stepEnd) === true &&
+                    stepEnd >= stepStart
+                    ? [
+                        {
+                          name: step.name,
+                          status:
+                            step.status === 'completed'
+                              ? (step.conclusion ?? 'unfinished')
+                              : 'unfinished',
+                          start: stepStart,
+                          end: stepEnd,
+                        },
+                      ]
+                    : []
+                })
+              : [],
+        }
+      }),
+    },
     ...(gantt === undefined ? {} : { gantt }),
     omittedBars,
     skippedBaselineRunIds: opts.skippedBaselineRunIds ?? [],

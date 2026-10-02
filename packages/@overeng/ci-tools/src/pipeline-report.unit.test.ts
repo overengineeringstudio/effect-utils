@@ -12,6 +12,7 @@ import {
 import {
   buildPipelineReport,
   decodePipelineJobsPage,
+  decodePipelineReportData,
   decodePipelineRunsPage,
   pipelineGrafanaTraceUrl,
   type PipelineRow,
@@ -256,6 +257,13 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
       ),
     )
     expect(traced.filter((row) => attemptOneTraces.has(row.traceId!))).toHaveLength(15)
+    const timeline = decodePipelineReportData(report.data).timeline!
+    expect(timeline.attempt).toBe(2)
+    expect(timeline.jobs.find((job) => job.name === 'typecheck')?.attempt).toBe(1)
+    expect(
+      timeline.jobs.find((job) => job.name === 'test[runner=namespace-profile-linux-x86-64]')
+        ?.attempt,
+    ).toBe(2)
   })
 
   it('uses the exact by-ID Grafana URL and rejects malformed trace IDs', () => {
@@ -415,10 +423,223 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     expect(gantt).toContain('after DST fallback (success) :job1, 2026-10-25 01:00:00+0000, 60s')
   })
 
+  it('accepts legacy and nullable step timestamps without inventing step durations or losing trace identity', () => {
+    const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
+    const steps = [
+      { name: pipelineIdentityStepName, status: 'completed', conclusion: 'success' },
+      {
+        name: pipelineDevenvStepName,
+        status: 'completed',
+        conclusion: 'success',
+        started_at: null,
+        completed_at: null,
+      },
+      { name: pipelineExportStepName, status: 'completed', conclusion: 'success' },
+    ]
+    const decoded = decodePipelineJobsPage({ total_count: 1, jobs: [{ ...job, steps }] })
+    const data = decodePipelineReportData(
+      buildPipelineReport({ ...options, jobs: decoded.jobs }).data,
+    )
+    expect(data.timeline?.jobs[0]?.steps).toEqual([])
+    expect(data.rows[0]?.traceId).toBe('a0123456789abcdef0123456789abcde')
+    expect(data.rows[0]?.instrumented).toBe(true)
+  })
+
+  it('clamps timed steps to their job and excludes skipped, invalid and completed-but-untimed steps', () => {
+    const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
+    const start = '2026-10-01T00:00:00Z'
+    const end = '2026-10-01T00:02:00Z'
+    const completed = { status: 'completed', conclusion: 'success' }
+    const data = decodePipelineReportData(
+      buildPipelineReport({
+        ...options,
+        jobs: [
+          {
+            ...job,
+            started_at: start,
+            completed_at: end,
+            steps: [
+              {
+                ...completed,
+                name: 'clamped',
+                started_at: '2026-09-30T23:59:50Z',
+                completed_at: '2026-10-01T00:03:00Z',
+              },
+              { ...completed, name: 'zero duration', started_at: start, completed_at: start },
+              {
+                ...completed,
+                name: 'failed',
+                conclusion: 'failure',
+                started_at: start,
+                completed_at: '2026-10-01T00:01:00Z',
+              },
+              {
+                ...completed,
+                name: 'skipped',
+                conclusion: 'skipped',
+                started_at: start,
+                completed_at: end,
+              },
+              { ...completed, name: 'invalid', started_at: 'not a timestamp', completed_at: end },
+              { ...completed, name: 'reversed', started_at: end, completed_at: start },
+              {
+                ...completed,
+                name: 'completed without end',
+                started_at: start,
+                completed_at: null,
+              },
+              {
+                ...completed,
+                name: 'outside job',
+                started_at: '2026-10-01T00:03:00Z',
+                completed_at: '2026-10-01T00:04:00Z',
+              },
+            ],
+          },
+        ],
+      }).data,
+    )
+    expect(data.timeline?.jobs[0]?.steps).toEqual([
+      { name: 'clamped', status: 'success', start: Date.parse(start), end: Date.parse(end) },
+      {
+        name: 'zero duration',
+        status: 'success',
+        start: Date.parse(start),
+        end: Date.parse(start),
+      },
+      {
+        name: 'failed',
+        status: 'failure',
+        start: Date.parse(start),
+        end: Date.parse('2026-10-01T00:01:00Z'),
+      },
+    ])
+    expect(data.gantt).not.toContain('clamped')
+    expect(data.gantt).not.toContain('zero duration')
+  })
+
+  it('cuts unfinished job and step bars off at collection time without reporting a completed duration', () => {
+    const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
+    const data = decodePipelineReportData(
+      buildPipelineReport({
+        ...options,
+        generatedAtUtc: '2026-10-01T00:02:00Z',
+        jobs: [
+          {
+            ...job,
+            status: 'in_progress',
+            conclusion: null,
+            started_at: '2026-10-01T00:00:00Z',
+            completed_at: null,
+            steps: [
+              {
+                name: 'Still running',
+                status: 'in_progress',
+                conclusion: null,
+                started_at: '2026-10-01T00:01:00Z',
+                completed_at: null,
+              },
+            ],
+          },
+        ],
+      }).data,
+    )
+    expect(data.timeline?.jobs[0]).toMatchObject({
+      status: 'unfinished',
+      end: Date.parse('2026-10-01T00:02:00Z'),
+      steps: [
+        {
+          name: 'Still running',
+          status: 'unfinished',
+          start: Date.parse('2026-10-01T00:01:00Z'),
+          end: Date.parse('2026-10-01T00:02:00Z'),
+        },
+      ],
+    })
+    expect(data.rows[0]?.wallTime).toBe('unavailable')
+    expect(data.rows[0]?.wallTimeMs).toBeUndefined()
+    expect(data.rows[0]?.deltaMs).toBeUndefined()
+  })
+
+  it('keeps skipped and malformed jobs in the timeline model without timing bars', () => {
+    const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
+    const data = decodePipelineReportData(
+      buildPipelineReport({
+        ...options,
+        jobs: [
+          { ...job, name: 'skipped', conclusion: 'skipped' },
+          { ...job, name: 'invalid date', started_at: 'invalid' },
+          {
+            ...job,
+            name: 'reversed time',
+            started_at: job.completed_at,
+            completed_at: job.started_at,
+          },
+        ],
+      }).data,
+    )
+    expect(data.timeline?.jobs.map((item) => item.name)).toEqual([
+      'skipped',
+      'invalid date',
+      'reversed time',
+    ])
+    for (const item of data.timeline!.jobs) {
+      expect(item.start).toBeUndefined()
+      expect(item.end).toBeUndefined()
+      expect(item.steps).toEqual([])
+    }
+    expect(data.omittedBars).toBe(3)
+  })
+
+  it('keeps historical report data decodable without requiring images, timings or numeric deltas', () => {
+    const legacy = {
+      rows: [
+        {
+          job: 'typecheck',
+          status: 'success',
+          wallTime: '1m 40s',
+          delta: 'no main baseline',
+          instrumented: false,
+        },
+      ],
+      gantt: 'gantt',
+      omittedBars: 0,
+      baselineRunIds: [],
+      skippedBaselineRunIds: [],
+      baselineCounts: {},
+      counts: { success: 1 },
+    }
+    expect(decodePipelineReportData(legacy)).toEqual(legacy)
+  })
+
+  it('exposes the true median and signed numeric delta for compact regression selection', () => {
+    const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
+    const start = '2026-10-01T00:00:00Z'
+    const data = decodePipelineReportData(
+      buildPipelineReport({
+        ...options,
+        jobs: [{ ...job, started_at: start, completed_at: '2026-10-01T00:01:40Z' }],
+        baselines: [
+          { id: 1, jobs: [{ ...job, started_at: start, completed_at: '2026-10-01T00:01:00Z' }] },
+          { id: 2, jobs: [{ ...job, started_at: start, completed_at: '2026-10-01T00:01:20Z' }] },
+        ],
+      }).data,
+    )
+    expect(data.rows[0]).toMatchObject({
+      wallTimeMs: 100_000,
+      baselineMs: 70_000,
+      deltaMs: 30_000,
+      delta: '+30.0s (42.9%; n=2)',
+    })
+  })
+
   it('renders the managed comment with a collapsed timeline', () => {
     const body = render(buildPipelineReport(options))
     expect(body).toContain('<details>\n<summary>Pipeline timeline</summary>')
     expect(body).toContain('Task-level durations are not included.')
+    expect(body).toContain('```mermaid\ngantt')
+    expect(body).toContain('| typecheck |')
+    expect(extractWorkflowReportManagedState(body)?.entries[0]?.records[0]?.data).toBeUndefined()
     expect(body).toMatchSnapshot()
   })
 })
