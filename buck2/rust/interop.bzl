@@ -5,6 +5,7 @@ load("@prelude//rust:rust_toolchain.bzl", "PanicRuntime", "RustToolchainInfo")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/products:defs.bzl", "BuildProductInfo")
 load("//buck2/rust:toolchains.bzl", "WASM_OPT_FLAGS")
+load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
@@ -335,7 +336,7 @@ rust_interop_smoke = cache_guarded_rule(impl = _smoke_impl, attrs = {
 })
 
 def _service_smoke_impl(ctx):
-    compiler = ctx.attrs.compiler[DefaultInfo].default_outputs[0]
+    dependencies = ctx.attrs.compiler[PnpmDeclaredClosureInfo]
     service = ctx.attrs.service[DefaultInfo].default_outputs[0]
     # Node does not strip TypeScript inside node_modules: exercise the emitted package.
     runtime_dist = ctx.attrs.runtime_dist[DefaultInfo].default_outputs[0]
@@ -348,7 +349,7 @@ def _service_smoke_impl(ctx):
         "service": service,
         "service-smoke.ts": ctx.attrs.script,
         "vectors.json": ctx.attrs.vectors,
-        "node_modules/effect": compiler.project("node_modules/effect"),
+        "node_modules/effect": dependencies.node_modules.project("effect"),
         "node_modules/@overeng/effect-rust/package.json": runtime_manifest,
         "node_modules/@overeng/effect-rust/dist": runtime_dist,
     })
@@ -357,7 +358,7 @@ def _service_smoke_impl(ctx):
     else:
         node = ctx.attrs._node[BuckSupportToolInfo]
         executable = cmd_args(node.store_path, hidden = [node.executable, node.manifest])
-    command = cmd_args([executable, tree.project("service-smoke.ts"), tree.project("service"), tree.project("vectors.json")], hidden = [tree])
+    command = cmd_args([executable, tree.project("service-smoke.ts"), tree.project("service"), tree.project("vectors.json")], hidden = [tree] + dependencies.read_roots)
     verdict = ctx.actions.declare_output("service-smoke.json")
     ctx.actions.run(command, env = {"RUST_INTEROP_SMOKE_OUTPUT": verdict.as_output()}, category = "rust_interop_service_smoke", local_only = True)
     return [DefaultInfo(default_output = verdict), RunInfo(args = command), ExternalRunnerTestInfo(

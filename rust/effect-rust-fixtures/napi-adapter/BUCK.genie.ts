@@ -2,5 +2,9 @@ import { cargoBuck2PackageProjection } from '../../buck2-tools/core/cargo-buck2-
 
 export default cargoBuck2PackageProjection({
   sourceUrl: import.meta.url,
-  napi: { name: 'napi', visibility: ['PUBLIC'], smoke: { script: '//rust/effect-rust-fixtures:smoke', runtimes: ['node', 'bun'] } },
+  napi: {
+    name: 'napi',
+    visibility: ['PUBLIC'],
+    smoke: { script: '//rust/effect-rust-fixtures:smoke', runtimes: ['node', 'bun'] },
+  },
 })
