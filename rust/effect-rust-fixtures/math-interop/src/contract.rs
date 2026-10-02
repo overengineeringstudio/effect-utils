@@ -4,6 +4,9 @@ use effect_rust::contract::JsonSchema;
 use effect_rust::Patch;
 use serde::{Deserialize, Serialize};
 
+/// Shared contract vectors embedded in the actual library artifact.
+pub const CONTRACT_VECTORS_JSON: &str = include_str!("../vectors.json");
+
 /// Stock-keeping unit: three capitals, a dash and four digits.
 #[effect_rust::contract(pattern = "^[A-Z]{3}-[0-9]{4}$")]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,7 +104,7 @@ mod tests {
     /// The same vectors run against the generated Effect codecs (service-smoke.ts).
     #[test]
     fn shared_vectors_decode_and_encode_canonically() {
-        let vectors: Vec<Vector> = serde_json::from_str(include_str!("../vectors.json")).unwrap();
+        let vectors: Vec<Vector> = serde_json::from_str(super::CONTRACT_VECTORS_JSON).unwrap();
         for vector in vectors {
             let input = vector.input.to_string();
             let result = match vector.contract.as_str() {

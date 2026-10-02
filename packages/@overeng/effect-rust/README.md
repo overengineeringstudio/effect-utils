@@ -68,13 +68,22 @@ An abortable job's `cancel` acknowledgment means Rust has dropped its future and
 
 `yield* Interop.hostCapability('abortable' | 'settle-only', (...args) => effect)` captures the Layer's dependencies. Each host operation gets its own Scope; its Promise settles only after its Effect finalizers. `capability.call(signal, ...args)` is the generated Rust host callback. Abortable callbacks interrupt on the signal; settle-only callbacks are allowed to finish. `quiesce` awaits outstanding host operations. Generated abortable jobs must await both the Rust cancellation acknowledgment and their invocation's outstanding host callbacks before acknowledging interruption.
 
-Cancellation is cooperative, not CPU preemption. `Source.read(path)` currently
-returns one owned whole-file byte buffer; it is not a bounded streaming or
-range-read capability. An abortable read can quiesce pending I/O, but a
-synchronous long-running Rust loop on the wasm thread prevents the host from
-delivering cancellation until it yields. Use a dedicated Worker when browser
-main-thread responsiveness is required; do not advertise I/O cancellation as
-preemptive computation.
+`yield* Interop.hostSource(mode, { read, readRange })` captures a typed Source
+implementation with the same scoped cancellation and quiescence ownership.
+`readRange(path, offset: bigint, maxBytes: number)` backs Rust's
+`Source::read_range(path, offset: u64, max_bytes: u32)`: the offset crosses the
+callback boundary as canonical decimal u64 text, `maxBytes` is a positive u32,
+and oversized responses are rejected. Empty bytes mean EOF; a short nonempty
+read does not. Reads do not implicitly own a persistent file handle or
+snapshot: the host implementation owns consistency when files change.
+`Source::read(path)` remains the explicit whole-file capability.
+
+`Source::yield_now()` awaits a cancellable host macrotask, allowing event-loop
+work and cancellation delivery between CPU chunks. Call it between long
+chunks; checking a cancellation token or yielding only a microtask is not an
+event-loop yield. Cancellation remains cooperative, not CPU preemption:
+synchronous wasm work still blocks its thread until it reaches a yield.
+Use a dedicated Worker when browser main-thread responsiveness is required.
 
 ### Input Sinks and output Streams
 
@@ -105,13 +114,29 @@ For `input_stream`, use `returns = "String"` (or the actual finish-result type) 
 
 Frame exports require explicit `contract_id` and `version` metadata and Borsh row derives. Rows should declare `#[borsh(crate = "borsh")]` so the derive uses the explicit crate namespace in hermetic Buck builds. The TypeScript frame codec and Rust adapter must agree on both header values and the payload layout.
 
-The current Buck products consume the same admitted Rust `:lib` provider;
-they do not independently activate Cargo's `wasm` or `napi` feature. An adapter
-used by both products must already admit both features (the pilot uses
-`default = ["wasm", "napi"]`). Keep its dependencies target-specific and its
-exports gated by both feature and target architecture. Workspace feature
-unification can make a wasm-only default appear to work in fixtures; do not
-rely on an unrelated member to enable the native backend.
+The Buck wasm and native products consume one admitted Rust `:lib` provider;
+they do not independently activate Cargo backend features. A thin adapter used
+by both products declares `default = ["wasm", "napi"]`, keeps its backend
+dependencies target-specific, and gates exports by feature and target
+architecture. The fixture adapters use this convention directly; native
+availability must not depend on an unrelated workspace member enabling napi.
+
+Declare `include_str!` / `include_bytes!` inputs in the Cargo package's
+`BUCK.genie.ts` through `compileTimeResources`, separately from build-script
+inputs. A local repository path inside the crate keeps its crate-relative
+destination; a generated or external Buck label requires an explicit
+`destination`. Resource bytes and mappings participate in projection
+freshness. Unsafe paths and destinations that collide with another resource
+or Rust source are rejected.
+
+```ts
+cargoBuck2PackageProjection({
+  sourceUrl: import.meta.url,
+  compileTimeResources: [
+    { path: 'rust/effect-rust-fixtures/math-interop/vectors.json' },
+  ],
+})
+```
 
 ## Portable contracts
 
@@ -144,10 +169,13 @@ remains **required**: construction defaults are not decoding defaults.
 Arbitrary runtime defaults and `tagDefaultOmit` remain rejected.
 
 `optionalKey` wrappers retain the underlying named codec rather than generating
-another nominal type. `Schema.optional` still needs a JSON presence-policy
-decision: its own-property `undefined` is not a JSON value, and the current
-strict `Wire.encodeJson` rejects it. Do not use `null` as a substitute for
-omission or for `Patch.Absent`.
+another nominal type. `Schema.optional(T)` is admitted at object keys:
+`Wire.encodeJson` omits an own `undefined` value only where the schema declares
+that key optional, including nested objects. Required keys, array elements
+and record values still reject `undefined`; omission does not admit `null`
+unless `T` already does. In-memory `Wire.encode` / `decode` retain the Effect
+schema's presence semantics; JSON collapses own-undefined and missing keys.
+`Patch.Absent`, `Patch.Null` and `Patch.Value` remain distinct.
 
 Generated Rust helpers and dependencies follow the emitted definitions:
 decimal `U64`/`I64`, `TimestampMillis`, and `Patch` support appear only when
@@ -167,9 +195,26 @@ adding a mandatory backend to unrelated consumers.
 
 Generated Service methods remain Effects. Do not hide `runSync`, a global
 backend variable, or an asynchronously initialized instance behind a module
-helper to imitate pure calls. Typed generated-Service package dependencies
-must be admitted by the build/package graph; copying a build output into
-`node_modules` is a local smoke technique, not package admission.
+helper to imitate pure calls.
+
+### Generated package admission
+
+Declare generated service products in a consumer's TypeScript package
+projection, instead of copying them into the source tree or defining a second
+service tag:
+
+```ts
+typescriptPackage({
+  // Alongside the consumer's source and dependency authority.
+  generatedDependencies: {
+    'effect-rust-fixture': '//rust/effect-rust-fixtures/service:service',
+  },
+})
+```
+
+The package graph supplies the generated sources and declarations to
+typechecking, managed editor publication and runtime package trees. The
+`effect-rust-fixture-consumer` fixture imports the actual generated tag.
 
 ## Developer verification without a Buck daemon
 

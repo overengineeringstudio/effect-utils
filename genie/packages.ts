@@ -22,6 +22,7 @@ export const internalPackages = [
   'effect-rpc-explorer-react',
   'effect-rpc-tanstack',
   'effect-rust',
+  'effect-rust-fixture-consumer',
   'effect-schema-form',
   'effect-schema-form-aria',
   'genie',

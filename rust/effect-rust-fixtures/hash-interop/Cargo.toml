@@ -9,7 +9,7 @@ license.workspace = true
 name = "hash_interop"
 
 [features]
-default = ["wasm"]
+default = ["wasm", "napi"]
 wasm = []
 napi = []
 

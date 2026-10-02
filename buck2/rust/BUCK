@@ -25,6 +25,7 @@ native.config_setting(
 
 native.export_file(name = "interop-package.ts", visibility = ["PUBLIC"])
 native.export_file(name = "interop-service.ts", visibility = ["PUBLIC"])
+native.export_file(name = "interop-service-package.ts", visibility = ["PUBLIC"])
 
 native.constraint_setting(name = "opt_level", visibility = ["PUBLIC"])
 native.constraint_setting(name = "lto", visibility = ["PUBLIC"])
