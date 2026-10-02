@@ -122,18 +122,22 @@ export const inspectTailwind = ({ files, exceptions = [] }) => {
   return violations
 }
 
-/** Inspect tracked and unignored local source in the consumer repository. */
-export const checkRepository = (root) => {
+/** Inspect tracked and unignored local source selected by consumer Git pathspecs. */
+export const checkRepository = (root, pathspecs = ['.']) => {
   let exceptions = []
   try {
     exceptions = parseTailwindExceptions(readFileSync(`${root}/${exceptionFile}`, 'utf8'))
   } catch (error) {
     if (error.code !== 'ENOENT') throw error
   }
-  const files = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
-    cwd: root,
-    maxBuffer: 16 * 1024 * 1024,
-  })
+  const files = spawnSync(
+    'git',
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...pathspecs],
+    {
+      cwd: root,
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  )
   if (files.status !== 0) throw new Error(`git ls-files failed: ${files.stderr.toString()}`)
   const paths = [...new Set(files.stdout.toString().split('\0').filter(Boolean))].toSorted()
   return inspectTailwind({
@@ -156,7 +160,8 @@ if (
   realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
 ) {
   try {
-    const violations = checkRepository(process.cwd())
+    const pathspecs = process.argv.slice(2)
+    const violations = checkRepository(process.cwd(), pathspecs.length === 0 ? ['.'] : pathspecs)
     if (violations.length > 0) {
       console.error(
         `Tailwind is forbidden by lint:check:no-tailwind (${violations.length} violation(s)):\n${violations.join('\n')}\nMigrate to StyleX; for approved exceptions, declare path-scoped { path, reason } entries in ${exceptionFile}.`,
