@@ -1,5 +1,13 @@
-/** Self-contained support emitted into each contract crate; no generator subprocess or runtime crate dependency. */
-export const rustSupport = String.raw`
+/** Internal support requirements of the emitted contract definitions. */
+export interface RustSupportFeatures {
+  readonly u64: boolean
+  readonly i64: boolean
+  readonly timestamp: boolean
+  readonly patch: boolean
+}
+
+/** Self-contained support emitted into each contract crate; strict JSON support is always present. */
+export const rustSupport = (features: RustSupportFeatures): string => String.raw`
 #![forbid(unsafe_code)]
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +28,9 @@ impl std::fmt::Display for ValidationError {
 }
 impl std::error::Error for ValidationError {}
 
+${
+  features.u64 || features.i64
+    ? String.raw`
 macro_rules! decimal {
     ($name:ident, $native:ty, $signed:expr) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, borsh::BorshSerialize, borsh::BorshDeserialize)]
@@ -54,9 +65,15 @@ macro_rules! decimal {
         }
     };
 }
-decimal!(U64, u64, false);
-decimal!(I64, i64, true);
+${features.u64 ? 'decimal!(U64, u64, false);' : ''}
+${features.i64 ? 'decimal!(I64, i64, true);' : ''}
+`
+    : ''
+}
 
+${
+  features.timestamp
+    ? String.raw`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TimestampMillis(chrono::DateTime<chrono::Utc>);
 impl TimestampMillis {
@@ -117,7 +134,13 @@ impl borsh::BorshDeserialize for TimestampMillis {
         Self::new(value).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 }
+`
+    : ''
+}
 
+${
+  features.patch
+    ? String.raw`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, borsh::BorshSerialize, borsh::BorshDeserialize)]
 #[borsh(crate = "borsh")]
 pub enum Patch<T> { #[default] Absent, Null, Value(T) }
@@ -135,6 +158,9 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Patch<T> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Option::<T>::deserialize(deserializer).map(|value| value.map_or(Self::Null, Self::Value))
     }
+}
+`
+    : ''
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, borsh::BorshSerialize, borsh::BorshDeserialize)]
