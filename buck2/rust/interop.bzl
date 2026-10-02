@@ -357,7 +357,7 @@ def _service_smoke_impl(ctx):
         executable = ctx.attrs._bun[BunToolchainInfo].executable
     else:
         node = ctx.attrs._node[BuckSupportToolInfo]
-        executable = cmd_args(node.store_path, hidden = [node.executable, node.manifest])
+        executable = cmd_args(node.store_path, "--expose-gc", hidden = [node.executable, node.manifest])
     command = cmd_args([executable, tree.project("service-smoke.ts"), tree.project("service"), tree.project("vectors.json")], hidden = [tree] + dependencies.read_roots)
     verdict = ctx.actions.declare_output("service-smoke.json")
     ctx.actions.run(command, env = {"RUST_INTEROP_SMOKE_OUTPUT": verdict.as_output()}, category = "rust_interop_service_smoke", local_only = True)
