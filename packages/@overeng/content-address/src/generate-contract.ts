@@ -7,13 +7,7 @@ import type { PlatformError } from 'effect/PlatformError'
 
 import { compile } from '@overeng/effect-rust/compiler'
 
-import {
-  Codec,
-  ContentDigest,
-  DescriptorWire,
-  MediaType,
-  NonNegativeInt,
-} from './interop-contract.ts'
+import { Codec, ContentDescriptor, ContentDigest, MediaType, NonNegativeInt } from './schema.ts'
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 const contractPath = 'rust/content-address-contract'
@@ -27,7 +21,6 @@ const sourceDirectories = [
 const sourcePaths = [
   'packages/@overeng/content-address/src/generate-contract.ts',
   'packages/@overeng/content-address/src/schema.ts',
-  'packages/@overeng/content-address/src/interop-contract.ts',
   'packages/@overeng/effect-rust/src/mod.ts',
   'pnpm-lock.yaml',
   'rust/Cargo.toml',
@@ -71,11 +64,6 @@ const fingerprint = ({
   readonly inputs: typeof GenerationManifest.Type.inputs
 }): string => `sha256:${sha256({ content: JSON.stringify({ schemaVersion: 1, runtime, inputs }) })}`
 
-const rustName = ({ name }: { readonly name: string }): string =>
-  name
-    .split('_')
-    .map((part) => part[0]!.toUpperCase() + part.slice(1))
-    .join('')
 
 // The scope is deliberately named, not the ambient package tree. Tests and
 // snapshots cannot affect generation; new compiler/schema source files can.
@@ -160,40 +148,22 @@ NodeRuntime.runMain(
       `Generated at: ${generatedAt}`,
     ]
     const generated = compile(
-      { ContentDescriptor: DescriptorWire, ContentDigest, MediaType, Codec, NonNegativeInt },
-      { crateName: 'content-address-contract' },
+      { ContentDescriptor, ContentDigest, MediaType, Codec, NonNegativeInt },
+      {
+        crateName: 'content-address-contract',
+        schemaMetadata: 'schemars',
+        cargo: {
+          mode: 'workspace',
+          workspace: '..',
+          inherit: ['version', 'edition', 'license'],
+          dependencies: 'workspace',
+        },
+      },
     )
-    const names = Object.keys(generated.ir.defs)
-    // The foundation emits standalone crates without JsonSchema implementations.
-    // Adapt its emitted schemas, never a separately maintained Rust descriptor.
     const files: Record<string, string> = {
       ...Object.fromEntries(
         Object.entries(generated.files).filter(([path]) => path.startsWith('effect/') === false),
       ),
-      'Cargo.toml':
-        generated.files['Cargo.toml']!.replace('[workspace]\n\n', '')
-          .replace('[package]\n', '[package]\nworkspace = ".."\n')
-          .replace('version = "0.1.0"', 'version.workspace = true')
-          .replace('edition = "2024"', 'edition.workspace = true\nlicense.workspace = true') +
-        '\nschemars = "1"\n',
-      'src/lib.rs': generated.files['src/lib.rs']! + '\nmod schema_metadata;\n',
-      'src/schema_metadata.rs': `
-// JsonSchema implementations project the compiler-emitted JSON Schema definitions.
-fn schema(name: &str, generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-    let document: serde_json::Value = serde_json::from_str(r###"${generated.files['schema/ContentDescriptor.json']}"###).expect("compiled schema");
-    let definitions = document["$defs"].as_object().expect("compiled definitions");
-    for (key, value) in definitions { generator.definitions_mut().entry(key.clone()).or_insert_with(|| value.clone()); }
-    schemars::Schema::try_from(definitions[name].clone()).expect("compiled definition")
-}
-${names
-  .map(
-    (name) => `impl schemars::JsonSchema for super::${rustName({ name })} {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "${name}".into() }
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema { schema("${name}", generator) }
-}`,
-  )
-  .join('\n')}
-`,
     }
     // JSON Schema cannot carry comments: generation.json owns its provenance.
     // Rust/TOML use native comments in addition to the enclosing manifest.

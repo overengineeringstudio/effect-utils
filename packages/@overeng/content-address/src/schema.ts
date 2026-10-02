@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 
 /** Branded SHA-256 content digest in lowercase-hex `sha256:<64 hex>` form. */
 export const ContentDigest = Schema.String.pipe(
-  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)),
+  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/u)),
   Schema.brand('ContentAddress.ContentDigest'),
   Schema.annotate({ identifier: 'ContentAddress.ContentDigest' }),
 )
@@ -16,8 +16,9 @@ export const CasUri = Schema.String.pipe(
 )
 export type CasUri = typeof CasUri.Type
 
-const NonNegativeInt = Schema.Int.pipe(
+export const NonNegativeInt = Schema.Int.pipe(
   Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
+  Schema.annotate({ identifier: 'ContentAddress.NonNegativeInt' }),
 )
 
 /** Branded non-empty media (MIME) type describing the encoded byte payload. */

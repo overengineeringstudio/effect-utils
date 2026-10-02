@@ -119,7 +119,6 @@ export const assertContractGenerationFreshness = ({
   const requiredInputs = [
     'packages/@overeng/content-address/src/generate-contract.ts',
     'packages/@overeng/content-address/src/schema.ts',
-    'packages/@overeng/content-address/src/interop-contract.ts',
     'packages/@overeng/effect-rust/src/mod.ts',
     'pnpm-lock.yaml',
     'rust/Cargo.toml',
