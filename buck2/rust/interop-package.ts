@@ -214,12 +214,20 @@ if (kind === 'napi') {
     factoryBody.includes('let wasmModule, wasmInstance, wasm;') === false
   )
     throw new Error('Pinned bindgen instance state contract changed')
+  // Retirement discards the entire instance. Bindgen's delayed finalizers must
+  // not run destructors through cleared glue, while live-instance failures remain visible.
+  factoryBody = factoryBody.replaceAll(
+    'new FinalizationRegistry(',
+    'new InstanceFinalizationRegistry(',
+  )
   await writeFile(
     join(output, 'web', 'factory.js'),
     [
       'export const create = () => {',
+      'let retired = false;',
+      'const InstanceFinalizationRegistry = typeof FinalizationRegistry === "undefined" ? undefined : class extends FinalizationRegistry { constructor(callback) { super(value => { if (retired === false) callback(value); }); } };',
       factoryBody,
-      `return { api: { ${factoryExports.join(', ')} }, init: __wbg_init, initSync, release() { wasm = undefined; wasmInstance = undefined; wasmModule = undefined; } };`,
+      `return { api: { ${factoryExports.join(', ')} }, init: __wbg_init, initSync, release() { retired = true; wasm = undefined; wasmInstance = undefined; wasmModule = undefined; } };`,
       '};',
       '',
     ].join('\n'),

@@ -64,6 +64,21 @@ const assertDefect = <T, TError>(exit: Exit.Exit<T, TError>) => {
 }
 
 describe('instance generations', () => {
+  it.effect(
+    'executes synchronous exports with runSync after asynchronous runtime acquisition',
+    () =>
+      Effect.gen(function* () {
+        const fixture = fake()
+        const runtime = yield* makeRuntime('test', { load: fixture.load })
+        expect(Effect.runSync(runtime.call(({ api }) => api.value(42)))).toBe(42)
+        expect(Effect.runSync(runtime.snapshot)).toMatchObject({ jobs: 0, state: 'healthy' })
+        // eslint-disable-next-line unicorn/no-thenable -- This non-callable then property proves ordinary data is not treated as PromiseLike.
+        const value = { then: 'ordinary data' }
+        expect(Effect.runSync(runtime.call(() => value))).toBe(value)
+        expect(Effect.runSync(runtime.call(() => undefined))).toBeUndefined()
+      }),
+  )
+
   it.effect('traps kill every pending Effect, retire glue, and rebuild before the next call', () =>
     Effect.gen(function* () {
       const fixture = fake()
