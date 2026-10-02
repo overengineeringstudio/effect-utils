@@ -202,6 +202,45 @@ evidence, and idle time; the earlier bakeoff used 92.632 shape-minutes /
 savings. Earlier modeled adoption advice is superseded by the fair benchmark
 and Johannes's deferral decision.
 
+### Local critical path and batching prototype
+
+Follow-up on 2026-10-01 to test whether the tiny pnpm store/extract actions
+(Track B precondition) also limit local builds.
+
+Attribution used Buck's exact `BuildGraphInfo.critical_path2` from the two
+quiet-host local cold runs above (`L-cold-1/2`, revision 3ab9d858, `-j 8`):
+
+| Exact-path component                                      | Run 1 / Run 2, s | Of which slot queue, s |
+| --------------------------------------------------------- | ---------------: | ---------------------: |
+| TypeScript suffix: 7 `tsgo_emit` + `notion-cli:typecheck` |  23.497 / 24.808 |          0.518 / 1.407 |
+| All pnpm store/extract + `package_tree`                   |  10.651 / 10.718 |          8.627 / 9.092 |
+| Of which extract+entry                                    |    5.498 / 6.584 |          4.842 / 5.943 |
+
+- 99.61% / 99.70% of summed extract/entry queue time occurs before the first
+  TypeScript action starts.
+- Pre-execute scheduling overhead is about 0.11 ms per action, so fusing
+  extract+entry per package with unchanged command work is estimated at
+  0–0.7 s locally (last of five ranked levers; TypeScript suffix and slot or
+  materialization contention rank first and second).
+
+A bounded fusion prototype ([batching.patch](./2026-09-30-namespace-remote-execution/batching.patch),
+not applied) ran four interleaved clean cold `//:quick` builds on a loaded
+32-core host (load average 97–157):
+
+| Run        | Wall, s | Command actions |
+| ---------- | ------: | --------------: |
+| Baseline 1 | 110.718 |           1,285 |
+| Fused 1    | 277.096 |             737 |
+| Baseline 2 | 135.443 |           1,285 |
+| Fused 2    | 155.955 |             737 |
+
+Host-load variance dominates; no local win is demonstrated. The checked store
+entry is byte-identical (25 files, same entry digest) and fused actions stay
+cache-eligible (`requires_local=false`). Fusion keys extraction on assembly
+dependencies, so independent extract reuse (DEPS-T01) weakens. On current main
+the store entries are local-only, so fusion does not reduce the remote-eligible
+action count (562) unless entries also become remote-eligible.
+
 ## Falsifiers
 
 - A missing tool/projection path, hidden local fallback in an admitted remote
@@ -243,5 +282,6 @@ state, not a deployment requirement or rollout approval.
   Track A completes.
 - [Execution spec](../02-execution/spec.md) records the realized closure/pool and
   test mechanism; [execution findings](../02-execution/open-questions.md) answer
-  worker realization and retain the per-action overhead evidence. No vision or
-  requirement changes.
+  worker realization, retain the per-action overhead evidence, and correct the
+  8-slot contention reading with the local critical-path attribution. No vision
+  or requirement changes.
