@@ -25,11 +25,11 @@ Graph**, **Source Input**, **Package Instance**, **Dependency Edge**, **Dependen
 
 ### Subsystem language
 
-Live pnpm owns concrete workspace and virtual-store realization terms. Nix
-prepared dependencies own prepared artifacts, native integrations, and hash
-evidence. External build systems own their target and evidence representations.
-Those terms may refer back to this ontology but do not become authorities in
-this VRS.
+Live pnpm owns concrete workspace and virtual-store realization terms. Buck
+product packaging owns immutable dependency archives and product evidence;
+shared policy owns native package classification. The former Nix workspace
+prepared-install realization is retired. These realizations may refer back to
+this ontology without becoming authorities for live mutation.
 
 ## Language
 
@@ -52,9 +52,8 @@ replacement target. pnpm holds this role for a live pnpm root.
 descriptor for equivalent immutable dependency work. It names normalized
 topology and dependency inputs plus package-manager and toolchain policy. It
 does not own mutable realization state, storage placement, repair, or garbage
-collection. Prepared dependencies and declared external adapters may use its
-`profileKey` as a compatibility boundary; a live root need not emit a separate
-profile artifact.
+collection. Declared external adapters may use its identity as a compatibility
+boundary; a live root need not emit a separate profile artifact.
 
 **Source Input** is canonical package source selected by a topology before the
 Authoritative Materializer realizes Package Instances. A composed root may
@@ -162,9 +161,9 @@ The weight-bearing relations are:
 | Content-addressed Package Data | `partOf`    | Store Cache                          |
 
 Store placement is a facet of a realization: local development may use a
-host-scoped cache, CI may use a job-scoped cache, and Nix prepared dependencies
-may use an independent builder cache. Placement does not change Materialization
-Profile or Package Instance identity.
+host-scoped cache and CI may use a job-scoped cache. Nix archive acquisition
+uses immutable declared digests, not a live pnpm cache. Placement does not
+change Materialization Profile or Package Instance identity.
 
 ## Flagged ambiguities
 

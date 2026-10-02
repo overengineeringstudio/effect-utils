@@ -1,9 +1,0 @@
-{
-  "name": "workspace-tool",
-  "bin": {
-    "workspace-tool": "local-cli.js"
-  },
-  "scripts": {
-    "postinstall": "node -e \"require('fs').writeFileSync('lifecycle-ran', 'unexpected')\""
-  }
-}

@@ -182,6 +182,11 @@ devenv tasks run nix:buck2-artifact-import:check
 devenv tasks run nix:javascript-product-import:check
 ```
 
+CLI packaging uses Buck products and the validated Nix import boundary described
+in [workspace tools](./nix/workspace-tools/README.md). Live pnpm workspaces share
+install policy and source-input algebra; Buck products use immutable dependency
+archives.
+
 `check:all` also evaluates every flake output for the host system without
 building anything:
 

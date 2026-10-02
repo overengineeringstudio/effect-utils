@@ -24,8 +24,7 @@ export const CORE_CI_JOB_NAMES = [
   'test-playwright-utils',
   'test-playwright-tui-react',
   'test-megarepo-cold-gc',
-  'pnpm-builder-contract',
-  'pnpm-regression',
+  'native-dependency-policy',
   'bundle-smoke',
   // Rust lane: delegates build/test/clippy/fmt semantics to devenv task cargo:check.
   'cargo',

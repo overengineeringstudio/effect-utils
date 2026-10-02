@@ -41,7 +41,7 @@ CI job
   root-local graph + job-local Store Cache
 
 Nix builder
-  prepared dependencies + builder-owned store
+  immutable per-package archives
 ```
 
 The pnpm Store Cache is a performance cache, not a dependency-identity or
@@ -64,7 +64,7 @@ work and inform a future immutable, graph-addressed dependency artifact.
 | ----------------- | ----------------- | -------------------- | ----------------- |
 | local development | one host/user     | Materialization Root | host cache owner  |
 | CI                | one job           | Materialization Root | that CI job       |
-| Nix prepared deps | builder-owned     | builder-owned        | Nix               |
+| Nix archives      | immutable digest  | Nix store            | Nix               |
 
 The local Store Cache path is configurable so operators can place it on an
 appropriate volume. Storage placement is excluded from Materialization Profile
@@ -77,7 +77,7 @@ identity: moving or discarding a cache does not change dependency identity.
 | Linux local dev   | `auto`        | cache files and root have equal device ID |
 | Darwin local dev  | `auto`        | pnpm filesystem-capability selection      |
 | CI                | `auto`        | job-local Store Cache                     |
-| Nix prepared deps | Nix policy    | independent of live-install policy        |
+| Nix archives      | no pnpm install | independent of live-install policy      |
 
 Linux fails before installation when device IDs differ; it does not silently
 copy and turn a zero-copy goal into per-worktree duplication. On a filesystem

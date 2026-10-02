@@ -6,19 +6,15 @@
  * lockfile-vs-policy *classification* drift (every gated native family is
  * classified). This check enforces the *materialization* invariant that the
  * classification implies: for every `pure-package-artifact` family whose
- * consumer is actually present in a prepared dependency tree (the deps FOD
- * output), EVERY platform binding within the declared `supportedArchitectures`
- * must be physically present in that tree.
+ * consumer is actually present in a dependency tree, EVERY platform binding
+ * within the declared `supportedArchitectures` must be physically present in
+ * that tree.
  *
- * It exists because the deps FOD (`mk-pnpm-deps.nix`) installs without carrying
- * optional native bindings by default, which silently produces a tree with the
- * consumer package (e.g. `rolldown`) but ZERO native bindings. That tree builds
- * and caches happily on the build host, then fails at `vite build` / runtime on
- * a platform whose binding was never fetched (the
- * `@rolldown/binding-linux-arm64-gnu` gap on aarch64-linux). Nothing in the
- * closure hash catches this: the hash faithfully describes a bindingless tree.
- * This check makes the gap a hard, precisely-named build failure instead of a
- * silent ship.
+ * An install that omits optional native bindings can leave a consumer package
+ * (e.g. `rolldown`) with ZERO native bindings. That tree may work on the build
+ * host, then fail at `vite build` / runtime on a platform whose binding was
+ * never fetched. A closure hash faithfully describes even a bindingless tree;
+ * this check makes the gap an explicit failure.
  *
  * SCOPE (honest guarantee): this check enforces closure-COMPLETENESS for a root
  * that opts into carrying optional bindings — every declared triple of an active

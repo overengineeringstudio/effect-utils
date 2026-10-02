@@ -15,8 +15,8 @@ This spec defines:
 - the live install relation to pure projection, root-owned state, shared
   content, and install evidence.
 
-This spec does not define Nix prepared dependency artifacts. Those are specified
-in [../03-nix-prepared-deps/spec.md](../03-nix-prepared-deps/spec.md).
+Product packaging is specified by the
+[Buck-to-Nix bridge](../../buck2/06-nix-bridge/spec.md), not this live-install spec.
 
 ## Requirement Trace
 

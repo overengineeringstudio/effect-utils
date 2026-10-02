@@ -4,8 +4,8 @@
 
 Verification defines the proof, benchmark, and regression architecture for
 dependency materialization. It refines DMP-R11 and DMP-R16 through DMP-R20 and
-composes the live pnpm, projection, Nix prepared-deps, store-authority, and
-observability subsystems. External build adapters remain consumer-owned.
+composes the live pnpm, projection, store-authority, and observability subsystems.
+External build adapters remain consumer-owned.
 
 ## Assumptions
 
@@ -36,10 +36,8 @@ observability subsystems. External build adapters remain consumer-owned.
   that managed materialization does not run dependency lifecycle scripts,
   rebuilds, or approval flows.
   Refines: DMP-R17.
-- **DMP.VER-R03 Prepared artifact scan proof:** Prepared dependency validation
-  must have fixtures that reject `.bin`, unexpected native output, known
-  platform package directories, and leaked package-manager state.
-  Refines: DMP-R05, DMP-R08, DMP-R18.
+- **DMP.VER-R03 Retired:** Prepared-install scan fixtures are retired with that
+  packaging realization. The identifier remains reserved for historical references.
 - **DMP.VER-R04 Store Cache eviction proof:** Store-authority changes must
   preserve a proof that Store Cache eviction can break a future offline
   reinstall while leaving an already-materialized root healthy, and prove that

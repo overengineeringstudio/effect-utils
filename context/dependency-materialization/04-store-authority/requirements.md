@@ -24,8 +24,7 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
 - **T02 CI isolation:** CI may give up host-wide cache reuse to keep concurrent
   jobs and their cleanup independent.
 - **T03 Independent Nix path:** Live-install cache placement need not match Nix
-  prepared-dependency storage because Nix provides its own content-addressed
-  reuse boundary.
+  archive acquisition because Nix provides its own immutable reuse boundary.
 - **T04 Same-user hardlink aliasing:** On a filesystem where pnpm `auto`
   selects hardlinks, a direct write through one imported dependency aliases the
   Store Cache and sibling roots. This is accepted only inside the declared
@@ -90,9 +89,9 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
   one job's cleanup must not mutate another job's
   cache or graph.
   Refines: DMP-R12, DMP-R13.
-- **DMP.STORE-R12 Independent Nix cache:** Nix prepared-dependency production
-  must use its builder-owned immutable/content-addressed boundary rather than
-  mutable live host cache state.
+- **DMP.STORE-R12 Independent Nix acquisition:** Nix dependency archive
+  acquisition must use declared immutable identities rather than mutable live
+  host cache state.
   Refines: DMP-R05, DMP-R09, DMP-R21, DMP-R23.
 
 ### Must be measured
