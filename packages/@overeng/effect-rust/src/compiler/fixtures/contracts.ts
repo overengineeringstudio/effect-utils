@@ -1,56 +1,68 @@
 import { Schema } from 'effect'
 
-import * as Wire from '../../schema/wire.ts'
+import * as EffectRust from '../../schema/effect-rust.ts'
 
-const PortableName = Schema.String.check(Wire.pattern('^[\\p{L}]+$', 'iu')).annotate({
+const Count32 = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2 ** 32 - 1 }))
+const Signed32 = Schema.Int.check(Schema.isBetween({ minimum: -(2 ** 31), maximum: 2 ** 31 - 1 }))
+const Count64 = Schema.BigInt.check(
+  Schema.isBetweenBigInt({ minimum: 0n, maximum: 2n ** 64n - 1n }),
+)
+const Signed64 = Schema.BigInt.check(
+  Schema.isBetweenBigInt({ minimum: -(2n ** 63n), maximum: 2n ** 63n - 1n }),
+)
+const Timestamp = Schema.DateTimeUtc.annotate({ [EffectRust.timestampPrecision]: 'millis' })
+
+const PortableName = Schema.String.check(Schema.isPattern(/^[\p{L}]+$/iu)).annotate({
   identifier: 'PortableName',
 })
-const LabelKey = Schema.String.check(Wire.pattern('^[a-z]+$')).annotate({ identifier: 'LabelKey' })
+const LabelKey = Schema.String.check(Schema.isPattern(/^[a-z]+$/u)).annotate({
+  identifier: 'LabelKey',
+})
 /** Mixed portable scalar, optional, nullable, record and array compiler fixture. */
 export const Portable = Schema.Struct({
-  count: Wire.U32,
+  count: Count32,
   nullable: Schema.NullOr(Schema.String),
   optional: Schema.optionalKey(Schema.String),
   kind: Schema.Literals(['deploy', 'drain']),
   name: PortableName,
   labels: Schema.Record(LabelKey, Schema.String),
-  nested: Schema.Array(Schema.Array(Wire.I32)),
+  nested: Schema.Array(Schema.Array(Signed32)),
 })
 /** Branded bounded host-name fixture using a portable full-string pattern. */
 export const HostName = Schema.String.check(
-  Wire.pattern('^[a-z][a-z0-9-]*$'),
+  Schema.isPattern(/^[a-z][a-z0-9-]*$/u),
   Schema.isBetweenCodePoints(3, 12),
 )
   .pipe(Schema.brand('HostName'))
   .annotate({ identifier: 'HostName' })
 /** Semantic unsigned-width, timestamp and branded-string compiler fixture. */
 export const Extensions = Schema.Struct({
-  counter: Wire.U64,
-  at: Wire.TimestampMillis,
+  counter: Count64,
+  at: Timestamp,
   host: HostName,
 })
 /** Case-insensitive full-string pattern fixture. */
-export const Flags = Schema.String.check(Wire.pattern('^abc$', 'iu'))
-const ContentDigest = Schema.String.check(Wire.pattern('^sha256:[0-9a-f]{64}$'))
+export const Flags = Schema.String.check(Schema.isPattern(/^abc$/iu))
+const ContentDigest = Schema.String.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/u))
   .pipe(Schema.brand('ContentDigest'))
   .annotate({ identifier: 'ContentDigest' })
 const MediaType = Schema.String.check(
-  Wire.pattern('^[a-z]+/[a-z0-9.+-]+$'),
+  Schema.isPattern(/^[a-z]+\/[a-z0-9.+-]+$/u),
   Schema.isMaxCodePoints(127),
 ).annotate({ identifier: 'MediaType' })
 /** Content metadata fixture with semantic codecs and optional wire keys. */
 export const ContentDescriptor = Schema.Struct({
   digest: ContentDigest,
-  size: Wire.U64,
+  size: Count64,
   mediaType: MediaType,
   annotations: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-  createdAt: Wire.TimestampMillis,
-  expiresAt: Schema.optionalKey(Schema.NullOr(Wire.TimestampMillis)),
+  createdAt: Timestamp,
+  expiresAt: Schema.optionalKey(Schema.NullOr(Timestamp)),
 })
 /** Tagged deployment-event fixture with semantic fields and an empty variant. */
 export const Event = Schema.Union([
   Schema.TaggedStruct('Deployed', { descriptor: ContentDescriptor, host: HostName }),
-  Schema.TaggedStruct('Scaled', { delta: Wire.I64, replicas: Wire.U32 }),
+  Schema.TaggedStruct('Scaled', { delta: Signed64, replicas: Count32 }),
   Schema.TaggedStruct('Drained', {}),
 ])
 /** Recursive labelled-tree fixture contract. */
@@ -71,7 +83,7 @@ export type Expr =
 const ExprRef = Schema.suspend((): Schema.Codec<Expr> => Expr)
 /** Recursive tagged arithmetic-expression fixture contract. */
 export const Expr: Schema.Codec<Expr> = Schema.Union([
-  Schema.TaggedStruct('Lit', { value: Wire.I32 }),
+  Schema.TaggedStruct('Lit', { value: Signed32 }),
   Schema.TaggedStruct('Add', { left: ExprRef, right: ExprRef }),
   Schema.TaggedStruct('Neg', { operand: ExprRef }),
 ])

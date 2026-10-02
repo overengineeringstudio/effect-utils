@@ -10,7 +10,8 @@ export class JsonError extends Error {
     super(`${path} at byte ${offset}: ${message}`)
   }
 }
-const scalarString = (value: string): boolean => {
+/** Checks that a string contains only Unicode scalar values, rejecting unpaired surrogates. */
+export const scalarString = (value: string): boolean => {
   for (let index = 0; index < value.length; index++) {
     const code = value.charCodeAt(index)
     if (code >= 0xd800 && code <= 0xdbff) {
@@ -126,7 +127,8 @@ export const parseJson = (text: string): unknown => {
     )
       return fail({
         path,
-        message: 'Integer must be safe and canonical decimal; use Wire.U64/I64 for wider integers',
+        message:
+          'Integer must be safe and canonical decimal; use a bounded Schema.BigInt for wider integers',
       })
     return number
   }
@@ -138,7 +140,7 @@ export const parseJson = (text: string): unknown => {
 
 /**
  * Canonical control-plane JSON: keys sorted by UTF-16 code unit, except that the first of `tagKeys` present with a
- * string value leads its object. `tagKeys` order is precedence; `Wire.encodeJson` passes the schema's sorted
+ * string value leads its object. `tagKeys` order is precedence; `ContractJson.encode` passes the schema's sorted
  * discriminator set, matching the generated Rust `TAG_FIELDS`. Decoders accept any key order.
  */
 // eslint-disable-next-line overeng/named-args -- Preserve the public canonicalJson positional SDK signature.

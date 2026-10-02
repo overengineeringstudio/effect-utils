@@ -1,9 +1,12 @@
+import type { Width } from './ir.ts'
+
 /** Internal support requirements of the emitted contract definitions. */
 export interface RustSupportFeatures {
   readonly u64: boolean
   readonly i64: boolean
   readonly timestamp: boolean
   readonly patch: boolean
+  readonly bounded: readonly (Width | 'number-u64' | 'number-i64')[]
 }
 
 /** Self-contained support emitted into each contract crate; strict JSON support is always present. */
@@ -14,6 +17,8 @@ use serde::{Deserialize, Serialize};
 pub type U8 = u8;
 pub type U16 = u16;
 pub type U32 = u32;
+pub type I8 = i8;
+pub type I16 = i16;
 pub type I32 = i32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +34,7 @@ impl std::fmt::Display for ValidationError {
 impl std::error::Error for ValidationError {}
 
 ${
-  features.u64 || features.i64
+  features.u64 === true || features.i64 === true
     ? String.raw`
 macro_rules! decimal {
     ($name:ident, $native:ty, $signed:expr) => {
@@ -65,14 +70,73 @@ macro_rules! decimal {
         }
     };
 }
-${features.u64 ? 'decimal!(U64, u64, false);' : ''}
-${features.i64 ? 'decimal!(I64, i64, true);' : ''}
+${features.u64 === true ? 'decimal!(U64, u64, false);' : ''}
+${features.i64 === true ? 'decimal!(I64, i64, true);' : ''}
 `
     : ''
 }
+${
+  features.bounded.length === 0
+    ? ''
+    : String.raw`
+// Keep authored bounds independent of storage width. Every construction path validates,
+// including binary decoding; the private native field cannot bypass the invariant.
+macro_rules! bounded_integer {
+    ($name:ident, $native:ty, $repr:ty, $wrap:expr, $unwrap:expr) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name<const MIN: $native, const MAX: $native>($native);
+        impl<const MIN: $native, const MAX: $native> $name<MIN, MAX> {
+            pub fn new(value: $native) -> Result<Self, ValidationError> {
+                if MIN > MAX || value < MIN || value > MAX {
+                    return Err(ValidationError::new("$", format!("integer must be in {MIN}..={MAX}")));
+                }
+                Ok(Self(value))
+            }
+            pub fn into_inner(self) -> $native { self.0 }
+            pub fn as_inner(&self) -> &$native { &self.0 }
+        }
+        impl<const MIN: $native, const MAX: $native> TryFrom<$native> for $name<MIN, MAX> {
+            type Error = ValidationError;
+            fn try_from(value: $native) -> Result<Self, Self::Error> { Self::new(value) }
+        }
+        impl<const MIN: $native, const MAX: $native> Serialize for $name<MIN, MAX> {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let value: $repr = ($wrap)(self.0);
+                Serialize::serialize(&value, serializer)
+            }
+        }
+        impl<'de, const MIN: $native, const MAX: $native> Deserialize<'de> for $name<MIN, MAX> {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let value = <$repr as Deserialize>::deserialize(deserializer)?;
+                Self::new(($unwrap)(value)).map_err(serde::de::Error::custom)
+            }
+        }
+        impl<const MIN: $native, const MAX: $native> borsh::BorshSerialize for $name<MIN, MAX> {
+            fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+                borsh::BorshSerialize::serialize(&self.0, writer)
+            }
+        }
+        impl<const MIN: $native, const MAX: $native> borsh::BorshDeserialize for $name<MIN, MAX> {
+            fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+                let value = <$native as borsh::BorshDeserialize>::deserialize_reader(reader)?;
+                Self::new(value).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+            }
+        }
+    };
+}
+${features.bounded
+  .map((key) => {
+    const numeric64 = key === 'number-u64' || key === 'number-i64'
+    const width = numeric64 === true ? key.slice(7) : key
+    const decimal = numeric64 === false && (width === 'u64' || width === 'i64')
+    return `bounded_integer!(Bounded${numeric64 === true ? 'Number' : ''}${width.toUpperCase()}, ${width}, ${decimal === true ? width.toUpperCase() : width}, ${decimal === true ? width.toUpperCase() : `|value: ${width}| value`}, |value: ${decimal === true ? width.toUpperCase() : width}| ${decimal === true ? 'value.0' : 'value'});`
+  })
+  .join('\n')}
+`
+}
 
 ${
-  features.timestamp
+  features.timestamp === true
     ? String.raw`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TimestampMillis(chrono::DateTime<chrono::Utc>);
@@ -139,7 +203,7 @@ impl borsh::BorshDeserialize for TimestampMillis {
 }
 
 ${
-  features.patch
+  features.patch === true
     ? String.raw`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, borsh::BorshSerialize, borsh::BorshDeserialize)]
 #[borsh(crate = "borsh")]

@@ -2,9 +2,14 @@ import { describe, it } from '@effect/vitest'
 import { Schema } from 'effect'
 import { expect } from 'vitest'
 
-import * as Wire from '../schema/wire.ts'
+import * as ContractJson from '../schema/contract-json.ts'
+import * as EffectRust from '../schema/effect-rust.ts'
+import { canonicalJson, parseJson } from '../schema/json.ts'
+import { boundedContracts, boundedVectors } from './fixtures/bounded-contracts.ts'
 import { contracts } from './fixtures/contracts.ts'
 import vectors from './fixtures/vectors.json' with { type: 'json' }
+import { importRustSchema } from './import-rust.ts'
+import { emitJsonSchema } from './json-schema.ts'
 import { AdmissionError, compile, lower, tagFields } from './mod.ts'
 
 describe('shared R vectors', () => {
@@ -14,21 +19,58 @@ describe('shared R vectors', () => {
       const schema = contracts[row.contract as keyof typeof contracts]
       const text = JSON.stringify(row.input)
       if (row.accept === false) {
-        expect(() => Wire.decodeJson(schema)(text)).toThrow()
+        expect(() => ContractJson.decode(schema)(text)).toThrow()
         return
       }
-      const value = Wire.decodeJson(schema)(text)
-      expect(Wire.encodeJson(schema)(value)).toBe(
-        Wire.canonicalJson('canonical' in row ? row.canonical : row.input, tags),
+      const value = ContractJson.decode(schema)(text)
+      expect(ContractJson.encode(schema)(value)).toBe(
+        canonicalJson('canonical' in row ? row.canonical : row.input, tags),
       )
     })
 })
 
+describe('bounded integer contracts', () => {
+  for (const row of boundedVectors)
+    it(`${row.contract}/${row.name}`, () => {
+      const schema = boundedContracts[row.contract as keyof typeof boundedContracts]
+      const decode = ContractJson.decode(schema)
+      const text = JSON.stringify(row.input)
+      if (row.accept === false) {
+        expect(() => decode(text)).toThrow()
+      } else {
+        expect(ContractJson.encode(schema)(decode(text))).toBe(text)
+      }
+    })
+  it('retains validation intervals and storage pins through interchange', () => {
+    const ir = lower(boundedContracts, 'Percent')
+    const imported = importRustSchema(emitJsonSchema(ir, 'Percent'))
+    expect(imported.ir.defs).toEqual(ir.defs)
+  })
+  it('rejects an overflowing width pin and metadata on an opaque transformation', () => {
+    expect(() =>
+      lower({
+        Value: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 256 })).annotate({
+          [EffectRust.width]: 'u8',
+        }),
+      }),
+    ).toThrow(AdmissionError)
+    expect(() =>
+      lower({
+        Value: Schema.BigIntFromString.annotate({ [EffectRust.width]: 'u64' }),
+      }),
+    ).toThrow(AdmissionError)
+  })
+})
+
 describe('live compiler admission', () => {
   it('retains wire policy annotations applied to suspended contracts', () => {
-    const Deferred = Schema.suspend(() => Schema.Struct({ value: Wire.U32 })).annotate({
-      ...Wire.excess('ignore'),
-      ...Wire.nonExhaustive,
+    const Deferred = Schema.suspend(() =>
+      Schema.Struct({
+        value: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2 ** 32 - 1 })),
+      }),
+    ).annotate({
+      [EffectRust.excess]: 'ignore',
+      [EffectRust.nonExhaustive]: true,
     })
     expect(lower({ Deferred }).defs.Deferred).toMatchObject({
       kind: 'struct',
@@ -79,25 +121,25 @@ describe('live compiler admission', () => {
   it('retains every contract root when callers reuse a schema object', () => {
     const result = compile({ Text: Schema.String, Label: Schema.String })
     expect(result.ir.defs.Label).toEqual({ kind: 'alias', type: { kind: 'ref', name: 'Text' } })
-    expect(Wire.parseJson(result.files['schema/Label.json']!)).toMatchObject({
+    expect(parseJson(result.files['schema/Label.json']!)).toMatchObject({
       title: 'Label',
       $ref: '#/$defs/Label',
     })
-    expect(Wire.parseJson(result.files['schema/Text.json']!)).toMatchObject({
+    expect(parseJson(result.files['schema/Text.json']!)).toMatchObject({
       title: 'Text',
       $ref: '#/$defs/Text',
     })
   })
-  it('rejects lossy or opaque contracts with a field path and remedy', () => {
+  it('rejects lossy or opaque contracts at the offending field', () => {
     const schemas = [
       Schema.Finite,
       Schema.Int,
       Schema.BigIntFromString,
       Schema.String.check(Schema.makeFilter((value: string) => value.length === 3)),
-      Schema.String.check(Wire.pattern('^[a-z]+$')),
-      Wire.Patch(Schema.NullOr(Schema.String)),
-      Wire.Patch(Schema.optionalKey(Schema.String)),
-      Schema.Tuple([Wire.U8, Wire.U16]),
+      Schema.String.check(Schema.isPattern(/^[a-z]+$/u)),
+      Schema.BigInt,
+      Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 2 })),
+      Schema.Tuple([Schema.String, Schema.Boolean]),
     ]
     for (const schema of schemas) {
       try {
@@ -105,8 +147,8 @@ describe('live compiler admission', () => {
         expect.fail('Expected admission rejection')
       } catch (error) {
         expect(error).toBeInstanceOf(AdmissionError)
-        expect((error as AdmissionError).path).toBe('$/Request/value')
-        expect((error as AdmissionError).remedy).toMatch(/.+/)
+        if (!(error instanceof AdmissionError)) return
+        expect(error.path).toBe('$/Request/value')
       }
     }
   })

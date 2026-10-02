@@ -327,10 +327,12 @@
       "selectedTestFiles": [
         "src/compiler/compiler.unit.test.ts",
         "src/compiler/import-rust.unit.test.ts",
+        "src/compiler/optional-omission.unit.test.ts",
+        "src/compiler/rough-edges.unit.test.ts",
         "src/runtime/host.unit.test.ts",
         "src/runtime/instance.unit.test.ts",
         "src/runtime/worker.unit.test.ts",
-        "src/schema/wire.unit.test.ts"
+        "src/schema/contract-json.unit.test.ts"
       ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-rust:test",
@@ -338,10 +340,12 @@
       "testFiles": [
         "src/compiler/compiler.unit.test.ts",
         "src/compiler/import-rust.unit.test.ts",
+        "src/compiler/optional-omission.unit.test.ts",
+        "src/compiler/rough-edges.unit.test.ts",
         "src/runtime/host.unit.test.ts",
         "src/runtime/instance.unit.test.ts",
         "src/runtime/worker.unit.test.ts",
-        "src/schema/wire.unit.test.ts"
+        "src/schema/contract-json.unit.test.ts"
       ],
       "unboundedAfter": [],
       "unboundedFiles": []

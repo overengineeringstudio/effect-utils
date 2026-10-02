@@ -1,7 +1,14 @@
 import { SchemaRepresentation as R } from 'effect'
 
 import { assertPortablePattern } from '../schema/pattern.ts'
-import { reject, type ContractIR, type Definition, type Type, type Width } from './ir.ts'
+import {
+  integerRanges as ranges,
+  reject,
+  type ContractIR,
+  type Definition,
+  type Type,
+  type Width,
+} from './ir.ts'
 import { EFFECT_RUST_VOCABULARY } from './json-schema.ts'
 
 const referencesType = ({ type, name }: { type: Type; name: string }): boolean => {
@@ -65,9 +72,6 @@ const filter = (runtime: string): R.Check => ({
   annotations: { toCode: () => ({ runtime }) },
 })
 
-const recursiveRuntime = (runtime: string): string =>
-  runtime.replace(/Schema\.Codec<([A-Za-z_$][A-Za-z0-9_$]*)>/gu, 'Schema.Codec<$1, unknown>')
-
 type Node = Record<string, unknown>
 const metadata: Readonly<Record<string, true>> = {
   title: true,
@@ -86,17 +90,15 @@ const documentKeys: Readonly<Record<string, true>> = {
   $defs: true,
   definitions: true,
 }
-const ranges: Readonly<Record<Width, readonly [number, number]>> = {
-  u8: [0, 255],
-  u16: [0, 65535],
-  u32: [0, 4294967295],
-  i32: [-2147483648, 2147483647],
-}
 const formats: Readonly<Record<string, Width>> = {
   uint8: 'u8',
   uint16: 'u16',
   uint32: 'u32',
+  int8: 'i8',
+  int16: 'i16',
   int32: 'i32',
+  uint64: 'u64',
+  int64: 'i64',
 }
 const object = ({ value, path }: { value: unknown; path: string }): Node => {
   if (typeof value !== 'object' || value === null || Array.isArray(value) === true)
@@ -125,7 +127,8 @@ const allowed = ({
 const namePattern = /^[A-Za-z_$][A-Za-z0-9_$]*$/u
 const reserved: Readonly<Record<string, true>> = {
   Schema: true,
-  Wire: true,
+  EffectRust: true,
+  ContractJson: true,
   decode: true,
   encode: true,
   await: true,
@@ -190,9 +193,8 @@ const reserved: Readonly<Record<string, true>> = {
 }
 
 /** Strict schemars admission with path/remedy failures, followed by Effect's representation renderer.
- * Generated modules export the renderer's normalized schema names and strict Wire.decode/encode entry points.
- * Recursive decoded types are preserved; their encoded view is unknown because Wire transforms differ from the
- * decoded view assumed by the upstream suspension renderer. Validation and wire codecs remain fully enforced.
+ * Generated modules export plain Effect schemas and strict ContractJson decode/encode entry points.
+ * Recursive decoded types and portable validation constraints are preserved.
  */
 // eslint-disable-next-line overeng/named-args -- Preserve the public importRustSchema positional SDK signature.
 export const importRustSchema = (
@@ -211,12 +213,13 @@ export const importRustSchema = (
       namePattern.test(value) === false ||
       Object.hasOwn(reserved, value) === true ||
       emitted === 'Schema' ||
-      emitted === 'Wire'
+      emitted === 'EffectRust' ||
+      emitted === 'ContractJson'
     )
       reject(
         path,
         `invalid Effect export identifier ${value}`,
-        'Use a JavaScript identifier that is not a reserved word or a generated import name (Schema or Wire)',
+        'Use a JavaScript identifier that is not a reserved word or generated import name',
       )
   }
   validateName({ value: rootName, path: '$/title' })
@@ -573,33 +576,58 @@ export const importRustSchema = (
           return reject(
             `${path}/format`,
             'lossy or unsupported integer format',
-            'Use uint8, uint16, uint32 or int32; 64-bit integers require canonical string Wire codecs',
+            'Use admitted integer formats with safe numeric bounds, or canonical decimal strings for full-range 64-bit integers',
           )
         const inferred =
           width ??
-          Object.keys(ranges).find((key) => {
-            const range = ranges[key as Width]
-            return node.minimum === range[0] && node.maximum === range[1]
+          (Object.keys(ranges) as Width[]).find((key) => {
+            const [lo, hi] = ranges[key]
+            return (
+              typeof node.minimum === 'number' &&
+              typeof node.maximum === 'number' &&
+              node.minimum >= lo &&
+              node.maximum <= hi
+            )
           })
         if (typeof inferred !== 'string' || Object.hasOwn(ranges, inferred) === false)
           return reject(
             path,
-            'unbounded or noncanonical integer bounds',
-            'Declare a supported x-effect-rust-width or exact uint8/uint16/uint32/int32 bounds; use Wire.U64/I64 for wider values',
+            'Unbounded or unsupported integer interval',
+            'Declare safe integer bounds fitting an admitted width or pin the width',
           )
         const result = inferred as Width
-        const [minimum, maximum] = ranges[result]
+        const [lo, hi] = ranges[result]
         if (
-          (node.minimum !== undefined && node.minimum !== minimum) ||
-          (node.maximum !== undefined && node.maximum !== maximum) ||
+          (result === 'u64' || result === 'i64') &&
+          (node.minimum === undefined || node.maximum === undefined)
+        )
+          return reject(
+            path,
+            '64-bit numeric storage requires explicit safe bounds',
+            'Bound the complete number interval within JavaScript safe integers; use decimal strings for full-range 64-bit values',
+          )
+        const minimum = node.minimum ?? lo
+        const maximum = node.maximum ?? hi
+        if (
+          typeof minimum !== 'number' ||
+          typeof maximum !== 'number' ||
+          Number.isSafeInteger(minimum) === false ||
+          Number.isSafeInteger(maximum) === false ||
+          minimum < lo ||
+          maximum > hi ||
+          minimum > maximum ||
           (node.format !== undefined && formats[String(node.format)] !== result)
         )
           return reject(
             path,
-            'integer bounds or format disagree with wire width',
-            'Use the exact canonical width range; narrower refinements need an explicit IR lowering',
+            'Integer bounds or format disagree with storage width',
+            'Use a nonempty safe integer interval contained by the declared width',
           )
-        return { kind: 'int', width: result }
+        return {
+          kind: 'int',
+          width: result,
+          ...(minimum === lo && maximum === hi ? {} : { minimum, maximum }),
+        }
       }
       case 'string': {
         allowed({
@@ -614,6 +642,8 @@ export const importRustSchema = (
             'x-effect-rust-format',
             'x-effect-rust-pattern',
             'x-effect-rust-pattern-flags',
+            'x-effect-rust-minimum',
+            'x-effect-rust-maximum',
           ],
           path,
         })
@@ -642,15 +672,50 @@ export const importRustSchema = (
             return reject(
               path,
               'semantic codec with conflicting refinements',
-              'Use the canonical Wire codec alone, without additional lossy constraints',
+              'Use canonical decimal or timestamp semantics without conflicting string checks',
             )
-          return { kind }
+          const min = node['x-effect-rust-minimum']
+          const max = node['x-effect-rust-maximum']
+          if (min === undefined && max === undefined) return { kind }
+          if (
+            kind === 'dateTime' ||
+            typeof min !== 'string' ||
+            typeof max !== 'string' ||
+            /^(0|-?[1-9][0-9]*)$/.test(min) === false ||
+            /^(0|-?[1-9][0-9]*)$/.test(max) === false
+          )
+            return reject(
+              path,
+              'Invalid decimal interval',
+              'Provide canonical decimal minimum and maximum together on a 64-bit integer',
+            )
+          const lo = kind === 'u64' ? 0n : -(2n ** 63n)
+          const hi = kind === 'u64' ? 2n ** 64n - 1n : 2n ** 63n - 1n
+          if (BigInt(min) < lo || BigInt(max) > hi || BigInt(min) > BigInt(max))
+            return reject(
+              path,
+              'Decimal bounds exceed width',
+              'Use a nonempty interval fitting the declared 64-bit width',
+            )
+          return {
+            kind,
+            ...(BigInt(min) === lo && BigInt(max) === hi ? {} : { minimum: min, maximum: max }),
+          }
         }
         if (node.format !== undefined)
           return reject(
             `${path}/format`,
             'unregistered string format',
-            'Declare x-effect-rust-format for a supported semantic Wire codec',
+            'Declare x-effect-rust-format for supported decimal or millisecond timestamp semantics',
+          )
+        if (
+          node['x-effect-rust-minimum'] !== undefined ||
+          node['x-effect-rust-maximum'] !== undefined
+        )
+          return reject(
+            path,
+            'Decimal bounds on an ordinary string',
+            'Use bounds only with a declared 64-bit decimal format',
           )
         const pattern = node['x-effect-rust-pattern'] ?? node.pattern
         if (
@@ -835,11 +900,12 @@ export const importRustSchema = (
             )
           return {
             wire,
-            type: fieldType,
+            type:
+              required.includes(wire) === false && fieldType.kind === 'nullable'
+                ? { kind: 'patch' as const, inner: fieldType.inner }
+                : fieldType,
             presence:
-              fieldType.kind === 'patch' || required.includes(wire) === true
-                ? ('required' as const)
-                : ('optional' as const),
+              required.includes(wire) === true ? ('required' as const) : ('optional' as const),
           }
         })
         return named({
@@ -913,6 +979,32 @@ export const importRustSchema = (
       'root reference has no concrete schema',
       'Define the root schema before referring to it recursively',
     )
+  // Resolve named nullable aliases only after every definition has been admitted.
+  // Optional nullable properties are Rust Patch regardless of JSON Schema ref placement.
+  for (const [name, definition] of Object.entries(defs)) {
+    if (definition.kind !== 'struct') continue
+    defs[name] = {
+      ...definition,
+      fields: definition.fields.map((field) => {
+        if (field.presence !== 'optional') return field
+        let value = field.type
+        const seen = new Set<string>()
+        while (value.kind === 'ref' && seen.has(value.name) === false) {
+          seen.add(value.name)
+          const target = defs[value.name]
+          if (target?.kind !== 'alias') break
+          value = target.type
+        }
+        return value.kind === 'nullable'
+          ? {
+              wire: field.wire,
+              presence: field.presence,
+              type: { kind: 'patch' as const, inner: value.inner },
+            }
+          : field
+      }),
+    }
+  }
   for (const name of discriminatorDefinitions) {
     const used = Object.values(defs).some((definition) => {
       switch (definition.kind) {
@@ -1031,16 +1123,27 @@ const finish = (ir: ContractIR): { readonly ir: ContractIR; readonly source: str
       case 'null':
         return { _tag: 'Null', checks: [] }
       case 'u64':
-        return semantic({ runtime: 'Wire.U64', Type: 'bigint' })
-      case 'i64':
-        return semantic({ runtime: 'Wire.I64', Type: 'bigint' })
+      case 'i64': {
+        const minimum = value.minimum ?? (value.kind === 'u64' ? '0' : '-9223372036854775808')
+        const maximum =
+          value.maximum ?? (value.kind === 'u64' ? '18446744073709551615' : '9223372036854775807')
+        return semantic({
+          runtime: `Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: ${minimum}n, maximum: ${maximum}n })).annotate({ [EffectRust.width]: ${JSON.stringify(value.kind)} })`,
+          Type: 'bigint',
+        })
+      }
       case 'dateTime':
         return semantic({
-          runtime: 'Wire.TimestampMillis',
-          Type: 'typeof Wire.TimestampMillis.Type',
+          runtime: 'Schema.DateTimeUtc.annotate({ [EffectRust.timestampPrecision]: "millis" })',
+          Type: 'typeof Schema.DateTimeUtc.Type',
         })
-      case 'int':
-        return semantic({ runtime: `Wire.${value.width.toUpperCase()}`, Type: 'number' })
+      case 'int': {
+        const [lo, hi] = ranges[value.width]
+        return semantic({
+          runtime: `Schema.Int.check(Schema.isBetween({ minimum: ${value.minimum ?? lo}, maximum: ${value.maximum ?? hi} })).annotate({ [EffectRust.width]: ${JSON.stringify(value.width)} })`,
+          Type: 'number',
+        })
+      }
       case 'nullable':
         return {
           _tag: 'Union',
@@ -1048,11 +1151,11 @@ const finish = (ir: ContractIR): { readonly ir: ContractIR; readonly source: str
           checks: [],
         }
       case 'patch':
-        return semantic({
-          runtime: 'Wire.Patch($inner)',
-          Type: '{ readonly _tag: "Absent" } | { readonly _tag: "Null" } | { readonly _tag: "Value"; readonly value: $inner }',
-          parameters: [type(value.inner)],
-        })
+        return {
+          _tag: 'Union',
+          types: [{ _tag: 'Null', checks: [] }, type(value.inner)],
+          checks: [],
+        }
       case 'array':
         return { _tag: 'Arrays', elements: [], rest: [type(value.item)], checks: [] }
       case 'record':
@@ -1088,7 +1191,7 @@ const finish = (ir: ContractIR): { readonly ir: ContractIR; readonly source: str
               ? []
               : [
                   filter(
-                    `Wire.pattern(${JSON.stringify(value.pattern)}, ${JSON.stringify(value.flags ?? 'u')})`,
+                    `EffectRust.pattern(${JSON.stringify(value.pattern)}, ${JSON.stringify(value.flags ?? 'u')})`,
                   ),
                 ]),
             ...(value.minLength === undefined
@@ -1113,7 +1216,7 @@ const finish = (ir: ContractIR): { readonly ir: ContractIR; readonly source: str
           checks: [],
         }
         return semantic({
-          runtime: `$inner.annotate(Wire.excess(${JSON.stringify(value.excess ?? 'error')}))${value.nonExhaustive === true ? '.annotate({ "x-effect-rust-non-exhaustive": true })' : ''}`,
+          runtime: `$inner.annotate({ [EffectRust.excess]: ${JSON.stringify(value.excess ?? 'error')}${value.nonExhaustive === true ? ', [EffectRust.nonExhaustive]: true' : ''} })`,
           Type: '$inner',
           parameters: [ordinary],
         })
@@ -1145,14 +1248,14 @@ const finish = (ir: ContractIR): { readonly ir: ContractIR; readonly source: str
               ],
             }
             return semantic({
-              runtime: `$inner.annotate(Wire.excess(${JSON.stringify(body.excess ?? 'error')}))`,
+              runtime: `$inner.annotate({ [EffectRust.excess]: ${JSON.stringify(body.excess ?? 'error')} })`,
               Type: '$inner',
               parameters: [ordinary],
             })
           }),
           checks: [],
           ...(value.nonExhaustive === true
-            ? { annotations: { 'x-effect-rust-non-exhaustive': true } }
+            ? { annotations: { 'effect-rust/nonExhaustive': true } }
             : {}),
         }
     }
@@ -1164,20 +1267,20 @@ const finish = (ir: ContractIR): { readonly ir: ContractIR; readonly source: str
     representations: [{ _tag: 'Reference', $ref: ir.contract }],
     references,
   })
-  // Wire codecs have distinct encoded views, including inside explicit suspension callbacks.
+  // Recursive schema callbacks retain the domain type rather than JSON transport types.
   const declarations = emitted.references.nonRecursives.map(
     ({ $ref, code }) =>
-      `export type ${$ref} = ${code.Type}\nexport const ${$ref} = ${recursiveRuntime(code.runtime)}`,
+      `export type ${$ref} = ${code.Type}\nexport const ${$ref} = ${code.runtime}.annotate({ identifier: ${JSON.stringify($ref)} })`,
   )
   declarations.push(
     ...Object.entries(emitted.references.recursives).map(
       ([name, code]) =>
-        `export type ${name} = ${code.Type}\nexport const ${name}: Schema.Codec<${name}, unknown> = ${recursiveRuntime(code.runtime)}`,
+        `export type ${name} = ${code.Type}\nexport const ${name}: Schema.Codec<${name}> = ${code.runtime}.annotate({ identifier: ${JSON.stringify(name)} })`,
     ),
   )
   const root = emitted.codes[0]!.runtime
   return {
     ir,
-    source: `import { Schema } from 'effect'\nimport { Wire } from '@overeng/effect-rust'\n\n${declarations.join('\n\n')}\n\nexport const decode = Wire.decode(${root})\nexport const encode = Wire.encode(${root})\n`,
+    source: `import { Schema } from 'effect'\nimport { ContractJson, EffectRust } from '@overeng/effect-rust'\n\n${declarations.join('\n\n')}\n\nexport const decode = ContractJson.decode(${root})\nexport const encode = ContractJson.encode(${root})\n`,
   }
 }

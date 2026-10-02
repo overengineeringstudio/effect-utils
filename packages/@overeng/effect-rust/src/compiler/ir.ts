@@ -1,9 +1,26 @@
 /** Integer widths admitted without loss at the Rust boundary. */
-export type Width = 'u8' | 'u16' | 'u32' | 'i32'
+export type Width = 'u8' | 'u16' | 'u32' | 'i8' | 'i16' | 'i32' | 'u64' | 'i64'
+/** Numeric JSON ranges: 64-bit storage must still enforce JavaScript's safe-integer bounds. */
+export const integerRanges: Readonly<Record<Width, readonly [number, number]>> = {
+  u8: [0, 255],
+  u16: [0, 65535],
+  u32: [0, 4294967295],
+  i8: [-128, 127],
+  i16: [-32768, 32767],
+  i32: [-2147483648, 2147483647],
+  u64: [0, Number.MAX_SAFE_INTEGER],
+  i64: [-Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+}
 /** Portable scalar, container, semantic codec or named reference in the contract IR. */
 export type Type =
-  | { readonly kind: 'string' | 'bool' | 'u64' | 'i64' | 'dateTime' | 'null' }
-  | { readonly kind: 'int'; readonly width: Width }
+  | { readonly kind: 'string' | 'bool' | 'dateTime' | 'null' }
+  | { readonly kind: 'u64' | 'i64'; readonly minimum?: string; readonly maximum?: string }
+  | {
+      readonly kind: 'int'
+      readonly width: Width
+      readonly minimum?: number
+      readonly maximum?: number
+    }
   | { readonly kind: 'nullable' | 'patch'; readonly inner: Type }
   | { readonly kind: 'array'; readonly item: Type }
   | { readonly kind: 'record'; readonly key: Type; readonly value: Type }
@@ -44,7 +61,7 @@ export interface ContractIR {
   readonly contract: string
   readonly defs: Readonly<Record<string, Definition>>
 }
-/** Sorted discriminator keys of the contract set: Rust `TAG_FIELDS` and `Wire.tagKeys` of the contract schemas. */
+/** Sorted discriminator keys used by canonical encoders in both languages. */
 export const tagFields = (ir: ContractIR): readonly string[] =>
   [
     ...new Set(

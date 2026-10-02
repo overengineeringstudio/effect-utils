@@ -84,7 +84,7 @@ export const assertPortablePattern = (
   }
 }
 
-/** Filter used with Schema.String.check(Wire.pattern(...)). */
+/** Filter used with Schema.String.check(EffectRust.pattern(...)). */
 // eslint-disable-next-line overeng/named-args -- Preserve the public pattern positional SDK signature.
 export const pattern = (source: string, flags: 'u' | 'iu' = 'u') => {
   assertPortablePattern(source, flags)

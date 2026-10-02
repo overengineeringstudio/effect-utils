@@ -23,7 +23,10 @@ export default packageJson(
     name: '@overeng/effect-rust-fixture-consumer',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry({ types: './dist/src/mod.d.ts', default: './src/mod.ts' }, { environment: 'isomorphic-es2024' }),
+      '.': exportEntry(
+        { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
+        { environment: 'isomorphic-es2024' },
+      ),
     },
   } satisfies PackageJsonInputData,
   workspaceDeps,

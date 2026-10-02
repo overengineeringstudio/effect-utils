@@ -2,6 +2,8 @@ import { DateTime, type Schema } from 'effect'
 
 import type { ContractIR, Definition, Type, Width } from '../compiler/ir.ts'
 import { lower } from '../compiler/lower.ts'
+import { valueCodec } from './contract-json.ts'
+import { scalarString } from './json.ts'
 import { decode as decodeSchema, encode as encodeSchema } from './validation.ts'
 
 /** Malformed Borsh frame failure with its byte offset. */
@@ -29,7 +31,16 @@ export interface Codec<T> {
 export interface FrameCodec<T> extends Codec<T> {
   readonly trusted: Codec<T>
 }
-const widths: Record<Width, number> = { u8: 1, u16: 2, u32: 4, i32: 4 }
+const widths: Record<Width, number> = {
+  u8: 1,
+  i8: 1,
+  u16: 2,
+  i16: 2,
+  u32: 4,
+  i32: 4,
+  u64: 8,
+  i64: 8,
+}
 // Rust String::Ord and Borsh order valid UTF-8 strings by Unicode scalar, not UTF-16 code unit.
 const compareKeys = ({ left, right }: { left: string; right: string }): number => {
   const a = new TextEncoder().encode(left)
@@ -120,6 +131,7 @@ export const makeIRCodec = (
       push(buffer)
     }
     const string = (value: string) => {
+      if (scalarString(value) === false) throw new FrameError(size, 'Unpaired Unicode surrogate')
       const bytes = new TextEncoder().encode(value)
       integer({ value: BigInt(bytes.length), bytes: 4 })
       push(bytes)
@@ -195,9 +207,13 @@ export const makeIRCodec = (
           string(value)
           break
         case 'int':
-          if (typeof value !== 'number' || Number.isInteger(value) === false)
-            throw new FrameError(size, 'Expected integer')
-          integer({ value: BigInt(value), bytes: widths[node.width], signed: node.width === 'i32' })
+          if (typeof value !== 'number' || Number.isSafeInteger(value) === false)
+            throw new FrameError(size, 'Expected safe integer')
+          integer({
+            value: BigInt(value),
+            bytes: widths[node.width],
+            signed: node.width.startsWith('i'),
+          })
           break
         case 'u64':
         case 'i64':
@@ -222,17 +238,9 @@ export const makeIRCodec = (
           if (value !== null) write({ node: node.inner, value, depth: depth + 1 })
           break
         case 'patch': {
-          let tag: string
-          let child = value
-          if (typed === true) {
-            const patch = object(value)
-            tag = String(patch._tag)
-            child = patch.value
-          } else tag = value === undefined ? 'Absent' : value === null ? 'Null' : 'Value'
-          const index = ['Absent', 'Null', 'Value'].indexOf(tag)
-          if (index < 0) throw new FrameError(size, 'Invalid Patch')
+          const index = value === undefined ? 0 : value === null ? 1 : 2
           integer({ value: BigInt(index), bytes: 1 })
-          if (index === 2) write({ node: node.inner, value: child, depth: depth + 1 })
+          if (index === 2) write({ node: node.inner, value, depth: depth + 1 })
           break
         }
         case 'array':
@@ -339,8 +347,14 @@ export const makeIRCodec = (
           return discriminant(1) === 1
         case 'string':
           return string()
-        case 'int':
-          return Number(integer({ width: widths[node.width], signed: node.width === 'i32' }))
+        case 'int': {
+          const value = Number(
+            integer({ width: widths[node.width], signed: node.width.startsWith('i') }),
+          )
+          if (Number.isSafeInteger(value) === false)
+            throw new FrameError(cursor, 'Integer exceeds JS safe number range')
+          return value
+        }
         case 'u64':
         case 'i64': {
           const value = integer({ width: 8, signed: node.kind === 'i64' })
@@ -359,17 +373,11 @@ export const makeIRCodec = (
           return discriminant(1) === 0 ? null : read({ node: node.inner, depth: depth + 1 })
         case 'patch': {
           const tag = discriminant(2)
-          return typed === true
-            ? tag === 0
-              ? { _tag: 'Absent' }
-              : tag === 1
-                ? { _tag: 'Null' }
-                : { _tag: 'Value', value: read({ node: node.inner, depth: depth + 1 }) }
-            : tag === 0
-              ? undefined
-              : tag === 1
-                ? null
-                : read({ node: node.inner, depth: depth + 1 })
+          return tag === 0
+            ? undefined
+            : tag === 1
+              ? null
+              : read({ node: node.inner, depth: depth + 1 })
         }
         case 'array': {
           const count = length()
@@ -410,17 +418,20 @@ export const makeIRCodec = (
 }
 
 /** Creates schema-validated Borsh frame codecs plus trusted encoding and decoding paths. */
-// eslint-disable-next-line overeng/named-args -- Preserve the public makeFrame positional SDK signature.
-export const makeFrame = <TSchema extends Schema.ConstraintCodec<unknown>>(
+// eslint-disable-next-line overeng/named-args -- Public frame codec takes a schema and header options.
+export const frame = <TSchema extends Schema.ConstraintCodec<unknown>>(
   schema: TSchema,
   options: FrameOptions,
 ): FrameCodec<TSchema['Type']> => {
   const ir = lower({ Row: schema }, 'frame')
+  const values = valueCodec(schema)
+  const encoder = encodeSchema(values)
+  const decoder = decodeSchema(values)
   const codec = makeIRCodec(ir, 'Row', options)
   const trusted = makeIRCodec(ir, 'Row', options, true)
   return {
-    encode: (value) => codec.encode(encodeSchema(schema)(value)),
-    decode: (bytes) => decodeSchema(schema)(codec.decode(bytes)),
+    encode: (value) => codec.encode(encoder(value)),
+    decode: (bytes) => decoder(codec.decode(bytes)),
     // Admission proves the layout corresponds to TSchema.Type; trusted intentionally bypasses refinements.
     trusted: {
       encode: trusted.encode,
@@ -428,48 +439,3 @@ export const makeFrame = <TSchema extends Schema.ConstraintCodec<unknown>>(
     },
   }
 }
-/** Typed numeric column whose kind selects its explicit little-endian wire width. */
-export type Column =
-  | Uint8Array
-  | Uint16Array
-  | Uint32Array
-  | Int32Array
-  | BigUint64Array
-  | BigInt64Array
-/** Supported explicit numeric widths for bulk column codecs. */
-export type ColumnWidth = Width | 'u64' | 'i64'
-const constructors = {
-  u8: Uint8Array,
-  u16: Uint16Array,
-  u32: Uint32Array,
-  i32: Int32Array,
-  u64: BigUint64Array,
-  i64: BigInt64Array,
-}
-/** Structure-of-arrays storage: every column has a declared width and equal row count. */
-export const makeColumns = <TFields extends Readonly<Record<string, ColumnWidth>>>(
-  fields: TFields,
-) => ({
-  allocate: (
-    rows: number,
-  ): { readonly [K in keyof TFields]: InstanceType<(typeof constructors)[TFields[K]]> } => {
-    if (Number.isSafeInteger(rows) === false || rows < 0)
-      throw new FrameError(0, 'Invalid row count')
-    return Object.fromEntries(
-      Object.entries(fields).map(([key, width]) => [key, new constructors[width](rows)]),
-    ) as { readonly [K in keyof TFields]: InstanceType<(typeof constructors)[TFields[K]]> }
-  },
-  validate: (input: Readonly<Record<keyof TFields, Column>>): void => {
-    let rows: number | undefined
-    if (Object.keys(input).length !== Object.keys(fields).length)
-      throw new FrameError(0, 'Unexpected column count')
-    for (const [key, width] of Object.entries(fields)) {
-      const column = input[key]
-      if (!(column instanceof constructors[width]))
-        throw new FrameError(0, `Wrong width for column ${key}`)
-      if (rows !== undefined && column.length !== rows)
-        throw new FrameError(0, 'Column row counts differ')
-      rows = column.length
-    }
-  },
-})
