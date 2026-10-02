@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:7f22dc35d867e828dc23c3f8f272e20035146a19be7a1793e37ae985a862e1e6
+# Store fingerprint: sha256:d6606a8486262007b767e4274b9fcb4b7f4f3dc50a88d36e3a3c23f89ffe6a03
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -10644,9 +10644,9 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_vite_8_2_2_types__48e1a3e8c7ce",
+    name = "entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
     package = ":package_stylexjs_unplugin_0_19_0_1a0b1820fb20",
-    store_key = "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0",
+    store_key = "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5",
     runtime = ":assemble-store.ts",
     dependencies = {
         "@babel/core": ":entry_babel_core_7_29_7_46a08ec2c1b0",
@@ -42224,7 +42224,7 @@ pnpm_store_view(
         "@stylexjs/babel-plugin": "@stylexjs+babel-plugin@0.19.0_patch_hash=f6a2b5a89698e9f14621ed294e9914bf5a007eefdd95c7b162d88f8264d41cca",
         "@stylexjs/postcss-plugin": "@stylexjs+postcss-plugin@0.19.0",
         "@stylexjs/stylex": "@stylexjs+stylex@0.19.0",
-        "@stylexjs/unplugin": "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0",
+        "@stylexjs/unplugin": "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5",
         "@types/node": "@types+node@26.5.0",
         "@types/react": "@types+react@19.2.18",
         "babel-loader": "babel-loader@10.1.1_@babel+core@7.29.7",
@@ -42303,7 +42303,7 @@ pnpm_store_view(
             "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
-            "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_vite_8_2_2_types__48e1a3e8c7ce",
+            "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
             "@swc+helpers@0.5.15": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
             "@types+babel__core@7.20.5": ":entry_types_babel__core_7_20_5_1365550a8adb",
             "@types+babel__generator@7.27.0": ":entry_types_babel__generator_7_27_0_34f1aaa05024",
@@ -42497,7 +42497,7 @@ pnpm_store_view(
             "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
-            "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_vite_8_2_2_types__48e1a3e8c7ce",
+            "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
             "@swc+helpers@0.5.15": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
             "@types+babel__core@7.20.5": ":entry_types_babel__core_7_20_5_1365550a8adb",
             "@types+babel__generator@7.27.0": ":entry_types_babel__generator_7_27_0_34f1aaa05024",
@@ -42693,7 +42693,7 @@ pnpm_store_view(
             "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
-            "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_vite_8_2_2_types__48e1a3e8c7ce",
+            "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
             "@swc+helpers@0.5.15": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
             "@types+babel__core@7.20.5": ":entry_types_babel__core_7_20_5_1365550a8adb",
             "@types+babel__generator@7.27.0": ":entry_types_babel__generator_7_27_0_34f1aaa05024",
@@ -42889,7 +42889,7 @@ pnpm_store_view(
             "@stylexjs+postcss-plugin@0.19.0": ":entry_stylexjs_postcss_plugin_0_19_0_5729505901df",
             "@stylexjs+shared@0.19.0": ":entry_stylexjs_shared_0_19_0_cc10928d6623",
             "@stylexjs+stylex@0.19.0": ":entry_stylexjs_stylex_0_19_0_cda959b356f4",
-            "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_vite_8_2_2_types__48e1a3e8c7ce",
+            "@stylexjs+unplugin@0.19.0_unplugin@3.3.0_esbuild@0.28.2_rolldown@1.2.7_vite@8.2.2_@types+node@26.5.0_es_aed1f6ae5400bbc5": ":entry_stylexjs_unplugin_0_19_0_unplugin_3_3_0_esbuild_0_28_2_rolldown_1_2_7_vi_f1e7378fcd91",
             "@swc+helpers@0.5.15": ":entry_swc_helpers_0_5_15_fb6f5ee8b6ce",
             "@types+babel__core@7.20.5": ":entry_types_babel__core_7_20_5_1365550a8adb",
             "@types+babel__generator@7.27.0": ":entry_types_babel__generator_7_27_0_34f1aaa05024",
