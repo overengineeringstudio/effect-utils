@@ -24,5 +24,7 @@ export default createGenieOutput({
     `    visibility = ${JSON.stringify(data.visibility)},`,
     ')',
     '',
+    'export_file(name = "service-smoke", src = "service-smoke.ts", visibility = ["PUBLIC"])',
+    '',
   ].join('\n'),
 })

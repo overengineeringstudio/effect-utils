@@ -42,6 +42,7 @@ export type CargoBuck2WasmBindgenOptions = {
   readonly outName?: string
   readonly profile?: CargoBuck2WasmProfile
   readonly smoke?: CargoBuck2InteropSmokeOptions
+  readonly visibility?: readonly string[]
 }
 
 /** Raw wasm32 guest product for one declared host harness. */
@@ -58,6 +59,7 @@ export type CargoBuck2WasmGuestOptions = {
 export type CargoBuck2NapiOptions = {
   readonly name: string
   readonly smoke?: CargoBuck2InteropSmokeOptions
+  readonly visibility?: readonly string[]
 }
 
 export type CargoBuck2PackageProjectionOptions = {
@@ -842,6 +844,7 @@ const cargoBuck2PackageProjectionFor = ({
     dependencies,
     conditionalDependencies,
     visibility,
+    procMacro = false,
   }: {
     readonly rule: 'rust_binary' | 'rust_library'
     readonly name: string
@@ -851,11 +854,13 @@ const cargoBuck2PackageProjectionFor = ({
     readonly dependencies: readonly string[]
     readonly conditionalDependencies: readonly ConditionalDependency[]
     readonly visibility?: readonly string[]
+    readonly procMacro?: boolean
   }): readonly string[] => [
     `native.${rule}(`,
     `    name = ${starlarkString(name)},`,
     `    crate = ${starlarkString(crate)},`,
     `    crate_root = ${starlarkString(crateRoot)},`,
+    ...(procMacro === true ? ['    proc_macro = True,'] : []),
     ...renderSources({ name: 'srcs', values: ruleSources, foreignMember }),
     ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
     ...(namedDependencies.length === 0
@@ -983,6 +988,7 @@ const cargoBuck2PackageProjectionFor = ({
         name: foreignMember === undefined ? 'lib' : foreignTargetName(foreignMember),
         crate: library.name,
         crateRoot: library.path,
+        ...(library.procMacro === undefined ? {} : { procMacro: library.procMacro }),
         ruleSources: librarySources,
         dependencies: normalLabels,
         conditionalDependencies: normalConditional,
@@ -1010,6 +1016,7 @@ const cargoBuck2PackageProjectionFor = ({
       'rust_wasm_bindgen_library(',
       `    name = ${starlarkString(wasmBindgen.name)},`,
       '    crate = ":lib",',
+      ...(wasmBindgen.visibility === undefined ? [] : renderStringList({ name: 'visibility', values: wasmBindgen.visibility })),
       ...(wasmBindgen.outName === undefined
         ? []
         : [`    out_name = ${starlarkString(wasmBindgen.outName)},`]),
@@ -1051,6 +1058,7 @@ const cargoBuck2PackageProjectionFor = ({
       'rust_napi_library(',
       `    name = ${starlarkString(napi.name)},`,
       '    crate = ":lib",',
+      ...(napi.visibility === undefined ? [] : renderStringList({ name: 'visibility', values: napi.visibility })),
       ')',
       '',
     )
@@ -1817,6 +1825,7 @@ type CargoLibraryTarget = {
   readonly name: string
   readonly path: string
   readonly crateTypes?: readonly string[]
+  readonly procMacro?: boolean
 }
 type CargoBinaryTarget = {
   readonly crateRoot: string
@@ -1853,9 +1862,7 @@ const discoverCargoTargets = ({
   const autobins = autoTarget('autobins')
 
   const explicitLibrary = manifest.lib
-  if (explicitLibrary?.['proc-macro'] === true) {
-    throw new Error(`Cargo proc-macro library semantics are unsupported in ${member.manifestPath}`)
-  }
+  const procMacro = explicitLibrary?.['proc-macro'] ?? false
   const crateTypes = explicitLibrary?.['crate-type']
   if (
     crateTypes !== undefined &&
@@ -1879,6 +1886,7 @@ const discoverCargoTargets = ({
       name: explicitLibrary.name ?? crateIdentifier(packageName),
       path: libraryPath,
       ...(crateTypes === undefined ? {} : { crateTypes }),
+      ...(procMacro === true ? { procMacro } : {}),
     }
   } else if (autolib === true && sourceSet.has(defaultLibraryPath) === true) {
     library = { name: crateIdentifier(packageName), path: defaultLibraryPath }
@@ -1990,6 +1998,10 @@ const targetConditionLabels = (condition: string): readonly string[] => {
       return ['prelude//os/constraints:linux']
     case 'cfg(target_os = "macos")':
       return ['prelude//os/constraints:macos']
+    case 'cfg(target_arch = "wasm32")':
+      return ['//buck2/rust:wasm32_config']
+    case 'cfg(not(target_arch = "wasm32"))':
+      return ['DEFAULT']
     default:
       throw new Error(`Unsupported Cargo target dependency condition: ${condition}`)
   }
@@ -2060,19 +2072,25 @@ const renderDependencies = ({
 }): readonly string[] => {
   const base = sorted(unconditional)
   const selected = new Map<string, string[]>()
+  const nativeOnly: string[] = []
   for (const entry of conditional) {
     if (base.includes(entry.dependency.label) === true) continue
+    if (entry.selectLabels.includes('DEFAULT')) {
+      nativeOnly.push(entry.dependency.label)
+      continue
+    }
     for (const selectLabel of entry.selectLabels) {
       const labels = selected.get(selectLabel) ?? []
       labels.push(entry.dependency.label)
       selected.set(selectLabel, labels)
     }
   }
+  const nativeSuffix = nativeOnly.length === 0 ? '' : ` + select({"//buck2/rust:wasm32_config": [], "DEFAULT": ${JSON.stringify(sorted(nativeOnly))}})`
   const baseLines = renderStringList({ name: 'deps', values: base })
-  if (selected.size === 0) return baseLines
+  if (selected.size === 0) return [...baseLines.slice(0, -1), `    ]${nativeSuffix},`]
   return [
     ...baseLines.slice(0, -1),
-    '    ] + select({',
+    `    ]${nativeSuffix} + select({`,
     ...[...selected.entries()]
       .toSorted(([left], [right]) => compareStrings({ left, right }))
       .flatMap(([selectLabel, labels]) =>
@@ -2557,6 +2575,10 @@ const effectUtilsWorkspaceMemberManifestPaths = [
   'rust/buck2-tools/core/Cargo.toml',
   'rust/buck2-tools/events/Cargo.toml',
   'rust/buck2-tools/product/Cargo.toml',
+  'rust/effect-rust/Cargo.toml',
+  'rust/effect-rust-macros/Cargo.toml',
+  'rust/effect-rust-fixtures/hash-interop/Cargo.toml',
+  'rust/effect-rust-fixtures/math-interop/Cargo.toml',
   'rust/effect-rust-fixtures/hash-core/Cargo.toml',
   'rust/effect-rust-fixtures/math-core/Cargo.toml',
   'rust/effect-rust-fixtures/wasm-adapter/Cargo.toml',

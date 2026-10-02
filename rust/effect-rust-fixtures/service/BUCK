@@ -1,0 +1,39 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/effect-rust-fixtures/service/BUCK.genie.ts
+# Projection generator: effect-utils/rust/interop-service-fixture
+# Projection schema version: 1
+# Semantic fingerprint: sha256:d8fefff47cbf6a2871478a7a4e0264b1ca7648485618e2d4045b4cdf92de5830
+# Semantic inputs: rust/effect-rust-fixtures/service/BUCK.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2/rust:interop.bzl", "rust_interop_service", "rust_interop_service_smoke")
+
+rust_interop_service(
+    name = "service",
+    service = "EffectRustFixture",
+    package_name = "effect-rust-fixture",
+    wasm = "//rust/effect-rust-fixtures/wasm-adapter:wasm",
+    napi = "//rust/effect-rust-fixtures/napi-adapter:napi",
+    visibility = ["PUBLIC"],
+)
+
+rust_interop_service_smoke(
+    name = "service-smoke-node",
+    service = ":service",
+    runtime = "node",
+    script = "//rust/effect-rust-fixtures:service-smoke",
+    vectors = "//rust/effect-rust-fixtures/math-interop:vectors",
+    visibility = ["PUBLIC"],
+)
+
+rust_interop_service_smoke(
+    name = "service-smoke-bun",
+    service = ":service",
+    runtime = "bun",
+    script = "//rust/effect-rust-fixtures:service-smoke",
+    vectors = "//rust/effect-rust-fixtures/math-interop:vectors",
+    visibility = ["PUBLIC"],
+)
+
