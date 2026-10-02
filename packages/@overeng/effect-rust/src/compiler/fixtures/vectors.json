@@ -1,2336 +1,2148 @@
 [
- {
-  "contract": "Portable",
-  "name": "valid-unicode",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "uint32-max",
-  "input": {
-   "count": 4294967295,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "uint32-overflow",
-  "input": {
-   "count": 4294967296,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "negative",
-  "input": {
-   "count": -1,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "fractional",
-  "input": {
-   "count": 0.5,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "unsafe-number",
-  "input": {
-   "count": 9007199254740992,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "string-number",
-  "input": {
-   "count": "1",
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "nullable-string",
-  "input": {
-   "count": 0,
-   "nullable": "yes",
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "nullable-number",
-  "input": {
-   "count": 0,
-   "nullable": 1,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "optional-present",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ],
-   "optional": "x"
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "optional-null",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ],
-   "optional": null
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "unknown-field",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ],
-   "extra": true
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "known-drain",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "drain",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "unknown-enum-tag",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "restart",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "enum-null",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": null,
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "unicode-invalid-digit",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "a1",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "unicode-empty",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "unicode-lower",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "éλ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "unicode-astral",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "𐐀",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "record-empty",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {},
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "record-invalid-key",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "ABC": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "record-unicode-key",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "é": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "record-number-value",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": 42
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "record-proto-key",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "constructor": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "nested-negative-overflow",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     -2147483649
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "nested-positive-overflow",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     2147483648
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "nested-fractional",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     1.5
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "nested-empty",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": []
-  },
-  "accept": true
- },
- {
-  "contract": "Portable",
-  "name": "nested-bad-shape",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    1
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "absent-count",
-  "input": {
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "absent-nullable",
-  "input": {
-   "count": 0,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "absent-kind",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "absent-name",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "labels": {
-    "abc": "x"
-   },
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "absent-labels",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "nested": [
-    [
-     0,
-     -2147483648,
-     2147483647
-    ]
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Portable",
-  "name": "absent-nested",
-  "input": {
-   "count": 0,
-   "nullable": null,
-   "kind": "deploy",
-   "name": "ÉΛ漢",
-   "labels": {
-    "abc": "x"
-   }
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "full-u64-offset-date-brand",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": true,
-  "canonical": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T10:34:56.789Z",
-   "host": "api-one"
-  }
- },
- {
-  "contract": "Extensions",
-  "name": "u64-zero",
-  "input": {
-   "counter": "0",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": true,
-  "canonical": {
-   "counter": "0",
-   "at": "2026-09-30T10:34:56.789Z",
-   "host": "api-one"
-  }
- },
- {
-  "contract": "Extensions",
-  "name": "u64-above-safe",
-  "input": {
-   "counter": "9007199254740993",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": true,
-  "canonical": {
-   "counter": "9007199254740993",
-   "at": "2026-09-30T10:34:56.789Z",
-   "host": "api-one"
-  }
- },
- {
-  "contract": "Extensions",
-  "name": "u64-overflow",
-  "input": {
-   "counter": "18446744073709551616",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "u64-negative",
-  "input": {
-   "counter": "-1",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "u64-fraction",
-  "input": {
-   "counter": "1.5",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "u64-leading-zero",
-  "input": {
-   "counter": "01",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "u64-plus",
-  "input": {
-   "counter": "+1",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "u64-whitespace",
-  "input": {
-   "counter": " 1",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "u64-empty",
-  "input": {
-   "counter": "",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "u64-exponential",
-  "input": {
-   "counter": "1e3",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "u64-number",
-  "input": {
-   "counter": 1,
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "date-utc",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56Z",
-   "host": "api-one"
-  },
-  "accept": true,
-  "canonical": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.000Z",
-   "host": "api-one"
-  }
- },
- {
-  "contract": "Extensions",
-  "name": "date-leap-day",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2024-02-29T00:00:00Z",
-   "host": "api-one"
-  },
-  "accept": true,
-  "canonical": {
-   "counter": "18446744073709551615",
-   "at": "2024-02-29T00:00:00.000Z",
-   "host": "api-one"
-  }
- },
- {
-  "contract": "Extensions",
-  "name": "date-invalid-calendar",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-02-30T00:00:00Z",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "date-missing-zone",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "date-leap-second",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:60Z",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "date-submillis",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.123456Z",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "date-garbage",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "not-date",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "brand-short",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "ab"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "brand-bad",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "BAD"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "brand-max",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "abcdefghijkl"
-  },
-  "accept": true,
-  "canonical": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T10:34:56.789Z",
-   "host": "abcdefghijkl"
-  }
- },
- {
-  "contract": "Extensions",
-  "name": "brand-long",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "abcdefghijklm"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "extension-extra",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one",
-   "extra": 1
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "extension-absent-counter",
-  "input": {
-   "at": "2026-09-30T12:34:56.789+02:00",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "extension-absent-at",
-  "input": {
-   "counter": "18446744073709551615",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Extensions",
-  "name": "extension-absent-host",
-  "input": {
-   "counter": "18446744073709551615",
-   "at": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "Flags",
-  "name": "lower",
-  "input": "abc",
-  "accept": true
- },
- {
-  "contract": "Flags",
-  "name": "upper",
-  "input": "ABC",
-  "accept": true
- },
- {
-  "contract": "Flags",
-  "name": "mixed",
-  "input": "AbC",
-  "accept": true
- },
- {
-  "contract": "Flags",
-  "name": "different",
-  "input": "abd",
-  "accept": false
- },
- {
-  "contract": "Flags",
-  "name": "unicode-other",
-  "input": "abç",
-  "accept": false
- },
- {
-  "contract": "Flags",
-  "name": "short",
-  "input": "ab",
-  "accept": false
- },
- {
-  "contract": "Flags",
-  "name": "extra",
-  "input": "xabc",
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-minimal",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": true,
-  "canonical": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T10:34:56.789Z"
-  }
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-full",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00",
-   "annotations": {
-    "org.opencontainers.image.title": "layer"
-   },
-   "expiresAt": "2026-10-01T00:00:00Z"
-  },
-  "accept": true,
-  "canonical": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T10:34:56.789Z",
-   "annotations": {
-    "org.opencontainers.image.title": "layer"
-   },
-   "expiresAt": "2026-10-01T00:00:00.000Z"
-  }
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-expires-null",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00",
-   "expiresAt": null
-  },
-  "accept": true,
-  "canonical": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T10:34:56.789Z",
-   "expiresAt": null
-  }
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-annotations-null",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00",
-   "annotations": null
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-annotations-empty",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00",
-   "annotations": {}
-  },
-  "accept": true,
-  "canonical": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T10:34:56.789Z",
-   "annotations": {}
-  }
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-annotations-number",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00",
-   "annotations": {
-    "a": 1
-   }
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-digest-uppercase",
-  "input": {
-   "digest": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-digest-short",
-  "input": {
-   "digest": "sha256:abc",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-digest-sha512",
-  "input": {
-   "digest": "sha512:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-digest-trailing-newline",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab\n",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-size-number",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": 1048576,
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-size-max",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "18446744073709551615",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": true,
-  "canonical": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "18446744073709551615",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T10:34:56.789Z"
-  }
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-size-overflow",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "18446744073709551616",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-media-type-upper",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "Application/JSON",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-media-type-127",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "a/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": true,
-  "canonical": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "a/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-   "createdAt": "2026-09-30T10:34:56.789Z"
-  }
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-media-type-128",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "a/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-   "createdAt": "2026-09-30T12:34:56.789+02:00"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-unknown-field",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00",
-   "extra": true
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-snake-case-key",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "createdAt": "2026-09-30T12:34:56.789+02:00",
-   "media_type": "application/json"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-missing-created",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-created-null",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": null
-  },
-  "accept": false
- },
- {
-  "contract": "ContentDescriptor",
-  "name": "cd-expires-invalid",
-  "input": {
-   "digest": "sha256:abababababababababababababababababababababababababababababababab",
-   "size": "1048576",
-   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-   "createdAt": "2026-09-30T12:34:56.789+02:00",
-   "expiresAt": "2026-02-30T00:00:00Z"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-deployed",
-  "input": {
-   "_tag": "Deployed",
-   "descriptor": {
-    "digest": "sha256:abababababababababababababababababababababababababababababababab",
-    "size": "1048576",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-    "createdAt": "2026-09-30T12:34:56.789+02:00"
-   },
-   "host": "api-one"
-  },
-  "accept": true,
-  "canonical": {
-   "_tag": "Deployed",
-   "descriptor": {
-    "digest": "sha256:abababababababababababababababababababababababababababababababab",
-    "size": "1048576",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-    "createdAt": "2026-09-30T10:34:56.789Z"
-   },
-   "host": "api-one"
-  }
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-i64-min",
-  "input": {
-   "_tag": "Scaled",
-   "delta": "-9223372036854775808",
-   "replicas": 3
-  },
-  "accept": true
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-i64-max",
-  "input": {
-   "_tag": "Scaled",
-   "delta": "9223372036854775807",
-   "replicas": 0
-  },
-  "accept": true
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-i64-overflow",
-  "input": {
-   "_tag": "Scaled",
-   "delta": "9223372036854775808",
-   "replicas": 0
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-i64-underflow",
-  "input": {
-   "_tag": "Scaled",
-   "delta": "-9223372036854775809",
-   "replicas": 0
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-negative-zero",
-  "input": {
-   "_tag": "Scaled",
-   "delta": "-0",
-   "replicas": 0
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-negative-leading-zero",
-  "input": {
-   "_tag": "Scaled",
-   "delta": "-01",
-   "replicas": 0
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-delta-number",
-  "input": {
-   "_tag": "Scaled",
-   "delta": -1,
-   "replicas": 0
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-tag-last",
-  "input": {
-   "delta": "1",
-   "replicas": 1,
-   "_tag": "Scaled"
-  },
-  "accept": true,
-  "canonical": {
-   "_tag": "Scaled",
-   "delta": "1",
-   "replicas": 1
-  }
- },
- {
-  "contract": "Event",
-  "name": "ev-deployed-tag-last",
-  "input": {
-   "host": "api-one",
-   "descriptor": {
-    "size": "1048576",
-    "createdAt": "2026-09-30T12:34:56.789+02:00",
-    "digest": "sha256:abababababababababababababababababababababababababababababababab",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
-   },
-   "_tag": "Deployed"
-  },
-  "accept": true,
-  "canonical": {
-   "_tag": "Deployed",
-   "descriptor": {
-    "createdAt": "2026-09-30T10:34:56.789Z",
-    "digest": "sha256:abababababababababababababababababababababababababababababababab",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-    "size": "1048576"
-   },
-   "host": "api-one"
-  }
- },
- {
-  "contract": "Event",
-  "name": "ev-deployed-tag-middle",
-  "input": {
-   "descriptor": {
-    "size": "1048576",
-    "createdAt": "2026-09-30T12:34:56.789+02:00",
-    "digest": "sha256:abababababababababababababababababababababababababababababababab",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
-   },
-   "_tag": "Deployed",
-   "host": "api-one"
-  },
-  "accept": true,
-  "canonical": {
-   "_tag": "Deployed",
-   "descriptor": {
-    "createdAt": "2026-09-30T10:34:56.789Z",
-    "digest": "sha256:abababababababababababababababababababababababababababababababab",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-    "size": "1048576"
-   },
-   "host": "api-one"
-  }
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-last-unknown-tag",
-  "input": {
-   "delta": "1",
-   "replicas": 1,
-   "_tag": "Restarted"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-last-non-string-tag",
-  "input": {
-   "delta": "1",
-   "replicas": 1,
-   "_tag": 1
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-last-unknown-field",
-  "input": {
-   "delta": "1",
-   "replicas": 1,
-   "extra": true,
-   "_tag": "Scaled"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-last-missing-field",
-  "input": {
-   "delta": "1",
-   "_tag": "Scaled"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-last-bad-payload",
-  "input": {
-   "delta": "-0",
-   "replicas": 1,
-   "_tag": "Scaled"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-last-nested-bad-digest",
-  "input": {
-   "host": "api-one",
-   "descriptor": {
-    "size": "1048576",
-    "createdAt": "2026-09-30T12:34:56.789+02:00",
-    "digest": "sha256:xyz",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
-   },
-   "_tag": "Deployed"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-last-drained-extra",
-  "input": {
-   "reason": "x",
-   "_tag": "Drained"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-drained",
-  "input": {
-   "_tag": "Drained"
-  },
-  "accept": true
- },
- {
-  "contract": "Event",
-  "name": "ev-drained-extra",
-  "input": {
-   "_tag": "Drained",
-   "reason": "x"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-unknown-tag",
-  "input": {
-   "_tag": "Restarted",
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-missing-tag",
-  "input": {
-   "delta": "1",
-   "replicas": 1
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-null",
-  "input": {
-   "_tag": null,
-   "delta": "1",
-   "replicas": 1
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-lowercase",
-  "input": {
-   "_tag": "scaled",
-   "delta": "1",
-   "replicas": 1
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-tag-key-type",
-  "input": {
-   "type": "Scaled",
-   "delta": "1",
-   "replicas": 1
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-scaled-extra",
-  "input": {
-   "_tag": "Scaled",
-   "delta": "1",
-   "replicas": 1,
-   "extra": 1
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-deployed-bad-digest",
-  "input": {
-   "_tag": "Deployed",
-   "descriptor": {
-    "digest": "sha256:xyz",
-    "size": "1048576",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-    "createdAt": "2026-09-30T12:34:56.789+02:00"
-   },
-   "host": "api-one"
-  },
-  "accept": false
- },
- {
-  "contract": "Event",
-  "name": "ev-deployed-bad-host",
-  "input": {
-   "_tag": "Deployed",
-   "descriptor": {
-    "digest": "sha256:abababababababababababababababababababababababababababababababab",
-    "size": "1048576",
-    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-    "createdAt": "2026-09-30T12:34:56.789+02:00"
-   },
-   "host": "A"
-  },
-  "accept": false
- },
- {
-  "contract": "Tree",
-  "name": "tree-leaf",
-  "input": {
-   "label": "root",
-   "children": []
-  },
-  "accept": true
- },
- {
-  "contract": "Tree",
-  "name": "tree-depth-3",
-  "input": {
-   "label": "n2",
-   "children": [
-    {
-     "label": "n1",
-     "children": [
-      {
-       "label": "n0",
-       "children": [
-        {
-         "label": "n",
-         "children": []
-        },
-        {
-         "label": "leaf",
-         "children": []
-        }
-       ]
+  {
+    "contract": "Portable",
+    "name": "valid-unicode",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
       },
-      {
-       "label": "leaf",
-       "children": []
-      }
-     ]
+      "nested": [[0, -2147483648, 2147483647]]
     },
-    {
-     "label": "leaf",
-     "children": []
-    }
-   ]
+    "accept": true
   },
-  "accept": true
- },
- {
-  "contract": "Tree",
-  "name": "tree-depth-40",
-  "input": {
-   "label": "n39",
-   "children": [
-    {
-     "label": "n38",
-     "children": [
-      {
-       "label": "n37",
-       "children": [
+  {
+    "contract": "Portable",
+    "name": "uint32-max",
+    "input": {
+      "count": 4294967295,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "uint32-overflow",
+    "input": {
+      "count": 4294967296,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "negative",
+    "input": {
+      "count": -1,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "fractional",
+    "input": {
+      "count": 0.5,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "unsafe-number",
+    "input": {
+      "count": 9007199254740992,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "string-number",
+    "input": {
+      "count": "1",
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "nullable-string",
+    "input": {
+      "count": 0,
+      "nullable": "yes",
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "nullable-number",
+    "input": {
+      "count": 0,
+      "nullable": 1,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "optional-present",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]],
+      "optional": "x"
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "optional-null",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]],
+      "optional": null
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "unknown-field",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]],
+      "extra": true
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "known-drain",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "drain",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "unknown-enum-tag",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "restart",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "enum-null",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": null,
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "unicode-invalid-digit",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "a1",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "unicode-empty",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "unicode-lower",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "éλ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "unicode-astral",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "𐐀",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "record-empty",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {},
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "record-invalid-key",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "ABC": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "record-unicode-key",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "é": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "record-number-value",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": 42
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "record-proto-key",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "constructor": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "nested-negative-overflow",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[-2147483649]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "nested-positive-overflow",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[2147483648]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "nested-fractional",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[1.5]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "nested-empty",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": []
+    },
+    "accept": true
+  },
+  {
+    "contract": "Portable",
+    "name": "nested-bad-shape",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [1]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "absent-count",
+    "input": {
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "absent-nullable",
+    "input": {
+      "count": 0,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "absent-kind",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "absent-name",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "labels": {
+        "abc": "x"
+      },
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "absent-labels",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "nested": [[0, -2147483648, 2147483647]]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Portable",
+    "name": "absent-nested",
+    "input": {
+      "count": 0,
+      "nullable": null,
+      "kind": "deploy",
+      "name": "ÉΛ漢",
+      "labels": {
+        "abc": "x"
+      }
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "full-u64-offset-date-brand",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": true,
+    "canonical": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T10:34:56.789Z",
+      "host": "api-one"
+    }
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-zero",
+    "input": {
+      "counter": "0",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": true,
+    "canonical": {
+      "counter": "0",
+      "at": "2026-09-30T10:34:56.789Z",
+      "host": "api-one"
+    }
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-above-safe",
+    "input": {
+      "counter": "9007199254740993",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": true,
+    "canonical": {
+      "counter": "9007199254740993",
+      "at": "2026-09-30T10:34:56.789Z",
+      "host": "api-one"
+    }
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-overflow",
+    "input": {
+      "counter": "18446744073709551616",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-negative",
+    "input": {
+      "counter": "-1",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-fraction",
+    "input": {
+      "counter": "1.5",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-leading-zero",
+    "input": {
+      "counter": "01",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-plus",
+    "input": {
+      "counter": "+1",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-whitespace",
+    "input": {
+      "counter": " 1",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-empty",
+    "input": {
+      "counter": "",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-exponential",
+    "input": {
+      "counter": "1e3",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "u64-number",
+    "input": {
+      "counter": 1,
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "date-utc",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56Z",
+      "host": "api-one"
+    },
+    "accept": true,
+    "canonical": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.000Z",
+      "host": "api-one"
+    }
+  },
+  {
+    "contract": "Extensions",
+    "name": "date-leap-day",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2024-02-29T00:00:00Z",
+      "host": "api-one"
+    },
+    "accept": true,
+    "canonical": {
+      "counter": "18446744073709551615",
+      "at": "2024-02-29T00:00:00.000Z",
+      "host": "api-one"
+    }
+  },
+  {
+    "contract": "Extensions",
+    "name": "date-invalid-calendar",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-02-30T00:00:00Z",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "date-missing-zone",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "date-leap-second",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:60Z",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "date-submillis",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.123456Z",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "date-garbage",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "not-date",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "brand-short",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "ab"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "brand-bad",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "BAD"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "brand-max",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "abcdefghijkl"
+    },
+    "accept": true,
+    "canonical": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T10:34:56.789Z",
+      "host": "abcdefghijkl"
+    }
+  },
+  {
+    "contract": "Extensions",
+    "name": "brand-long",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "abcdefghijklm"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "extension-extra",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one",
+      "extra": 1
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "extension-absent-counter",
+    "input": {
+      "at": "2026-09-30T12:34:56.789+02:00",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "extension-absent-at",
+    "input": {
+      "counter": "18446744073709551615",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Extensions",
+    "name": "extension-absent-host",
+    "input": {
+      "counter": "18446744073709551615",
+      "at": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Flags",
+    "name": "lower",
+    "input": "abc",
+    "accept": true
+  },
+  {
+    "contract": "Flags",
+    "name": "upper",
+    "input": "ABC",
+    "accept": true
+  },
+  {
+    "contract": "Flags",
+    "name": "mixed",
+    "input": "AbC",
+    "accept": true
+  },
+  {
+    "contract": "Flags",
+    "name": "different",
+    "input": "abd",
+    "accept": false
+  },
+  {
+    "contract": "Flags",
+    "name": "unicode-other",
+    "input": "abç",
+    "accept": false
+  },
+  {
+    "contract": "Flags",
+    "name": "short",
+    "input": "ab",
+    "accept": false
+  },
+  {
+    "contract": "Flags",
+    "name": "extra",
+    "input": "xabc",
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-minimal",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": true,
+    "canonical": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T10:34:56.789Z"
+    }
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-full",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00",
+      "annotations": {
+        "org.opencontainers.image.title": "layer"
+      },
+      "expiresAt": "2026-10-01T00:00:00Z"
+    },
+    "accept": true,
+    "canonical": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T10:34:56.789Z",
+      "annotations": {
+        "org.opencontainers.image.title": "layer"
+      },
+      "expiresAt": "2026-10-01T00:00:00.000Z"
+    }
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-expires-null",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00",
+      "expiresAt": null
+    },
+    "accept": true,
+    "canonical": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T10:34:56.789Z",
+      "expiresAt": null
+    }
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-annotations-null",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00",
+      "annotations": null
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-annotations-empty",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00",
+      "annotations": {}
+    },
+    "accept": true,
+    "canonical": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T10:34:56.789Z",
+      "annotations": {}
+    }
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-annotations-number",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00",
+      "annotations": {
+        "a": 1
+      }
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-digest-uppercase",
+    "input": {
+      "digest": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-digest-short",
+    "input": {
+      "digest": "sha256:abc",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-digest-sha512",
+    "input": {
+      "digest": "sha512:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-digest-trailing-newline",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab\n",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-size-number",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": 1048576,
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-size-max",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "18446744073709551615",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": true,
+    "canonical": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "18446744073709551615",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T10:34:56.789Z"
+    }
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-size-overflow",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "18446744073709551616",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-media-type-upper",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "Application/JSON",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-media-type-127",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "a/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": true,
+    "canonical": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "a/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "createdAt": "2026-09-30T10:34:56.789Z"
+    }
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-media-type-128",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "a/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "createdAt": "2026-09-30T12:34:56.789+02:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-unknown-field",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00",
+      "extra": true
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-snake-case-key",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "createdAt": "2026-09-30T12:34:56.789+02:00",
+      "media_type": "application/json"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-missing-created",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-created-null",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": null
+    },
+    "accept": false
+  },
+  {
+    "contract": "ContentDescriptor",
+    "name": "cd-expires-invalid",
+    "input": {
+      "digest": "sha256:abababababababababababababababababababababababababababababababab",
+      "size": "1048576",
+      "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+      "createdAt": "2026-09-30T12:34:56.789+02:00",
+      "expiresAt": "2026-02-30T00:00:00Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-deployed",
+    "input": {
+      "_tag": "Deployed",
+      "descriptor": {
+        "digest": "sha256:abababababababababababababababababababababababababababababababab",
+        "size": "1048576",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "createdAt": "2026-09-30T12:34:56.789+02:00"
+      },
+      "host": "api-one"
+    },
+    "accept": true,
+    "canonical": {
+      "_tag": "Deployed",
+      "descriptor": {
+        "digest": "sha256:abababababababababababababababababababababababababababababababab",
+        "size": "1048576",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "createdAt": "2026-09-30T10:34:56.789Z"
+      },
+      "host": "api-one"
+    }
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-i64-min",
+    "input": {
+      "_tag": "Scaled",
+      "delta": "-9223372036854775808",
+      "replicas": 3
+    },
+    "accept": true
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-i64-max",
+    "input": {
+      "_tag": "Scaled",
+      "delta": "9223372036854775807",
+      "replicas": 0
+    },
+    "accept": true
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-i64-overflow",
+    "input": {
+      "_tag": "Scaled",
+      "delta": "9223372036854775808",
+      "replicas": 0
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-i64-underflow",
+    "input": {
+      "_tag": "Scaled",
+      "delta": "-9223372036854775809",
+      "replicas": 0
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-negative-zero",
+    "input": {
+      "_tag": "Scaled",
+      "delta": "-0",
+      "replicas": 0
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-negative-leading-zero",
+    "input": {
+      "_tag": "Scaled",
+      "delta": "-01",
+      "replicas": 0
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-delta-number",
+    "input": {
+      "_tag": "Scaled",
+      "delta": -1,
+      "replicas": 0
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-tag-last",
+    "input": {
+      "delta": "1",
+      "replicas": 1,
+      "_tag": "Scaled"
+    },
+    "accept": true,
+    "canonical": {
+      "_tag": "Scaled",
+      "delta": "1",
+      "replicas": 1
+    }
+  },
+  {
+    "contract": "Event",
+    "name": "ev-deployed-tag-last",
+    "input": {
+      "host": "api-one",
+      "descriptor": {
+        "size": "1048576",
+        "createdAt": "2026-09-30T12:34:56.789+02:00",
+        "digest": "sha256:abababababababababababababababababababababababababababababababab",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+      },
+      "_tag": "Deployed"
+    },
+    "accept": true,
+    "canonical": {
+      "_tag": "Deployed",
+      "descriptor": {
+        "createdAt": "2026-09-30T10:34:56.789Z",
+        "digest": "sha256:abababababababababababababababababababababababababababababababab",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "size": "1048576"
+      },
+      "host": "api-one"
+    }
+  },
+  {
+    "contract": "Event",
+    "name": "ev-deployed-tag-middle",
+    "input": {
+      "descriptor": {
+        "size": "1048576",
+        "createdAt": "2026-09-30T12:34:56.789+02:00",
+        "digest": "sha256:abababababababababababababababababababababababababababababababab",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+      },
+      "_tag": "Deployed",
+      "host": "api-one"
+    },
+    "accept": true,
+    "canonical": {
+      "_tag": "Deployed",
+      "descriptor": {
+        "createdAt": "2026-09-30T10:34:56.789Z",
+        "digest": "sha256:abababababababababababababababababababababababababababababababab",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "size": "1048576"
+      },
+      "host": "api-one"
+    }
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-last-unknown-tag",
+    "input": {
+      "delta": "1",
+      "replicas": 1,
+      "_tag": "Restarted"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-last-non-string-tag",
+    "input": {
+      "delta": "1",
+      "replicas": 1,
+      "_tag": 1
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-last-unknown-field",
+    "input": {
+      "delta": "1",
+      "replicas": 1,
+      "extra": true,
+      "_tag": "Scaled"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-last-missing-field",
+    "input": {
+      "delta": "1",
+      "_tag": "Scaled"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-last-bad-payload",
+    "input": {
+      "delta": "-0",
+      "replicas": 1,
+      "_tag": "Scaled"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-last-nested-bad-digest",
+    "input": {
+      "host": "api-one",
+      "descriptor": {
+        "size": "1048576",
+        "createdAt": "2026-09-30T12:34:56.789+02:00",
+        "digest": "sha256:xyz",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+      },
+      "_tag": "Deployed"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-last-drained-extra",
+    "input": {
+      "reason": "x",
+      "_tag": "Drained"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-drained",
+    "input": {
+      "_tag": "Drained"
+    },
+    "accept": true
+  },
+  {
+    "contract": "Event",
+    "name": "ev-drained-extra",
+    "input": {
+      "_tag": "Drained",
+      "reason": "x"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-unknown-tag",
+    "input": {
+      "_tag": "Restarted",
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-missing-tag",
+    "input": {
+      "delta": "1",
+      "replicas": 1
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-null",
+    "input": {
+      "_tag": null,
+      "delta": "1",
+      "replicas": 1
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-lowercase",
+    "input": {
+      "_tag": "scaled",
+      "delta": "1",
+      "replicas": 1
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-tag-key-type",
+    "input": {
+      "type": "Scaled",
+      "delta": "1",
+      "replicas": 1
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-scaled-extra",
+    "input": {
+      "_tag": "Scaled",
+      "delta": "1",
+      "replicas": 1,
+      "extra": 1
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-deployed-bad-digest",
+    "input": {
+      "_tag": "Deployed",
+      "descriptor": {
+        "digest": "sha256:xyz",
+        "size": "1048576",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "createdAt": "2026-09-30T12:34:56.789+02:00"
+      },
+      "host": "api-one"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Event",
+    "name": "ev-deployed-bad-host",
+    "input": {
+      "_tag": "Deployed",
+      "descriptor": {
+        "digest": "sha256:abababababababababababababababababababababababababababababababab",
+        "size": "1048576",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "createdAt": "2026-09-30T12:34:56.789+02:00"
+      },
+      "host": "A"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Tree",
+    "name": "tree-leaf",
+    "input": {
+      "label": "root",
+      "children": []
+    },
+    "accept": true
+  },
+  {
+    "contract": "Tree",
+    "name": "tree-depth-3",
+    "input": {
+      "label": "n2",
+      "children": [
         {
-         "label": "n36",
-         "children": [
-          {
-           "label": "n35",
-           "children": [
+          "label": "n1",
+          "children": [
             {
-             "label": "n34",
-             "children": [
-              {
-               "label": "n33",
-               "children": [
+              "label": "n0",
+              "children": [
                 {
-                 "label": "n32",
-                 "children": [
-                  {
-                   "label": "n31",
-                   "children": [
-                    {
-                     "label": "n30",
-                     "children": [
-                      {
-                       "label": "n29",
-                       "children": [
-                        {
-                         "label": "n28",
-                         "children": [
-                          {
-                           "label": "n27",
-                           "children": [
-                            {
-                             "label": "n26",
-                             "children": [
-                              {
-                               "label": "n25",
-                               "children": [
-                                {
-                                 "label": "n24",
-                                 "children": [
-                                  {
-                                   "label": "n23",
-                                   "children": [
-                                    {
-                                     "label": "n22",
-                                     "children": [
-                                      {
-                                       "label": "n21",
-                                       "children": [
-                                        {
-                                         "label": "n20",
-                                         "children": [
-                                          {
-                                           "label": "n19",
-                                           "children": [
-                                            {
-                                             "label": "n18",
-                                             "children": [
-                                              {
-                                               "label": "n17",
-                                               "children": [
-                                                {
-                                                 "label": "n16",
-                                                 "children": [
-                                                  {
-                                                   "label": "n15",
-                                                   "children": [
-                                                    {
-                                                     "label": "n14",
-                                                     "children": [
-                                                      {
-                                                       "label": "n13",
-                                                       "children": [
-                                                        {
-                                                         "label": "n12",
-                                                         "children": [
-                                                          {
-                                                           "label": "n11",
-                                                           "children": [
-                                                            {
-                                                             "label": "n10",
-                                                             "children": [
-                                                              {
-                                                               "label": "n9",
-                                                               "children": [
-                                                                {
-                                                                 "label": "n8",
-                                                                 "children": [
-                                                                  {
-                                                                   "label": "n7",
-                                                                   "children": [
-                                                                    {
-                                                                     "label": "n6",
-                                                                     "children": [
-                                                                      {
-                                                                       "label": "n5",
-                                                                       "children": [
-                                                                        {
-                                                                         "label": "n4",
-                                                                         "children": [
-                                                                          {
-                                                                           "label": "n3",
-                                                                           "children": [
-                                                                            {
-                                                                             "label": "n2",
-                                                                             "children": [
-                                                                              {
-                                                                               "label": "n1",
-                                                                               "children": [
-                                                                                {
-                                                                                 "label": "n0",
-                                                                                 "children": [
-                                                                                  {
-                                                                                   "label": "n",
-                                                                                   "children": []
-                                                                                  },
-                                                                                  {
-                                                                                   "label": "leaf",
-                                                                                   "children": []
-                                                                                  }
-                                                                                 ]
-                                                                                },
-                                                                                {
-                                                                                 "label": "leaf",
-                                                                                 "children": []
-                                                                                }
-                                                                               ]
-                                                                              },
-                                                                              {
-                                                                               "label": "leaf",
-                                                                               "children": []
-                                                                              }
-                                                                             ]
-                                                                            },
-                                                                            {
-                                                                             "label": "leaf",
-                                                                             "children": []
-                                                                            }
-                                                                           ]
-                                                                          },
-                                                                          {
-                                                                           "label": "leaf",
-                                                                           "children": []
-                                                                          }
-                                                                         ]
-                                                                        },
-                                                                        {
-                                                                         "label": "leaf",
-                                                                         "children": []
-                                                                        }
-                                                                       ]
-                                                                      },
-                                                                      {
-                                                                       "label": "leaf",
-                                                                       "children": []
-                                                                      }
-                                                                     ]
-                                                                    },
-                                                                    {
-                                                                     "label": "leaf",
-                                                                     "children": []
-                                                                    }
-                                                                   ]
-                                                                  },
-                                                                  {
-                                                                   "label": "leaf",
-                                                                   "children": []
-                                                                  }
-                                                                 ]
-                                                                },
-                                                                {
-                                                                 "label": "leaf",
-                                                                 "children": []
-                                                                }
-                                                               ]
-                                                              },
-                                                              {
-                                                               "label": "leaf",
-                                                               "children": []
-                                                              }
-                                                             ]
-                                                            },
-                                                            {
-                                                             "label": "leaf",
-                                                             "children": []
-                                                            }
-                                                           ]
-                                                          },
-                                                          {
-                                                           "label": "leaf",
-                                                           "children": []
-                                                          }
-                                                         ]
-                                                        },
-                                                        {
-                                                         "label": "leaf",
-                                                         "children": []
-                                                        }
-                                                       ]
-                                                      },
-                                                      {
-                                                       "label": "leaf",
-                                                       "children": []
-                                                      }
-                                                     ]
-                                                    },
-                                                    {
-                                                     "label": "leaf",
-                                                     "children": []
-                                                    }
-                                                   ]
-                                                  },
-                                                  {
-                                                   "label": "leaf",
-                                                   "children": []
-                                                  }
-                                                 ]
-                                                },
-                                                {
-                                                 "label": "leaf",
-                                                 "children": []
-                                                }
-                                               ]
-                                              },
-                                              {
-                                               "label": "leaf",
-                                               "children": []
-                                              }
-                                             ]
-                                            },
-                                            {
-                                             "label": "leaf",
-                                             "children": []
-                                            }
-                                           ]
-                                          },
-                                          {
-                                           "label": "leaf",
-                                           "children": []
-                                          }
-                                         ]
-                                        },
-                                        {
-                                         "label": "leaf",
-                                         "children": []
-                                        }
-                                       ]
-                                      },
-                                      {
-                                       "label": "leaf",
-                                       "children": []
-                                      }
-                                     ]
-                                    },
-                                    {
-                                     "label": "leaf",
-                                     "children": []
-                                    }
-                                   ]
-                                  },
-                                  {
-                                   "label": "leaf",
-                                   "children": []
-                                  }
-                                 ]
-                                },
-                                {
-                                 "label": "leaf",
-                                 "children": []
-                                }
-                               ]
-                              },
-                              {
-                               "label": "leaf",
-                               "children": []
-                              }
-                             ]
-                            },
-                            {
-                             "label": "leaf",
-                             "children": []
-                            }
-                           ]
-                          },
-                          {
-                           "label": "leaf",
-                           "children": []
-                          }
-                         ]
-                        },
-                        {
-                         "label": "leaf",
-                         "children": []
-                        }
-                       ]
-                      },
-                      {
-                       "label": "leaf",
-                       "children": []
-                      }
-                     ]
-                    },
-                    {
-                     "label": "leaf",
-                     "children": []
-                    }
-                   ]
-                  },
-                  {
-                   "label": "leaf",
-                   "children": []
-                  }
-                 ]
+                  "label": "n",
+                  "children": []
                 },
                 {
-                 "label": "leaf",
-                 "children": []
+                  "label": "leaf",
+                  "children": []
                 }
-               ]
-              },
-              {
-               "label": "leaf",
-               "children": []
-              }
-             ]
+              ]
             },
             {
-             "label": "leaf",
-             "children": []
+              "label": "leaf",
+              "children": []
             }
-           ]
+          ]
+        },
+        {
+          "label": "leaf",
+          "children": []
+        }
+      ]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Tree",
+    "name": "tree-depth-40",
+    "input": {
+      "label": "n39",
+      "children": [
+        {
+          "label": "n38",
+          "children": [
+            {
+              "label": "n37",
+              "children": [
+                {
+                  "label": "n36",
+                  "children": [
+                    {
+                      "label": "n35",
+                      "children": [
+                        {
+                          "label": "n34",
+                          "children": [
+                            {
+                              "label": "n33",
+                              "children": [
+                                {
+                                  "label": "n32",
+                                  "children": [
+                                    {
+                                      "label": "n31",
+                                      "children": [
+                                        {
+                                          "label": "n30",
+                                          "children": [
+                                            {
+                                              "label": "n29",
+                                              "children": [
+                                                {
+                                                  "label": "n28",
+                                                  "children": [
+                                                    {
+                                                      "label": "n27",
+                                                      "children": [
+                                                        {
+                                                          "label": "n26",
+                                                          "children": [
+                                                            {
+                                                              "label": "n25",
+                                                              "children": [
+                                                                {
+                                                                  "label": "n24",
+                                                                  "children": [
+                                                                    {
+                                                                      "label": "n23",
+                                                                      "children": [
+                                                                        {
+                                                                          "label": "n22",
+                                                                          "children": [
+                                                                            {
+                                                                              "label": "n21",
+                                                                              "children": [
+                                                                                {
+                                                                                  "label": "n20",
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "label": "n19",
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "label": "n18",
+                                                                                          "children": [
+                                                                                            {
+                                                                                              "label": "n17",
+                                                                                              "children": [
+                                                                                                {
+                                                                                                  "label": "n16",
+                                                                                                  "children": [
+                                                                                                    {
+                                                                                                      "label": "n15",
+                                                                                                      "children": [
+                                                                                                        {
+                                                                                                          "label": "n14",
+                                                                                                          "children": [
+                                                                                                            {
+                                                                                                              "label": "n13",
+                                                                                                              "children": [
+                                                                                                                {
+                                                                                                                  "label": "n12",
+                                                                                                                  "children": [
+                                                                                                                    {
+                                                                                                                      "label": "n11",
+                                                                                                                      "children": [
+                                                                                                                        {
+                                                                                                                          "label": "n10",
+                                                                                                                          "children": [
+                                                                                                                            {
+                                                                                                                              "label": "n9",
+                                                                                                                              "children": [
+                                                                                                                                {
+                                                                                                                                  "label": "n8",
+                                                                                                                                  "children": [
+                                                                                                                                    {
+                                                                                                                                      "label": "n7",
+                                                                                                                                      "children": [
+                                                                                                                                        {
+                                                                                                                                          "label": "n6",
+                                                                                                                                          "children": [
+                                                                                                                                            {
+                                                                                                                                              "label": "n5",
+                                                                                                                                              "children": [
+                                                                                                                                                {
+                                                                                                                                                  "label": "n4",
+                                                                                                                                                  "children": [
+                                                                                                                                                    {
+                                                                                                                                                      "label": "n3",
+                                                                                                                                                      "children": [
+                                                                                                                                                        {
+                                                                                                                                                          "label": "n2",
+                                                                                                                                                          "children": [
+                                                                                                                                                            {
+                                                                                                                                                              "label": "n1",
+                                                                                                                                                              "children": [
+                                                                                                                                                                {
+                                                                                                                                                                  "label": "n0",
+                                                                                                                                                                  "children": [
+                                                                                                                                                                    {
+                                                                                                                                                                      "label": "n",
+                                                                                                                                                                      "children": []
+                                                                                                                                                                    },
+                                                                                                                                                                    {
+                                                                                                                                                                      "label": "leaf",
+                                                                                                                                                                      "children": []
+                                                                                                                                                                    }
+                                                                                                                                                                  ]
+                                                                                                                                                                },
+                                                                                                                                                                {
+                                                                                                                                                                  "label": "leaf",
+                                                                                                                                                                  "children": []
+                                                                                                                                                                }
+                                                                                                                                                              ]
+                                                                                                                                                            },
+                                                                                                                                                            {
+                                                                                                                                                              "label": "leaf",
+                                                                                                                                                              "children": []
+                                                                                                                                                            }
+                                                                                                                                                          ]
+                                                                                                                                                        },
+                                                                                                                                                        {
+                                                                                                                                                          "label": "leaf",
+                                                                                                                                                          "children": []
+                                                                                                                                                        }
+                                                                                                                                                      ]
+                                                                                                                                                    },
+                                                                                                                                                    {
+                                                                                                                                                      "label": "leaf",
+                                                                                                                                                      "children": []
+                                                                                                                                                    }
+                                                                                                                                                  ]
+                                                                                                                                                },
+                                                                                                                                                {
+                                                                                                                                                  "label": "leaf",
+                                                                                                                                                  "children": []
+                                                                                                                                                }
+                                                                                                                                              ]
+                                                                                                                                            },
+                                                                                                                                            {
+                                                                                                                                              "label": "leaf",
+                                                                                                                                              "children": []
+                                                                                                                                            }
+                                                                                                                                          ]
+                                                                                                                                        },
+                                                                                                                                        {
+                                                                                                                                          "label": "leaf",
+                                                                                                                                          "children": []
+                                                                                                                                        }
+                                                                                                                                      ]
+                                                                                                                                    },
+                                                                                                                                    {
+                                                                                                                                      "label": "leaf",
+                                                                                                                                      "children": []
+                                                                                                                                    }
+                                                                                                                                  ]
+                                                                                                                                },
+                                                                                                                                {
+                                                                                                                                  "label": "leaf",
+                                                                                                                                  "children": []
+                                                                                                                                }
+                                                                                                                              ]
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                              "label": "leaf",
+                                                                                                                              "children": []
+                                                                                                                            }
+                                                                                                                          ]
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                          "label": "leaf",
+                                                                                                                          "children": []
+                                                                                                                        }
+                                                                                                                      ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                      "label": "leaf",
+                                                                                                                      "children": []
+                                                                                                                    }
+                                                                                                                  ]
+                                                                                                                },
+                                                                                                                {
+                                                                                                                  "label": "leaf",
+                                                                                                                  "children": []
+                                                                                                                }
+                                                                                                              ]
+                                                                                                            },
+                                                                                                            {
+                                                                                                              "label": "leaf",
+                                                                                                              "children": []
+                                                                                                            }
+                                                                                                          ]
+                                                                                                        },
+                                                                                                        {
+                                                                                                          "label": "leaf",
+                                                                                                          "children": []
+                                                                                                        }
+                                                                                                      ]
+                                                                                                    },
+                                                                                                    {
+                                                                                                      "label": "leaf",
+                                                                                                      "children": []
+                                                                                                    }
+                                                                                                  ]
+                                                                                                },
+                                                                                                {
+                                                                                                  "label": "leaf",
+                                                                                                  "children": []
+                                                                                                }
+                                                                                              ]
+                                                                                            },
+                                                                                            {
+                                                                                              "label": "leaf",
+                                                                                              "children": []
+                                                                                            }
+                                                                                          ]
+                                                                                        },
+                                                                                        {
+                                                                                          "label": "leaf",
+                                                                                          "children": []
+                                                                                        }
+                                                                                      ]
+                                                                                    },
+                                                                                    {
+                                                                                      "label": "leaf",
+                                                                                      "children": []
+                                                                                    }
+                                                                                  ]
+                                                                                },
+                                                                                {
+                                                                                  "label": "leaf",
+                                                                                  "children": []
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "label": "leaf",
+                                                                              "children": []
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "label": "leaf",
+                                                                          "children": []
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    {
+                                                                      "label": "leaf",
+                                                                      "children": []
+                                                                    }
+                                                                  ]
+                                                                },
+                                                                {
+                                                                  "label": "leaf",
+                                                                  "children": []
+                                                                }
+                                                              ]
+                                                            },
+                                                            {
+                                                              "label": "leaf",
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "label": "leaf",
+                                                          "children": []
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "label": "leaf",
+                                                      "children": []
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "label": "leaf",
+                                                  "children": []
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "label": "leaf",
+                                              "children": []
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "label": "leaf",
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "label": "leaf",
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "label": "leaf",
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "label": "leaf",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "label": "leaf",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "label": "leaf",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "label": "leaf",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "label": "leaf",
+              "children": []
+            }
+          ]
+        },
+        {
+          "label": "leaf",
+          "children": []
+        }
+      ]
+    },
+    "accept": true
+  },
+  {
+    "contract": "Tree",
+    "name": "tree-grandchild-missing-children",
+    "input": {
+      "label": "n2",
+      "children": [
+        {
+          "label": "n1",
+          "children": [
+            {
+              "label": "n0",
+              "children": [
+                {
+                  "label": "n"
+                },
+                {
+                  "label": "leaf",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "label": "leaf",
+              "children": []
+            }
+          ]
+        },
+        {
+          "label": "leaf",
+          "children": []
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Tree",
+    "name": "tree-children-null",
+    "input": {
+      "label": "root",
+      "children": null
+    },
+    "accept": false
+  },
+  {
+    "contract": "Tree",
+    "name": "tree-label-number",
+    "input": {
+      "label": 1,
+      "children": []
+    },
+    "accept": false
+  },
+  {
+    "contract": "Tree",
+    "name": "tree-child-extra",
+    "input": {
+      "label": "root",
+      "children": [
+        {
+          "label": "c",
+          "children": [],
+          "x": 1
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "Tree",
+    "name": "tree-label-unicode",
+    "input": {
+      "label": "𐐀 é",
+      "children": []
+    },
+    "accept": true
+  },
+  {
+    "contract": "Expr",
+    "name": "expr-lit",
+    "input": {
+      "_tag": "Lit",
+      "value": 1
+    },
+    "accept": true
+  },
+  {
+    "contract": "Expr",
+    "name": "expr-nested",
+    "input": {
+      "_tag": "Add",
+      "left": {
+        "_tag": "Lit",
+        "value": 1
+      },
+      "right": {
+        "_tag": "Neg",
+        "operand": {
+          "_tag": "Add",
+          "left": {
+            "_tag": "Lit",
+            "value": -2147483648
           },
-          {
-           "label": "leaf",
-           "children": []
+          "right": {
+            "_tag": "Lit",
+            "value": 2147483647
           }
-         ]
-        },
-        {
-         "label": "leaf",
-         "children": []
         }
-       ]
-      },
-      {
-       "label": "leaf",
-       "children": []
       }
-     ]
     },
-    {
-     "label": "leaf",
-     "children": []
-    }
-   ]
+    "accept": true
   },
-  "accept": true
- },
- {
-  "contract": "Tree",
-  "name": "tree-grandchild-missing-children",
-  "input": {
-   "label": "n2",
-   "children": [
-    {
-     "label": "n1",
-     "children": [
-      {
-       "label": "n0",
-       "children": [
-        {
-         "label": "n"
-        },
-        {
-         "label": "leaf",
-         "children": []
+  {
+    "contract": "Expr",
+    "name": "expr-add-missing-right",
+    "input": {
+      "_tag": "Add",
+      "left": {
+        "_tag": "Lit",
+        "value": 1
+      }
+    },
+    "accept": false
+  },
+  {
+    "contract": "Expr",
+    "name": "expr-deep-overflow",
+    "input": {
+      "_tag": "Neg",
+      "operand": {
+        "_tag": "Neg",
+        "operand": {
+          "_tag": "Lit",
+          "value": 2147483648
         }
-       ]
-      },
-      {
-       "label": "leaf",
-       "children": []
       }
-     ]
     },
-    {
-     "label": "leaf",
-     "children": []
-    }
-   ]
+    "accept": false
   },
-  "accept": false
- },
- {
-  "contract": "Tree",
-  "name": "tree-children-null",
-  "input": {
-   "label": "root",
-   "children": null
-  },
-  "accept": false
- },
- {
-  "contract": "Tree",
-  "name": "tree-label-number",
-  "input": {
-   "label": 1,
-   "children": []
-  },
-  "accept": false
- },
- {
-  "contract": "Tree",
-  "name": "tree-child-extra",
-  "input": {
-   "label": "root",
-   "children": [
-    {
-     "label": "c",
-     "children": [],
-     "x": 1
-    }
-   ]
-  },
-  "accept": false
- },
- {
-  "contract": "Tree",
-  "name": "tree-label-unicode",
-  "input": {
-   "label": "𐐀 é",
-   "children": []
-  },
-  "accept": true
- },
- {
-  "contract": "Expr",
-  "name": "expr-lit",
-  "input": {
-   "_tag": "Lit",
-   "value": 1
-  },
-  "accept": true
- },
- {
-  "contract": "Expr",
-  "name": "expr-nested",
-  "input": {
-   "_tag": "Add",
-   "left": {
-    "_tag": "Lit",
-    "value": 1
-   },
-   "right": {
-    "_tag": "Neg",
-    "operand": {
-     "_tag": "Add",
-     "left": {
-      "_tag": "Lit",
-      "value": -2147483648
-     },
-     "right": {
-      "_tag": "Lit",
-      "value": 2147483647
-     }
-    }
-   }
-  },
-  "accept": true
- },
- {
-  "contract": "Expr",
-  "name": "expr-add-missing-right",
-  "input": {
-   "_tag": "Add",
-   "left": {
-    "_tag": "Lit",
-    "value": 1
-   }
-  },
-  "accept": false
- },
- {
-  "contract": "Expr",
-  "name": "expr-deep-overflow",
-  "input": {
-   "_tag": "Neg",
-   "operand": {
-    "_tag": "Neg",
-    "operand": {
-     "_tag": "Lit",
-     "value": 2147483648
-    }
-   }
-  },
-  "accept": false
- },
- {
-  "contract": "Expr",
-  "name": "expr-deep-fraction",
-  "input": {
-   "_tag": "Neg",
-   "operand": {
-    "_tag": "Lit",
-    "value": 1.5
-   }
-  },
-  "accept": false
- },
- {
-  "contract": "Expr",
-  "name": "expr-unknown-tag",
-  "input": {
-   "_tag": "Mul",
-   "left": {
-    "_tag": "Lit",
-    "value": 1
-   },
-   "right": {
-    "_tag": "Lit",
-    "value": 2
-   }
-  },
-  "accept": false
- },
- {
-  "contract": "Expr",
-  "name": "expr-lit-extra",
-  "input": {
-   "_tag": "Lit",
-   "value": 1,
-   "extra": 0
-  },
-  "accept": false
- },
- {
-  "contract": "Expr",
-  "name": "expr-operand-null",
-  "input": {
-   "_tag": "Neg",
-   "operand": null
-  },
-  "accept": false
- },
- {
-  "contract": "Expr",
-  "name": "expr-tag-last-nested",
-  "input": {
-   "right": {
-    "operand": {
-     "value": 2,
-     "_tag": "Lit"
+  {
+    "contract": "Expr",
+    "name": "expr-deep-fraction",
+    "input": {
+      "_tag": "Neg",
+      "operand": {
+        "_tag": "Lit",
+        "value": 1.5
+      }
     },
-    "_tag": "Neg"
-   },
-   "left": {
-    "_tag": "Lit",
-    "value": 1
-   },
-   "_tag": "Add"
+    "accept": false
   },
-  "accept": true,
-  "canonical": {
-   "_tag": "Add",
-   "left": {
-    "_tag": "Lit",
-    "value": 1
-   },
-   "right": {
-    "_tag": "Neg",
-    "operand": {
-     "_tag": "Lit",
-     "value": 2
+  {
+    "contract": "Expr",
+    "name": "expr-unknown-tag",
+    "input": {
+      "_tag": "Mul",
+      "left": {
+        "_tag": "Lit",
+        "value": 1
+      },
+      "right": {
+        "_tag": "Lit",
+        "value": 2
+      }
+    },
+    "accept": false
+  },
+  {
+    "contract": "Expr",
+    "name": "expr-lit-extra",
+    "input": {
+      "_tag": "Lit",
+      "value": 1,
+      "extra": 0
+    },
+    "accept": false
+  },
+  {
+    "contract": "Expr",
+    "name": "expr-operand-null",
+    "input": {
+      "_tag": "Neg",
+      "operand": null
+    },
+    "accept": false
+  },
+  {
+    "contract": "Expr",
+    "name": "expr-tag-last-nested",
+    "input": {
+      "right": {
+        "operand": {
+          "value": 2,
+          "_tag": "Lit"
+        },
+        "_tag": "Neg"
+      },
+      "left": {
+        "_tag": "Lit",
+        "value": 1
+      },
+      "_tag": "Add"
+    },
+    "accept": true,
+    "canonical": {
+      "_tag": "Add",
+      "left": {
+        "_tag": "Lit",
+        "value": 1
+      },
+      "right": {
+        "_tag": "Neg",
+        "operand": {
+          "_tag": "Lit",
+          "value": 2
+        }
+      }
     }
-   }
+  },
+  {
+    "contract": "Expr",
+    "name": "expr-tag-last-deep-overflow",
+    "input": {
+      "operand": {
+        "operand": {
+          "value": 2147483648,
+          "_tag": "Lit"
+        },
+        "_tag": "Neg"
+      },
+      "_tag": "Neg"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Expr",
+    "name": "expr-tag-last-unknown-inner",
+    "input": {
+      "left": {
+        "value": 1,
+        "_tag": "Lit"
+      },
+      "right": {
+        "value": 2,
+        "_tag": "Mul"
+      },
+      "_tag": "Add"
+    },
+    "accept": false
   }
- },
- {
-  "contract": "Expr",
-  "name": "expr-tag-last-deep-overflow",
-  "input": {
-   "operand": {
-    "operand": {
-     "value": 2147483648,
-     "_tag": "Lit"
-    },
-    "_tag": "Neg"
-   },
-   "_tag": "Neg"
-  },
-  "accept": false
- },
- {
-  "contract": "Expr",
-  "name": "expr-tag-last-unknown-inner",
-  "input": {
-   "left": {
-    "value": 1,
-    "_tag": "Lit"
-   },
-   "right": {
-    "value": 2,
-    "_tag": "Mul"
-   },
-   "_tag": "Add"
-  },
-  "accept": false
- }
 ]

@@ -12,16 +12,20 @@ import { load as loadContentCore } from './generated/content-core/load.ts'
 interface Api {
   readonly hash: (bytes: Uint8Array) => string
 }
-class ContentCore extends Context.Service<ContentCore, {
-  readonly hash: (bytes: Uint8Array) => Effect.Effect<string>
-}>()('ContentCore') {}
+class ContentCore extends Context.Service<
+  ContentCore,
+  {
+    readonly hash: (bytes: Uint8Array) => Effect.Effect<string>
+  }
+>()('ContentCore') {}
 
 const layer = Interop.wasmLayer.node(ContentCore, {
   // Generated lexical factory: fresh wasm-bindgen state AND instance per call.
   load: loadContentCore,
   make: (runtime: Interop.Runtime<Api>) => ({
     hash: Effect.fn('ContentCore.hash')((bytes: Uint8Array) =>
-      runtime.call(({ api }) => api.hash(bytes))),
+      runtime.call(({ api }) => api.hash(bytes)),
+    ),
   }),
   panicPolicy: 'rebuild',
   chunkProfile: 'latency',
