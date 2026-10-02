@@ -8,11 +8,13 @@ export const buck2TypeScriptAdmission = {
   projectionSource: 'packages/@overeng/effect-rust/BUCK.genie.ts',
   sourceRoots: ['src'],
   workspaceSiblings: [],
-  authorities: [{
-    declarationEntrypoint: 'src/mod.d.ts',
-    projectFile: 'tsconfig.json',
-    projectInputs: ['src/compiler/fixtures/vectors.json'],
-  }],
+  authorities: [
+    {
+      declarationEntrypoint: 'src/mod.d.ts',
+      projectFile: 'tsconfig.json',
+      projectInputs: ['src/compiler/fixtures/vectors.json'],
+    },
+  ],
   tests: [{ name: 'test', runner: 'vitest' }],
 } as const satisfies Buck2TypeScriptAdmission
 
