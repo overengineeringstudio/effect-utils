@@ -112,7 +112,6 @@ let
   tuiStoriesCli = repoPackages.tui-stories;
   ghCiUtilsCli = repoPackages.gh-ci-utils;
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
-  buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
 
   # The generated root package manifest is the workspace package authority.
   # Consuming it here removes the former hand-maintained Nix package list and
@@ -916,7 +915,7 @@ in
   effectUtils.genie.extraInputGlobs = genieExtraInputGlobs;
 
   packages = [
-    buck2Stage0Definition.archive-tool
+    repoPackages.buck2-archive-tool
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
@@ -934,7 +933,7 @@ in
     repoPackages.buck2-events
     # Nix-distributed Buck binary used by direct repository tasks.
     buck2Machine
-    buck2Stage0Definition.product
+    repoPackages.buck2-product
     cliBuildStamp.package
     ciToolsCli
     ghCiUtilsCli
