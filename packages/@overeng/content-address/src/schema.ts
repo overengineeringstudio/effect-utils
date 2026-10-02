@@ -69,3 +69,13 @@ export const ContentPin = Schema.TaggedStruct('ContentPin', {
   target: ContentDescriptor,
 }).annotate({ identifier: 'ContentAddress.ContentPin' })
 export type ContentPin = typeof ContentPin.Type
+/** Raised when filesystem access fails while reading or writing the store. */
+export class ContentStoreIoError extends Schema.TaggedError<ContentStoreIoError>()(
+  'ContentStoreIoError',
+  {
+    operation: Schema.String,
+    path: Schema.String,
+    cause: Schema.Defect(),
+    message: Schema.String,
+  },
+) {}

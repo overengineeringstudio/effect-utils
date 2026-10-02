@@ -6,6 +6,7 @@
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-path",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/kdl",
       "packages/@overeng/kdl-effect",
       "packages/@overeng/megarepo",

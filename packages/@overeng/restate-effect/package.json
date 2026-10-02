@@ -5,6 +5,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/restate-effect",
       "packages/@overeng/utils",

@@ -4,6 +4,7 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/utils-dev"
     ]
   },
@@ -23,9 +24,11 @@
   },
   "dependencies": {
     "@noble/hashes": "2.4.0",
+    "@overeng/effect-rust": "workspace:^",
     "effect": "4.0.0-rc.118"
   },
   "devDependencies": {
+    "@effect/platform-node": "4.0.0-rc.118",
     "@effect/vitest": "4.0.0-rc.118",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",

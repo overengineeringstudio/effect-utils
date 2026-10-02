@@ -382,6 +382,47 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
+name = "content-address-contract"
+version = "0.0.0"
+dependencies = [
+ "borsh",
+ "chrono",
+ "regex",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+]
+
+[[package]]
+name = "content-address-core"
+version = "0.0.0"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "content-address-interop"
+version = "0.0.0"
+dependencies = [
+ "content-address-contract",
+ "content-address-core",
+ "effect-rust",
+ "js-sys",
+ "napi",
+ "napi-derive",
+ "schemars",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

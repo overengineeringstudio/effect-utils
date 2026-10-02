@@ -5,6 +5,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
       "packages/@overeng/effect-rpc-explorer",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils-dev"
     ]
