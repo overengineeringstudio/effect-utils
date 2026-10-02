@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "inputFingerprint": "sha256:77fdf279b01bf6ed5d8bfd127d535aa8a0bf1febddb46ddd043aff2f2ceab1c4",
+  "generatedAt": "2026-10-03T16:40:07.498Z",
+  "runtime": {
+    "name": "bun",
+    "version": "1.4.2"
+  },
+  "inputs": [
+    {
+      "path": "packages/@overeng/content-address/src/generate-contract.ts",
+      "sha256": "bd41f8902fa45ab655b83a21e6f4c0f87cd40c88ee47c24c0846e58b053ffcfc"
+    },
+    {
+      "path": "packages/@overeng/content-address/src/schema.ts",
+      "sha256": "e529902f0f2e0d51b8fa6a81b2f105a05a8c53dc404d4f5523b7f118cb072d44"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/fixtures/bounded-contracts.ts",
+      "sha256": "d6569e5165a9732d8e66a661f1c3129eaa687a47e6890d3659429c5e7b29fd4e"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/fixtures/contracts.ts",
+      "sha256": "d87b508124ecefba8ef70dfa0c1c36c0a370fa2074e73526beae1f8cabf2fefb"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/import-rust.ts",
+      "sha256": "ed634d254cba65bd6d57406f07ff778b305539981d0ad355ed188b428ab7972a"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/ir.ts",
+      "sha256": "180f3c87882c817093245a7fb75921e34d8d3e867387ba56df662e58d2adcc18"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/json-schema.ts",
+      "sha256": "ea99b3b7a74c8639085f6a1ad4c773612fdbfa907cdf3e81e4f83298a3444836"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/lower.ts",
+      "sha256": "fb28578373ac321e98561586de23a61d52ec9c738386a919aae349f68be125d5"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/mod.ts",
+      "sha256": "2902a7d18f36d1f461c9619e84f29c20c61ce1fefb4d3eb37b1f50550007ba82"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/rust-metadata.ts",
+      "sha256": "1d42eeeb19f245993e620d79ffd4914c0ab185cdcacd63619c023c38daaf462e"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/rust-template.ts",
+      "sha256": "5557a7a3586a56ffa618d68c7e9a43096c13d4af871d8ce91e09a9e2e0f9724f"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/compiler/rust.ts",
+      "sha256": "0f1fd59fbf2c617c188805fc456f43c21a32a82673ffd98efa92b8ff97b85328"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/mod.ts",
+      "sha256": "5c3cf255ace4c4fef1ba5f038a0cd6934bf54f3202b375d13d8d4426a675bb14"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/borsh.ts",
+      "sha256": "e1991807d6586861efa7d92129f304ff1694c5f0fd5122f0856ca71c614c5d4d"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/columns.ts",
+      "sha256": "c7dd15d34673523e58674683da9cf724c174bc49a6b3db852c62d142b0841d68"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/contract-json.ts",
+      "sha256": "148cf8b46c348baf6de5b57d56e5f339a32e427f559388166181d80288e06988"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/discriminator.ts",
+      "sha256": "d183de6d1654c62fcb88cac0f930596b92efe4c2bd6beae551e869e9da94067e"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/effect-rust.ts",
+      "sha256": "35b2d7485009af0bb32f2c24fe794387bf7321de51f010ad533b51ba63ea9c62"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/json.ts",
+      "sha256": "cc335aa7e6be0fd7fd5d8ed6c0e127c34fe53383836aac4d1ea0d7c1968b25ba"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/mod.ts",
+      "sha256": "7d721e2139a43088b8ecd33b587d906d5a07486fca38363276578c868af81153"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/pattern.ts",
+      "sha256": "c4a655558f520a65ca7dc4ef7d942dc89560a42465140d5cedd975f08fff9a0b"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/timestamp.ts",
+      "sha256": "9f624ff87cd5eb844ba5e880f401adf2ab8b2b6c75c75fa74618fd033fcb2497"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/validation.ts",
+      "sha256": "af0cb946c5026e0d08d0e09cff3ee77b14ce010456392df64cf83e81a6cb25b4"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "52842bdcd1247713eb525bfb7553ad6bc0d08a525bfb94be006df3b0882715ed"
+    },
+    {
+      "path": "rust/Cargo.lock",
+      "sha256": "10a236f676c11b4227e3d6cc048592202bdda5975d196132a04452f414af142b"
+    },
+    {
+      "path": "rust/Cargo.toml",
+      "sha256": "cab7647efe4072896a2025f7502b400a3b763e7a2c03a6296dd413536e3f26ea"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "Cargo.toml",
+      "sha256": "526618ed92f715e3df2003d815c376eeaf14e7e1927d38a36822c9076cd5536e"
+    },
+    {
+      "path": "schema/Codec.json",
+      "sha256": "167b0011f265603d095dcab7aa276aa39e97454a4cbe68c99ac5835d0649eaf8"
+    },
+    {
+      "path": "schema/ContentDescriptor.json",
+      "sha256": "72e897f76715074ba318a7608668316bfbde55920d6a66f24375273d7482857c"
+    },
+    {
+      "path": "schema/ContentDigest.json",
+      "sha256": "4e8f806a87b00f8c05112dac199598491f60d5aee35ee06a1abe3dd0d8999634"
+    },
+    {
+      "path": "schema/MediaType.json",
+      "sha256": "09106ef74575ea1a717bde9853fa9fc9c7803f5a000220f622901b5074b41bc2"
+    },
+    {
+      "path": "schema/NonNegativeInt.json",
+      "sha256": "b6b63078140282b10e1edbf303c2e200e1a9033ea723314d2c7ff1db2df94b45"
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "108ee69569f834fd2d9debd04862bf6abd48087c026d1f7a6ad321d0510c8461"
+    }
+  ]
+}

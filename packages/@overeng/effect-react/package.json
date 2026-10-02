@@ -6,6 +6,7 @@
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-react",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev",

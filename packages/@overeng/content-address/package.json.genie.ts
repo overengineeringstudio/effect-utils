@@ -7,16 +7,24 @@ import {
   workspaceMember,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
+import effectRustPkg from '../effect-rust/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/content-address' }),
   dependencies: {
+    workspace: [effectRustPkg],
     external: catalog.pick('@noble/hashes', 'effect'),
   },
   devDependencies: {
     workspace: [utilsDevPkg],
-    external: catalog.pick('@effect/vitest', '@types/node', 'typescript', 'vitest'),
+    external: catalog.pick(
+      '@effect/platform-node',
+      '@effect/vitest',
+      '@types/node',
+      'typescript',
+      'vitest',
+    ),
   },
 })
 

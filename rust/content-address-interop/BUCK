@@ -1,0 +1,87 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/content-address-interop/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:03bdf66edd51a40b418a9d21efd9eb121728dc70abad2673936ee841e8eff576
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/BUCK.genie.ts, rust/content-address-interop/Cargo.toml, rust/content-address-interop/src/**/*.rs, rust/content-address-interop/tests/**/*.rs, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/content-address-interop",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/lib.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "content_address_interop",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/lib.rs",
+    ],
+    deps = [
+        "//rust/content-address-contract:lib",
+        "//rust/content-address-core:lib",
+        "//rust/effect-rust:lib",
+        "//rust/third-party:schemars",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+    ] + select({"//buck2/rust:wasm32_config": [], "DEFAULT": ["//rust/third-party:napi","//rust/third-party:napi-derive"]}) + select({
+        "//buck2/rust:wasm32_config": [
+            "//rust/third-party:js-sys",
+            "//rust/third-party:serde-wasm-bindgen",
+            "//rust/third-party:wasm-bindgen",
+            "//rust/third-party:wasm-bindgen-futures",
+        ],
+        "DEFAULT": [],
+    }),
+    edition = "2021",
+    features = [
+        "default",
+        "napi",
+        "wasm",
+    ],
+    env = {
+        "CARGO_PKG_NAME": "content-address-interop",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "content_address_interop",
+        "CARGO_MANIFEST_DIR": "rust/content-address-interop",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)

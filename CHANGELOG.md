@@ -25,6 +25,10 @@
   flag and `rollout "manual"` policy. Omitting rollout preserves automatic rollout.
 - Raw wasm32 guest Buck products with a declared host harness, module import
   descriptors, and independent Nix runtime inspection.
+- Added an opt-in Rust byte engine for content-address hashing, incremental streams,
+  descriptors, and host-streamed filesystem trees through effect-rust wasm/native
+  service layers. Canonical JSON, manifests, and filesystem discovery remain
+  Effect-owned.
 
 ### Fixed
 
