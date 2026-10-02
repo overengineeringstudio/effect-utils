@@ -29,7 +29,7 @@ export default createGenieOutput({
       '',
       'load("@prelude//:prelude.bzl", "native")',
       'load("//buck2/rust:interop.bzl", "rust_wasm_bindgen_library", "rust_napi_library", "rust_interop_service", "rust_interop_service_smoke")',
-      'load(":parity.bzl", "content_address_parity")',
+      'load("//buck2/rust:content-address-parity.bzl", "content_address_parity")',
       '',
       'native.export_file(',
       '    name = "smoke",',
