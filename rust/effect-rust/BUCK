@@ -1,0 +1,136 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/effect-rust/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:46c6fae07622cb47ec926385c4b6467a8a0944c2d9d921fb64655eca348a1e17
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/BUCK.genie.ts, rust/effect-rust/Cargo.toml, rust/effect-rust/src/**/*.rs, rust/effect-rust/tests/**/*.rs, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/effect-rust",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/cancellation.rs",
+        "src/contract.rs",
+        "src/frame.rs",
+        "src/host.rs",
+        "src/lib.rs",
+        "src/native.rs",
+        "src/tagged.rs",
+        "src/wire.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/cancellation.rs",
+    src = "src/cancellation.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/contract.rs",
+    src = "src/contract.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/frame.rs",
+    src = "src/frame.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/host.rs",
+    src = "src/host.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/native.rs",
+    src = "src/native.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/tagged.rs",
+    src = "src/tagged.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/wire.rs",
+    src = "src/wire.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "effect_rust",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/cancellation.rs",
+        "src/contract.rs",
+        "src/frame.rs",
+        "src/host.rs",
+        "src/lib.rs",
+        "src/native.rs",
+        "src/tagged.rs",
+        "src/wire.rs",
+    ],
+    deps = [
+        "//rust/effect-rust-macros:lib",
+        "//rust/third-party:borsh",
+        "//rust/third-party:chrono",
+        "//rust/third-party:regex",
+        "//rust/third-party:schemars",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:serde_path_to_error",
+    ],
+    edition = "2021",
+    features = [
+        "contract",
+        "default",
+    ],
+    env = {
+        "CARGO_PKG_NAME": "effect-rust",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "effect_rust",
+        "CARGO_MANIFEST_DIR": "rust/effect-rust",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
