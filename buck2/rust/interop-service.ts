@@ -187,8 +187,7 @@ const tsType = (wire: string): string => {
   if (['bool', 'boolean'].includes(type) === true) return 'boolean'
   if (['unit', '()', 'void'].includes(type) === true) return 'void'
   if (type === 'frame' || type.startsWith('frame<') === true) return 'Uint8Array'
-  if (type.startsWith('host::Source') === true)
-    return 'Interop.HostCapability<readonly [string], Uint8Array>'
+  if (type.startsWith('host::Source') === true) return 'Interop.HostSource'
   if (type === 'json') return 'unknown'
   throw new Error(`Wire type ${wire} has no TypeScript mapping and no contract schema`)
 }
@@ -219,7 +218,7 @@ const apiType = ({
 }): string => {
   const name = codec({ entry, position })
   if (name !== undefined) return `typeof Contracts.${name}.Encoded`
-  if (wire.startsWith('host::Source') === true) return '(path: string) => Promise<Uint8Array>'
+  if (wire.startsWith('host::Source') === true) return 'Interop.SourceCallback'
   return isWide(wire) === true ? 'string' : tsType(wire)
 }
 const effectSchema = (wire: string): string => {
@@ -404,8 +403,8 @@ for (const entry of exportEntries) {
               sourceArgument.type.includes('SettleOnly') === true ? 'settle-only' : 'abortable'
             return [
               `    if (${sourceArgument.name}.mode !== ${JSON.stringify(mode)}) throw new Error(${JSON.stringify(`RUST_INPUT:${sourceArgument.name} requires ${mode} cancellation`)})`,
-              `    const read_${sourceArgument.name} = (path: string) => {`,
-              `      const operation = ${sourceArgument.name}.call(signal, path)`,
+              `    const read_${sourceArgument.name}: Interop.SourceCallback = (request) => {`,
+              `      const operation = ${sourceArgument.name}.call(signal, request)`,
               '      pending.add(operation)',
               '      void operation.then(() => pending.delete(operation), () => pending.delete(operation))',
               '      return operation',

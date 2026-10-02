@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
@@ -79,6 +79,8 @@ export type CargoBuck2PackageProjectionOptions = {
    * script sees each at its repository layout relative to `CARGO_MANIFEST_DIR`.
    */
   readonly buildScriptInputs?: readonly CargoBuck2BuildScriptInput[]
+  /** Explicit rustc inputs, separate from build-script inputs; no macro scanning. */
+  readonly compileTimeResources?: readonly CargoBuck2CompileTimeResource[]
   readonly sourceUrl: string
 }
 
@@ -87,6 +89,11 @@ export type CargoBuck2BuildScriptInput = {
   readonly path: string
   readonly label?: string
 }
+
+/** Local paths are repository-relative. Destinations are normalized crate-relative paths. */
+export type CargoBuck2CompileTimeResource =
+  | { readonly path: string; readonly destination?: string; readonly label?: never }
+  | { readonly label: string; readonly destination: string; readonly path?: string }
 
 /** Renders a package's Buck2 output using a configured Cargo workspace projection. */
 export type CargoBuck2PackageProjection = (
@@ -372,6 +379,7 @@ const cargoBuck2PackageProjectionFor = ({
   buildProduct = false,
   buildProducts,
   buildScriptInputs,
+  compileTimeResources,
   cliBuildStamp = false,
   wasmBindgen,
   wasmGuest,
@@ -567,6 +575,7 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   const sources = discoverRustSources({ packagePath, repo })
+  const resources = resolveCompileTimeResources({ compileTimeResources, packagePath, repo, sources })
   const { binaries: declaredBinaries, library } = discoverCargoTargets({
     member,
     packageName,
@@ -652,6 +661,9 @@ const cargoBuck2PackageProjectionFor = ({
     'BUCK.genie.ts',
     'Cargo.toml',
     ...sources,
+    ...resources.filter((resource) => resource.label === undefined).map((resource) =>
+      requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(packagePath.length + 1),
+    ),
     ...(buildScript === undefined
       ? []
       : [
@@ -666,6 +678,9 @@ const cargoBuck2PackageProjectionFor = ({
     ...new Set([
       'Cargo.toml',
       ...librarySources,
+      ...resources.filter((resource) => resource.label === undefined).map((resource) =>
+        requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(packagePath.length + 1),
+      ),
       ...(buildScript === undefined
         ? []
         : [
@@ -767,15 +782,22 @@ const cargoBuck2PackageProjectionFor = ({
     projectionSource,
     `${packagePath}/src/**/*.rs`,
     `${packagePath}/tests/**/*.rs`,
+    ...resources.flatMap((resource) => resource.path === undefined ? [] : [resource.path]),
   ])
+  const resourceFingerprints: Readonly<Record<string, string>> = Object.fromEntries(resources.flatMap((resource) =>
+    resource.path === undefined || resource.fingerprint === undefined
+      ? []
+      : [[resource.path, resource.fingerprint]],
+  ))
   const graphFingerprints = Object.fromEntries(
     semanticInputPaths
       .filter((input) => input.endsWith('/**/*.rs') === false && input.endsWith('.ts') === false)
-      .map((input) => [input, sha256(repo.readText(input))]),
+      .map((input) => [input, resourceFingerprints[input] ?? sha256(repo.readText(input))]),
   )
   const semanticData = {
     binaries,
     compileEnv,
+    ...(resources.length === 0 ? {} : { compileTimeResources: resources }),
     ...(foreignProjections.length === 0
       ? {}
       : { foreignPackages: foreignProjections.map((projection) => projection.data) }),
@@ -870,7 +892,21 @@ const cargoBuck2PackageProjectionFor = ({
     `    crate = ${starlarkString(crate)},`,
     `    crate_root = ${starlarkString(crateRoot)},`,
     ...(procMacro === true ? ['    proc_macro = True,'] : []),
-    ...renderSources({ name: 'srcs', values: ruleSources, foreignMember }),
+    ...(resources.length === 0
+      ? renderSources({ name: 'srcs', values: ruleSources, foreignMember })
+      : [
+          '    srcs = {',
+          ...ruleSources.map((file) =>
+            `        ${starlarkString(file)}: ${starlarkString(sourceLabel({ file, foreignMember }))},`,
+          ),
+          ...resources.map((resource) =>
+            `        ${starlarkString(resource.destination)}: ${starlarkString(resource.label ?? sourceLabel({
+              file: requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(packagePath.length + 1),
+              foreignMember,
+            }))},`,
+          ),
+          '    },',
+        ]),
     ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
     ...(namedDependencies.length === 0
       ? []
@@ -2126,6 +2162,71 @@ const renderDependencies = ({
 }
 
 const crateIdentifier = (value: string): string => value.replaceAll(/[^A-Za-z0-9_]/g, '_')
+
+type ResolvedCompileTimeResource = {
+  readonly path?: string
+  readonly label?: string
+  readonly destination: string
+  readonly fingerprint?: string
+}
+
+const resolveCompileTimeResources = ({
+  compileTimeResources,
+  packagePath,
+  repo,
+  sources,
+}: {
+  readonly compileTimeResources: readonly CargoBuck2CompileTimeResource[] | undefined
+  readonly packagePath: string
+  readonly repo: RepoContext
+  readonly sources: readonly string[]
+}): readonly ResolvedCompileTimeResource[] => {
+  const destinations = [...sources]
+  return (compileTimeResources ?? []).map((resource, index) => {
+    const field = `compileTimeResources[${index}]`
+    assertKnownKeys({ value: resource, allowed: ['path', 'label', 'destination'], field })
+    if (resource.path !== undefined) {
+      validateRepoPath({ repo, value: resource.path, field: `${field}.path` })
+      if (statSync(repo.resolve(resource.path)).isFile() === false) {
+        throw new Error(`${field}.path must be a file: ${resource.path}`)
+      }
+    }
+    const inPackage = resource.path?.startsWith(`${packagePath}/`) === true
+    if (resource.label !== undefined &&
+      /^(?:(?:@?[A-Za-z0-9_.-]+)?\/\/[A-Za-z0-9_./@-]*)?:[A-Za-z0-9_.+=,@~/-]+$/.test(resource.label) === false) {
+      throw new Error(`${field}.label must be a Buck target label`)
+    }
+    if (inPackage === false && (resource.label === undefined || resource.destination === undefined)) {
+      throw new Error(`${field} external or generated resource needs a label and explicit destination`)
+    }
+    if (inPackage === true && resource.label !== undefined) {
+      throw new Error(`${field} inside ${packagePath} takes no label`)
+    }
+    const destination = resource.destination ?? requireValue({
+      value: resource.path, field: `${field}.path`,
+    }).slice(packagePath.length + 1)
+    if (destination === '' || path.posix.isAbsolute(destination) === true || /^[A-Za-z]:/.test(destination) === true ||
+      destination.includes('\\') === true || path.posix.normalize(destination) !== destination ||
+      // oxlint-disable-next-line no-control-regex -- Resource destinations must reject ASCII control characters.
+      /[\u0000-\u001f\u007f]/.test(destination) === true ||
+      destination.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
+      throw new Error(`${field}.destination must be a normalized crate-relative path: ${destination}`)
+    }
+    if (destinations.some((existing) => existing === destination ||
+      existing.startsWith(`${destination}/`) || destination.startsWith(`${existing}/`))) {
+      throw new Error(`${field}.destination collides with a Rust source or resource: ${destination}`)
+    }
+    destinations.push(destination)
+    return {
+      destination,
+      ...(resource.label === undefined ? {} : { label: resource.label }),
+      ...(resource.path === undefined ? {} : {
+        path: resource.path,
+        fingerprint: `sha256:${createHash('sha256').update(readFileSync(repo.resolve(resource.path))).digest('hex')}`,
+      }),
+    }
+  }).toSorted((left, right) => compareStrings({ left: left.destination, right: right.destination }))
+}
 
 type ResolvedBuildScript = {
   /** Package-relative crate root of the build script. */

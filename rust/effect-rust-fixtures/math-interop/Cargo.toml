@@ -9,7 +9,7 @@ license.workspace = true
 name = "math_interop"
 
 [features]
-default = ["wasm"]
+default = ["wasm", "napi"]
 wasm = []
 napi = []
 

@@ -17,6 +17,7 @@ import effectRpcExplorerPkg from './packages/@overeng/effect-rpc-explorer/packag
 import effectRpcTanstackBasicPkg from './packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts'
 import effectRpcTanstackPkg from './packages/@overeng/effect-rpc-tanstack/package.json.genie.ts'
 import effectRustPkg from './packages/@overeng/effect-rust/package.json.genie.ts'
+import effectRustFixtureConsumerPkg from './packages/@overeng/effect-rust-fixture-consumer/package.json.genie.ts'
 import effectSchemaFormAriaPkg from './packages/@overeng/effect-schema-form-aria/package.json.genie.ts'
 import effectSchemaFormPkg from './packages/@overeng/effect-schema-form/package.json.genie.ts'
 import genieSmalltalkPkg from './packages/@overeng/genie-smalltalk/package.json.genie.ts'
@@ -66,6 +67,7 @@ export const rootWorkspacePackages = [
   effectRpcTanstackBasicPkg,
   effectRpcTanstackPkg,
   effectRustPkg,
+  effectRustFixtureConsumerPkg,
   effectSchemaFormAriaPkg,
   effectSchemaFormPkg,
   geniePkg,
