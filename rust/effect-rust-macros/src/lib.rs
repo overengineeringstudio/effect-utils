@@ -19,6 +19,7 @@ use syn::{parse::Parser, punctuated::Punctuated, FnArg, GenericArgument, ItemFn,
 mod backend;
 mod contract;
 mod error;
+mod resource;
 
 /// Makes a serde type a Rust-owned wire contract (requires effect-rust's `contract` feature).
 ///
@@ -101,6 +102,18 @@ pub fn export(args: TokenStream, item: TokenStream) -> TokenStream {
         Ok(output) => output.into(),
         Err(error) => error.into_compile_error().into(),
     }
+}
+
+/// Exports an inherent resource impl with a public `new(...) -> Self` constructor.
+/// Public synchronous `&self` / `&mut self` methods are serialized per resource by
+/// the generated scoped Effect API. Async, consuming, generic and static methods
+/// other than `new` are rejected. Native panics unwind; wasm traps retire the
+/// entire instance without running Rust destructors through poisoned glue.
+#[proc_macro_attribute]
+pub fn resource(args: TokenStream, item: TokenStream) -> TokenStream {
+    resource::expand(args.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

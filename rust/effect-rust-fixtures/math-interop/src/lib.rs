@@ -87,3 +87,46 @@ pub fn sum_rows(rows: &[Sample]) -> u64 {
 pub fn panic_test() -> i32 {
     panic!("fixture panic boundary")
 }
+
+static COUNTER_DROPS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+pub struct Counter {
+    value: i32,
+}
+
+#[effect_rust::resource]
+impl Counter {
+    pub fn new(value: i32) -> Self {
+        Self { value }
+    }
+
+    pub fn append(&mut self, digit: i32) -> i32 {
+        self.value = self.value * 10 + digit;
+        self.value
+    }
+
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+
+    pub fn divide(&mut self, divisor: i32) -> Result<i32, ArithmeticError> {
+        let value = checked_divide(self.value, divisor)?;
+        self.value = value;
+        Ok(value)
+    }
+
+    pub fn panic(&mut self) -> i32 {
+        panic!("fixture resource panic boundary")
+    }
+}
+
+impl Drop for Counter {
+    fn drop(&mut self) {
+        COUNTER_DROPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[effect_rust::export(name = "counterDrops")]
+pub fn counter_drops() -> u32 {
+    COUNTER_DROPS.load(std::sync::atomic::Ordering::SeqCst)
+}
