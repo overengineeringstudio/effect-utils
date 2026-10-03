@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- Effect-rust wasm browser/default entries now fetch an emitted `.wasm` asset
+  and instantiate it through pinned wasm-bindgen streaming glue. Explicit inline
+  entries remain no-fetch, Node retains CJS glue, and Bun retains inline delivery.
+- Split effect-rust Wasm runtime constructors and generated statics into
+  `browserWorker` (external asset) and `workerd` (precompiled Module), replacing
+  the ambiguous `worker` loader.
+
 ### Removed
 
 - Retired the legacy pnpm CLI compiler, prepared-install dependency builders,

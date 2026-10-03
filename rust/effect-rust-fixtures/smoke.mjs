@@ -30,6 +30,16 @@ const load = async (absolute) => {
   return api.default ?? api
 }
 
+const withoutFetch = async (run) => {
+  const nativeFetch = globalThis.fetch
+  globalThis.fetch = () => { throw new Error(`${runtime} package initialization must not fetch wasm`) }
+  try {
+    return await run()
+  } finally {
+    globalThis.fetch = nativeFetch
+  }
+}
+
 const checkHash = (api) => {
   const sha256 = api.sha256Hex(Buffer.from('abc'))
   assert.equal(sha256, 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
@@ -263,7 +273,7 @@ const checkPackage = async (directory) => {
   const conditions = manifest.exports['.']
   const expected = resolve(directory, conditions[runtime])
   assert.equal(absolute, expected, `${runtime} must resolve its own export condition`)
-  const api = await load(absolute)
+  const api = await withoutFetch(() => load(absolute))
   await checkHashModes(api)
   checkMathModes(api)
   checkManifest({ directory, names: [...hashExports, ...mathExports] })
@@ -272,12 +282,14 @@ const checkPackage = async (directory) => {
     sha256: checkHash(api),
     ...checkArithmetic(api),
   }
-  const loadPath = join(directory, manifest.type === 'commonjs' ? 'load.cjs' : 'web/load.js')
+  const loadPath = createRequire(manifestPath).resolve(`${manifest.name}/load`)
   // eslint-disable-next-line import/no-dynamic-require -- Exercise the generated product's fresh-instance loader selected by its package type.
   const { load: fresh } = await import(pathToFileURL(loadPath).href)
-  const first = await fresh()
-  const second = await fresh()
+  const first = await withoutFetch(() => fresh())
+  const second = await withoutFetch(() => fresh())
   assert.notEqual(first.api, second.api)
+  assert.equal(first.api.add(20, 22), 42)
+  assert.equal(second.api.add(20, 22), 42)
   assert.throws(
     () => first.api.panicTest(),
     (cause) =>

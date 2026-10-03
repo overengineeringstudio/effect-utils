@@ -82,7 +82,7 @@ await Promise.all(
   }),
 )
 await Promise.all(
-  ['wasm/web/load.d.ts', 'wasm/worker-load.d.ts', 'native/load.d.cts'].map(async (declaration) => {
+  ['wasm/web/load.d.ts', 'wasm/web/inline-load.d.ts', 'wasm/workerd-load.d.ts', 'native/load.d.cts'].map(async (declaration) => {
     const file = join(output, 'dist', declaration)
     if (existsSync(file) === false) return
     await writeFile(file, (await readFile(file, 'utf8')).replaceAll('service.ts', 'service.js'))

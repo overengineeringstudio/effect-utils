@@ -37,9 +37,53 @@ const digest = ContentCore.pipe(
 )
 ```
 
-`wasmLayer.node`, `.bun`, `.browser`, and `.worker` are explicit constructors. `nativeLayer.node` and `.bun` load the selected native adapter. Nothing detects an environment or falls back to another transport. `load` returns `{ api, release }`; it may reuse an immutable compiled `WebAssembly.Module`, but not an initialized bindgen module or its mutable glue state. `release` must sever instance/glue references and stop generation-owned external callbacks; it must not invoke poisoned Rust destructors.
+`wasmLayer.node`, `.bun`, `.browser`, `.browserWorker`, and `.workerd` are explicit constructors. Browser Workers fetch the emitted wasm asset; workerd receives a precompiled `WebAssembly.Module`. There is no ambiguous `.worker` constructor. `nativeLayer.node` and `.bun` load the selected native adapter. Nothing detects an environment or falls back to another transport. `load` returns `{ api, release }`; it may reuse an immutable compiled `WebAssembly.Module`, but not an initialized bindgen module or its mutable glue state. `release` must sever instance/glue references and stop generation-owned external callbacks; it must not invoke poisoned Rust destructors.
 
-Service classes use `defineStatics(Service, { make, wasm?, native? })` with generated adapters to expose `ContentCore.layerWasm.node(options)`, `.bun`, `.browser`, `.worker`, and `layerNative.node` / `.bun` for the supplied loaders. The optional `wasm` and `native` records contain explicit loaders for each advertised runtime. Layer construction initializes the service; imports and static declarations do not initialize instances.
+Service classes use `defineStatics(Service, { make, wasm?, native? })` with generated adapters to expose `ContentCore.layerWasm.node(options)`, `.bun`, `.browser`, `.browserWorker`, `.workerd`, and `layerNative.node` / `.bun` for the supplied loaders. The optional `wasm` and `native` records contain explicit loaders for each advertised runtime. Layer construction initializes the service; imports and static declarations do not initialize instances.
+
+### Wasm package delivery
+
+The wasm product's root export selects Node CJS glue on Node, inline bytes on
+Bun, and an external emitted `.wasm` asset for `browser` and `default`.
+Browser initialization preserves pinned wasm-bindgen's
+`new URL(..., import.meta.url)` → `fetch` → `WebAssembly.instantiateStreaming`
+path. Serve the asset with `Content-Type: application/wasm`; bundlers must emit
+that URL-referenced asset rather than inline it. Bindgen owns its MIME fallback.
+The `./load` fresh-instance entry selects inline bytes for Node/Bun, external
+asset loading for browser/default, and a precompiled Module for workerd.
+
+Explicit product entries are independent of runtime conditions:
+
+| Entry | Delivery |
+| --- | --- |
+| `./inline`, `./inline/load` | Embedded bytes; initialization does not fetch |
+| `./browser-worker`, `./browser-worker/load` | External URL/fetch/streaming, inside a browser Worker |
+| `./workerd`, `./workerd/load` | Static wasm import supplied as a precompiled `WebAssembly.Module`; no fetch or runtime compilation |
+| `./url` | Consumer-supplied URL, Response, bytes or Module through bindgen |
+
+Generated service `.browser` and `.browserWorker` statics use fresh lexical
+external-asset loaders; `.node` and `.bun` statics stay inline; `.workerd` uses
+fresh lexical state around the supplied precompiled Module. To opt into inline
+delivery in a browser, supply the product's `./inline/load` loader to
+`Interop.wasmLayer.browser` with the generated `make<Service>` adapter.
+Inline/workerd glue contains no unused default asset URL, so importing an inline
+entry does not make a bundler emit a second wasm asset.
+
+Delivery smoke scenarios live in `rust/effect-rust-fixtures`. After building the
+wasm product, run
+`node rust/effect-rust-fixtures/browser-smoke-server.mjs <wasm-package-directory>`,
+then open its printed URL in real Chromium. The page exposes
+`window.smokeResult` / `window.smokeError` and exercises default browser delivery,
+two isolated fresh instances, explicit inline no-fetch delivery, and a real
+module Worker, recording actual asset requests and native streaming calls.
+For a real workerd run, generate a configuration with
+`node rust/effect-rust-fixtures/workerd-smoke-config.mjs <wasm-package-directory> <output.capnp> 8787`,
+run `workerd serve <output.capnp>`, and request `http://127.0.0.1:8787/`.
+The configuration supplies the actual product wasm as a workerd wasm module,
+whose import is a precompiled `WebAssembly.Module`. Require the Worker's
+`{ passed: true, precompiled: true, fetches: 0 }` verdict. The ordinary
+`smoke.mjs` runs on both Node and Bun and rejects any initialization-time fetch
+through their own root and `./load` conditions.
 
 ### Failure and lifetime
 

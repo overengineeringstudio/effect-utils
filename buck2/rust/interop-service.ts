@@ -467,10 +467,11 @@ const loaders: string[] = []
 if (wasm !== undefined) {
   source.push(
     `const wasmLoaders: Interop.WasmLoaders<${service}Api> = {`,
-    "  node: () => import('./wasm/web/load.js').then((module) => module.load()),",
-    "  bun: () => import('./wasm/web/load.js').then((module) => module.load()),",
+    "  node: () => import('./wasm/web/inline-load.js').then((module) => module.load()),",
+    "  bun: () => import('./wasm/web/inline-load.js').then((module) => module.load()),",
     "  browser: () => import('./wasm/web/load.js').then((module) => module.load()),",
-    "  worker: () => import('./wasm/worker-load.js').then((module) => module.load()),",
+    "  browserWorker: () => import('./wasm/web/load.js').then((module) => module.load()),",
+    "  workerd: () => import('./wasm/workerd-load.js').then((module) => module.load()),",
     '}',
   )
   loaders.push('wasm: wasmLoaders')
@@ -532,10 +533,14 @@ if (wasm !== undefined) {
   const instance = `{ api: ${service}Api; release(): void }`
   await writeFile(
     join(output, 'wasm', 'web', 'load.d.ts'),
+    `import type { ${service}Api } from '../../service.ts';\ntype Source = WebAssembly.Module | BufferSource | RequestInfo | URL | Response;\nexport declare const load: (source?: Source | Promise<Source>) => Promise<${instance}>;\n`,
+  )
+  await writeFile(
+    join(output, 'wasm', 'web', 'inline-load.d.ts'),
     `import type { ${service}Api } from '../../service.ts';\nexport declare const load: (source?: WebAssembly.Module | BufferSource) => Promise<${instance}>;\n`,
   )
   await writeFile(
-    join(output, 'wasm', 'worker-load.d.ts'),
+    join(output, 'wasm', 'workerd-load.d.ts'),
     `import type { ${service}Api } from '../service.ts';\nexport declare const load: () => ${instance};\n`,
   )
 }
