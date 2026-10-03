@@ -226,6 +226,11 @@
       "description": "@overeng/genie package · Set: manual"
     },
     {
+      "name": "system:genie-smalltalk",
+      "color": "a371f7",
+      "description": "@overeng/genie-smalltalk package · Set: manual"
+    },
+    {
       "name": "system:gh-ci-utils",
       "color": "a371f7",
       "description": "@overeng/gh-ci-utils package · Set: manual"
@@ -289,6 +294,11 @@
       "name": "system:npm-release",
       "color": "a371f7",
       "description": "@overeng/npm-release package · Set: manual"
+    },
+    {
+      "name": "system:otel-browser",
+      "color": "a371f7",
+      "description": "@overeng/otel-browser package · Set: manual"
     },
     {
       "name": "system:otel-contract",

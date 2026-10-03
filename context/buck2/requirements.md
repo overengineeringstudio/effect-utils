@@ -140,7 +140,7 @@ invariants named in its own document:
   versus legacy lines deleted (excluding VRS documents, tests, and lockfiles).
   A consumer closes when every ledger row for that consumer is Buck-owned or
   excluded and its legacy build machinery (builders, FOD hashes, and
-  `mk-pnpm-cli` glue) is deleted. A close records the consumer's net, including
+  prepared-install glue) is deleted. A close records the consumer's net, including
   amortization, for reporting; its sign does not gate the close. A single change
   may be net positive when its row records the amortization rationale
   ([decision 0031](./.decisions/0031-complexity-gate-and-authority-ledger.md),

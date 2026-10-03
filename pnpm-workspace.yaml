@@ -21,6 +21,7 @@ packages:
   - packages/@overeng/effect-schema-form
   - packages/@overeng/effect-schema-form-aria
   - packages/@overeng/genie
+  - packages/@overeng/genie-smalltalk
   - packages/@overeng/gh-ci-utils
   - packages/@overeng/kdl
   - packages/@overeng/kdl-effect
@@ -34,6 +35,7 @@ packages:
   - packages/@overeng/notion-property-write
   - packages/@overeng/notion-react
   - packages/@overeng/npm-release
+  - packages/@overeng/otel-browser
   - packages/@overeng/otel-contract
   - packages/@overeng/oxc-config
   - packages/@overeng/pty-effect

@@ -16,6 +16,7 @@ import { buck2TypeScriptAdmission as effectRpcTanstackAdmission } from '../../pa
 import { buck2TypeScriptAdmission as effectRpcTanstackBasicAdmission } from '../../packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAriaAdmission } from '../../packages/@overeng/effect-schema-form-aria/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAdmission } from '../../packages/@overeng/effect-schema-form/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as genieSmalltalkAdmission } from '../../packages/@overeng/genie-smalltalk/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as genieAdmission } from '../../packages/@overeng/genie/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ghCiUtilsAdmission } from '../../packages/@overeng/gh-ci-utils/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as kdlEffectAdmission } from '../../packages/@overeng/kdl-effect/BUCK.genie.ts'
@@ -30,6 +31,7 @@ import { buck2TypeScriptAdmission as notionMdAdmission } from '../../packages/@o
 import { buck2TypeScriptAdmission as notionPropertyWriteAdmission } from '../../packages/@overeng/notion-property-write/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as notionReactAdmission } from '../../packages/@overeng/notion-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as npmReleaseAdmission } from '../../packages/@overeng/npm-release/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as otelBrowserAdmission } from '../../packages/@overeng/otel-browser/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as otelContractAdmission } from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as oxcConfigAdmission } from '../../packages/@overeng/oxc-config/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ptyEffectAdmission } from '../../packages/@overeng/pty-effect/BUCK.genie.ts'
@@ -95,6 +97,7 @@ export const buck2TypeScriptAdmissions = {
   effectSchemaForm: effectSchemaFormAdmission,
   effectSchemaFormAria: effectSchemaFormAriaAdmission,
   genie: genieAdmission,
+  genieSmalltalk: genieSmalltalkAdmission,
   ghCiUtils: ghCiUtilsAdmission,
   kdl: kdlAdmission,
   kdlEffect: kdlEffectAdmission,
@@ -108,6 +111,7 @@ export const buck2TypeScriptAdmissions = {
   notionPropertyWrite: notionPropertyWriteAdmission,
   notionReact: notionReactAdmission,
   npmRelease: npmReleaseAdmission,
+  otelBrowser: otelBrowserAdmission,
   otelContract: otelContractAdmission,
   oxcConfig: oxcConfigAdmission,
   ptyEffect: ptyEffectAdmission,

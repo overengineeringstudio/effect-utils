@@ -18,6 +18,7 @@ import effectRpcTanstackBasicTsconfig from '../packages/@overeng/effect-rpc-tans
 import effectRpcTanstackTsconfig from '../packages/@overeng/effect-rpc-tanstack/tsconfig.json.genie.ts'
 import effectSchemaFormAriaTsconfig from '../packages/@overeng/effect-schema-form-aria/tsconfig.json.genie.ts'
 import effectSchemaFormTsconfig from '../packages/@overeng/effect-schema-form/tsconfig.json.genie.ts'
+import genieSmalltalkTsconfig from '../packages/@overeng/genie-smalltalk/tsconfig.json.genie.ts'
 import type { GenieOutput, TSConfigArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import genieTsconfig from '../packages/@overeng/genie/tsconfig.json.genie.ts'
 import ghCiUtilsTsconfig from '../packages/@overeng/gh-ci-utils/tsconfig.json.genie.ts'
@@ -33,6 +34,7 @@ import notionMdTsconfig from '../packages/@overeng/notion-md/tsconfig.json.genie
 import notionPropertyWriteTsconfig from '../packages/@overeng/notion-property-write/tsconfig.json.genie.ts'
 import notionReactTsconfig from '../packages/@overeng/notion-react/tsconfig.json.genie.ts'
 import npmReleaseTsconfig from '../packages/@overeng/npm-release/tsconfig.json.genie.ts'
+import otelBrowserTsconfig from '../packages/@overeng/otel-browser/tsconfig.json.genie.ts'
 import otelContractTsconfig from '../packages/@overeng/otel-contract/tsconfig.json.genie.ts'
 import oxcConfigTsconfig from '../packages/@overeng/oxc-config/tsconfig.json.genie.ts'
 import ptyEffectTsconfig from '../packages/@overeng/pty-effect/tsconfig.json.genie.ts'
@@ -125,6 +127,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/effect-schema-form': { tsconfig: effectSchemaFormTsconfig },
     'packages/@overeng/effect-schema-form-aria': { tsconfig: effectSchemaFormAriaTsconfig },
     'packages/@overeng/genie': { tsconfig: genieTsconfig },
+    'packages/@overeng/genie-smalltalk': { tsconfig: genieSmalltalkTsconfig },
     'packages/@overeng/gh-ci-utils': { tsconfig: ghCiUtilsTsconfig },
     'packages/@overeng/kdl': { tsconfig: kdlTsconfig },
     'packages/@overeng/kdl-effect': { tsconfig: kdlEffectTsconfig },
@@ -138,6 +141,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/notion-md': { tsconfig: notionMdTsconfig },
     'packages/@overeng/notion-property-write': { tsconfig: notionPropertyWriteTsconfig },
     'packages/@overeng/notion-react': { tsconfig: notionReactTsconfig },
+    'packages/@overeng/otel-browser': { tsconfig: otelBrowserTsconfig },
     'packages/@overeng/otel-contract': { tsconfig: otelContractTsconfig },
     'packages/@overeng/oxc-config': { tsconfig: oxcConfigTsconfig },
     'packages/@overeng/pty-effect': { tsconfig: ptyEffectTsconfig },

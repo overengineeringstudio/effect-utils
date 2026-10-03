@@ -19,8 +19,6 @@ Sandboxed Nix builders emit JSON records on registered log prefixes:
 
 ```text
 workspace-projector: {"schema":"nix-bridge/v1","v":1,"event":"projected-workspace","package":"packages/app","bytes":9846784}
-workspace-prep: {"schema":"nix-bridge/v1","v":1,"event":"prepared-deps-scan","profileId":"pnpm:...","status":"ok"}
-workspace-restore: {"schema":"nix-bridge/v1","v":1,"event":"restore","profileId":"pnpm:...","duration_ms":421}
 cli-build: {"schema":"nix-bridge/v1","v":1,"event":"smoke","program":"my-cli","status":"ok"}
 ```
 

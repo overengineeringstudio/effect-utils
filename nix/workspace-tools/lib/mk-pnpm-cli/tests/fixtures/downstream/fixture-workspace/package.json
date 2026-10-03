@@ -1,6 +1,0 @@
-{
-  "name": "mk-pnpm-cli-downstream-fixture",
-  "private": true,
-  "version": "0.0.0",
-  "packageManager": "pnpm@12.7.0"
-}

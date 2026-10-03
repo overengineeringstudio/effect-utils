@@ -1,6 +1,0 @@
-{
-  "name": "directory-tools",
-  "directories": {
-    "bin": "commands"
-  }
-}
