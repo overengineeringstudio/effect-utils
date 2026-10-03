@@ -112,6 +112,15 @@ const privateWriterCacheBlock = ({
   tier = ${trustedOrigin.tier}
 ${MANAGED_END}`
 }
+/**
+ * Trusted tier whose archive origin did not answer: tracked REAPI settings stay in force, while
+ * acquisition fetches the canonical registry URL directly (decision 0038 §2, no archive origin).
+ */
+const NO_ARCHIVE_ORIGIN_BLOCK = `${MANAGED_BEGIN}
+[archive_origin]
+  url_prefix =
+  tier = public
+${MANAGED_END}`
 
 const fail = (message: string): never => {
   throw new Error(`standalone Buck cache posture: ${message}`)
@@ -149,10 +158,13 @@ export const standaloneCachePostureConfig = ({
   current,
   env,
   trustedOrigin,
+  archiveOriginReachable = true,
 }: {
   readonly current: string
   readonly env: Readonly<Record<string, string | undefined>>
   readonly trustedOrigin: TrustedArchiveOrigin
+  /** False after a failed archive-origin preflight; only the trusted posture uses the origin. */
+  readonly archiveOriginReachable?: boolean
 }): string => {
   const withoutManaged = withoutManagedBlock(current)
   const managed =
@@ -164,7 +176,9 @@ export const standaloneCachePostureConfig = ({
           ? privateWriterCacheBlock({ env, trustedOrigin })
           : (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
             ? PUBLISHER_CACHE_BLOCK
-            : trustedCacheBlock(trustedOrigin)
+            : archiveOriginReachable === true
+              ? trustedCacheBlock(trustedOrigin)
+              : NO_ARCHIVE_ORIGIN_BLOCK
   const unmanaged = withoutManaged.content
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }
@@ -173,9 +187,11 @@ export const standaloneCachePostureConfig = ({
 export const reconcileStandaloneCachePosture = ({
   repoRoot,
   env,
+  archiveOriginReachable,
 }: {
   readonly repoRoot: string
   readonly env: Readonly<Record<string, string | undefined>>
+  readonly archiveOriginReachable?: boolean
 }): void => {
   const output = resolve(repoRoot, '.buckconfig.local')
   const exists = existsSync(output)
@@ -185,7 +201,7 @@ export const reconcileStandaloneCachePosture = ({
   const trustedOrigin = trustedArchiveOriginFromConfig(
     readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8'),
   )
-  const next = standaloneCachePostureConfig({ current, env, trustedOrigin })
+  const next = standaloneCachePostureConfig({ current, env, trustedOrigin, archiveOriginReachable })
   if (next === current) return
   const candidate = `${output}.candidate-${randomUUID().replaceAll('-', '')}`
   try {
@@ -197,9 +213,10 @@ export const reconcileStandaloneCachePosture = ({
 }
 
 /**
- * Preflight only the cache endpoint Buck will use in this checkout. Read-only
- * invocations fail open; publishers must reach the cache before they run.
- * The next read-only invocation restores its normal posture and probes again.
+ * Preflight only the cache endpoints Buck will use in this checkout: the trusted archive origin and
+ * the REAPI endpoint, which are different hosts and ports. Read-only invocations fail open;
+ * publishers must reach the cache before they run. The next read-only invocation restores its
+ * normal posture and probes again.
  */
 export const reconcileStandaloneCachePostureForInvocation = async ({
   repoRoot,
@@ -214,6 +231,23 @@ export const reconcileStandaloneCachePostureForInvocation = async ({
   if (env['BUCK2_NO_REMOTE_CACHE'] === '1') return true
 
   const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
+  const archivePrefix = buckConfigValues(
+    `${tracked}\n${readFileSync(resolve(repoRoot, '.buckconfig.local'), 'utf8')}`,
+  )['archive_origin.url_prefix']
+  if (
+    archivePrefix !== undefined &&
+    archivePrefix !== '' &&
+    (await probeArchiveOrigin({ urlPrefix: archivePrefix, deadlineMs })) === false
+  ) {
+    reconcileStandaloneCachePosture({ repoRoot, env, archiveOriginReachable: false })
+    const warning =
+      'Buck2 archive origin is unreachable; fetching archives from the registry for this invocation'
+    process.stderr.write(`warning: ${warning}\n`)
+    if (env['GITHUB_ACTIONS'] === 'true')
+      process.stderr.write(`::warning title=Buck2 cache::${warning}\n`)
+    process.stderr.write('buck2_archive_origin_fail_open_total 1\n')
+  }
+
   const local = readFileSync(resolve(repoRoot, '.buckconfig.local'), 'utf8')
   const values = buckConfigValues(`${tracked}\n${local}`)
   if (values['buck2.remote_cache_enabled'] === 'false') return true
@@ -246,6 +280,29 @@ export const reconcileStandaloneCachePostureForInvocation = async ({
     process.stderr.write(`::warning title=Buck2 cache::${warning}\n`)
   process.stderr.write('buck2_reapi_fail_open_total 1\n')
   return false
+}
+
+/**
+ * Any HTTP response proves the origin answers (a bare prefix request is not a valid CAS key, so a
+ * 4xx is expected); only DNS, connection, or deadline failures count as unreachable.
+ */
+const probeArchiveOrigin = async ({
+  urlPrefix,
+  deadlineMs,
+}: {
+  readonly urlPrefix: string
+  readonly deadlineMs: number
+}): Promise<boolean> => {
+  try {
+    await fetch(urlPrefix, {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(deadlineMs),
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 const probeRemoteCacheCapabilities = async ({

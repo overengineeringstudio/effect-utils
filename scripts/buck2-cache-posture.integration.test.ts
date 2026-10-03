@@ -430,3 +430,102 @@ describe('Buck2 REAPI capability preflight', () => {
     )
   })
 })
+
+/** A REAPI endpoint that answers GetCapabilities, so only the archive origin varies. */
+const withHealthyReapi = async (run: (endpoint: string) => Promise<void>): Promise<void> => {
+  const server = createGrpcServer()
+  server.on('stream', (stream) => {
+    stream.on('data', () => {})
+    stream.on('end', () => {
+      stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+      stream.end(Buffer.from([0, 0, 0, 0, 4, 0x0a, 2, 8, 1]))
+    })
+  })
+  server.listen(0, '127.0.0.1')
+  await new Promise<void>((resolve) => server.once('listening', resolve))
+  try {
+    const bound = server.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+    await run(`grpc://127.0.0.1:${bound.port}`)
+  } finally {
+    server.close()
+  }
+}
+
+const writeTrustedRoot = ({
+  archivePrefix,
+  reapiEndpoint,
+}: {
+  archivePrefix: string
+  reapiEndpoint: string
+}): string => {
+  const root = makeRoot()
+  writeFileSync(
+    join(root, '.buckconfig'),
+    `[archive_origin]
+  trusted_url_prefix = ${archivePrefix}
+  trusted_tier = private
+[buck2_re_client]
+  action_cache_address = ${reapiEndpoint}
+  instance_name = effect-utils
+  tls = false
+`,
+  )
+  return root
+}
+
+describe('trusted archive origin preflight', () => {
+  it('keeps a reachable archive origin, whatever HTTP status it answers with', async () => {
+    const archive = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response(null, { status: 400 }),
+    })
+    try {
+      await withHealthyReapi(async (reapiEndpoint) => {
+        const prefix = `http://127.0.0.1:${archive.port}/cas/`
+        const root = writeTrustedRoot({ archivePrefix: prefix, reapiEndpoint })
+        expect(
+          await reconcileStandaloneCachePostureForInvocation({ repoRoot: root, env: {} }),
+        ).toBe(true)
+        expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
+          `url_prefix = ${prefix}`,
+        )
+      })
+    } finally {
+      archive.stop(true)
+    }
+  })
+
+  it('drops an unresolvable archive origin for the invocation while REAPI stays enabled, then restores it', async () => {
+    await withHealthyReapi(async (reapiEndpoint) => {
+      const prefix = 'http://archive-origin.invalid/cas/'
+      const root = writeTrustedRoot({ archivePrefix: prefix, reapiEndpoint })
+      // Async spawn: a synchronous one would block the in-process REAPI server from answering.
+      const child = Bun.spawn({
+        cmd: [process.execPath, join(import.meta.dir, 'buck2-cache-posture.ts'), root, '--probe'],
+        env: { ...process.env, GITHUB_ACTIONS: 'true' },
+        stderr: 'pipe',
+      })
+      const [exitCode, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stderr).text(),
+      ])
+      expect(exitCode).toBe(0)
+      expect(stderr).toContain('warning: Buck2 archive origin is unreachable')
+      expect(stderr).toContain('::warning title=Buck2 cache::')
+      expect(stderr).toContain('buck2_archive_origin_fail_open_total 1')
+      expect(stderr).not.toContain(prefix)
+      const local = readFileSync(join(root, '.buckconfig.local'), 'utf8')
+      expect(local).not.toContain('remote_cache_enabled = false')
+      expect(local).not.toContain(prefix)
+      expect(local).toContain('url_prefix =\n')
+
+      // The next invocation writes the trusted posture again before it probes.
+      reconcileStandaloneCachePosture({ repoRoot: root, env: {} })
+      expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
+        `url_prefix = ${prefix}`,
+      )
+    })
+  })
+})
