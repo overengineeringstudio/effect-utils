@@ -71,18 +71,19 @@ Subsystem questions live in their subsystem (`03-materialization`,
 
 - Spec question:
   [trace-access DQ1](./07-observability/06-trace-access/spec.md#open-design-questions).
-- Current boundary: CI publishes an immutable light/dark PNG pair to the
-  existing public GitBucket CAS using a report-step-only SSH credential.
-  GitBucket authenticates a GitHub account, not an upload-only key. A new SSH
-  key can be revoked independently but retains that account's authorization
-  while valid.
-- Accepted temporary compromise: Johannes chose CAS reuse and authorized
-  end-to-end publication with credential hardening as a separate follow-up.
-  This acceptance does not claim least-privilege publication is already solved.
-- Resolution signal: a supported, separately revocable publisher credential
-  whose enforced policy limits it to the approved public PNG namespace,
-  MIME/size bounds, and publication operation; prove pair publication succeeds
-  while unrelated account operations are denied. Then migrate the report
-  step and revoke the broader credential.
+- Implemented boundary: the GitBucket Actions OIDC exchange verifies GitHub's
+  signature/issuer, a service-specific audience, expiry and a configurable
+  repository/event/ref/workflow allowlist. It mints at-most-five-minute
+  upload-only PNG tokens (5 MiB cap, explicit public consent; no role/refresh).
+- Pending gate: Johannes approves deploying the server to Netlify and setting
+  `GITBUCKET_ACTIONS_POLICIES_JSON` for effect-utils PRs. The report job adds
+  an explicit OIDC permission override; existing workflow-level Tailscale OIDC
+  authority is unchanged. Token/exchange/upload failures retain Mermaid and
+  never downgrade to SSH.
+- Accepted temporary compromise remains until live proof: the report-step SSH
+  secret/username references and non-Actions SSH branch are retained.
+- Resolution signal: allowed PR run publishes the light/dark CAS pair with OIDC,
+  unrelated account operations reject upload tokens, then remove the SSH branch
+  and workflow references and revoke `PIPELINE_TRACES_ASSET_SSH_KEY`.
 - Sequencing and dissolution:
   [restricted public-waterfall publisher](./roadmap.md#restricted-public-waterfall-publisher).

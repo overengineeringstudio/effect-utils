@@ -1475,7 +1475,7 @@ const pipelineTracesJob = {
   needs: ['pipeline-attempt-close'],
   if: "${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CI_EVIDENCE_MODE == 'upload' }}",
   'runs-on': 'ubuntu-latest',
-  permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write' },
+  permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
   steps: [
     { uses: 'actions/checkout@v4' },
