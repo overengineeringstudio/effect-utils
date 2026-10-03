@@ -37,6 +37,7 @@ export const internalPackages = [
   'notion-md',
   'notion-property-write',
   'notion-react',
+  'otel-browser',
   'otel-contract',
   'oxc-config',
   'pty-effect',

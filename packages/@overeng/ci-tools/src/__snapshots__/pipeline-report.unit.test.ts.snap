@@ -5,31 +5,39 @@ exports[`Pipeline traces from recorded public GitHub Jobs API payloads > renders
 
 29 jobs; 18 successful, 0 failed, 1 cancelled, 10 skipped
 
+Image unavailable; jobs-only Mermaid timeline below.
+
+| Job | Status | Wall time | Delta vs main p50 | Trace |
+| --- | --- | --- | --- | --- |
+| default-ref-policy | success | 0m 53s | +36.0s (211.8%; n=7) | not instrumented |
+| test\\[runner=namespace-profile-linux-x86-64\\] | success | 17m 48s | +551.0s (106.6%; n=7) | not instrumented |
+| test\\[runner=namespace-profile-macos-arm64\\] | success | 27m 59s | +1050.0s (166.9%; n=7) | not instrumented |
+| nix-closure-sizes | success | 4m 51s | +112.0s (62.6%; n=7) | not instrumented |
+| pnpm-regression | success | 5m 17s | +129.0s (68.6%; n=7) | not instrumented |
+| pnpm-builder-contract | success | 3m 40s | +106.0s (93.0%; n=7) | not instrumented |
+| test-integration-restate | success | 7m 44s | +134.0s (40.6%; n=7) | not instrumented |
+| devenv-perf | cancelled | 90m 28s | +4238.5s (356.3%; n=6) | not instrumented |
+| bundle-smoke | success | 4m 58s | +81.0s (37.3%; n=7) | not instrumented |
+| test-megarepo-cold-gc | success | 13m 21s | +589.0s (277.8%; n=7) | not instrumented |
+
+<details>
+<summary>All other jobs (19)</summary>
+
 | Job | Status | Wall time | Delta vs main p50 | Trace |
 | --- | --- | --- | --- | --- |
 | pr-a-inert-buck | skipped | unavailable | duration unavailable | unavailable |
 | test-integration-notion | skipped | unavailable | duration unavailable | unavailable |
 | deploy-storybooks | skipped | unavailable | duration unavailable | unavailable |
 | lint | success | 5m 04s | +56.0s (22.6%; n=7) | not instrumented |
-| default-ref-policy | success | 0m 53s | +36.0s (211.8%; n=7) | not instrumented |
 | source-shape | success | 0m 11s | +6.0s (120.0%; n=7) | not instrumented |
-| test[runner=namespace-profile-linux-x86-64] | success | 17m 48s | +551.0s (106.6%; n=7) | not instrumented |
 | test-playwright-utils | success | 5m 18s | no main baseline | not instrumented |
 | build-products | skipped | unavailable | duration unavailable | unavailable |
 | weaver | success | 4m 53s | +57.0s (24.2%; n=7) | not instrumented |
-| test[runner=namespace-profile-macos-arm64] | success | 27m 59s | +1050.0s (166.9%; n=7) | not instrumented |
 | pr-reviews-resolved | success | 0m 04s | no main baseline | not instrumented |
-| nix-closure-sizes | success | 4m 51s | +112.0s (62.6%; n=7) | not instrumented |
-| pnpm-regression | success | 5m 17s | +129.0s (68.6%; n=7) | not instrumented |
-| pnpm-builder-contract | success | 3m 40s | +106.0s (93.0%; n=7) | not instrumented |
-| test-integration-restate | success | 7m 44s | +134.0s (40.6%; n=7) | not instrumented |
 | typecheck | success | 4m 50s | -97.0s (-25.1%; n=7) | not instrumented |
-| devenv-perf | cancelled | 90m 28s | +4238.5s (356.3%; n=6) | not instrumented |
 | test-playwright-tui-react | success | 6m 33s | no main baseline | not instrumented |
 | bootstrap-cold-proof | success | 3m 10s | -78.0s (-29.1%; n=7) | not instrumented |
-| bundle-smoke | success | 4m 58s | +81.0s (37.3%; n=7) | not instrumented |
 | trusted-buck2-remote-cache-proof | skipped | unavailable | duration unavailable | unavailable |
-| test-megarepo-cold-gc | success | 13m 21s | +589.0s (277.8%; n=7) | not instrumented |
 | cargo | success | 5m 40s | +50.0s (17.2%; n=7) | not instrumented |
 | seed-pnpm-archives | skipped | unavailable | duration unavailable | unavailable |
 | publish-products | skipped | unavailable | duration unavailable | unavailable |
@@ -37,7 +45,9 @@ exports[`Pipeline traces from recorded public GitHub Jobs API payloads > renders
 | notify-alignment | skipped | unavailable | duration unavailable | unavailable |
 | ci-measurements-report | skipped | unavailable | duration unavailable | unavailable |
 
-Main baseline samples (by job): pr-a-inert-buck n=0, test-integration-notion n=7, deploy-storybooks n=7, lint n=7, default-ref-policy n=7, source-shape n=7, test[runner=namespace-profile-linux-x86-64] n=7, test-playwright-utils n=0, build-products n=0, weaver n=7, test[runner=namespace-profile-macos-arm64] n=7, pr-reviews-resolved n=0, nix-closure-sizes n=7, pnpm-regression n=7, pnpm-builder-contract n=7, test-integration-restate n=7, typecheck n=7, devenv-perf n=6, test-playwright-tui-react n=0, bootstrap-cold-proof n=7, bundle-smoke n=7, trusted-buck2-remote-cache-proof n=0, test-megarepo-cold-gc n=7, cargo n=7, seed-pnpm-archives n=0, publish-products n=0, test-live-deploy-ci-tools n=7, notify-alignment n=7, ci-measurements-report n=7.
+</details>
+
+Main baseline samples (by job): pr-a-inert-buck n=0, test-integration-notion n=7, deploy-storybooks n=7, lint n=7, default-ref-policy n=7, source-shape n=7, test\\[runner=namespace-profile-linux-x86-64\\] n=7, test-playwright-utils n=0, build-products n=0, weaver n=7, test\\[runner=namespace-profile-macos-arm64\\] n=7, pr-reviews-resolved n=0, nix-closure-sizes n=7, pnpm-regression n=7, pnpm-builder-contract n=7, test-integration-restate n=7, typecheck n=7, devenv-perf n=6, test-playwright-tui-react n=0, bootstrap-cold-proof n=7, bundle-smoke n=7, trusted-buck2-remote-cache-proof n=0, test-megarepo-cold-gc n=7, cargo n=7, seed-pnpm-archives n=0, publish-products n=0, test-live-deploy-ci-tools n=7, notify-alignment n=7, ci-measurements-report n=7.
 Selected main run IDs: 33967414987, 33725431515, 33659778853, 33638676661, 33621119349, 33431779835, 33394098167.
 Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.
 

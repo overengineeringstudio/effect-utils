@@ -18,14 +18,18 @@
  * Do not build new public authoring APIs on top of this module.
  */
 import type { WorkspacePackageLike } from './package-json/mod.ts'
+import { normalizeRelativePath } from './utils/path.ts'
 
 export { relativeRepoPath, rootWorkspaceMemberPathsFromPackages }
 
 /** Compute a relative repo path from one logical workspace location to another. */
 const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
-  const normalizedFrom = from === '.' ? '' : from
-  const fromParts = normalizedFrom.split('/').filter(Boolean)
-  const toParts = to.split('/').filter(Boolean)
+  const fromParts = normalizeRelativePath(from)
+    .split('/')
+    .filter((part) => part !== '.')
+  const toParts = normalizeRelativePath(to)
+    .split('/')
+    .filter((part) => part !== '.')
 
   let common = 0
   while (
@@ -40,7 +44,7 @@ const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
   const downPath = toParts.slice(common).join('/')
   const relativePath = '../'.repeat(upCount) + downPath
 
-  return relativePath === '' ? '.' : relativePath
+  return normalizeRelativePath(relativePath)
 }
 
 const sortStrings = (values: Iterable<string>) =>

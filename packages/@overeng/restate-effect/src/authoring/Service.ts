@@ -68,13 +68,7 @@ export type SuccessOf<C, M extends string> =
     : never
 /** The decoded declared-error type of `contract`'s handler `M` (`never` if none). */
 export type ErrorOf<C, M extends string> =
-  C extends Contract<any, infer H>
-    ? M extends keyof H
-      ? H[M]['error'] extends Schema.Codec<any, any>
-        ? Schema.Schema.Type<H[M]['error']>
-        : never
-      : never
-    : never
+  C extends Contract<any, infer H> ? (M extends keyof H ? SpecError<H[M]> : never) : never
 /** The handler-name union of `contract`. */
 export type MethodsOf<C> = C extends Contract<any, infer H> ? keyof H & string : never
 
@@ -91,7 +85,7 @@ export type ServiceImpl<C, AppR> =
           input: Schema.Schema.Type<H[M]['input']>,
         ) => Effect.Effect<
           Schema.Schema.Type<H[M]['success']>,
-          H[M]['error'] extends Schema.Codec<any, any> ? Schema.Schema.Type<H[M]['error']> : never,
+          SpecError<H[M]>,
           AppR | RestateContext
         >
       }
@@ -223,7 +217,7 @@ export type ObjectImpl<H extends ObjectHandlerSpecMap, AppR> = {
     input: Schema.Schema.Type<H[M]['input']>,
   ) => Effect.Effect<
     Schema.Schema.Type<H[M]['success']>,
-    H[M]['error'] extends Schema.Codec<any, any> ? Schema.Schema.Type<H[M]['error']> : never,
+    SpecError<H[M]>,
     AppR | CapsForObjectHandler<H[M]>
   >
 }
@@ -318,9 +312,15 @@ export interface WorkflowContract<
 type WorkflowRunCaps = RestateContext | ObjectKey | StateRead | StateWrite | DurablePromise
 type WorkflowSharedCaps = RestateContext | ObjectKey | StateRead | DurablePromise
 
-/** The error type of a handler spec (`never` when no `error` schema is declared). */
+/**
+ * The error type of a handler spec (`never` when no `error` schema is declared).
+ * Widened endpoint specs have an optional codec; exclude `undefined` before
+ * checking it so erasing the handler map does not erase declared failures.
+ */
 type SpecError<HS extends HandlerSpec> =
-  HS['error'] extends Schema.Codec<any, any> ? Schema.Schema.Type<HS['error']> : never
+  NonNullable<HS['error']> extends Schema.Codec<any, any>
+    ? Schema.Schema.Type<NonNullable<HS['error']>>
+    : never
 
 /**
  * The expected Workflow `implement` shape: the single `run` handler (full caps +
@@ -508,9 +508,7 @@ export type ObjectSuccessOf<C, M extends string> =
 export type ObjectErrorOf<C, M extends string> =
   C extends ObjectContract<any, any, infer H>
     ? M extends keyof H
-      ? H[M]['error'] extends Schema.Codec<any, any>
-        ? Schema.Schema.Type<H[M]['error']>
-        : never
+      ? SpecError<H[M]>
       : never
     : never
 
@@ -531,11 +529,7 @@ export type WorkflowRunSuccessOf<C> =
     : never
 /** The decoded `run` declared-error of a Workflow contract (`never` if none). */
 export type WorkflowRunErrorOf<C> =
-  C extends WorkflowContract<any, any, infer Run, any, any>
-    ? Run['error'] extends Schema.Codec<any, any>
-      ? Schema.Schema.Type<Run['error']>
-      : never
-    : never
+  C extends WorkflowContract<any, any, infer Run, any, any> ? SpecError<Run> : never
 /** The combined signal+query map of a Workflow contract. */
 type WorkflowSignalQueryMap<C> =
   C extends WorkflowContract<any, any, any, infer Sig, infer Qry> ? Sig & Qry : never

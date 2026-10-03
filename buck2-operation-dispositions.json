@@ -29,12 +29,8 @@
       "operation": "test-megarepo-cold-gc"
     },
     {
-      "disposition": "outside-by-policy:nix-builder-contract",
-      "operation": "pnpm-builder-contract"
-    },
-    {
-      "disposition": "outside-by-policy:nix-builder-contract",
-      "operation": "pnpm-regression"
+      "disposition": "outside-by-policy:shared-native-dependency-policy",
+      "operation": "native-dependency-policy"
     },
     {
       "disposition": "buck-owned",

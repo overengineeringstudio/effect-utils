@@ -20,6 +20,10 @@
     "./registry": {
       "types": "./dist/src/registry.d.ts",
       "default": "./src/registry.ts"
+    },
+    "./Traceparent": {
+      "types": "./dist/src/Traceparent.d.ts",
+      "default": "./src/Traceparent.ts"
     }
   },
   "dependencies": {
@@ -45,6 +49,10 @@
       "./registry": {
         "types": "./dist/src/registry.d.ts",
         "default": "./dist/src/registry.js"
+      },
+      "./Traceparent": {
+        "types": "./dist/src/Traceparent.d.ts",
+        "default": "./dist/src/Traceparent.js"
       }
     }
   }

@@ -34,6 +34,7 @@ import notionMdTsconfig from '../packages/@overeng/notion-md/tsconfig.json.genie
 import notionPropertyWriteTsconfig from '../packages/@overeng/notion-property-write/tsconfig.json.genie.ts'
 import notionReactTsconfig from '../packages/@overeng/notion-react/tsconfig.json.genie.ts'
 import npmReleaseTsconfig from '../packages/@overeng/npm-release/tsconfig.json.genie.ts'
+import otelBrowserTsconfig from '../packages/@overeng/otel-browser/tsconfig.json.genie.ts'
 import otelContractTsconfig from '../packages/@overeng/otel-contract/tsconfig.json.genie.ts'
 import oxcConfigTsconfig from '../packages/@overeng/oxc-config/tsconfig.json.genie.ts'
 import ptyEffectTsconfig from '../packages/@overeng/pty-effect/tsconfig.json.genie.ts'
@@ -140,6 +141,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/notion-md': { tsconfig: notionMdTsconfig },
     'packages/@overeng/notion-property-write': { tsconfig: notionPropertyWriteTsconfig },
     'packages/@overeng/notion-react': { tsconfig: notionReactTsconfig },
+    'packages/@overeng/otel-browser': { tsconfig: otelBrowserTsconfig },
     'packages/@overeng/otel-contract': { tsconfig: otelContractTsconfig },
     'packages/@overeng/oxc-config': { tsconfig: oxcConfigTsconfig },
     'packages/@overeng/pty-effect': { tsconfig: ptyEffectTsconfig },
