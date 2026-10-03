@@ -12,17 +12,20 @@ const fingerprint = buck2SemanticFingerprint({
 
 export default createGenieOutput({
   data,
-  stringify: () => [
-    '# Projection source: rust/effect-rust-fixtures/BUCK.genie.ts',
-    `# Semantic fingerprint: ${fingerprint}`,
-    '# Semantic inputs: rust/effect-rust-fixtures/BUCK.genie.ts',
-    '# Regenerate: devenv tasks run genie:run',
-    '',
-    'export_file(',
-    `    name = ${JSON.stringify(data.name)},`,
-    `    src = ${JSON.stringify(data.src)},`,
-    `    visibility = ${JSON.stringify(data.visibility)},`,
-    ')',
-    '',
-  ].join('\n'),
+  stringify: () =>
+    [
+      '# Projection source: rust/effect-rust-fixtures/BUCK.genie.ts',
+      `# Semantic fingerprint: ${fingerprint}`,
+      '# Semantic inputs: rust/effect-rust-fixtures/BUCK.genie.ts',
+      '# Regenerate: devenv tasks run genie:run',
+      '',
+      'export_file(',
+      `    name = ${JSON.stringify(data.name)},`,
+      `    src = ${JSON.stringify(data.src)},`,
+      `    visibility = ${JSON.stringify(data.visibility)},`,
+      ')',
+      '',
+      'export_file(name = "service-smoke", src = "service-smoke.ts", visibility = ["PUBLIC"])',
+      '',
+    ].join('\n'),
 })

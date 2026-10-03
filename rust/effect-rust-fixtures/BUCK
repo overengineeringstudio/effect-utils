@@ -2,7 +2,7 @@
 # Source: BUCK.genie.ts
 
 # Projection source: rust/effect-rust-fixtures/BUCK.genie.ts
-# Semantic fingerprint: sha256:e5e0d445a8a5d61f3b471b4390122948e867f20ad47db006cd3d3601a460c4a0
+# Semantic fingerprint: sha256:708c99b1d2fde91e98589977092e481ac7a4527e9d551bbc5e244505e436cc97
 # Semantic inputs: rust/effect-rust-fixtures/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -11,3 +11,5 @@ export_file(
     src = "smoke.mjs",
     visibility = ["PUBLIC"],
 )
+
+export_file(name = "service-smoke", src = "service-smoke.ts", visibility = ["PUBLIC"])

@@ -1,0 +1,248 @@
+[
+  { "contract": "Discount", "name": "unit variant", "input": { "kind": "none" }, "accept": true },
+  {
+    "contract": "Discount",
+    "name": "tag-last decodes, encodes tag first",
+    "input": { "percent": 10, "kind": "percent" },
+    "accept": true,
+    "canonical": { "kind": "percent", "percent": 10 }
+  },
+  {
+    "contract": "Discount",
+    "name": "u64 maximum",
+    "input": { "kind": "fixed", "amountCents": "18446744073709551615" },
+    "accept": true
+  },
+  {
+    "contract": "Discount",
+    "name": "u64 as JSON number",
+    "input": { "kind": "fixed", "amountCents": 5 },
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "u64 overflow",
+    "input": { "kind": "fixed", "amountCents": "18446744073709551616" },
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "u64 leading zero",
+    "input": { "kind": "fixed", "amountCents": "05" },
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "u8 overflow",
+    "input": { "kind": "percent", "percent": 256 },
+    "accept": false
+  },
+  { "contract": "Discount", "name": "unknown tag", "input": { "kind": "bogus" }, "accept": false },
+  {
+    "contract": "Discount",
+    "name": "excess variant field",
+    "input": { "kind": "none", "extra": true },
+    "accept": false
+  },
+  { "contract": "Discount", "name": "missing tag", "input": { "percent": 10 }, "accept": false },
+  { "contract": "Discount", "name": "non-string tag", "input": { "kind": 1 }, "accept": false },
+  {
+    "contract": "Order",
+    "name": "offset timestamp normalizes, value patch",
+    "input": {
+      "unitPriceCents": "250",
+      "sku": "ABC-1234",
+      "quantity": 3,
+      "placedAt": "2026-10-02T12:00:00.5+02:00",
+      "note": "gift",
+      "id": "9007199254740993"
+    },
+    "accept": true,
+    "canonical": {
+      "id": "9007199254740993",
+      "note": "gift",
+      "placedAt": "2026-10-02T10:00:00.500Z",
+      "quantity": 3,
+      "sku": "ABC-1234",
+      "unitPriceCents": "250"
+    }
+  },
+  {
+    "contract": "Order",
+    "name": "null patch",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z",
+      "note": null
+    },
+    "accept": true
+  },
+  {
+    "contract": "Order",
+    "name": "absent patch",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": true
+  },
+  {
+    "contract": "Order",
+    "name": "brand pattern",
+    "input": {
+      "id": "1",
+      "sku": "abc-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "brand trailing newline",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234\n",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "sub-millisecond timestamp",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.0001Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "timestamp without zone",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "missing required field",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "u32 negative",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": -1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Quote",
+    "name": "nested struct inside variant, tag last",
+    "input": {
+      "receipt": {
+        "totalCents": "675",
+        "sku": "ABC-1234",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "orderId": "7"
+      },
+      "note": null,
+      "kind": "priced"
+    },
+    "accept": true,
+    "canonical": {
+      "kind": "priced",
+      "note": null,
+      "receipt": {
+        "orderId": "7",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "sku": "ABC-1234",
+        "totalCents": "675"
+      }
+    }
+  },
+  {
+    "contract": "Quote",
+    "name": "nullable present",
+    "input": {
+      "kind": "priced",
+      "note": "gift",
+      "receipt": {
+        "orderId": "7",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "sku": "ABC-1234",
+        "totalCents": "675"
+      }
+    },
+    "accept": true
+  },
+  {
+    "contract": "Quote",
+    "name": "nullable key is required",
+    "input": {
+      "kind": "priced",
+      "receipt": {
+        "orderId": "7",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "sku": "ABC-1234",
+        "totalCents": "675"
+      }
+    },
+    "accept": false
+  },
+  {
+    "contract": "Quote",
+    "name": "second variant",
+    "input": { "kind": "free", "orderId": "0" },
+    "accept": true
+  },
+  {
+    "contract": "Quote",
+    "name": "nested excess field",
+    "input": {
+      "kind": "priced",
+      "note": null,
+      "receipt": {
+        "orderId": "7",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "sku": "ABC-1234",
+        "totalCents": "675",
+        "extra": 1
+      }
+    },
+    "accept": false
+  },
+  {
+    "contract": "Quote",
+    "name": "variant field from another variant",
+    "input": { "kind": "free", "orderId": "0", "note": null },
+    "accept": false
+  }
+]
