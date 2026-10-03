@@ -31,6 +31,7 @@ import {
   type GenieMode,
 } from '../core/schema.ts'
 import { GenieApp } from './app.ts'
+import { githubSettingsCommand } from './github-settings/cli.ts'
 import { GenieView } from './view.tsx'
 
 export {
@@ -368,4 +369,4 @@ export const genieCommand = Cli.Command.make(
 
     return handler
   },
-)
+).pipe(Cli.Command.withSubcommands([githubSettingsCommand]))

@@ -114,6 +114,62 @@ export default packageJSON({
 
 Run `devenv tasks run genie:run` to generate `package.json` from the source file.
 
+### GitHub repository settings
+
+Generate `.github/repo-settings.json` from one typed source:
+
+```ts
+import { githubRepoSettings, githubRuleset } from '@overeng/genie'
+
+export default githubRepoSettings({
+  repository: {
+    allow_auto_merge: true,
+    delete_branch_on_merge: true,
+    allow_update_branch: true,
+    allow_squash_merge: true,
+    allow_merge_commit: false,
+    allow_rebase_merge: false,
+    squash_merge_commit_title: 'PR_TITLE',
+  },
+  rulesets: [
+    githubRuleset({
+      name: 'protect-main',
+      enforcement: 'active',
+      rules: [{ type: 'non_fast_forward' }, { type: 'deletion' }],
+    }),
+  ],
+})
+```
+
+Plain-flake consumers do not need devenv:
+
+```bash
+# Read-only diff; exits non-zero when repository fields or rulesets drift.
+nix run github:overengineeringstudio/effect-utils#gh-check-settings -- \
+  --repo owner/name --file .github/repo-settings.json
+
+# PATCH explicitly declared repository fields; create/update rulesets by name.
+nix run github:overengineeringstudio/effect-utils#gh-apply-settings -- \
+  --repo owner/name --file .github/repo-settings.json
+```
+
+The apps package `gh` and use its existing authentication (`gh auth login` or
+`GH_TOKEN`). Omitted repository fields and unrelated rulesets are unmanaged.
+Rulesets inherited from an organization are not modified. Duplicate desired
+ruleset names are rejected before any write. Applying several GitHub API
+updates is not transactional: an API failure may leave earlier updates applied;
+rerunning apply reconciles the remaining drift.
+
+The `devenvModules.tasks.github-ruleset` module exposes the same
+`gh:apply-settings` / `gh:check-settings` operations as thin wrappers,
+configured with `{ repo = "owner/name"; }`. Its legacy `ruleset` parameter
+remains optional and asserts the expected name. Historical JSON files containing
+one raw `githubRuleset` payload remain supported; those files control only that
+ruleset and do not change repository settings.
+
+Existing raw-ruleset consumers can adopt the envelope to manage repository merge
+settings. Their current payloads do not require an immediate migration.
+
 ## Generators
 
 Each generator has its own documentation:

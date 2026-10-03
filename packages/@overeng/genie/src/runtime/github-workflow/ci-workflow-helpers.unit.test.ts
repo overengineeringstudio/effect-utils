@@ -272,14 +272,25 @@ const generatedRepoSettings = JSON.parse(
     'utf8',
   ),
 ) as {
-  rules: Array<{
-    type: string
-    parameters?: {
-      required_status_checks?: Array<{ context: string }>
-      required_review_thread_resolution?: boolean
-    }
+  rulesets: Array<{
+    name: string
+    rules: Array<{
+      type: string
+      parameters?: {
+        required_status_checks?: Array<{ context: string }>
+        required_review_thread_resolution?: boolean
+      }
+    }>
   }>
 }
+const protectMainRules = (() => {
+  const ruleset = generatedRepoSettings.rulesets.find(
+    (candidate) => candidate.name === 'protect-main',
+  )
+  if (ruleset === undefined)
+    throw new Error('missing protect-main ruleset in .github/repo-settings.json')
+  return ruleset.rules
+})()
 const generatedRepoSettingsSource = readFileSync(
   new URL(['../../../../../../.github', 'repo-settings.json.genie.ts'].join('/'), import.meta.url),
   'utf8',
@@ -379,7 +390,7 @@ const generatedNonAdvisoryCheckContexts = generatedCiJobKeys
   .filter((context) => advisoryCheckContexts[context] !== true)
 
 const generatedRequiredCheckContexts =
-  generatedRepoSettings.rules
+  protectMainRules
     .find((rule) => rule.type === 'required_status_checks')
     ?.parameters?.required_status_checks?.map((check) => check.context) ?? []
 
@@ -1147,7 +1158,7 @@ describe('ci workflow pr-reviews helpers', () => {
     expect(generatedRepoSettingsSource).toContain('prReviewsPullRequestRule()')
   })
   it('requires thread resolution natively and as a visible CI check', () => {
-    const pullRequestRule = generatedRepoSettings.rules.find((rule) => rule.type === 'pull_request')
+    const pullRequestRule = protectMainRules.find((rule) => rule.type === 'pull_request')
     expect(pullRequestRule?.parameters?.required_review_thread_resolution).toBe(true)
     expect(generatedRepoSettingsSource).toContain('prReviewsPullRequestRule()')
     expect(generatedRequiredCheckContexts.includes('pr-reviews-resolved')).toBe(true)

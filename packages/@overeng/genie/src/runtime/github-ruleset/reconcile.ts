@@ -219,14 +219,19 @@ const findRuleset = async ({
   return match
 }
 
-const ghJson = async ({
+/** Shared GitHub CLI transport; JSON bodies are sent on stdin, never temporary files. */
+export const ghJson = async ({
   endpoint,
   args = [],
+  body,
 }: {
   readonly endpoint: string
   readonly args?: ReadonlyArray<string>
+  readonly body?: unknown
 }): Promise<unknown> => {
-  const proc = Bun.spawn(['gh', 'api', endpoint, ...args], {
+  const inputArgs = body === undefined ? [] : ['--input', '-']
+  const proc = Bun.spawn(['gh', 'api', endpoint, ...args, ...inputArgs], {
+    stdin: body === undefined ? 'ignore' : new TextEncoder().encode(JSON.stringify(body)),
     stdout: 'pipe',
     stderr: 'pipe',
   })
