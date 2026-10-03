@@ -74,6 +74,9 @@
   preserving runtime-generated test inventories with Vitest 5's changed default.
 - pnpm lock mutation uses matching bytewise collation throughout its executable
   metadata preservation guard, regardless of the caller's locale.
+- Effect/Rust object transports normalize safe integral JavaScript doubles before
+  decoding integer contracts, including bounded numbers. JSON-text admission
+  still rejects noncanonical integer spellings such as `1.0`.
 
 ### Changed
 

@@ -257,6 +257,27 @@ pub mod timestamp_millis {
 const MAX_DEPTH: usize = 128;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
+/// Normalize JavaScript's number representation only at object transport boundaries.
+///
+/// Safe integral doubles become serde integers; fractional and unsafe numbers
+/// remain floats so integer contracts reject them. JSON-text admission is unchanged.
+pub fn normalize_js_numbers(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Number(number) if number.is_f64() => {
+            let value = number.as_f64().expect("f64 JSON number");
+            if value.is_finite() && value.fract() == 0.0
+                && (-9_007_199_254_740_991.0..=9_007_199_254_740_991.0).contains(&value) {
+                #[allow(clippy::cast_possible_truncation)] // Finite integral safe doubles fit i64 exactly.
+                let integer = value as i64;
+                *number = serde_json::Number::from(integer);
+            }
+        }
+        serde_json::Value::Array(values) => values.iter_mut().for_each(normalize_js_numbers),
+        serde_json::Value::Object(values) => values.values_mut().for_each(normalize_js_numbers),
+        _ => {}
+    }
+}
+
 /// Strict I-JSON admission: unique keys, safe canonical integers, bounded depth.
 /// Validates without building values; typed decoding then streams separately.
 struct StrictSeed {
@@ -402,6 +423,29 @@ pub fn encode_json<T: Serialize + ?Sized>(value: &T, tag_fields: &[&str]) -> Res
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn object_numbers_normalize_recursively_without_weakening_json_text() {
+        #[derive(Debug, PartialEq, Deserialize)]
+        struct Numbers { unsigned: u32, signed: i32, safe: Vec<i64> }
+        let mut value = json!({
+            "unsigned": 4_294_967_295.0,
+            "signed": -2_147_483_648.0,
+            "safe": [9_007_199_254_740_991.0, -9_007_199_254_740_991.0, -0.0]
+        });
+        normalize_js_numbers(&mut value);
+        assert_eq!(serde_json::from_value::<Numbers>(value).unwrap(),
+            Numbers { unsigned: u32::MAX, signed: i32::MIN, safe: vec![9_007_199_254_740_991, -9_007_199_254_740_991, 0] });
+        for number in [1.5, 9_007_199_254_740_992.0, -9_007_199_254_740_992.0] {
+            let mut value = json!(number);
+            normalize_js_numbers(&mut value);
+            assert!(serde_json::from_value::<i64>(value).is_err());
+        }
+        for text in ["1.0", "1e0", "-0.0"] {
+            assert!(decode_json::<u32>(text).is_err(), "accepted noncanonical text {text}");
+        }
+        assert_eq!(decode_json::<u32>("1").unwrap(), 1);
+    }
 
     #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]

@@ -64,6 +64,26 @@ pub enum Quote {
     },
 }
 
+/// Native-object numeric regression: full-width u32/i32 plus a safe bounded u64.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(crate = "effect_rust::contract::schemars")]
+pub struct NumericOperands {
+    pub unsigned: u32,
+    pub signed: i32,
+    #[serde(deserialize_with = "safe_integer")]
+    #[schemars(range(min = 0, max = 9_007_199_254_740_991_u64))]
+    pub bounded: u64,
+}
+
+fn safe_integer<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    let value = u64::deserialize(deserializer)?;
+    if value > 9_007_199_254_740_991 {
+        return Err(serde::de::Error::custom("expected a safe unsigned integer"));
+    }
+    Ok(value)
+}
+
 /// Prices an order; `note: null` clears the note, `Absent` keeps none.
 #[must_use]
 pub fn quote(order: Order, discount: &Discount) -> Option<Quote> {

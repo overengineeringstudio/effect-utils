@@ -73,6 +73,16 @@ const order = {
 const program = Effect.scoped(
   Effect.gen(function* () {
     const fixture = yield* EffectRustFixture
+    assert.equal(
+      Effect.runSync(
+        fixture.sumJsonIntegers({
+          unsigned: 4294967295,
+          signed: -2147483648,
+          bounded: Number.MAX_SAFE_INTEGER,
+        }),
+      ),
+      4294967295n - 2147483648n + 9007199254740991n,
+    )
     const quote = yield* fixture.quoteOrder(order, { kind: 'percent', percent: 10 })
     assert.equal(quote.kind, 'priced')
     assert.equal(quote.note, 'gift')
