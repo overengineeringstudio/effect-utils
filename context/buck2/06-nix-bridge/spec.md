@@ -179,8 +179,13 @@ flake input's `rev` must equal the graph's Cargo-locked 40-hex commit; a plain
 Nix path is allowed only in the archive builder's local fixture.
 
 The task module and product builder use the same deterministic Nix source
-archive: entries under `<repo>-<rev>`, sorted, fixed timestamp/ownership, and
-gzip without an input timestamp. The task gate writes a `source: "nix"` pin
+archive: entries under `<repo>-<rev>`, sorted, fixed timestamp/ownership,
+read-only permissions preserving executable bits (`a=rX`), and gzip without
+an input timestamp. Symlink targets are preserved, but their header modes are
+normalized to `0555`: NAR identity excludes symlink permissions, which differ
+between Linux and Darwin. Equal source files are archived independently of
+physical hardlinks introduced by store optimisation. The task gate writes a
+`source: "nix"` pin
 with that archive's SHA-256, skips the unauthenticated GitHub fetch, and on
 `check` verifies the current source bytes and revision against the sidecar.
 Buck uses the digest as its lookup key and verifies the copied bytes and
