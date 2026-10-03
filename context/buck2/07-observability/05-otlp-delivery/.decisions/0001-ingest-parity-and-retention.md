@@ -93,7 +93,7 @@ The upload/worker choice and Tempo repair are recorded separately in
   [decision 0002](./0002-durable-ingest-and-tempo-readback.md) requires
   chunk checkpoints, a by-id probe, and complete readback.
 - Fork-run traces arrive only through 02's trust signal and carry
-  `ci.pr.fork=true`; the bounded decoder is the poison boundary.
+  `buck2.vcs.change.is_fork=true`; the bounded decoder is the poison boundary.
 - Tempo volume under both-views ingest is unmeasured and tracked
   ([OQ1](../../open-questions.md)) with dial-in options.
 

@@ -35,9 +35,6 @@ successful main runs and safe read isolation have been measured
 - **Local development:** Local runs export only with
   `OTEL_EXPORTER_OTLP_ENDPOINT` configured. Define safe endpoint discovery and
   failure behavior before making local-host export the default.
-- **CICD attributes:** Migrate the remaining `ci.*` keys to OTel `cicd.*`
-  semantic conventions across spool, exporter, and dashboards when the
-  otel-scrape semconv pin supports them ([OQ4](./open-questions.md)).
 
 ## Tool implementation
 

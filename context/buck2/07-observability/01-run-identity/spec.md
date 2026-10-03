@@ -83,7 +83,29 @@ The CI identity step records the job start time. Each CI task step emits only
 its task-run span beneath the deterministic job root; the always-run job-end
 adapter emits that root exactly once, using the recorded start, its export
 time as the end, and GitHub's whole-job status (`success` maps to OK; other
-statuses map to ERROR). `ci.job.status` retains the provider status string.
+statuses map to ERROR). `cicd.pipeline.task.run.result` records the normalized
+job outcome from the official v1.44.0
+[CICD registry](https://github.com/open-telemetry/semantic-conventions/blob/v1.44.0/model/cicd/registry.yaml)
+([span convention](https://github.com/open-telemetry/semantic-conventions/blob/v1.44.0/docs/cicd/cicd-spans.md#pipeline-task-run)).
+GitHub jobs are tasks within a workflow pipeline; the job root is not the
+workflow's pipeline-result span.
+
+| GitHub conclusion / job status | `cicd.pipeline.task.run.result` |
+| --- | --- |
+| `success` | `success` |
+| `failure` | `failure` |
+| `cancelled` | `cancellation` |
+| `skipped` | `skip` |
+| `timed_out` | `timeout` |
+| `action_required`, `neutral`, `stale`, `startup_failure`, unknown | `error` |
+
+The job-end hook receives only GitHub's `success`, `failure`, or `cancelled`
+job-status context today; the remaining conclusions are normalized if supplied.
+For a local invocation, zero exit maps to `success`, nonzero exit to `failure`,
+and a received INT/TERM signal to `cancellation`. Provider and fork provenance
+use `vcs.provider.name` and `buck2.vcs.change.is_fork`, with namespace ownership,
+types and absent-value behavior defined in
+[05's attribute contract](../05-otlp-delivery/spec.md#semantic-attribute-contract).
 The root carries `cicd.pipeline.run.id` and its job key. Buck command spans
 and critical views retain the same trace id. For a standalone local task run,
 the generic entrypoint emits its own root at completion. A job root links

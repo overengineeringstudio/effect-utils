@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Generated file - DO NOT EDIT
-# Source: evidence-job.sh.genie.ts
-
 # GitHub provider adapter: canonical identity, job-end export, attempt close.
 set -euo pipefail
 timestamp_ns() {
@@ -44,17 +41,24 @@ case "${1:?mode required}" in
       export OTEL_SPAN_SPOOL_DIR="$spool/spans" OTEL_SPOOL_MULTI_WRITER=1
       status=error
       if [ "${PIPELINE_JOB_STATUS:-}" = success ]; then status=ok; fi
+      case "$PIPELINE_JOB_STATUS" in
+        success|failure) result=$PIPELINE_JOB_STATUS ;;
+        cancelled) result=cancellation ;;
+        skipped) result=skip ;;
+        timed_out) result=timeout ;;
+        *) result=error ;;
+      esac
       attrs=()
-      for entry in "ci.provider:${CI_PROVIDER:-}" "vcs.change.id:${VCS_CHANGE_ID:-}" "vcs.ref.head.revision:${VCS_REF_HEAD_REVISION:-}" "vcs.ref.base.revision:${VCS_REF_BASE_REVISION:-}" "buck2.vcs.merge.revision:${BUCK2_VCS_MERGE_REVISION:-}"; do
+      for entry in "vcs.provider.name:${CI_PROVIDER:-}" "vcs.change.id:${VCS_CHANGE_ID:-}" "vcs.ref.head.revision:${VCS_REF_HEAD_REVISION:-}" "vcs.ref.base.revision:${VCS_REF_BASE_REVISION:-}" "buck2.vcs.merge.revision:${BUCK2_VCS_MERGE_REVISION:-}"; do
         if [ -n "${entry#*:}" ]; then attrs+=(--attr-string "${entry/:/=}"); fi
       done
-      if [ "${PIPELINE_FORK:-}" = true ] || [ "${PIPELINE_FORK:-}" = false ]; then attrs+=(--attr-bool "ci.pr.fork=$PIPELINE_FORK"); fi
+      if [ "${PIPELINE_FORK:-}" = true ] || [ "${PIPELINE_FORK:-}" = false ]; then attrs+=(--attr-bool "buck2.vcs.change.is_fork=$PIPELINE_FORK"); fi
       otel-span emit-span effect-utils-devenv cicd.pipeline.job \
         --trace-id "${trace_assignment#trace=}" --span-id "${root_assignment#root=}" \
         --start-time-ns "${PIPELINE_JOB_START_NS:?}" --end-time-ns "${PIPELINE_JOB_END_NS:?}" \
         --status-code "$status" --attr-string "cicd.pipeline.run.id=$PIPELINE_RUN_ID" \
         --attr-string "cicd.pipeline.job.key=$PIPELINE_JOB_KEY" \
-        --attr-string "ci.job.status=${PIPELINE_JOB_STATUS:?}" "${attrs[@]}"
+        --attr-string "cicd.pipeline.task.run.result=$result" "${attrs[@]}"
       otel-span pipeline-export --spool "$spool" || echo "Warning: OTLP chunks retained in $spool" >&2
     '
     ;;
