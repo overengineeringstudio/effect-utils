@@ -897,14 +897,14 @@ const cargoBuck2PackageProjectionFor = ({
     ...(resources.length === 0
       ? renderSources({ name: 'srcs', values: ruleSources, foreignMember })
       : [
-          '    srcs = {',
+          '    mapped_srcs = {',
           ...ruleSources.map(
             (file) =>
-              `        ${starlarkString(file)}: ${starlarkString(sourceLabel({ file, foreignMember }))},`,
+              `        ${starlarkString(sourceLabel({ file, foreignMember }))}: ${starlarkString(file)},`,
           ),
           ...resources.map(
             (resource) =>
-              `        ${starlarkString(resource.destination)}: ${starlarkString(
+              `        ${starlarkString(
                 resource.label ??
                   sourceLabel({
                     file: requireValue({
@@ -913,7 +913,7 @@ const cargoBuck2PackageProjectionFor = ({
                     }).slice(packagePath.length + 1),
                     foreignMember,
                   }),
-              )},`,
+              )}: ${starlarkString(resource.destination)},`,
           ),
           '    },',
         ]),

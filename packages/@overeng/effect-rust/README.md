@@ -109,6 +109,8 @@ Use a dedicated Worker when browser main-thread responsiveness is required.
 The adapter crate re-exports plain Rust core functions and applies `#[effect_rust::export]`. Its binary macro records produce `exports.json`; the Buck packager reads this manifest rather than accepting Rust source expressions in an application manifest. Product packages export concrete Api types and fresh lexical `{ api, release }` loaders through `./load`. A separate `rust_interop_service` package owns the generated Effect `Context.Service` class, `make<Service>` adapter, and explicit runtime Layer statics; consumers import that generated service rather than defining a second tag.
 
 Domain error enums derive `serde::Serialize`, `serde::Deserialize`, and `effect_rust::ExportError`. Their serde discriminator remains the Rust wire contract's tag key. The generated Effect adapter maps that discriminator to `_tag` inside a single error class's nested `reason` union, making `Effect.catchReason` available without changing Rust's wire tag.
+Integer fields in domain error reasons retain their Rust signedness and bit-width
+bounds in the generated Effect Schema.
 
 For `input_stream`, use `returns = "String"` (or the actual finish-result type) when the factory returns a `Hasher` whose consuming `finish` return type is not discoverable from that factory signature. This override is type metadata, not a source-code expression.
 
@@ -125,9 +127,11 @@ Declare `include_str!` / `include_bytes!` inputs in the Cargo package's
 `BUCK.genie.ts` through `compileTimeResources`, separately from build-script
 inputs. A local repository path inside the crate keeps its crate-relative
 destination; a generated or external Buck label requires an explicit
-`destination`. Resource bytes and mappings participate in projection
-freshness. Unsafe paths and destinations that collide with another resource
-or Rust source are rejected.
+`destination`. Buck maps source inputs to these crate-relative destinations
+through `mapped_srcs`, so Rust resolves resources beside the authored crate
+sources. Resource bytes and mappings participate in projection freshness.
+Unsafe paths and destinations that collide with another resource or Rust
+source are rejected.
 
 ```ts
 cargoBuck2PackageProjection({
@@ -332,12 +336,10 @@ Package the resulting adapters with `buck2/rust/interop-package.ts`, then run
 `rust/effect-rust-fixtures/smoke.mjs` against both package directories. Generate
 the service with `buck2/rust/interop-service.ts`; run
 `rust/effect-rust-fixtures/service-smoke.ts` with the service directory and
-`rust/effect-rust-fixtures/math-interop/vectors.json`. Use `$BUN` for TypeScript
-source. Node source examples require `$NODE --experimental-transform-types`
-when they reach parameter-property declarations; plain type stripping is not
-enough. Node cannot transform TypeScript inside `node_modules`, so use compiled
-`dist` for such dependencies. The Buck service-smoke rules already stage
-compiled runtime output.
+`rust/effect-rust-fixtures/math-interop/vectors.json`. TypeScript source is
+erasable for Node's type stripping as well as Bun. Node cannot strip TypeScript
+inside `node_modules`, so use compiled `dist` for installed dependencies. The
+Buck service-smoke rules already stage compiled runtime output.
 
 Direct Cargo/Bun fixture smokes prove adapter, packaging, and runtime behavior.
 They do not prove Buck daemon startup, action execution, or exact production

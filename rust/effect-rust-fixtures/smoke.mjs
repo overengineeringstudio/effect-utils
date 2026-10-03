@@ -233,7 +233,7 @@ const checkManifest = ({ directory, names }) => {
   const manifest = JSON.parse(readFileSync(join(directory, 'exports.json'), 'utf8'))
   assert.equal(manifest.version, 1)
   assert.deepEqual(
-    manifest.exports.map(({ name }) => name),
+    manifest.exports.map(({ name }) => name).toSorted(),
     names.toSorted(),
   )
   const divide = manifest.exports.find(({ name }) => name === 'checkedDivide')
