@@ -22,6 +22,8 @@ const files = [
   'buck2/rust/BUCK',
   'buck2/rust/crates.bzl',
   'buck2/rust/defs.bzl',
+  'buck2/rust/interop-package.ts',
+  'buck2/rust/interop.bzl',
   'buck2/rust/toolchains.bzl',
   'buck2/static_checks.bzl',
   'buck2/toolchains/BUCK',

@@ -175,6 +175,11 @@ rec {
           buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
           buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
           buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
+          buck2-rust-wasm-compiler = buck2-rust-toolchain-capability.packages.rust-wasm-compiler;
+          buck2-rust-wasm-rustdoc = buck2-rust-toolchain-capability.packages.rust-wasm-rustdoc;
+          buck2-rust-wasm-linker = buck2-rust-toolchain-capability.packages.rust-wasm-linker;
+          buck2-wasm-bindgen = buck2-rust-toolchain-capability.packages.wasm-bindgen;
+          buck2-wasm-opt = buck2-rust-toolchain-capability.packages.wasm-opt;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           cargo = pkgs.writeShellScriptBin "cargo" ''
             exec ${pkgs.cargo}/bin/cargo "$@"

@@ -1,0 +1,2 @@
+# Computes its schema hash from declared crate sources; registry archives have no git revision.
+buildscript.run = true
