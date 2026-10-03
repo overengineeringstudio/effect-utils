@@ -1478,7 +1478,7 @@ const pipelineTracesJob = {
   permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
   steps: [
-    { uses: 'actions/checkout@v4' },
+    { uses: 'actions/checkout@v6' },
     { uses: 'cachix/install-nix-action@v31' },
     {
       name: 'Publish Pipeline traces',

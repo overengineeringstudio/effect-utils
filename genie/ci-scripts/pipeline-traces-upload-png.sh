@@ -59,6 +59,7 @@ if [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
     --header 'Content-Type: application/json' \
     --data-binary "@$scratch/exchange-request.json"
   auth_stage=exchange
+  auth_method=oidc
 else
   [[ -n "${PIPELINE_TRACES_ASSET_USERNAME:-}" && -n "${PIPELINE_TRACES_ASSET_SSH_KEY:-}" ]] || fail challenge 'exit 1'
   printf '%s\n' "$PIPELINE_TRACES_ASSET_SSH_KEY" > "$scratch/key"
@@ -85,6 +86,7 @@ request verify 8 "$scratch/verify-response.json" \
   --header 'Content-Type: application/json' \
   --data-binary "@$scratch/verify-request.json"
   auth_stage=verify
+  auth_method=ssh
 fi
 jq -er '.access_token | select(type == "string" and length > 0 and (test("[\\r\\n]") | not)) | "Authorization: Bearer " + .' \
   "$scratch/verify-response.json" > "$scratch/authorization-header" || code=$?
@@ -100,3 +102,4 @@ jq -er --arg base "$base" \
   '.url | select(type == "string" and test("^/api/get/[a-f0-9]{64}$")) | $base + .' \
   "$scratch/upload-response.json" || code=$?
 (( code == 0 )) || fail url "exit $code"
+printf 'gitbucket-upload: authentication %s\n' "$auth_method" >&3

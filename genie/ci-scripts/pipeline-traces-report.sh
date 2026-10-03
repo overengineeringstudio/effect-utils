@@ -74,6 +74,9 @@ attach_waterfall() {
     waterfall_stage="url-$theme"
     jq -Rse 'test("^https://gitbucket[.]schickling[.]dev/api/get/[a-f0-9]{64}\\n?$")' \
       "$scratch/url-$theme" > /dev/null 2> "$scratch/url-validation-$theme.log" || return 1
+    if [[ "$(cat "$scratch/upload-$theme.log")" == 'gitbucket-upload: authentication oidc' ]]; then
+      echo "Pipeline waterfall $theme uploaded via GitHub Actions OIDC."
+    fi
   done
   light_url="$(cat "$scratch/url-light")"
   dark_url="$(cat "$scratch/url-dark")"
