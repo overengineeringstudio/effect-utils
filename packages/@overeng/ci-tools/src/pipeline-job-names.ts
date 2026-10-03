@@ -39,7 +39,6 @@ export const pipelineJobIds = [
   'ci-measurements-report',
   'notify-alignment',
   'trusted-buck2-remote-cache-proof',
-  'seed-pnpm-archives',
   'pr-a-inert-buck',
   'pipeline-attempt-close',
   'pipeline-traces',
