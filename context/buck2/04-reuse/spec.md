@@ -55,6 +55,11 @@ build report and event log), not from wall-clock inference:
    (REUSE-R02); investigate any miss as a key regression using action-digest
    comparison from the event log.
 
+The trusted fresh-root proof captures each build and test's event log with
+`buck2 log show --recent 0`. The recent-log index is zero-based: index `1`
+selects the preceding invocation and does not exist after a fresh root's first
+build.
+
 Budget measurements (REUSE-R03)
 run on a quiet host or record load context; contention-dominated numbers are
 not regressions.
