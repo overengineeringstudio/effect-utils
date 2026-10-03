@@ -9,6 +9,9 @@
 - The trusted fresh-root Buck2 cache proof reads the latest command's event log
   with zero-based history and checks the pinned release's numeric action and
   upload enums.
+- The Buck Git-archive hardlink regression constructs its physical fixture in the
+  test sandbox, so source substitution and store optimization cannot invalidate
+  its inode precondition.
 
 ### Changed
 
