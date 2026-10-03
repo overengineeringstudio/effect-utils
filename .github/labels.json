@@ -296,6 +296,11 @@
       "description": "@overeng/npm-release package · Set: manual"
     },
     {
+      "name": "system:otel-browser",
+      "color": "a371f7",
+      "description": "@overeng/otel-browser package · Set: manual"
+    },
+    {
       "name": "system:otel-contract",
       "color": "a371f7",
       "description": "@overeng/otel-contract package · Set: manual"

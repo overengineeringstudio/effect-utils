@@ -74,6 +74,29 @@ React hooks and utilities for building Effect-powered applications.
 - **DevTools inspectors** - Browser-style object/table inspectors with Effect Schema awareness
 - **Type-safe runtime access** - Direct access to Effect runtime for advanced use cases
 
+### Browser Telemetry
+
+`@overeng/otel-browser` provides scoped Effect tracing and OTLP/HTTP traces and metrics for browser
+applications. Compose `BrowserTelemetry.layer({ identity, environment: 'dev', endpoint: '/otlp' })`
+with `BrowserPlatform.layerWindow`, using a validated `ServiceIdentity` from `@overeng/otel-contract`.
+Set `endpoint: undefined` for the bounded, in-memory span ring without network export. The endpoint must be
+same-origin; the application server owns collector relay.
+
+Optional `Interactions.layer`, `LongFrames.layer`, and `WebVitals.layer` record browser performance
+without coupling telemetry to a UI framework. Scoped listeners and observers are removed at shutdown.
+The transport uses beacon/keepalive on page hide and drops offline exports rather than retaining
+an unbounded queue. `@overeng/otel-browser/vite` supplies `otlpDevProxy()` for development and preview;
+it reads `OTEL_EXPORTER_OTLP_ENDPOINT` and strips application cookies before collector forwarding.
+
+DOM-free W3C propagation lives in `@overeng/otel-contract/Traceparent`: `decode`/`encode` validate
+version-00 context, while `headers`, `wsUrl`, and `withField` carry the current span over HTTP,
+WebSocket upgrade URLs, and messages. Server consumers use `fromUrl` and `fromField`.
+
+The public browser adapters and imperative telemetry methods use named arguments, for example
+`telemetry.recordSpan({ name: 'browser.render', startMs: 10, endMs: 25 })` and
+`Traceparent.wsUrl({ url: new URL('/stream', location.href) })`. UI histograms are defined through
+schema-first `OtelMetric` contracts, preserving their exported metric identities and bucket policies.
+
 ### Playwright Integration
 
 | Package                                                     | Description                                             |
