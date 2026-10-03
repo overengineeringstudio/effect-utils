@@ -27,13 +27,9 @@ ci_tools="${CI_TOOLS_BIN:-$(nix build .#ci-tools-compiled --no-link --print-out-
 # It receives one PNG_PATH argument and emits one public
 # https://gitbucket.schickling.dev/api/get/<sha256> URL on stdout (diagnostics to stderr).
 # Attachment edits the collected bundle records, preserving their canonical envelopes.
-# PIPELINE_TRACES_ASSET_SSH_KEY is optional SSH private key material inherited by
-# the external adapter, not a bearer token. GitBucket authorizes the GitHub user,
-# not an individual key: a fresh key is independently revocable, not upload-only.
-# The adapter must explicitly opt into public upload and handle SSH signing.
-# When SSH key material is configured and no command override is set, use the
-# checked-in PNG adapter with explicit PIPELINE_TRACES_ASSET_USERNAME.
-# This script never provisions credentials or defaults to an assistant identity.
+# Actions OIDC selects the checked-in upload-only PNG adapter. The SSH path
+# remains available outside Actions until the live cutover is verified; an OIDC
+# failure never retries with SSH. No credentials are provisioned by this script.
 # Without an authorized adapter, leave the report unchanged (jobs-only Mermaid).
 # Dry-run skips image attachment and all uploads, even if an adapter is configured.
 # Diagnostics may contain credentials: retain them only in ephemeral scratch files,
@@ -43,7 +39,7 @@ ci_tools="${CI_TOOLS_BIN:-$(nix build .#ci-tools-compiled --no-link --print-out-
 # Each PNG must be nonempty and <= 5 MiB; each adapter invocation has a 60s timeout
 # (two uploads, so image publication adds at most 2 x 60s to the report step).
 waterfall_stage=configuration
-if [[ -z "${PIPELINE_TRACES_PUBLIC_ASSET_COMMAND:-}" && -n "${PIPELINE_TRACES_ASSET_SSH_KEY:-}" ]]; then
+if [[ -z "${PIPELINE_TRACES_PUBLIC_ASSET_COMMAND:-}" && ( -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -n "${PIPELINE_TRACES_ASSET_SSH_KEY:-}" ) ]]; then
   PIPELINE_TRACES_PUBLIC_ASSET_COMMAND="$(dirname "${BASH_SOURCE[0]}")/pipeline-traces-upload-png.sh"
 fi
 attach_waterfall() {
@@ -92,7 +88,7 @@ if [[ "${PIPELINE_REPORT_DRY_RUN:-0}" != 1 && -n "${PIPELINE_TRACES_PUBLIC_ASSET
     # Only the uploader's sanitized final line may reach the public warning, and only
     # when it exactly matches the stage/status contract; everything else stays in scratch.
     waterfall_reason=''
-    upload_reason_pattern='^gitbucket-upload: (challenge|sign|verify|upload|url) (http [0-9]{3}|exit [0-9]+)$'
+    upload_reason_pattern='^gitbucket-upload: (oidc|exchange|challenge|sign|verify|upload|url) (http [0-9]{3}|exit [0-9]+)$'
     if [[ "$waterfall_stage" == upload-* && -f "$scratch/$waterfall_stage.log" ]]; then
       upload_reason="$(tail -n 1 "$scratch/$waterfall_stage.log")"
       [[ "$upload_reason" =~ $upload_reason_pattern ]] && waterfall_reason=" (${upload_reason#gitbucket-upload: })"

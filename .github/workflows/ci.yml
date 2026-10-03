@@ -8945,6 +8945,7 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
+      id-token: write
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

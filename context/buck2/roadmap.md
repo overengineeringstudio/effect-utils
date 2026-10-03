@@ -211,11 +211,13 @@ The PR waterfall reuses GitBucket's immutable public content-addressed store
 Johannes accepted GitHub-account SSH authentication for end-to-end publication
 as a temporary compromise; a separate key is revocable but not upload-only.
 
-**Sequence:** Define and enforce a restricted GitBucket publisher credential
-for public PNG publication, prove both successful light/dark publication and
-denial of unrelated account operations, then switch the report step and revoke
-its broader credential. Credential registration remains separate from renderer
-changes; keep the secret report-step-scoped and retain Mermaid fallback.
+**Sequence:** The server's configurable GitHub Actions OIDC exchange and report
+job cutover are implemented. Obtain Johannes's go for the Netlify deployment
+and production/Functions allowlist configuration; no new secret is required.
+Then prove light/dark publication from an allowed same-repo PR and denial of
+unrelated operations. Only after live proof remove the SSH branch and secret/var
+references and revoke `PIPELINE_TRACES_ASSET_SSH_KEY`. Retain Mermaid fallback;
+OIDC denial never retries with the broader SSH credential.
 
 **Dissolution target:** Remove account-scoped publisher authentication from
 the report step once the restricted path is supported and proven. The unresolved
