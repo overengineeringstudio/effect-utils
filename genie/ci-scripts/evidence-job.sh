@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Generated file - DO NOT EDIT
+# Source: evidence-job.sh.genie.ts
+
 # GitHub provider adapter: canonical identity, job-end export, attempt close.
 set -euo pipefail
 timestamp_ns() {
