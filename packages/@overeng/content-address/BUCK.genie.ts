@@ -7,9 +7,6 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/content-address',
   projectionSource: 'packages/@overeng/content-address/BUCK.genie.ts',
   sourceRoots: ['src'],
-  generatedDependencies: {
-    'content-address-core-service': '//rust/content-address-service:service',
-  },
   workspaceSiblings: [
     {
       packageName: '@overeng/effect-rust',

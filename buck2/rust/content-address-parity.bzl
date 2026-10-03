@@ -15,7 +15,9 @@ def _parity_impl(ctx):
     consumer = ctx.actions.copied_dir("consumer", {
         "package.json": package_tree.tree.project("package.json"),
         "dist": dist,
+        "engine-parity.ts": ctx.attrs.script,
         "node_modules": package_tree.tree.project("node_modules"),
+        "service": service.package,
     })
     if ctx.attrs.runtime == "bun":
         executable = ctx.attrs._bun[BunToolchainInfo].executable
@@ -25,7 +27,8 @@ def _parity_impl(ctx):
     verdict = ctx.actions.declare_output("engine-parity.json")
     command = cmd_args([
         executable,
-        consumer.project("dist/src/engine-parity.js"),
+        cmd_args("--experimental-transform-types") if ctx.attrs.runtime == "node" else cmd_args(),
+        consumer.project("engine-parity.ts"),
         service.package,
         verdict.as_output(),
     ], hidden = [consumer] + package_tree.read_roots + service.read_roots)
@@ -34,7 +37,8 @@ def _parity_impl(ctx):
         DefaultInfo(default_output = verdict),
         RunInfo(args = cmd_args([
             executable,
-            consumer.project("dist/src/engine-parity.js"),
+            cmd_args("--experimental-transform-types") if ctx.attrs.runtime == "node" else cmd_args(),
+            consumer.project("engine-parity.ts"),
             service.package,
         ], hidden = [consumer] + package_tree.read_roots + service.read_roots)),
         ExternalRunnerTestInfo(
@@ -48,6 +52,7 @@ content_address_parity = rule(impl = _parity_impl, attrs = {
     "package_tree": attrs.dep(providers = [PackageTreeInfo]),
     "dist": attrs.dep(),
     "service": attrs.dep(providers = [GeneratedPackageInfo]),
+    "script": attrs.source(),
     "runtime": attrs.enum(["node", "bun"]),
     "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
     "_node": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:tool_node", providers = [BuckSupportToolInfo])),

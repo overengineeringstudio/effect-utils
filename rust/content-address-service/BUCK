@@ -4,7 +4,7 @@
 # Projection source: rust/content-address-service/BUCK.genie.ts
 # Projection generator: effect-utils/rust/content-address-service
 # Projection schema version: 1
-# Semantic fingerprint: sha256:87db2eaf6adc829dda1702cc373846037fd70964418f90e468f2cfa29d748c48
+# Semantic fingerprint: sha256:5aa921211ef47ceb114ce0bb1ee780af01391ebd4a5ba117310f435f9c5d00b9
 # Semantic inputs: rust/content-address-service/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -17,6 +17,8 @@ native.export_file(
     src = "interop-smoke.ts",
     visibility = ["PUBLIC"],
 )
+
+native.export_file(name = "engine-parity", src = "engine-parity.ts", visibility = ["PUBLIC"])
 
 rust_wasm_bindgen_library(
     name = "wasm",
@@ -64,6 +66,7 @@ content_address_parity(
     package_tree = "//packages/@overeng/content-address:package_tree",
     dist = "//packages/@overeng/content-address:dist",
     service = ":service",
+    script = ":engine-parity",
     runtime = "node",
     visibility = ["PUBLIC"],
 )
@@ -73,6 +76,7 @@ content_address_parity(
     package_tree = "//packages/@overeng/content-address:package_tree",
     dist = "//packages/@overeng/content-address:dist",
     service = ":service",
+    script = ":engine-parity",
     runtime = "bun",
     visibility = ["PUBLIC"],
 )

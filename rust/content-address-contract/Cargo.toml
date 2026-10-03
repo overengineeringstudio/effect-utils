@@ -1,20 +1,20 @@
-# Generated from packages/@overeng/content-address/src/{mod,interop-contract}.ts
-# Compiler: packages/@overeng/effect-rust/src/compiler; adaptation: packages/@overeng/content-address/src/generate-contract.ts
-# Regenerate: bun packages/@overeng/content-address/src/generate-contract.ts; do not edit.
+# Generated contract; DO NOT EDIT BY HAND.
+# Provenance: rust/content-address-contract/generation.json
+# Regenerate: bun packages/@overeng/content-address/src/generate-contract.ts
+# Input fingerprint: sha256:de3d8422f25519b1451010f8e41977e073ea348f45abcdc55649dcfe3693c31f
+# Generated at: 2026-10-03T16:05:59.247Z
 [package]
-workspace = ".."
 name = "content-address-contract"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+workspace = ".."
 publish = false
 
 [dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1", features = ["unbounded_depth"] }
-chrono = { version = "0.4", default-features = false, features = ["std"] }
-regex = "1"
-serde_path_to_error = "0.1.20"
-borsh = { version = "1.5", features = ["derive", "de_strict_order"] }
-
-schemars = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+regex = { workspace = true, features = ["std", "unicode"] }
+serde_path_to_error = { workspace = true }
+borsh = { workspace = true, features = ["derive", "de_strict_order"] }
+schemars = { workspace = true, features = ["std"] }

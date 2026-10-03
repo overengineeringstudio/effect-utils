@@ -6,7 +6,7 @@ import { loadavg } from 'node:os'
 import { resolve } from 'node:path'
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { ContentAddressCore } from 'content-address-core-service'
+import { ContentAddressCore } from './service/service.ts'
 import { Effect, FileSystem, Layer, Schema, Stream } from 'effect'
 
 import { ContractJson } from '@overeng/effect-rust'
@@ -22,8 +22,8 @@ import {
   makeFileSystemContentStore,
   putBytes,
   verifyDescriptor,
-} from './mod.ts'
-import { descriptorVectors, hashVectors } from './vectors.ts'
+} from './dist/src/mod.js'
+import { descriptorVectors, hashVectors } from './dist/src/vectors.js'
 
 const [directoryArgument, output] = process.argv.slice(2)
 assert.ok(

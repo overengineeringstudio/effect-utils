@@ -386,7 +386,6 @@ name = "content-address-contract"
 version = "0.0.0"
 dependencies = [
  "borsh",
- "chrono",
  "regex",
  "schemars",
  "serde",
