@@ -770,6 +770,7 @@ in
       extraTests = [
         "devenv-modules:test"
         "genie:buck2:test"
+        "genie:ci-workflow:test"
       ];
       packageConcurrency = 4;
       retainVitestJson = true;
@@ -979,6 +980,22 @@ in
       exec ${pkgs.bun}/bin/bun test src/*.test.ts
     ''
   );
+
+  tasks."genie:ci-workflow:test" = {
+    description = "Run bootstrap-safe genie CI workflow helper tests (runner labels, plain-flake Rust jobs)";
+    exec = trace.exec "genie:ci-workflow:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      # `./` makes these exact paths; bare arguments are suffix filters that
+      # also match the copies Buck stages under buck-out.
+      exec ${pkgs.bun}/bin/bun test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts
+    '';
+    execIfModified = [
+      "genie/ci-workflow/**/*.ts"
+      "genie/ci.ts"
+      "packages/@overeng/genie/src/runtime/**/*.ts"
+    ];
+  };
 
   # The Buck2 genie projection suite lives outside packages/@overeng, so the
   # per-package `test:<pkg>` tasks and the root Vitest projects list both miss
