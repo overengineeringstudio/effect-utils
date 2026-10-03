@@ -86,11 +86,11 @@ and [VCS registry](https://github.com/open-telemetry/semantic-conventions/blob/v
 The first-party Weaver registry already pins that version; it declares no
 overlapping lane attributes.
 
-| Attribute | Type and values | Meaning |
-| --- | --- | --- |
-| `vcs.provider.name` | string: `github`, `gitlab`, `gitea`, `bitbucket` | VCS provider provenance, not a generic CI engine name; this adapter emits `github`. The upstream deprecated spelling `gittea` is not emitted. |
-| `cicd.pipeline.task.run.result` | string: `success`, `failure`, `error`, `timeout`, `cancellation`, `skip` | Completed job outcome; a GitHub job is a task within its workflow pipeline. [01](../01-run-identity/spec.md) owns provider-status mapping. |
-| `buck2.vcs.change.is_fork` | boolean: `true`, `false`; omitted when unavailable | Whether the change's head repository differs from its base repository. It is provenance, not authorization; export admission still uses the trust signal. |
+| Attribute                       | Type and values                                                          | Meaning                                                                                                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vcs.provider.name`             | string: `github`, `gitlab`, `gitea`, `bitbucket`                         | VCS provider provenance, not a generic CI engine name; this adapter emits `github`. The upstream deprecated spelling `gittea` is not emitted.             |
+| `cicd.pipeline.task.run.result` | string: `success`, `failure`, `error`, `timeout`, `cancellation`, `skip` | Completed job outcome; a GitHub job is a task within its workflow pipeline. [01](../01-run-identity/spec.md) owns provider-status mapping.                |
+| `buck2.vcs.change.is_fork`      | boolean: `true`, `false`; omitted when unavailable                       | Whether the change's head repository differs from its base repository. It is provenance, not authorization; export admission still uses the trust signal. |
 
 Neither upstream registry defines a fork flag. effect-utils owns
 `buck2.vcs.change.is_fork` in its repository-local lowercase dotted `buck2.vcs.*`

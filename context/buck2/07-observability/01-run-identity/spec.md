@@ -90,14 +90,14 @@ job outcome from the official v1.44.0
 GitHub jobs are tasks within a workflow pipeline; the job root is not the
 workflow's pipeline-result span.
 
-| GitHub conclusion / job status | `cicd.pipeline.task.run.result` |
-| --- | --- |
-| `success` | `success` |
-| `failure` | `failure` |
-| `cancelled` | `cancellation` |
-| `skipped` | `skip` |
-| `timed_out` | `timeout` |
-| `action_required`, `neutral`, `stale`, `startup_failure`, unknown | `error` |
+| GitHub conclusion / job status                                    | `cicd.pipeline.task.run.result` |
+| ----------------------------------------------------------------- | ------------------------------- |
+| `success`                                                         | `success`                       |
+| `failure`                                                         | `failure`                       |
+| `cancelled`                                                       | `cancellation`                  |
+| `skipped`                                                         | `skip`                          |
+| `timed_out`                                                       | `timeout`                       |
+| `action_required`, `neutral`, `stale`, `startup_failure`, unknown | `error`                         |
 
 The job-end hook receives only GitHub's `success`, `failure`, or `cancelled`
 job-status context today; the remaining conclusions are normalized if supplied.
