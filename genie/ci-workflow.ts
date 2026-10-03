@@ -209,7 +209,6 @@ export {
   namespaceRunner,
   nixCacheSetupStep,
   nixDiagnosticsArtifactStep,
-  pnpmBuilderContractStep,
   defaultPnpmStateKeyPrefix,
   pnpmInstallWithDiagnosticsStep,
   prepareCiOtelSpoolStep,

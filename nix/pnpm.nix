@@ -102,9 +102,8 @@ pkgs.stdenvNoCC.mkDerivation {
     tar -xzf ${exeSrc} -C "$wrapper" --strip-components=1 package/pnpm
     chmod +x "$wrapper/pnpm"
 
-    # `bin/pnpm.mjs` (Corepack's entrypoint, and the one mk-pnpm-deps invokes
-    # through PNPM_MJS) only looks for the binary inside the platform package,
-    # so point that location at the single copy.
+    # `bin/pnpm.mjs` (Corepack's entrypoint) only looks for the binary inside
+    # the platform package, so point that location at the single copy.
     exeDir=$wrapper/node_modules/@pnpm/exe.${target}
     mkdir -p "$exeDir"
     ln -s ../../../pnpm "$exeDir/pnpm"

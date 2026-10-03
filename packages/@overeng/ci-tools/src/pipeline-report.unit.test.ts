@@ -8,6 +8,7 @@ import {
   pipelineExportStepName,
   pipelineIdentityStepName,
   pipelineJobIdentityForName,
+  pipelineJobIdentityResolver,
 } from './pipeline-job-names.ts'
 import {
   buildPipelineReport,
@@ -41,6 +42,44 @@ const baselines = baselineIds.map((id) => ({
   id,
   jobs: decodePipelineJobsPage(fixture(`main-${id}-jobs.json`)).jobs,
 }))
+/**
+ * The recorded payloads come from runs of an older CI workflow; resolve their job names against
+ * that workflow's declared jobs so editing today's workflow cannot change these expectations.
+ */
+const recordedJobIdentityForName = pipelineJobIdentityResolver({
+  jobIds: [
+    'default-ref-policy',
+    'typecheck',
+    'lint',
+    'test-playwright-utils',
+    'test-playwright-tui-react',
+    'test-megarepo-cold-gc',
+    'pnpm-builder-contract',
+    'pnpm-regression',
+    'bundle-smoke',
+    'cargo',
+    'weaver',
+    'bootstrap-cold-proof',
+    'nix-closure-sizes',
+    'source-shape',
+    'test-integration-restate',
+    'build-products',
+    'pr-reviews-resolved',
+    'test-integration-notion',
+    'test-live-deploy-ci-tools',
+    'deploy-storybooks',
+    'publish-products',
+    'devenv-perf',
+    'ci-measurements-report',
+    'notify-alignment',
+    'trusted-buck2-remote-cache-proof',
+    'seed-pnpm-archives',
+    'pr-a-inert-buck',
+    'pipeline-attempt-close',
+    'pipeline-traces',
+  ],
+  runnerProfiles: ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'],
+})
 const options = {
   repository: 'overengineeringstudio/effect-utils',
   runId: 36472422441,
@@ -50,6 +89,7 @@ const options = {
   generatedAtUtc: '2026-09-28T20:00:00.000Z',
   grafanaBaseUrl: 'https://grafana.example.test',
   traceIdForJob: () => 'a0123456789abcdef0123456789abcde',
+  jobIdentityForName: recordedJobIdentityForName,
 } as const
 
 const render = (record: WorkflowReportRecord) =>
@@ -237,7 +277,7 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     const traceAt = (name: string, attempt: number) =>
       deriveJobTraceId({
         runId: `ci/github/overengineeringstudio%2Feffect-utils/${runId}/${attempt}`,
-        ...pipelineJobIdentityForName(name)!,
+        ...recordedJobIdentityForName(name)!,
       })
     const rows = report.data!.rows as readonly PipelineRow[]
     const traced = rows.filter((row) => row.traceId !== undefined)
@@ -253,7 +293,7 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     ).toBe(traceAt(rerun, 2))
     const attemptOneTraces = new Set(
       jobs.flatMap((job) =>
-        pipelineJobIdentityForName(job.name) === undefined ? [] : [traceAt(job.name, 1)],
+        recordedJobIdentityForName(job.name) === undefined ? [] : [traceAt(job.name, 1)],
       ),
     )
     expect(traced.filter((row) => attemptOneTraces.has(row.traceId!))).toHaveLength(15)

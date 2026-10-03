@@ -51,10 +51,7 @@
             "context": "test-megarepo-cold-gc"
           },
           {
-            "context": "pnpm-builder-contract"
-          },
-          {
-            "context": "pnpm-regression"
+            "context": "native-dependency-policy"
           },
           {
             "context": "bundle-smoke"

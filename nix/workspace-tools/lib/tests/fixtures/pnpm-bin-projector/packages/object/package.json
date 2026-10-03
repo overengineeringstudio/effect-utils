@@ -1,7 +1,0 @@
-{
-  "name": "object-tools",
-  "bin": {
-    "object-first": "first.js",
-    "@fixture/object-scoped": "second.js"
-  }
-}

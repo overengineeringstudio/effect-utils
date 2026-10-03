@@ -1267,8 +1267,10 @@ describe('ci workflow standard job helpers', () => {
             const generatedWorkflow = Bun.YAML.parse(
               readFileSync('.github/workflows/ci.yml', 'utf8'),
             )
-            const pnpmRegressionStep = generatedWorkflow.jobs['pnpm-regression'].steps.find(
-              (step) => step.name === 'pnpm regression suite',
+            const nativeDependencyPolicyRegressionStep = generatedWorkflow.jobs[
+              'native-dependency-policy'
+            ].steps.find(
+              (step) => step.name === 'CI runtime and native dependency policy regression checks',
             )
             const generatedSteps = Object.entries(generatedWorkflow.jobs).flatMap(
               ([jobId, job]) =>
@@ -1342,7 +1344,8 @@ describe('ci workflow standard job helpers', () => {
             const scriptBackedNixStepNames = [
               'Resolve devenv',
               'Bootstrap cold-proof (R32)',
-              'pnpm regression suite',
+              'CI runtime and native dependency policy regression checks',
+              'Downstream flake-input regression',
             ]
             const scriptBackedNixAuthMissing = generatedSteps
               .filter(({ step }) => scriptBackedNixStepNames.includes(step.name))
@@ -1352,10 +1355,7 @@ describe('ci workflow standard job helpers', () => {
               ({ step }) => step.name === 'Measure source shape: effect-utils',
             )?.step
             const localOnlyStepTokenPresence = Object.fromEntries(
-              [
-                'Guard pnpm builder contract',
-                'Reject tracked product and editor payload bytes',
-              ].map((name) => {
+              ['Reject tracked product and editor payload bytes'].map((name) => {
                 const step = generatedSteps.find(({ step }) => step.name === name)?.step
                 if (step === undefined) {
                   throw new Error('missing generated local-only step: ' + name)
@@ -1381,7 +1381,7 @@ describe('ci workflow standard job helpers', () => {
                 artifactName: 'baseline',
                 outputDir: 'tmp/baseline',
               }).env.GITHUB_TOKEN,
-              pnpmRegressionStepEnv: pnpmRegressionStep.env,
+              nativeDependencyPolicyRegressionStepEnv: nativeDependencyPolicyRegressionStep.env,
               sourceShapeStepEnv: sourceShapeStep?.env,
               generatedDevenvAuthMissing,
               netlifyStepEnv: netlifyStep.env,
@@ -1440,7 +1440,7 @@ describe('ci workflow standard job helpers', () => {
         nixStepEnv: expectedTokenEnv,
         devenvStepEnv: expectedTokenEnv,
         ghStepEnv: '${{ github.token }}',
-        pnpmRegressionStepEnv: expectedTokenEnv,
+        nativeDependencyPolicyRegressionStepEnv: expectedTokenEnv,
         sourceShapeStepEnv: {
           ARTIFACT_DIR: 'tmp/source-shape-ci/current/effect-utils',
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
@@ -1473,7 +1473,6 @@ describe('ci workflow standard job helpers', () => {
         directNixAuthMissing: [],
         scriptBackedNixAuthMissing: [],
         localOnlyStepTokenPresence: {
-          'Guard pnpm builder contract': false,
           'Reject tracked product and editor payload bytes': false,
         },
         comparisonHasToken: false,

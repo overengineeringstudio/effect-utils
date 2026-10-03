@@ -8,9 +8,8 @@ development, devenv tasks, and CI jobs that run against a checked-out
 workspace.
 
 The live model names the authoritative workspace topology, Materialization
-Root, and Authoritative Materializer. Nix prepared dependency artifacts, Buck2
-evidence, and observability derive from this model instead of inventing a
-parallel Dependency Graph.
+Root, and Authoritative Materializer. Buck2 evidence and observability derive
+from this model instead of inventing a parallel Dependency Graph.
 
 ## Assumptions
 

@@ -11,7 +11,6 @@ import {
   ciOtelSpansSummaryStep,
   prepareCiScriptsStep,
   notifyAlignmentJob,
-  pnpmBuilderContractStep,
   preparePinnedDevenvStep,
   prepareCiOtelSpoolStep,
   installNixStep,
@@ -501,31 +500,31 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       run: runDevenvTasksBefore('test:megarepo-cold-gc'),
     },
   }),
-  'pnpm-builder-contract': job({
-    step: pnpmBuilderContractStep({
-      builderFile: 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
-    }),
-    // Audit the native npm dependency policy (issue #807) in the same lane that
-    // guards the pnpm builder contract. Runs install-free against the lockfile
-    // and the genie policy source, both present here without node_modules.
-    extraSteps: [nativeDepPolicyAuditStep],
-  }),
-  // `mk-pnpm-cli` and `mk-pnpm-deps` remain reusable public helpers, so their
-  // own contract suite keeps this lane even though no repository JavaScript
-  // product consumes them.
-  'pnpm-regression': job({
-    step: {
-      name: 'pnpm regression suite',
-      env: githubTokenEnv(),
-      run: withCiSourceRoot(
-        [
-          'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
-          'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
-          'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
-          'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
-        ].join('\n'),
-      ),
-    },
+  'native-dependency-policy': job({
+    step: nativeDepPolicyAuditStep,
+    extraSteps: [
+      {
+        name: 'CI runtime and native dependency policy regression checks',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          [
+            'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+            'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
+            'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
+          ].join('\n'),
+        ),
+      },
+      // Retained public outputs (`lib.mkOxlintNpm`, `packages.genie`,
+      // `packages.oxlint-npm`) applied from a downstream flake input; nothing
+      // else exercises them through `--override-input`.
+      {
+        name: 'Downstream flake-input regression',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          'bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"',
+        ),
+      },
+    ],
   }),
   'bundle-smoke': job({
     step: {

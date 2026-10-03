@@ -6,7 +6,7 @@ rec {
   # can import Nix helpers (for example lib.mkCliPackages) with a stable API.
   # This keeps the build logic reusable without requiring devenv in the parent.
   #
-  # Prepared pnpm trees are content-addressed against the effect-utils build
+  # Buck product wrappers and capabilities share the effect-utils package
   # graph, so downstream repos should make their root nixpkgs follow
   # `effect-utils/nixpkgs` instead of overriding the input the other way around.
   # Flake nixConfig is independently honored by Nix on every runner. Never
@@ -51,21 +51,7 @@ rec {
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
         rootPath = self.outPath;
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
-        mkPnpmCliSupport = import ./nix/workspace-tools/lib/mk-pnpm-cli-support.nix { inherit pkgs; };
-        cliPackageRegistry = import ./nix/cli-packages.nix { inherit pkgs; };
         pnpm = import ./nix/pnpm.nix { inherit pkgs; };
-        mkPnpmCli = import ./nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
-        megarepoSourceDepsSupport = mkPnpmCli {
-          name = "megarepo-source-deps-support";
-          entry = "packages/@overeng/megarepo/bin/mr.ts";
-          binaryName = "mr";
-          packageDir = "packages/@overeng/megarepo";
-          workspaceRoot = self;
-          depsBuilds = cliPackageRegistry."megarepo-source-deps-support".depsBuilds;
-          generateCompletions = false;
-          smokeTestArgs = [ "--version" ];
-          inherit gitRev commitTs dirty;
-        };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
         providerCliPackages = {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
@@ -234,7 +220,7 @@ rec {
           EOF
           chmod +x "$out/bin/semconv-model"
         '';
-        buck2ProductCandidates = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
+        cliPackages = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
           inherit
             pkgs
             gitRev
@@ -244,13 +230,6 @@ rec {
           products = trackedBuck2Products.products;
           nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
-        };
-        cliPackages = buck2ProductCandidates // {
-          genie = buck2ProductCandidates.genie.overrideAttrs (old: {
-            passthru = (old.passthru or { }) // {
-              inherit (mkPnpmCliSupport) alignAggregateManifestSpecifiersScript;
-            };
-          });
         };
 
       in
@@ -276,9 +255,6 @@ rec {
                 --use-fonts-dir ${pkgs.dejavu_fonts}/share/fonts/truetype \
                 "$@"
             '';
-            "megarepo-source-deps-support" = megarepoSourceDepsSupport;
-            "megarepo-source-product-pnpm-deps" =
-              megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
             buck-products-from-source = pkgs.linkFarm "effect-utils-buck-products-from-source" (
               pkgs.lib.mapAttrsToList (name: path: {
                 name = pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name;

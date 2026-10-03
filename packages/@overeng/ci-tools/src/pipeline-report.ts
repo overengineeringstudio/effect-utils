@@ -226,7 +226,10 @@ export const buildPipelineReport = (opts: {
   readonly generatedAtUtc: string
   readonly grafanaBaseUrl: string
   readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
+  /** Job identities of the workflow that produced `jobs`; defaults to this commit's workflow. */
+  readonly jobIdentityForName?: (name: string) => PipelineJobIdentity | undefined
 }): WorkflowReportRecord => {
+  const jobIdentityForName = opts.jobIdentityForName ?? pipelineJobIdentityForName
   const current = latestJobsWithExecutionAttempt(opts.jobs).filter((job) => isBuildJob(job.name))
   const duplicateNames = new Set<string>()
   const countsByName: Record<string, number> = {}
@@ -238,7 +241,7 @@ export const buildPipelineReport = (opts: {
     const durations = new Map<string, number>()
     const duplicates = new Set<string>()
     for (const candidate of baseline.jobs) {
-      const identity = pipelineJobIdentityForName(candidate.name)
+      const identity = jobIdentityForName(candidate.name)
       const duration = wallTimeMs(candidate)
       if (identity === undefined || candidate.conclusion !== 'success' || duration === undefined)
         continue
@@ -256,7 +259,7 @@ export const buildPipelineReport = (opts: {
   const bars: { start: number; text: string }[] = []
   const rows = current.map((job, index): PipelineRow => {
     const identity =
-      duplicateNames.has(job.name) === true ? undefined : pipelineJobIdentityForName(job.name)
+      duplicateNames.has(job.name) === true ? undefined : jobIdentityForName(job.name)
     const key = identity === undefined ? job.name : canonicalKey(identity)
     const status = jobStatus(job)
     counts[status] = (counts[status] ?? 0) + 1
