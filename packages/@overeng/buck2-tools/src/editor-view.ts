@@ -1402,6 +1402,22 @@ const hardenSnapshot = (snapshotDir: string): void => {
   chmodSync(join(snapshotDir, 'editor-view.json'), 0o444)
   visit(snapshotDir)
 }
+/**
+ * Shallow immutability proof of one snapshot entry: a real, non-writable directory holding a
+ * read-only regular record. It inspects no payload, so its cost is independent of view size.
+ */
+const requireReadOnlySnapshotRoot = (snapshotDir: string): void => {
+  const status = lstatSync(snapshotDir)
+  if (status.isDirectory() === false || status.isSymbolicLink() === true)
+    fail(`snapshot directory must be a real directory: ${snapshotDir}`)
+  if ((status.mode & 0o222) !== 0) fail(`snapshot directory is writable: ${snapshotDir}`)
+  const recordPath = join(snapshotDir, 'editor-view.json')
+  const recordStatus = lstatSync(recordPath)
+  if (recordStatus.isFile() === false || (recordStatus.mode & 0o222) !== 0)
+    fail(`snapshot record must be a read-only regular file: ${recordPath}`)
+}
+
+/** Complete immutability proof: every directory, file, and link of the snapshot payload. */
 const requireReadOnlySnapshot = (snapshotDir: string): void => {
   const finite = pathExists(join(snapshotDir, '.backing'))
   const visit = (directory: string): void => {
@@ -1427,10 +1443,7 @@ const requireReadOnlySnapshot = (snapshotDir: string): void => {
       if ((entry.mode & 0o222) !== 0) fail(`snapshot file is writable: ${path}`)
     }
   }
-  const recordPath = join(snapshotDir, 'editor-view.json')
-  const recordStatus = lstatSync(recordPath)
-  if (recordStatus.isFile() === false || (recordStatus.mode & 0o222) !== 0)
-    fail(`snapshot record must be a read-only regular file: ${recordPath}`)
+  requireReadOnlySnapshotRoot(snapshotDir)
   visit(snapshotDir)
 }
 
@@ -1518,7 +1531,10 @@ const listOwnedSnapshots = ({
       const record = readRecord(join(snapshotDir, 'editor-view.json'))
       if (record.snapshot !== `.store/${name}`)
         fail(`snapshot store contains an ambiguously owned entry: ${snapshotDir}`)
-      requireReadOnlySnapshot(snapshotDir)
+      // Another view owns this entry and proves its payload in full whenever it publishes,
+      // reuses, or checks it. Re-walking every sibling payload here would make a
+      // whole-workspace publication quadratic in the number of views sharing the store.
+      requireReadOnlySnapshotRoot(snapshotDir)
       continue
     }
     requireDirectory({ path: snapshotDir, field: 'retained snapshot' })
