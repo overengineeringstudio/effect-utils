@@ -4,12 +4,13 @@
 # Projection source: rust/content-address-service/BUCK.genie.ts
 # Projection generator: effect-utils/rust/content-address-service
 # Projection schema version: 1
-# Semantic fingerprint: sha256:5461f8da1587e75415f33dea7d22c22a137110244f03bbe657a371be235b9f27
+# Semantic fingerprint: sha256:87db2eaf6adc829dda1702cc373846037fd70964418f90e468f2cfa29d748c48
 # Semantic inputs: rust/content-address-service/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
 load("//buck2/rust:interop.bzl", "rust_wasm_bindgen_library", "rust_napi_library", "rust_interop_service", "rust_interop_service_smoke")
+load("//buck2/rust:content-address-parity.bzl", "content_address_parity")
 
 native.export_file(
     name = "smoke",
@@ -55,5 +56,23 @@ rust_interop_service_smoke(
     runtime = "bun",
     script = ":smoke",
     vectors = "//rust/content-address-contract:contract-schema",
+    visibility = ["PUBLIC"],
+)
+
+content_address_parity(
+    name = "engine-parity-node",
+    package_tree = "//packages/@overeng/content-address:package_tree",
+    dist = "//packages/@overeng/content-address:dist",
+    service = ":service",
+    runtime = "node",
+    visibility = ["PUBLIC"],
+)
+
+content_address_parity(
+    name = "engine-parity-bun",
+    package_tree = "//packages/@overeng/content-address:package_tree",
+    dist = "//packages/@overeng/content-address:dist",
+    service = ":service",
+    runtime = "bun",
     visibility = ["PUBLIC"],
 )
