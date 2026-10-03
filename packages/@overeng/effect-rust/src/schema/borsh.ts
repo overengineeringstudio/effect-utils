@@ -9,12 +9,11 @@ import { decode as decodeSchema, encode as encodeSchema } from './validation.ts'
 /** Malformed Borsh frame failure with its byte offset. */
 export class FrameError extends Error {
   readonly _tag = 'FrameError'
+  readonly offset: number
   // eslint-disable-next-line overeng/named-args -- Preserve the public FrameError positional error constructor.
-  constructor(
-    readonly offset: number,
-    message: string,
-  ) {
+  constructor(offset: number, message: string) {
     super(`Borsh frame at ${offset}: ${message}`)
+    this.offset = offset
   }
 }
 /** Contract identifier and version written into each Borsh frame header. */

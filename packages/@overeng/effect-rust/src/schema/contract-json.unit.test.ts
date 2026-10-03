@@ -23,14 +23,14 @@ describe('ContractJson control plane', () => {
     const codec = ContractJson.codec(unsigned64)
     expectTypeOf<typeof codec.Type>().toEqualTypeOf<typeof unsigned64.Type>()
     expectTypeOf<typeof codec.Encoded>().toEqualTypeOf<string>()
-    expect(Schema.decodeUnknownSync(codec)('"18446744073709551615"')).toBe(18446744073709551615n)
+    expect(Schema.decodeSync(codec)('"18446744073709551615"')).toBe(18446744073709551615n)
     expect(Schema.encodeSync(ContractJson.codec(signed64))(-9223372036854775808n)).toBe(
       '"-9223372036854775808"',
     )
-    expect(Effect.runSync(Schema.decodeUnknownEffect(codec)('"5"'))).toBe(5n)
+    expect(Effect.runSync(Schema.decodeEffect(codec)('"5"'))).toBe(5n)
     expect(Effect.runSync(Schema.encodeEffect(codec)(5n))).toBe('"5"')
     for (const value of ['"00"', '"+1"', '"-0"', '"-1"', '"18446744073709551616"', '1'])
-      expect(() => Schema.decodeUnknownSync(codec)(value)).toThrow()
+      expect(() => Schema.decodeSync(codec)(value)).toThrow()
     for (const value of ['"-0"', '"01"', '"-9223372036854775809"'])
       expect(() => ContractJson.decode(signed64)(value)).toThrow()
   })
@@ -43,7 +43,7 @@ describe('ContractJson control plane', () => {
       ['{"field":null}', { field: null }],
       ['{"field":"5"}', { field: 5n }],
     ] as const) {
-      expect(Schema.decodeUnknownSync(codec)(text)).toEqual(value)
+      expect(Schema.decodeSync(codec)(text)).toEqual(value)
       expect(Schema.encodeSync(codec)(value)).toBe(text)
     }
     expect(() => Schema.encodeUnknownSync(codec)({ field: undefined })).toThrow()
@@ -53,10 +53,10 @@ describe('ContractJson control plane', () => {
     const schema = Schema.Struct({ inner: ignored, strict: Schema.Struct({ n: unsigned8 }) })
     const codec = ContractJson.codec(schema)
     expect(
-      Schema.decodeUnknownSync(codec)('{"inner":{"n":1,"ignored":2},"strict":{"n":3}}'),
+      Schema.decodeSync(codec)('{"inner":{"n":1,"ignored":2},"strict":{"n":3}}'),
     ).toEqual({ inner: { n: 1 }, strict: { n: 3 } })
     expect(() =>
-      Schema.decodeUnknownSync(codec)('{"inner":{"n":1},"strict":{"n":3,"extra":4}}'),
+      Schema.decodeSync(codec)('{"inner":{"n":1},"strict":{"n":3,"extra":4}}'),
     ).toThrow()
     expect(Schema.encodeUnknownSync(ContractJson.codec(ignored))({ n: 1, extra: 2 })).toBe(
       '{"n":1}',
@@ -84,7 +84,7 @@ describe('ContractJson control plane', () => {
     const codec = ContractJson.codec(timestamp)
     expectTypeOf<typeof codec.Type>().toEqualTypeOf<DateTime.Utc>()
     for (const input of ['2024-01-02T04:04:05.1+01:00', '2024-01-02T03:04:05.100000Z']) {
-      const value = Schema.decodeUnknownSync(codec)(JSON.stringify(input))
+      const value = Schema.decodeSync(codec)(JSON.stringify(input))
       expect(DateTime.isUtc(value)).toBe(true)
       expect(Schema.encodeSync(codec)(value)).toBe('"2024-01-02T03:04:05.100Z"')
     }
@@ -94,7 +94,7 @@ describe('ContractJson control plane', () => {
       '2024-01-02T03:04:05',
       '2024-01-02T03:04:60Z',
     ])
-      expect(() => Schema.decodeUnknownSync(codec)(JSON.stringify(input))).toThrow()
+      expect(() => Schema.decodeSync(codec)(JSON.stringify(input))).toThrow()
   })
   it('does not authorize opaque transformations using metadata', () => {
     const opaque = Schema.String.pipe(

@@ -52,7 +52,7 @@ native.rust_library(
     name = "lib",
     crate = "math_interop",
     crate_root = "src/lib.rs",
-    srcs = {
+    mapped_srcs = {
         "src/contract.rs": "src/contract.rs",
         "src/lib.rs": "src/lib.rs",
         "vectors.json": "vectors.json",

@@ -74,13 +74,15 @@ export const tagFields = (ir: ContractIR): readonly string[] =>
 /** Contract admission failure with a precise path, unsupported feature and remedy. */
 export class AdmissionError extends Error {
   readonly _tag = 'AdmissionError'
+  readonly path: string
+  readonly feature: string
+  readonly remedy: string
   // eslint-disable-next-line overeng/named-args -- Preserve the public AdmissionError positional error constructor.
-  constructor(
-    readonly path: string,
-    readonly feature: string,
-    readonly remedy: string,
-  ) {
+  constructor(path: string, feature: string, remedy: string) {
     super(`${path}: ${feature}. Remedy: ${remedy}`)
+    this.path = path
+    this.feature = feature
+    this.remedy = remedy
   }
 }
 /** Throws a structured admission failure without discarding unsupported constraints. */
