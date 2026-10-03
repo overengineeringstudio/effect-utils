@@ -202,12 +202,12 @@ fn identity_attributes(mut env: impl FnMut(&str) -> Option<String>) -> Vec<Value
                 .map(str::to_owned)
         });
     if let Some(provider) = provider {
-        attrs.push(attr("ci.provider", provider));
+        attrs.push(attr("vcs.provider.name", provider));
     }
     if let Some(fork) = env("PIPELINE_FORK").as_deref() {
         match fork {
-            "true" => attrs.push(bool_attr("ci.pr.fork", true)),
-            "false" => attrs.push(bool_attr("ci.pr.fork", false)),
+            "true" => attrs.push(bool_attr("buck2.vcs.change.is_fork", true)),
+            "false" => attrs.push(bool_attr("buck2.vcs.change.is_fork", false)),
             _ => {}
         }
     }

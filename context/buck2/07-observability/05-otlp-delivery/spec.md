@@ -74,9 +74,32 @@ command trace applies. These IDs can be computed without backend search or
 an index. Run IDs and attempts are **strings** in OTLP attributes because
 integer-typed fields were not reliably searchable with TraceQL. The producer
 carries available `cicd.*`, `vcs.*`, `buck2.vcs.merge.revision`,
-`ci.provider` and `ci.pr.fork` attributes; fork traces are not exported
+`vcs.provider.name` and `buck2.vcs.change.is_fork` attributes; fork traces are not exported
 under current admission. Metric labels stay bounded as required by 04,
 never run IDs or revisions.
+
+### Semantic attribute contract
+
+The lane follows the official OpenTelemetry semantic-conventions v1.44.0
+[CICD registry](https://github.com/open-telemetry/semantic-conventions/blob/v1.44.0/model/cicd/registry.yaml)
+and [VCS registry](https://github.com/open-telemetry/semantic-conventions/blob/v1.44.0/model/vcs/registry.yaml).
+The first-party Weaver registry already pins that version; it declares no
+overlapping lane attributes.
+
+| Attribute                       | Type and values                                                          | Meaning                                                                                                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vcs.provider.name`             | string: `github`, `gitlab`, `gitea`, `bitbucket`                         | VCS provider provenance, not a generic CI engine name; this adapter emits `github`. The upstream deprecated spelling `gittea` is not emitted.             |
+| `cicd.pipeline.task.run.result` | string: `success`, `failure`, `error`, `timeout`, `cancellation`, `skip` | Completed job outcome; a GitHub job is a task within its workflow pipeline. [01](../01-run-identity/spec.md) owns provider-status mapping.                |
+| `buck2.vcs.change.is_fork`      | boolean: `true`, `false`; omitted when unavailable                       | Whether the change's head repository differs from its base repository. It is provenance, not authorization; export admission still uses the trust signal. |
+
+Neither upstream registry defines a fork flag. effect-utils owns
+`buck2.vcs.change.is_fork` in its repository-local lowercase dotted `buck2.vcs.*`
+namespace, alongside `buck2.vcs.merge.revision`; it is not an OTel-reserved
+`vcs.*` extension. The spelling is exact and case-sensitive, unknown keys
+are ignored, and absent is unknown rather than false. All three attributes
+are bounded trace/span facts (provider may also describe a resource), never
+metric labels. No legacy aliases or dual emission are supported. Attribute
+renames do not alter deterministic run/trace IDs or historical retained spans.
 
 Tempo keeps traces for 30 days; Mimir keeps bounded trend metrics under fleet policy. There is no one-year native-log archive. When the producer's local spool is gone, this specification promises neither trace replay nor reconstruction from another host. Tempo search lag is a UI/search property, not an exporter acceptance gate; by-ID visibility also cannot be inferred from an HTTP success.
 

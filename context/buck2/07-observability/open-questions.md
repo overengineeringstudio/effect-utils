@@ -34,18 +34,17 @@ experiments (as tested hypotheses).
   against outages: deleting the spool permanently removes the ability to
   regenerate or resend derived traces. It does not imply a raw archive.
 
-## OQ4: When do the `ci.*` vendor keys migrate to OTel CICD attributes? — open
+## OQ4: When do the `ci.*` vendor keys migrate to OTel CICD attributes? — resolved
 
-- The ontology (q19) adopts `cicd.pipeline.*`, `cicd.worker.*`, and `vcs.*`
-  for local _and_ CI runs; today's `ci.*` keys (`ci.provider`,
-  `ci.pr.fork`, and the run/job identity keys) and the `devenv.task.exec`
-  naming predate that. Migration timing depends on the otel-scrape semconv
-  pin (v1.37.0) catching up to the now-RC CICD set and on a coordinated
-  rename across the spool, exporter, and dashboards. The build path must
-  not carry two schemes indefinitely.
-- Blocks: replacement of the remaining `ci.*` keys in
-  [05 OTLP delivery](./05-otlp-delivery/spec.md) and downstream dashboards.
-  The [roadmap](./roadmap.md) tracks the coordinated migration.
+- The lane uses the official v1.44.0 registry in one cutover, without dual
+  emission: provider provenance is `vcs.provider.name`, the job outcome is
+  `cicd.pipeline.task.run.result`, and fork provenance is the repository-owned
+  boolean `buck2.vcs.change.is_fork` because the CICD/VCS registry has no fork
+  flag. [01 run identity](./01-run-identity/spec.md) defines the status mapping;
+  [05 OTLP delivery](./05-otlp-delivery/spec.md) defines the attribute contract.
+- No effect-utils consumer or dotfiles Grafana dashboard reads the removed
+  keys. Trace links use trace IDs, so the cutover changes neither identity nor
+  link calculation. Historical retained traces keep their original attributes.
 
 ## OQ5: Collector access — resolved
 

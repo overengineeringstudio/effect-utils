@@ -92,7 +92,7 @@ It refines BUCK-R13 (and BUCK-R12 advisory, BUCK-R14 hygiene) from the
   discovery: `cicd.pipeline.run.id`, `cicd.pipeline.run.attempt`,
   `cicd.pipeline.task.run.id`, `vcs.ref.head.revision`,
   `vcs.ref.base.revision`, `buck2.vcs.merge.revision`,
-  `vcs.repository.url.full`, `vcs.change.id`, `ci.provider`, `ci.pr.fork`,
+  `vcs.repository.url.full`, `vcs.change.id`, `vcs.provider.name`, `buck2.vcs.change.is_fork`,
   and the Buck trace id. None of these ever becomes a metric label.
 - **BUCK.OBS-R06 Retention corridor:** Tempo retains traces for 30 days;
   long-term trends use bounded metrics. There is no raw evidence archive or

@@ -45,9 +45,9 @@ federated OIDC identity and use an application-scoped upload capability;
 fork runs remain spool-only. When fork admission is added, a trusted adapter
 grants a short-lived, write-only capability bound to the exact live PR head;
 the build and uploader see a generic capability and stay provider-neutral.
-Ingested untrusted records are tagged `ci.pr.fork=true` so queries can filter
-(05 stamps the agreed key; its later migration to the OTel CICD key family
-is tracked as [OQ4](../../open-questions.md)).
+Ingested untrusted records are tagged `buck2.vcs.change.is_fork=true` so queries
+can filter (05 owns the repository-local key; [OQ4](../../open-questions.md)
+records the v1.44.0 semantic-convention cutover).
 
 ## Consequences
 
@@ -67,5 +67,5 @@ now export admission. Same-repo PR and main CI jobs export over the tailnet
 ACL; ordinary fork jobs keep telemetry in the local spool and never join the
 tailnet or export. A PR label does not currently authorize fork export; any
 future fork path requires a new decision covering network admission and
-trace isolation. `ci.pr.fork` remains the attribute for fork provenance, and
+trace isolation. `buck2.vcs.change.is_fork` carries fork provenance, and
 the bounded-decoder rule for untrusted native evidence still applies.

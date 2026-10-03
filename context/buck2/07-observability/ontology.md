@@ -22,13 +22,21 @@ ID: the pipeline trace ID derives deterministically from it. _Avoid_:
 its job key includes matrix values so sibling variants cannot collide.
 
 **Task Run** is one devenv task execution inside a Pipeline Run or Job Run.
-It maps to `cicd.pipeline.task.*`; the existing `devenv.task.exec` span
-represents this concept (the naming migration is OQ4).
+It maps to `cicd.pipeline.task.*`; the lane's entrypoint emits the
+`cicd.pipeline.task.run` span.
 
 **Worker** is where a pipeline run executed (a laptop or a CI runner):
-`cicd.worker.*`. The provider (e.g. GitHub Actions) is a resource
-attribute (`ci.provider`) in telemetry; the separate PR reporter calls its
-provider's Jobs API.
+`cicd.worker.*`.
+
+**VCS Provider** is the service hosting repository and change metadata
+(e.g. GitHub). It is distinct from the worker or CI engine.
+
+**Fork Change** is a change whose head repository differs from its base
+repository. Fork provenance does not itself authorize telemetry export.
+
+**Task Run Result** is a completed task's normalized outcome: success,
+failure, infrastructure error, timeout, cancellation, or skip. A CI job
+is a task within its workflow pipeline.
 
 ### Buck layer (upstream words, kept as-is)
 
