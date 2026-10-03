@@ -1,97 +1,110 @@
 {
-  "name": "protect-main",
-  "enforcement": "active",
-  "target": "branch",
-  "conditions": {
-    "ref_name": {
-      "include": ["~DEFAULT_BRANCH"],
-      "exclude": []
-    }
+  "$genie": {
+    "source": ".github/repo-settings.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   },
-  "rules": [
+  "repository": {
+    "allow_auto_merge": true,
+    "delete_branch_on_merge": true,
+    "allow_update_branch": true
+  },
+  "rulesets": [
     {
-      "type": "pull_request",
-      "parameters": {
-        "required_approving_review_count": 0,
-        "dismiss_stale_reviews_on_push": true,
-        "require_code_owner_review": false,
-        "require_last_push_approval": false,
-        "required_review_thread_resolution": true,
-        "required_reviewers": []
-      }
-    },
-    {
-      "type": "required_status_checks",
-      "parameters": {
-        "do_not_enforce_on_create": true,
-        "strict_required_status_checks_policy": false,
-        "required_status_checks": [
-          {
-            "context": "default-ref-policy"
-          },
-          {
-            "context": "typecheck"
-          },
-          {
-            "context": "lint"
-          },
-          {
-            "context": "test (namespace-profile-linux-x86-64)"
-          },
-          {
-            "context": "test (namespace-profile-macos-arm64)"
-          },
-          {
-            "context": "test-playwright-utils"
-          },
-          {
-            "context": "test-playwright-tui-react"
-          },
-          {
-            "context": "test-megarepo-cold-gc"
-          },
-          {
-            "context": "native-dependency-policy"
-          },
-          {
-            "context": "bundle-smoke"
-          },
-          {
-            "context": "cargo"
-          },
-          {
-            "context": "weaver"
-          },
-          {
-            "context": "bootstrap-cold-proof"
-          },
-          {
-            "context": "nix-closure-sizes"
-          },
-          {
-            "context": "source-shape"
-          },
-          {
-            "context": "test-integration-restate"
-          },
-          {
-            "context": "build-products"
-          },
-          {
-            "context": "pr-reviews-resolved"
-          },
-          {
-            "context": "test-storybook-plays"
+      "name": "protect-main",
+      "enforcement": "active",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": ["~DEFAULT_BRANCH"],
+          "exclude": []
+        }
+      },
+      "rules": [
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": true,
+            "required_reviewers": []
           }
-        ]
-      }
-    },
-    {
-      "type": "non_fast_forward"
-    },
-    {
-      "type": "deletion"
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "do_not_enforce_on_create": true,
+            "strict_required_status_checks_policy": false,
+            "required_status_checks": [
+              {
+                "context": "default-ref-policy"
+              },
+              {
+                "context": "typecheck"
+              },
+              {
+                "context": "lint"
+              },
+              {
+                "context": "test (namespace-profile-linux-x86-64)"
+              },
+              {
+                "context": "test (namespace-profile-macos-arm64)"
+              },
+              {
+                "context": "test-playwright-utils"
+              },
+              {
+                "context": "test-playwright-tui-react"
+              },
+              {
+                "context": "test-megarepo-cold-gc"
+              },
+              {
+                "context": "native-dependency-policy"
+              },
+              {
+                "context": "bundle-smoke"
+              },
+              {
+                "context": "cargo"
+              },
+              {
+                "context": "weaver"
+              },
+              {
+                "context": "bootstrap-cold-proof"
+              },
+              {
+                "context": "nix-closure-sizes"
+              },
+              {
+                "context": "source-shape"
+              },
+              {
+                "context": "test-integration-restate"
+              },
+              {
+                "context": "build-products"
+              },
+              {
+                "context": "pr-reviews-resolved"
+              },
+              {
+                "context": "test-storybook-plays"
+              }
+            ]
+          }
+        },
+        {
+          "type": "non_fast_forward"
+        },
+        {
+          "type": "deletion"
+        }
+      ],
+      "bypass_actors": []
     }
-  ],
-  "bypass_actors": []
+  ]
 }
