@@ -1479,7 +1479,9 @@ const pipelineTracesJob = {
   'continue-on-error': true,
   steps: [
     { uses: 'actions/checkout@v4' },
-    { uses: 'cachix/install-nix-action@v31' },
+    // Read-only substituter: the protected publisher pushes `ci-tools-compiled`, so the report
+    // substitutes it instead of building ~1300 derivations after every PR run.
+    installNixStep({ binaryCaches: [binaryCache] }),
     {
       name: 'Publish Pipeline traces',
       shell: 'bash',
