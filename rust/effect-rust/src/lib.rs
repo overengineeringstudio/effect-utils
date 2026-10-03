@@ -16,7 +16,7 @@ pub mod wire;
 pub use cancellation::{CancellationToken, Cancelled, CancellationError};
 #[cfg(feature = "contract")]
 pub use effect_rust_macros::contract;
-pub use effect_rust_macros::{export, ExportError};
+pub use effect_rust_macros::{export, resource, ExportError};
 pub use host::Error;
 pub use wire::{Patch, TimestampMillis, ValidationError};
 

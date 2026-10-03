@@ -51,6 +51,58 @@ Service classes use `defineStatics(Service, { make, wasm?, native? })` with gene
 - The Layer's Scope owns the runtime. `Effect.provide(layer)` releases it when that Effect finishes. Use `Layer.build(layer)` in a caller-owned Scope if the service must live across multiple operations.
 - Runtime acquisition is asynchronous. Once acquired, a synchronous export remains synchronous and can be evaluated with `Effect.runSync`; only PromiseLike results and explicit `RustJob` results suspend.
 
+### Scoped resources
+
+Apply `#[effect_rust::resource]` to a safe, non-generic inherent impl containing
+`pub fn new(...) -> Self` and public synchronous `&self` / `&mut self` methods.
+`name = "factoryName"` optionally names the service acquisition method; by
+default `Counter` becomes `counter`. Public method names remain unchanged.
+The compiled binary embeds constructor, method, and close records; the existing
+Buck product and service generators consume those records, including domain
+schemas and `ExportError` metadata.
+
+```rust
+pub struct Counter { value: i32 }
+
+#[effect_rust::resource]
+impl Counter {
+    pub fn new(value: i32) -> Self { Self { value } }
+    pub fn add(&mut self, amount: i32) -> i32 {
+        self.value += amount;
+        self.value
+    }
+    pub fn value(&self) -> i32 { self.value }
+}
+```
+
+From a constructed service, `service.counter(value)` returns
+`Effect.Effect<Counter, never, Scope.Scope>`. Acquisition has no recoverable
+error channel: constructors must return `Self`, not `Result`; invalid
+constructor contract inputs and construction panics are defects. Methods retain
+their expected-error channel and distinguish it from panic/trap defects.
+Each resource exposes `close: Effect.Effect<void>` as an optional early release;
+Scope exit closes it automatically and exactly once.
+
+All methods, including immutable receivers, and close share **one FIFO semaphore
+per resource**. This prevents overlapping mutable Rust borrows, orders queued
+calls, and makes close wait for earlier calls. Other resources can run
+independently. Calls submitted after close die without entering Rust. Async,
+consuming/typed receivers, trait/generic impls, public static helpers other than
+`new`, resource arguments/results, associated items, and conditional method/impl
+attributes are rejected precisely. Private helpers are not exported;
+documentation attributes are supported. Put conditional definitions in an
+enclosing module and associated/static helpers in another impl.
+
+Resources belong to their acquisition generation, not an independent poison
+registry. A panic in any resource poisons every sibling and pending job; rebuilding
+permits new acquisitions but never revives old resources. Old resources cannot
+invoke or release a retired wasm instance. Healthy close runs Rust `Drop`.
+Wasm retirement disables glue finalizers and discards the instance without
+claiming to unwind or run Rust destructors. Native panics unwind through guarded
+entrypoints; retirement deterministically closes all owned native resources after
+the borrow has unwound. Explicit close/drop failures are defects; native GC
+destructors are guarded so an unwind never crosses the addon finalizer boundary.
+
 ### Interruption and host capabilities
 
 `runtime.call(({ api, signal }) => ...)` accepts a synchronous value, a Promise, or an explicit `RustJob`:
