@@ -52,12 +52,11 @@ describe('ContractJson control plane', () => {
     const ignored = Schema.Struct({ n: unsigned8 }).annotate({ [EffectRust.excess]: 'ignore' })
     const schema = Schema.Struct({ inner: ignored, strict: Schema.Struct({ n: unsigned8 }) })
     const codec = ContractJson.codec(schema)
-    expect(
-      Schema.decodeSync(codec)('{"inner":{"n":1,"ignored":2},"strict":{"n":3}}'),
-    ).toEqual({ inner: { n: 1 }, strict: { n: 3 } })
-    expect(() =>
-      Schema.decodeSync(codec)('{"inner":{"n":1},"strict":{"n":3,"extra":4}}'),
-    ).toThrow()
+    expect(Schema.decodeSync(codec)('{"inner":{"n":1,"ignored":2},"strict":{"n":3}}')).toEqual({
+      inner: { n: 1 },
+      strict: { n: 3 },
+    })
+    expect(() => Schema.decodeSync(codec)('{"inner":{"n":1},"strict":{"n":3,"extra":4}}')).toThrow()
     expect(Schema.encodeUnknownSync(ContractJson.codec(ignored))({ n: 1, extra: 2 })).toBe(
       '{"n":1}',
     )

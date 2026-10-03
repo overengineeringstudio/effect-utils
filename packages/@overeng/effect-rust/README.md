@@ -136,9 +136,7 @@ source are rejected.
 ```ts
 cargoBuck2PackageProjection({
   sourceUrl: import.meta.url,
-  compileTimeResources: [
-    { path: 'rust/effect-rust-fixtures/math-interop/vectors.json' },
-  ],
+  compileTimeResources: [{ path: 'rust/effect-rust-fixtures/math-interop/vectors.json' }],
 })
 ```
 
