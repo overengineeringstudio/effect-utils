@@ -64,13 +64,35 @@ from dependency-materialization
 [decision 0006](../../dependency-materialization/05-buck2-evidence/.decisions/0006-nix-exported-buck-toolchains.md);
 shared-cache reuse of a local action does not imply that contract has been met.
 
-Under BUCK-R17 the contract is realized as a worker image: an execution
-platform names the Nix closure that provides every tool its actions bind, a
-worker advertises the closures it holds as platform properties, and the
-scheduler places a cache miss only on a worker whose properties match. The
-first backend evaluated is NativeLink (cache, scheduler, one x86_64-linux
-worker) after the BUCK-R06 key-stability delta is closed; the rerunnable kit is
-in `.experiments/2026-09-19-nativelink-remote-execution.md`.
+Under BUCK-R17, the Namespace worker-image mechanism uses one immutable named
+pool per capability closure identity:
+
+```text
+exact capability closure + projection root
+  -> named pool startup -> realized worker -> action at matching platform
+                  closure identity -> platform properties -> action key
+```
+
+The pool definition binds OS/architecture, capability closure, and startup
+definition. Before worker registration, its startup script realizes every
+tool path and the capability projection root itself. The client capability
+cell links directly to that immutable store root, never a checkout-specific
+alias. Closure identity enters the REAPI action digest through platform
+properties; a changed closure requires a distinct immutable pool definition.
+Actions use the realized absolute `/nix/store` paths without evaluating Nix
+or transporting those paths through CAS.
+
+Remote tests use the same executor policy, run from the project root, use
+project-relative paths, and require
+`--unstable-allow-compatible-tests-on-re`. Startup-script pools use direct
+execution (`namespace_action_isolation = none`); they are restricted to
+trusted public work, not mixed-trust or secret-bearing actions.
+
+[Decision 0039](../.decisions/0039-namespace-first-remote-candidate-adoption-deferred.md)
+defines the deferred adoption gates. The
+[experiment](../.experiments/2026-09-30-namespace-remote-execution.md) proves
+this mechanism for Linux x86_64 package commands/tests, not all admitted
+actions or the real Darwin capability closure.
 
 A stage-zero provider binds an exact Nix realization identity, executable,
 protocol, and execution-platform constraint; a negative test proves an
