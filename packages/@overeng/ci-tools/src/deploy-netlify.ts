@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
-import { Effect, Result, Schema } from 'effect'
+import { Clock, Duration, Effect, Result, Schedule, Schema } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
@@ -181,7 +181,9 @@ const fetchNetlifyJson = Effect.fn('ci-tools.deploy.netlify.fetch-json')(functio
     )
     .pipe(
       Effect.flatMap((response) =>
-        response.text.pipe(Effect.map((text) => ({ status: response.status, text }))),
+        response.text.pipe(
+          Effect.map((text) => ({ status: response.status, headers: response.headers, text })),
+        ),
       ),
       Effect.catchTag(
         'HttpClientError',
@@ -227,6 +229,32 @@ const resolveNetlifySite = Effect.fn('ci-tools.deploy.netlify.resolve-site')(fun
       diagnostics: { apiStatus: String(response.status) },
     })
   }
+  if (response.status === 429) {
+    const now = yield* Clock.currentTimeMillis
+    const retryAfter = response.headers['retry-after']?.trim()
+    const retrySeconds = retryAfter === undefined || retryAfter === '' ? NaN : Number(retryAfter)
+    const retryAt =
+      retryAfter === undefined
+        ? NaN
+        : Number.isFinite(retrySeconds) === true && retrySeconds >= 0
+          ? now + retrySeconds * 1000
+          : Date.parse(retryAfter)
+    const reset = response.headers['x-ratelimit-reset']?.trim()
+    const resetSeconds = reset === undefined || reset === '' ? NaN : Number(reset)
+    const resetAt =
+      Number.isFinite(resetSeconds) === true && resetSeconds >= 0 ? resetSeconds * 1000 : NaN
+    const waitUntil = Number.isFinite(retryAt) === true ? retryAt : resetAt
+    return yield* new ProviderProjectLookupFailed({
+      provider: 'netlify',
+      target: opts.target,
+      transient: true,
+      message: 'Netlify site lookup was rate limited',
+      diagnostics: { apiStatus: String(response.status) },
+      ...(Number.isFinite(waitUntil) === true
+        ? { retryAfterMs: Math.max(0, waitUntil - now) }
+        : {}),
+    })
+  }
   if (response.status >= 500) {
     return yield* new ProviderProjectLookupFailed({
       provider: 'netlify',
@@ -261,6 +289,20 @@ const resolveNetlifySite = Effect.fn('ci-tools.deploy.netlify.resolve-site')(fun
     accountSlug: decoded.success.account_slug,
   }
 })
+
+// Do not retry before the provider's deadline, or wait longer than one rate-limit window.
+const netlifyLookupRetrySchedule = Schedule.exponential('1 second').pipe(
+  Schedule.modifyDelay(({ duration, input }) =>
+    Effect.succeed(
+      Math.max(
+        Duration.toMillis(duration),
+        input instanceof ProviderProjectLookupFailed ? (input.retryAfterMs ?? 0) : 0,
+      ),
+    ),
+  ),
+  Schedule.upTo({ times: 3 }),
+  Schedule.while(({ elapsed, duration }) => elapsed + Duration.toMillis(duration) <= 60_000),
+)
 
 const classifyNetlifyDeployFailure = (opts: {
   readonly target: string
@@ -464,13 +506,14 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   })
 
   const authTokenValue = envValue(options.authTokenEnv)
+  let lookupAttempts = 0
   const failWithRecord = (failure: DeployFailure) =>
     emitWorkflowReportRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
       record: deployFailureRecord({
         input,
         failure,
-        attempts: 1,
+        attempts: Math.max(1, lookupAttempts),
         createdAtUtc,
         secretValues: authTokenValue === undefined ? [] : [authTokenValue],
       }),
@@ -543,12 +586,24 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   }
 
   const siteId = envValue(options.siteIdEnv)
-  const resolvedSiteResult = yield* resolveNetlifySite({
-    target: options.target,
-    siteId,
-    authToken: authTokenValue,
-    apiBaseUrl: options.netlifyApiBaseUrl,
-  }).pipe(Effect.result)
+  const resolvedSiteResult = yield* Effect.suspend(() => {
+    lookupAttempts += 1
+    return resolveNetlifySite({
+      target: options.target,
+      siteId,
+      authToken: authTokenValue,
+      apiBaseUrl: options.netlifyApiBaseUrl,
+    })
+  }).pipe(
+    Effect.retry({
+      schedule: netlifyLookupRetrySchedule,
+      while: (failure) =>
+        failure._tag === 'ProviderProjectLookupFailed' &&
+        failure.transient === true &&
+        failure.diagnostics?.apiStatus === '429',
+    }),
+    Effect.result,
+  )
   if (Result.isFailure(resolvedSiteResult) === true) {
     if (
       resolvedSiteResult.failure._tag === 'Unauthorized' &&
@@ -624,7 +679,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
     alias,
     startedAtUtc: createdAtUtc,
     endedAtUtc: isoNow(),
-    attempts: 1,
+    attempts: lookupAttempts,
     ...(input.e2e?.allowSharedProject === true
       ? {
           cleanup: {
