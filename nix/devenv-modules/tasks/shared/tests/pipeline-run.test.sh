@@ -125,7 +125,9 @@ for chunk in "${chunks[@]}"; do
       [[ $(jq -r '.spanId' <<< "$body") == "$job_root" ]]
       [[ $(jq -r '.startTimeUnixNano' <<< "$body") == "$PIPELINE_JOB_START_NS" ]]
       [[ $(jq -r '.status.code' <<< "$body") == 2 ]]
-      [[ $(jq -r '.attributes[] | select(.key=="ci.job.status").value.stringValue' <<< "$body") == failure ]]
+      [[ $(jq -r '.attributes[] | select(.key=="cicd.pipeline.task.run.result").value.stringValue' <<< "$body") == failure ]]
+      [[ $(jq -r '.attributes[] | select(.key=="vcs.provider.name").value.stringValue' <<< "$body") == github ]]
+      [[ $(jq -r '.attributes[] | select(.key=="buck2.vcs.change.is_fork").value.boolValue' <<< "$body") == false ]]
       root_end=$(jq -r '.endTimeUnixNano' <<< "$body")
       ((root_count += 1)) ;;
     cicd.pipeline.task.run)
@@ -140,6 +142,19 @@ for chunk in "${chunks[@]}"; do
 done
 [[ $root_count == 1 && $task_count == 2 && ${#task_ids[@]} == 2 && $task_statuses == 3 ]]
 [[ $root_end -ge $latest_task_end ]]
+
+# Provider conclusions are normalized once, with no vendor status alias.
+for mapping in success:success failure:failure cancelled:cancellation skipped:skip timed_out:timeout startup_failure:error; do
+  conclusion=${mapping%%:*}
+  result=${mapping#*:}
+  rm -rf "$job_spool"
+  env PATH="$tmp/bin:$PATH" DEVENV_BIN="$tmp/bin/devenv" GITHUB_WORKSPACE="$tmp" \
+    PIPELINE_JOB_START_NS="$PIPELINE_JOB_START_NS" \
+    "${job_env[@]}" bash "$repo/genie/ci-scripts/evidence-job.sh" export "$conclusion"
+  mapfile -t chunks < <(find "$job_spool/pending" -maxdepth 1 -name '*.traces.chunk' -type f)
+  body=$(jq -sR 'split("\n")[1] | fromjson | .resourceSpans[0].scopeSpans[0].spans[0]' "${chunks[0]}")
+  [[ $(jq -r '.attributes[] | select(.key=="cicd.pipeline.task.run.result").value.stringValue' <<< "$body") == "$result" ]]
+done
 
 # A fork must never use direct HTTP when local spool creation fails.
 if PIPELINE_RUN_ID="$run" PIPELINE_JOB_KEY=test PIPELINE_MATRIX_RUNNER="$runner" \

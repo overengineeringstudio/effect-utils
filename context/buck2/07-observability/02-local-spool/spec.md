@@ -31,15 +31,16 @@ Each traced caller invokes Buck directly with explicit `--event-log` and `--writ
 
 ## Identity Attributes (BUCK.OBS.REC-R03/R05)
 
-| Field                      | Source                                       | Missing value                 |
-| -------------------------- | -------------------------------------------- | ----------------------------- |
-| `vcs.change.id`            | CI adapter PR number                         | Omit on non-PR runs           |
-| `vcs.ref.head.revision`    | git PR head; checked-out HEAD on non-PR runs | Omit if unresolved            |
-| `vcs.ref.base.revision`    | base parent (`HEAD^1`) of CI merge checkout  | Omit without a merge checkout |
-| `buck2.vcs.merge.revision` | checked-out merge commit                     | Omit without a merge checkout |
-| `ci.pr.fork`               | CI adapter trust classification              | Explicit true for fork runs   |
+| Field                      | Source                                       | Missing value                                |
+| -------------------------- | -------------------------------------------- | -------------------------------------------- |
+| `vcs.change.id`            | CI adapter PR number                         | Omit on non-PR runs                          |
+| `vcs.ref.head.revision`    | git PR head; checked-out HEAD on non-PR runs | Omit if unresolved                           |
+| `vcs.ref.base.revision`    | base parent (`HEAD^1`) of CI merge checkout  | Omit without a merge checkout                |
+| `buck2.vcs.merge.revision` | checked-out merge commit                     | Omit without a merge checkout                |
+| `buck2.vcs.change.is_fork` | CI adapter fork provenance                   | Explicit true for fork runs; omit if unknown |
 
 `buck2.vcs.merge.revision` belongs to the Buck2 observability lane's repository-local lowercase dotted `buck2.vcs.*` namespace. Its value is distinct from the PR head and base; readers unaware of it ignore it without substituting another revision. The three revision values and change id are attributes on the emitted traces, not fields in a manifest or fleet index. Derived trace IDs depend only on 01's pre-delivery identity, never on these attributes or a file digest.
+Fork provenance follows [05's semantic attribute contract](../05-otlp-delivery/spec.md#semantic-attribute-contract).
 
 ## Completion and Failure
 

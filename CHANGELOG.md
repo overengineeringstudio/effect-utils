@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Buck2 pipeline telemetry uses `vcs.provider.name`,
+  `cicd.pipeline.task.run.result`, and `buck2.vcs.change.is_fork` in place of
+  vendor provider, status, and fork keys. Job outcomes use the OpenTelemetry
+  v1.44.0 result vocabulary; trace IDs and export admission are unchanged.
+
 ### Removed
 
 - Retired the legacy pnpm CLI compiler, prepared-install dependency builders,

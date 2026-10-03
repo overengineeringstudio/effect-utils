@@ -699,8 +699,8 @@ fn pipeline_identity_attributes_distinguish_absent_and_forked_runs() {
         attrs,
         vec![
             attr("cicd.pipeline.run.id", "ci/github/owner%2Frepo/42/2"),
-            attr("ci.provider", "github"),
-            bool_attr("ci.pr.fork", true),
+            attr("vcs.provider.name", "github"),
+            bool_attr("buck2.vcs.change.is_fork", true),
             attr("vcs.change.id", "123"),
             attr("vcs.ref.head.revision", "head"),
             attr("vcs.ref.base.revision", "base"),
