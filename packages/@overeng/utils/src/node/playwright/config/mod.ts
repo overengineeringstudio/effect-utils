@@ -137,8 +137,8 @@ export const createPlaywrightConfig = async (
       baseURL: url,
       headless: !process.env.PW_HEADFUL,
       viewport: { width: 1280, height: 800 },
-      trace: process.env.CI !== undefined ? 'on-first-retry' : 'retain-on-failure',
-      screenshot: 'off',
+      trace: 'retain-on-failure',
+      screenshot: 'only-on-failure',
       video: 'off',
     },
 

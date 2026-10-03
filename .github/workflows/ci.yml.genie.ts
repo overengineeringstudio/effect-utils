@@ -339,10 +339,12 @@ const measurementReportIf = [
 const job = ({
   step,
   extraSteps = [],
+  afterSteps = [],
   timeoutMinutes = jobTimeoutMinutes,
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   extraSteps?: readonly any[]
+  afterSteps?: readonly any[]
   timeoutMinutes?: number
 }) => ({
   if: normalCiIf,
@@ -356,6 +358,7 @@ const job = ({
     ...baseSteps,
     ...extraSteps,
     step,
+    ...afterSteps,
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -491,6 +494,19 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:pw:tui-react'),
     },
+    afterSteps: [
+      {
+        name: 'Upload Playwright failure evidence',
+        if: 'failure()',
+        uses: 'actions/upload-artifact@v4',
+        with: {
+          name: 'playwright-test-results-tui-react-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+          path: 'packages/@overeng/tui-react/test-results/',
+          'if-no-files-found': 'ignore',
+          'retention-days': 14,
+        },
+      },
+    ],
   }),
   'test-megarepo-cold-gc': job({
     timeoutMinutes: longJobTimeoutMinutes,
