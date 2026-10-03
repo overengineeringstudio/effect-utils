@@ -165,25 +165,25 @@ The adapter requests GitHub's ID token with audience
 `https://gitbucket.schickling.dev/api/auth/github-actions`, exchanges it at that
 endpoint, then uploads with explicit public consent. The server verifies GitHub
 JWKS signatures, issuer, audience, expiry, and `GITBUCKET_ACTIONS_POLICIES_JSON`.
-The configured repository, PR event/ref and CI workflow pattern are allowlisted.
+Repository names and immutable repository/owner IDs, PR event/ref and CI workflow
+pattern must match the configured allowlist.
 The minted credential has distinct upload-only type, no role or refresh token,
 a lifetime of at most five minutes, and fixed `image/png`, 5 MiB,
 `requirePublicOk` scope. Existing access and refresh verifiers reject it.
 
-The account-scoped SSH path and its report-step-only secret/username references
-remain during deployment verification. Actions prefers OIDC and never retries
-SSH after OIDC denial; SSH is reachable only outside the Actions OIDC context.
-The server change requires an operator-approved Netlify deployment before
-end-to-end verification and removal/revocation of the legacy secret
-([DQ1](#open-design-questions)). An optional executable-path override receives
-one PNG path and returns one public URL, never arbitrary shell text.
+The report has no account-scoped publication credential or SSH authentication
+path. A successful adapter invocation emits only its validated public URL on
+stdout and a fixed OIDC authentication marker on stderr; the reporter exposes
+that marker as a controlled per-theme success line. An optional executable-path
+override receives one PNG path and returns one public URL, never arbitrary shell
+text.
 
 Missing credentials, rasterization failure, upload failure, or invalid URLs
 leave the original usable report intact and select the deterministic jobs-only
 Mermaid fallback. Failures emit controlled stage diagnostics without raw
 secret-bearing stderr: an upload failure may append only the adapter's
-sanitized `<oidc|exchange|challenge|sign|verify|upload|url> <http NNN|exit N>` reason, never
-response bodies, tokens, key material or signing output. Dry-run never uploads.
+sanitized `<oidc|exchange|upload|url> <http NNN|exit N>` reason, never
+response bodies, tokens or raw authentication diagnostics. Dry-run never uploads.
 Image handling adds no Tempo
 reads, task spans, task annotations, or per-build-job workflow steps.
 
@@ -256,13 +256,16 @@ baseline`; a finalizer job never appears as a build row. The collector
 
 ## Open Design Questions
 
-- **DQ1 Restricted GitBucket publisher authority — deployment/live proof pending:**
-  The supported GitHub Actions OIDC exchange mints only short-lived PNG upload
-  tokens with MIME/size/public-consent enforcement. The allowlist is config,
-  not a hardcoded repository. The CAS remains public with no private namespace.
-  Operator approval gates the server's Netlify deployment and allowlist
-  provisioning. After an allowed same-repo PR publishes both images and
-  unrelated-token operations are denied, remove the SSH adapter branch and
-  workflow secret/username references, then revoke
-  `PIPELINE_TRACES_ASSET_SSH_KEY`. Keep Mermaid fallback throughout. Tracking:
+- **DQ1 Restricted GitBucket publisher authority — resolved:** The deployed
+  GitHub Actions OIDC exchange verifies GitHub's signature, issuer, service
+  audience, expiry and configured repository names plus immutable repository/
+  owner IDs, event/ref/workflow constraints. It mints only short-lived PNG
+  upload tokens with MIME/size/public-consent enforcement and no access role or
+  refresh capability. The CAS remains public with no private namespace.
+  [PR 1584's first live proof](https://github.com/overengineeringstudio/effect-utils/actions/runs/37158430402/job/111311680936)
+  logged both themes uploaded through OIDC; the
+  [picture comment](https://github.com/overengineeringstudio/effect-utils/pull/1584#issuecomment-5969239780)
+  referenced two URLs verified as `200 image/png`, without publication warnings.
+  The report's SSH branch and credential references are removed. Retired stored
+  credentials are an operator cleanup action, not report inputs. Tracking:
   [root open questions](../../open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication).

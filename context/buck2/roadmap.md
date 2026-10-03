@@ -208,23 +208,20 @@ recorded as findings in the owning subsystems' open questions.
 
 The PR waterfall reuses GitBucket's immutable public content-addressed store
 ([trace-access spec](./07-observability/06-trace-access/spec.md#public-immutable-images-and-failure-path)).
-Johannes accepted GitHub-account SSH authentication for end-to-end publication
-as a temporary compromise; a separate key is revocable but not upload-only.
+The deployed GitHub Actions OIDC exchange restricts publication to configured
+repository names and immutable repository/owner IDs, event/ref/workflow
+constraints, and short-lived public PNG upload tokens.
 
-**Sequence:** The server's configurable GitHub Actions OIDC exchange and report
-job cutover are implemented. Obtain Johannes's go for the Netlify deployment
-and production/Functions allowlist configuration; no new secret is required.
-Then prove light/dark publication from an allowed same-repo PR and denial of
-unrelated operations. Only after live proof remove the SSH branch and secret/var
-references and revoke `PIPELINE_TRACES_ASSET_SSH_KEY`. Retain Mermaid fallback;
-OIDC denial never retries with the broader SSH credential.
+**Completed cutover:** [PR 1584's live run](https://github.com/overengineeringstudio/effect-utils/actions/runs/37158430402/job/111311680936)
+proved light/dark OIDC publication and public `200 image/png` responses. The
+report no longer has an account-scoped credential input or SSH upload path.
+Authorization and publication failures retain Mermaid. Retired stored
+credentials are an operator cleanup action after review, not workflow inputs.
 
-**Dissolution target:** Remove account-scoped publisher authentication from
-the report step once the restricted path is supported and proven. The unresolved
-credential boundary is tracked in
-[OQ4](./open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
-and trace-access DQ1; this security follow-up does not change the chosen CAS
-host or the V2 D2 T2 presentation.
+**Dissolution achieved:** The account-scoped publication compromise is removed
+from the report. [OQ4](./open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
+and trace-access DQ1 are resolved; the CAS host and V2 D2 T2 presentation are
+unchanged.
 
 ## Cross-phase gates
 
