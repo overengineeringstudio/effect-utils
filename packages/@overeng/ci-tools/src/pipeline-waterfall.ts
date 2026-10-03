@@ -152,7 +152,7 @@ export const renderPipelineWaterfall = ({
   const width = 960
   const plotStart = 320
   const breakWidth = Math.min(28, 200 / Math.max(1, segments.length - 1))
-  const plotWidth = 480
+  const plotWidth = 420
   const total = segments.reduce((sum, segment) => sum + segment.to - segment.from, 0)
   const px = (plotWidth - breakWidth * Math.max(0, segments.length - 1)) / Math.max(1, total)
   const position = (time: number): number => {
@@ -164,16 +164,17 @@ export const renderPipelineWaterfall = ({
     return plotStart + plotWidth
   }
   // Leave a separate band for axis labels below the multi-line header and legend.
-  const top = 92
-  const height = top + rows.length * 20 + 48
+  // 16px type remains >=12px at GitHub's 770px comment width; keep 20px rows.
+  const top = 110
+  const height = top + rows.length * 20 + 56
   const out = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" role="img" aria-label="Pipeline jobs and steps waterfall"><style>text{font-family:DejaVu Sans,sans-serif;font-size:11px;fill:${colors.fg}}.muted{fill:${colors.muted}}</style><rect width="${width}" height="${height}" fill="${colors.bg}"/><text x="12" y="22" font-size="16">Pipeline jobs + steps · attempt ${timeline.attempt}</text><text class="muted" x="12" y="42">Chronological; up to four timed steps/job (non-success first, then longest). Dashed idle breaks.</text><text class="muted" x="12" y="58">Origin ${escapeXml(segments.length === 0 ? 'unavailable' : new Date(origin).toISOString())}</text><text class="muted" x="12" y="72">blue: success · red: failed/timed out/other error · amber: in progress · grey: cancelled/skipped/neutral</text>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" role="img" aria-label="Pipeline jobs and steps waterfall"><style>text{font-family:DejaVu Sans,sans-serif;font-size:16px;fill:${colors.fg}}.muted{fill:${colors.muted}}</style><defs><clipPath id="labels"><rect x="12" y="${top}" width="${plotStart - 24}" height="${rows.length * 20}"/></clipPath></defs><rect width="${width}" height="${height}" fill="${colors.bg}"/><text x="12" y="22">Pipeline jobs + steps · attempt ${timeline.attempt}</text><text class="muted" x="12" y="42">Chronological; up to four timed steps/job (non-success first, then longest). Dashed idle breaks.</text><text class="muted" x="12" y="60">Origin ${escapeXml(segments.length === 0 ? 'unavailable' : new Date(origin).toISOString())}</text><text class="muted" x="12" y="78">blue: success · red: failed/timed out/other error · amber: in progress · grey: cancelled/skipped/neutral</text>`,
   ]
   // Piecewise segments compress small spans and many idle gaps squeeze breaks together, so
   // every axis label and gap caption is placed left to right only where it does not collide.
   // Captions that cannot be placed are summarized at the left of the caption band instead.
-  const labelWidth = 64
-  const captionCharWidth = 6.5
+  const labelWidth = 112
+  const captionCharWidth = 9
   let labelEnd = -Infinity
   let captionEnd = plotStart
   const hiddenGaps: number[] = []
@@ -193,7 +194,7 @@ export const renderPipelineWaterfall = ({
       if (captioned === true) captionEnd = captionX + caption.length * captionCharWidth
       else hiddenGaps.push(gap)
       out.push(
-        `<rect x="${captionX}" y="${top}" width="${breakWidth}" height="${rows.length * 20}" fill="${colors.bg}" stroke="${colors.muted}" stroke-dasharray="3 3"><title>${duration(gap)} idle gap compressed</title></rect>${captioned === true ? `<text class="muted" x="${captionX}" y="${height - 16}">${caption}</text>` : ''}`,
+        `<rect x="${captionX}" y="${top}" width="${breakWidth}" height="${rows.length * 20}" fill="${colors.bg}" stroke="${colors.muted}" stroke-dasharray="3 3"><title>${duration(gap)} idle gap compressed</title></rect>${captioned === true ? `<text class="muted" x="${captionX}" y="${height - 24}">${caption}</text>` : ''}`,
       )
     }
     const step = Math.max(30_000, Math.ceil((segment.to - segment.from) / 4 / 30_000) * 30_000)
@@ -208,20 +209,20 @@ export const renderPipelineWaterfall = ({
   }
   if (hiddenGaps.length > 0)
     out.push(
-      `<text class="muted" x="12" y="${height - 16}">${hiddenGaps.length} more idle gaps compressed, ${duration(hiddenGaps.reduce((sum, gap) => sum + gap, 0))} total</text>`,
+      `<text class="muted" x="12" y="${height - 24}">${hiddenGaps.length} more idle gaps compressed, ${duration(hiddenGaps.reduce((sum, gap) => sum + gap, 0))} total</text>`,
     )
   for (const [index, row] of rows.entries()) {
     const y = top + index * 20
-    const label = row.label.length > 44 ? `${row.label.slice(0, 43)}…` : row.label
+    const label = row.label.length > 32 ? `${row.label.slice(0, 31)}…` : row.label
     const badge =
       `${row.start === undefined || row.end === undefined ? '' : duration(row.end - row.start)} ${row.badge}`.trim()
     out.push(
-      `<text x="${row.kind === 'job' ? 12 : 26}" y="${y + 14}"><title>${escapeXml(row.label)}</title>${escapeXml(label)}</text><text class="muted" x="948" y="${y + 14}" text-anchor="end">${escapeXml(badge)}</text>`,
+      `<text x="${row.kind === 'job' ? 12 : 26}" y="${y + 15}" clip-path="url(#labels)"><title>${escapeXml(row.label)}</title>${escapeXml(label)}</text><text class="muted" x="948" y="${y + 15}" text-anchor="end">${escapeXml(badge)}</text>`,
     )
     if (row.start === undefined || row.end === undefined) {
       if (row.kind === 'note') continue
       out.push(
-        `<text class="muted" x="${plotStart}" y="${y + 14}">timing unavailable (not zero)</text>`,
+        `<text class="muted" x="${plotStart}" y="${y + 15}">timing unavailable (not zero)</text>`,
       )
       continue
     }

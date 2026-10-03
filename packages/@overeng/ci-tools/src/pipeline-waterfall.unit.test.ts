@@ -189,6 +189,30 @@ describe('pipeline jobs and steps waterfall', () => {
     }
   })
 
+  it('confines wide labels to the label column while retaining their full names in tooltips', () => {
+    const name = 'W'.repeat(80)
+    for (const theme of ['light', 'dark'] as const) {
+      const svg = renderPipelineWaterfall({
+        timeline: {
+          attempt: 1,
+          jobs: [{ name, status: 'success', attempt: 1, start: 0, end: 1000, steps: [] }],
+        },
+        theme,
+      })
+      const clip = svg.match(
+        /<clipPath id="([^"]+)"><rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)"/u,
+      )!
+      const label = svg.match(
+        /<text x="[\d.]+" y="[\d.]+" clip-path="url\(#([^"]+)\)"><title>([^<]+)<\/title>([^<]+)<\/text>/u,
+      )!
+      expect(label[1]).toBe(clip[1])
+      expect(label[2]).toContain(name)
+      expect(label[3]).not.toContain(name)
+      const job = [...bars(svg).values()][0]!
+      expect(Number(clip[2]) + Number(clip[3])).toBeLessThan(job.x)
+    }
+  })
+
   it('escapes job and step labels in visible text and tooltips', () => {
     const svg = renderPipelineWaterfall({
       timeline: {
@@ -268,8 +292,8 @@ describe('pipeline jobs and steps waterfall', () => {
     for (const group of [axis, captions]) {
       for (let index = 1; index < group.length; index++) {
         const previous = group[index - 1]!
-        // Axis labels reserve 64px; captions reserve their estimated rendered width.
-        const reserved = previous[3]!.startsWith('T+') === true ? 64 : previous[3]!.length * 6.5
+        // Reserve enough space for the larger axis and caption glyphs.
+        const reserved = previous[3]!.startsWith('T+') === true ? 112 : previous[3]!.length * 9
         expect(Number(group[index]![1])).toBeGreaterThanOrEqual(Number(previous[1]) + reserved)
       }
     }
