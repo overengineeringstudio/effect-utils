@@ -149,7 +149,7 @@ Semantics the check enforces:
 - `net` is recomputed from the merged revision using the repo's path patterns;
   a stored value that disagrees fails the check.
 - A consumer closes when it has no `residual`, `legacy`, or `claimed` rows,
-  and its legacy builders, FOD hashes, and `mk-pnpm-cli` glue are deleted.
+  and its legacy builders, FOD hashes, and prepared-install glue are deleted.
   At the close revision the check scans tracked paths and text markers declared
   for that consumer, plus legacy Nix builder paths derived from row evidence;
   a match blocks close unless its exact path is declared by an excluded row

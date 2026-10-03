@@ -946,7 +946,7 @@ rust_library(
 )
 
 alias(
-    name = "toml_datetime",
+    name = "old_toml_datetime",
     actual = ":toml_datetime-0.6",
     visibility = ["PUBLIC"],
 )
@@ -986,7 +986,7 @@ rust_library(
 )
 
 alias(
-    name = "buck2-supply-toml_datetime-1-1-1-spec-1-1-0",
+    name = "toml_datetime",
     actual = ":toml_datetime-1",
     visibility = ["PUBLIC"],
 )

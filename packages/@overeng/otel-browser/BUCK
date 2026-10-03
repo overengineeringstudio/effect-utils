@@ -1,0 +1,204 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/otel-browser/BUCK.genie.ts
+# Projection schema version: 12
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:748b26ea7d930a07127291a8598ec72454bc7781e37a2dfa9ad2c0e8ebb63aeb
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/devbar/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-gateway/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie-smalltalk/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-browser/BUCK.genie.ts, packages/@overeng/otel-browser/BUCK.genie.ts, packages/@overeng/otel-browser/package.json.genie.ts, packages/@overeng/otel-browser/package.json.genie.ts, packages/@overeng/otel-browser/src/**/*.css, packages/@overeng/otel-browser/src/**/*.cts, packages/@overeng/otel-browser/src/**/*.js, packages/@overeng/otel-browser/src/**/*.mts, packages/@overeng/otel-browser/src/**/*.spec.cjs, packages/@overeng/otel-browser/src/**/*.spec.jsx, packages/@overeng/otel-browser/src/**/*.spec.mjs, packages/@overeng/otel-browser/src/**/*.test.cjs, packages/@overeng/otel-browser/src/**/*.test.jsx, packages/@overeng/otel-browser/src/**/*.test.mjs, packages/@overeng/otel-browser/src/**/*.ts, packages/@overeng/otel-browser/src/**/*.tsx, packages/@overeng/otel-browser/src/**/__snapshots__/*.snap, packages/@overeng/otel-browser/tsconfig.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-storybook/package.json.genie.ts, packages/@overeng/utils/package.json.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
+load("//buck2:editor_view.bzl", "editor_view_inputs")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/BrowserPlatform.ts",
+    "src/BrowserResource.ts",
+    "src/BrowserTelemetry.integration.test.ts",
+    "src/BrowserTelemetry.ts",
+    "src/OtlpTransport.ts",
+    "src/Sampler.ts",
+    "src/SpanRing.ts",
+    "src/SpanRing.unit.test.ts",
+    "src/Traceparent.integration.test.ts",
+    "src/mod.ts",
+    "src/test-platform.ts",
+    "src/ui/Interactions.ts",
+    "src/ui/LongFrames.ts",
+    "src/ui/WebVitals.ts",
+    "src/ui/ui.unit.test.ts",
+    "src/vite.integration.test.ts",
+    "src/vite.ts",
+])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/otel-browser",
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "packages/@overeng/otel-browser",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/otel-browser",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:view_packages_overeng_otel_browser_2c57dfc3404d",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_otel_browser_2c57dfc3404d",
+    files = {
+        "package.json": "package.json",
+        "src/BrowserPlatform.ts": "src/BrowserPlatform.ts",
+        "src/BrowserResource.ts": "src/BrowserResource.ts",
+        "src/BrowserTelemetry.integration.test.ts": "src/BrowserTelemetry.integration.test.ts",
+        "src/BrowserTelemetry.ts": "src/BrowserTelemetry.ts",
+        "src/OtlpTransport.ts": "src/OtlpTransport.ts",
+        "src/Sampler.ts": "src/Sampler.ts",
+        "src/SpanRing.ts": "src/SpanRing.ts",
+        "src/SpanRing.unit.test.ts": "src/SpanRing.unit.test.ts",
+        "src/Traceparent.integration.test.ts": "src/Traceparent.integration.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/test-platform.ts": "src/test-platform.ts",
+        "src/ui/Interactions.ts": "src/ui/Interactions.ts",
+        "src/ui/LongFrames.ts": "src/ui/LongFrames.ts",
+        "src/ui/WebVitals.ts": "src/ui/WebVitals.ts",
+        "src/ui/ui.unit.test.ts": "src/ui/ui.unit.test.ts",
+        "src/vite.integration.test.ts": "src/vite.integration.test.ts",
+        "src/vite.ts": "src/vite.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/otel-contract/dist": "//packages/@overeng/otel-contract:dist",
+        "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "test_package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_otel_browser_2c57dfc3404d",
+    files = {
+        "package.json": "package.json",
+        "src/BrowserPlatform.ts": "src/BrowserPlatform.ts",
+        "src/BrowserResource.ts": "src/BrowserResource.ts",
+        "src/BrowserTelemetry.integration.test.ts": "src/BrowserTelemetry.integration.test.ts",
+        "src/BrowserTelemetry.ts": "src/BrowserTelemetry.ts",
+        "src/OtlpTransport.ts": "src/OtlpTransport.ts",
+        "src/Sampler.ts": "src/Sampler.ts",
+        "src/SpanRing.ts": "src/SpanRing.ts",
+        "src/SpanRing.unit.test.ts": "src/SpanRing.unit.test.ts",
+        "src/Traceparent.integration.test.ts": "src/Traceparent.integration.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/test-platform.ts": "src/test-platform.ts",
+        "src/ui/Interactions.ts": "src/ui/Interactions.ts",
+        "src/ui/LongFrames.ts": "src/ui/LongFrames.ts",
+        "src/ui/WebVitals.ts": "src/ui/WebVitals.ts",
+        "src/ui/ui.unit.test.ts": "src/ui/ui.unit.test.ts",
+        "src/vite.integration.test.ts": "src/vite.integration.test.ts",
+        "src/vite.ts": "src/vite.ts",
+        "tsconfig.json": "tsconfig.json",
+        "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/otel-contract/dist": "//packages/@overeng/otel-contract:dist",
+        "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+editor_view_inputs(
+    name = "editor_view_inputs",
+    editor_inputs = ":editor_inputs",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/otel-contract:package.json",
+        "//packages/@overeng/utils-dev:package.json",
+    ],
+    output = "overeng-otel-browser.tgz",
+    visibility = ["PUBLIC"],
+)
+
+vitest_test(
+    name = "test",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_collect",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)

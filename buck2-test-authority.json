@@ -63,6 +63,7 @@
         "src/pipeline-report.integration.test.ts",
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -81,6 +82,7 @@
         "src/pipeline-report.integration.test.ts",
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -117,6 +119,7 @@
         "src/pipeline-report.integration.test.ts",
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -132,6 +135,7 @@
         "src/pipeline-attempt-close.test.ts",
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -149,6 +153,20 @@
       "target": "effect_utils//packages/@overeng/content-address:test",
       "taskName": "test:content-address",
       "testFiles": ["src/mod.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/devbar:test_collect",
+      "excludes": [],
+      "packageName": "devbar",
+      "packagePath": "packages/@overeng/devbar",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/Devbar.unit.test.tsx", "src/fps-meter.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/devbar:test",
+      "taskName": "test:devbar",
+      "testFiles": ["src/Devbar.unit.test.tsx", "src/fps-meter.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -325,6 +343,20 @@
       "target": "effect_utils//packages/@overeng/effect-schema-form:test",
       "taskName": "test:effect-schema-form",
       "testFiles": ["src/mod.unit.test.tsx"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/genie-smalltalk:test_collect",
+      "excludes": [],
+      "packageName": "genie-smalltalk",
+      "packagePath": "packages/@overeng/genie-smalltalk",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/mod.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/genie-smalltalk:test",
+      "taskName": "test:genie-smalltalk",
+      "testFiles": ["src/mod.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -1226,6 +1258,32 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/otel-browser:test_collect",
+      "excludes": [],
+      "packageName": "otel-browser",
+      "packagePath": "packages/@overeng/otel-browser",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/BrowserTelemetry.integration.test.ts",
+        "src/SpanRing.unit.test.ts",
+        "src/Traceparent.integration.test.ts",
+        "src/ui/ui.unit.test.ts",
+        "src/vite.integration.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/otel-browser:test",
+      "taskName": "test:otel-browser",
+      "testFiles": [
+        "src/BrowserTelemetry.integration.test.ts",
+        "src/SpanRing.unit.test.ts",
+        "src/Traceparent.integration.test.ts",
+        "src/ui/ui.unit.test.ts",
+        "src/vite.integration.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/otel-contract:test_collect",
       "excludes": [
         "src/otel-scrape/profile-link.unit.test.ts",
@@ -1237,6 +1295,7 @@
       "packagePath": "packages/@overeng/otel-contract",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/Traceparent.unit.test.ts",
         "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.unit.test.ts",
         "src/otel-scrape/registry.gen.unit.test.ts",
@@ -1250,6 +1309,7 @@
       "target": "effect_utils//packages/@overeng/otel-contract:test",
       "taskName": "test:otel-contract",
       "testFiles": [
+        "src/Traceparent.unit.test.ts",
         "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.unit.test.ts",
         "src/otel-scrape/registry.gen.unit.test.ts",

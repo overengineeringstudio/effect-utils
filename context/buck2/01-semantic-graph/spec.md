@@ -76,6 +76,43 @@ verification regenerates into memory or temporary storage, compares exact
 bytes, and reports the owning semantic source on mismatch. Generated files are
 read-only as a local guardrail; Git write bits are not freshness identity.
 
+### Cargo foreign-package instantiation
+
+```text
+foreign Cargo manifest + provider source exports
+                         |
+                         v
+consumer member shard: foreign-<package-name>-lib
+                         |
+                         v
+consumer third-party graph <--- consumer Cargo.lock / resolved edges
+```
+
+`<workspace>/foreign-packages.json` declares repository-relative manifests of
+path dependencies outside the consumer workspace. The lexicographically first
+consumer member shard owns one library instance per declared foreign package.
+All consumer members and foreign path edges refer to that instance. Provider
+shards retain their own libraries and export package files as
+`cargo-source/<package-relative-file>`; consumer instances consume those same
+files through mapped sources without copying source code.
+
+Foreign manifests inherit metadata and dependency requests from their owning
+Cargo workspace, but library features unify through the consumer's path edges
+and registry dependencies resolve in the consumer's Reindeer universe. Thus a
+third-party type crossing a foreign public API has the same crate identity as
+the consumer's corresponding resolved dependency.
+
+The supply manifest preserves the consumer Cargo resolution and selected
+features. Canonical dependency aliases follow resolved manifest edges, not
+package-ID sorting. `<third-party>/cargo-resolution.json` records each local
+manifest's dependency key, kind, optional target condition, resolved package
+version, and supply alias. The projector uses those exact edges, including
+synthetic aliases for simultaneous versions, and fingerprints the sidecar.
+Alias selection does not override individual Buck edges.
+
+This is per-consumer instantiation (decision q20); a repository-wide Cargo
+universe is a separate composition policy ([dotfiles#4220](https://github.com/schickling/dotfiles/issues/4220)).
+
 ## Conformance
 
 A binding or projector change must prove: equal input produces equal bytes;

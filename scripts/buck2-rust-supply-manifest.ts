@@ -22,7 +22,13 @@ type Package = {
   readonly version: string
   readonly source: string | null
   readonly manifest_path: string
-  readonly dependencies: readonly { readonly name: string; readonly rename: string | null }[]
+  readonly dependencies: readonly {
+    readonly name: string
+    readonly rename: string | null
+    readonly kind: 'dev' | 'build' | null
+    readonly target: string | null
+  }[]
+  readonly targets: readonly { readonly name: string; readonly kind: readonly string[] }[]
 }
 type Metadata = {
   readonly packages: readonly Package[]
@@ -32,7 +38,14 @@ type Metadata = {
     readonly nodes: readonly {
       readonly id: string
       readonly features: readonly string[]
-      readonly deps: readonly { readonly name: string; readonly pkg: string }[]
+      readonly deps: readonly {
+        readonly name: string
+        readonly pkg: string
+        readonly dep_kinds: readonly {
+          readonly kind: 'dev' | 'build' | null
+          readonly target: string | null
+        }[]
+      }[]
     }[]
   }
 }
@@ -123,43 +136,96 @@ if (JSON.stringify(declaredPaths.toSorted()) !== JSON.stringify(externalPaths.to
   )
 }
 
+const manifestPathsByRealPath = new Map(
+  foreignPaths.map((manifestPath) => [realpathSync(path.join(root, manifestPath)), manifestPath]),
+)
 const selected = metadata.packages.filter((entry) => entry.source !== null)
 const featuresById = new Map(metadata.resolve.nodes.map((node) => [node.id, node.features]))
-const namesById = new Map<string, string>()
-const rootPackageId = metadata.resolve.root
-if (rootPackageId !== null) {
-  const rootPackage = byId.get(rootPackageId)
-  const node = metadata.resolve.nodes.find((entry) => entry.id === rootPackageId)
-  for (const dep of node?.deps ?? []) {
-    const pkg = byId.get(dep.pkg)
-    // Resolve node names are extern crate spellings (hyphens become underscores),
-    // not evidence of an explicit dependency rename in the declaring manifest.
-    const rename = rootPackage?.dependencies.find(
-      (dependency) =>
-        dependency.name === pkg?.name &&
-        dependency.rename !== null &&
-        dependency.rename.replaceAll('-', '_') === dep.name,
-    )?.rename
-    if (pkg?.source !== null && pkg !== undefined && rename !== undefined) {
-      namesById.set(pkg.id, rename)
+const nodesById = new Map(metadata.resolve.nodes.map((node) => [node.id, node]))
+// Consumer manifests own canonical aliases, including virtual workspace members.
+// Cargo's resolved edges identify the exact version; package-ID ordering cannot.
+const localPackages = metadata.packages
+  .filter((pkg) => pkg.source === null)
+  .toSorted((a, b) => {
+    const priority = (pkg: Package) =>
+      pkg.id === metadata.resolve.root
+        ? 0
+        : metadata.workspace_members.includes(pkg.id) === true
+          ? 1
+          : 2
+    return priority(a) - priority(b) || a.manifest_path.localeCompare(b.manifest_path)
+  })
+const resolvedDependencies = localPackages.flatMap((declaring) =>
+  (nodesById.get(declaring.id)?.deps ?? [])
+    .flatMap((dep) => {
+      const pkg = byId.get(dep.pkg)
+      if (pkg === undefined || pkg.source === null) return []
+      // Resolve node names are the extern crate name: the rename when one is declared,
+      // otherwise the dependency's library target name (`md-5` exposes `md5`).
+      const libName = pkg.targets
+        .find((target) =>
+          target.kind.some((kind) => ['lib', 'rlib', 'proc-macro'].includes(kind) === true),
+        )
+        ?.name.replaceAll('-', '_')
+      return declaring.dependencies
+        .filter(
+          (dependency) =>
+            dependency.name === pkg.name &&
+            (dependency.rename === null
+              ? libName === dep.name
+              : dependency.rename.replaceAll('-', '_') === dep.name) &&
+            dep.dep_kinds.some(
+              (kind) => kind.kind === dependency.kind && kind.target === dependency.target,
+            ),
+        )
+        .map((dependency) => ({
+          manifestPath:
+            manifestPathsByRealPath.get(realpathSync(declaring.manifest_path)) ??
+            path.relative(root, declaring.manifest_path).replaceAll('\\', '/'),
+          name: dependency.rename ?? dependency.name,
+          package: pkg.name,
+          version: pkg.version,
+          pkg,
+          kind: dependency.kind ?? 'normal',
+          // Absent (JSON omits undefined) for unconditional edges.
+          target: dependency.target ?? undefined,
+        }))
+    })
+    .toSorted(
+      // Unconditional normal edges own a shared key before build/dev edges.
+      (a, b) =>
+        Number(a.kind !== 'normal') - Number(b.kind !== 'normal') ||
+        Number(a.kind === 'dev') - Number(b.kind === 'dev') ||
+        Number(a.target !== undefined) - Number(b.target !== undefined) ||
+        a.name.localeCompare(b.name) ||
+        (a.target ?? '').localeCompare(b.target ?? ''),
+    ),
+)
+const aliasesById = new Map<string, string>()
+const usedNames = new Set<string>()
+const assignAlias = ({ pkg, preferred }: { readonly pkg: Package; readonly preferred: string }) => {
+  const existing = aliasesById.get(pkg.id)
+  if (existing !== undefined) return existing
+  let key = preferred
+  if (usedNames.has(key) === true) {
+    key = `buck2-supply-${pkg.name}-${pkg.version}`.replaceAll(/[^A-Za-z0-9_-]/g, '-')
+    if (usedNames.has(key) === true) {
+      key = `${key}-${createHash('sha256').update(pkg.id).digest('hex').slice(0, 12)}`
     }
   }
+  if (usedNames.has(key) === true)
+    throw new Error(`ambiguous Cargo package supply alias: ${pkg.id}`)
+  usedNames.add(key)
+  aliasesById.set(pkg.id, key)
+  return key
 }
-const usedNames = new Set<string>()
+for (const dependency of resolvedDependencies) {
+  assignAlias({ pkg: dependency.pkg, preferred: dependency.name })
+}
 const entries = selected
   .toSorted((a, b) => a.id.localeCompare(b.id))
   .map((pkg) => {
-    const preferred = namesById.get(pkg.id) ?? pkg.name
-    let key = preferred
-    if (usedNames.has(key) === true) {
-      key = `buck2-supply-${pkg.name}-${pkg.version}`.replaceAll(/[^A-Za-z0-9_-]/g, '-')
-      if (usedNames.has(key) === true) {
-        key = `${key}-${createHash('sha256').update(pkg.id).digest('hex').slice(0, 12)}`
-      }
-    }
-    if (usedNames.has(key) === true)
-      throw new Error(`ambiguous Cargo package supply alias: ${pkg.id}`)
-    usedNames.add(key)
+    const key = assignAlias({ pkg, preferred: pkg.name })
     const attrs: string[] = []
     if (key !== pkg.name) attrs.push(`package = ${JSON.stringify(pkg.name)}`)
     if (pkg.source?.startsWith('registry+https://github.com/rust-lang/crates.io-index') === true) {
@@ -239,3 +305,32 @@ for (const pkg of derivedLock.package.filter((entry) => entry.source !== undefin
 // checksum checks above reject dependency drift; this proves the final lock
 // is stable before Reindeer consumes it.
 cargoMetadata({ manifest: supplyManifest, locked: true })
+// Only portable manifest edges and supply aliases cross into the checked-in
+// projection input. Cargo IDs and checkout-specific absolute paths stay private.
+await Bun.write(
+  path.join(supplyDir, 'cargo-buck2-resolution.json'),
+  `${JSON.stringify(
+    {
+      dependencies: resolvedDependencies
+        .map((dependency) => ({
+          manifestPath: dependency.manifestPath,
+          name: dependency.name,
+          package: dependency.package,
+          version: dependency.version,
+          kind: dependency.kind,
+          target: dependency.target,
+          alias: assignAlias({ pkg: dependency.pkg, preferred: dependency.name }),
+        }))
+        .toSorted(
+          (a, b) =>
+            a.manifestPath.localeCompare(b.manifestPath) ||
+            a.name.localeCompare(b.name) ||
+            a.kind.localeCompare(b.kind) ||
+            (a.target ?? '').localeCompare(b.target ?? '') ||
+            a.alias.localeCompare(b.alias),
+        ),
+    },
+    null,
+    2,
+  )}\n`,
+)

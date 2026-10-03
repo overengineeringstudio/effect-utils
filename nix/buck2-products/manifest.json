@@ -29,6 +29,20 @@
       "version": "0.1.0"
     },
     {
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/bjrkjyq2h6haz4i2a14df2wzg17h68x0/overeng-devbar.tgz",
+      "name": "@overeng/devbar",
+      "provenance": {
+        "producerCommit": "82f633cfa265fdcb8b10760091c2fa6e1842e86e",
+        "productDigest": "4004b7a2aa77b0c38255da87e0396f4973639af441b39be9befc3ffdf11c6ab3",
+        "schema": "effect-utils/buck-product-provenance/v1",
+        "target": "effect_utils//packages/@overeng/devbar:dist-package"
+      },
+      "sha256": "4004b7a2aa77b0c38255da87e0396f4973639af441b39be9befc3ffdf11c6ab3",
+      "size": 18490,
+      "storePath": "/nix/store/bjrkjyq2h6haz4i2a14df2wzg17h68x0-overeng-devbar-buck2-from-source-0.1.0",
+      "version": "0.1.0"
+    },
+    {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/7jamxd0z7jcyyf2yac9zpm0004ra4rrk/overeng-effect-ai-claude-cli.tgz",
       "name": "@overeng/effect-ai-claude-cli",
       "provenance": {
@@ -113,17 +127,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/bdk6inl8b4rm3v3m2zigb5k4bmka9km1/overeng-genie.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/qnwzwqk4n3h38gd8aa3pdjh2snpmckk9/overeng-genie.tgz",
       "name": "@overeng/genie",
       "provenance": {
-        "producerCommit": "2a7ded160b77506c75795c3c3d06a45911fb01a8",
-        "productDigest": "0923227a4636a3f7e41ccdf13cc224219b265bda6b37b65a3745ea0dfb8b032f",
+        "producerCommit": "2c767672b4793600985d2d3ac2bbcd586aff1fa0",
+        "productDigest": "8955835dde74c54617c059d083f0366385fbd10435d87d6f5ecd3232ab960a06",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:dist-package"
       },
-      "sha256": "0923227a4636a3f7e41ccdf13cc224219b265bda6b37b65a3745ea0dfb8b032f",
-      "size": 658605,
-      "storePath": "/nix/store/bdk6inl8b4rm3v3m2zigb5k4bmka9km1-overeng-genie-buck2-from-source-0.1.0",
+      "sha256": "8955835dde74c54617c059d083f0366385fbd10435d87d6f5ecd3232ab960a06",
+      "size": 664274,
+      "storePath": "/nix/store/qnwzwqk4n3h38gd8aa3pdjh2snpmckk9-overeng-genie-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -225,17 +239,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/g9ypvs9zawnww21r4y9zr1ypkr8nzqga/overeng-restate-effect.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/cj8hi7qdkpg4alnk7h57mkh0x38qmhh1/overeng-restate-effect.tgz",
       "name": "@overeng/restate-effect",
       "provenance": {
-        "producerCommit": "e44a6c16ca366200782ec1c91a2283acaf648cc9",
-        "productDigest": "676769cf8a8a163564bdfc898232da7ccaad114f4ca5449a7b662a51de2fd952",
+        "producerCommit": "4d171fb6cdfefeadd606fe4f390ff3345fc7a0ec",
+        "productDigest": "a2eb5f5a92c5dbf1e4c42f4c99f313cd04f2276b2224f4f57bba3587427ae9e7",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/restate-effect:dist-package"
       },
-      "sha256": "676769cf8a8a163564bdfc898232da7ccaad114f4ca5449a7b662a51de2fd952",
-      "size": 535465,
-      "storePath": "/nix/store/g9ypvs9zawnww21r4y9zr1ypkr8nzqga-overeng-restate-effect-buck2-from-source-0.1.0",
+      "sha256": "a2eb5f5a92c5dbf1e4c42f4c99f313cd04f2276b2224f4f57bba3587427ae9e7",
+      "size": 537530,
+      "storePath": "/nix/store/cj8hi7qdkpg4alnk7h57mkh0x38qmhh1-overeng-restate-effect-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -323,11 +337,11 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/c3v073gbf094yz7rpndn6pyr19zcpa4z/ci-tools.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/1n9j6am9kayfgkmhv0xzs0anwnj9nsz9/ci-tools.js",
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-5VlOF9uZj1rJXRiJ1Iud5qeUk4znZs1zNjfWB2baNaM=",
+        "integrity": "sha256-d5AVzQtmQMrucaGMAhMAOJ6uTKgX2Z0EiWO8vR1TiSo=",
         "modulePath": "ci-tools.js",
         "platform": {
           "abi": "any",
@@ -345,20 +359,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 851363,
+        "sizeBytes": 865547,
         "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
       },
-      "descriptorSha256": "4074bccab045217790d3021e24f5404dd99cd5b42018109e4b3fc9f97b7b6bd3",
+      "descriptorSha256": "4723acf921ffc9375c234f6cfb4e3f7e271ea5a49142836e9d9c6626f42b14d3",
       "name": "ci-tools",
       "provenance": {
-        "producerCommit": "ce81d8c902bd3b15028b0de4ae1c51af429e2f7b",
-        "productDigest": "e5594e17db998f5ac95d1889d48b9de6a794938ce766cd733637d60766da35a3",
+        "producerCommit": "2c767672b4793600985d2d3ac2bbcd586aff1fa0",
+        "productDigest": "779015cd0b6640caee71a18c021300389eae4ca817d99d048963bcbd1d53892a",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
       },
-      "sha256": "e5594e17db998f5ac95d1889d48b9de6a794938ce766cd733637d60766da35a3",
-      "size": 851363,
-      "storePath": "/nix/store/c3v073gbf094yz7rpndn6pyr19zcpa4z-ci-tools-buck2-from-source-0.0.0",
+      "sha256": "779015cd0b6640caee71a18c021300389eae4ca817d99d048963bcbd1d53892a",
+      "size": 865547,
+      "storePath": "/nix/store/1n9j6am9kayfgkmhv0xzs0anwnj9nsz9-ci-tools-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
@@ -457,7 +471,7 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/x5frn11kd42h66la4rgwiwhncs5475b4/gh-ci-utils.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/a1k2b9jlxlzdqkkf0yrk7qgw99qqsnz3/gh-ci-utils.js",
       "descriptor": {
         "externalCapabilities": [
           "gh",
@@ -465,7 +479,7 @@
           "node"
         ],
         "externalModules": [],
-        "integrity": "sha256-ZfM3OapPZB9yGr9u1/raseOEuF7L8lViPaBb+fyRov0=",
+        "integrity": "sha256-g1D5RzHD/uEloJg9Dgr/clv9oNNbmr0KwfoSCpF4El4=",
         "modulePath": "gh-ci-utils.js",
         "platform": {
           "abi": "any",
@@ -483,20 +497,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 2008046,
+        "sizeBytes": 2008233,
         "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
       },
-      "descriptorSha256": "9b5a2277e6172ee6e9349ed9757f7a3499137b182426b880aa6951cd9656d586",
+      "descriptorSha256": "cb32033ed8e47c8daf3be68232ddfdec040d22dc9195b5b43daf44e4e249869a",
       "name": "gh-ci-utils",
       "provenance": {
-        "producerCommit": "95d2d49dd3a92b73613667b7c9cc681ad448a2bf",
-        "productDigest": "65f33739aa4f641f721abf6ed7fadab1e384b85ecbf255623da05bf9fc91a2fd",
+        "producerCommit": "2c767672b4793600985d2d3ac2bbcd586aff1fa0",
+        "productDigest": "8350f94731c3fee125a0983d0e0aff725bfda0d35b9abd0ac1fa120a9178125e",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
       },
-      "sha256": "65f33739aa4f641f721abf6ed7fadab1e384b85ecbf255623da05bf9fc91a2fd",
-      "size": 2008046,
-      "storePath": "/nix/store/x5frn11kd42h66la4rgwiwhncs5475b4-gh-ci-utils-buck2-from-source-0.0.0",
+      "sha256": "8350f94731c3fee125a0983d0e0aff725bfda0d35b9abd0ac1fa120a9178125e",
+      "size": 2008233,
+      "storePath": "/nix/store/a1k2b9jlxlzdqkkf0yrk7qgw99qqsnz3-gh-ci-utils-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {

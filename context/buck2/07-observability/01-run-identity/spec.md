@@ -88,8 +88,11 @@ The root carries `cicd.pipeline.run.id` and its job key. Buck command spans
 and critical views retain the same trace id. For a standalone local task run,
 the generic entrypoint emits its own root at completion. A job root links
 back to an outer caller when one exists. At attempt close, the finalizer
-pages the Jobs API for this run
-and filters `run_attempt` to the closing attempt. It excludes its own job
+pages the Jobs API (`filter=all`) for this run
+and links each latest-attempt job at its execution attempt. A partial
+rerun reports carried-over jobs under the new `run_attempt`; such a job keeps
+its execution attempt, the earliest attempt whose same-named job has identical
+`started_at` and `completed_at`. It excludes its own job
 and includes only jobs with `started_at` and a unique canonical `K` under
 the same name mapping used by the reporter (failed and cancelled jobs that
 started are included; skipped and unstarted jobs are not). It derives their
@@ -207,9 +210,10 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
   Every job root carries `cicd.pipeline.run.id`; nested tasks share its
   trace.
 - Lifecycle: each completed job exports its job trace at job end after
-  the task-span join. Attempt close uses only this attempt's started,
-  uniquely mapped Jobs API rows, including started failed/cancelled jobs,
-  and omits unstarted/skipped/other-attempt rows. Links carry
+  the task-span join. Attempt close takes the latest attempt's started,
+  uniquely mapped rows from `filter=all`, including started failed/cancelled
+  jobs, links each at its execution attempt, and drops unstarted/skipped
+  rows and rows listed only under earlier attempts. Links carry
   `buck2.job_trace.link_state=unverified`, even if the root never arrived
   in Tempo. Export failure retains the local retry spool; no server
   synthesizes missing jobs. A new trace links back to an outer caller;

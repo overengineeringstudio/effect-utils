@@ -3,8 +3,8 @@
 ## Context
 
 These requirements define the dependency materialization contract used by
-effect-utils live pnpm tasks, Nix prepared dependency artifacts, CI jobs, and
-declared consumers of immutable dependency closures.
+effect-utils live pnpm tasks, CI jobs, and declared consumers of immutable
+dependency closures. Workspace prepared-install packaging is retired.
 
 Canonical shared terms and relationships are defined in
 [ontology.md](./ontology.md).
@@ -20,8 +20,8 @@ Subsystem requirements refine this root contract:
   installs and topology ownership.
 - [02-projections](./02-projections/requirements.md) defines deterministic
   executable and local metadata projection.
-- [03-nix-prepared-deps](./03-nix-prepared-deps/requirements.md) defines
-  immutable Nix prepared dependency artifacts.
+- [03-nix-prepared-deps](./03-nix-prepared-deps/requirements.md) records the
+  retired packaging boundary; its shared native policy remains active.
 - [04-store-authority](./04-store-authority/requirements.md) defines shared
   content, repair, prune, and GC authority.
 - [06-observability](./06-observability/requirements.md) defines producer facts
@@ -39,14 +39,12 @@ Subsystem requirements refine this root contract:
 - **A02 Nix authority:** Native tools, compiled native bindings, and runtime
   binaries that cannot be treated as pure package artifacts are supplied by Nix
   or explicit wrappers, not by pnpm lifecycle scripts.
-- **A03 Materialization Profile consumers:** Prepared dependency artifacts and
-  external build adapters may use one immutable Materialization Profile
-  vocabulary for equivalent dependency inputs. Live installs use their
-  declared inputs and install contract directly.
-- **A04 Prepared artifacts are data:** Prepared pnpm dependency FODs are data
-  artifacts. Build-time executable shims and native/build outputs are
-  projection or build-layer concerns unless explicitly modeled as pure package
-  data.
+- **A03 Materialization Profile consumers:** External build adapters may use
+  one immutable Materialization Profile vocabulary for equivalent dependency
+  inputs. Live installs use their declared inputs and install contract directly.
+- **A04 Immutable artifacts are data:** Immutable dependency archives contain
+  data; executable projections and native/build outputs are explicit graph or
+  runtime concerns.
 
 ## Acceptable Tradeoffs
 
@@ -56,11 +54,8 @@ Subsystem requirements refine this root contract:
 - **T02 Projection work after install:** The system may perform deterministic
   post-install projection, such as `.bin` linking, when the projection reads
   package metadata and writes local shims without executing package code.
-- **T03 Versioned artifact churn:** Tightening prepared artifact purity may
-  require a prepared-deps artifact version bump and broad fixed-output hash
-  refreshes. When a purity boundary is deliberately tightened, a single
-  convergent version bump is preferred over maintaining parallel legacy
-  prepared-deps policies.
+- **T03 Retired:** Prepared-install artifact version and hash churn is no longer
+  an active tradeoff; this identifier remains reserved for historical references.
 - **T04 Conservative repair:** Repair and GC commands may refuse to mutate when
   they cannot identify the Materialization Root or prove the required
   shared-content authority.
@@ -72,8 +67,8 @@ Subsystem requirements refine this root contract:
 
 ### Must keep pnpm materialization pure
 
-- **DMP-R01 Lifecycle scripts forbidden:** Live pnpm installs and prepared
-  dependency builds must run with lifecycle scripts disabled.
+- **DMP-R01 Lifecycle scripts forbidden:** Live pnpm installs must run with
+  lifecycle scripts disabled.
 - **DMP-R02 Override rejection:** Managed install entrypoints must reject user
   or workspace overrides that re-enable dependency lifecycle scripts, package
   builds, or package-manager approval flows.
@@ -86,30 +81,26 @@ Subsystem requirements refine this root contract:
 
 ### Must separate dependency data from projections
 
-- **DMP-R05 Prepared FOD data surface:** A prepared pnpm dependency artifact
-  must contain only deterministic dependency data required by downstream
-  restores. It must not archive mutable pnpm store/home/state paths.
+- **DMP-R05 Immutable data surface:** Reusable dependency artifacts must contain
+  only declared immutable dependency data, not mutable pnpm store/home/state.
 - **DMP-R06 Bin projection ownership:** `node_modules/.bin` entries are
   executable projection state. They must be created, checked, and repaired by a
   deterministic projection step rather than by dependency lifecycle scripts.
 - **DMP-R07 Pure bin linking:** Bin projection must derive expected executables
   from installed package manifests and lock/projection metadata, and must not
   execute package code.
-- **DMP-R08 Native output rejection:** Prepared dependency validation must
-  reject unexpected compiled native outputs and known platform-specific package
-  directories unless the Materialization Profile explicitly classifies them as
-  pure package data.
+- **DMP-R08 Native policy:** Native dependency families must be classified and
+  audited by the shared policy; unexpected lifecycle-produced native output is
+  not admitted as dependency data.
 
 ### Must make materialization identity explicit
 
-- **DMP-R09 Materialization Profile identity:** When a prepared dependency
-  artifact or external build adapter groups equivalent immutable dependency work, its stable
-  Materialization Profile identity must derive from topology, dependency
-  inputs, package-manager policy, and toolchain inputs, not physical root or
-  storage placement.
-- **DMP-R10 Shared Materialization Profile schema:** Nix prepared dependency
-  artifacts and external build adapters must use the same Materialization
-  Profile fields when describing equivalent dependency work. The adapter owns
+- **DMP-R09 Materialization Profile identity:** When an external build adapter
+  groups equivalent immutable dependency work, its stable identity must derive
+  from topology, dependency inputs, policy, and toolchain inputs, not physical
+  root or storage placement.
+- **DMP-R10 Shared identity fields:** External build adapters describing
+  equivalent dependency work must agree on identity fields. The adapter owns
   its build-system projection outside this VRS.
 - **DMP-R11 Topology and edge authority:** Each Materialization Root must name
   authoritative workspace topology and one Authoritative Materializer.
@@ -137,15 +128,15 @@ Subsystem requirements refine this root contract:
 
 ### Must be measured and verifiable
 
-- **DMP-R16 Real-repo gates:** Changes to storage sharing, prepared artifact
-  purity, or projection ownership must be validated on at least one real
-  downstream graph in addition to synthetic fixtures.
+- **DMP-R16 Real-repo gates:** Changes to storage sharing, dependency purity,
+  or projection ownership must be validated on at least one real downstream
+  graph in addition to synthetic fixtures.
 - **DMP-R17 Negative lifecycle tests:** Test fixtures must prove that managed
   install plus projection does not run `preinstall`, `install`, `postinstall`,
   `prepare`, rebuild, or approval paths.
-- **DMP-R18 Artifact hash discipline:** Shared fixed-output hashes may be used
-  only when all covered systems are measured or explicitly marked pending by
-  metadata that prevents accidental collapse or split.
+- **DMP-R18 Artifact hash discipline:** Immutable archive and product identities
+  must be verified against the declared bytes. The former prepared-install
+  cross-system hash-repair contract is retired.
 - **DMP-R19 Observable phases:** Materialization, normalization, projection,
   repair, GC, and evidence production must emit enough timing and size facts to
   explain regressions.

@@ -29,7 +29,7 @@ export const finalizeAttempt = async (input: {
   for (let page = 1; ; page++) {
     // oxlint-disable-next-line no-await-in-loop -- The next page is needed only when this page is full.
     const response = await api<{ jobs: Job[] }>({
-      route: `${repository}/actions/runs/${runId}/jobs?filter=latest&per_page=100&page=${page}`,
+      route: `${repository}/actions/runs/${runId}/jobs?filter=all&per_page=100&page=${page}`,
       token,
     })
     jobs.push(...response.jobs)

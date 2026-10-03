@@ -20,6 +20,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/devbar",
+      "outputName": "overeng-devbar.tgz",
+      "packagePath": "packages/@overeng/devbar",
+      "packageTreePath": "packages/@overeng/devbar",
+      "target": "effect_utils//packages/@overeng/devbar:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/effect-ai-claude-cli",
       "outputName": "overeng-effect-ai-claude-cli.tgz",
       "packagePath": "packages/@overeng/effect-ai-claude-cli",

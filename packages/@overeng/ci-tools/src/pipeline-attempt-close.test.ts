@@ -12,7 +12,7 @@ const job = (name: string, attempt: number, started: string | null) => ({
   completed_at: started,
 })
 
-test('attempt close links latest jobs from each job’s own attempt without claiming persistence', () => {
+test('attempt close links latest jobs from each job’s execution attempt without claiming persistence', () => {
   const { traceId, payload } = closePayload({
     runId: run,
     attempt: 2,
@@ -21,6 +21,7 @@ test('attempt close links latest jobs from each job’s own attempt without clai
       job('typecheck', 2, '2026-09-29T10:02:00Z'),
       job('cargo', 2, null),
       job('lint', 1, '2026-09-29T09:00:00Z'),
+      job('lint', 2, '2026-09-29T09:00:00Z'), // carried over from attempt 1
       job('pr-a-inert-buck', 2, '2026-09-29T10:01:00Z'),
       job('pr-a-inert-buck', 2, null),
       job('unknown dynamically named job', 2, '2026-09-29T10:03:00Z'),
