@@ -166,13 +166,13 @@ export const renderPipelineWaterfall = ({
   // Leave a separate band for axis labels below the multi-line header and legend.
   // 16px type remains >=12px at GitHub's 770px comment width; keep 20px rows.
   const top = 110
-  const height = top + rows.length * 20 + 56
+  const height = top + rows.length * 20 + 76
   const out = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" role="img" aria-label="Pipeline jobs and steps waterfall"><style>text{font-family:DejaVu Sans,sans-serif;font-size:16px;fill:${colors.fg}}.muted{fill:${colors.muted}}</style><defs><clipPath id="labels"><rect x="12" y="${top}" width="${plotStart - 24}" height="${rows.length * 20}"/></clipPath></defs><rect width="${width}" height="${height}" fill="${colors.bg}"/><text x="12" y="22">Pipeline jobs + steps · attempt ${timeline.attempt}</text><text class="muted" x="12" y="42">Chronological; up to four timed steps/job (non-success first, then longest). Dashed idle breaks.</text><text class="muted" x="12" y="60">Origin ${escapeXml(segments.length === 0 ? 'unavailable' : new Date(origin).toISOString())}</text><text class="muted" x="12" y="78">blue: success · red: failed/timed out/other error · amber: in progress · grey: cancelled/skipped/neutral</text>`,
   ]
   // Piecewise segments compress small spans and many idle gaps squeeze breaks together, so
   // every axis label and gap caption is placed left to right only where it does not collide.
-  // Captions that cannot be placed are summarized at the left of the caption band instead.
+  // Captions that cannot be placed are summarized in a separate footer line.
   const labelWidth = 112
   const captionCharWidth = 9
   let labelEnd = -Infinity
@@ -190,7 +190,8 @@ export const renderPipelineWaterfall = ({
       const gap = segment.from - segments[index - 1]!.to
       const caption = `${duration(gap)} idle (compressed)`
       const captionX = x - breakWidth
-      const captioned = captionX >= captionEnd
+      const captioned =
+        captionX >= captionEnd && captionX + caption.length * captionCharWidth <= width - 12
       if (captioned === true) captionEnd = captionX + caption.length * captionCharWidth
       else hiddenGaps.push(gap)
       out.push(
@@ -209,7 +210,7 @@ export const renderPipelineWaterfall = ({
   }
   if (hiddenGaps.length > 0)
     out.push(
-      `<text class="muted" x="12" y="${height - 24}">${hiddenGaps.length} more idle gaps compressed, ${duration(hiddenGaps.reduce((sum, gap) => sum + gap, 0))} total</text>`,
+      `<text class="muted" x="12" y="${height - 44}">${hiddenGaps.length} more idle gaps compressed, ${duration(hiddenGaps.reduce((sum, gap) => sum + gap, 0))} total</text>`,
     )
   for (const [index, row] of rows.entries()) {
     const y = top + index * 20

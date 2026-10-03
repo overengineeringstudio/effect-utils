@@ -129,7 +129,7 @@ unavailable timing, not zero-length success bars. Escape all SVG labels as XML.
 The raster is 960 pixels wide with 16-pixel body type: at a 770-pixel GitHub
 comment width, labels occupy 12.83 CSS pixels (13.03 at 781.98 pixels).
 Keep 20-pixel timeline rows, rather than enlarging the whole image or doubling
-the raster resolution; the 300-row image remains 6,166 pixels high.
+the raster resolution; the 300-row image remains 6,186 pixels high.
 The label column ends before the plot at x=320, abbreviates labels after
 32 characters, and clips unusually wide glyphs; full names remain in SVG
 tooltips and the independent job table. The plot ends at x=740, leaving

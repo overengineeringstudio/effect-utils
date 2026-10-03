@@ -297,6 +297,11 @@ describe('pipeline jobs and steps waterfall', () => {
         expect(Number(group[index]![1])).toBeGreaterThanOrEqual(Number(previous[1]) + reserved)
       }
     }
+    const summary = texts.find((match) => match[3]!.includes('more idle gaps compressed'))!
+    for (const caption of captions) {
+      expect(Math.abs(Number(caption[2]) - Number(summary[2]))).toBeGreaterThanOrEqual(16)
+      expect(Number(caption[1]) + caption[3]!.length * 9).toBeLessThanOrEqual(960)
+    }
     const hidden = svg.match(/>(\d+) more idle gaps compressed, (\d+)m 0s total</u)
     expect(hidden).not.toBeNull()
     expect(Number(hidden![1]) + captions.length).toBe(11)
