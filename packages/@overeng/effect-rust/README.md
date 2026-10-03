@@ -184,6 +184,12 @@ keys, noncanonical or unsafe JSON integers and nesting beyond 128. Canonical
 encoding sorts keys with the discriminator first. `decodeValue` / `encodeValue`
 provide the corresponding strict boundary for already-parsed JSON.
 
+The wasm and Node-API object adapters normalize JavaScript's finite, integral
+safe numbers into serde integer values before typed decoding, including nested
+arrays and objects. Fractions and unsafe numbers remain floats and cannot enter
+integer contracts. This object-boundary normalization does not relax JSON-text
+admission: integer spellings such as `1.0` and `1e0` are still rejected.
+
 `Schema.optionalKey(Schema.NullOr(T))` represents Patch directly in TypeScript:
 missing, `null` and a present value stay distinct. Generated Rust keeps
 `Patch<T>` for those three states; there is no tagged Patch ADT in the

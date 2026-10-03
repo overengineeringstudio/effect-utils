@@ -43,6 +43,12 @@ pub fn quote_order(order: Order, discount: Discount) -> Result<Quote, Arithmetic
     contract::quote(order, &discount).ok_or(ArithmeticError::PriceOverflow { quantity })
 }
 
+#[effect_rust::export(name = "sumJsonIntegers")]
+pub fn sum_json_integers(input: contract::NumericOperands) -> i64 {
+    i64::from(input.unsigned) + i64::from(input.signed)
+        + i64::try_from(input.bounded).expect("validated safe integer")
+}
+
 pub struct Chunks {
     remaining: u32,
     chunk: u32,

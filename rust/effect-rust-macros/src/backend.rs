@@ -50,7 +50,11 @@ impl Backend {
                     let #name: serde_json::Value = serde_wasm_bindgen::from_value(#name).map_err(|error| edge_error(format!("RUST_INPUT:{error}")))?;
                     let #name: #ty = serde_json::from_value(#name).map_err(|error| edge_error(format!("RUST_INPUT:{error}")))?;
                 },
-                Self::Napi => quote!(let #name: #ty = serde_json::from_value(#name).map_err(|error| edge_error(format!("RUST_INPUT:{error}")))?;),
+                Self::Napi => quote! {
+                    let mut #name = #name;
+                    effect_rust::wire::normalize_js_numbers(&mut #name);
+                    let #name: #ty = serde_json::from_value(#name).map_err(|error| edge_error(format!("RUST_INPUT:{error}")))?;
+                },
             },
             Wire::Source(ty, _) => {
                 let construct = match self {
