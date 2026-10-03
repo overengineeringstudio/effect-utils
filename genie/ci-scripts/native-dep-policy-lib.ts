@@ -1,21 +1,12 @@
 /**
- * Shared native-dependency lockfile-key helpers (issue #807).
- *
- * Single source of truth for the small string transforms both the policy audit
- * (`native-dep-policy-audit.ts`) and the closure-completeness check
- * (`native-binding-closure-check.ts`) need to map a pnpm lockfile key to its
- * native-dependency family. Kept side-effect-free (no `node:fs`, no
- * `import.meta.main` CLI block) so either consumer can import it without pulling
- * the other tool's runtime into its bundle — this is the "one registry, not two"
- * guarantee (decision 0007) at the helper layer, complementing the single
- * `nativeDependencyPolicy` registry in `genie/native-dependency-policy.ts`.
+ * Native-dependency lockfile-key helpers (issue #807) for the policy audit
+ * (`native-dep-policy-audit.ts`): the small string transforms that map a pnpm
+ * lockfile key to its family in the single `nativeDependencyPolicy` registry
+ * (`genie/native-dependency-policy.ts`, decision 0007). Kept side-effect-free
+ * (no `node:fs`, no `import.meta.main` CLI block).
  */
 
-/**
- * Strip matching surrounding single/double quotes from a YAML scalar. Used by
- * the policy audit's small lockfile scanner (the closure check parses YAML
- * proper and does not need it, but keeps the shared registry single-sourced).
- */
+/** Strip matching surrounding single/double quotes from a YAML scalar. */
 export const stripYamlQuotes = (value: string): string => {
   const trimmed = value.trim()
   if (
@@ -34,7 +25,7 @@ export const stripYamlQuotes = (value: string): string => {
  * group per peer: `vite@8.0.16(@types/node@26.0.0)(esbuild@0.28.0)`. The
  * `packages:` section keys never carry it, so this is a no-op there.
  */
-export const stripPeerSuffix = (key: string): string => key.replace(/\(.*\)$/, '')
+const stripPeerSuffix = (key: string): string => key.replace(/\(.*\)$/, '')
 
 /**
  * Remove the trailing `@<version>` from a lockfile key, returning the package

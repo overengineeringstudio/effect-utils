@@ -915,8 +915,13 @@ export class RestateTestHarness extends Context.Service<
         const bound: BoundIngress = {
           call: ((...a: Parameters<typeof ingressCall>) =>
             provideIngress(ingressCall(...a))) as BoundIngress['call'],
-          callTyped: ((...a: Parameters<typeof ingressCallTyped>) =>
-            provideIngress(ingressCallTyped(...a))) as BoundIngress['callTyped'],
+          /* Preserve the contract's deferred error channel instead of erasing it
+           * to the optional codec's `any` through `Parameters<typeof ...>`. */
+          callTyped: <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(args: {
+            contract: C
+            method: M
+            input: InputOf<C, M>
+          }) => provideIngress(ingressCallTyped(args)),
           objectCall: ((...a: Parameters<typeof ingressObjectCall>) =>
             provideIngress(ingressObjectCall(...a))) as BoundIngress['objectCall'],
           /* Generic wrapper (not `Parameters<typeof ...>`-spread) so the deferred

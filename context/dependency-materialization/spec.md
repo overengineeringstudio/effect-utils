@@ -12,8 +12,7 @@ This spec defines:
 - the strict pnpm install policy;
 - the separation between dependency data, executable projections, and native
   build outputs;
-- the prepared dependency FOD purity boundary;
-- the prepared dependency profile shape available to declared consumers;
+- the immutable dependency reuse boundary;
 - the repair, doctor, and benchmark gates for changing the policy.
 
 This spec does not define package-specific native integrations. Those belong in
@@ -26,9 +25,9 @@ Subsystem specs refine this root model:
 dependency-materialization/
   01-live-pnpm/              mutable worktree installs
   02-projections/            deterministic executable and metadata projection
-  03-nix-prepared-deps/      immutable Nix prepared dependency artifacts
-    01-fod-hash-evidence/   cross-system FOD hash evidence
-    02-native-node-packages/ native package classification and grafting
+  03-nix-prepared-deps/      retired packaging realization
+    01-fod-hash-evidence/   retired install-tree hash evidence
+    02-native-node-packages/ shared native package classification and audit
   04-store-authority/        shared content, repair, prune, and GC authority
   06-observability/          producer facts and build-log bridge records
   07-verification/           proof, benchmark, and regression architecture
@@ -42,9 +41,8 @@ dependency-materialization/
 | Model                                            | DMP-R09, DMP-R10, DMP-R11                   |
 | Strict pnpm Install Policy                       | DMP-R01, DMP-R02, DMP-R03, DMP-R04          |
 | Dependency Data, Projections, And Native Outputs | DMP-R05, DMP-R06, DMP-R08                   |
-| Prepared FOD Purity                              | DMP-R05, DMP-R08, DMP-R18                   |
 | Pure Bin Projection                              | DMP-R06, DMP-R07, DMP-R17                   |
-| Prepared Profile Evidence                        | DMP-R09, DMP-R10                            |
+| Live Install Evidence                            | DMP-R09, DMP-R10                            |
 | Storage Ownership And Authorities                | DMP-R12, DMP-R13, DMP-R14                   |
 | Doctor And Repair                                | DMP-R15                                     |
 | Benchmark And Acceptance Gates                   | DMP-R16, DMP-R17, DMP-R18, DMP-R19          |
@@ -59,7 +57,7 @@ canonical workspace inputs
      -> dependency data
      -> pure executable projection
      -> Nix/native wrapper integration
-     -> prepared profile evidence and live health reports
+     -> live health reports
 ```
 
 pnpm is responsible for resolving and linking package contents. It is not the
@@ -74,8 +72,7 @@ ceiling.
 
 ## Strict pnpm Install Policy
 
-Managed live installs and prepared dependency builds use the strict install
-policy:
+Managed live installs use the strict install policy:
 
 ```text
 pnpm install
@@ -85,9 +82,6 @@ pnpm install
   --config.verify-store-integrity=true
   --config.strict-store-pkg-content-check=true
 ```
-
-Prepared dependency builds additionally use `--no-optional` unless a profile
-explicitly opts into a different optional-dependency policy.
 
 Install entrypoints reject arguments or config that would re-enable lifecycle
 execution:
@@ -111,33 +105,10 @@ projection state      .bin links, wrappers, generated local metadata
 native/build output   compiled .node files, downloaded runtimes, generated CLIs
 ```
 
-Dependency data may be archived in prepared dependency artifacts when it is
-deterministic and platform-classified. Projection state is recreated after
-restore. Native/build output is excluded unless it is a pure package artifact
-or a Nix-produced artifact explicitly named by the profile.
-
-## Prepared FOD Purity
-
-The prepared pnpm dependency FOD is a strict data artifact. After pnpm install
-and normalization, validation scans the prepared tree before archive.
-
-The default failing scan rejects:
-
-- `node_modules/.bin` directories and their shims;
-- pnpm store, home, state, cache, and lock metadata paths that are not part of
-  the restored dependency graph;
-- unexpected `*.node` files;
-- known platform-specific package directories such as `@esbuild/*`,
-  `@rollup/rollup-*`, `@tailwindcss/oxide-*`, `@cloudflare/workerd-*`, and
-  `@opentui/core-*`, unless the profile classifies them as pure package data;
-- leaked absolute pnpm store, home, cache, or workspace-local state paths.
-
-Removing `.bin` changes recursive fixed-output hashes, so enabling this purity
-scan requires a prepared artifact version bump and regenerated hashes. The
-strict-scan transition is a single convergent boundary: bump the prepared
-artifact version, enforce the failing scan immediately for that version, and
-refresh the affected hashes rather than carrying report-only or profile-gated
-legacy scan modes.
+Dependency data, projection state, and explicit native/build outputs remain
+separate concerns. Immutable per-package archives feed the pinned Buck graph;
+Nix does not create or restore a workspace prepared-install tree. The retired
+realization's FOD hashes, purity scans, and support exports are not current APIs.
 
 ## Pure Bin Projection
 
@@ -179,41 +150,16 @@ The projection contract covers:
 The projection does not cover package CLIs generated by postinstall. Those are
 native/build integration work.
 
-## Prepared Profile Evidence
-
-Nix prepared-dependency producers and declared external build adapters may use
-the existing `profileKey` compatibility boundary. It describes immutable
-dependency work and excludes live storage placement and operational authority:
-
-```json
-{
-  "kind": "dependency-materialization-profile",
-  "schemaVersion": 1,
-  "profileKey": "<sha256>",
-  "identity": {
-    "installDir": ".",
-    "lockfilePath": "pnpm-lock.yaml",
-    "memberDirs": ["packages/app"],
-    "freshness": {},
-    "policy": {
-      "packageManager": "pnpm",
-      "lockfileMode": "frozen",
-      "lifecycleScripts": "ignored"
-    }
-  },
-  "depsHash": "sha256-..."
-}
-```
+## Live Install Evidence
 
 Live pnpm roots do not emit a second profile artifact. Their generated install
 contract plus install and projection hashes are the evidence used to decide
-whether installation is current.
+whether installation is current. Immutable product descriptors and archive
+digests belong to the [Buck-to-Nix bridge](../buck2/06-nix-bridge/spec.md).
 
-Nix prepared-deps producers also expose `fodHashRepairTargets` as evaluated
-package metadata. Each target derives from the same profile and `depsBuilds`
-hash declaration as the fixed-output derivation. Repair tools consume those
-targets to rebuild direct dependency artifacts and publish run evidence; package
-sources do not carry a second per-target witness file.
+The prepared-install profile producer, evaluated hash-repair targets,
+per-install-root hash registry, source-support exports, and aggregate manifest
+alignment passthrough are retired without compatibility aliases.
 
 ## Storage Ownership And Authorities
 
@@ -222,7 +168,7 @@ sources do not carry a second per-target witness file.
 | live dependency graph and virtual store | one Materialization Root   | that root's pnpm install |
 | live executable projection              | one Materialization Root   | pure projection task     |
 | pnpm Store Cache                        | host-local or CI-job-local | pnpm concurrency control |
-| prepared dependency data                | immutable Nix store output | Nix build                |
+| immutable dependency archives           | declared digest            | Nix acquisition          |
 
 The current local-development pnpm compatibility realization shares one whole
 Store Cache across mutually trusted roots owned by the same user. Because that
@@ -230,8 +176,8 @@ cache includes mutable pnpm indexes, it does not satisfy the pure reusable-state
 boundary; the divergence is explicit in
 [DELTA-001](./.delta/DELTA-001-whole-store-mutable-index.md). effect-utils
 exposes no Materialization-Root repair or prune operation that sweeps that host
-cache. Nix prepared-dependency production remains an independent immutable path
-and does not consume the live host cache.
+cache. Buck product reconstruction consumes declared immutable archives rather
+than the live host cache.
 
 ## Pure Reuse Boundary
 
@@ -262,7 +208,6 @@ Doctor checks:
 - the install contract and cached state match the current topology and policy;
 - dependency data is present;
 - dependency data referenced by the current graph is present;
-- prepared artifact scans pass for the selected inputs;
 - expected `.bin` projection entries exist and point at package data;
 - no lifecycle sentinel output exists in verification fixtures.
 
@@ -270,7 +215,6 @@ Repair may:
 
 - rerun pure pnpm install with scripts disabled;
 - recreate `.bin` projection;
-- restore prepared data from Nix;
 
 Repair may not:
 
@@ -286,10 +230,6 @@ A materialization policy change is accepted only when it proves:
 - no lifecycle sentinel scripts ran;
 - expected bins exist after projection in a faithful fixture;
 - at least one real downstream graph with missing bins is repaired;
-- prepared dependency FOD scans reject `.bin`, unexpected native files, and
-  leaked pnpm state;
-- fixed-output hashes are measured per covered system, with missing systems
-  marked pending rather than silently collapsed;
 - host-wide bytes, file counts, cold install, warm install, and concurrent
   install are recorded; offline reinstall and repair timing are required only
   when those capabilities are explicitly claimed.

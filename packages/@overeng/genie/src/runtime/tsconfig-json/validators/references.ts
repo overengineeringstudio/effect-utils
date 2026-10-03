@@ -8,33 +8,9 @@
 
 import type { GenieContext, GenieIO, GenieJsoncParser } from '../../mod.ts'
 import type { ValidationIssue } from '../../package-json/validation.ts'
-import { joinPath } from '../../utils/path.ts'
+import { joinPath, normalizeRelativePath } from '../../utils/path.ts'
+import { relativeRepoPath } from '../../workspace-graph.ts'
 import type { TSConfigArgs } from '../mod.ts'
-
-/**
- * Compute relative path from one repo-relative location to another.
- * @param from - Source location (e.g., 'packages/@overeng/genie')
- * @param to - Target location (e.g., 'packages/@overeng/utils')
- * @returns Relative path (e.g., '../utils')
- */
-const computeRelativeRef = ({ from, to }: { from: string; to: string }): string => {
-  const fromParts = from.split('/').filter(Boolean)
-  const toParts = to.split('/').filter(Boolean)
-
-  let common = 0
-  while (
-    common < fromParts.length &&
-    common < toParts.length &&
-    fromParts[common] === toParts[common]
-  ) {
-    common++
-  }
-
-  const upCount = fromParts.length - common
-  const downPath = toParts.slice(common).join('/')
-  const result = '../'.repeat(upCount) + downPath
-  return result.endsWith('/') === true ? result.slice(0, -1) : result
-}
 
 /**
  * Validate that tsconfig references match workspace dependencies.
@@ -56,7 +32,7 @@ export const validateTsconfigReferences = ({
   const parseJsonc = ctx.parseJsonc
 
   const issues: ValidationIssue[] = []
-  const currentRefs = new Set((references ?? []).map((r) => r.path))
+  const currentRefs = new Set((references ?? []).map((r) => normalizeRelativePath(r.path)))
 
   // Find current package from location
   const currentPkg = [...ctx.workspace.byName.values()].find((p) => p.path === ctx.location)
@@ -87,7 +63,7 @@ export const validateTsconfigReferences = ({
       continue
     }
 
-    const expectedRef = computeRelativeRef({ from: ctx.location, to: depPkg.path })
+    const expectedRef = relativeRepoPath({ from: ctx.location, to: depPkg.path })
     if (currentRefs.has(expectedRef) === false) {
       issues.push({
         severity: 'error',

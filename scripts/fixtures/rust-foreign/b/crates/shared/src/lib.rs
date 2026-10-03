@@ -1,3 +1,4 @@
-pub fn render(value: u64) -> String {
-    itoa::Buffer::new().format(value).to_owned()
+// The consumer must supply its own third-party instance, not the provider's graph.
+pub fn render(buffer: &mut itoa::Buffer, value: u64) -> &str {
+    buffer.format(value)
 }

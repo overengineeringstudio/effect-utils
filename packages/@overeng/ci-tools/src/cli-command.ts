@@ -20,8 +20,9 @@ import {
   workflowReportRecordLineMarker,
   type WorkflowReportManagedComment,
 } from './mod.ts'
-import { collectPipelineReport } from './pipeline-report.ts'
+import { collectPipelineReport, decodePipelineReportDataJson } from './pipeline-report.ts'
 import { deriveJobTraceId } from './pipeline-trace-identity.ts'
+import { renderPipelineWaterfall } from './pipeline-waterfall.ts'
 import {
   decodeQuarantineLedgerJson,
   expiredQuarantineEntries,
@@ -157,6 +158,29 @@ export const pipelineReportCommand = Command.make('pipeline-report').pipe(
   Command.withSubcommands([pipelineReportCollectCommand]),
   Command.withDescription('GitHub Jobs API pipeline report collector'),
 )
+
+/** Produces bounded theme-specific SVGs from decoded Jobs API report data. */
+export const pipelineWaterfallCommand = Command.make(
+  'pipeline-waterfall',
+  {
+    input: nonEmptyTextOption({ name: 'input', description: 'Pipeline report data JSON file' }),
+    outputDir: nonEmptyTextOption({
+      name: 'output-dir',
+      description: 'Directory for light.svg and dark.svg',
+    }),
+  },
+  ({ input, outputDir }) =>
+    Effect.sync(() => {
+      const data = decodePipelineReportDataJson(readFileSync(input, 'utf8'))
+      if (data.timeline === undefined) throw new Error('Pipeline report timeline unavailable')
+      for (const theme of ['light', 'dark'] as const) {
+        writeTextFile({
+          path: `${outputDir}/${theme}.svg`,
+          text: renderPipelineWaterfall({ timeline: data.timeline, theme: theme }),
+        })
+      }
+    }),
+).pipe(Command.withDescription('Render pipeline jobs and steps into theme-specific waterfall SVGs'))
 
 const collectBundleCommand = Command.make(
   'collect-bundle',
@@ -709,6 +733,7 @@ export const ciToolsCommand = Command.make('ci-tools').pipe(
   Command.withSubcommands([
     workflowReportCommand,
     pipelineReportCommand,
+    pipelineWaterfallCommand,
     deployCommand,
     quarantineCommand,
   ]),

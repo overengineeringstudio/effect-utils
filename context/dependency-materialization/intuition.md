@@ -6,17 +6,17 @@ devenv tasks, and Buck2 basics · Covers: the mental model behind the DMP VRS_
 Dependency materialization is the contract for turning a workspace dependency
 graph into something tools can execute against. The hard part is that the same
 graph is realized through several mechanisms: a live `node_modules` tree during
-development, a prepared dependency artifact in Nix, a job-local CI install, and
-declared inputs to an external build system.
+development, a job-local CI install, and declared immutable dependency archives
+in the pinned Buck product graph. Workspace prepared-install packaging is retired.
 
 The VRS is shaped around one rule: immutable dependency work may have a shared
 identity, but mutable realization state always belongs to one root.
 
 ```text
-  declared inputs                         prepared profileKey
+  declared inputs                         declared archive digests
         |                                        |
         v                                        v
-  live pnpm root                         Nix data + external adapter
+  live pnpm root                         Buck graph + Nix acquisition
   mutable/repairable                     immutable/declared
         |
         +---- root-owned projection + observability
@@ -36,8 +36,8 @@ owner:
 
 This is why the VRS is hierarchical. The root DMP contract defines shared
 identity and authority vocabulary. Child systems define each realization:
-live pnpm, projections, Nix prepared deps, store authority, and producer
-observability. Verification composes those children: fixture checks
-prove contract regressions, synthetic proofs preserve known failure modes, and
+live pnpm, projections, store authority, and producer observability. The former
+prepared-install node records retirement. Verification composes the live children:
+fixture checks prove contract regressions, synthetic proofs preserve known failure modes, and
 real-workload benchmarks decide when a sharing or default change is actually
 better.

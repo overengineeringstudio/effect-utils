@@ -1,0 +1,48 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/genie",
+      "packages/@overeng/genie-smalltalk",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
+  "name": "@overeng/genie-smalltalk",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    }
+  },
+  "dependencies": {
+    "@overeng/genie": "workspace:^",
+    "effect": "4.0.0-rc.118"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0-rc.118",
+    "@overeng/utils-dev": "workspace:^",
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.9"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      }
+    }
+  }
+}

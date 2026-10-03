@@ -11,7 +11,7 @@ Whole-repository exclusivity is the endgame (BUCK-R01); admission order is by va
 high-leverage operations first, cheap operations only when migrating them provably pays. Every authority
 transfer carries its ledger row and deletes the superseded producer in the same
 change. A consumer closes only when every row is Buck-owned or excluded and its
-legacy builders, FOD hashes, and `mk-pnpm-cli` glue are deleted; the net is
+legacy builders, FOD hashes, and prepared-install glue are deleted; the net is
 reported with amortization, not sign-gated.
 
 ## Phase 0 — shared cache foundation
@@ -130,7 +130,7 @@ resolution paths.
   workspace contract, Cargo tests, Clippy, and rustfmt. Buck owns Rust
   compilation and shipped products; the operation ledger does not claim that
   the broader source-quality lane moved with them.
-- Zero repository JavaScript pnpm-deps FOD producers remain. The last one,
+- Zero repository JavaScript workspace-install FOD producers remain. The last one,
   `oxc-config`, now emits its first-party plugin and StyleX upstream namespace
   shim as two explicit Buck module products; Nix imports their reviewed,
   content-addressed artifacts without rebuilding package sources. The
@@ -173,7 +173,7 @@ repository identities, order, and status live only in the private ledger.
 **Dissolution target:** Delete each consumer's source-mount CLI execution,
 cross-member dependency writers, live branch sharing, and duplicate build
 producers. A consumer closes when all its ledger rows are Buck-owned or excluded
-and its legacy builders, FOD hashes, and `mk-pnpm-cli` glue are deleted. Its net
+and its legacy builders, FOD hashes, and prepared-install glue are deleted. Its net
 is reported with amortization, while the cumulative sum keeps falling from
 reconciliation to reconciliation.
 
@@ -203,6 +203,26 @@ mode, run-record seal/upload, the ingest CLI, and a dotfiles brief for the
 ingester, auth front, store, archive, and Tempo volume measurement). It
 carries no admission of its own; measured bottlenecks it surfaced are
 recorded as findings in the owning subsystems' open questions.
+
+### Restricted public-waterfall publisher
+
+The PR waterfall reuses GitBucket's immutable public content-addressed store
+([trace-access spec](./07-observability/06-trace-access/spec.md#public-immutable-images-and-failure-path)).
+Johannes accepted GitHub-account SSH authentication for end-to-end publication
+as a temporary compromise; a separate key is revocable but not upload-only.
+
+**Sequence:** Define and enforce a restricted GitBucket publisher credential
+for public PNG publication, prove both successful light/dark publication and
+denial of unrelated account operations, then switch the report step and revoke
+its broader credential. Credential registration remains separate from renderer
+changes; keep the secret report-step-scoped and retain Mermaid fallback.
+
+**Dissolution target:** Remove account-scoped publisher authentication from
+the report step once the restricted path is supported and proven. The unresolved
+credential boundary is tracked in
+[OQ4](./open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
+and trace-access DQ1; this security follow-up does not change the chosen CAS
+host or the V2 D2 T2 presentation.
 
 ## Cross-phase gates
 

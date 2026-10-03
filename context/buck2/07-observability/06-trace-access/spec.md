@@ -1,6 +1,6 @@
 # Trace Access Spec
 
-This document specifies the PR job report and deterministic Grafana trace links. It builds on [requirements.md](./requirements.md); [01](../01-run-identity/spec.md) owns trace identities and [05](../05-otlp-delivery/spec.md) owns delivery to Tempo.
+This document specifies the PR jobs-and-steps waterfall, compact job report, and deterministic Grafana trace links. It builds on [requirements.md](./requirements.md); [01](../01-run-identity/spec.md) owns trace identities and [05](../05-otlp-delivery/spec.md) owns delivery to Tempo.
 
 ## Status
 
@@ -8,7 +8,7 @@ Draft.
 
 ## Scope
 
-**Defines:** Jobs API data selection, baseline math, PR comment contents, gantt semantics, and Grafana Explore URLs.
+**Defines:** Jobs API data selection, baseline math, V2 D2 T2 PR presentation, immutable public PNG publication, jobs-only Mermaid fallback, and Grafana Explore URLs.
 
 **Does not define:** Tempo storage, trace delivery, Grafana deployment, task-level Tempo reads, or GitHub workflow generation.
 
@@ -16,11 +16,12 @@ Draft.
 
 ```text
 PR attempt close (after build jobs settle)
-  ├─ Jobs API: latest execution of each job (all pages)  -> job table + gantt
+  ├─ Jobs API: latest execution of each job (all pages)  -> jobs + step timeline
   ├─ Workflow Runs API: newest completed successful main pushes (at most 20)
   │    └─ Jobs API: each selected run's jobs            -> p50 baseline
   └─ 01 deterministic job trace IDs + Grafana base URL -> Explore links
-       -> workflow-report sticky PR comment
+       -> light/dark SVG -> pinned resvg + fonts -> public GitBucket CAS PNG pair
+       -> workflow-report sticky PR comment (compact table; Mermaid on image failure)
 ```
 
 The workflow-report generator uses the workflow's GitHub token to list
@@ -33,9 +34,10 @@ rows and the baseline.
 
 ## Job Facts
 
-Read the current workflow run's jobs with `filter=latest`, following
-pagination so partial reruns retain jobs that last ran in earlier attempts.
-Use each job's `run_attempt` for its trace identity and attempt-close link.
+Read the current workflow run's jobs once with `filter=all`, following
+pagination, and report the latest attempt's rows. Use each job's execution
+attempt ([01](../01-run-identity/spec.md)) for its trace identity and
+attempt-close link, not its `run_attempt`, which carried-over rows share.
 Map each Jobs API `name` through
 [01's finite generated-workflow name mapping](../01-run-identity/spec.md)
 to its job identifier and named matrix dimensions before deriving the
@@ -56,6 +58,14 @@ exist; its row keeps `failure`. Skipped, never-started, cancelled without
 end time, or unfinished jobs have no delta: show `duration unavailable`
 even when a valid baseline exists. The table uses the attempt the comment
 describes, not the latest attempt of a different run.
+
+Step `started_at` and `completed_at` fields are optional and nullable so historical
+Jobs API fixtures and persisted reports remain readable. Only finite, ordered
+step intervals are shown; clamp them to the parent job's observed window.
+Skipped steps have no bar. A started unfinished step without a completion time
+extends to report generation time, bounded by its job window; a completed step
+with no completion timestamp has unavailable timing rather than an invented
+duration. These are provider steps, not devenv task spans or task annotations.
 
 The Jobs API export step can succeed without emitting a root when the adapter
 finds no pipeline identity or resolved devenv binary. The reporter checks all
@@ -82,9 +92,95 @@ even after Tempo retention.
 
 Each GitHub API GET has a 20-second timeout and retries transient 5xx, 429, network failures and timeouts with at most three bounded exponential backoffs, respecting `Retry-After` when it fits the retry budget. Collection has a 90-second deadline: on expiry, workflow metadata or main-run listing failure, render the current jobs with an explicit baseline-incomplete reason and the samples already collected; if a selected main run's jobs remain unavailable, omit its samples, retain its ID in the skipped-run audit and report the reduced `n`.
 
-## Gantt
+## V2 D2 T2 Presentation
 
-Render a Mermaid `gantt` inside a collapsed `<details>` block in the comment when at least one job has a start time. Its axis starts at the earliest observed latest job start. Each completed job bar spans `started_at` to `completed_at`; an unfinished job extends to the report generation time with an `unfinished` label; skipped and never-started jobs appear in the table only. Bar labels contain job key and conclusion; external names are sanitized for Mermaid syntax. Show a textual note for omitted rows so a missing bar is not read as zero duration.
+This presentation realizes BUCK.OBS.ACCESS-R01–R04 and R07 without a Tempo read.
+
+```text
+Jobs API job windows + optional step windows
+  -> chronological nested waterfall -> baked light PNG + baked dark PNG
+  -> compact table (failures / five slowest / material regressions)
+     └─ collapsed remaining job rows
+Image unavailable -> jobs-only Mermaid gantt + the same table
+```
+
+### Jobs and Steps Waterfall
+
+The image uses one chronological attempt-level axis, visible job and step
+durations, a status legend, and nested step labels. The longest observed job
+window is marked **Slowest**; this is not a dependency-DAG critical path.
+Unfinished windows remain explicitly unfinished and are bounded by collection
+time, not treated as completed durations.
+
+Partial reruns retain carried-over jobs from their actual execution attempts.
+Every job shows its execution-attempt badge; older rows are marked carried over.
+Idle gaps greater than five minutes are compressed into visible dashed breaks
+with the omitted wall duration stated. Axis labels remain elapsed time from
+the earliest observed job start, so the piecewise horizontal scale does not
+conceal rerun chronology.
+
+Each job shows at most four timed steps: non-success steps first, then the
+longest remaining successful steps, rendered in start-time order. Disclose
+the number of other timed steps omitted per job. Bound the full image to 300
+timeline rows and disclose any additional omissions; the job table remains
+independent of this raster bound. Skipped or untimed jobs remain visible with
+unavailable timing, not zero-length success bars. Escape all SVG labels as XML.
+
+### Compact Job Table
+
+Keep failed jobs, the five slowest jobs with measured completed wall durations,
+and jobs regressed by both at least 30 seconds and at least 25 percent against
+a positive main p50 inline. Put every other job in a collapsed details block.
+The selection does not change baseline eligibility, status, trace-link gating,
+or the full set of rows. Escape externally supplied labels for Markdown and
+HTML; a missing baseline never becomes a fabricated regression.
+
+### Public Immutable Images and Failure Path
+
+Rasterize separate baked light and dark SVG palettes with the repository-pinned
+resvg and DejaVu font closure. Upload PNGs to the existing public GitBucket
+content-addressed store; comments reference immutable public HTTPS URLs under
+`gitbucket.schickling.dev`, not a mutable asset branch or authenticated endpoint.
+Use a theme-aware picture pair only after both uploads and URL validation
+succeed. PNGs must be nonempty and at most 5 MiB each; SVG generation and
+rasterization have bounded execution times. The adapter's SSH challenge and
+verify requests are bounded to 8 seconds; the upload request to 40 seconds,
+because GitBucket commits fresh objects to its GitHub-backed store; each
+adapter invocation to 60 seconds, so the pair adds at most two minutes. A
+partial pair is not attached.
+
+The publication credential is present only in the Pipeline traces report step,
+not in workflow-wide or job-wide environment. The checked-in PNG adapter uses
+GitBucket's SSH challenge/sign/verify/upload protocol and explicit public-upload
+consent. It receives the configured GitHub username and SSH key; no private
+dotfiles flake is needed. An optional executable-path override receives one PNG
+path and returns one public URL, never arbitrary shell text.
+
+The current SSH key authenticates a GitHub account; authorization is account
+scoped, **not upload-only**. Johannes accepted this temporary compromise for
+end-to-end publication while restricted publisher credentials remain a follow-up
+([DQ1](#open-design-questions)). Independently revoking a fresh key does not
+reduce the account authority granted while that key is valid. Credential
+registration and secret provisioning are separate operator actions.
+
+Missing credentials, rasterization failure, upload failure, or invalid URLs
+leave the original usable report intact and select the deterministic jobs-only
+Mermaid fallback. Failures emit controlled stage diagnostics without raw
+secret-bearing stderr: an upload failure may append only the adapter's
+sanitized `<challenge|sign|verify|upload|url> <http NNN|exit N>` reason, never
+response bodies, tokens, key material or signing output. Dry-run never uploads.
+Image handling adds no Tempo
+reads, task spans, task annotations, or per-build-job workflow steps.
+
+### Jobs-Only Mermaid Fallback
+
+Render a Mermaid `gantt` inside a collapsed details block when images are
+unavailable and at least one job has a start time. Each completed bar spans
+`started_at` to `completed_at`; an unfinished bar extends to report generation
+time with an unfinished label. Skipped and never-started jobs appear in the
+table only. Sanitize external job names for Mermaid syntax and state how many
+jobs lack bars so absence is not read as zero duration. The fallback contains
+no step or task bars.
 
 ## Deterministic Grafana Links
 
@@ -102,7 +198,18 @@ For each executed job with a 01 job trace ID, construct:
 
 ## Comment Contract
 
-The existing sticky comment gets one Buck2 observability section, replacing the section for the same run attempt. The ci-tools workflow-report table renderer produces the job table; the reporter adds no per-job workflow outputs or other YAML to build jobs. The section shows summary counts, the job table, the collapsed gantt, baseline notes (`n` and selected and skipped run IDs), and a statement that task-level durations are not included. It never embeds GitHub tokens, fleet endpoints, or raw Tempo query results. Missing current-run jobs render an explicit failure note and leave the Buck result unchanged; missing baseline jobs do not suppress the table. Forks keep the workflow's no-write guard.
+The existing sticky comment replaces its Pipeline traces entry for the current
+run attempt. The ci-tools workflow-report renderer shows summary counts, the
+light/dark waterfall pair or jobs-only Mermaid fallback, compact inline job
+rows and collapsed remaining rows, baseline notes (`n` and selected and skipped
+run IDs), and a statement that task-level durations are not included. The
+reporter adds no per-job workflow outputs or YAML to build jobs. Keep the 60,000
+character comment-body guard: disclose row/timeline omissions if necessary and
+retain a usable bounded report. Embedded managed state keeps identity metadata,
+not duplicate timeline/image/table payloads. Never embed GitHub tokens, SSH
+keys, fleet endpoints, or raw Tempo query results. Missing current-run jobs
+render an explicit failure note and leave the Buck result unchanged; missing
+baseline jobs do not suppress the table. Forks keep the workflow's no-write guard.
 
 ## Conformance
 
@@ -121,6 +228,25 @@ baseline`; a finalizer job never appears as a build row. The collector
 - A completed job whose adapter identity, devenv resolution, or export step
   was absent or unsuccessful has no trace ID/link, including when the export
   step itself succeeded after returning early.
-- The comment generator reads only GitHub Actions workflow-run metadata and
-  Jobs API facts, with no Tempo, SQLite, resolver or artifact requests.
+- The timing collector reads only GitHub Actions workflow-run metadata and
+  Jobs API facts, with no Tempo, SQLite, resolver, or artifact reads.
+- A light/dark PNG pair is attached only after both public GitBucket uploads
+  validate; absent credentials, an unsafe URL, or a failed second upload keeps
+  the complete jobs-only fallback. Dry-run performs no image upload.
+- Carried-over rows keep execution-attempt badges; compressed idle gaps and
+  omitted timed steps are disclosed, and Slowest never implies a DAG critical path.
+- Compact selection preserves all other rows in collapsed details; the existing
+  body limit still bounds both image and fallback comments.
 - Historical evidence: [PR access prototype](./.experiments/2026-09-25-pr-trace-access.md), [page variants](./.experiments/2026-09-26-pr-page-variants.md), and amended decisions [0001](./.decisions/0001-resolver-and-ci-links.md), [0002](./.decisions/0002-review-page-and-baseline.md), [0003](./.decisions/0003-versioned-agent-contract.md).
+
+## Open Design Questions
+
+- **DQ1 Restricted GitBucket publisher authority:** Replace the accepted
+  GitHub-account SSH authentication compromise with a separately revocable
+  publisher credential whose enforced authority is limited to the approved
+  public PNG namespace, MIME/size policy, and publication operation. A separate
+  SSH key alone is not that boundary. Resolve through a supported GitBucket
+  credential/policy contract and a proof that CI can publish the pair while
+  unrelated account operations are denied; then migrate the report step and
+  revoke its broader credential. Tracking:
+  [root open questions](../../open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication).

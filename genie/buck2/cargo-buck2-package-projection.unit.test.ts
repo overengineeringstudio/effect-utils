@@ -25,9 +25,7 @@ const consumerProjectionOptions = {
   generatorSourcePaths: [],
 } as const
 
-
 describe('Cargo Buck2 package projection', () => {
-
   it('rejects lexical and physical repository escapes', () => {
     expect(() =>
       defineCargoBuck2PackageProjection({
@@ -123,6 +121,7 @@ const renderCargoFixture = ({
   thirdPartyTargets = ['serde'],
   foreignPackages = {},
   extraFiles = [],
+  rootManifest,
   projectOptions = {},
   render,
 }: {
@@ -139,6 +138,8 @@ const renderCargoFixture = ({
   >
   /** Repository-relative files outside any member (for example build script inputs). */
   readonly extraFiles?: readonly string[]
+  /** Repository-root Cargo.toml, for foreign packages owned by a root workspace. */
+  readonly rootManifest?: string
   readonly render: string
   readonly projectOptions?: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>
 }): string => {
@@ -183,7 +184,10 @@ const renderCargoFixture = ({
         )
         .join('')}`,
     )
-    write('rust/reindeer.toml', 'vendor = false\ncargo_env = true\nthird_party_dir = "third-party"\n')
+    write(
+      'rust/reindeer.toml',
+      'vendor = false\ncargo_env = true\nthird_party_dir = "third-party"\n',
+    )
     write(
       'rust/third-party/BUCK',
       thirdPartyTargets
@@ -204,8 +208,10 @@ const renderCargoFixture = ({
           ),
         }),
       )
+      write('rust/third-party/cargo-resolution.json', '{"dependencies":[]}\n')
     }
     for (const file of extraFiles) write(file, '// fixture\n')
+    if (rootManifest !== undefined) write('Cargo.toml', rootManifest)
     for (const [memberPath, member] of Object.entries(members)) {
       if (memberPath !== '.') {
         write(`rust/${memberPath}/Cargo.toml`, memberManifest(memberPath, member.manifest))
@@ -764,17 +770,6 @@ describe('Cargo cross-workspace path dependencies', () => {
     },
   }
 
-  it('labels a declared, projected foreign package by its package path', () => {
-    const rules = renderedRules(
-      renderCargoFixture({
-        members: consumer,
-        foreignPackages: sharedLibrary(true),
-        render: 'app',
-      }),
-    )
-    expect(rules.app).toContain('deps = [\n        "//shared/otel-bootstrap:lib",\n    ],')
-  })
-
   it('rejects undeclared and unprojected foreign packages', () => {
     expect(() => renderCargoFixture({ members: consumer, render: 'app' })).toThrow(
       'Cargo path dependency at dependencies.otel-bootstrap is neither a workspace member nor a declared foreign package: shared/otel-bootstrap',
@@ -1095,53 +1090,62 @@ describe('Cargo features', () => {
         ['src/main.rs'],
       ),
     ).toThrow('Cargo binary tool requires undefined features in rust/pkg/Cargo.toml: y')
-    expect(() =>
-      renderCargoFixture({
-        members: {
-          pkg: {
-            manifest:
-              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared", features = ["x"] }',
-            files: ['src/lib.rs'],
-          },
-        },
-        foreignPackages: {
-          shared: {
-            manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
-            files: ['src/lib.rs'],
-            projected: true,
-          },
-        },
-        render: 'pkg',
-      }),
-    ).toThrow(
-      'Cargo features on a foreign path dependency are unsupported at dependencies.shared: x',
-    )
-    // The same request written as a [features] item, strong or weak, even when disabled.
-    for (const [dependency, item] of [
-      ['shared = { path = "../../shared" }', 'shared/x'],
-      ['shared = { path = "../../shared", optional = true }', 'shared?/x'],
-    ] as const) {
-      expect(() =>
+  })
+
+  it('unifies foreign feature requests without enabling disabled defaults', () => {
+    for (const request of [
+      'shared = { path = "../../shared", features = ["x"], default-features = false }',
+      'shared = { path = "../../shared", default-features = false }\n\n[features]\ndefault = ["shared/x"]',
+    ]) {
+      const rules = renderedRules(
         renderCargoFixture({
           members: {
             pkg: {
-              manifest: `[package]\nname = "pkg"\n\n[features]\nturbo = ["${item}"]\n\n[dependencies]\n${dependency}`,
+              manifest: `[package]\nname = "pkg"\n\n[dependencies]\n${request}`,
               files: ['src/lib.rs'],
             },
           },
           foreignPackages: {
             shared: {
-              manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+              manifest:
+                '[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"\n\n[features]\ndefault = ["y"]\nx = []\ny = []',
               files: ['src/lib.rs'],
               projected: true,
             },
           },
           render: 'pkg',
         }),
-      ).toThrow(
-        `Cargo features on a foreign path dependency are unsupported at rust/pkg/Cargo.toml features.turbo: ${item}`,
       )
+      expect(rules['foreign-shared-lib']).toContain('features = [\n        "x",\n    ],')
+      expect(rules['foreign-shared-lib']).not.toContain('"y"')
     }
+  })
+
+  it('inherits foreign metadata from a repository-root workspace', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared" }',
+            files: ['src/lib.rs'],
+          },
+        },
+        rootManifest:
+          '[workspace]\nresolver = "2"\nmembers = ["shared"]\n\n[workspace.package]\nversion = "0.3.0"\nedition = "2021"\n',
+        foreignPackages: {
+          shared: {
+            manifest:
+              '[package]\nname = "shared"\nversion.workspace = true\nedition.workspace = true\n',
+            files: ['src/lib.rs'],
+            projected: true,
+          },
+        },
+        render: 'pkg',
+      }),
+    )
+    expect(rules['foreign-shared-lib']).toContain('"CARGO_PKG_VERSION": "0.3.0",')
+    expect(rules['foreign-shared-lib']).toContain('edition = "2021",')
   })
 
   it('rejects feature requests and optional activation on target-specific member edges', () => {

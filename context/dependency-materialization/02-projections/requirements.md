@@ -6,8 +6,8 @@ Projection State is deterministic state derived after Dependency Data exists.
 It includes `node_modules/.bin` entries and local metadata needed for tools to
 execute against a realized Dependency Graph.
 
-Projection refines DMP-R05 through DMP-R08. Prepared dependency artifacts are
-data; projections are recreated and checked by effect-utils-managed steps.
+Projection refines DMP-R05 through DMP-R08. Dependency data is separate from
+projections, which are recreated and checked by effect-utils-managed steps.
 
 ## Assumptions
 
@@ -52,9 +52,8 @@ data; projections are recreated and checked by effect-utils-managed steps.
 - **DMP.PROJ-R07 Report:** Projection must emit a report that doctor, repair,
   and benchmarks can consume.
   Refines: DMP-R19.
-- **DMP.PROJ-R08 Prepared-deps exclusion:** Prepared dependency FOD validation
-  must reject archived `.bin` projections by default.
-  Refines: DMP-R05, DMP-R06, DMP-R18.
+- **DMP.PROJ-R08 Retired:** The prepared-install artifact exclusion requirement
+  is retired with that packaging realization; this identifier remains reserved.
 - **DMP.PROJ-R09 Dependency-edge non-authority:** Projection must not create,
   remove, or retarget Dependency Edges. It may read the realized Dependency
   Graph only to derive Projection State.

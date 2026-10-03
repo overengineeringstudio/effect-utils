@@ -41,12 +41,20 @@ export default packageJson(
         { types: './dist/src/registry.d.ts', default: './src/registry.ts' },
         { environment: 'isomorphic-es2024' },
       ),
+      './Traceparent': exportEntry(
+        { types: './dist/src/Traceparent.d.ts', default: './src/Traceparent.ts' },
+        { environment: 'isomorphic-es2024' },
+      ),
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': { types: './dist/src/mod.d.ts', default: './dist/src/mod.js' },
         './registry': { types: './dist/src/registry.d.ts', default: './dist/src/registry.js' },
+        './Traceparent': {
+          types: './dist/src/Traceparent.d.ts',
+          default: './dist/src/Traceparent.js',
+        },
       },
     },
   } satisfies PackageJsonInputData,

@@ -66,3 +66,23 @@ Subsystem questions live in their subsystem (`03-materialization`,
   artifact-composition proposal is accepted); no Buck2 or `mr` in livestore; its
   contributors install nothing new; livestore rows are excluded from the ledger.
   livestore PR #1622 closes.
+
+## OQ4: How is the GitBucket waterfall publisher restricted to public PNG publication?
+
+- Spec question:
+  [trace-access DQ1](./07-observability/06-trace-access/spec.md#open-design-questions).
+- Current boundary: CI publishes an immutable light/dark PNG pair to the
+  existing public GitBucket CAS using a report-step-only SSH credential.
+  GitBucket authenticates a GitHub account, not an upload-only key. A new SSH
+  key can be revoked independently but retains that account's authorization
+  while valid.
+- Accepted temporary compromise: Johannes chose CAS reuse and authorized
+  end-to-end publication with credential hardening as a separate follow-up.
+  This acceptance does not claim least-privilege publication is already solved.
+- Resolution signal: a supported, separately revocable publisher credential
+  whose enforced policy limits it to the approved public PNG namespace,
+  MIME/size bounds, and publication operation; prove pair publication succeeds
+  while unrelated account operations are denied. Then migrate the report
+  step and revoke the broader credential.
+- Sequencing and dissolution:
+  [restricted public-waterfall publisher](./roadmap.md#restricted-public-waterfall-publisher).
