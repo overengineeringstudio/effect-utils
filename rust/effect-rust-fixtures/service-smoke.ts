@@ -207,7 +207,8 @@ const program = Effect.scoped(
     })
     const hashing = yield* fixture.hashRanges(cancellable, '/cancel', 2).pipe(Effect.forkChild)
     yield* Deferred.await(cancelAtTask)
-    const cancelled = yield* Fiber.interrupt(hashing)
+    yield* Fiber.interrupt(hashing)
+    const cancelled = yield* Fiber.await(hashing)
     assert.ok(Exit.isFailure(cancelled), 'timer cancellation reaches the still-running Rust job')
     assert.equal(cancellationReads, 1, 'cancellation after the yield prevents the next CPU chunk')
     assert.equal(

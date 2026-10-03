@@ -1,13 +1,13 @@
 /** Strict JSON failure carrying the input offset and structural path. */
 export class JsonError extends Error {
   readonly _tag = 'JsonError'
+  readonly offset: number
+  readonly path: string
   // eslint-disable-next-line overeng/named-args -- Preserve the public JsonError positional error constructor.
-  constructor(
-    readonly offset: number,
-    readonly path: string,
-    message: string,
-  ) {
+  constructor(offset: number, path: string, message: string) {
     super(`${path} at byte ${offset}: ${message}`)
+    this.offset = offset
+    this.path = path
   }
 }
 /** Checks that a string contains only Unicode scalar values, rejecting unpaired surrogates. */

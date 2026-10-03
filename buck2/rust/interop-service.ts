@@ -226,7 +226,15 @@ const effectSchema = (wire: string): string => {
   if (array !== null) return `Schema.Array(${effectSchema(array[1]!)})`
   const type = tsType(wire)
   if (type === 'string') return 'Schema.String'
-  if (type === 'number') return 'Schema.Int'
+  if (type === 'number') {
+    const integer = /^(u|i)(8|16|32)$/.exec(wire.replace(/\s+/g, ''))
+    if (integer === null) throw new Error(`Error reason field type ${wire} is not representable`)
+    const bits = Number(integer[2])
+    const signed = integer[1] === 'i'
+    const minimum = signed === true ? -(2 ** (bits - 1)) : 0
+    const maximum = 2 ** (signed === true ? bits - 1 : bits) - 1
+    return `Schema.Int.check(Schema.isBetween({ minimum: ${minimum}, maximum: ${maximum} }))`
+  }
   if (type === 'bigint')
     return wire.startsWith('u') === true
       ? "Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: 0n, maximum: 18446744073709551615n })).annotate({ [EffectRust.width]: 'u64' })"
