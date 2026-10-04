@@ -13,8 +13,8 @@ derivation is cited per requirement. Nothing here is new policy.
 ## Context
 
 - The composition contract this tool serves is
-  [../buck2/05-composition/requirements.md](../buck2/05-composition/requirements.md)
-  (`COMP-R*`). Those requirements constrain `mr` and are **referenced, never
+  [../buck2/05-composition/requirements.md](../builds/04-buck2/03-consumer-roots/requirements.md)
+  (`BUILD.BUCK.ROOT-R*`). Those requirements constrain `mr` and are **referenced, never
   restated**: that source mounts are never Buck cells belongs there. This
   document covers only what `mr` owns and 05-composition does not say.
 - Terms: [ontology.md](./ontology.md). Mechanism: [spec.md](./spec.md).
@@ -24,8 +24,8 @@ derivation is cited per requirement. Nothing here is new policy.
 ## Assumptions
 
 - **MR-A01 Composition contract upstream:** The Buck-facing correctness
-  requirements are owned by `COMP-R*`. `mr` is an implementation of them plus
-  the obligations here; where the two appear to conflict, `COMP-R*` wins and
+  requirements are owned by `BUILD.BUCK.ROOT-R*`. `mr` is an implementation of them plus
+  the obligations here; where the two appear to conflict, `BUILD.BUCK.ROOT-R*` wins and
   this document is wrong.
 - **MR-A02 Host-global shared store:** The store is shared by every megarepo on
   the host, and other workspaces are assumed to exist and to be invisible at
@@ -110,7 +110,7 @@ derivation is cited per requirement. Nothing here is new policy.
   development or agent worktree is a standalone worktree; `mr` creates no
   composed workspace (principal q5, 2026-09-25, superseding the declared
   exception of buck2 decision
-  [0027](../buck2/.decisions/0027-composed-default-worktrees.md)).
+  [0027](../builds/.decisions/0027-composed-default-worktrees.md)).
 - **MR-R12 Routine application is shape-preserving:** Retired with the composed workspace shape
   (principal q5, 2026-09-25).
 - **MR-R13 Explicit composition happens directly at creation:** Retired with the composed workspace shape

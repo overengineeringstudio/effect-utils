@@ -1,4 +1,4 @@
-# Buck2 Repository Build Vision
+# Reusable Builds Vision
 
 ## The Problem
 
@@ -52,10 +52,10 @@
    a relevant mutation executes exactly the affected closure.
 2. A second same-platform context — another worktree or another machine — at an
    identical revision re-executes zero actions for unchanged admitted targets.
-3. A warm no-op check of the whole admitted surface completes in at most 5
-   seconds; a fresh context with a warm shared cache reaches green on the
-   admitted surface in at most 3 minutes. Admission widening that breaks either
-   budget is a regression to fix before widening further.
+3. Edit-run, quick check, full tests, and platform/host proof meet their
+   independently measured lane budgets. The first honest measurement pass sets
+   budget values; admission widening that breaks a set budget is a regression
+   to fix before widening further.
 4. Each admitted operation has Buck as its only producer in normal development
    and CI, and the change that admits it deletes the superseded producer. The
    deletion ledger never carries an admitted slice with a surviving legacy path.
