@@ -3,6 +3,7 @@ import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { text } from 'node:stream/consumers'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -62,8 +63,8 @@ declared: process.env.DECLARED,
         },
       )
       const [stdout, stderr, status] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
+        text(child.stdout),
+        text(child.stderr),
         child.exited,
       ])
       expect(status, stderr).toBe(0)
