@@ -114,6 +114,7 @@ testWithSt(
     const source = join(dir, 'mission.kdl')
     const isolatedEnv = {
       ...process.env,
+      ST_AGENT: undefined,
       HOME: join(dir, 'home'),
       XDG_CONFIG_HOME: join(dir, 'config'),
       XDG_DATA_HOME: join(dir, 'data'),
