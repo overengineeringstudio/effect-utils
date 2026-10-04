@@ -23,7 +23,9 @@ pub enum Error {
 impl Error {
     #[must_use]
     pub fn failed(message: impl Into<String>) -> Self {
-        Self::Failed { message: message.into() }
+        Self::Failed {
+            message: message.into(),
+        }
     }
 }
 
@@ -79,7 +81,9 @@ pub type ReadFuture<'a> = Pin<Box<dyn Future<Output = Result<Bytes, Error>> + Se
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Request<'a> {
-    Read { path: &'a str },
+    Read {
+        path: &'a str,
+    },
     ReadRange {
         path: &'a str,
         #[serde(serialize_with = "serialize_offset")]
@@ -100,9 +104,12 @@ impl Request<'_> {
     /// Rejects oversized range responses and nonempty yield acknowledgements.
     pub fn check_response_len(self, length: usize) -> Result<(), Error> {
         match self {
-            Self::ReadRange { max_bytes, .. } if length > max_bytes as usize =>
-                Err(Error::failed("host readRange response exceeds maxBytes")),
-            Self::Yield if length != 0 => Err(Error::failed("host yield must return an empty acknowledgement")),
+            Self::ReadRange { max_bytes, .. } if length > max_bytes as usize => {
+                Err(Error::failed("host readRange response exceeds maxBytes"))
+            }
+            Self::Yield if length != 0 => Err(Error::failed(
+                "host yield must return an empty acknowledgement",
+            )),
             _ => Ok(()),
         }
     }
@@ -125,19 +132,38 @@ pub struct Source<M: Mode = Abortable> {
 
 impl<M: Mode> Clone for Source<M> {
     fn clone(&self) -> Self {
-        Self { call: self.call.clone(), cancellation: self.cancellation.clone(), mode: PhantomData }
+        Self {
+            call: self.call.clone(),
+            cancellation: self.cancellation.clone(),
+            mode: PhantomData,
+        }
     }
 }
 
 impl<M: Mode> Source<M> {
     #[cfg(target_arch = "wasm32")]
-    pub fn new(callback: impl for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a> + 'static) -> Self {
-        Self { call: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
+    pub fn new(
+        callback: impl for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a> + 'static,
+    ) -> Self {
+        Self {
+            call: Shared::new(callback),
+            cancellation: CancellationToken::new(),
+            mode: PhantomData,
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(callback: impl for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a> + Send + Sync + 'static) -> Self {
-        Self { call: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
+    pub fn new(
+        callback: impl for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a>
+            + Send
+            + Sync
+            + 'static,
+    ) -> Self {
+        Self {
+            call: Shared::new(callback),
+            cancellation: CancellationToken::new(),
+            mode: PhantomData,
+        }
     }
 
     /// Binds this capability to a caller-owned cancellation scope.
@@ -168,9 +194,21 @@ impl<M: Mode> Source<M> {
     /// # Errors
     /// Rejects zero bounds and oversized host responses, and preserves host
     /// failures/cancellation. Adapters validate the bound before copying bytes.
-    pub async fn read_range(&self, path: &str, offset: u64, max_bytes: u32) -> Result<Bytes, Error> {
-        if max_bytes == 0 { return Err(Error::failed("maxBytes must be positive")); }
-        self.call(Request::ReadRange { path, offset, max_bytes }).await
+    pub async fn read_range(
+        &self,
+        path: &str,
+        offset: u64,
+        max_bytes: u32,
+    ) -> Result<Bytes, Error> {
+        if max_bytes == 0 {
+            return Err(Error::failed("maxBytes must be positive"));
+        }
+        self.call(Request::ReadRange {
+            path,
+            offset,
+            max_bytes,
+        })
+        .await
     }
 
     /// Cooperatively returns control to the host event loop between CPU chunks.
@@ -204,7 +242,10 @@ impl<M: Mode> Source<M> {
 /// precedence when both cancellation and completion are observed in a poll.
 /// # Errors
 /// Returns `Error::Cancelled` if the token is cancelled before completion.
-pub async fn cancel_future<F: Future>(token: &CancellationToken, future: F) -> Result<F::Output, Error> {
+pub async fn cancel_future<F: Future>(
+    token: &CancellationToken,
+    future: F,
+) -> Result<F::Output, Error> {
     let mut future = pin!(future);
     let mut cancelled = pin!(token.cancelled());
     poll_fn(|context| {
@@ -215,7 +256,8 @@ pub async fn cancel_future<F: Future>(token: &CancellationToken, future: F) -> R
             Poll::Ready(result) => Poll::Ready(token.check().map(|()| result).map_err(Error::from)),
             Poll::Pending => Poll::Pending,
         }
-    }).await
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -251,7 +293,10 @@ mod tests {
         let mut context = Context::from_waker(Waker::noop());
         assert_eq!(read.as_mut().poll(&mut context), Poll::Pending);
         clone.cancellation().cancel();
-        assert_eq!(read.as_mut().poll(&mut context), Poll::Ready(Err(Error::Cancelled)));
+        assert_eq!(
+            read.as_mut().poll(&mut context),
+            Poll::Ready(Err(Error::Cancelled))
+        );
         assert_eq!(dropped.load(Ordering::Relaxed), 1);
     }
 
@@ -268,8 +313,13 @@ mod tests {
                 Box::pin(async move {
                     let _guard = guard;
                     poll_fn(|_| {
-                        if settled.load(Ordering::Acquire) { Poll::Ready(Ok(vec![2])) } else { Poll::Pending }
-                    }).await
+                        if settled.load(Ordering::Acquire) {
+                            Poll::Ready(Ok(vec![2]))
+                        } else {
+                            Poll::Pending
+                        }
+                    })
+                    .await
                 })
             }
         });
@@ -280,7 +330,10 @@ mod tests {
         assert_eq!(read.as_mut().poll(&mut context), Poll::Pending);
         assert_eq!(dropped.load(Ordering::Relaxed), 0);
         settled.store(true, Ordering::Release);
-        assert_eq!(read.as_mut().poll(&mut context), Poll::Ready(Err(Error::Cancelled)));
+        assert_eq!(
+            read.as_mut().poll(&mut context),
+            Poll::Ready(Err(Error::Cancelled))
+        );
         assert_eq!(dropped.load(Ordering::Relaxed), 1);
     }
 
@@ -296,22 +349,41 @@ mod tests {
         });
         source.cancellation().cancel();
         let mut read = pin!(source.read("not-started"));
-        assert_eq!(read.as_mut().poll(&mut Context::from_waker(Waker::noop())), Poll::Ready(Err(Error::Cancelled)));
+        assert_eq!(
+            read.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+            Poll::Ready(Err(Error::Cancelled))
+        );
         assert_eq!(calls.load(Ordering::Relaxed), 0);
     }
 
     #[test]
     fn range_reads_preserve_exact_offsets_short_reads_and_eof() {
-        let source = Source::<Abortable>::new(|request, _token| Box::pin(async move {
-            match request {
-                Request::ReadRange { path: "file", offset: 9_007_199_254_740_993, max_bytes: 4 } => Ok(vec![7, 8]),
-                Request::ReadRange { path: "file", offset: u64::MAX, max_bytes: 4 } => Ok(vec![]),
-                _ => panic!("unexpected host request"),
-            }
-        }));
+        let source = Source::<Abortable>::new(|request, _token| {
+            Box::pin(async move {
+                match request {
+                    Request::ReadRange {
+                        path: "file",
+                        offset: 9_007_199_254_740_993,
+                        max_bytes: 4,
+                    } => Ok(vec![7, 8]),
+                    Request::ReadRange {
+                        path: "file",
+                        offset: u64::MAX,
+                        max_bytes: 4,
+                    } => Ok(vec![]),
+                    _ => panic!("unexpected host request"),
+                }
+            })
+        });
         let mut context = Context::from_waker(Waker::noop());
-        assert_eq!(pin!(source.read_range("file", 9_007_199_254_740_993, 4)).poll(&mut context), Poll::Ready(Ok(vec![7, 8])));
-        assert_eq!(pin!(source.read_range("file", u64::MAX, 4)).poll(&mut context), Poll::Ready(Ok(vec![])));
+        assert_eq!(
+            pin!(source.read_range("file", 9_007_199_254_740_993, 4)).poll(&mut context),
+            Poll::Ready(Ok(vec![7, 8]))
+        );
+        assert_eq!(
+            pin!(source.read_range("file", u64::MAX, 4)).poll(&mut context),
+            Poll::Ready(Ok(vec![]))
+        );
     }
 
     #[test]
@@ -325,9 +397,15 @@ mod tests {
             }
         });
         let mut context = Context::from_waker(Waker::noop());
-        assert!(matches!(pin!(source.read_range("file", 0, 0)).poll(&mut context), Poll::Ready(Err(Error::Failed { .. }))));
+        assert!(matches!(
+            pin!(source.read_range("file", 0, 0)).poll(&mut context),
+            Poll::Ready(Err(Error::Failed { .. }))
+        ));
         assert_eq!(calls.load(Ordering::Relaxed), 0);
-        assert!(matches!(pin!(source.read_range("file", 0, 1)).poll(&mut context), Poll::Ready(Err(Error::Failed { .. }))));
+        assert!(matches!(
+            pin!(source.read_range("file", 0, 1)).poll(&mut context),
+            Poll::Ready(Err(Error::Failed { .. }))
+        ));
         assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 
@@ -350,9 +428,15 @@ mod tests {
         let mut yielding = pin!(source.yield_now());
         assert_eq!(yielding.as_mut().poll(&mut context), Poll::Pending);
         source.cancellation().cancel();
-        assert_eq!(yielding.as_mut().poll(&mut context), Poll::Ready(Err(Error::Cancelled)));
+        assert_eq!(
+            yielding.as_mut().poll(&mut context),
+            Poll::Ready(Err(Error::Cancelled))
+        );
         assert_eq!(dropped.load(Ordering::Relaxed), 1);
-        assert_eq!(pin!(source.read_range("must-not-read", 0, 1)).poll(&mut context), Poll::Ready(Err(Error::Cancelled)));
+        assert_eq!(
+            pin!(source.read_range("must-not-read", 0, 1)).poll(&mut context),
+            Poll::Ready(Err(Error::Cancelled))
+        );
     }
 
     #[test]
@@ -362,6 +446,11 @@ mod tests {
             token.cancel();
             7
         }));
-        assert_eq!(operation.as_mut().poll(&mut Context::from_waker(Waker::noop())), Poll::Ready(Err(Error::Cancelled)));
+        assert_eq!(
+            operation
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop())),
+            Poll::Ready(Err(Error::Cancelled))
+        );
     }
 }

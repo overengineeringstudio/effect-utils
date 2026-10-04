@@ -16,8 +16,12 @@ impl std::fmt::Display for ArithmeticError {
         match self {
             Self::DivideByZero { dividend } => write!(f, "cannot divide {dividend} by zero"),
             Self::Overflow { dividend, divisor } => write!(f, "{dividend}/{divisor} overflows i32"),
-            Self::InvalidChunkSize { chunk } => write!(f, "chunk size must be 1..=1048576, got {chunk}"),
-            Self::PriceOverflow { quantity } => write!(f, "order total overflows u64 at quantity {quantity}"),
+            Self::InvalidChunkSize { chunk } => {
+                write!(f, "chunk size must be 1..=1048576, got {chunk}")
+            }
+            Self::PriceOverflow { quantity } => {
+                write!(f, "order total overflows u64 at quantity {quantity}")
+            }
         }
     }
 }
@@ -33,7 +37,9 @@ pub fn checked_divide(dividend: i32, divisor: i32) -> Result<i32, ArithmeticErro
     if divisor == 0 {
         return Err(ArithmeticError::DivideByZero { dividend });
     }
-    dividend.checked_div(divisor).ok_or(ArithmeticError::Overflow { dividend, divisor })
+    dividend
+        .checked_div(divisor)
+        .ok_or(ArithmeticError::Overflow { dividend, divisor })
 }
 
 /// Serde domain types cross the edge through the Rust-owned contract schemas.
@@ -45,7 +51,8 @@ pub fn quote_order(order: Order, discount: Discount) -> Result<Quote, Arithmetic
 
 #[effect_rust::export(name = "sumJsonIntegers")]
 pub fn sum_json_integers(input: contract::NumericOperands) -> i64 {
-    i64::from(input.unsigned) + i64::from(input.signed)
+    i64::from(input.unsigned)
+        + i64::from(input.signed)
         + i64::try_from(input.bounded).expect("validated safe integer")
 }
 
@@ -62,7 +69,9 @@ impl Iterator for Chunks {
             return None;
         }
         let length = self.remaining.min(self.chunk);
-        let bytes = (0..length).map(|index| (self.offset.wrapping_add(index) % 256) as u8).collect();
+        let bytes = (0..length)
+            .map(|index| (self.offset.wrapping_add(index) % 256) as u8)
+            .collect();
         self.remaining -= length;
         self.offset = self.offset.wrapping_add(length);
         Some(bytes)
@@ -74,7 +83,11 @@ pub fn chunks(total: u32, chunk: u32) -> Result<Chunks, ArithmeticError> {
     if !(1..=1_048_576).contains(&chunk) {
         return Err(ArithmeticError::InvalidChunkSize { chunk });
     }
-    Ok(Chunks { remaining: total, chunk, offset: 0 })
+    Ok(Chunks {
+        remaining: total,
+        chunk,
+        offset: 0,
+    })
 }
 
 #[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]

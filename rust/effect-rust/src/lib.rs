@@ -13,7 +13,7 @@ pub mod native;
 pub mod tagged;
 pub mod wire;
 
-pub use cancellation::{CancellationToken, Cancelled, CancellationError};
+pub use cancellation::{CancellationError, CancellationToken, Cancelled};
 #[cfg(feature = "contract")]
 pub use effect_rust_macros::contract;
 pub use effect_rust_macros::{export, ExportError};

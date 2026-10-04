@@ -2,21 +2,45 @@ use super::{Export, Mode, Tokens, Wire};
 use quote::{format_ident, quote};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Backend { Wasm, Napi }
+pub(super) enum Backend {
+    Wasm,
+    Napi,
+}
 impl Backend {
-    fn error(self) -> Tokens { match self { Self::Wasm => quote!(wasm_bindgen::JsValue), Self::Napi => quote!(napi::Error) } }
+    fn error(self) -> Tokens {
+        match self {
+            Self::Wasm => quote!(wasm_bindgen::JsValue),
+            Self::Napi => quote!(napi::Error),
+        }
+    }
     fn annotation(self, name: &str) -> Tokens {
-        match self { Self::Wasm => quote!(#[wasm_bindgen::prelude::wasm_bindgen(js_name = #name)]), Self::Napi => quote!(#[napi_derive::napi(js_name = #name)]) }
+        match self {
+            Self::Wasm => quote!(#[wasm_bindgen::prelude::wasm_bindgen(js_name = #name)]),
+            Self::Napi => quote!(#[napi_derive::napi(js_name = #name)]),
+        }
     }
     fn wire_type(self, wire: &Wire) -> Tokens {
         match wire {
-            Wire::Unit => quote!(()), Wire::Scalar(ty) => quote!(#ty), Wire::String | Wire::Wide(_) => quote!(String),
-            Wire::Bytes => match self { Self::Wasm => quote!(Vec<u8>), Self::Napi => quote!(napi::bindgen_prelude::Buffer) },
-            Wire::BorrowedBytes | Wire::Frame(_) => match self { Self::Wasm => quote!(&[u8]), Self::Napi => quote!(napi::bindgen_prelude::BufferSlice<'_>) },
-            Wire::Json(_) => match self { Self::Wasm => quote!(wasm_bindgen::JsValue), Self::Napi => quote!(serde_json::Value) },
+            Wire::Unit => quote!(()),
+            Wire::Scalar(ty) => quote!(#ty),
+            Wire::String | Wire::Wide(_) => quote!(String),
+            Wire::Bytes => match self {
+                Self::Wasm => quote!(Vec<u8>),
+                Self::Napi => quote!(napi::bindgen_prelude::Buffer),
+            },
+            Wire::BorrowedBytes | Wire::Frame(_) => match self {
+                Self::Wasm => quote!(&[u8]),
+                Self::Napi => quote!(napi::bindgen_prelude::BufferSlice<'_>),
+            },
+            Wire::Json(_) => match self {
+                Self::Wasm => quote!(wasm_bindgen::JsValue),
+                Self::Napi => quote!(serde_json::Value),
+            },
             Wire::Source(_, _) => match self {
                 Self::Wasm => quote!(js_sys::Function),
-                Self::Napi => quote!(napi::threadsafe_function::ThreadsafeFunction<serde_json::Value, napi::bindgen_prelude::Promise<napi::bindgen_prelude::Buffer>, serde_json::Value, napi::Status, false>),
+                Self::Napi => {
+                    quote!(napi::threadsafe_function::ThreadsafeFunction<serde_json::Value, napi::bindgen_prelude::Promise<napi::bindgen_prelude::Buffer>, serde_json::Value, napi::Status, false>)
+                }
             },
         }
     }
@@ -42,7 +66,8 @@ impl Backend {
             Wire::Bytes if self == Self::Napi => quote!(let #name = #name.to_vec();),
             Wire::BorrowedBytes if self == Self::Napi => quote!(let #name: &[u8] = #name.as_ref();),
             Wire::Frame(row) => {
-                let id = export.options.contract_id.unwrap(); let version = export.options.version.unwrap();
+                let id = export.options.contract_id.unwrap();
+                let version = export.options.version.unwrap();
                 quote!(let #name: Vec<#row> = effect_rust::frame::decode(#name.as_ref(), #id, #version).map_err(|error| edge_error(format!("RUST_INPUT:{error}")))?;)
             }
             Wire::Json(ty) => match self {
@@ -56,41 +81,39 @@ impl Backend {
                     let #name: #ty = serde_json::from_value(#name).map_err(|error| edge_error(format!("RUST_INPUT:{error}")))?;
                 },
             },
-            Wire::Source(ty, _) => {
-                match self {
-                    Self::Wasm => quote! {
-                        let callback = #name.clone();
-                        let #name: #ty = effect_rust::host::Source::new(move |request, _token| {
-                            let callback = callback.clone();
-                            Box::pin(async move {
-                                let argument = serde::Serialize::serialize(&request, &serde_wasm_bindgen::Serializer::json_compatible())
-                                    .map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
-                                let value = callback.call1(&wasm_bindgen::JsValue::UNDEFINED, &argument)
-                                    .map_err(|error| effect_rust::host::Error::failed(format!("{error:?}")))?;
-                                let value = wasm_bindgen_futures::JsFuture::from(js_sys::Promise::resolve(&value)).await
-                                    .map_err(|error| effect_rust::host::Error::failed(format!("{error:?}")))?;
-                                if !value.is_instance_of::<js_sys::Uint8Array>() { return Err(effect_rust::host::Error::failed("host Source must return Uint8Array")); }
-                                let bytes = value.unchecked_into::<js_sys::Uint8Array>();
-                                request.check_response_len(bytes.length() as usize)?;
-                                Ok(bytes.to_vec())
-                            })
-                        }).with_cancellation(__token.clone());
-                    },
-                    Self::Napi => quote! {
-                        let callback = std::sync::Arc::new(#name);
-                        let #name: #ty = effect_rust::host::Source::new(move |request, _token| {
-                            let callback = callback.clone();
-                            Box::pin(async move {
-                                let argument = serde_json::to_value(request).map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
-                                let promise = callback.call_async_catch(argument).await.map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
-                                let bytes = promise.await.map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
-                                request.check_response_len(bytes.len())?;
-                                Ok(bytes.to_vec())
-                            })
-                        }).with_cancellation(__token.clone());
-                    },
-                }
-            }
+            Wire::Source(ty, _) => match self {
+                Self::Wasm => quote! {
+                    let callback = #name.clone();
+                    let #name: #ty = effect_rust::host::Source::new(move |request, _token| {
+                        let callback = callback.clone();
+                        Box::pin(async move {
+                            let argument = serde::Serialize::serialize(&request, &serde_wasm_bindgen::Serializer::json_compatible())
+                                .map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
+                            let value = callback.call1(&wasm_bindgen::JsValue::UNDEFINED, &argument)
+                                .map_err(|error| effect_rust::host::Error::failed(format!("{error:?}")))?;
+                            let value = wasm_bindgen_futures::JsFuture::from(js_sys::Promise::resolve(&value)).await
+                                .map_err(|error| effect_rust::host::Error::failed(format!("{error:?}")))?;
+                            if !value.is_instance_of::<js_sys::Uint8Array>() { return Err(effect_rust::host::Error::failed("host Source must return Uint8Array")); }
+                            let bytes = value.unchecked_into::<js_sys::Uint8Array>();
+                            request.check_response_len(bytes.length() as usize)?;
+                            Ok(bytes.to_vec())
+                        })
+                    }).with_cancellation(__token.clone());
+                },
+                Self::Napi => quote! {
+                    let callback = std::sync::Arc::new(#name);
+                    let #name: #ty = effect_rust::host::Source::new(move |request, _token| {
+                        let callback = callback.clone();
+                        Box::pin(async move {
+                            let argument = serde_json::to_value(request).map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
+                            let promise = callback.call_async_catch(argument).await.map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
+                            let bytes = promise.await.map_err(|error| effect_rust::host::Error::failed(error.to_string()))?;
+                            request.check_response_len(bytes.len())?;
+                            Ok(bytes.to_vec())
+                        })
+                    }).with_cancellation(__token.clone());
+                },
+            },
             _ => quote!(),
         }
     }
@@ -101,14 +124,18 @@ impl Backend {
                 Ok(#value)
             },
             Wire::Wide(_) => quote!(Ok(#value.to_string())),
-            Wire::Bytes if self == Self::Napi => quote!(Ok(napi::bindgen_prelude::Buffer::from(#value))),
+            Wire::Bytes if self == Self::Napi => {
+                quote!(Ok(napi::bindgen_prelude::Buffer::from(#value)))
+            }
             Wire::Json(_) => match self {
                 Self::Wasm => quote! {
                     let value = serde_json::to_value(&#value).map_err(|error| edge_error(format!("RUST_TRANSPORT:{error}")))?;
                     serde::Serialize::serialize(&value,&serde_wasm_bindgen::Serializer::json_compatible())
                         .map_err(|error| edge_error(format!("RUST_TRANSPORT:{error}")))
                 },
-                Self::Napi => quote!(serde_json::to_value(&#value).map_err(|error| edge_error(format!("RUST_TRANSPORT:{error}")))),
+                Self::Napi => {
+                    quote!(serde_json::to_value(&#value).map_err(|error| edge_error(format!("RUST_TRANSPORT:{error}"))))
+                }
             },
             _ => quote!(Ok(#value)),
         }
@@ -116,41 +143,51 @@ impl Backend {
 }
 
 pub(super) fn generate(export: &Export, backend: Backend) -> syn::Result<Tokens> {
-    let module = match backend { Backend::Wasm => quote!(wasm), Backend::Napi => quote!(native) };
-    let cfg = match backend { Backend::Wasm => quote!(all(feature="wasm",target_arch="wasm32")), Backend::Napi => quote!(all(feature="napi",not(target_arch="wasm32"))) };
+    let module = match backend {
+        Backend::Wasm => quote!(wasm),
+        Backend::Napi => quote!(native),
+    };
+    let cfg = match backend {
+        Backend::Wasm => quote!(all(feature = "wasm", target_arch = "wasm32")),
+        Backend::Napi => quote!(all(feature = "napi", not(target_arch = "wasm32"))),
+    };
     let error = backend.error();
     let edge_error = match backend {
         Backend::Wasm => quote!(js_sys::Error::new(&message.to_string()).into()),
         Backend::Napi => quote!(napi::Error::from_reason(message.to_string())),
     };
     let body = match export.options.mode {
-        Mode::InputStream | Mode::OutputStream => stream(export,backend)?,
-        Mode::Async => asynchronous(export,backend)?,
-        _ => synchronous(export,backend)?,
+        Mode::InputStream | Mode::OutputStream => stream(export, backend)?,
+        Mode::Async => asynchronous(export, backend)?,
+        _ => synchronous(export, backend)?,
     };
-    let expected = if export.error.is_some() { quote! {
-        fn expected_error<E: serde::Serialize + effect_rust::ExportError>(error: &E) -> #error {
-            let value = match serde_json::to_value(error) {
-                Ok(value) => value,
-                Err(error) => return edge_error(format!("RUST_TRANSPORT:{error}")),
-            };
-            struct Tagged<'a>(&'a serde_json::Value, &'static str);
-            impl serde::Serialize for Tagged<'_> {
-                fn serialize<S: serde::Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
-                    use serde::ser::SerializeMap as _;
-                    let Some(object)=self.0.as_object() else {return serde::Serialize::serialize(self.0,serializer);};
-                    let mut map=serializer.serialize_map(Some(object.len()))?;
-                    if let Some(tag)=object.get(self.1){map.serialize_entry(self.1,tag)?;}
-                    for (key,value) in object {if key!=self.1{map.serialize_entry(key,value)?;}}
-                    map.end()
+    let expected = if export.error.is_some() {
+        quote! {
+            fn expected_error<E: serde::Serialize + effect_rust::ExportError>(error: &E) -> #error {
+                let value = match serde_json::to_value(error) {
+                    Ok(value) => value,
+                    Err(error) => return edge_error(format!("RUST_TRANSPORT:{error}")),
+                };
+                struct Tagged<'a>(&'a serde_json::Value, &'static str);
+                impl serde::Serialize for Tagged<'_> {
+                    fn serialize<S: serde::Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
+                        use serde::ser::SerializeMap as _;
+                        let Some(object)=self.0.as_object() else {return serde::Serialize::serialize(self.0,serializer);};
+                        let mut map=serializer.serialize_map(Some(object.len()))?;
+                        if let Some(tag)=object.get(self.1){map.serialize_entry(self.1,tag)?;}
+                        for (key,value) in object {if key!=self.1{map.serialize_entry(key,value)?;}}
+                        map.end()
+                    }
+                }
+                match serde_json::to_string(&Tagged(&value,E::TAG_KEY)) {
+                    Ok(json)=>edge_error(format!("RUST_ERROR:{json}")),
+                    Err(error)=>edge_error(format!("RUST_TRANSPORT:{error}")),
                 }
             }
-            match serde_json::to_string(&Tagged(&value,E::TAG_KEY)) {
-                Ok(json)=>edge_error(format!("RUST_ERROR:{json}")),
-                Err(error)=>edge_error(format!("RUST_TRANSPORT:{error}")),
-            }
         }
-    } } else { quote!() };
+    } else {
+        quote!()
+    };
     let schema = export.schema_export().map(|name| {
         let annotation = backend.annotation(&name);
         let (args, returns) = export.schema_positions();
@@ -181,25 +218,44 @@ pub(super) fn generate(export: &Export, backend: Backend) -> syn::Result<Tokens>
 }
 
 fn arguments(export: &Export, backend: Backend) -> (Vec<Tokens>, Vec<Tokens>, Vec<Tokens>) {
-    let mut declarations=Vec::new(); let mut decode=Vec::new(); let mut calls=Vec::new();
-    for (name,wire) in &export.args {
-        let ty=if backend==Backend::Napi && matches!(wire, Wire::Scalar(ty) if super::type_name(ty)=="f32") {
+    let mut declarations = Vec::new();
+    let mut decode = Vec::new();
+    let mut calls = Vec::new();
+    for (name, wire) in &export.args {
+        let ty = if backend == Backend::Napi
+            && matches!(wire, Wire::Scalar(ty) if super::type_name(ty)=="f32")
+        {
             quote!(f64)
-        } else { backend.wire_type(wire) };
+        } else {
+            backend.wire_type(wire)
+        };
         declarations.push(quote!(#name: #ty));
-        decode.push(backend.decode(name,wire,export));
-        calls.push(if matches!(wire,Wire::Frame(_)) { quote!(&#name) } else { quote!(#name) });
+        decode.push(backend.decode(name, wire, export));
+        calls.push(if matches!(wire, Wire::Frame(_)) {
+            quote!(&#name)
+        } else {
+            quote!(#name)
+        });
     }
-    (declarations,decode,calls)
+    (declarations, decode, calls)
 }
-fn result(export:&Export,call:Tokens)->Tokens {
-    if export.error.is_some() { quote!(let __value=#call.map_err(|error| expected_error(&error))?;) } else { quote!(let __value=#call;) }
+fn result(export: &Export, call: Tokens) -> Tokens {
+    if export.error.is_some() {
+        quote!(let __value=#call.map_err(|error| expected_error(&error))?;)
+    } else {
+        quote!(let __value=#call;)
+    }
 }
-fn synchronous(export:&Export,backend:Backend)->syn::Result<Tokens> {
-    let name=export.name(); let annotation=backend.annotation(&name); let ident=&export.function.sig.ident;
-    let (declarations,decode,calls)=arguments(export,backend);
-    let wire=Wire::classify(&export.success,Mode::Sync)?; let output=backend.wire_type(&wire); let error=backend.error();
-    let value=result(export,quote!(super::super::#ident(#(#calls),*))); let encode=backend.encode(&wire,quote!(__value));
+fn synchronous(export: &Export, backend: Backend) -> syn::Result<Tokens> {
+    let name = export.name();
+    let annotation = backend.annotation(&name);
+    let ident = &export.function.sig.ident;
+    let (declarations, decode, calls) = arguments(export, backend);
+    let wire = Wire::classify(&export.success, Mode::Sync)?;
+    let output = backend.wire_type(&wire);
+    let error = backend.error();
+    let value = result(export, quote!(super::super::#ident(#(#calls),*)));
+    let encode = backend.encode(&wire, quote!(__value));
     Ok(quote! {
         #annotation
         pub fn call(#(#declarations),*) -> Result<#output,#error> {
@@ -210,41 +266,81 @@ fn synchronous(export:&Export,backend:Backend)->syn::Result<Tokens> {
     })
 }
 
-fn stream(export:&Export,backend:Backend)->syn::Result<Tokens> {
-    let name=export.name(); let ident=&export.function.sig.ident;
-    let mut rust_class_name=String::from("EffectRust");
-    let mut capitalize=true;
-    for ch in ident.to_string().trim_start_matches("r#").chars(){
-        if ch=='_'{capitalize=true;}
-        else{rust_class_name.push(if capitalize{ch.to_ascii_uppercase()}else{ch});capitalize=false;}
+fn stream(export: &Export, backend: Backend) -> syn::Result<Tokens> {
+    let name = export.name();
+    let ident = &export.function.sig.ident;
+    let mut rust_class_name = String::from("EffectRust");
+    let mut capitalize = true;
+    for ch in ident.to_string().trim_start_matches("r#").chars() {
+        if ch == '_' {
+            capitalize = true;
+        } else {
+            rust_class_name.push(if capitalize {
+                ch.to_ascii_uppercase()
+            } else {
+                ch
+            });
+            capitalize = false;
+        }
     }
     rust_class_name.push_str("Stream");
-    let class=format_ident!("{}",rust_class_name);
-    let class_name=format!("EffectRust{}Stream",name);
-    let annotation=backend.annotation(&name); let class_annotation=backend.annotation(&class_name);
-    let impl_annotation=match backend { Backend::Wasm=>quote!(#[wasm_bindgen::prelude::wasm_bindgen(js_class = #class_name)]),Backend::Napi=>quote!(#[napi_derive::napi]) };
-    let (declarations,decode,calls)=arguments(export,backend); let error=backend.error();
-    let bytes=backend.wire_type(&Wire::BorrowedBytes);
+    let class = format_ident!("{}", rust_class_name);
+    let class_name = format!("EffectRust{}Stream", name);
+    let annotation = backend.annotation(&name);
+    let class_annotation = backend.annotation(&class_name);
+    let impl_annotation = match backend {
+        Backend::Wasm => quote!(#[wasm_bindgen::prelude::wasm_bindgen(js_class = #class_name)]),
+        Backend::Napi => quote!(#[napi_derive::napi]),
+    };
+    let (declarations, decode, calls) = arguments(export, backend);
+    let error = backend.error();
+    let bytes = backend.wire_type(&Wire::BorrowedBytes);
     // Erasure is necessary only for an opaque impl Iterator return type.
-    let concrete = export.options.mode==Mode::InputStream || matches!(export.success,syn::Type::Path(_));
-    let state=if concrete { let ty=&export.success;quote!(#ty) } else { quote!(Box<dyn Iterator<Item=effect_rust::Bytes>>) };
-    let create=result(export,quote!(super::super::#ident(#(#calls),*)));
-    let store=if concrete {quote!(__value)} else {quote!(Box::new(__value))};
-    let close_annotation=backend.annotation("close");
-    let free=if backend==Backend::Napi {
-        let annotation=backend.annotation("free");
+    let concrete =
+        export.options.mode == Mode::InputStream || matches!(export.success, syn::Type::Path(_));
+    let state = if concrete {
+        let ty = &export.success;
+        quote!(#ty)
+    } else {
+        quote!(Box<dyn Iterator<Item = effect_rust::Bytes>>)
+    };
+    let create = result(export, quote!(super::super::#ident(#(#calls),*)));
+    let store = if concrete {
+        quote!(__value)
+    } else {
+        quote!(Box::new(__value))
+    };
+    let close_annotation = backend.annotation("close");
+    let free = if backend == Backend::Napi {
+        let annotation = backend.annotation("free");
         quote!(#annotation pub fn free(&mut self)->Result<(),#error>{ self.close() })
-    } else { quote!() };
-    let (extra_fields, extra_init, extra_close, extra_drop) = if export.options.mode == Mode::OutputStream {
-        (quote!(pending: Option<effect_rust::Bytes>, offset: usize,),
-         quote!(pending: None, offset: 0,),
-         quote!(self.pending = None; self.offset = 0;),
-         quote!(let pending = self.pending.take(); drop(pending);))
-    } else { (quote!(), quote!(), quote!(), quote!()) };
-    let methods=if export.options.mode==Mode::InputStream {
-        let write_annotation=backend.annotation("write"); let update_annotation=backend.annotation("update");let finish_annotation=backend.annotation("finish");
-        let finish_wire=export.options.returns.as_ref().map(|ty|Wire::classify(ty,Mode::Sync)).transpose()?.unwrap_or_else(|| Wire::Json(syn::parse_quote!(serde_json::Value)));
-        let output=backend.wire_type(&finish_wire);let encode=backend.encode(&finish_wire,quote!(__value));
+    } else {
+        quote!()
+    };
+    let (extra_fields, extra_init, extra_close, extra_drop) =
+        if export.options.mode == Mode::OutputStream {
+            (
+                quote!(pending: Option<effect_rust::Bytes>, offset: usize,),
+                quote!(pending: None, offset: 0,),
+                quote!(self.pending = None; self.offset = 0;),
+                quote!(let pending = self.pending.take(); drop(pending);),
+            )
+        } else {
+            (quote!(), quote!(), quote!(), quote!())
+        };
+    let methods = if export.options.mode == Mode::InputStream {
+        let write_annotation = backend.annotation("write");
+        let update_annotation = backend.annotation("update");
+        let finish_annotation = backend.annotation("finish");
+        let finish_wire = export
+            .options
+            .returns
+            .as_ref()
+            .map(|ty| Wire::classify(ty, Mode::Sync))
+            .transpose()?
+            .unwrap_or_else(|| Wire::Json(syn::parse_quote!(serde_json::Value)));
+        let output = backend.wire_type(&finish_wire);
+        let encode = backend.encode(&finish_wire, quote!(__value));
         quote! {
             #write_annotation
             pub fn write(&mut self, bytes:#bytes)->Result<(),#error>{
@@ -264,14 +360,21 @@ fn stream(export:&Export,backend:Backend)->syn::Result<Tokens> {
             }
         }
     } else {
-        let next_annotation=backend.annotation("next");
-        let output=if backend==Backend::Napi {
+        let next_annotation = backend.annotation("next");
+        let output = if backend == Backend::Napi {
             quote!(napi::bindgen_prelude::Either<napi::bindgen_prelude::Buffer,()>)
-        } else {quote!(Option<Vec<u8>>)};
-        let value=if backend==Backend::Napi {quote!(match value {
-            Some(bytes)=>napi::bindgen_prelude::Either::A(napi::bindgen_prelude::Buffer::from(bytes)),
-            None=>napi::bindgen_prelude::Either::B(()),
-        })} else {quote!(value)};
+        } else {
+            quote!(Option<Vec<u8>>)
+        };
+        let value = if backend == Backend::Napi {
+            quote!(match value {
+                Some(bytes) =>
+                    napi::bindgen_prelude::Either::A(napi::bindgen_prelude::Buffer::from(bytes)),
+                None => napi::bindgen_prelude::Either::B(()),
+            })
+        } else {
+            quote!(value)
+        };
         quote! {
             #next_annotation
             pub fn next(&mut self,max_bytes:Option<u32>)->Result<#output,#error>{
@@ -313,7 +416,9 @@ fn stream(export:&Export,backend:Backend)->syn::Result<Tokens> {
         impl Drop for #class {
             fn drop(&mut self){
                 let state=self.state.take();
-                let _=effect_rust::native::guard(concat!(#name,".drop"),||{drop(state); #extra_drop});
+                // Move state into a guard-local scope so both custom and implicit
+                // destruction remain inside the panic boundary.
+                let _=effect_rust::native::guard(concat!(#name,".drop"),||{{let _state=state;} #extra_drop});
             }
         }
         #annotation
@@ -323,24 +428,35 @@ fn stream(export:&Export,backend:Backend)->syn::Result<Tokens> {
     })
 }
 
-fn asynchronous(export:&Export,backend:Backend)->syn::Result<Tokens> {
-    let name=export.name(); let ident=&export.function.sig.ident;let annotation=backend.annotation(&name);let error=backend.error();
-    let (declarations,decode,calls)=arguments(export,backend);
-    let wire=Wire::classify(&export.success,Mode::Sync)?;let encode=backend.encode(&wire,quote!(__value));
-    let settle=export.args.iter().any(|(_,wire)|matches!(wire,Wire::Source(_,true)));
-    let mode=if settle{"settle-only"}else{"abortable"};
-    let guarded=quote! {
+fn asynchronous(export: &Export, backend: Backend) -> syn::Result<Tokens> {
+    let name = export.name();
+    let ident = &export.function.sig.ident;
+    let annotation = backend.annotation(&name);
+    let error = backend.error();
+    let (declarations, decode, calls) = arguments(export, backend);
+    let wire = Wire::classify(&export.success, Mode::Sync)?;
+    let encode = backend.encode(&wire, quote!(__value));
+    let settle = export
+        .args
+        .iter()
+        .any(|(_, wire)| matches!(wire, Wire::Source(_, true)));
+    let mode = if settle { "settle-only" } else { "abortable" };
+    let guarded = quote! {
         let __future=effect_rust::native::guard(#name,||super::super::#ident(#(#calls),*)).map_err(edge_error)?;
     };
-    let await_value=if settle {
+    let await_value = if settle {
         quote!(let __result=__future.await;)
     } else {
         quote!(let __result=effect_rust::host::cancel_future(&__token,__future).await.map_err(|error|edge_error(format!("RUST_CANCELLED:{error}")))?;)
     };
-    let unwrap=if export.error.is_some(){quote!(let __value=__result.map_err(|error|expected_error(&error))?;)}else{quote!(let __value=__result;)};
+    let unwrap = if export.error.is_some() {
+        quote!(let __value=__result.map_err(|error|expected_error(&error))?;)
+    } else {
+        quote!(let __value=__result;)
+    };
     // Completion is notified only after the inner async scope and its future/captured
     // host capabilities have been destroyed, so cancel acknowledgement is quiescent.
-    let work=quote! {
+    let work = quote! {
         let __result=effect_rust::native::guard_future(#name,async move { #guarded #await_value #unwrap #encode }).await;
         __done.cancel();
         __result.map_err(edge_error)?
@@ -352,7 +468,7 @@ fn asynchronous(export:&Export,backend:Backend)->syn::Result<Tokens> {
         _ => quote!(Ok(wasm_bindgen::JsValue::from(value))),
     };
     match backend {
-        Backend::Wasm=>Ok(quote! {
+        Backend::Wasm => Ok(quote! {
             #annotation
             pub fn call(#(#declarations),*)->Result<wasm_bindgen::JsValue,#error>{
                 effect_rust::native::guard(#name,||{
@@ -377,7 +493,7 @@ fn asynchronous(export:&Export,backend:Backend)->syn::Result<Tokens> {
                 }).map_err(edge_error)?
             }
         }),
-        Backend::Napi=>Ok(quote! {
+        Backend::Napi => Ok(quote! {
             #annotation
             pub fn call(env:napi::Env,#(#declarations),*)->Result<napi::bindgen_prelude::Object<'static>,#error>{
                 effect_rust::native::guard(#name,||{

@@ -137,7 +137,9 @@ pub mod excess {
     }
 
     fn apply(schema: &mut Schema, policy: &str) {
-        let Some(object) = schema.as_object_mut() else { return };
+        let Some(object) = schema.as_object_mut() else {
+            return;
+        };
         for union in ["oneOf", "anyOf"] {
             if let Some(Value::Array(branches)) = object.get_mut(union) {
                 // Tagged-union variants are inline objects; each carries the policy.
@@ -171,7 +173,11 @@ pub struct ExportSchema {
 
 impl Default for ExportSchema {
     fn default() -> Self {
-        Self { generator: schemars::generate::SchemaSettings::draft2020_12().into_generator(), args: serde_json::Map::new(), returns: None }
+        Self {
+            generator: schemars::generate::SchemaSettings::draft2020_12().into_generator(),
+            args: serde_json::Map::new(),
+            returns: None,
+        }
     }
 }
 
