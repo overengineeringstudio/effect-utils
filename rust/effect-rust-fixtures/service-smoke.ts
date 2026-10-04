@@ -10,7 +10,7 @@ import { scheduler } from 'node:timers/promises'
 
 import { Cause, Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Scope, Stream } from 'effect'
 
-import { ContractJson, Interop } from '@overeng/effect-rust'
+import { ContractJson, Direct, Interop } from '@overeng/effect-rust'
 
 import { wasmSchedulerSmoke } from './wasm-scheduler-smoke.ts'
 
@@ -38,29 +38,36 @@ const canonical = (value: unknown): string => {
   )
   return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(',')}}`
 }
-const codecs = { Discount: Contracts.Discount, Order: Contracts.Order, Quote: Contracts.Quote }
+const codecs = { Discount: Contracts.Discount, Order: Contracts.Order, Quote: Contracts.Quote, FloatSample: Contracts.FloatSample, WideSample: Contracts.WideSample }
 const Vectors = Schema.Array(
   Schema.Struct({
-    contract: Schema.Literals(['Discount', 'Order', 'Quote']),
+    contract: Schema.Literals(['Discount', 'Order', 'Quote', 'FloatSample', 'WideSample']),
     name: Schema.String,
     input: Schema.Unknown,
     accept: Schema.Boolean,
     canonical: Schema.optionalKey(Schema.Unknown),
+    inputJson: Schema.optionalKey(Schema.String),
+    canonicalJson: Schema.optionalKey(Schema.String),
   }),
 )
 const vectors = Schema.decodeUnknownSync(Vectors)(JSON.parse(readFileSync(vectorsPath, 'utf8')))
 for (const vector of vectors) {
   const label = `${vector.contract}/${vector.name}`
   const codec = codecs[vector.contract]
-  const decode = () => ContractJson.decode(codec)(JSON.stringify(vector.input))
+  const decode = () => ContractJson.decode(codec)(vector.inputJson ?? JSON.stringify(vector.input))
   if (vector.accept === false) {
     assert.throws(decode, undefined, `${label} must be rejected`)
     continue
   }
   assert.equal(
     ContractJson.encode(codec)(decode()),
-    canonical(vector.canonical ?? vector.input),
+    vector.canonicalJson ?? canonical(vector.canonical ?? vector.input),
     label,
+  )
+  assert.equal(
+    ContractJson.encode(codec)(Direct.decode(codec)(Direct.encode(codec)(decode()))),
+    vector.canonicalJson ?? canonical(vector.canonical ?? vector.input),
+    `${label} direct codec agrees`,
   )
 }
 
@@ -109,6 +116,15 @@ const program = (transport: 'wasm' | 'native') => Effect.scoped(
       ),
       4294967295n - 2147483648n + 9007199254740991n,
     )
+    for (const value of [0.1, 1e-45, 3.4028235e38, -0, 1]) {
+      assert.ok(Object.is((yield* fixture.roundTripFloat({ value })).value, Math.fround(value)))
+    }
+    for (const unsigned of [9007199254740991n, 9007199254740992n, 9007199254740993n, 18446744073709551615n]) {
+      assert.deepEqual(yield* fixture.roundTripWide({ unsigned, signed: -9223372036854775808n }), { unsigned, signed: -9223372036854775808n })
+    }
+    const wideError = yield* fixture.wideFailure(18446744073709551615n, -9223372036854775808n).pipe(Effect.flip)
+    assert.ok(wideError instanceof ArithmeticError)
+    assert.deepEqual(wideError.reason, { _tag: 'WideBounds', unsigned: 18446744073709551615n, signed: -9223372036854775808n })
     const dropsBeforeScope = yield* fixture.counterDrops()
     const escapedCounter = yield* Effect.scoped(Effect.gen(function* () {
       const counter = yield* fixture.counter(0)

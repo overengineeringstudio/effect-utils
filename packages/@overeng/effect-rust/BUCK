@@ -52,6 +52,7 @@ export_materialization_inputs([
     "src/schema/columns.ts",
     "src/schema/contract-json.ts",
     "src/schema/contract-json.unit.test.ts",
+    "src/schema/direct.ts",
     "src/schema/discriminator.ts",
     "src/schema/effect-rust.ts",
     "src/schema/json.ts",
@@ -59,6 +60,7 @@ export_materialization_inputs([
     "src/schema/pattern.ts",
     "src/schema/timestamp.ts",
     "src/schema/validation.ts",
+    "src/schema/value-codec.ts",
 ])
 
 static_source_set(
@@ -130,6 +132,7 @@ package_view(
         "src/schema/columns.ts": "src/schema/columns.ts",
         "src/schema/contract-json.ts": "src/schema/contract-json.ts",
         "src/schema/contract-json.unit.test.ts": "src/schema/contract-json.unit.test.ts",
+        "src/schema/direct.ts": "src/schema/direct.ts",
         "src/schema/discriminator.ts": "src/schema/discriminator.ts",
         "src/schema/effect-rust.ts": "src/schema/effect-rust.ts",
         "src/schema/json.ts": "src/schema/json.ts",
@@ -137,6 +140,7 @@ package_view(
         "src/schema/pattern.ts": "src/schema/pattern.ts",
         "src/schema/timestamp.ts": "src/schema/timestamp.ts",
         "src/schema/validation.ts": "src/schema/validation.ts",
+        "src/schema/value-codec.ts": "src/schema/value-codec.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
@@ -186,6 +190,7 @@ package_view(
         "src/schema/columns.ts": "src/schema/columns.ts",
         "src/schema/contract-json.ts": "src/schema/contract-json.ts",
         "src/schema/contract-json.unit.test.ts": "src/schema/contract-json.unit.test.ts",
+        "src/schema/direct.ts": "src/schema/direct.ts",
         "src/schema/discriminator.ts": "src/schema/discriminator.ts",
         "src/schema/effect-rust.ts": "src/schema/effect-rust.ts",
         "src/schema/json.ts": "src/schema/json.ts",
@@ -193,6 +198,7 @@ package_view(
         "src/schema/pattern.ts": "src/schema/pattern.ts",
         "src/schema/timestamp.ts": "src/schema/timestamp.ts",
         "src/schema/validation.ts": "src/schema/validation.ts",
+        "src/schema/value-codec.ts": "src/schema/value-codec.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },

@@ -79,6 +79,13 @@ export const lower = (
   }
   const scalar = ({ ast, path }: { ast: SchemaAST.AST; path: string }): Type | undefined => {
     const annotations = Schema.resolveAnnotations(Schema.make(ast))
+    if (EffectRust.isF32AST(ast) === true) {
+      if (ast.context?.constructorDefault !== undefined ||
+          ast.encodingChecks !== undefined ||
+          (annotations?.[EffectRust.width] !== undefined && annotations[EffectRust.width] !== 'f32'))
+        return reject(path, 'Modified binary32 contract policy', 'Use EffectRust.F32 without defaults, encoded checks or a conflicting width')
+      return { kind: 'f32' }
+    }
     if (
       (ast._tag === 'Declaration' ||
         ast._tag === 'Arrays' ||

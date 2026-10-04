@@ -158,12 +158,12 @@ describe('instance generations', () => {
     )
     try {
       const runtime = await managed.runPromise(Core)
-      expect(Effect.runSync(runtime.call(({ api }) => api.value(42)))).toBe(42)
+      expect(Effect.runSync(runtime.callSync((api) => api.value(42)))).toBe(42)
       expect(Effect.runSync(runtime.snapshot)).toMatchObject({ jobs: 0, state: 'healthy' })
       // eslint-disable-next-line unicorn/no-thenable -- This non-callable then property proves ordinary data is not treated as PromiseLike.
       const value = { then: 'ordinary data' }
-      expect(Effect.runSync(runtime.call(() => value))).toBe(value)
-      expect(Effect.runSync(runtime.call(() => undefined))).toBeUndefined()
+      expect(Effect.runSync(runtime.callSync(() => value))).toBe(value)
+      expect(Effect.runSync(runtime.callSync(() => undefined))).toBeUndefined()
     } finally {
       await managed.dispose()
     }
@@ -182,9 +182,9 @@ describe('instance generations', () => {
         .call(({ api }) => api.pending())
         .pipe(Effect.forkChild({ startImmediately: true }))
       expect((yield* runtime.snapshot).jobs).toBe(1)
-      assertDefect(yield* Effect.exit(runtime.call(({ api }) => api.trap())))
+      assertDefect(yield* Effect.exit(runtime.callSync((api) => api.trap())))
       assertDefect(yield* Fiber.await(waiting))
-      expect(yield* runtime.call(({ api }) => api.value(42))).toBe(42)
+      expect(yield* runtime.callSync((api) => api.value(42))).toBe(42)
       expect(fixture.counts()).toEqual({ loads: 2, releases: 1, live: 0 })
       expect(yield* runtime.snapshot).toMatchObject({
         generation: 2,
@@ -310,8 +310,8 @@ describe('instance generations', () => {
     Effect.gen(function* () {
       const fixture = fake()
       const retired = yield* makeRuntime('test', { load: fixture.load, panicPolicy: 'retire' })
-      assertDefect(yield* Effect.exit(retired.call(({ api }) => api.trap())))
-      assertDefect(yield* Effect.exit(retired.call(({ api }) => api.value(7))))
+      assertDefect(yield* Effect.exit(retired.callSync((api) => api.trap())))
+      assertDefect(yield* Effect.exit(retired.callSync((api) => api.value(7))))
       expect(fixture.counts().loads).toBe(1)
       let attempts = 0
       const runtime = yield* makeRuntime('test', {
@@ -320,8 +320,8 @@ describe('instance generations', () => {
           return fixture.load()
         },
       })
-      assertDefect(yield* Effect.exit(runtime.call(({ api }) => api.trap())))
-      assertDefect(yield* Effect.exit(runtime.call(({ api }) => api.value(7))))
+      assertDefect(yield* Effect.exit(runtime.callSync((api) => api.trap())))
+      assertDefect(yield* Effect.exit(runtime.callSync((api) => api.value(7))))
       expect(attempts).toBe(2)
     }),
   )

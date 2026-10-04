@@ -38,10 +38,8 @@ pub trait TaggedUnion: Sized {
 ///
 /// # Errors
 /// Missing, duplicate, non-string or unknown tags and variant payload errors.
-pub fn deserialize<'de, T: TaggedUnion, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<T, D::Error> {
-    deserializer.deserialize_map(TaggedVisitor::<T>(PhantomData))
+pub fn deserialize<'de, T: TaggedUnion, D: Deserializer<'de>>(deserializer: D) -> Result<T, D::Error> {
+    deserializer.deserialize_struct(T::NAME, &[T::TAG_FIELD], TaggedVisitor::<T>(PhantomData))
 }
 
 fn tag_index<T: TaggedUnion, E: de::Error>(tag: &str) -> Result<usize, E> {

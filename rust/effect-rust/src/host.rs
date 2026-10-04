@@ -80,12 +80,10 @@ pub type ReadFuture<'a> = Pin<Box<dyn Future<Output = Result<Bytes, Error>> + Se
 /// Operations dispatched through the same scope-owned host boundary.
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
-pub enum Request<'a> {
-    Read {
-        path: &'a str,
-    },
+pub enum Request<TPath> {
+    Read { path: TPath },
     ReadRange {
-        path: &'a str,
+        path: TPath,
         #[serde(serialize_with = "serialize_offset")]
         offset: u64,
         #[serde(rename = "maxBytes")]
@@ -95,10 +93,10 @@ pub enum Request<'a> {
 }
 
 fn serialize_offset<S: serde::Serializer>(offset: &u64, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.collect_str(offset)
+    crate::wire::u64_decimal::serialize(offset, serializer)
 }
 
-impl Request<'_> {
+impl<TPath> Request<TPath> {
     /// Validates a response before backend adapters allocate or copy its bytes.
     /// # Errors
     /// Rejects oversized range responses and nonempty yield acknowledgements.
@@ -115,10 +113,22 @@ impl Request<'_> {
     }
 }
 
+impl Request<&str> {
+    /// Own the path only when the callback crosses to the native JS thread.
+    #[must_use]
+    pub fn into_owned(self) -> Request<String> {
+        match self {
+            Self::Read { path } => Request::Read { path: path.to_owned() },
+            Self::ReadRange { path, offset, max_bytes } => Request::ReadRange { path: path.to_owned(), offset, max_bytes },
+            Self::Yield => Request::Yield,
+        }
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
-type Call = dyn for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a>;
+type Call = dyn for<'a> Fn(Request<&'a str>, CancellationToken) -> ReadFuture<'a>;
 #[cfg(not(target_arch = "wasm32"))]
-type Call = dyn for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a> + Send + Sync;
+type Call = dyn for<'a> Fn(Request<&'a str>, CancellationToken) -> ReadFuture<'a> + Send + Sync;
 
 /// A clonable Rust capability. Clones share the host callback and cancellation.
 ///
@@ -142,28 +152,13 @@ impl<M: Mode> Clone for Source<M> {
 
 impl<M: Mode> Source<M> {
     #[cfg(target_arch = "wasm32")]
-    pub fn new(
-        callback: impl for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a> + 'static,
-    ) -> Self {
-        Self {
-            call: Shared::new(callback),
-            cancellation: CancellationToken::new(),
-            mode: PhantomData,
-        }
+    pub fn new(callback: impl for<'a> Fn(Request<&'a str>, CancellationToken) -> ReadFuture<'a> + 'static) -> Self {
+        Self { call: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(
-        callback: impl for<'a> Fn(Request<'a>, CancellationToken) -> ReadFuture<'a>
-            + Send
-            + Sync
-            + 'static,
-    ) -> Self {
-        Self {
-            call: Shared::new(callback),
-            cancellation: CancellationToken::new(),
-            mode: PhantomData,
-        }
+    pub fn new(callback: impl for<'a> Fn(Request<&'a str>, CancellationToken) -> ReadFuture<'a> + Send + Sync + 'static) -> Self {
+        Self { call: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
     }
 
     /// Binds this capability to a caller-owned cancellation scope.
@@ -221,7 +216,7 @@ impl<M: Mode> Source<M> {
         self.call(Request::Yield).await.map(|_| ())
     }
 
-    async fn call(&self, request: Request<'_>) -> Result<Bytes, Error> {
+    async fn call(&self, request: Request<&str>) -> Result<Bytes, Error> {
         self.cancellation.check()?;
         let future = (self.call)(request, self.cancellation.clone());
         let bytes = if M::ABORTABLE {

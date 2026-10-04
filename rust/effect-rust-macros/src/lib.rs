@@ -6,9 +6,9 @@
 //! unified Cargo feature graph can enable both without mixing JS runtimes.
 //! Native adapters require panic unwinding. Normal Rust builds have no JS types.
 //!
-//! Domain types cross the edge through serde. Wide fields inside domain types
-//! must opt into the runtime's decimal serde field helpers; only primitive
-//! wide parameters/returns are converted automatically from their Rust types.
+//! Domain types cross the edge through typed serde traversal. Wide fields inside
+//! domain types opt into explicit width helpers: bigint in-process, decimal
+//! strings in JSON. Primitive u64/i64 parameters and returns use bigint directly.
 #![forbid(unsafe_code)]
 
 use proc_macro::TokenStream;
@@ -31,9 +31,10 @@ mod resource;
 /// `excess = "ignore"`), resolves schemars through effect-rust, and emits the
 /// `x-effect-rust-*` vocabulary. Field attributes:
 ///
-/// - `#[wire(u64)]` / `#[wire(i64)]`: canonical base-10 strings. Bare 64-bit,
-///   pointer-sized and float fields are rejected because their width is not portable.
-/// - `#[wire(timestamp_millis)]` on `chrono::DateTime<Utc>`: RFC 3339 milliseconds.
+/// - `#[wire(u64)]` / `#[wire(i64)]`: bigint in-process, canonical decimal JSON strings.
+/// - `#[wire(f32)]`: finite numeric input rounded to binary32; overflow fails.
+/// - `#[wire(timestamp_millis)]` on `chrono::DateTime<Utc>`: integral epoch milliseconds
+///   in-process, RFC3339 milliseconds in JSON.
 /// - `effect_rust::Patch<T>` fields become omittable (`Absent`/`Null`/`Value`).
 ///
 /// Enums replace the derived `Deserialize` with `effect_rust::tagged`: any key
@@ -381,14 +382,10 @@ impl Wire {
             Type::Path(path) => {
                 let name = type_name(ty);
                 match name.as_str() {
-                    "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "f32" | "f64" | "bool" => {
-                        Ok(Self::Scalar(ty.clone()))
-                    }
-                    "u64" | "i64" | "u128" | "i128" => Ok(Self::Wide(ty.clone())),
-                    "usize" | "isize" => Err(syn::Error::new_spanned(
-                        ty,
-                        "architecture-dependent integer width: use u32/u64 or i32/i64",
-                    )),
+                    "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "f32" | "f64" | "bool" => Ok(Self::Scalar(ty.clone())),
+                    "u64" | "i64" => Ok(Self::Wide(ty.clone())),
+                    "u128" | "i128" => Err(syn::Error::new_spanned(ty, "128-bit exports have no portable direct wire width: use u64 or i64")),
+                    "usize" | "isize" => Err(syn::Error::new_spanned(ty, "architecture-dependent integer width: use u32/u64 or i32/i64")),
                     "String" => Ok(Self::String),
                     "Bytes" => Ok(Self::Bytes),
                     "Vec"

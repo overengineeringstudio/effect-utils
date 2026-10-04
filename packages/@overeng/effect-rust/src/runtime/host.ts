@@ -1,6 +1,5 @@
 import { Context, Effect, Exit, Schema } from 'effect'
 
-import * as ContractJson from '../schema/contract-json.ts'
 import { Input, Transport } from './errors.ts'
 
 /** Whether cancellation interrupts host work or waits for it to settle. */
@@ -104,17 +103,17 @@ const sourceRequest = Schema.Union([
   }),
   Schema.Struct({ kind: Schema.Literal('yield') }),
 ])
-const decodeSourceRequest = Schema.decodeUnknownEffect(ContractJson.valueCodec(sourceRequest), {
+const decodeSourceRequest = Schema.decodeUnknownEffect(sourceRequest, {
   onExcessProperty: 'error',
 })
 
-/** Native and wasm use the same protocol, including canonical decimal u64 offsets. */
+/** Native and wasm use the same typed protocol, including exact u64 bigint offsets. */
 export type SourceRequest =
   | { readonly kind: 'read'; readonly path: string }
   | {
       readonly kind: 'readRange'
       readonly path: string
-      readonly offset: string
+      readonly offset: bigint
       readonly maxBytes: number
     }
   | { readonly kind: 'yield' }

@@ -1,6 +1,7 @@
 import { Schema, SchemaAST } from 'effect'
 
-import { excess } from './effect-rust.ts'
+import { excess, width } from './effect-rust.ts'
+import { JsonError, JsonNumber } from './json.ts'
 
 const needsPreparation = (root: SchemaAST.AST): boolean => {
   const seen = new Set<SchemaAST.AST>()
@@ -35,6 +36,13 @@ export const prepare = ({
   if (ast._tag === 'Suspend') return prepare({ ast: ast.thunk(), input, depth: depth + 1 })
   if (ast.encoding !== undefined)
     return prepare({ ast: SchemaAST.toEncoded(ast), input, depth: depth + 1 })
+  if (input instanceof JsonNumber) {
+    if (ast._tag !== 'Number') return input
+    if (Schema.resolveAnnotations(Schema.make(ast))?.[width] !== 'f32' &&
+      (Number.isSafeInteger(input.value) === false || /^(0|-?[1-9][0-9]*)$/.test(input.token) === false))
+      throw new JsonError(input.offset, input.path, 'Integer field requires a safe canonical integer token')
+    return input.value
+  }
   if (ast._tag === 'Union') {
     if (input === null) return input
     const member = ast.types.find((candidate) => {

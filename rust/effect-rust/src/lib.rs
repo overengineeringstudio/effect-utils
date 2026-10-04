@@ -1,5 +1,5 @@
 //! Plain-Rust capabilities and wire contracts shared by generated interop adapters.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 #[cfg(all(feature = "napi", not(target_arch = "wasm32"), not(panic = "unwind")))]
 compile_error!("the napi feature requires panic=unwind to guard native exports");
@@ -7,6 +7,7 @@ compile_error!("the napi feature requires panic=unwind to guard native exports")
 mod cancellation;
 #[cfg(feature = "contract")]
 pub mod contract;
+pub mod direct;
 pub mod frame;
 pub mod host;
 pub mod native;

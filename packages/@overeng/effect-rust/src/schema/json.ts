@@ -21,8 +21,17 @@ export const scalarString = (value: string): boolean => {
   }
   return true
 }
+/** Internal lexical token; schema preparation decides integer versus float admission. */
+export class JsonNumber {
+  constructor(
+    readonly value: number,
+    readonly token: string,
+    readonly offset: number,
+    readonly path: string,
+  ) {}
+}
 /** Parses before schema admission, preserving duplicate keys and number lexemes. */
-export const parseJson = (text: string): unknown => {
+export const parseJson = (text: string, preserveNumberLexemes = false): unknown => {
   let cursor = 0
   const fail = ({ path, message }: { path: string; message: string }): never => {
     throw new JsonError(cursor, path, message)
@@ -121,6 +130,8 @@ export const parseJson = (text: string): unknown => {
     cursor += token.length
     const number = Number(token)
     if (Number.isFinite(number) === false) return fail({ path, message: 'Non-finite number' })
+    if (preserveNumberLexemes === true)
+      return new JsonNumber(number, token, cursor - token.length, path)
     if (
       Number.isInteger(number) === true &&
       (Number.isSafeInteger(number) === false || /^(0|-?[1-9][0-9]*)$/.test(token) === false)
@@ -144,7 +155,7 @@ export const parseJson = (text: string): unknown => {
  * discriminator set, matching the generated Rust `TAG_FIELDS`. Decoders accept any key order.
  */
 // eslint-disable-next-line overeng/named-args -- Preserve the public canonicalJson positional SDK signature.
-export const canonicalJson = (input: unknown, tagKeys: readonly string[] = ['_tag']): string => {
+export const canonicalJson = (input: unknown, tagKeys: readonly string[] = ['_tag'], numericFloats = false): string => {
   const seen = new Set<object>()
   const encode = ({
     value,
@@ -167,8 +178,8 @@ export const canonicalJson = (input: unknown, tagKeys: readonly string[] = ['_ta
     if (typeof value === 'number') {
       if (
         Number.isFinite(value) === false ||
-        Object.is(value, -0) === true ||
-        (Number.isInteger(value) === true && Number.isSafeInteger(value) === false)
+        (numericFloats === false && Object.is(value, -0) === true) ||
+        (numericFloats === false && Number.isInteger(value) === true && Number.isSafeInteger(value) === false)
       )
         fail('Non-I-JSON number')
       return JSON.stringify(value)

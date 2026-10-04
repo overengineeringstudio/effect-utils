@@ -39,6 +39,16 @@ pub const VOCABULARY: &str = "https://effect-rust.dev/schema/v1";
 pub enum U64 {}
 /// Schema of a canonical base-10 `i64` string; used by `#[wire(i64)]`.
 pub enum I64 {}
+/// Schema of an explicit finite IEEE binary32 numeric field.
+pub enum F32 {}
+
+impl JsonSchema for F32 {
+    fn inline_schema() -> bool { true }
+    fn schema_name() -> Cow<'static, str> { "F32".into() }
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "type": "number", "format": "float", "x-effect-rust-width": "f32", "x-effect-rust-nonfinite": "reject" })
+    }
+}
 
 impl JsonSchema for U64 {
     fn inline_schema() -> bool {

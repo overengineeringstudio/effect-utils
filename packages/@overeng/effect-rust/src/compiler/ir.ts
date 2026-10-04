@@ -13,7 +13,7 @@ export const integerRanges: Readonly<Record<Width, readonly [number, number]>> =
 }
 /** Portable scalar, container, semantic codec or named reference in the contract IR. */
 export type Type =
-  | { readonly kind: 'string' | 'bool' | 'dateTime' | 'null' }
+  | { readonly kind: 'string' | 'bool' | 'dateTime' | 'null' | 'f32' }
   | { readonly kind: 'u64' | 'i64'; readonly minimum?: string; readonly maximum?: string }
   | {
       readonly kind: 'int'

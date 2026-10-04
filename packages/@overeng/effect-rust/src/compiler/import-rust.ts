@@ -560,6 +560,11 @@ export const importRustSchema = (
       case 'boolean':
         allowed({ node, keys: ['type'], path })
         return { kind: 'bool' }
+      case 'number':
+        allowed({ node, keys: ['type', 'format', 'x-effect-rust-width', 'x-effect-rust-nonfinite'], path })
+        if (node.format !== 'float' || node['x-effect-rust-width'] !== 'f32' || node['x-effect-rust-nonfinite'] !== 'reject')
+          return reject(path, 'Unregistered floating-point policy', 'Use explicit finite binary32 width and non-finite rejection')
+        return { kind: 'f32' }
       case 'integer': {
         allowed({
           node,
@@ -1122,6 +1127,8 @@ const finish = (ir: ContractIR): { readonly ir: ContractIR; readonly source: str
         return { _tag: 'Boolean', checks: [] }
       case 'null':
         return { _tag: 'Null', checks: [] }
+      case 'f32':
+        return semantic({ runtime: 'EffectRust.F32', Type: 'number' })
       case 'u64':
       case 'i64': {
         const minimum = value.minimum ?? (value.kind === 'u64' ? '0' : '-9223372036854775808')

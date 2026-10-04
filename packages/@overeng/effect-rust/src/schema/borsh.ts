@@ -205,6 +205,14 @@ export const makeIRCodec = (
           if (typeof value !== 'string') throw new FrameError(size, 'Expected string')
           string(value)
           break
+        case 'f32': {
+          if (typeof value !== 'number' || Number.isFinite(value) === false || Object.is(Math.fround(value), value) === false)
+            throw new FrameError(size, 'Expected finite binary32')
+          const bytes = new Uint8Array(4)
+          new DataView(bytes.buffer).setFloat32(0, value, true)
+          push(bytes)
+          break
+        }
         case 'int':
           if (typeof value !== 'number' || Number.isSafeInteger(value) === false)
             throw new FrameError(size, 'Expected safe integer')
@@ -346,6 +354,13 @@ export const makeIRCodec = (
           return discriminant(1) === 1
         case 'string':
           return string()
+        case 'f32': {
+          if (cursor + 4 > bytes.length) throw new FrameError(cursor, 'Truncated binary32')
+          const value = new DataView(bytes.buffer, bytes.byteOffset + cursor, 4).getFloat32(0, true)
+          cursor += 4
+          if (Number.isFinite(value) === false) throw new FrameError(cursor - 4, 'Non-finite binary32')
+          return value
+        }
         case 'int': {
           const value = Number(
             integer({ width: widths[node.width], signed: node.width.startsWith('i') }),

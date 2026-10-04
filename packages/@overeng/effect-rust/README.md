@@ -23,9 +23,7 @@ const layer = Interop.wasmLayer.node(ContentCore, {
   // Generated lexical factory: fresh wasm-bindgen state AND instance per call.
   load: loadContentCore,
   make: (runtime: Interop.Runtime<Api>) => ({
-    hash: Effect.fn('ContentCore.hash')((bytes: Uint8Array) =>
-      runtime.call(({ api }) => api.hash(bytes)),
-    ),
+    hash: (bytes: Uint8Array) => runtime.callSync((api) => api.hash(bytes)),
   }),
   panicPolicy: 'rebuild',
   chunkProfile: 'latency',
@@ -173,6 +171,15 @@ destructors are guarded so an unwind never crosses the addon finalizer boundary.
 
 `runtime.call(({ api, signal }) => ...)` accepts a synchronous value, a Promise, or an explicit `RustJob`:
 
+Generated synchronous methods use `runtime.callSync((api) => ...)`: entry is
+lazy and interruption-aware, but allocates no job, AbortController, callback
+fiber or per-invocation tracing span. The acquired generation cannot be
+released or poisoned by another JS task during synchronous Rust entry.
+Panics still poison it; later calls rebuild or fail according to `panicPolicy`.
+Generated services prepare directional Schema codecs once at construction.
+Construction rejects a second physical Effect copy before any Rust call;
+deduplicate `effect` across the service and runtime dependency graph.
+
 ```ts
 const job: Interop.RustJob<string> = {
   _tag: 'RustJob',
@@ -190,7 +197,7 @@ An abortable job's `cancel` acknowledgment means Rust has dropped its future and
 implementation with the same scoped cancellation and quiescence ownership.
 `readRange(path, offset: bigint, maxBytes: number)` backs Rust's
 `Source::read_range(path, offset: u64, max_bytes: u32)`: the offset crosses the
-callback boundary as canonical decimal u64 text, `maxBytes` is a positive u32,
+callback boundary as an exact u64 bigint, `maxBytes` is a positive u32,
 and oversized responses are rejected. Empty bytes mean EOF; a short nonempty
 read does not. Reads do not implicitly own a persistent file handle or
 snapshot: the host implementation owns consistency when files change.
@@ -302,11 +309,28 @@ keys, noncanonical or unsafe JSON integers and nesting beyond 128. Canonical
 encoding sorts keys with the discriminator first. `decodeValue` / `encodeValue`
 provide the corresponding strict boundary for already-parsed JSON.
 
-The wasm and Node-API object adapters normalize JavaScript's finite, integral
-safe numbers into serde integer values before typed decoding, including nested
-arrays and objects. Fractions and unsafe numbers remain floats and cannot enter
-integer contracts. This object-boundary normalization does not relax JSON-text
-admission: integer spellings such as `1.0` and `1e0` are still rejected.
+`Direct.codec` / `decode` / `encode` derive the in-process representation from
+the same admitted schema: u64/i64 are bigint, millisecond timestamps are integral
+epoch-millisecond numbers within years 0000–9999, bytes are Uint8Array, and
+containers remain structured JS values. The wasm and Node-API adapters traverse
+those values directly through serde, without JSON text or a `serde_json::Value`
+tree. Native async results are encoded only on their owning JS thread; workers
+carry Rust values, never JS handles. The narrow Node-API raw-handle casts are
+locally documented unsafe boundaries; the remaining runtime denies unsafe code.
+Expected errors are Error objects with a structured `rustError` payload, not
+JSON embedded in their message. Unexpected throws and panic defects stay defects.
+Integer fields require finite, integral safe numbers; wide fields require bigint
+with exact width checks. This does not relax JSON integer spellings: `1.0` and
+`1e0` remain invalid in integer fields.
+
+Use `EffectRust.F32` in Effect or `#[wire(f32)]` in Rust for finite IEEE binary32.
+Numeric fractions and exponents round to nearest binary32 on decode; NaN,
+infinities and overflow are rejected in both transports. Canonical JSON is the
+ECMAScript shortest representation of the widened binary32 value, matching
+`JSON.stringify(Math.fround(x))`. Negative zero survives direct transport and
+binary frames, but canonical JSON normalizes it to `0`. Borsh uses four
+little-endian bytes; Columns uses Float32Array. Width metadata alone cannot
+authorize an arbitrary transformation.
 
 `Schema.optionalKey(Schema.NullOr(T))` represents Patch directly in TypeScript:
 missing, `null` and a present value stay distinct. Generated Rust keeps
@@ -383,9 +407,9 @@ unless `T` already does. Ordinary Effect Schema validation retains the authored
 presence semantics; JSON collapses own-undefined and missing optional keys.
 
 Generated Rust helpers and dependencies follow the emitted definitions:
-decimal `U64`/`I64`, `TimestampMillis`, and `Patch` support appear only when
-used; `chrono` requires timestamps, and `regex` requires timestamps or a
-pattern. Strict JSON support and Borsh/frame APIs remain part of every generated
+decimal `U64`/`I64`, finite `F32`, `TimestampMillis`, and `Patch` support appear
+only when used; `chrono` requires timestamps, `ryu-js` requires floats, and
+`regex` requires timestamps or a pattern. Strict JSON support and Borsh/frame APIs remain part of every generated
 contract crate. Borsh opt-out is not an implicit compiler optimization.
 
 ### Acquired engines versus pure module helpers

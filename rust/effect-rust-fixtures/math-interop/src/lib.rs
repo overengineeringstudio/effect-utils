@@ -9,6 +9,7 @@ pub enum ArithmeticError {
     Overflow { dividend: i32, divisor: i32 },
     InvalidChunkSize { chunk: u32 },
     PriceOverflow { quantity: u32 },
+    WideBounds { unsigned: u64, signed: i64 },
 }
 
 impl std::fmt::Display for ArithmeticError {
@@ -16,12 +17,9 @@ impl std::fmt::Display for ArithmeticError {
         match self {
             Self::DivideByZero { dividend } => write!(f, "cannot divide {dividend} by zero"),
             Self::Overflow { dividend, divisor } => write!(f, "{dividend}/{divisor} overflows i32"),
-            Self::InvalidChunkSize { chunk } => {
-                write!(f, "chunk size must be 1..=1048576, got {chunk}")
-            }
-            Self::PriceOverflow { quantity } => {
-                write!(f, "order total overflows u64 at quantity {quantity}")
-            }
+            Self::InvalidChunkSize { chunk } => write!(f, "chunk size must be 1..=1048576, got {chunk}"),
+            Self::PriceOverflow { quantity } => write!(f, "order total overflows u64 at quantity {quantity}"),
+            Self::WideBounds { unsigned, signed } => write!(f, "{unsigned}/{signed} are wide boundary values"),
         }
     }
 }
@@ -126,6 +124,17 @@ pub fn sum_json_integers(input: contract::NumericOperands) -> i64 {
     i64::from(input.unsigned)
         + i64::from(input.signed)
         + i64::try_from(input.bounded).expect("validated safe integer")
+}
+
+#[effect_rust::export(name = "roundTripFloat")]
+pub fn round_trip_float(input: contract::FloatSample) -> contract::FloatSample { input }
+
+#[effect_rust::export(name = "roundTripWide")]
+pub fn round_trip_wide(input: contract::WideSample) -> contract::WideSample { input }
+
+#[effect_rust::export(name = "wideFailure", error_tag = "reason")]
+pub fn wide_failure(unsigned: u64, signed: i64) -> Result<(), ArithmeticError> {
+    Err(ArithmeticError::WideBounds { unsigned, signed })
 }
 
 pub struct Chunks {

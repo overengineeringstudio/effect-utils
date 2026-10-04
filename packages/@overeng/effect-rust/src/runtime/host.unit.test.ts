@@ -79,7 +79,7 @@ describe('host capabilities', () => {
     }
   })
 
-  it('range requests reject noncanonical offsets and invalid u32 bounds before host dispatch', async () => {
+  it('range requests reject non-bigint offsets, width overflow and invalid u32 bounds before host dispatch', async () => {
     const scope = await Effect.runPromise(Scope.make())
     const runPromise = Effect.runPromiseWith(Context.make(Scope.Scope, scope))
     let calls = 0
@@ -95,21 +95,21 @@ describe('host capabilities', () => {
         }),
       )
       const signal = new AbortController().signal
-      for (const offset of ['01', '-1', '+1', '1e3', '18446744073709551616']) {
+      for (const offset of ['01', 0, -1n, 18446744073709551616n]) {
         await expect(
           source.call(signal, { kind: 'readRange', path: 'file', offset, maxBytes: 1 }),
         ).rejects.toThrow('Invalid host Source request')
       }
       for (const maxBytes of [0, -1, 0.5, 4294967296, Number.NaN, Number.POSITIVE_INFINITY]) {
         await expect(
-          source.call(signal, { kind: 'readRange', path: 'file', offset: '0', maxBytes }),
+          source.call(signal, { kind: 'readRange', path: 'file', offset: 0n, maxBytes }),
         ).rejects.toThrow('Invalid host Source request')
       }
       expect(calls).toBe(0)
       await source.call(signal, {
         kind: 'readRange',
         path: 'file',
-        offset: '18446744073709551615',
+        offset: 18446744073709551615n,
         maxBytes: 4294967295,
       })
       expect(calls).toBe(1)

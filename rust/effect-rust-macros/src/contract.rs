@@ -158,8 +158,9 @@ fn wire_field(field: &mut syn::Field) -> syn::Result<()> {
             let (serde_with, schema_with, accepted) = match kind.to_string().as_str() {
                 "u64" => ("::effect_rust::wire::u64_decimal", "::effect_rust::contract::U64", name == "u64"),
                 "i64" => ("::effect_rust::wire::i64_decimal", "::effect_rust::contract::I64", name == "i64"),
+                "f32" => ("::effect_rust::wire::f32", "::effect_rust::contract::F32", name == "f32"),
                 "timestamp_millis" => ("::effect_rust::wire::timestamp_millis", "::effect_rust::TimestampMillis", name == "DateTime"),
-                _ => return Err(syn::Error::new_spanned(attr, "unknown wire codec: use #[wire(u64)], #[wire(i64)] or #[wire(timestamp_millis)]")),
+                _ => return Err(syn::Error::new_spanned(attr, "unknown wire codec: use #[wire(u64)], #[wire(i64)], #[wire(f32)] or #[wire(timestamp_millis)]")),
             };
             if !accepted {
                 return Err(syn::Error::new_spanned(
@@ -185,7 +186,8 @@ fn wire_field(field: &mut syn::Field) -> syn::Result<()> {
             if let Some(found) = lossy(&field.ty) {
                 let remedy = match found.as_str() {
                     "u64" | "i64" => format!("add #[wire({found})] (canonical base-10 string) to a direct `{found}` field"),
-                    "f32" | "f64" => "floats are not portable contract values; use an integer width or a decimal string brand".to_owned(),
+                    "f32" => "add #[wire(f32)] for finite binary32 rounding with numeric JSON".to_owned(),
+                    "f64" => "f64 has no registered contract policy; use #[wire(f32)] or an integer width".to_owned(),
                     _ => "use an explicit width: u8/u16/u32/i32 or #[wire(u64)]/#[wire(i64)]".to_owned(),
                 };
                 return Err(syn::Error::new_spanned(

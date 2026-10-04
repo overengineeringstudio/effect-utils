@@ -14,8 +14,9 @@ export type Column =
   | Int32Array
   | BigUint64Array
   | BigInt64Array
+  | Float32Array
 /** Integer widths supported by numeric column storage, including bigint-backed 64-bit columns. */
-export type ColumnWidth = Width | 'u64' | 'i64'
+export type ColumnWidth = Width | 'f32'
 const constructors = {
   u8: Uint8Array,
   i8: Int8Array,
@@ -25,6 +26,7 @@ const constructors = {
   i32: Int32Array,
   u64: BigUint64Array,
   i64: BigInt64Array,
+  f32: Float32Array,
 }
 
 /** Column storage does not encode optionality, nullability or nested values. */
@@ -44,6 +46,7 @@ export const make = <const TFields extends Schema.Struct.Fields>(
       type = target.type
     }
     if (type.kind === 'int') return { width: type.width, numeric: true }
+    if (type.kind === 'f32') return { width: 'f32', numeric: true }
     if (type.kind === 'u64' || type.kind === 'i64') return { width: type.kind, numeric: false }
     throw new FrameError(0, 'Columns require numeric fields')
   }
@@ -81,7 +84,7 @@ export const make = <const TFields extends Schema.Struct.Fields>(
           const domain = numeric === true && typeof value === 'bigint' ? Number(value) : value
           if (
             (numeric === true &&
-              (typeof domain !== 'number' || Number.isSafeInteger(domain) === false)) ||
+              (typeof domain !== 'number' || (width !== 'f32' && Number.isSafeInteger(domain) === false))) ||
             is(domain) === false
           )
             throw new FrameError(0, `Value violates column ${key} schema`)

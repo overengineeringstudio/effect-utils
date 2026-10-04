@@ -7,8 +7,8 @@ license.workspace = true
 
 [features]
 default = []
-wasm = []
-napi = []
+wasm = ["dep:js-sys", "dep:wasm-bindgen"]
+napi = ["dep:napi"]
 # Rust-owned contracts: schemars schemas with the effect-rust vocabulary and
 # the `#[effect_rust::contract]` attribute. Required by exports with serde domain types.
 contract = ["dep:schemars", "dep:regex"]
@@ -21,4 +21,12 @@ regex = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
+ryu-js.workspace = true
 serde_path_to_error.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+napi = { workspace = true, optional = true, features = ["napi6"] }

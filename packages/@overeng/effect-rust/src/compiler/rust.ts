@@ -75,6 +75,7 @@ const reserved: Readonly<Record<string, true>> = Object.fromEntries(
     'I32',
     'U64',
     'I64',
+    'F32',
     'TimestampMillis',
     'Patch',
     'Null',
@@ -172,7 +173,7 @@ export const emitRust = (ir: ContractIR, options: RustOptions = {}): RustOutput 
   )
   // Every named definition is emitted as a public contract, including vector-only contracts.
   // Walk nested containers without following refs: their targets are scanned exactly once below.
-  const features = { u64: false, i64: false, timestamp: false, patch: false, regex: false }
+  const features = { u64: false, i64: false, f32: false, timestamp: false, patch: false, regex: false }
   const bounded = new Set<Width | 'number-u64' | 'number-i64'>()
   const collectFeatures = (type: Type): void => {
     if (type.kind === 'int' && (type.width === 'u64' || type.width === 'i64')) {
@@ -186,6 +187,7 @@ export const emitRust = (ir: ContractIR, options: RustOptions = {}): RustOutput 
     switch (type.kind) {
       case 'u64':
       case 'i64':
+      case 'f32':
         features[type.kind] = true
         break
       case 'dateTime':
@@ -318,6 +320,8 @@ export const emitRust = (ir: ContractIR, options: RustOptions = {}): RustOutput 
         return 'String'
       case 'bool':
         return 'bool'
+      case 'f32':
+        return 'F32'
       case 'u64':
       case 'i64':
         return type.minimum === undefined
@@ -675,7 +679,8 @@ ${conversions.join('\n')}`
   const inherited = new Set(workspace === true ? cargo.inherit : [])
   const dependencies = [
     { name: 'serde', version: '1.0.228', features: ['derive'] },
-    { name: 'serde_json', version: '1', features: ['unbounded_depth'] },
+    { name: 'serde_json', version: '1', features: ['unbounded_depth', 'raw_value'] },
+    ...(features.f32 === true ? [{ name: 'ryu-js', version: '1.0.3', features: [] }] : []),
     ...(features.timestamp === true
       ? [{ name: 'chrono', version: '0.4', features: ['std'], defaultFeatures: false }]
       : []),
