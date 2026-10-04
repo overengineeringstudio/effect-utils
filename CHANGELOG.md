@@ -67,6 +67,8 @@
   `cacheable = False` or rule-owned cache eligibility.
 - Pipeline-report baseline deadline tests use a synchronized virtual clock,
   so host scheduling and HTTP latency cannot consume their deadline budgets.
+- Vitest collection explicitly disables static parsing unless a package admits it,
+  preserving runtime-generated test inventories with Vitest 5's changed default.
 
 ### Changed
 
