@@ -235,10 +235,14 @@ Partial rule imports that omit those macros' admission changes retain default
 denial until the complete contract is imported. This classification does not
 admit native compilation or executable build scripts.
 
-Hash-and-size-validated archive acquisition is a separate admission candidate,
-not part of offline extraction: its network source is an acquisition capability,
-and its launcher still needs the same declared startup/input audit before shared
-AC reads or uploads are authorized.
+Hash-and-size-validated pnpm archive acquisition is admitted separately from
+offline extraction. The network source is an explicit CAS/registry acquisition
+capability; a successful output must match both declared digest and byte size
+before atomic publication. Nix-backed acquisition reads the explicit immutable
+store root and verifies the same output identity. Complete acquisition/import
+sources and projected Bun participate in the action key; launchers clear env,
+dotenv/preloads and implicit installation. Endpoint availability can fail an
+acquisition but cannot alter a successful output's pinned bytes.
 
 These local runners do not provide an OS filesystem/network sandbox. GNU env
 scrubbing is startup enforcement, declared-input hashing detects mutation, and

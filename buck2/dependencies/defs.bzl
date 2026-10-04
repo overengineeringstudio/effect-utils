@@ -223,9 +223,9 @@ def _fetch_impl(ctx):
                 "acquire-archive.ts": ctx.attrs._acquire_archive,
                 "public-archive-origin.ts": ctx.attrs._public_archive_origin,
             })
-            ctx.actions.run(
+            hermetic_action(ctx,
                 cmd_args([
-                    ctx.attrs._bun[BunToolchainInfo].executable,
+                    hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
                     sources.project("acquire-archive.ts"),
                     "--cas-url",
                     "{}{}".format(url_prefix, ctx.attrs.sha256),
@@ -241,14 +241,13 @@ def _fetch_impl(ctx):
                 category = "pnpm_archive",
                 identifier = ctx.attrs.name,
                 local_only = True,
-                allow_cache_upload = True,
             )
     else:
         _require_nix_store_path(archive_root, "nix_store.root")
         out = ctx.actions.declare_output("package.tgz")
-        ctx.actions.run(
+        hermetic_action(ctx,
             cmd_args([
-                ctx.attrs._bun[BunToolchainInfo].executable,
+                hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
                 ctx.attrs._nix_archive,
                 "--root",
                 archive_root,
@@ -262,14 +261,13 @@ def _fetch_impl(ctx):
             category = "pnpm_nix_archive",
             identifier = ctx.attrs.name,
             local_only = True,
-            allow_cache_upload = True,
         )
     return [DefaultInfo(default_output = out)]
 
 
 _fetch = rule(
     impl = _fetch_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "sha256": attrs.string(),
         "size_bytes": attrs.int(),
         "url": attrs.string(),
@@ -286,7 +284,7 @@ _fetch = rule(
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",
         )),
-    },
+    }),
 )
 
 
@@ -348,6 +346,7 @@ def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches
         sha256 = sha256,
         size_bytes = size_bytes,
         url = url,
+        exec_compatible_with = hermetic_execution_constraints(),
         visibility = [],
     )
     _extract(
