@@ -26,6 +26,7 @@ const files = [
   'buck2/rust/toolchains.bzl',
   'buck2/static_checks.bzl',
   'buck2/swift/BUCK',
+  'buck2/swift/compile.ts',
   'buck2/swift/defs.bzl',
   'buck2/toolchains/BUCK',
   'buck2/toolchains/configured.bzl',

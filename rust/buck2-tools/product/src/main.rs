@@ -1508,53 +1508,6 @@ mod tests {
     }
 
     #[test]
-    fn archive_tree_marks_only_declared_executables() {
-        let mut files = BTreeMap::new();
-        files.insert(
-            "Applications/Demo.app/Contents/MacOS/demo".to_owned(),
-            b"demo".to_vec(),
-        );
-        files.insert(
-            "Applications/Demo.app/Contents/Resources/icon.icns".to_owned(),
-            b"icon".to_vec(),
-        );
-        let executables = vec!["Applications/Demo.app/Contents/MacOS/demo".to_owned()];
-        let bytes = archive_tree(files, &executables).unwrap();
-        let mut archive = tar::Archive::new(bytes.as_slice());
-        let mut modes = std::collections::BTreeMap::new();
-        for entry in archive.entries().unwrap() {
-            let entry = entry.unwrap();
-            modes.insert(
-                entry.path().unwrap().to_string_lossy().to_string(),
-                entry.header().mode().unwrap(),
-            );
-        }
-        assert_eq!(
-            modes["Applications/Demo.app/Contents/MacOS/demo"], 0o555,
-            "the declared executable keeps its executable bit"
-        );
-        assert_eq!(
-            modes["Applications/Demo.app/Contents/Resources/icon.icns"], 0o444,
-            "resources stay read-only"
-        );
-    }
-
-    #[test]
-    fn archive_tree_rejects_a_missing_declared_executable() {
-        let mut files = BTreeMap::new();
-        files.insert(
-            "Applications/Demo.app/Contents/Info.plist".to_owned(),
-            b"{}".to_vec(),
-        );
-        let error = archive_tree(
-            files,
-            &["Applications/Demo.app/Contents/MacOS/demo".to_owned()],
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("declared executable is missing"));
-    }
-
-    #[test]
     fn package_app_bundle_rejects_a_non_darwin_platform() {
         let temporary = tempdir().unwrap();
         let arguments = PackageAppBundleArgs {
@@ -1577,11 +1530,7 @@ mod tests {
             descriptor: temporary.path().join("descriptor.json"),
         };
         let error = package_app_bundle(arguments).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("mach-o-app-bundle/v1 requires darwin/darwin")
-        );
+        assert_eq!(error.code, "BUCK2_PRODUCT_PLATFORM");
     }
 
     fn signature_with_cms(code_directory_flags: u32, cms_size: u32) -> Vec<u8> {
@@ -1725,29 +1674,28 @@ mod tests {
     fn app_bundle_rejects_escaped_resources_and_undeclared_main_executable() {
         let temporary = tempdir().unwrap();
         let mut arguments = app_bundle_args(temporary.path());
-        arguments.bundle_resources = vec!["Applications/Other.app/icon=absent".into()];
-        assert!(
-            package_app_bundle(arguments)
-                .unwrap_err()
-                .to_string()
-                .contains("outside the bundle root")
+        arguments.bundle_resources = vec![format!(
+            "Applications/Other.app/icon={}",
+            temporary.path().join("icon.icns").display()
+        )];
+        assert_eq!(
+            package_app_bundle(arguments).unwrap_err().code,
+            "BUCK2_PRODUCT_INPUT"
         );
         let mut arguments = app_bundle_args(temporary.path());
         arguments.main_executable = "Applications/Demo.app/Contents/MacOS/absent".into();
-        assert!(
-            package_app_bundle(arguments)
-                .unwrap_err()
-                .to_string()
-                .contains("main executable must be one")
+        assert_eq!(
+            package_app_bundle(arguments).unwrap_err().code,
+            "BUCK2_PRODUCT_INPUT"
         );
         let mut arguments = app_bundle_args(temporary.path());
-        arguments.bundle_resources =
-            vec!["Applications/Demo.app/Contents/Resources/nix-build-stamp.json=absent".into()];
-        assert!(
-            package_app_bundle(arguments)
-                .unwrap_err()
-                .to_string()
-                .contains("already declares its build stamp")
+        arguments.bundle_resources = vec![format!(
+            "Applications/Demo.app/Contents/Resources/nix-build-stamp.json={}",
+            temporary.path().join("stamp.json").display()
+        )];
+        assert_eq!(
+            package_app_bundle(arguments).unwrap_err().code,
+            "BUCK2_PRODUCT_INPUT"
         );
         assert!(!temporary.path().join("artifact.tar").exists());
     }

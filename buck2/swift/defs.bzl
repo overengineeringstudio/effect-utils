@@ -79,6 +79,8 @@ def _swift_app_bundle_impl(ctx):
         )
         executable = ctx.actions.declare_output(name)
         compile_args = cmd_args([
+            bun.executable,
+            ctx.attrs._compiler_runner,
             swiftc.store_path,
             "-O",
             "-target", triple,
@@ -222,6 +224,9 @@ _swift_app_bundle = rule(
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
+        )),
+        "_compiler_runner": attrs.default_only(attrs.source(
+            default = "//buck2/swift:compile",
         )),
         "_descriptor_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:product_tool",
