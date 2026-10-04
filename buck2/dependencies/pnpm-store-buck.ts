@@ -214,16 +214,24 @@ const renderView = ({
 export const renderPnpmPackageTargets = ({
   metadata,
   sidecar,
+  patchSourceCells = {},
 }: {
   metadata: PnpmLockMetadata
   sidecar: PnpmSha256Sidecar
+  /** Checkout-root paths mapped to the cells that export their patch files. */
+  patchSourceCells?: Readonly<Record<string, string>>
 }): string => {
   const buckPatchTarget = (patchPath: string): string => {
+    const sourceRoot = Object.keys(patchSourceCells)
+      .filter((root) => patchPath.startsWith(`${root}/`))
+      .toSorted((left, right) => right.length - left.length)[0]
+    const cell = sourceRoot === undefined ? '' : `@${patchSourceCells[sourceRoot]}`
+    const cellPath = sourceRoot === undefined ? patchPath : patchPath.slice(sourceRoot.length + 1)
     const marker = '/patches/'
-    const markerIndex = patchPath.indexOf(marker)
+    const markerIndex = cellPath.indexOf(marker)
     return markerIndex < 0
-      ? `//:${patchPath}`
-      : `//${patchPath.slice(0, markerIndex)}:patches/${patchPath.slice(markerIndex + marker.length)}`
+      ? `${cell}//:${cellPath}`
+      : `${cell}//${cellPath.slice(0, markerIndex)}:patches/${cellPath.slice(markerIndex + marker.length)}`
   }
   const lines: string[] = []
   for (const [packageKey, packageMetadata] of sortedEntries(metadata.packages)) {

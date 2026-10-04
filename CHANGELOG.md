@@ -4,6 +4,11 @@
 
 ### Changed
 
+- Consumer Buck roots can map nested checkout patch paths to their exporting
+  cells; the published rules cell exports the shared pnpm patches without loading
+  standalone package declarations.
+- Consumer roots render the trusted archive URL required by the shared cache
+  posture reconciler; RE client configuration must precede daemon startup.
 - Buck2 pipeline telemetry uses `vcs.provider.name`,
   `cicd.pipeline.task.run.result`, and `buck2.vcs.change.is_fork` in place of
   vendor provider, status, and fork keys. Job outcomes use the OpenTelemetry

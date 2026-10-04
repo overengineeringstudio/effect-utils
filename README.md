@@ -195,6 +195,48 @@ Audit cross-cell Buck provider identity separately:
 devenv tasks run buck2:providers:check
 ```
 
+### Consumer Buck Roots
+
+Consumer dependency generators declare the cell that exports patches from each
+nested checkout instead of loading that checkout's standalone `BUCK` files:
+
+```ts
+renderPnpmPackageTargets({
+  metadata,
+  sidecar,
+  patchSourceCells: { 'repos/effect-utils': 'rules' },
+})
+```
+
+The `buck2-rules` package exports the shared pnpm patch registry in its `rules`
+cell. Unmapped patch paths retain same-cell labels; mappings match complete path
+components, and the most specific checkout root wins.
+
+RE client settings belong in the project configuration, not invocation overrides.
+Pinned Buck2 ignores `[buck2_re_client]` values supplied by `--config-file`,
+including on the first command that starts a daemon. Consumers must materialize
+concrete RE addresses (including `engine_address`) in `.buckconfig`, and reconcile
+cache posture into `.buckconfig.local` before invoking Buck:
+
+```bash
+bun repos/effect-utils/scripts/buck2-cache-posture.ts "$PWD" --probe
+buck2 build //your/package:target
+```
+
+Write the overlay before the daemon's first command. If a daemon has already
+started, use `buck2 kill` in that project (with the same isolation directory)
+before starting it with new RE client settings; watching a changed
+`.buckconfig.local` does not rebuild that client. Daemon-start `--config` RE
+overrides are ignored too.
+
+The reconciler reads the tracked private archive origin from
+`archive_origin.trusted_url_prefix` and `archive_origin.trusted_tier`. Public
+read-only jobs set `BUCK2_PUBLIC_CACHE_READ_ONLY=1`; protected public publishers
+provide `BUCK2_CACHE_WRITE_BASIC_AUTH`; `BUCK2_NO_REMOTE_CACHE=1` disables reads
+and uploads. Read-only endpoint outages fail open, while publishers fail closed.
+Run the reconciler before every invocation so local posture and outage recovery
+stay synchronized. Do not put credentials in tracked configuration.
+
 ### Nix Artifact Import Checks
 
 Validate the generic and JavaScript Buck product import boundaries without

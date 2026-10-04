@@ -970,4 +970,43 @@ describe('Buck package targets', () => {
     expect(rendered).toContain('patches = ["//:patches/foo.patch"]')
     expect(rendered).not.toContain('effect_utils//')
   })
+
+  it.each([
+    ['repos/upstream/packages/lib/patches/foo.patch', '@rules//packages/lib:patches/foo.patch'],
+    ['repos/upstream/child/packages/lib/patches/foo.patch', '@child//packages/lib:patches/foo.patch'],
+    [
+      'repos/upstream-other/packages/lib/patches/foo.patch',
+      '//repos/upstream-other/packages/lib:patches/foo.patch',
+    ],
+    ['patches/foo.patch', '//:patches/foo.patch'],
+  ])('resolves patch source %s only through its declared checkout cell', async (patchPath, target) => {
+    const patchBytes = new TextEncoder().encode('patch bytes')
+    const patchHash = createHash('sha256').update(patchBytes).digest('hex')
+    const metadata = translatePnpmLock({
+      lockfileText: lock({
+        importers: `  .:
+    dependencies:
+      foo:
+        specifier: 1.0.0
+        version: 1.0.0(patch_hash=${patchHash})`,
+        packages: `  foo@1.0.0:
+    resolution: {integrity: ${archiveIntegrity}}`,
+        patchedDependencies: `  foo@1.0.0: ${patchHash}`,
+        snapshots: `  foo@1.0.0(patch_hash=${patchHash}): {}`,
+      }),
+      workspaceText: workspace({ patches: `  foo@1.0.0: ${patchPath}` }),
+      readPatch: () => patchBytes,
+    })
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async () => archive,
+    })
+    const rendered = renderPnpmPackageTargets({
+      metadata,
+      sidecar,
+      patchSourceCells: { 'repos/upstream': 'rules', 'repos/upstream/child': 'child' },
+    })
+
+    expect(rendered).toContain(`patches = [${JSON.stringify(target)}]`)
+  })
 })

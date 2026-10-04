@@ -10,6 +10,7 @@ let
   inventory = builtins.fromJSON (builtins.readFile ./inventory.json);
   files = inventory.files;
   sortedFiles = builtins.sort builtins.lessThan files;
+  patchFiles = builtins.filter (path: lib.hasSuffix ".patch" path) files;
 in
 assert lib.assertMsg (
   builtins.attrNames inventory == [
@@ -64,6 +65,25 @@ pkgs.runCommand "buck2-rules"
         visibility = ["PUBLIC"],
     )
     BUCK
+    # Publish only patch files, not their checkout's package BUCK declarations:
+    # those declarations depend on the standalone cell and its toolchains.
+    ${lib.concatMapStringsSep "\n" (
+      path:
+      let
+        parts = lib.splitString "/patches/" path;
+        package = builtins.head parts;
+        source = "patches/${lib.concatStringsSep "/patches/" (builtins.tail parts)}";
+      in
+      ''
+        cat >> "$out/${package}/BUCK" <<'PATCH_BUCK'
+        export_file(
+            name = ${builtins.toJSON source},
+            src = ${builtins.toJSON source},
+            visibility = ["PUBLIC"],
+        )
+        PATCH_BUCK
+      ''
+    ) patchFiles}
     cat > "$out/buck2/dependencies/BUCK" <<'BUCK'
     export_file(
         name = "acquire-archive.ts",

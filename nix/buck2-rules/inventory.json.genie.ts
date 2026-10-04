@@ -1,3 +1,4 @@
+import { pnpmPatchedDependencies } from '../../genie/external.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const files = [
@@ -40,7 +41,8 @@ const files = [
   'packages/@overeng/buck2-tools/src/typescript-runner.ts',
   'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
-] as const
+  ...Object.values(pnpmPatchedDependencies()),
+].toSorted()
 
 export const buck2RulesInventory = {
   schema: 'effect-utils/buck2-rules-inventory/v1',
