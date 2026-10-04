@@ -245,11 +245,17 @@ let
           ] runtime;
         in
         force [
-          (ensure (value.inspectionContract == "wasm32-unknown-unknown/v1") "descriptor.runtime.inspectionContract must be wasm32-unknown-unknown/v1")
-          (ensure (value.targetTriple == "wasm32-unknown-unknown") "descriptor.runtime.targetTriple must be wasm32-unknown-unknown")
+          (ensure (
+            value.inspectionContract == "wasm32-unknown-unknown/v1"
+          ) "descriptor.runtime.inspectionContract must be wasm32-unknown-unknown/v1")
+          (ensure (
+            value.targetTriple == "wasm32-unknown-unknown"
+          ) "descriptor.runtime.targetTriple must be wasm32-unknown-unknown")
           (ensure (nonEmptyString value.harness) "descriptor.runtime.harness must be a non-empty string")
           (validateStructuredStringList "descriptor.runtime.imports" value.imports)
-          (ensure (value.imports == builtins.sort builtins.lessThan value.imports) "descriptor.runtime.imports must be sorted")
+          (ensure (
+            value.imports == builtins.sort builtins.lessThan value.imports
+          ) "descriptor.runtime.imports must be sorted")
         ] value
       else if kind == "self-contained" then
         let
@@ -405,9 +411,15 @@ let
           ]
         else if runtime.kind == "wasm-guest" then
           [
-            (ensure (platform.os == "wasm") "descriptor.runtime wasm-guest requires descriptor.platform.os = wasm")
-            (ensure (platform.architecture == "wasm32") "descriptor.runtime wasm-guest requires descriptor.platform.architecture = wasm32")
-            (ensure (platform.abi == "unknown") "descriptor.runtime wasm-guest requires descriptor.platform.abi = unknown")
+            (ensure (
+              platform.os == "wasm"
+            ) "descriptor.runtime wasm-guest requires descriptor.platform.os = wasm")
+            (ensure (
+              platform.architecture == "wasm32"
+            ) "descriptor.runtime wasm-guest requires descriptor.platform.architecture = wasm32")
+            (ensure (
+              platform.abi == "unknown"
+            ) "descriptor.runtime wasm-guest requires descriptor.platform.abi = unknown")
           ]
         else
           [ ];
