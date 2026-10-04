@@ -39,6 +39,7 @@ def hermetic_action(ctx, arguments, env = {}, cacheable = True, **kwargs):
     # runs first (BASH_ENV/NODE_OPTIONS/etc must not affect the launcher).
     args = cmd_args([
         tool.store_path,
+        "--coreutils-prog=env",
         "-S",
         "-i BUCK_SCRATCH_PATH=${BUCK_SCRATCH_PATH} TMPDIR=${TMPDIR}",
         "LC_ALL=C",

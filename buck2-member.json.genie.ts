@@ -148,7 +148,7 @@ const manifestProjection = {
       toolId: 'action-env',
       protocol: 'gnu/coreutils-env/v9',
       flakePackage: 'buck2-action-env',
-      executable: 'bin/env',
+      executable: 'bin/coreutils',
     },
     {
       toolId: 'coreutils-readlink',

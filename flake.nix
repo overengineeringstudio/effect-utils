@@ -160,6 +160,7 @@ rec {
           buck2-fingerprint = buck2-stage0-tools.fingerprint;
           # The native env binary must start before any interpreter; a shell
           # wrapper could read ambient BASH_ENV before clearing the environment.
+          # Use explicit multicall dispatch; capability paths are canonicalized.
           buck2-action-env = pkgs.coreutils;
           buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
             exec ${pkgs.coreutils}/bin/readlink "$@"
