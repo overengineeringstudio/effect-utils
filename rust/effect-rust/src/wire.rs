@@ -125,10 +125,9 @@ impl FromStr for TimestampMillis {
                 return Err(invalid());
             }
         }
-        if body.len() > 19 {
-            if body[19] != b'.' || body.len() == 20 || !body[20..].iter().all(u8::is_ascii_digit) || (body.len() > 23 && body[23..].iter().any(|digit| *digit != b'0')) {
-                return Err(invalid());
-            }
+        if body.len() > 19
+            && (body[19] != b'.' || body.len() == 20 || !body[20..].iter().all(u8::is_ascii_digit) || (body.len() > 23 && body[23..].iter().any(|digit| *digit != b'0'))) {
+            return Err(invalid());
         }
         let date = DateTime::parse_from_rfc3339(text).map_err(|_| invalid())?;
         if date.nanosecond() >= 1_000_000_000 {
@@ -239,7 +238,7 @@ pub mod timestamp_millis {
     /// Rejects sub-millisecond precision and instants outside the four-digit year range
     /// instead of silently truncating them.
     pub fn serialize<S: Serializer>(value: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error> {
-        if value.timestamp_subsec_nanos() % 1_000_000 != 0 {
+        if !value.timestamp_subsec_nanos().is_multiple_of(1_000_000) {
             return Err(serde::ser::Error::custom("timestamp carries sub-millisecond precision"));
         }
         TimestampMillis::from_unix_millis(value.timestamp_millis()).map_err(serde::ser::Error::custom)?.serialize(serializer)
