@@ -42,3 +42,7 @@ No generic semantic-extension compiler, full-range integer transport solution, r
 ## Related decision
 
 [Ownership and extension decision](../.decisions/0002-schema-ownership-semantic-extensions.md).
+
+## Amendment 1
+
+The limitations above describe E2's generator baseline, not the current foundation. [WA](./wa-annotation-first.md) later preserved all 137 shared vectors and identical IR using plain Effect schemas plus narrow metadata; the rough-edge study ran freshly emitted Rust for 137 original and 88 additional vectors. [PR #1578](https://github.com/overengineeringstudio/effect-utils/pull/1578) reports a built admitted-contract compiler and scoped services. [Typed direct evidence](./q53-direct-transport.md) separately covers natural JS representations while canonical JSON remains distinct. These later results do not establish arbitrary schema equivalence or recover metadata omitted by an owner export.

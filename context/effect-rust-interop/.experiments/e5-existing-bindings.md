@@ -39,3 +39,7 @@ No Workers image execution, native image addon, ARM/Darwin image execution, long
 ## Related decision
 
 [Runtime ownership decision](../.decisions/0004-runtime-semantics.md).
+
+## Amendment 1
+
+E5 predates [internal app pilot A (image/byte processing)](./pilot-a-image-byte-processing.md) and [internal app pilot B (stateful matcher)](./pilot-b-stateful-matcher.md). The later aggregate measured 34–37% smaller wasm and faster warm initialization, but inline first initialization was worse; the stateful pilot reported 41/41 parity and 10,000 create/drop cycles with zero leaks. Those observations do not retroactively establish E5's unmeasured matrix or independent-factory claim. [PR #1605](https://github.com/overengineeringstudio/effect-utils/pull/1605) subsequently supplies built foundation resource exports with distinct 1,000-cycle counter-resource evidence; it does not claim a completed private application migration.

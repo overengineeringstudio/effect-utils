@@ -43,3 +43,9 @@ Recovery is configurable with a solid containment default. Healthy-cancel counts
 ## Amendment 2
 
 [W](../.experiments/w-workerd-memory.md) resolves local workerd retention as delayed GC, not a foundation leak. **Retirement guarantees unreachability, not prompt release.** The runtime Layer is isolate-scoped, not per-request. Large-linear-memory product admission remains open pending Cloudflare production and mitigation measurements. Pressure hints and retired-bytes budgets are not selected defaults; see [the workerd decision](./0012-workerd-memory-contract.md).
+
+## Amendment 3
+
+[Scoped resources](./0016-scoped-stateful-resources.md) extend the existing generation registry to stateful receiver methods and close: one FIFO semaphore per resource, generation-affine handles, and sibling poisoning on traps. Rebuild does not revive stale resources; poisoned wasm retirement disables finalizers rather than claiming destructor execution. [PR #1605](https://github.com/overengineeringstudio/effect-utils/pull/1605) is the open implementation.
+
+[Typed host seams](./0015-typed-build-and-host-seams.md) add bounded `Source.read_range` and explicit cooperative yielding; checking cancellation alone does not permit event-loop delivery during a synchronous loop. [Direct synchronous calls](./0017-typed-direct-inprocess-transport.md) use interruption-aware `callSync` without async job machinery while preserving generation/panic behavior. Promise/job calls remain asynchronous, and quiescence and ownership guarantees are unchanged.

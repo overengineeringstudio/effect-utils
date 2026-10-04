@@ -39,3 +39,9 @@ Inline delivery increases JS and prevents independent wasm caching. URL consumer
 ## Amendment 1
 
 [K2](../.experiments/k2-build-admission.md) found Bun also matches `node`; order `bun` **before** `node`, retaining `workerd` first. Darwin Node-API products need `-Clink-arg=-Wl,-undefined,dynamic_lookup` to resolve `_napi_*` symbols from the host runtime. This is macOS Node-API-specific, not a global linker option. All six wasm/native/app × Node/Bun smokes passed on x86_64-linux, aarch64-linux, and aarch64-darwin. Local workerd and browser execution remain out-of-tree proof, not production Cloudflare or complete Buck capability admission.
+
+## Amendment 2
+
+The browser/default entry now uses an external wasm asset through the pinned wasm-bindgen fetch/instantiateStreaming loader; inline delivery is explicit. Node retains CJS and Bun retains inline delivery. `browserWorker` names browser Web Workers and uses the external-asset loader; `workerd` remains a distinct precompiled `WebAssembly.Module` entry without fetch. Fresh lexical glue state is acquired per instance, including finalizers.
+
+This supersedes the original browser inline default, not the explicit-runtime/no-fallback policy. Internal app pilot A (image/byte processing) exposed a first-initialization cost that outweighed inline convenience; [the pilot evidence](../.experiments/pilot-a-image-byte-processing.md) and [PR #1604](https://github.com/overengineeringstudio/effect-utils/pull/1604) record the rationale and implementation. #1604 is an open implementation PR, not a merged release. Consumers must serve the emitted asset correctly; explicit inline remains useful for bundler-less applications.

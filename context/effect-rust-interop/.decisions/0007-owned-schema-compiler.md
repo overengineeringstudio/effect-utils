@@ -35,3 +35,9 @@ The compiler is deliberate complexity forced by executable parity. No Typify/val
 ## Specification
 
 [Schema ownership and semantic codecs](../spec.md#schema-ownership-and-semantic-codecs-r02r04-r14).
+
+## Amendment 1
+
+The frontend is [annotation-first](./0014-annotation-first-authoring.md), not a mandatory `Wire.*` vocabulary. Ordinary admitted Effect Schema and namespaced annotations lower into the same IR; unsupported predicates still fail closed. Emit optional schemars `JsonSchema` implementations directly from that IR for Effect-owned types, preserving definitions and constraints rather than deriving weaker metadata from Rust fields.
+
+Discriminated Cargo standalone/workspace output and typed generated package/resource admission are [decision 0015](./0015-typed-build-and-host-seams.md). [PR #1578](https://github.com/overengineeringstudio/effect-utils/pull/1578) is the open implementation source; [Effect issue #8690](https://github.com/Effect-TS/effect/issues/8690) records the upstream AST/export/import gaps that justify live-AST lowering.

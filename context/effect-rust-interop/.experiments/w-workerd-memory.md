@@ -46,3 +46,7 @@ No real Cloudflare deploy or upstream issue was executed by W. The subsequent de
 ## Specification
 
 [Runtime lifecycle](../spec.md#runtime-lifecycle-and-panic-containment-r10-r11-r15-r16).
+
+## Amendment 1
+
+The DQ8/DQ9 references above name the historical split. The refreshed specification consolidates production memory admission and its mitigation evidence under DQ8; this does not resolve production admission or add a production measurement to W. Later local precompiled-module execution in [#1604](https://github.com/overengineeringstudio/effect-utils/pull/1604) and [#1610](https://github.com/overengineeringstudio/effect-utils/pull/1610) proves their exercised runtime behavior, not prompt workerd garbage collection.

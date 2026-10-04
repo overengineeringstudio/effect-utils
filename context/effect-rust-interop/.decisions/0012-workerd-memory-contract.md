@@ -35,3 +35,7 @@ Isolate scope avoids gratuitous retirement, not poison-storm accumulation. No ho
 ## Specification
 
 [Runtime lifecycle](../spec.md#runtime-lifecycle-and-panic-containment-r10-r11-r15-r16) and [DQ8/DQ9](../spec.md#design-questions).
+
+## Amendment 1
+
+The remaining large-linear-memory admission question is consolidated under DQ8, including production Cloudflare observations and any optional mitigation measurements. The former DQ9 mitigation question is retired as a separate spec entry, not resolved by shipping a pressure hint or retired-bytes budget. The original reachability guarantee, isolate-scoped Layer, and absence of prompt-reclamation claims remain unchanged. See [the current design questions](../spec.md#design-questions); local evidence alone still does not establish production memory admission.

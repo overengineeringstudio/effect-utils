@@ -42,3 +42,7 @@ No ARM/Darwin execution in this experiment; later packaging probes own those nat
 ## Related decision
 
 [Tiered delivery decision](../.decisions/0001-tiered-delivery.md).
+
+## Amendment 1
+
+The supplied later public byte-engine pilot exercised generated wasm/native services on Node/Bun, preserving byte, descriptor, tree, store, cancellation, and finalizer behavior. Its initial scratch report could not pass complete Buck analysis because watcher startup timed out; direct builds were not a Buck pass. [PR #1602](https://github.com/overengineeringstudio/effect-utils/pull/1602) later reports real Buck parity/service smokes: 35 cases per runtime, zero disagreements, 181/181 freshly generated vectors on each language side, and a successful Buck quick aggregate. Outer check:quick still exited 1 for the two disclosed [#1564](https://github.com/overengineeringstudio/effect-utils/issues/1564) Nix failures. See [watcher measurements](./buck-watcher-startup.md). Earlier overloaded scratch throughput is not a controlled default-engine speedup; JS remains the default and Rust opt-in. #1602 was open, not merged, when consulted.

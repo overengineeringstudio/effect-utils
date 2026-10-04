@@ -45,3 +45,7 @@ No production Workers deployment, clean non-Nix portability proof, minimum-OS ce
 ## Related decision
 
 [Packaging decision](../.decisions/0005-runtime-packaging.md).
+
+## Amendment 1
+
+E4's inline browser default and unimplemented Buck estimate are historical. [K2](./k2-build-admission.md) and [PR #1556](https://github.com/overengineeringstudio/effect-utils/pull/1556) provide built Buck product evidence. [Internal app pilot A (image/byte processing)](./pilot-a-image-byte-processing.md) later measured first initialization at 342 ms inline versus 85 ms external despite faster warm initialization. [PR #1604](https://github.com/overengineeringstudio/effect-utils/pull/1604) implements external browser/default and browser-Worker assets, keeps explicit inline delivery, and proves streaming in Chromium plus precompiled zero-fetch workerd. Node CJS and Bun inline delivery remain distinct. These PRs were open when consulted, not merged; their fixture smokes do not repeat E4's artifact-size or native-portability measurements.

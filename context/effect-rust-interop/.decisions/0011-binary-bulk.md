@@ -36,3 +36,9 @@ The compiler owns id/version dispatch and length/width checks. Borsh offsets do 
 ## Specification
 
 [Binary bulk](../spec.md#binary-bulk).
+
+## Amendment 1
+
+[Annotation-first authoring](./0014-annotation-first-authoring.md) keeps `Borsh` and `Columns` as transport helpers while removing `Wire.*` schema wrappers. Bounded `Schema.Int` uses the smallest admitted storage width or an explicit pin without widening its domain bounds. Any inferred/pinned width change alters layout and requires a frame version bump; the mandatory id/version envelope remains unchanged.
+
+[Finite binary32](./0018-finite-binary32-and-numeric-admission.md) adds explicit f32 frames/columns, preserving negative zero in direct/Borsh and rejecting nonfinite/overflow values, including trusted paths. [PR #1610](https://github.com/overengineeringstudio/effect-utils/pull/1610) is the open implementation; direct transport does not remove validated frames or make borrowed views an implicit default.

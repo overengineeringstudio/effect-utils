@@ -44,3 +44,7 @@ Healthy cancellation does not prove JS/native whole-heap or repeated poisoned-in
 ## Related decision
 
 [Runtime semantics decision](../.decisions/0004-runtime-semantics.md).
+
+## Amendment 1
+
+E3's browser/workerd panic-fence gap is historical. [B3](./b3-panic-reclamation.md) subsequently exercised poisoned generations across all four portable runtimes; [W](./w-workerd-memory.md) separates complete unreachability from delayed host collection. [PR #1578](https://github.com/overengineeringstudio/effect-utils/pull/1578) reports built poisoning/retirement, synchronous settlement, and retirement-aware finalizers. [PR #1605](https://github.com/overengineeringstudio/effect-utils/pull/1605) separately exercises scoped resources, sibling poisoning, stale rejection, and rebuild; [#1610](https://github.com/overengineeringstudio/effect-utils/pull/1610) reports actual Chromium/workerd typed-transport smokes. These open PRs are implementation evidence, not merged status or prompt reclamation guarantees.

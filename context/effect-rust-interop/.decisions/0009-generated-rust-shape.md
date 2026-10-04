@@ -36,3 +36,9 @@ Constrained-string names are source-owned, not guessed from fields. DateTime rej
 ## Specification
 
 [Generated Rust](../spec.md#generated-rust).
+
+## Amendment 1
+
+Optional-nullable TS authoring uses raw `Schema.optionalKey(Schema.NullOr(T))`, not a tagged Patch ADT; Rust retains `Patch<T> { Absent, Null, Value(T) }`. Schema-declared optional undefined values omit their object property on JSON encoding, without adding null or dropping undefined in required keys/arrays. [Decision 0014](./0014-annotation-first-authoring.md) records this refinement and IR-driven schemars metadata.
+
+Tagged union input now accepts any key order, with a streaming tag-first path and buffered fallback; canonical output emits the discriminator first and then sorted keys. [Decision 0010's amendment](./0010-json-control-plane.md#amendment-1) supersedes the historical strict-first choice. Explicit validating finite binary32 support is [decision 0018](./0018-finite-binary32-and-numeric-admission.md); it does not authorize unchecked raw floats.

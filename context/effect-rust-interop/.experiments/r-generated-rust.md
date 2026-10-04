@@ -44,3 +44,7 @@ The IR and Effect reference schemas were hand-authored, not production owner-to-
 ## Specification
 
 [Generated Rust](../spec.md#generated-rust) and [JSON control plane](../spec.md#json-control-plane).
+
+## Amendment 1
+
+[T](./t-tag-order-friction.md) subsequently measured R's unchanged streaming/fallback paths and demonstrated real producer/storage friction, including PostgreSQL jsonb reordering. R's no-throughput statement remains accurate for R itself; T's measurements are separate. The later supplied review describes tag-first canonical encoding with order-independent decoding, so the historical strict-first-tag rejection proposal must not be read as the current decoder contract.

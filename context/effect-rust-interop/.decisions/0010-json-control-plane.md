@@ -36,3 +36,13 @@ Reader-first evolution is needed for strict unknown fields. Canonical ordering i
 ## Specification
 
 [JSON control plane](../spec.md#json-control-plane) and [DQ7](../spec.md#design-questions).
+
+## Amendment 1
+
+The tag-order friction bakeoff resolves the historical DQ7 and supersedes q24: accept any input key order, stream when the discriminator is first, and use buffered fallback otherwise. Our encoders emit the owner discriminator first, then canonically sorted remaining keys. This accommodates PostgreSQL jsonb and other key-reordering producers without creating separate strict-wire/tolerant-store modes. [The friction experiment](../.experiments/t-tag-order-friction.md) records the performance/memory tradeoff; [PR #1578](https://github.com/overengineeringstudio/effect-utils/pull/1578) is the open foundation implementation.
+
+## Amendment 2
+
+[Annotation-first authoring](./0014-annotation-first-authoring.md) admits exact bounded `Schema.Int` with inferred storage and optional width pinning. Bounded bigint infers u64 for nonnegative minima and i64 otherwise, with an optional pin; selected width is always explicit in the IR and bounds-validated. This supersedes the author-supplied width requirement, not canonical decimal-string u64/i64 JSON. Schema-aware optional-key omission replaces own-undefined with absence only where declared by the schema.
+
+[Finite binary32](./0018-finite-binary32-and-numeric-admission.md) makes numeric JSON admission schema-aware: float fields admit integer tokens, fractions and exponents with finite binary32 rounding; integer fields still reject `1.0`, `1e0` and unsafe numeric values. Native parsed-object safe-integral normalization does not change strict JSON text. [PR #1610](https://github.com/overengineeringstudio/effect-utils/pull/1610) implements this refinement in an open PR. Its typed direct bigint/epoch-millis representation is separate; canonical JSON remains the process/storage wire.

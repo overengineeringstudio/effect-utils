@@ -45,3 +45,7 @@ This is historical K2 proof, not a fresh run of #1556 by this VRS update. Worker
 ## Specification
 
 [Runtime packaging and admission](../spec.md#runtime-packaging-and-admission-r06-r07-r09).
+
+## Amendment 1
+
+The K2 head and size/byte observations above are retained as historical evidence. [PR #1556](https://github.com/overengineeringstudio/effect-utils/pull/1556) now records a later rebased product head; [#1602](https://github.com/overengineeringstudio/effect-utils/pull/1602) includes its head-specific fixture gate, exit 0 with 326 local actions and six Node/Bun smoke receipts. [#1604](https://github.com/overengineeringstudio/effect-utils/pull/1604) separately changes the browser default from inline to external assets. [Fresh watcher measurements](./buck-watcher-startup.md) distinguish successful fixed-source gates under restored temporary overrides from resolved daemon-startup/invalidation behavior. All three PRs were open when consulted; the outer quick-check baseline failures remain visible.

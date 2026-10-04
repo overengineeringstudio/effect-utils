@@ -39,3 +39,9 @@ The export proc macro is separate from rejected contract-expansion macros. Raw b
 ## Specification
 
 [Errors and API sketch](../spec.md#errors-and-api-sketch-r05-r10r15) and [runtime lifecycle](../spec.md#runtime-lifecycle-and-panic-containment-r10-r11-r15-r16).
+
+## Amendment 1
+
+The generated API now includes [scoped resource acquisition and FIFO receiver calls](./0016-scoped-stateful-resources.md), not only free functions and streams. [Typed direct in-process transport](./0017-typed-direct-inprocess-transport.md) carries expected errors as structured `rustError` values, hoists directional codecs to construction, and uses `callSync` for synchronous exports. The same Rust enum/reason mapping remains authoritative; unexpected throws and panic envelopes remain defects. A construction-time Effect cohort guard rejects multiple physical Effect copies before Rust entry.
+
+[PR #1605](https://github.com/overengineeringstudio/effect-utils/pull/1605) and [PR #1610](https://github.com/overengineeringstudio/effect-utils/pull/1610) provide implementation evidence beyond the original API preview and remain open, not merged.
