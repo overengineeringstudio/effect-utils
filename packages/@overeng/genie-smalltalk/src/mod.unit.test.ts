@@ -172,9 +172,8 @@ testWithSt(
       expect(second.status, second.stderr).toBe(0)
       expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
       const seatSource = join(dir, 'agent.kdl')
-      const seat = emit([
-        agent({ id: 'garden/orchard', rollout: 'manual', handlesFaults: true }),
-      ])
+      const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
+      const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
       const applySeat = (declaration: string) => {
         writeFileSync(seatSource, declaration)
         return spawnSync(
@@ -224,7 +223,7 @@ testWithSt(
         const invalid = applySeat(seat.replace('handles-faults', field))
         expect(invalid.status, field).not.toBe(0)
       }
-      const automatic = applySeat(emit([agent({ id: 'garden/orchard' })]))
+      const automatic = applySeat(emit([agent(launch)]))
       expect(automatic.status, automatic.stderr).toBe(0)
       expect(JSON.parse(automatic.stdout)).toMatchObject({ changed: true })
       const automaticShown = spawnSync(
