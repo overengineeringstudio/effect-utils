@@ -107,7 +107,8 @@ describe('Buck rules product inventory', () => {
         ].map((match) => match[1]!),
       ]
       for (const label of references) {
-        const relativeLabel = label.startsWith('//') ? label.slice(2) : `${directory}${label}`
+        const relativeLabel =
+          label.startsWith('//') === true ? label.slice(2) : `${directory}${label}`
         const colon = relativeLabel.lastIndexOf(':')
         const slash = relativeLabel.lastIndexOf('/')
         const name = relativeLabel.slice(colon >= 0 ? colon + 1 : slash + 1)
@@ -116,11 +117,12 @@ describe('Buck rules product inventory', () => {
             ? `${relativeLabel.slice(0, colon)}/${relativeLabel.slice(colon + 1)}`
             : relativeLabel
         expect(inventory.has(file), `${path} references ${label} (${file})`).toBe(true)
-        if (!file.endsWith('.bzl')) {
+        if (file.endsWith('.bzl') === false) {
           const packageBuck = `${file.slice(0, file.lastIndexOf('/'))}/BUCK`
-          const targets = inventory.has(packageBuck)
-            ? readFileSync(new URL(packageBuck, repoRoot), 'utf8')
-            : rulesCell
+          const targets =
+            inventory.has(packageBuck) === true
+              ? readFileSync(new URL(packageBuck, repoRoot), 'utf8')
+              : rulesCell
           expect(
             targets,
             `${path} references a tool without a rules-cell target: ${label}`,

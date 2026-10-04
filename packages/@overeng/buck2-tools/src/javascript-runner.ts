@@ -37,8 +37,8 @@ export type JavaScriptRunOptions = {
   readonly vitestRuntime: VitestRuntime
   readonly collectOutput: string | undefined
   readonly staticParse: boolean
-  readonly verdictOutput?: string
-  readonly operation?: string
+  readonly verdictOutput?: string | undefined
+  readonly operation?: string | undefined
 }
 
 const COLLECTION_REPORT_NAME = 'vitest-collection.json'

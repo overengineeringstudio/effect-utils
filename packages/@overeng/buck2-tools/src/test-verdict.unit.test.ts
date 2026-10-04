@@ -85,8 +85,10 @@ describe('unit test verdict artifacts', () => {
         report: join(output, 'report.json'),
         status: 0,
       })
-      expect(await readTestVerdict(output, 'cell//pkg:test')).toBe(0)
-      await expect(readTestVerdict(output, 'cell//pkg:other')).rejects.toThrow('mismatch')
+      expect(await readTestVerdict({ output, operation: 'cell//pkg:test' })).toBe(0)
+      await expect(readTestVerdict({ output, operation: 'cell//pkg:other' })).rejects.toThrow(
+        'mismatch',
+      )
     } finally {
       await rm(output, { recursive: true })
     }
