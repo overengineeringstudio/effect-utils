@@ -1,40 +1,16 @@
-# Inspect an extracted buck-build-product/v1 Mach-O app-bundle payload without
-# rewriting it. Each declared bundle executable is held to the same observations
-# the mach-o-dynamic/v1 inspector enforces; the bundle root additionally carries
-# the Info.plist an app bundle needs at runtime.
-{
-  pkgs,
-  inspectionTools,
-}:
-
+# Inspect each bundle executable through the canonical Mach-O inspector.
+{ pkgs, inspectionTools }:
 let
-  expectedTools = [
-    "lipo"
-    "otool"
-  ];
-  exactTools = builtins.attrNames inspectionTools == expectedTools;
-  validTool =
-    tool:
-    builtins.isAttrs tool
-    &&
-      builtins.attrNames tool == [
-        "executable"
-        "identity"
-      ]
-    && builtins.isString tool.identity
-    && builtins.match "/nix/store/[0-9a-z]{32}-[^/]+" tool.identity != null
-    && builtins.isString tool.executable
-    && (tool.executable == tool.identity || pkgs.lib.hasPrefix "${tool.identity}/" tool.executable);
-  toolsValid = exactTools && builtins.all (name: validTool inspectionTools.${name}) expectedTools;
+  inspectExecutable = import ./buck2-runtime-inspect-mach-o-dynamic.nix {
+    inherit pkgs inspectionTools;
+  };
   script = pkgs.writeShellScript "buck2-runtime-inspect-mach-o-app-bundle" ''
     set -euo pipefail
     export LC_ALL=C
-
     fail() {
       echo "buck2-runtime-inspect-mach-o-app-bundle: FATAL - $*" >&2
       exit 1
     }
-
     [ "$#" -eq 2 ] || fail "usage: $0 DESCRIPTOR_JSON EXTRACTED_ROOT"
     descriptor="$1"
     root="$2"
@@ -44,182 +20,29 @@ let
       || fail "descriptor runtime kind must be mach-o-app-bundle"
     [ "$(${pkgs.jq}/bin/jq -r '.runtime.inspectionContract' "$descriptor")" = mach-o-app-bundle/v1 ] \
       || fail "unsupported inspection contract"
-    [ -x ${pkgs.lib.escapeShellArg inspectionTools.otool.executable} ] || fail "Mach-O inspector is unavailable"
-    [ -x ${pkgs.lib.escapeShellArg inspectionTools.lipo.executable} ] || fail "Mach-O architecture inspector is unavailable"
-
-    read_be32() {
-      local file="$1" offset="$2" bytes
-      read -r -a bytes <<<"$(${pkgs.coreutils}/bin/od -An -tu1 -j "$offset" -N 4 "$file")"
-      [ "''${#bytes[@]}" -eq 4 ] || fail "truncated Mach-O signature structure"
-      printf '%s\n' "$((bytes[0] * 16777216 + bytes[1] * 65536 + bytes[2] * 256 + bytes[3]))"
-    }
-
     bundle_root="$(${pkgs.jq}/bin/jq -r '.runtime.bundleRoot' "$descriptor")"
-    [ -n "$bundle_root" ] || fail "descriptor declares no bundle root"
-    bundle="$root/$bundle_root"
-    [ -d "$bundle" ] || fail "bundle root is missing from the extracted payload"
-    [ -f "$bundle/Info.plist" ] && [ ! -L "$bundle/Info.plist" ] \
-      || fail "bundle root must contain a regular Info.plist"
-    ${pkgs.gnugrep}/bin/grep -q '^<?xml' "$bundle/Info.plist" \
-      || fail "bundle Info.plist is not an XML plist"
-
-    inspect_executable() {
-      local relative="$1"
-      local executable="$root/$relative"
-      [ -f "$executable" ] && [ ! -L "$executable" ] \
-        || fail "bundle executable must be a regular non-symlink file: $relative"
-      [ -x "$executable" ] || fail "bundle executable is not executable: $relative"
-
-      local entry expected_architecture expected_dylibs expected_minimum_os signing_policy
-      entry="$(${pkgs.jq}/bin/jq -c --arg path "$relative" \
-        '.runtime.executables[] | select(.path == $path)' "$descriptor")"
-      [ -n "$entry" ] || fail "bundle executable is not declared in the runtime: $relative"
-      expected_architecture="$(${pkgs.jq}/bin/jq -r '.architecture' <<<"$entry")"
-      [ -n "$expected_architecture" ] \
-        || fail "descriptor bundle executable entry must carry an architecture: $relative"
-      expected_minimum_os="$(${pkgs.jq}/bin/jq -r '.minimumOs' <<<"$entry")"
-
-      local headers load_commands lipo_info actual_architecture header_architecture actual_platform actual_minimum_os
-      lipo_info="$(${pkgs.lib.escapeShellArg inspectionTools.lipo.executable} -info "$executable")" \
-        || fail "lipo architecture inspection failed for $relative"
-      case "$lipo_info" in
-        "Non-fat file: $executable is architecture: "*) ;;
-        *) fail "Mach-O bundle executable must contain exactly one architecture: $relative" ;;
-      esac
-      actual_architecture="''${lipo_info#Non-fat file: $executable is architecture: }"
-      [ "$actual_architecture" = "$expected_architecture" ] \
-        || fail "Mach-O architecture mismatch for $relative"
-
-      headers="$(${pkgs.lib.escapeShellArg inspectionTools.otool.executable} -hv "$executable")" \
-        || fail "otool header inspection failed for $relative"
-      header_architecture="$(printf '%s\n' "$headers" | ${pkgs.gawk}/bin/awk '
-        $1 == "MH_MAGIC_64" && ($2 == "ARM64" || $2 == "X86_64") {
-          print tolower($2)
-          seen++
+    plist="$root/$bundle_root/Contents/Info.plist"
+    [ -f "$plist" ] && [ ! -L "$plist" ] || fail "bundle must contain a regular Contents/Info.plist"
+    ${pkgs.gnugrep}/bin/grep -q '^<?xml' "$plist" || fail "bundle Info.plist is not an XML plist"
+    temporary="$(${pkgs.coreutils}/bin/mktemp -d)"
+    trap '${pkgs.coreutils}/bin/rm -rf "$temporary"' EXIT
+    while IFS= read -r entry; do
+      ${pkgs.jq}/bin/jq --argjson entry "$entry" '
+        .entrypoints = [$entry.path] |
+        .runtime = ($entry | del(.path)) + {
+          kind: "mach-o-dynamic", inspectionContract: "mach-o-dynamic/v1",
+          installNamePolicy: .runtime.installNamePolicy, rpathPolicy: .runtime.rpathPolicy
         }
-        END { if (seen != 1) exit 2 }
-      ')" || fail "malformed Mach-O architecture observation: $relative"
-      [ "$header_architecture" = "$actual_architecture" ] \
-        || fail "Mach-O header architecture disagrees with lipo for $relative"
-
-      load_commands="$(${pkgs.lib.escapeShellArg inspectionTools.otool.executable} -l "$executable")" \
-        || fail "otool load-command inspection failed for $relative"
-      read -r actual_platform actual_minimum_os < <(printf '%s\n' "$load_commands" | ${pkgs.gawk}/bin/awk '
-        /^      cmd LC_BUILD_VERSION$/ { in_version = 1; next }
-        in_version && /^ platform / { platform = $2; next }
-        in_version && /^    minos / { minos = $2; matches++; in_version = 0 }
-        END {
-          if (matches != 1 || platform == "" || minos == "") exit 2
-          print platform, minos
-        }
-      ') || fail "malformed Mach-O build-version observation: $relative"
-      [ "$actual_platform" = "MACOS" ] || [ "$actual_platform" = "1" ] \
-        || fail "Mach-O build platform mismatch for $relative"
-      [ "$actual_minimum_os" = "$expected_minimum_os" ] \
-        || fail "Mach-O minimum OS mismatch for $relative"
-
-      local actual_dylibs
-      actual_dylibs="$(${pkgs.lib.escapeShellArg inspectionTools.otool.executable} -L "$executable" | ${pkgs.gawk}/bin/awk 'NR > 1 {
-        sub(/^[[:space:]]+/, "")
-        sub(/[[:space:]]+\(compatibility version .*$/, "")
-        print
-      }' | ${pkgs.coreutils}/bin/sort -u)"
-      expected_dylibs="$(${pkgs.jq}/bin/jq -r '.dylibs[]' <<<"$entry")"
-      [ "$actual_dylibs" = "$expected_dylibs" ] || fail "Mach-O dylib mismatch for $relative"
-      if printf '%s\n' "$actual_dylibs" | ${pkgs.gnugrep}/bin/grep -Ev '^/usr/lib/|^/System/Library/' >/dev/null; then
-        fail "Mach-O install names must be system-only: $relative"
-      fi
-      if printf '%s\n' "$load_commands" | ${pkgs.gnugrep}/bin/grep -Eq '^      cmd LC_RPATH$'; then
-        fail "Mach-O LC_RPATH must be absent: $relative"
-      fi
-
-      local signature_offset signature_size file_size magic declared_size count flags cms_size cms_count index slot blob_offset blob_magic blob_size
-      signing_policy="$(${pkgs.jq}/bin/jq -r '.signingPolicy' <<<"$entry")"
-      case "$signing_policy" in
-        adhoc/v1|embedded/v1) ;;
-        *) fail "unsupported Mach-O signing policy: $signing_policy" ;;
-      esac
-      read -r signature_offset signature_size < <(printf '%s\n' "$load_commands" | ${pkgs.gawk}/bin/awk '
-        /^      cmd LC_CODE_SIGNATURE$/ { in_signature = 1; matches++; next }
-        in_signature && /^  dataoff / { offset = $2; next }
-        in_signature && /^ datasize / { size = $2; in_signature = 0 }
-        END {
-          if (matches != 1 || offset !~ /^[0-9]+$/ || size !~ /^[0-9]+$/ || size == 0) exit 2
-          print offset, size
-        }
-      ') || fail "malformed Mach-O LC_CODE_SIGNATURE observation: $relative"
-      file_size="$(${pkgs.coreutils}/bin/stat -c %s "$executable")"
-      [ "$signature_offset" -le "$file_size" ] \
-        && [ "$signature_size" -le "$((file_size - signature_offset))" ] \
-        || fail "Mach-O code signature is outside the executable: $relative"
-      magic="$(read_be32 "$executable" "$signature_offset")"
-      [ "$magic" -eq 4208856256 ] || fail "Mach-O code signature is not a superblob: $relative"
-      declared_size="$(read_be32 "$executable" "$((signature_offset + 4))")"
-      count="$(read_be32 "$executable" "$((signature_offset + 8))")"
-      [ "$declared_size" -ge 12 ] \
-        && [ "$declared_size" -le "$signature_size" ] \
-        && [ "$count" -le "$(( (declared_size - 12) / 8 ))" ] \
-        || fail "malformed Mach-O code signature superblob: $relative"
-      flags=
-      cms_size=
-      cms_count=0
-      index=0
-      while [ "$index" -lt "$count" ]; do
-        slot="$(read_be32 "$executable" "$((signature_offset + 12 + index * 8))")"
-        blob_offset="$(read_be32 "$executable" "$((signature_offset + 16 + index * 8))")"
-        [ "$blob_offset" -le "$((declared_size - 8))" ] \
-          || fail "Mach-O code-signature blob is outside the superblob: $relative"
-        if [ "$slot" -eq 65536 ]; then
-          blob_magic="$(read_be32 "$executable" "$((signature_offset + blob_offset))")"
-          blob_size="$(read_be32 "$executable" "$((signature_offset + blob_offset + 4))")"
-          [ "$blob_magic" -eq 4208855809 ] \
-            && [ "$blob_size" -ge 8 ] \
-            && [ "$((blob_offset + blob_size))" -le "$declared_size" ] \
-            || fail "Mach-O CMS signature blob is invalid: $relative"
-          cms_size="$blob_size"
-          cms_count="$((cms_count + 1))"
-        fi
-        if [ "$slot" -eq 0 ]; then
-          blob_magic="$(read_be32 "$executable" "$((signature_offset + blob_offset))")"
-          blob_size="$(read_be32 "$executable" "$((signature_offset + blob_offset + 4))")"
-          [ "$blob_magic" -ge 4208856066 ] \
-            && [ "$blob_magic" -le 4208856068 ] \
-            && [ "$blob_size" -ge 16 ] \
-            && [ "$((blob_offset + blob_size))" -le "$declared_size" ] \
-            || fail "Mach-O CodeDirectory is invalid: $relative"
-          flags="$(read_be32 "$executable" "$((signature_offset + blob_offset + 12))")"
-        fi
-        index="$((index + 1))"
-      done
-      [ -n "$flags" ] || fail "Mach-O CodeDirectory must be present: $relative"
-      [ "$cms_count" -le 1 ] || fail "Mach-O CMS signature wrapper must not repeat: $relative"
-      if [ "$signing_policy" = adhoc/v1 ]; then
-        [ "$((flags & 2))" -eq 2 ] || fail "Mach-O CodeDirectory must carry the ad-hoc flag: $relative"
-        # Apple codesign emits an empty CMS wrapper. Swift's linker emits one
-        # too; neither may carry CMS payload.
-        [ "$cms_count" -eq 0 ] || [ "$cms_size" -eq 8 ] \
-          || fail "Mach-O CMS signature blob must be empty: $relative"
-      else
-        [ "$cms_count" -eq 1 ] || fail "embedded Mach-O CMS signature wrapper must be present: $relative"
-        [ "$((flags & 2))" -eq 0 ] || fail "Mach-O CodeDirectory must not carry the ad-hoc flag: $relative"
-        [ "$cms_size" -gt 8 ] || fail "Mach-O CMS signature blob must be embedded: $relative"
-      fi
-    }
-
-    while IFS= read -r relative; do
-      inspect_executable "$relative"
-    done < <(${pkgs.jq}/bin/jq -r '.runtime.executables[].path' "$descriptor")
-
-    declared_entrypoints="$(${pkgs.jq}/bin/jq -r '.entrypoints | sort | .[]' "$descriptor")"
-    runtime_executables="$(${pkgs.jq}/bin/jq -r '.runtime.executables | map(.path) | sort | .[]' "$descriptor")"
-    [ "$declared_entrypoints" = "$runtime_executables" ] \
-      || fail "descriptor entrypoints must be exactly the runtime bundle executables"
+      ' "$descriptor" > "$temporary/executable.json"
+      ${inspectExecutable} "$temporary/executable.json" "$root"
+    done < <(${pkgs.jq}/bin/jq -c '.runtime.executables[]' "$descriptor")
+    declared="$(${pkgs.jq}/bin/jq -r '.entrypoints | sort | .[]' "$descriptor")"
+    observed="$(${pkgs.jq}/bin/jq -r '.runtime.executables | map(.path) | sort | .[]' "$descriptor")"
+    [ "$declared" = "$observed" ] || fail "entrypoints must be exactly the bundle executables"
   '';
 in
-assert pkgs.lib.assertMsg toolsValid
-  "buck2-runtime-inspect-mach-o-app-bundle: inspectionTools must declare exact Nix-store identities and executables";
 script.overrideAttrs (old: {
   passthru = (old.passthru or { }) // {
-    inspectionToolIdentities = builtins.mapAttrs (_: tool: tool.identity) inspectionTools;
+    inherit (inspectExecutable) inspectionToolIdentities;
   };
 })

@@ -61,12 +61,16 @@ struct PackageArgs {
 
 #[derive(Args)]
 struct PackageAppBundleArgs {
-    #[arg(long)]
-    bundle: PathBuf,
     #[arg(long = "bundle-root")]
     bundle_root: String,
-    #[arg(long, value_delimiter = ',')]
-    executables: Vec<String>,
+    #[arg(long = "bundle-executable", value_name = "RELPATH=SRCPATH")]
+    bundle_executables: Vec<String>,
+    #[arg(long = "bundle-resource", value_name = "RELPATH=SRCPATH")]
+    bundle_resources: Vec<String>,
+    #[arg(long = "bundle-plist")]
+    bundle_plist: PathBuf,
+    #[arg(long = "bundle-stamp")]
+    bundle_stamp: Option<PathBuf>,
     #[arg(long = "main-executable")]
     main_executable: String,
     #[arg(long)]
@@ -87,6 +91,17 @@ struct PackageAppBundleArgs {
     descriptor: PathBuf,
 }
 
+#[derive(Args)]
+struct NpmPackageArgs {
+    #[arg(long)]
+    package_tree: PathBuf,
+    #[arg(long)]
+    dist: PathBuf,
+    #[arg(long)]
+    artifact: PathBuf,
+    #[arg(long)]
+    workspace_manifest: Vec<PathBuf>,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -726,6 +741,16 @@ fn archive(
             ));
         }
         collect_support_files(root, root, &mut files)?;
+        collect_support_files(root, root, &mut files)?;
+    }
+    if files
+        .insert(entrypoint.to_owned(), executable.to_vec())
+        .is_some()
+    {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "support tree collides with the executable entrypoint",
+        ));
     }
     archive_tree(files, &[entrypoint.to_owned()])
 }
@@ -1140,91 +1165,114 @@ fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
         ));
     }
     let bundle_root = normalized_relative(&args.bundle_root, "bundle root")?.to_owned();
-    if args.executables.is_empty() {
+    let bundle_root_prefix = format!("{bundle_root}/");
+    let parse_input = |spec: &str, kind: &str| -> ToolResult<(String, String)> {
+        let (relative, source) = spec
+            .split_once('=')
+            .ok_or_else(|| fail("BUCK2_PRODUCT_INPUT", format!("{kind} must be RELPATH=SRCPATH")))?;
+        let relative = normalized_relative(relative, kind)?;
+        if !relative.starts_with(&bundle_root_prefix) {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("{kind} is outside the bundle root: {relative}"),
+            ));
+        }
+        safe_text(source, kind)?;
+        Ok((relative.to_owned(), source.to_owned()))
+    };
+    if args.bundle_executables.is_empty() {
         return Err(fail(
             "BUCK2_PRODUCT_INPUT",
             "an app bundle must declare at least one executable",
         ));
     }
-    let mut executables = BTreeSet::new();
-    for executable in &args.executables {
-        let relative = normalized_relative(executable, "bundle executable")?;
-        if !relative.starts_with(&format!("{bundle_root}/")) {
+    let mut executables = BTreeMap::new();
+    for spec in &args.bundle_executables {
+        let (relative, source) = parse_input(spec, "bundle executable")?;
+        if executables.insert(relative.clone(), source).is_some() {
             return Err(fail(
                 "BUCK2_PRODUCT_INPUT",
-                format!("bundle executable is outside the bundle root: {executable}"),
+                format!("bundle executable declared twice: {relative}"),
             ));
         }
-        executables.insert(relative.to_owned());
     }
     let main_executable = normalized_relative(&args.main_executable, "main executable")?.to_owned();
-    if !executables.contains(&main_executable) {
+    if !executables.contains_key(&main_executable) {
         return Err(fail(
             "BUCK2_PRODUCT_INPUT",
             "the main executable must be one of the bundle executables",
         ));
     }
-    let bundle = fs::symlink_metadata(&args.bundle).map_err(|error| {
-        fail(
-            "BUCK2_PRODUCT_INPUT",
-            format!("bundle is unavailable: {error}"),
-        )
-    })?;
-    if !bundle.is_dir() || bundle.file_type().is_symlink() {
+    let mut resources = BTreeMap::new();
+    for spec in &args.bundle_resources {
+        let (relative, source) = parse_input(spec, "bundle resource")?;
+        if executables.contains_key(&relative)
+            || resources.insert(relative.clone(), source).is_some()
+        {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("bundle input declared twice: {relative}"),
+            ));
+        }
+    }
+    let plist_relative = format!("{bundle_root}/Contents/Info.plist");
+    if executables.contains_key(&plist_relative) || resources.contains_key(&plist_relative) {
         return Err(fail(
             "BUCK2_PRODUCT_INPUT",
-            "bundle must be a regular non-symlink directory",
+            "the bundle already declares its Info.plist path",
         ));
     }
     let mut files = BTreeMap::new();
-    collect_support_files(&args.bundle, &args.bundle, &mut files)?;
     let mut observed_executables = BTreeMap::new();
     let mut runtime_executables = Vec::new();
-    for executable in &executables {
-        let within_bundle = executable
-            .strip_prefix(&bundle_root)
-            .map_err(|_| fail("BUCK2_PRODUCT_INPUT", "bundle executable escapes the root"))?;
-        let observed = files.remove(within_bundle).ok_or_else(|| {
+    for (relative, source) in &executables {
+        let observed = fs::read(source).map_err(|error| {
             fail(
                 "BUCK2_PRODUCT_INPUT",
-                format!("bundle does not contain executable: {executable}"),
+                format!("could not read bundle executable {relative}: {error}"),
             )
         })?;
-        let metadata = fs::symlink_metadata(args.bundle.join(within_bundle)).map_err(|error| {
-            fail(
-                "BUCK2_PRODUCT_INPUT",
-                format!("could not inspect bundle executable: {error}"),
-            )
-        })?;
-        if !metadata.is_file() || metadata.file_type().is_symlink() {
-            return Err(fail(
-                "BUCK2_PRODUCT_INPUT",
-                "bundle executable must be a regular non-symlink file",
-            ));
-        }
-        if metadata.permissions().mode() & 0o111 == 0 {
-            return Err(fail(
-                "BUCK2_PRODUCT_INPUT",
-                "bundle executable is not executable",
-            ));
-        }
         let runtime = mach_o_runtime(&observed, &args.platform_architecture)?;
-        observed_executables.insert(executable.clone(), observed);
+        observed_executables.insert(relative.clone(), observed);
         runtime_executables.push(json!({
+            "architecture": runtime["architecture"].clone(),
             "dylibs": runtime["dylibs"].clone(),
             "minimumOs": runtime["minimumOs"].clone(),
-            "path": executable,
+            "path": relative,
             "signingPolicy": runtime["signingPolicy"].clone(),
         }));
     }
-    let mut archived = BTreeMap::new();
-    for (path, contents) in files {
-        archived.insert(format!("{bundle_root}/{path}"), contents);
+    for (relative, source) in &resources {
+        let contents = fs::read(source).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read bundle resource {relative}: {error}"),
+            )
+        })?;
+        files.insert(relative.clone(), contents);
+    }
+    files.insert(
+        plist_relative,
+        fs::read(&args.bundle_plist).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read the bundle Info.plist: {error}"),
+            )
+        })?,
+    );
+    if let Some(stamp) = &args.bundle_stamp {
+        let contents = fs::read(stamp).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read the bundle build stamp: {error}"),
+            )
+        })?;
+        files.insert(format!("{bundle_root}/Contents/Resources/nix-build-stamp.json"), contents);
     }
     for (path, contents) in observed_executables {
-        archived.insert(path, contents);
+        files.insert(path, contents);
     }
-    let artifact = archive_tree(archived, &executables.iter().cloned().collect::<Vec<_>>())?;
+    let artifact = archive_tree(files, &executables.keys().cloned().collect::<Vec<_>>())?;
     let provenance_bytes = fs::read(&args.provenance).map_err(|error| {
         fail(
             "BUCK2_PRODUCT_PROVENANCE",
@@ -1247,7 +1295,7 @@ fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
     safe_text(&provenance.toolchain, "provenance toolchain")?;
     let digest = sha256_sri(&sha256_bytes(&artifact))?;
     let descriptor = json!({
-        "entrypoints": executables.iter().cloned().collect::<Vec<_>>(),
+        "entrypoints": executables.keys().cloned().collect::<Vec<_>>(),
         "name": args.name,
         "payload": {
             "digest": {"algorithm": "sha256", "sri": digest},
@@ -1494,9 +1542,14 @@ mod tests {
     fn package_app_bundle_rejects_a_non_darwin_platform() {
         let temporary = tempdir().unwrap();
         let arguments = PackageAppBundleArgs {
-            bundle: temporary.path().join("Demo.app"),
             bundle_root: "Applications/Demo.app".into(),
-            executables: vec!["Applications/Demo.app/Contents/MacOS/demo".into()],
+            bundle_executables: vec![format!(
+                "Applications/Demo.app/Contents/MacOS/demo={}",
+                temporary.path().join("demo").display()
+            )],
+            bundle_resources: vec![],
+            bundle_plist: temporary.path().join("Info.plist"),
+            bundle_stamp: None,
             main_executable: "Applications/Demo.app/Contents/MacOS/demo".into(),
             artifact: temporary.path().join("artifact.tar"),
             name: "demo".into(),
@@ -1533,6 +1586,87 @@ mod tests {
         }
         signature.resize(usize::try_from(declared_size).unwrap(), 0);
         signature
+    }
+
+    fn app_bundle_args(root: &Path) -> PackageAppBundleArgs {
+        let signature = signature_with_cms(2, 8);
+        let mut executable = [
+            0xfeed_facfu32, 0x0100_000c, 0, 2, 2, 40, 0, 0,
+            0x32, 24, 1, 14 << 16, 14 << 16, 0,
+            0x1d, 16, 72, u32::try_from(signature.len()).unwrap(),
+        ]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+        executable.extend_from_slice(&signature);
+        fs::write(root.join("demo"), executable).unwrap();
+        fs::write(root.join("icon.icns"), b"icon").unwrap();
+        fs::write(root.join("Info.plist"), b"<?xml version=\"1.0\"?><plist/>").unwrap();
+        fs::write(root.join("stamp.json"), br#"{"version":"1.2.3"}"#).unwrap();
+        fs::write(root.join("provenance.json"), br#"{"schema":"buck-build-provenance/v1","recipe":"demo","toolchain":"swift-test"}"#).unwrap();
+        PackageAppBundleArgs {
+            bundle_root: "Applications/Demo.app".into(),
+            bundle_executables: vec![format!(
+                "Applications/Demo.app/Contents/MacOS/demo={}", root.join("demo").display()
+            )],
+            bundle_resources: vec![format!(
+                "Applications/Demo.app/Contents/Resources/icon.icns={}", root.join("icon.icns").display()
+            )],
+            bundle_plist: root.join("Info.plist"),
+            bundle_stamp: Some(root.join("stamp.json")),
+            main_executable: "Applications/Demo.app/Contents/MacOS/demo".into(),
+            artifact: root.join("artifact.tar"),
+            name: "demo".into(),
+            target: "//pkg:app".into(),
+            platform_os: "darwin".into(),
+            platform_architecture: "aarch64".into(),
+            platform_abi: "darwin".into(),
+            provenance: root.join("provenance.json"),
+            descriptor: root.join("descriptor.json"),
+        }
+    }
+
+    #[test]
+    fn packages_app_bundle_layout_and_observed_runtime_deterministically() {
+        let temporary = tempdir().unwrap();
+        package_app_bundle(app_bundle_args(temporary.path())).unwrap();
+        let first = fs::read(temporary.path().join("artifact.tar")).unwrap();
+        let descriptor: Value = serde_json::from_slice(
+            &fs::read(temporary.path().join("descriptor.json")).unwrap()
+        ).unwrap();
+        assert_eq!(descriptor["runtime"]["executables"][0], json!({
+            "architecture": "arm64", "dylibs": [], "minimumOs": "14.0",
+            "path": "Applications/Demo.app/Contents/MacOS/demo", "signingPolicy": "adhoc/v1"
+        }));
+        assert_eq!(descriptor["payload"]["digest"]["sri"], sha256_sri(&sha256_bytes(&first)).unwrap());
+        let entries = tar::Archive::new(first.as_slice()).entries().unwrap().map(|entry| {
+            let mut entry = entry.unwrap();
+            let path = entry.path().unwrap().into_owned();
+            let mode = entry.header().mode().unwrap();
+            let mut contents = Vec::new();
+            entry.read_to_end(&mut contents).unwrap();
+            (path, (mode, contents))
+        }).collect::<BTreeMap<_, _>>();
+        assert_eq!(entries[Path::new("Applications/Demo.app/Contents/Info.plist")].1,
+            fs::read(temporary.path().join("Info.plist")).unwrap());
+        assert_eq!(entries[Path::new("Applications/Demo.app/Contents/MacOS/demo")].0, 0o555);
+        assert_eq!(entries[Path::new("Applications/Demo.app/Contents/Resources/icon.icns")], (0o444, b"icon".to_vec()));
+        assert_eq!(entries[Path::new("Applications/Demo.app/Contents/Resources/nix-build-stamp.json")].1,
+            br#"{"version":"1.2.3"}"#);
+        package_app_bundle(app_bundle_args(temporary.path())).unwrap();
+        assert_eq!(first, fs::read(temporary.path().join("artifact.tar")).unwrap());
+    }
+
+    #[test]
+    fn app_bundle_rejects_escaped_resources_and_undeclared_main_executable() {
+        let temporary = tempdir().unwrap();
+        let mut arguments = app_bundle_args(temporary.path());
+        arguments.bundle_resources = vec!["Applications/Other.app/icon=absent".into()];
+        assert!(package_app_bundle(arguments).unwrap_err().to_string().contains("outside the bundle root"));
+        let mut arguments = app_bundle_args(temporary.path());
+        arguments.main_executable = "Applications/Demo.app/Contents/MacOS/absent".into();
+        assert!(package_app_bundle(arguments).unwrap_err().to_string().contains("main executable must be one"));
+        assert!(!temporary.path().join("artifact.tar").exists());
     }
 
     #[test]
