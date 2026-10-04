@@ -166,11 +166,13 @@ describe('standalone Buck cache posture', () => {
       expect(reader).not.toContain('http_headers')
       expect(reader).not.toContain('private-cache.example')
     }
-    expect(() => standaloneCachePostureConfig({
-      current: '',
-      env: { BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential },
-      trustedOrigin,
-    })).toThrow()
+    expect(() =>
+      standaloneCachePostureConfig({
+        current: '',
+        env: { BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential },
+        trustedOrigin,
+      }),
+    ).toThrow()
   })
 
   it('replaces a publisher overlay with anonymous read-only posture in a reader root', () => {
