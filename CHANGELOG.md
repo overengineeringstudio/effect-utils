@@ -25,6 +25,9 @@
   flag and `rollout "manual"` policy. Omitting rollout preserves automatic rollout.
 - Raw wasm32 guest Buck products with a declared host harness, module import
   descriptors, and independent Nix runtime inspection.
+- `#[effect_rust::resource]` exports inherent impl constructors and borrowed
+  methods as typed scoped Effect resources. Calls and close are serialized in
+  FIFO order; generation retirement poisons siblings and rejects stale handles.
 
 ### Fixed
 

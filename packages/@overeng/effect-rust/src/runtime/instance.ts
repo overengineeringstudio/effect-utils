@@ -1,4 +1,4 @@
-import { Effect, Semaphore, Sink, Stream } from 'effect'
+import { Effect, type Scope, Semaphore, Sink, Stream } from 'effect'
 
 import { Init, Transport } from './errors.ts'
 
@@ -56,12 +56,27 @@ export interface OutputHandle {
   readonly next: (maxBytes: number) => Uint8Array | undefined | PromiseLike<Uint8Array | undefined>
   readonly close: () => void | PromiseLike<void>
 }
+/** Owned adapter resource. The runtime, not the handle, owns generation validity. */
+export interface ResourceHandle {
+  readonly close: () => void | PromiseLike<void>
+}
+/** Serialized access to one resource in its acquisition generation. */
+export interface Resource<THandle extends ResourceHandle> {
+  readonly call: <T, TError = never>(
+    start: Start<THandle, T>,
+    options?: CallOptions<TError>,
+  ) => Effect.Effect<T, TError>
+  readonly close: Effect.Effect<void>
+}
 /** Scoped Rust calls and byte streams sharing one generation registry. */
 export interface Runtime<TApi> {
   readonly call: <T, TError = never>(
     start: Start<TApi, T>,
     options?: CallOptions<TError>,
   ) => Effect.Effect<T, TError>
+  readonly resource: <THandle extends ResourceHandle>(
+    open: Start<TApi, THandle>,
+  ) => Effect.Effect<Resource<THandle>, never, Scope.Scope>
   readonly inputSink: <T, TError = never>(
     open: Start<TApi, InputHandle<T>>,
     options?: CallOptions<TError>,
@@ -261,7 +276,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     readonly callOptions?: CallOptions<TError> | undefined
   }): Effect.Effect<T, TError> =>
     Effect.callback<T, TError>((resume) => {
-      if (generation.state !== 'healthy') {
+      if (closed === true || generation.state !== 'healthy') {
         resume(Effect.die(retiredDefect(generation.id)))
         return
       }
@@ -351,6 +366,37 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       ),
   )
 
+  const resource = Effect.fn('effect-rust.resource')(
+    <THandle extends ResourceHandle>(open: Start<TApi, THandle>) =>
+      Effect.gen(function* () {
+        const generation = yield* generationEffect
+        const serial = yield* Semaphore.make(1)
+        let released = false
+        const handle = yield* invokeOn({ generation, start: open })
+        generation.handles.add(handle)
+        // Closing shares the same queue as methods: a close cannot overlap a mutable
+        // borrow, and invocations queued after close reject without entering Rust.
+        const close = Effect.suspend(() => {
+          if (released === true) return Effect.void
+          released = true
+          if (generation.handles.delete(handle) === false || generation.state !== 'healthy')
+            return Effect.void
+          return invokeOn({ generation, start: () => handle.close() })
+        }).pipe(Semaphore.withPermits(serial, 1))
+        // eslint-disable-next-line overeng/named-args -- Resource.call follows Runtime.call's public positional (start, options) contract.
+        const resourceCall: Resource<THandle>['call'] = (start, callOptions) =>
+          Effect.suspend(() => {
+            if (released === true) return Effect.die(new Error('Rust resource is closed'))
+            return invokeOn({
+              generation,
+              start: ({ signal }) => start({ api: handle, signal }),
+              callOptions,
+            })
+          }).pipe(Semaphore.withPermits(serial, 1))
+        yield* Effect.addFinalizer(() => close)
+        return { call: resourceCall, close } satisfies Resource<THandle>
+      }).pipe(Effect.uninterruptible),
+  )
   // eslint-disable-next-line overeng/named-args -- Runtime.inputSink preserves the public positional (open, options) signature.
   const inputSink = <T, TError = never>(
     open: Start<TApi, InputHandle<T>>,
@@ -482,6 +528,6 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
             ? ('rebuilding' as const)
             : ('retired' as const),
   }))
-  const runtime: Runtime<TApi> = { call, inputSink, outputStream, snapshot }
+  const runtime: Runtime<TApi> = { call, resource, inputSink, outputStream, snapshot }
   return runtime
 })

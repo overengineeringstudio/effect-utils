@@ -26,6 +26,8 @@ export {
   type OutputHandle,
   type PanicPolicy,
   type PanicObserver,
+  type Resource,
+  type ResourceHandle,
   type Runtime,
   type RustJob,
   type Start,

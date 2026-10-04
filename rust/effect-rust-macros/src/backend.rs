@@ -171,47 +171,7 @@ pub(super) fn generate(export: &Export, backend: Backend) -> syn::Result<Tokens>
         Mode::Async => asynchronous(export, backend)?,
         _ => synchronous(export, backend)?,
     };
-    let expected = if export.error.is_some() {
-        quote! {
-            fn expected_error<E: serde::Serialize + effect_rust::ExportError>(error: &E) -> #error {
-                let value = match serde_json::to_value(error) {
-                    Ok(value) => value,
-                    Err(error) => return edge_error(format!("RUST_TRANSPORT:{error}")),
-                };
-                struct Tagged<'a>(&'a serde_json::Value, &'static str);
-                impl serde::Serialize for Tagged<'_> {
-                    fn serialize<S: serde::Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
-                        use serde::ser::SerializeMap as _;
-                        let Some(object)=self.0.as_object() else {return serde::Serialize::serialize(self.0,serializer);};
-                        let mut map=serializer.serialize_map(Some(object.len()))?;
-                        if let Some(tag)=object.get(self.1){map.serialize_entry(self.1,tag)?;}
-                        for (key,value) in object {if key!=self.1{map.serialize_entry(key,value)?;}}
-                        map.end()
-                    }
-                }
-                match serde_json::to_string(&Tagged(&value,E::TAG_KEY)) {
-                    Ok(json)=>edge_error(format!("RUST_ERROR:{json}")),
-                    Err(error)=>edge_error(format!("RUST_TRANSPORT:{error}")),
-                }
-            }
-        }
-    } else {
-        quote!()
-    };
-    let schema = export.schema_export().map(|name| {
-        let annotation = backend.annotation(&name);
-        let (args, returns) = export.schema_positions();
-        let args = args.into_iter().map(|(name, ty)| { let name = name.to_string(); quote!(.arg::<#ty>(#name)) });
-        let returns = returns.map(|ty| quote!(.returns::<#ty>()));
-        // Packaging-time metadata: schemars runs inside the built product, so the
-        // schemas reflect the exact serde/schemars attributes compiled into it.
-        quote! {
-            #annotation
-            pub fn schema() -> String {
-                effect_rust::contract::ExportSchema::default() #(#args)* #returns .into_json().to_string()
-            }
-        }
-    });
+    let common = common(export, backend);
     Ok(quote! {
         #[cfg(#cfg)]
         mod #module {
@@ -220,9 +180,8 @@ pub(super) fn generate(export: &Export, backend: Backend) -> syn::Result<Tokens>
             #[cfg(target_arch="wasm32")]
             use wasm_bindgen::JsCast as _;
             fn edge_error(message: impl std::fmt::Display) -> #error { #edge_error }
-            #expected
+            #common
             #body
-            #schema
         }
     })
 }
@@ -529,4 +488,134 @@ fn asynchronous(export: &Export, backend: Backend) -> syn::Result<Tokens> {
             }
         }),
     }
+}
+
+fn common(export: &Export, backend: Backend) -> Tokens {
+    let error = backend.error();
+    let expected = if export.error.is_some() { quote! {
+        fn expected_error<E: serde::Serialize + effect_rust::ExportError>(error: &E) -> #error {
+            let value = match serde_json::to_value(error) {
+                Ok(value) => value,
+                Err(error) => return edge_error(format!("RUST_TRANSPORT:{error}")),
+            };
+            struct Tagged<'a>(&'a serde_json::Value, &'static str);
+            impl serde::Serialize for Tagged<'_> {
+                fn serialize<S: serde::Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
+                    use serde::ser::SerializeMap as _;
+                    let Some(object)=self.0.as_object() else {return serde::Serialize::serialize(self.0,serializer);};
+                    let mut map=serializer.serialize_map(Some(object.len()))?;
+                    if let Some(tag)=object.get(self.1){map.serialize_entry(self.1,tag)?;}
+                    for (key,value) in object {if key!=self.1{map.serialize_entry(key,value)?;}}
+                    map.end()
+                }
+            }
+            match serde_json::to_string(&Tagged(&value,E::TAG_KEY)) {
+                Ok(json)=>edge_error(format!("RUST_ERROR:{json}")),
+                Err(error)=>edge_error(format!("RUST_TRANSPORT:{error}")),
+            }
+        }
+    } } else { quote!() };
+    let schema = export.schema_export().map(|name| {
+        let annotation = backend.annotation(&name);
+        let (args, returns) = export.schema_positions();
+        let args = args.into_iter().map(|(name, ty)| { let name = name.to_string(); quote!(.arg::<#ty>(#name)) });
+        let returns = returns.map(|ty| quote!(.returns::<#ty>()));
+        // Packaging-time metadata: schemars runs inside the built product, so the
+        // schemas reflect the exact serde/schemars attributes compiled into it.
+        quote! {
+            #annotation
+            pub fn schema() -> String {
+                effect_rust::contract::ExportSchema::default() #(#args)* #returns .into_json().to_string()
+            }
+        }
+    });
+    quote!(#expected #schema)
+}
+
+pub(super) fn resource(ty: &syn::Type, class: &str, constructor: &Export, methods: &[Export], backend: Backend) -> syn::Result<Tokens> {
+    let cfg = match backend { Backend::Wasm => quote!(all(feature="wasm",target_arch="wasm32")), Backend::Napi => quote!(all(feature="napi",not(target_arch="wasm32"))) };
+    let module = match backend { Backend::Wasm => quote!(wasm), Backend::Napi => quote!(native) };
+    let handle = format_ident!("EffectRust{class}Resource");
+    let class_name = format!("{class}Resource");
+    let class_annotation = backend.annotation(&class_name);
+    let impl_annotation = match backend { Backend::Wasm => quote!(#[wasm_bindgen::prelude::wasm_bindgen(js_class = #class_name)]), Backend::Napi => quote!(#[napi_derive::napi]) };
+    let error = backend.error();
+    let edge_error = match backend { Backend::Wasm => quote!(js_sys::Error::new(&message.to_string()).into()), Backend::Napi => quote!(napi::Error::from_reason(message.to_string())) };
+    let factory_name = constructor.name();
+    let factory_annotation = backend.annotation(&factory_name);
+    let constructor_common = common(constructor, backend);
+    let (declarations, decode, calls) = arguments(constructor, backend);
+    let mut bodies = Vec::new();
+    let mut helpers = Vec::new();
+    for method in methods {
+        let ident = &method.function.sig.ident;
+        let annotation = backend.annotation(&ident.to_string());
+        let operation = method.name();
+        let (args, decode, calls) = arguments(method, backend);
+        let wire = Wire::classify(&method.success, Mode::Sync)?;
+        let output = backend.wire_type(&wire);
+        let value = result(method, quote!(state.#ident(#(#calls),*)));
+        let encode = backend.encode(&wire, quote!(__value));
+        let common = common(method, backend);
+        helpers.push(quote! {
+            mod #ident {
+                use super::*;
+                #common
+                pub(super) fn call(state: &mut #ty, #(#args),*) -> Result<#output, #error> {
+                    effect_rust::native::guard(#operation, || { #(#decode)* #value #encode }).map_err(edge_error)?
+                }
+            }
+        });
+        let names = method.args.iter().map(|(name, _)| name);
+        bodies.push(quote! {
+            #annotation
+            pub fn #ident(&mut self, #(#args),*) -> Result<#output, #error> {
+                let state = self.state.as_mut().ok_or_else(|| edge_error("Rust resource is closed"))?;
+                #ident::call(state, #(#names),*)
+            }
+        });
+    }
+    let close_annotation = backend.annotation("close");
+    // wasm close also frees the adapter allocation; bindgen's automatic free is
+    // deliberately not used by generation retirement after a trap.
+    let close = match backend {
+        Backend::Wasm => quote! {
+            #close_annotation
+            pub fn close(mut self) -> Result<(), #error> {
+                effect_rust::native::guard(#factory_name, || { drop(self.state.take()); Ok(()) }).map_err(edge_error)?
+            }
+        },
+        Backend::Napi => quote! {
+            #close_annotation
+            pub fn close(&mut self) -> Result<(), #error> {
+                effect_rust::native::guard(#factory_name, || { drop(self.state.take()); Ok(()) }).map_err(edge_error)?
+            }
+        },
+    };
+    Ok(quote! {
+        #[cfg(#cfg)]
+        mod #module {
+            use super::*;
+            fn edge_error(message: impl std::fmt::Display) -> #error { #edge_error }
+            #constructor_common
+            #class_annotation
+            pub struct #handle { state: Option<#ty> }
+            #factory_annotation
+            pub fn open(#(#declarations),*) -> Result<#handle, #error> {
+                effect_rust::native::guard(#factory_name, || {
+                    #(#decode)*
+                    Ok(#handle { state: Some(<#ty>::new(#(#calls),*)) })
+                }).map_err(edge_error)?
+            }
+            #impl_annotation
+            impl #handle { #(#bodies)* #close }
+            impl Drop for #handle {
+                fn drop(&mut self) {
+                    let state = self.state.take();
+                    let _ = effect_rust::native::guard(concat!(#factory_name, ".drop"), || drop(state));
+                }
+            }
+            #(#helpers)*
+        }
+    })
 }

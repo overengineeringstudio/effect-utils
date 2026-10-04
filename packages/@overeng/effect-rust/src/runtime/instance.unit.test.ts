@@ -473,3 +473,130 @@ describe('Sink and Stream byte backpressure', () => {
     }),
   )
 })
+
+describe('scoped resources', () => {
+  it.effect('releases 1k scoped resources without retaining live handles or jobs', () =>
+    Effect.gen(function* () {
+      const runtime = yield* makeRuntime('resource-stress', {
+        load: () => ({ api: undefined, release: () => undefined }),
+      })
+      let live = 0
+      for (let index = 0; index < 1000; index++) {
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const resource = yield* runtime.resource(() => {
+              live++
+              return {
+                close: () => {
+                  live--
+                },
+              }
+            })
+            expect((yield* runtime.snapshot).handles).toBe(1)
+            yield* resource.call(() => index)
+          }),
+        )
+      }
+      expect(live).toBe(0)
+      expect(yield* runtime.snapshot).toEqual({
+        generation: 1,
+        jobs: 0,
+        handles: 0,
+        state: 'healthy',
+      })
+    }),
+  )
+
+  it.effect('serializes calls and close, and rejects use after exactly one release', () =>
+    Effect.gen(function* () {
+      const runtime = yield* makeRuntime('resource', {
+        load: () => ({ api: undefined, release: () => undefined }),
+      })
+      const events: string[] = []
+      const waiting = Promise.withResolvers<number>()
+      const escaped = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const resource = yield* runtime.resource(() => ({
+            close: () => {
+              events.push('close')
+            },
+          }))
+          const first = yield* resource
+            .call(() => {
+              events.push('first:start')
+              return waiting.promise.then((value) => {
+                events.push('first:end')
+                return value
+              })
+            })
+            .pipe(Effect.forkChild({ startImmediately: true }))
+          const second = yield* resource
+            .call(() => {
+              events.push('second')
+              return 2
+            })
+            .pipe(Effect.forkChild({ startImmediately: true }))
+          const closing = yield* resource.close.pipe(Effect.forkChild({ startImmediately: true }))
+          expect(events).toEqual(['first:start'])
+          waiting.resolve(1)
+          expect(yield* Fiber.join(first)).toBe(1)
+          expect(yield* Fiber.join(second)).toBe(2)
+          yield* Fiber.join(closing)
+          yield* resource.close
+          assertDefect(yield* Effect.exit(resource.call(() => 3)))
+          return resource
+        }),
+      )
+      yield* escaped.close
+      expect(events).toEqual(['first:start', 'first:end', 'second', 'close'])
+    }),
+  )
+
+  it.effect(
+    'resource traps poison siblings; rebuilt instances reject stale calls and destructors',
+    () =>
+      Effect.gen(function* () {
+        const fixture = fake()
+        const runtime = yield* makeRuntime('resource', { load: fixture.load })
+        let closes = 0
+        let staleCalls = 0
+        const first = yield* runtime.resource(({ api }) => ({
+          value: () => api.value(9),
+          trap: () => api.trap(),
+          close: () => {
+            closes++
+          },
+        }))
+        const sibling = yield* runtime.resource(({ api }) => ({
+          value: () => {
+            staleCalls++
+            return api.value(10)
+          },
+          pending: () => api.pending(),
+          close: () => {
+            closes++
+          },
+        }))
+        expect(yield* first.call(({ api }) => api.value())).toBe(9)
+        const pending = yield* sibling
+          .call(({ api }) => api.pending())
+          .pipe(Effect.forkChild({ startImmediately: true }))
+        assertDefect(yield* Effect.exit(first.call(({ api }) => api.trap())))
+        assertDefect(yield* Fiber.await(pending))
+        assertDefect(yield* Effect.exit(sibling.call(({ api }) => api.value())))
+        yield* first.close
+        yield* sibling.close
+        expect({ closes, staleCalls }).toEqual({ closes: 0, staleCalls: 0 })
+        const fresh = yield* runtime.resource(({ api }) => ({
+          value: () => api.value(11),
+          close: () => {
+            closes++
+          },
+        }))
+        expect(yield* fresh.call(({ api }) => api.value())).toBe(11)
+        yield* fresh.close
+        expect(closes).toBe(1)
+        expect(fixture.counts()).toEqual({ loads: 2, releases: 1, live: 0 })
+      }),
+  )
+})

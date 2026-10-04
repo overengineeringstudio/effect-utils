@@ -49,6 +49,13 @@ type Export = {
   readonly error: ExportError | null
   /** JS name of the product's schemars record function for serde domain positions. */
   readonly schema?: string
+  readonly resource?: {
+    readonly name: string
+    readonly type: string
+    readonly role: 'constructor' | 'method' | 'close'
+    readonly method: string
+    readonly concurrency: 'serial'
+  }
 }
 type ErrorDefinition = ExportError & {
   readonly variants: readonly { readonly name: string; readonly fields: readonly WireArgument[] }[]
@@ -121,8 +128,17 @@ if (kind === 'napi') {
       `const addon = require('./${name}.node');`,
       'exports.load = () => {',
       '  let released = false;',
-      '  const api = Object.fromEntries(Object.entries(addon).map(([name, value]) => [name, typeof value === "function" ? (...args) => { if (released) throw new Error("Native instance released"); return value(...args); } : value]));',
-      '  return { api, release() { released = true; } };',
+      `  const factories = new Set(${JSON.stringify(manifestExports.filter((entry) => entry.resource?.role === 'constructor').map((entry) => entry.name))});`,
+      '  const resources = new Map();',
+      '  const api = Object.fromEntries(Object.entries(addon).map(([name, value]) => [name, typeof value === "function" ? (...args) => {',
+      '    if (released) throw new Error("Native instance released");',
+      '    const result = value(...args);',
+      '    if (!factories.has(name)) return result;',
+      '    const close = () => { if (resources.delete(result)) result.close(); };',
+      '    resources.set(result, close);',
+      '    return new Proxy(result, { get(target, key) { if (key === "close") return close; const member = Reflect.get(target, key, target); return typeof member === "function" ? (...methodArgs) => { if (released || !resources.has(target)) throw new Error("Native resource retired"); return member.apply(target, methodArgs); } : member; } });',
+      '  } : value]));',
+      '  return { api, release() { if (released) return; released = true; let failure; for (const close of resources.values()) { try { close(); } catch (cause) { failure ??= cause; } } resources.clear(); if (failure !== undefined) throw failure; } };',
       '};',
       '',
     ].join('\n'),
