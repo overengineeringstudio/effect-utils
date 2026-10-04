@@ -305,10 +305,14 @@ if importNative then
       else
         expectedPlatform;
     runtimeKind =
-      if runtimeKind == null then
-        (if pkgs.stdenv.hostPlatform.isDarwin then "mach-o-dynamic" else "elf-dynamic")
+      if runtimeKind != null then
+        runtimeKind
+      else if product.kind == "swift-app-bundle" then
+        "mach-o-app-bundle"
+      else if pkgs.stdenv.hostPlatform.isDarwin then
+        "mach-o-dynamic"
       else
-        runtimeKind;
+        "elf-dynamic";
     descriptorPath = lib.escapeShellArg "${sourceProduct}/descriptor.json";
     archivePath = lib.escapeShellArg "${sourceProduct}/${outputName}";
     passthru.buck2Product = sourceProduct;

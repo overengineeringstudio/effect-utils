@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Swift source products select bundle-aware runtime inspection during Nix import.
 - TypeScript Buck projections resolve source labels through the nearest declared
   package boundary, including workspace manifests nested under the consuming package.
 - The trusted fresh-root Buck2 cache proof reads the latest command's event log
