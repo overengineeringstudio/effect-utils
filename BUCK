@@ -1,3 +1,6 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
