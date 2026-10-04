@@ -6,6 +6,8 @@
 
 - Declared Darwin Swift app-bundle Buck products with deterministic bundle
   packaging and independent per-executable Mach-O inspection during Nix import.
+- `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
+  flag and `rollout "manual"` policy. Omitting rollout preserves automatic rollout.
 
 ### Fixed
 

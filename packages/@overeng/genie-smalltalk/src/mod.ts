@@ -203,6 +203,7 @@ const AgentSchemaFields = Schema.Struct({
     Schema.Array(Schema.Struct({ target: Text, reason: Schema.optionalKey(Text) })),
   ),
   restart: Schema.optionalKey(Restart),
+  rollout: Schema.optionalKey(Schema.Literal('manual')),
   shutdownTimeout: Schema.optionalKey(Duration),
   command: Schema.optionalKey(Text),
   argv: Schema.optionalKey(Schema.Array(Text)),
@@ -210,6 +211,7 @@ const AgentSchemaFields = Schema.Struct({
   render: Schema.optionalKey(Schema.Array(RenderOperation)),
   harness: Schema.optionalKey(OmpSchema),
   freshContext: Schema.optionalKey(Schema.Literal(true)),
+  handlesFaults: Schema.optionalKey(Schema.Literal(true)),
   missionAuthority: Schema.optionalKey(Authority),
   queueAuthority: Schema.optionalKey(Authority),
   seatAuthority: Schema.optionalKey(Authority),
@@ -510,6 +512,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
   }
   children.push(
     ...optionalChild({ name: 'restart', value: a.restart }),
+    ...optionalChild({ name: 'rollout', value: a.rollout }),
     ...optionalChild({ name: 'shutdown-timeout', value: a.shutdownTimeout }),
     ...optionalChild({ name: 'command', value: a.command }),
   )
@@ -546,6 +549,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
     )
   }
   if (a.freshContext === true) children.push(node({ name: 'fresh-context' }))
+  if (a.handlesFaults === true) children.push(node({ name: 'handles-faults' }))
   for (const key of authorityKeys) {
     const rules = a[key]
     if (rules !== undefined) {
