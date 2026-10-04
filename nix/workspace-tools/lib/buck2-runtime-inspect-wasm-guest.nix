@@ -26,9 +26,16 @@ pkgs.writeShellScript "buck2-runtime-inspect-wasm-guest" ''
     local relative="$1"
     local module="$root/$relative"
     [ -f "$module" ] && [ ! -L "$module" ] || fail "entrypoint must be a regular non-symlink file: $relative"
-    local magic
-    magic="$(${pkgs.coreutils}/bin/od -An -tx1 -N4 "$module" | ${pkgs.coreutils}/bin/tr -d ' ')"
-    [ "$magic" = "0061736d" ] || fail "entrypoint is not a wasm module: $relative"
+    ${pkgs.nodejs}/bin/node - "$descriptor" "$module" <<'JS'
+  const fs = require('node:fs')
+  const descriptor = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+  const guestModule = new WebAssembly.Module(fs.readFileSync(process.argv[3]))
+  const imports = WebAssembly.Module.imports(guestModule)
+    .map(({ module, name }) => module + '.' + name).sort()
+  if (JSON.stringify(imports) !== JSON.stringify(descriptor.runtime.imports)) {
+    throw new Error('wasm guest imports differ from the descriptor')
+  }
+  JS
   }
 
   while IFS= read -r entrypoint; do

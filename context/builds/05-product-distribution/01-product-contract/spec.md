@@ -67,6 +67,17 @@ checks each executable through the canonical Mach-O inspector without
 rewriting the payload. Mutable application installation or signing is not
 part of the product.
 
+### Raw Wasm Guests
+
+Raw wasm guests use `runtime.kind = "wasm-guest"` with
+`inspectionContract = "wasm32-unknown-unknown/v1"`, the exact target triple,
+a declared host `harness`, and sorted `module.name` imports. Their platform is
+`{ os: "wasm", architecture: "wasm32", abi: "unknown" }`; it does not claim a
+native host platform. `rust_wasm_guest` reuses the declared wasm Rust toolchain
+without wasm-bindgen generation. Packaging validates the module and records
+its imports; the Nix inspector validates the module and independently compares
+imports with the descriptor. Each consumer proves its declared host harness.
+
 ## Namespace and Compatibility
 
 `buck-build-product/v1` is the existing repository-owned schema identifier,

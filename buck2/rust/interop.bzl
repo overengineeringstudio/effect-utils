@@ -124,7 +124,6 @@ def _wasm_guest_impl(ctx):
     command = cmd_args([
         ctx.attrs._bun[BunToolchainInfo].executable,
         ctx.attrs._packager,
-        "guest",
         "--input", outputs[0],
         "--payload", payload.as_output(),
         "--descriptor", descriptor.as_output(),
