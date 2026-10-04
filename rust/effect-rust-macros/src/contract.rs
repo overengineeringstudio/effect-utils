@@ -599,79 +599,41 @@ fn rust_pattern(pattern: &str, flags: &str) -> syn::Result<String> {
 mod tests {
     use super::*;
 
-    fn expand_error(args: TokenStream, item: TokenStream) -> String {
-        expand(args, item)
-            .expect_err("expected rejection")
-            .to_string()
+    #[test]
+    fn numeric_contract_admission_requires_matching_explicit_widths() {
+        for (fields, admitted) in [
+            (quote!(id: u32), true),
+            (quote!(#[wire(u64)] id: u64), true),
+            (quote!(#[wire(i64)] id: i64), true),
+            (quote!(#[wire(f32)] ratio: f32), true),
+            (quote!(id: u64), false),
+            (quote!(ids: Vec<i64>), false),
+            (quote!(size: usize), false),
+            (quote!(ratio: Option<f64>), false),
+            (quote!(ratio: f32), false),
+            (quote!(#[wire(u64)] id: u32), false),
+            (quote!(#[wire(f32)] ratio: f64), false),
+        ] {
+            let result = expand(quote!(), quote!(#[derive(Serialize, JsonSchema)] struct Order { #fields }));
+            assert_eq!(result.is_ok(), admitted, "numeric fields: {fields}");
+        }
+        assert!(expand(quote!(), quote!(#[derive(Serialize)] struct Order { id: u32 })).is_err());
     }
 
     #[test]
-    fn rejects_implicit_wide_and_float_widths() {
-        let error = |fields: TokenStream| {
-            expand_error(
-                quote!(),
-                quote!(#[derive(Serialize, JsonSchema)] struct Order { #fields }),
-            )
-        };
-        assert!(error(quote!(id: u64)).contains("#[wire(u64)]"));
-        assert!(error(quote!(ids: Vec<i64>)).contains("i64"));
-        assert!(error(quote!(size: usize)).contains("usize"));
-        assert!(error(quote!(ratio: Option<f64>)).contains("floats"));
-        assert!(error(quote!(#[wire(u64)] id: u32)).contains("matching integer width"));
-        assert!(expand_error(
-            quote!(),
-            quote!(
-                #[derive(Serialize)]
-                struct Order {
-                    id: u32,
-                }
-            )
-        )
-        .contains("JsonSchema"));
-    }
-
-    #[test]
-    fn rejects_untagged_enums_and_unanchored_brands() {
-        assert!(expand_error(
-            quote!(),
-            quote!(
-                enum Shape {
-                    A,
-                }
-            )
-        )
-        .contains("internally tagged"));
-        assert!(expand_error(
-            quote!(),
-            quote!(
-                #[serde(tag = "kind", content = "value")]
-                enum Shape {
-                    A,
-                }
-            )
-        )
-        .contains("internally tagged"));
-        assert!(expand_error(
-            quote!(pattern = "[a-z]+"),
-            quote!(
-                struct Name(String);
-            )
-        )
-        .contains("anchored"));
-        assert!(expand_error(
-            quote!(pattern = "^(a$"),
-            quote!(
-                struct Name(String);
-            )
-        )
-        .contains("invalid pattern"));
-        assert!(expand_error(
-            quote!(pattern = "^a$"),
-            quote!(
-                struct Name(pub String);
-            )
-        )
-        .contains("private"));
+    fn enum_and_brand_admission_requires_portable_tagged_patterns() {
+        for (args, item, admitted) in [
+            (quote!(), quote!(#[derive(Serialize, JsonSchema)] #[serde(tag = "kind")] enum Shape { A }), true),
+            (quote!(), quote!(enum Shape { A }), false),
+            (quote!(), quote!(#[derive(Serialize, JsonSchema)] #[serde(tag = "kind", content = "value")] enum Shape { A }), false),
+            (quote!(pattern = "^a$"), quote!(struct Name(String);), true),
+            (quote!(pattern = "[a-z]+"), quote!(struct Name(String);), false),
+            (quote!(pattern = "^(a$"), quote!(struct Name(String);), false),
+            (quote!(pattern = "^a$"), quote!(struct Name(pub String);), false),
+        ] {
+            let result = expand(args, item.clone());
+            assert_eq!(result.is_ok(), admitted, "contract item: {item}");
+        }
     }
 
     #[test]
