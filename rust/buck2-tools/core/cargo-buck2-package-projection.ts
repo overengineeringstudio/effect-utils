@@ -44,6 +44,16 @@ export type CargoBuck2WasmBindgenOptions = {
   readonly smoke?: CargoBuck2InteropSmokeOptions
 }
 
+/** Raw wasm32 guest product for one declared host harness. */
+export type CargoBuck2WasmGuestOptions = {
+  readonly name: string
+  readonly productName: string
+  readonly entrypoint: string
+  readonly harness: string
+  readonly recipe: string
+  readonly toolchain: string
+}
+
 /** Node-API addon output for the package's Cargo cdylib. */
 export type CargoBuck2NapiOptions = {
   readonly name: string
@@ -58,6 +68,7 @@ export type CargoBuck2PackageProjectionOptions = {
   readonly cliBuildStamp?: boolean
   readonly wasmBindgen?: CargoBuck2WasmBindgenOptions
   readonly napi?: CargoBuck2NapiOptions
+  readonly wasmGuest?: CargoBuck2WasmGuestOptions
   /**
    * Files the package's build script reads besides the package's Rust sources, by
    * repository-relative path. A file in another Buck package names the label providing it
@@ -350,6 +361,7 @@ const cargoBuck2PackageProjectionFor = ({
   buildScriptInputs,
   cliBuildStamp = false,
   wasmBindgen,
+  wasmGuest,
   napi,
   sourceUrl,
   foreignMember,
@@ -547,7 +559,7 @@ const cargoBuck2PackageProjectionFor = ({
     packageName,
     sources,
   })
-  if (wasmBindgen !== undefined || napi !== undefined) {
+  if (wasmBindgen !== undefined || wasmGuest !== undefined || napi !== undefined) {
     if (library?.crateTypes?.includes('cdylib') !== true) {
       throw new Error(
         `Rust interop products require Cargo [lib] crate-type to contain "cdylib" in ${member.manifestPath}`,
@@ -771,6 +783,7 @@ const cargoBuck2PackageProjectionFor = ({
     // Absent unless requested so single-product fingerprints stay byte-identical.
     ...(buildProducts === undefined ? {} : { products }),
     ...(wasmBindgen === undefined ? {} : { wasmBindgen }),
+    ...(wasmGuest === undefined ? {} : { wasmGuest }),
     ...(napi === undefined ? {} : { napi }),
     // Absent for feature-free packages so their fingerprints stay byte-identical.
     ...(enabledFeatures.length === 0 ? {} : { enabledFeatures }),
@@ -1016,6 +1029,20 @@ const cargoBuck2PackageProjectionFor = ({
       '',
     )
   }
+  if (wasmGuest !== undefined) {
+    rules.push(
+      'rust_wasm_guest(',
+      `    name = ${starlarkString(wasmGuest.name)},`,
+      '    crate = ":lib",',
+      `    product_name = ${starlarkString(wasmGuest.productName)},`,
+      `    entrypoint = ${starlarkString(wasmGuest.entrypoint)},`,
+      `    harness = ${starlarkString(wasmGuest.harness)},`,
+      `    recipe = ${starlarkString(wasmGuest.recipe)},`,
+      `    toolchain = ${starlarkString(wasmGuest.toolchain)},`,
+      ')',
+      '',
+    )
+  }
   if (napi !== undefined) {
     rules.push(
       'rust_napi_library(',
@@ -1082,11 +1109,12 @@ const cargoBuck2PackageProjectionFor = ({
     '',
     'load("@prelude//:prelude.bzl", "native")',
     `load(${starlarkString(`${buck2LoadLabelPrefix}:static_checks.bzl`)}, "static_source_set")`,
-    ...(wasmBindgen === undefined && napi === undefined
+    ...(wasmBindgen === undefined && napi === undefined && wasmGuest === undefined
       ? []
       : [
           `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:interop.bzl`)}, ${[
             ...(wasmBindgen === undefined ? [] : ['"rust_wasm_bindgen_library"']),
+            ...(wasmGuest === undefined ? [] : ['"rust_wasm_guest"']),
             ...(napi === undefined ? [] : ['"rust_napi_library"']),
             ...(wasmBindgen?.smoke === undefined && napi?.smoke === undefined
               ? []

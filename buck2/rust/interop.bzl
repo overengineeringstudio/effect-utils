@@ -6,6 +6,7 @@ load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 load("//buck2/platforms:defs.bzl", "host_execution_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("@prelude//rust:rust_toolchain.bzl", "PanicRuntime", "RustToolchainInfo")
 load("//buck2/rust:toolchains.bzl", "WASM_OPT_FLAGS")
+load("//buck2/products:defs.bzl", "BuildProductInfo")
 
 RustInteropProductInfo = provider(fields = {"package": Artifact, "kind": str})
 
@@ -107,6 +108,70 @@ def rust_napi_library(name, crate, out_name = None, **kwargs):
         out_name = out_name or name.replace("-", "_"),
         exec_compatible_with = host_execution_constraints(),
         **kwargs
+    )
+
+def _wasm_guest_impl(ctx):
+    outputs = ctx.attrs.crate[DefaultInfo].default_outputs
+    if len(outputs) != 1:
+        fail("wasm guest requires exactly one cdylib output")
+    payload = ctx.actions.declare_output("artifact.tar")
+    descriptor = ctx.actions.declare_output("descriptor.json")
+    provenance = ctx.actions.write_json("provenance.json", {
+        "recipe": ctx.attrs.recipe,
+        "schema": "buck-build-provenance/v1",
+        "toolchain": ctx.attrs.toolchain,
+    })
+    command = cmd_args([
+        ctx.attrs._bun[BunToolchainInfo].executable,
+        ctx.attrs._packager,
+        "guest",
+        "--input", outputs[0],
+        "--payload", payload.as_output(),
+        "--descriptor", descriptor.as_output(),
+        "--name", ctx.attrs.product_name,
+        "--entrypoint", ctx.attrs.entrypoint,
+        "--target", str(ctx.label.raw_target()),
+        "--harness", ctx.attrs.harness,
+        "--provenance", provenance,
+    ])
+    ctx.actions.run(command, category = "rust_wasm_guest")
+    return [
+        DefaultInfo(
+            default_output = payload,
+            other_outputs = [descriptor],
+            sub_targets = {"descriptor": [DefaultInfo(default_output = descriptor)]},
+        ),
+        BuildProductInfo(descriptor = descriptor, payload = payload),
+    ]
+
+_wasm_guest = rule(impl = _wasm_guest_impl, attrs = {
+    "crate": attrs.transition_dep(cfg = _wasm_transition, providers = [DefaultInfo]),
+    "product_name": attrs.string(),
+    "entrypoint": attrs.string(),
+    "harness": attrs.string(),
+    "recipe": attrs.string(),
+    "toolchain": attrs.string(),
+    "opt_level": attrs.enum(["0", "1", "2", "3", "s", "z"], default = "s"),
+    "lto": attrs.enum(["fat", "thin", "off"], default = "fat"),
+    "strip": attrs.enum(["symbols", "debuginfo", "none"], default = "symbols"),
+    "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
+    "_packager": attrs.default_only(attrs.source(default = "//buck2/rust:wasm-guest-package.ts")),
+})
+
+def rust_wasm_guest(name, crate, product_name, entrypoint, harness, recipe, toolchain, profile = {}, **kwargs):
+    """Raw wasm32-unknown-unknown guest for one declared host harness."""
+    for key in profile:
+        if key not in ["opt_level", "lto", "strip"]:
+            fail("unsupported wasm guest profile override: " + key)
+    _wasm_guest(
+        name = name,
+        crate = crate + "[cdylib]",
+        product_name = product_name,
+        entrypoint = entrypoint,
+        harness = harness,
+        recipe = recipe,
+        toolchain = toolchain,
+        **dict(kwargs, **profile)
     )
 
 

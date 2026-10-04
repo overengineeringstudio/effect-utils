@@ -137,6 +137,17 @@ static_import="$(build_expr "$static_runtime_expr")"
   exit 1
 }
 
+wasm_guest_import="$(build_expr "($base_expr).wasmGuestImport")"
+[ -f "$wasm_guest_import/lib/guest.wasm" ] || {
+  echo "buck2-bridge-test: wasm guest entrypoint is missing" >&2
+  exit 1
+}
+magic="$(od -An -tx1 -N4 "$wasm_guest_import/lib/guest.wasm" | tr -d ' ')"
+[ "$magic" = "0061736d" ] || {
+  echo "buck2-bridge-test: wasm guest entrypoint lost its wasm magic" >&2
+  exit 1
+}
+
 dynamic_export="$(build_expr "($base_expr).dynamicExport")"
 export BUCK2_BRIDGE_DYNAMIC_EXPORT="$dynamic_export"
 jq -e '

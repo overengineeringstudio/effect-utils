@@ -234,6 +234,23 @@ let
           ) "descriptor.runtime.installNamePolicy must be system-only/v1")
           (ensure (value.rpathPolicy == "empty/v1") "descriptor.runtime.rpathPolicy must be empty/v1")
         ] value
+      else if kind == "wasm-guest" then
+        let
+          value = exactAttrs "descriptor.runtime" [
+            "harness"
+            "imports"
+            "inspectionContract"
+            "kind"
+            "targetTriple"
+          ] runtime;
+        in
+        force [
+          (ensure (value.inspectionContract == "wasm32-unknown-unknown/v1") "descriptor.runtime.inspectionContract must be wasm32-unknown-unknown/v1")
+          (ensure (value.targetTriple == "wasm32-unknown-unknown") "descriptor.runtime.targetTriple must be wasm32-unknown-unknown")
+          (ensure (nonEmptyString value.harness) "descriptor.runtime.harness must be a non-empty string")
+          (validateStructuredStringList "descriptor.runtime.imports" value.imports)
+          (ensure (value.imports == builtins.sort builtins.lessThan value.imports) "descriptor.runtime.imports must be sorted")
+        ] value
       else if kind == "self-contained" then
         let
           value = exactAttrs "descriptor.runtime" [
@@ -385,6 +402,12 @@ let
                 .${platform.architecture} or null
               )
             ) runtime.executables) "bundle executable architecture must match descriptor.platform.architecture")
+          ]
+        else if runtime.kind == "wasm-guest" then
+          [
+            (ensure (platform.os == "wasm") "descriptor.runtime wasm-guest requires descriptor.platform.os = wasm")
+            (ensure (platform.architecture == "wasm32") "descriptor.runtime wasm-guest requires descriptor.platform.architecture = wasm32")
+            (ensure (platform.abi == "unknown") "descriptor.runtime wasm-guest requires descriptor.platform.abi = unknown")
           ]
         else
           [ ];
