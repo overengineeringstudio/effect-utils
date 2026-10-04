@@ -6,8 +6,12 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { Effect } from 'effect'
+import { it as effectIt } from '@effect/vitest'
+import { Clock, Deferred, Effect, Fiber, Schema } from 'effect'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
+import * as HttpClient from 'effect/http/HttpClient'
+import * as HttpClientResponse from 'effect/http/HttpClientResponse'
+import { TestClock } from 'effect/testing'
 import { expect, it } from 'vitest'
 
 import { collectPipelineReport } from './pipeline-report.ts'
@@ -252,60 +256,83 @@ it.each([
   },
 )
 
-it.each([
-  { stalled: false, timeoutMs: 2_500 },
-  { stalled: true, timeoutMs: 2_500 },
+effectIt.effect.each([
+  { stalled: false, timeoutMs: 250 },
+  { stalled: true, timeoutMs: 1_700 },
 ])(
   'stops baseline collection at its deadline despite $stalled API calls',
-  async ({ stalled, timeoutMs }) => {
-    const runs = fixture('main-runs.json') as { workflow_runs: unknown[]; total_count: number }
-    const server = createServer((request, response) => {
-      const url = request.url!
-      if (url.includes(`/runs/${baselineIds[1]}/jobs?`) === true) {
-        if (stalled === true) return // Per-request timeout interrupts an unresponsive GET.
-        response.writeHead(429, { 'Retry-After': '5' })
-        response.end('rate limited')
-        return
-      }
-      const runId = Number(url.match(/\/actions\/runs\/(\d+)\/jobs/u)?.[1])
-      const data =
-        url.includes('/actions/runs?') === true
-          ? { ...runs, total_count: 9, workflow_runs: runs.workflow_runs.slice(0, 9) }
-          : runId === 36472422441
-            ? fixture('pr-36472422441-jobs.json')
-            : fixture(`main-${runId}-jobs.json`)
-      response.writeHead(200, { 'Content-Type': 'application/json' })
-      response.end(JSON.stringify(data))
-    })
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-    const address = server.address()
-    if (address === null || typeof address === 'string')
-      throw new Error('Expected an ephemeral HTTP port for the local GitHub API')
-    const started = Date.now()
-    try {
-      const record = await Effect.runPromise(
-        collectPipelineReport({
-          repository: 'overengineeringstudio/effect-utils',
-          runId: 36472422441,
-          attempt: 1,
-          workflowId: 219217938,
-          token: 'local-test-token',
-          grafanaBaseUrl: '',
-          generatedAtUtc: '2026-09-28T20:00:00.000Z',
-          traceIdForJob: () => undefined,
-          apiBaseUrl: `http://127.0.0.1:${address.port}`,
-          requestTimeoutMs: 500,
-          collectionTimeoutMs: timeoutMs,
-        }).pipe(Effect.provide(FetchHttpClient.layer)),
+  ({ stalled, timeoutMs }) =>
+    Effect.gen(function* () {
+      const runs = fixture('main-runs.json') as { workflow_runs: unknown[]; total_count: number }
+      const firstRequest = yield* Deferred.make<void>()
+      const secondRequest = yield* Deferred.make<void>()
+      let stalledRequests = 0
+      const client = HttpClient.make((request, url) =>
+        Effect.gen(function* () {
+          if (url.pathname.endsWith(`/runs/${baselineIds[1]}/jobs`) === true) {
+            stalledRequests++
+            yield* Deferred.succeed(stalledRequests === 1 ? firstRequest : secondRequest, undefined)
+            if (stalled === true) return yield* Effect.never
+            return HttpClientResponse.fromWeb(
+              request,
+              new Response('rate limited', { status: 429, headers: { 'Retry-After': '5' } }),
+            )
+          }
+          const runId = Number(url.pathname.match(/\/actions\/runs\/(\d+)\/jobs/u)?.[1])
+          const data =
+            url.pathname.endsWith('/actions/runs') === true
+              ? { ...runs, total_count: 9, workflow_runs: runs.workflow_runs.slice(0, 9) }
+              : runId === 36472422441
+                ? fixture('pr-36472422441-jobs.json')
+                : fixture(`main-${runId}-jobs.json`)
+          const body = yield* Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(
+            data,
+          ).pipe(Effect.orDie)
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(body, {
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          )
+        }),
       )
+      const started = yield* Clock.currentTimeMillis
+      const collection = yield* collectPipelineReport({
+        repository: 'overengineeringstudio/effect-utils',
+        runId: 36472422441,
+        attempt: 1,
+        workflowId: 219217938,
+        token: 'local-test-token',
+        grafanaBaseUrl: '',
+        generatedAtUtc: '2026-09-28T20:00:00.000Z',
+        traceIdForJob: () => undefined,
+        requestTimeoutMs: 50,
+        collectionTimeoutMs: timeoutMs,
+      }).pipe(Effect.provideService(HttpClient.HttpClient, client), Effect.forkChild)
+
+      // Complete successful API work before advancing either deadline.
+      yield* Deferred.await(firstRequest)
+      if (stalled === true) {
+        yield* TestClock.adjust(49)
+        expect(stalledRequests).toBe(1)
+        yield* TestClock.adjust(1)
+        yield* TestClock.adjust(999)
+        expect(stalledRequests).toBe(1)
+        yield* TestClock.adjust(1)
+        yield* Deferred.await(secondRequest)
+      }
+      const elapsed = (yield* Clock.currentTimeMillis) - started
+      yield* TestClock.adjust(timeoutMs - elapsed - 1)
+      expect(collection.pollUnsafe()).toBeUndefined()
+      expect(stalledRequests).toBe(stalled === true ? 2 : 1)
+
+      yield* TestClock.adjust(1)
+      const record = yield* Fiber.join(collection)
       expect(record.kind).toBe('pipeline-traces')
       expect(record.data!.baselineCounts).toMatchObject({ typecheck: 1 })
       expect(record.data!.skippedBaselineRunIds).toEqual([baselineIds[1]])
       expect(record.data!.baselineIncompleteReason).toBe('collection deadline exceeded')
-      expect(Date.now() - started).toBeLessThan(timeoutMs + 1_000)
-    } finally {
-      server.closeAllConnections()
-      await new Promise<void>((resolve) => server.close(() => resolve()))
-    }
-  },
+      expect(stalledRequests).toBe(stalled === true ? 2 : 1)
+      expect((yield* Clock.currentTimeMillis) - started).toBe(timeoutMs)
+    }),
 )

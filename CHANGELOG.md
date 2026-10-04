@@ -59,6 +59,8 @@
 - Buck action rules reject unaudited cache-platform requests using resolved
   constraint identities; relative labels and cell aliases cannot bypass
   `cacheable = False` or rule-owned cache eligibility.
+- Pipeline-report baseline deadline tests use a synchronized virtual clock,
+  so host scheduling and HTTP latency cannot consume their deadline budgets.
 
 ### Changed
 
