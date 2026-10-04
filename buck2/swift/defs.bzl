@@ -133,7 +133,7 @@ def _swift_app_bundle_impl(ctx):
             "</dict>",
             "</plist>",
             "",
-        ),
+        ]),
     )
 
     stamp = read_config("build_identity", "cli_build_stamp", "")
