@@ -56,6 +56,7 @@ require_line "$private_config" '  remote_cache_enabled = true'
 require_line "$private_config" '  allow_cache_uploads = true'
 require_line "$private_config" '  default_allow_cache_upload = true'
 require_line "$private_config" '[buck2_re_client]'
+require_line "$private_config" '  engine_address = https://actions.example.invalid'
 require_line "$private_config" '  action_cache_address = https://actions.example.invalid'
 require_line "$private_config" '  cas_address = https://cas.example.invalid'
 require_line "$private_config" '  instance_name = fixture-private'
@@ -63,5 +64,32 @@ require_line "$private_config" '  tls = true'
 require_line "$private_config" '[archive_origin]'
 require_line "$private_config" '  url_prefix = https://archives.example.invalid/cas/'
 require_line "$private_config" '  trusted_tier = private'
+
+explicit_engine_config="$(render_config '{
+  engineAddress = "https://engine.example.invalid";
+  actionCacheAddress = "https://actions.example.invalid";
+  casAddress = "https://cas.example.invalid";
+  cacheInstanceName = "fixture-read-only";
+  cacheTls = true;
+}')"
+require_line "$explicit_engine_config" '  remote_cache_enabled = false'
+require_line "$explicit_engine_config" '  engine_address = https://engine.example.invalid'
+require_line "$explicit_engine_config" '  action_cache_address = https://actions.example.invalid'
+
+if render_config '{ engineAddress = "https://engine.example.invalid"; }' >/dev/null 2>&1; then
+  echo 'incomplete engine-only client configuration unexpectedly accepted' >&2
+  exit 1
+fi
+
+if render_config '{
+  engineAddress = 42;
+  actionCacheAddress = "https://actions.example.invalid";
+  casAddress = "https://cas.example.invalid";
+  cacheInstanceName = "fixture-invalid";
+  cacheTls = true;
+}' >/dev/null 2>&1; then
+  echo 'invalid engine address type unexpectedly accepted' >&2
+  exit 1
+fi
 
 echo 'buck2 consumer root config passed'

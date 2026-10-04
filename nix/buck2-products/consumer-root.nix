@@ -6,6 +6,7 @@
   remoteCacheEnabled ? false,
   allowCacheUploads ? false,
   actionCacheAddress ? null,
+  engineAddress ? null,
   casAddress ? null,
   cacheInstanceName ? null,
   cacheTls ? null,
@@ -34,8 +35,10 @@ let
   lib = pkgs.lib;
   ignore = lib.concatStringsSep "," projectIgnore;
   boolString = value: if value then "true" else "false";
+  effectiveEngineAddress = if engineAddress == null then actionCacheAddress else engineAddress;
   remoteClientValues = [
     actionCacheAddress
+    effectiveEngineAddress
     casAddress
     cacheInstanceName
     cacheTls
@@ -74,6 +77,7 @@ let
   ''
   + lib.optionalString remoteClientConfigured ''
     [buck2_re_client]
+      engine_address = ${effectiveEngineAddress}
       action_cache_address = ${actionCacheAddress}
       cas_address = ${casAddress}
       instance_name = ${cacheInstanceName}
@@ -138,9 +142,8 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   !allowCacheUploads || remoteCacheEnabled
 ) "mkConsumerBuckRoot: cache uploads require the remote cache";
-assert lib.assertMsg (
-  !remoteClientConfigured || remoteClientComplete
-) "mkConsumerBuckRoot: action/cache addresses, instance name, and TLS must be configured together";
+assert lib.assertMsg (!remoteClientConfigured || remoteClientComplete)
+  "mkConsumerBuckRoot: engine/action/cache addresses, instance name, and TLS must be configured together";
 assert lib.assertMsg (
   !remoteCacheEnabled || remoteClientComplete
 ) "mkConsumerBuckRoot: the enabled remote cache requires a complete client configuration";
@@ -148,6 +151,7 @@ assert lib.assertMsg (
   !remoteClientComplete
   || (
     builtins.isString actionCacheAddress
+    && builtins.isString effectiveEngineAddress
     && builtins.isString casAddress
     && builtins.isString cacheInstanceName
     && builtins.isBool cacheTls
@@ -186,6 +190,7 @@ pkgs.runCommand "${cellName}-buck2-root"
         capabilities
         casAddress
         cellName
+        engineAddress
         privateProductRoot
         remoteCacheEnabled
         rootBuck
