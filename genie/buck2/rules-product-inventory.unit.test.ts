@@ -51,6 +51,7 @@ const expectedFiles = [
   'packages/@overeng/buck2-tools/src/repository-policy-runner.ts',
   'packages/@overeng/buck2-tools/src/repository-validation-runner.ts',
   'packages/@overeng/buck2-tools/src/static-check-runner.ts',
+  'packages/@overeng/buck2-tools/src/test-verdict.ts',
   'packages/@overeng/buck2-tools/src/typescript-runner.ts',
   'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
@@ -92,26 +93,38 @@ describe('Buck rules product inventory', () => {
     const inventory = new Set<string>(buck2RulesInventory.files)
     const rulesCell = readFileSync(new URL('nix/buck2-rules/default.nix', repoRoot), 'utf8')
     for (const path of buck2RulesInventory.files.filter((file) => file.endsWith('.bzl'))) {
-      const text = readFileSync(new URL(path, repoRoot), 'utf8')
-        .replace(/'''[\s\S]*?'''|"""[\s\S]*?"""/g, '')
+      const text = readFileSync(new URL(path, repoRoot), 'utf8').replace(
+        /'''[\s\S]*?'''|"""[\s\S]*?"""/g,
+        '',
+      )
       const directory = path.slice(0, path.lastIndexOf('/'))
       const references = [
         ...[...text.matchAll(/load\(\s*["'](\/\/[^"']+|:[^"']+)["']/g)].map((match) => match[1]!),
-        ...[...text.matchAll(/default\s*=\s*["'](\/\/[^"']+\.(?:ts|js|sh|json)|:[^"']+\.(?:ts|js|sh|json))["']/g)]
-          .map((match) => match[1]!),
+        ...[
+          ...text.matchAll(
+            /default\s*=\s*["'](\/\/[^"']+\.(?:ts|js|sh|json)|:[^"']+\.(?:ts|js|sh|json))["']/g,
+          ),
+        ].map((match) => match[1]!),
       ]
       for (const label of references) {
         const relativeLabel = label.startsWith('//') ? label.slice(2) : `${directory}${label}`
         const colon = relativeLabel.lastIndexOf(':')
         const slash = relativeLabel.lastIndexOf('/')
         const name = relativeLabel.slice(colon >= 0 ? colon + 1 : slash + 1)
-        const file = colon >= 0
-          ? `${relativeLabel.slice(0, colon)}/${relativeLabel.slice(colon + 1)}`
-          : relativeLabel
+        const file =
+          colon >= 0
+            ? `${relativeLabel.slice(0, colon)}/${relativeLabel.slice(colon + 1)}`
+            : relativeLabel
         expect(inventory.has(file), `${path} references ${label} (${file})`).toBe(true)
         if (!file.endsWith('.bzl')) {
-          expect(rulesCell, `${path} references a tool without a rules-cell target: ${label}`)
-            .toContain(`name = "${name}",`)
+          const packageBuck = `${file.slice(0, file.lastIndexOf('/'))}/BUCK`
+          const targets = inventory.has(packageBuck)
+            ? readFileSync(new URL(packageBuck, repoRoot), 'utf8')
+            : rulesCell
+          expect(
+            targets,
+            `${path} references a tool without a rules-cell target: ${label}`,
+          ).toContain(`name = "${name}",`)
         }
       }
     }

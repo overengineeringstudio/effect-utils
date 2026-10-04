@@ -45,6 +45,7 @@ const files = [
   'packages/@overeng/buck2-tools/src/repository-policy-runner.ts',
   'packages/@overeng/buck2-tools/src/repository-validation-runner.ts',
   'packages/@overeng/buck2-tools/src/static-check-runner.ts',
+  'packages/@overeng/buck2-tools/src/test-verdict.ts',
   'packages/@overeng/buck2-tools/src/typescript-runner.ts',
   'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',

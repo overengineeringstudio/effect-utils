@@ -514,15 +514,13 @@ describe('declared test lanes', () => {
     expect(outputsByAdmission.reactInspector).not.toContain('    "src/object/ObjectName.spec.jsx",')
   })
 
-  it('reads a task-supplied host path from a derived config key', () => {
-    const output = buck2TypeScriptPackageProjection({
-      ...kdlAdmissionWithoutTests,
-      tests: [{ name: 'test', runner: 'vitest', configuredExternalInputs: ['NODE_PTY_PACKAGE'] }],
-    }).stringify(genieContext)
-
-    expect(output).toContain(
-      '        "NODE_PTY_PACKAGE": read_config("javascript_test_inputs", "kdl_test_node_pty_package", ""),',
-    )
+  it('rejects live host paths in a cacheable Vitest lane', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...kdlAdmissionWithoutTests,
+        tests: [{ name: 'test', runner: 'vitest', configuredExternalInputs: ['NODE_PTY_PACKAGE'] }],
+      }).stringify(genieContext),
+    ).toThrow('requires provider-backed external inputs')
   })
 
   it('projects the node Vitest runtime only with its attested executable', () => {
@@ -557,43 +555,7 @@ describe('declared test lanes', () => {
     ).toThrow('declare e2e in sourceRoots')
   })
 
-  it('renders a second named lane deterministically after the default one', () => {
-    const projection = buck2TypeScriptPackageProjection({
-      ...kdlAdmissionWithoutTests,
-      tests: [
-        { name: 'test', runner: 'vitest', excludes: ['src/upstream.test.ts'] },
-        {
-          name: 'test_upstream',
-          runner: 'vitest',
-          testFiles: ['src/upstream.test.ts'],
-          timeoutMs: 120_000,
-          writableDirectories: { KDL_WORKSPACE: 'kdl' },
-        },
-      ],
-    })
-    const output = projection.stringify(genieContext)
-
-    expect(output).toBe(projection.stringify(genieContext))
-    expect(output.indexOf('    name = "test",')).toBeLessThan(
-      output.indexOf('    name = "test_upstream",'),
-    )
-    expect(output).toContain(
-      [
-        'vitest_test(',
-        '    name = "test_upstream",',
-        '    package_tree = ":test_package_tree",',
-        '    test_files = [',
-        '        "src/upstream.test.ts",',
-        '    ],',
-        '    timeout_ms = 120000,',
-        '    writable_directories = {',
-        '        "KDL_WORKSPACE": "kdl",',
-        '    },',
-        '    visibility = ["PUBLIC"],',
-        ')',
-      ].join('\n'),
-    )
-
+  it('requires the default execution lane to be named test', () => {
     expect(() =>
       buck2TypeScriptPackageProjection({
         ...kdlAdmissionWithoutTests,
@@ -690,20 +652,6 @@ describe('derived test collection targets', () => {
     const executionBlock = output.split('\nvitest_test(\n')[1]?.split('\n)\n')[0] ?? ''
     expect(executionBlock).toContain('    timeout_ms = 120000,')
     expect(executionBlock).toContain('    hook_timeout_ms = 45000,')
-  })
-
-  it('reuses the execution lane config keys instead of deriving a second set', () => {
-    const output = buck2TypeScriptPackageProjection({
-      ...kdlAdmission,
-      tests: [{ name: 'test', runner: 'vitest', configuredExternalInputs: ['NODE_PTY_PACKAGE'] }],
-    }).stringify(genieContext)
-
-    expect(
-      output.split(
-        '        "NODE_PTY_PACKAGE": read_config("javascript_test_inputs", "kdl_test_node_pty_package", ""),',
-      ),
-    ).toHaveLength(3)
-    expect(output).not.toContain('kdl_test_collect_node_pty_package')
   })
 
   it('refuses a declared lane that collides with a derived collection target', () => {

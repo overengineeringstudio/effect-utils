@@ -25,7 +25,9 @@ test_evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-a.js
 evidence_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-b.jsonl"
 test_evidence_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-b.jsonl"
 test_evidence_c="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-c.jsonl"
-trap 'rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c"; rm -rf "$context_b"' EXIT
+test_red_evidence="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-red.jsonl"
+test_source_backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-source.ts"
+trap 'if [ -f "$test_source_backup" ]; then cp "$test_source_backup" "$test_proof_source"; fi; rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c" "$test_red_evidence" "$test_source_backup"; rm -rf "$context_b"' EXIT
 
 # Context A executes locally and uploads run-unique source inputs.
 # `log show --recent` uses zero-based history; 0 is the command just run.
@@ -39,10 +41,32 @@ if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$U
 fi
 "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
 "$buck" log show --recent 0 > "$test_evidence_a"
-if ! jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_a" >/dev/null; then
-  echo '::error::Context A did not execute the representative unit-test lane locally'
+if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$test_evidence_a" >/dev/null; then
+  echo '::error::Context A did not execute and upload the representative unit-test verdict action'
   exit 1
 fi
+
+# Red verdicts fail the build action and are never uploaded, including when the
+# same suite is requested again in the same daemon.
+cp "$test_proof_source" "$test_source_backup"
+printf '%s\n' 'it("remote-cache proof red verdict", () => { expect(true).toBe(false) })' >> "$test_proof_source"
+for attempt in 1 2; do
+  if "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"; then
+    echo '::error::A red verdict was accepted as a successful gate'
+    exit 1
+  fi
+  "$buck" log show --recent 0 > "$test_red_evidence"
+  if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.execution_kind == $local and $action.failed == true)' "$test_red_evidence" >/dev/null; then
+    echo "::error::Red verdict attempt $attempt did not rerun the unit suite locally"
+    exit 1
+  fi
+  if jq -e --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.cache_upload_result == $uploaded)' "$test_red_evidence" >/dev/null; then
+    echo '::error::A failed unit-test verdict action was uploaded'
+    exit 1
+  fi
+done
+cp "$test_source_backup" "$test_proof_source"
+rm "$test_source_backup"
 
 # Context B has a fresh daemon and materializer, no publisher overlay or credential.
 "$buck" kill
@@ -82,15 +106,20 @@ if jq -e --argjson kinds "$EXECUTED_OR_LOCAL_CACHE_KINDS" 'select(.Event.data.Sp
   exit 1
 fi
 
-# The representative unit test must hit the remote test cache, not run locally.
+# The suite is a build action. The tiny buck2 test adapter may execute locally;
+# it reads result.json/report.json and never runs Vitest.
 "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
 "$buck" log show --recent 0 > "$test_evidence_b"
 if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_b" >/dev/null; then
   echo '::error::Context B did not report the cached representative unit test as passing'
   exit 1
 fi
-if jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_b" >/dev/null; then
-  echo '::error::Context B executed the representative unit test locally instead of using the remote test cache'
+if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.execution_kind == $action_cache)' "$test_evidence_b" >/dev/null; then
+  echo '::error::Context B did not reuse the remote unit-test verdict action'
+  exit 1
+fi
+if jq -e --argjson kinds "$EXECUTED_OR_LOCAL_CACHE_KINDS" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and ($kinds | index($action.execution_kind)))' "$test_evidence_b" >/dev/null; then
+  echo '::error::Context B executed the representative unit suite locally'
   exit 1
 fi
 
@@ -102,8 +131,8 @@ if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//pa
   echo '::error::The irrelevant mutation prevented the cached representative unit test from passing'
   exit 1
 fi
-if jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_c" >/dev/null; then
-  echo '::error::The irrelevant mutation changed the representative unit-test action key'
+if jq -e --argjson kinds "$EXECUTED_OR_LOCAL_CACHE_KINDS" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and ($kinds | index($action.execution_kind)))' "$test_evidence_c" >/dev/null; then
+  echo '::error::The irrelevant mutation reran the representative unit-test verdict action'
   exit 1
 fi
 echo 'Fresh-root remote action and test-cache proof passed'

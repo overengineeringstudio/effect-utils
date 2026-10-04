@@ -46,7 +46,7 @@ CONFIG
 # normal .buckconfig. No ambient prelude checkout or remote cache is consulted.
 cat > "$work/fixture.bzl" <<'BZL'
 load("//buck2/materialization.bzl", "PackageTreeInfo")
-load("//buck2/javascript.bzl", "vitest_collect")
+load("//buck2/javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2/package_tools.bzl", "PackageCommandRuntimeInfo", "package_bin_check")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
@@ -85,6 +85,12 @@ fixture_dependency = rule(
 )
 
 def fixture_negative_cases(suffix, constraint):
+    vitest_test(
+        name = "uncacheable_verdict_" + suffix,
+        package_tree = "//:package_tree",
+        cacheable = False,
+        exec_compatible_with = [constraint],
+    )
     vitest_collect(
         name = "uncacheable_collect_" + suffix,
         package_tree = "//:package_tree",
@@ -184,7 +190,7 @@ for target in admitted_collect default_uncacheable_collect default_unadmitted_ch
   printf 'PASS analysis: %s\n' "$target"
 done
 
-for family in uncacheable_collect unadmitted_check unadmitted_interop; do
+for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop; do
   for spelling in canonical relative alias alias_at; do
     target="${family}_${spelling}"
     if "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//$spelling:$target" > "$work/$target.log" 2>&1; then

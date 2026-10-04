@@ -88,14 +88,18 @@ not regressions.
 | Compile/action reuse    | Action-cache hits, zero unchanged command executions and matching configured keys                  | Fast wall-clock alone                            |
 | Unit-test verdict reuse | Cache hits for verdict-producing build actions and equal pass/fail reports without suite execution | Compile hits or local test orchestration success |
 
-Populate and replay deterministic passing and failing suites from
+Populate and replay deterministic passing suites from
 [execution's verdict actions](../05-execution/spec.md#cacheable-unit-test-verdict-actions).
-A cached failure must still fail the caller's gate; relevant source/runner/policy
-mutations invalidate it, and irrelevant mutations do not. Flaky tests and
-host-dependent lanes are uncached; they are not deterministic admitted targets.
-[#1601](https://github.com/overengineeringstudio/effect-utils/pull/1601) fixes proof
-index/enum handling; the test-verdict half waits on
-[#1600](https://github.com/overengineeringstudio/effect-utils/issues/1600).
+A failed suite exits nonzero and is not uploaded, so a red result reruns rather
+than replaying. Relevant source/runner/policy mutations invalidate a passing
+result, and irrelevant mutations do not. Flaky tests and host-dependent lanes
+are uncached; they are not deterministic admitted targets.
+The native proof identifies the `unit_test_verdict` action by category, requires
+an upload from context A and a remote action-cache hit in context B, and compares
+the normalized report and result content hashes. Local execution of the small
+`buck2 test` adapter is not suite execution: the adapter only reads the verdict.
+The red control requires two nonzero local verdict actions with no upload; the
+irrelevant-mutation control requires no locally executed verdict action.
 
 ### Lane budget measurements
 

@@ -18,13 +18,6 @@ lane; the fixes are owned here, not there:
   command waited 79.5 s (62% of its 128 s wall) on another's actions
   ([daemon-wait bakeoff](../07-observability/03-event-log-adapter/.experiments/2026-09-25-daemon-wait-attribution-bakeoff.md)).
 
-## BUILD.BUCK.EXEC-DQ01: Cacheable verdict actions
-
-[Spec](./spec.md#open-design-questions). The mechanism is selected by `ecwtsb`;
-[#1600](https://github.com/overengineeringstudio/effect-utils/issues/1600) blocks
-implementation and pass/fail reuse proof. Local test executions are not uploaded
-by the pinned Buck2. Compilation reuse is not evidence of verdict reuse.
-
 ## BUILD.BUCK.EXEC-DQ02: Filesystem/network sandbox enforcement
 
 [Spec](./spec.md#audited-action-inventory) records the audited action inventory,

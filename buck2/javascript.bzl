@@ -10,6 +10,7 @@ load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "root_allow_cache_uploa
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
+
 JavaScriptExecutableInfo = provider(fields = {
     "package_tree": Artifact,
     "toolchain_identity": str,
@@ -121,6 +122,8 @@ bun_executable = cache_guarded_rule(
 )
 
 def _test_info(ctx, command, positional):
+    if ctx.attrs.cacheable and command == "vitest":
+        return _verdict_action(ctx, command, positional)
     args, _, _ = _configured_args(ctx, command, positional)
     if ctx.attrs.inherited_env and ctx.attrs.cacheable:
         fail("tests inheriting the environment must set cacheable = False")
@@ -144,6 +147,53 @@ def _test_info(ctx, command, positional):
             run_from_project_root = False,
             use_project_relative_paths = False,
             supports_test_execution_caching = cache_enabled,
+        ),
+    ]
+
+
+def _verdict_action(ctx, command, positional):
+    if ctx.attrs.inherited_env:
+        fail("cacheable verdict actions cannot inherit ambient environment")
+    if ctx.attrs.configured_external_inputs:
+        fail("cacheable verdict actions require provider-backed external inputs, not configured paths")
+    args, _, toolchain = _configured_args(ctx, command, positional)
+    verdict = ctx.actions.declare_output("verdict", dir = True)
+    operation = str(ctx.label)
+    args.add("--verdict-output", verdict.as_output(), "--operation", operation)
+    # Nonzero suite exits fail the build action. Buck never uploads failed actions;
+    # writing a failed result is diagnostic only, not a cacheable successful verdict.
+    hermetic_action(
+        ctx,
+        args,
+        category = "unit_test_verdict",
+        identifier = ctx.attrs.name,
+        local_only = True,
+    )
+    runner_tree = ctx.attrs._runner[DefaultInfo].default_outputs[0]
+    adapter = cmd_args([
+        hermetic_bun_command(ctx, toolchain.bun, config_name = "adapter-bunfig.toml"),
+        cmd_args(runner_tree, format = "{}/test-verdict.ts"),
+        verdict,
+        operation,
+    ])
+    return [
+        DefaultInfo(default_output = verdict),
+        RunInfo(args = adapter),
+        ExternalRunnerTestInfo(
+            type = "custom",
+            command = [adapter],
+            env = {},
+            labels = ctx.attrs.labels,
+            contacts = ctx.attrs.contacts,
+            default_executor = CommandExecutorConfig(
+                local_enabled = True,
+                remote_enabled = False,
+                remote_cache_enabled = False,
+                allow_cache_uploads = False,
+            ),
+            run_from_project_root = False,
+            use_project_relative_paths = False,
+            supports_test_execution_caching = False,
         ),
     ]
 
@@ -186,6 +236,7 @@ _TEST_ATTRS = {
         default = "//buck2/toolchains:fingerprint_tool",
         providers = [BuckSupportToolInfo],
     )),
+    "_action_env": hermetic_attrs()["_action_env"],
 }
 
 _VITEST_TEST_ATTRS = dict(_TEST_ATTRS)
@@ -196,10 +247,21 @@ _VITEST_TEST_ATTRS.update({
     "vitest_runtime": attrs.enum(["bun", "node"], default = "bun"),
 })
 
-vitest_test = cache_guarded_rule(
+_vitest_test = cache_guarded_rule(
+    cache_eligible = lambda ctx: ctx.attrs.cacheable,
     impl = _vitest_test_impl,
     attrs = _VITEST_TEST_ATTRS,
 )
+
+def vitest_test(name, **kwargs):
+    constraints = kwargs.pop("exec_compatible_with", [])
+    if kwargs.get("cacheable", True):
+        constraints = hermetic_execution_constraints(constraints)
+    _vitest_test(
+        name = name,
+        exec_compatible_with = constraints,
+        **kwargs
+    )
 
 def _vitest_collect_impl(ctx):
     """Produces one declared collection artifact for a Vitest lane."""

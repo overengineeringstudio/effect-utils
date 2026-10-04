@@ -153,6 +153,7 @@ pkgs.runCommand "buck2-rules"
         name = "javascript_action_runtime",
         srcs = {
             "javascript-runner.ts": "src/javascript-runner.ts",
+            "test-verdict.ts": "src/test-verdict.ts",
             "typescript-runner.ts": "src/typescript-runner.ts",
         },
         visibility = ["PUBLIC"],

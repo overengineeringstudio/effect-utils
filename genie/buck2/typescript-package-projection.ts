@@ -244,9 +244,9 @@ const vitestCollectRuleName = 'vitest_collect'
 /** Suffix of the collection target derived beside a Vitest execution lane. */
 export const buck2TestCollectionTargetSuffix = '_collect'
 /**
- * Attributes the collect rule does not accept. Both bound a running test, and collection
- * runs none; everything else the execution lane validated is passed through unchanged so the
- * inventory is the selection the lane executes rather than a second, drifting declaration.
+ * Attributes the collect rule does not render. These bound a running test;
+ * collection runs none. Both rule macros own their execution admission, so the
+ * projection never supplies raw execution compatibility constraints.
  */
 const collectUnsupportedAttributes: Readonly<Record<string, true>> = {
   hook_timeout_ms: true,
@@ -458,6 +458,11 @@ const projectTestTarget = ({
   if (target.runner === 'vitest' && inheritedEnv.length > 0) {
     throw new Error(
       `Vitest target ${target.name} cannot inherit ${inheritedEnv.join(', ')} because its derived collection action requires every input in the action identity`,
+    )
+  }
+  if (target.runner === 'vitest' && cacheable === true && configuredInputKeys.length > 0) {
+    throw new Error(
+      `Cacheable Vitest target ${target.name} requires provider-backed external inputs`,
     )
   }
   if (inheritedEnv.length > 0 && cacheable === true) {
