@@ -16,13 +16,13 @@ Rewrite all seven shared roots as plain schemas. A memoized AST visitor adapts k
 
 ## Result
 
-| Probe | Observed result |
-| --- | --- |
-| Shared TypeScript vectors | 137/137; 39 accepted, 98 rejected; zero disagreements; identical IR |
-| Fresh generated Rust vectors | 137/137 passed |
-| Registered Patch transformation | Six cases per side; absent/null/value retain Absent/Null/Value; invalid wire forms reject |
-| Ordinary Effect codec | Bigint domain value retained; optional-field undefined omitted; required undefined and optional null rejected |
-| Framed TypeScript/Rust smoke | Identical bytes `0403020102000c000000ffffffffffffffff`; wrong version rejected |
+| Probe                           | Observed result                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Shared TypeScript vectors       | 137/137; 39 accepted, 98 rejected; zero disagreements; identical IR                                           |
+| Fresh generated Rust vectors    | 137/137 passed                                                                                                |
+| Registered Patch transformation | Six cases per side; absent/null/value retain Absent/Null/Value; invalid wire forms reject                     |
+| Ordinary Effect codec           | Bigint domain value retained; optional-field undefined omitted; required undefined and optional null rejected |
+| Framed TypeScript/Rust smoke    | Identical bytes `0403020102000c000000ffffffffffffffff`; wrong version rejected                                |
 
 The pinned built-ins were insufficient on their own: BigInt JSON decoding normalized `"00"`, `"01"`, and `"-0"`; DateTime decoding truncated sub-millisecond text and normalized invalid calendar dates; a `parseOptions` annotation did not enforce excess-field rejection; stock optional-undefined JSON conversion produced null rather than the selected omission behavior. Encoded-side validation and schema-aware boundary policy remain necessary.
 

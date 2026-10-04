@@ -22,13 +22,13 @@ The native parsed-object boundary normalizes only finite, safe integral JS doubl
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
-| Explicit f32 plus schema-aware numeric admission (selected) | Predictable rounding without weakening integers |
-| Treat all numeric JSON as canonical integers | Rejects valid float fractions/exponents |
-| Relax every integer spelling | Loses lexical parity and canonical wire policy |
-| Normalize every native double | Silent precision loss or fractional truncation |
-| Implicit arbitrary floating-point policy | Unspecified precision, overflow and negative-zero behavior |
+| Option                                                      | Tradeoff                                                   |
+| ----------------------------------------------------------- | ---------------------------------------------------------- |
+| Explicit f32 plus schema-aware numeric admission (selected) | Predictable rounding without weakening integers            |
+| Treat all numeric JSON as canonical integers                | Rejects valid float fractions/exponents                    |
+| Relax every integer spelling                                | Loses lexical parity and canonical wire policy             |
+| Normalize every native double                               | Silent precision loss or fractional truncation             |
+| Implicit arbitrary floating-point policy                    | Unspecified precision, overflow and negative-zero behavior |
 
 ## Consequences
 

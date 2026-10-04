@@ -22,13 +22,13 @@ The content-address pilot exposed missing contract metadata, workspace emission,
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
+| Option                                                | Tradeoff                                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- |
 | Typed projections and explicit range reads (selected) | One source/freshness authority; bounded memory and cooperative scheduling |
-| Arbitrary Cargo template / metadata convention | Flexible, adds a second validation/ownership surface |
-| Per-backend crate graphs | Exact feature selection, changes transitive graph authority |
-| Whole-file reads plus Worker isolation | Simpler capability, does not bound file allocation |
-| Checked-in generated declarations | Convenient editor input, freshness and artifact drift |
+| Arbitrary Cargo template / metadata convention        | Flexible, adds a second validation/ownership surface                      |
+| Per-backend crate graphs                              | Exact feature selection, changes transitive graph authority               |
+| Whole-file reads plus Worker isolation                | Simpler capability, does not bound file allocation                        |
+| Checked-in generated declarations                     | Convenient editor input, freshness and artifact drift                     |
 
 ## Consequences
 

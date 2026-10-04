@@ -16,24 +16,24 @@ Use Effect 4.0.0-rc.118, Bun 1.4.2, Rust 1.98.1, serde 1.0.229, and serde_json 1
 
 ## Result
 
-| Boundary | Observed behavior |
-| --- | --- |
-| Effect TaggedStruct and stringify | Ordinary fields emit tag first, but an integer-index field `"0"` precedes `_tag` |
-| Plain Struct, spreads, and plain serde structs | Declaration/construction order can put the tag later |
-| Native serde internally tagged enum | Direct serialization emits tag first; deserialization buffers either order |
-| serde Value or sorted jq output | Uppercase/numeric names can precede the discriminator |
-| PostgreSQL json | Preserves already-first input text |
-| PostgreSQL jsonb | Reorders `{"_tag":"Item","id":1,"payload":"x"}` to `{"id": 1, "_tag": "Item", "payload": "x"}` |
-| Redis strings and local opaque HTTP echo | Preserve input bytes |
-| Redis JSON | Not measured: JSON.SET unavailable; no observed reordering claim |
+| Boundary                                       | Observed behavior                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Effect TaggedStruct and stringify              | Ordinary fields emit tag first, but an integer-index field `"0"` precedes `_tag`               |
+| Plain Struct, spreads, and plain serde structs | Declaration/construction order can put the tag later                                           |
+| Native serde internally tagged enum            | Direct serialization emits tag first; deserialization buffers either order                     |
+| serde Value or sorted jq output                | Uppercase/numeric names can precede the discriminator                                          |
+| PostgreSQL json                                | Preserves already-first input text                                                             |
+| PostgreSQL jsonb                               | Reorders `{"_tag":"Item","id":1,"payload":"x"}` to `{"id": 1, "_tag": "Item", "payload": "x"}` |
+| Redis strings and local opaque HTTP echo       | Preserve input bytes                                                                           |
+| Redis JSON                                     | Not measured: JSON.SET unavailable; no observed reordering claim                               |
 
 Median decimal MB/s:
 
-| Shape | R stream first | R fallback last | Public decoder first / last |
-| --- | ---: | ---: | ---: |
-| Small control | 285.9 | 132.4 | 111.1 / 69.0 |
-| Many objects | 538.6 | 139.6 | 242.9 / 91.6 |
-| Large scalar | 6,144.4 | 5,965.5 | 6,114.8 / 5,972.8 |
+| Shape         | R stream first | R fallback last | Public decoder first / last |
+| ------------- | -------------: | --------------: | --------------------------: |
+| Small control |          285.9 |           132.4 |                111.1 / 69.0 |
+| Many objects  |          538.6 |           139.6 |                242.9 / 91.6 |
+| Large scalar  |        6,144.4 |         5,965.5 |           6,114.8 / 5,972.8 |
 
 For many objects, peak added live heap was 425,988 bytes streaming versus 3,199,613 bytes fallback (7.51×); allocation requests were 4,109 versus 20,496 (4.99×). All tracked live bytes returned to zero after dropping output. These are allocator-requested bytes, not RSS, input size, or byte-copy counts. The large-scalar result does not support a universal double-payload-memory rule.
 

@@ -18,11 +18,11 @@ Compare a real Rust host-daemon probe with a simplified bundled Effect implement
 
 Final Hyperfine delivery measurements use three warmups and 20 runs, mean ± sample SD:
 
-| Matched slice | Rust | Bundled Effect |
-| --- | ---: | ---: |
-| Help | 1.10 ± 0.48 ms | 433.3 ± 103.5 ms |
-| Configuration/job validation | 13.2 ± 3.2 ms | 441.7 ± 118.7 ms |
-| Real daemon probe | 132.2 ± 104.6 ms | 497.8 ± 147.9 ms |
+| Matched slice                |             Rust |   Bundled Effect |
+| ---------------------------- | ---------------: | ---------------: |
+| Help                         |   1.10 ± 0.48 ms | 433.3 ± 103.5 ms |
+| Configuration/job validation |    13.2 ± 3.2 ms | 441.7 ± 118.7 ms |
+| Real daemon probe            | 132.2 ± 104.6 ms | 497.8 ± 147.9 ms |
 
 The real daemon call alone measured 67.7 ± 43.0 ms. The installed complete probe did more work and measured 956.3 ± 193.2 ms; that is not a whole-product Rust speedup ratio. Runs were sequential on a saturated, non-stationary host: load1 changed 164.96→206.31. Do not subtract sample means to attribute exact layer costs.
 

@@ -22,12 +22,12 @@ Retiring poisoned wasm disables finalizers and discards the instance; do not cla
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
-| Shared resource IR and scoped generation registry (selected) | Typed lifecycle with one poison authority |
-| Pilot-local generators | Less foundation surface, repeated lifecycle machinery |
-| Concurrent mutable methods | Lower queueing, invalid overlapping Rust access |
-| Revive old handles after rebuild | Apparent continuity, stale-instance aliasing |
+| Option                                                       | Tradeoff                                              |
+| ------------------------------------------------------------ | ----------------------------------------------------- |
+| Shared resource IR and scoped generation registry (selected) | Typed lifecycle with one poison authority             |
+| Pilot-local generators                                       | Less foundation surface, repeated lifecycle machinery |
+| Concurrent mutable methods                                   | Lower queueing, invalid overlapping Rust access       |
+| Revive old handles after rebuild                             | Apparent continuity, stale-instance aliasing          |
 
 ## Consequences
 

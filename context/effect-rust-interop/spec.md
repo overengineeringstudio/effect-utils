@@ -6,12 +6,12 @@ This document specifies the reusable Effect–Rust boundary. It builds on [requi
 
 Active. This describes the implemented system in the open implementation stack, not a claim that those PRs have merged or that production Cloudflare admission is complete.
 
-| Implemented surface | Public implementation |
-| --- | --- |
-| Reproducible archive fixture prerequisite | [#1592](https://github.com/overengineeringstudio/effect-utils/pull/1592) |
-| wasm32, bindgen, Node-API and aggregator products | [#1556](https://github.com/overengineeringstudio/effect-utils/pull/1556) |
-| Compiler, runtime, export macros and generated services | [#1578](https://github.com/overengineeringstudio/effect-utils/pull/1578) |
-| Opt-in content-address Rust byte engine | [#1602](https://github.com/overengineeringstudio/effect-utils/pull/1602) |
+| Implemented surface                                               | Public implementation                                                                                                                                                                                                        |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reproducible archive fixture prerequisite                         | [#1592](https://github.com/overengineeringstudio/effect-utils/pull/1592)                                                                                                                                                     |
+| wasm32, bindgen, Node-API and aggregator products                 | [#1556](https://github.com/overengineeringstudio/effect-utils/pull/1556)                                                                                                                                                     |
+| Compiler, runtime, export macros and generated services           | [#1578](https://github.com/overengineeringstudio/effect-utils/pull/1578)                                                                                                                                                     |
+| Opt-in content-address Rust byte engine                           | [#1602](https://github.com/overengineeringstudio/effect-utils/pull/1602)                                                                                                                                                     |
 | External browser assets, scoped resources, typed direct transport | [#1604](https://github.com/overengineeringstudio/effect-utils/pull/1604), [#1605](https://github.com/overengineeringstudio/effect-utils/pull/1605), [#1610](https://github.com/overengineeringstudio/effect-utils/pull/1610) |
 
 The asset/resource/direct stack branches from the foundation independently of the content-address pilot. Historical [experiment records](./.experiments/i-delivery.md) retain their original coverage limits; implementation PRs identify the heads actually exercised. Browser/workerd smokes have real runtime evidence but are not yet admitted Buck smoke capabilities ([#1566](https://github.com/overengineeringstudio/effect-utils/issues/1566)). Existing product-check failures ([#1564](https://github.com/overengineeringstudio/effect-utils/issues/1564)), watcher startup ([#1590](https://github.com/overengineeringstudio/effect-utils/issues/1590)), and inherited compiler wrappers ([#1599](https://github.com/overengineeringstudio/effect-utils/issues/1599)) are build issues, not unresolved interop designs.
@@ -31,27 +31,27 @@ Effect product service -> explicit Layer -> foundation runtime -> Rust adapter -
                                                                             <- Rust caller
 ```
 
-| Tier         | Constructor                         | Use                                               | Boundary                                           |
-| ------------ | ----------------------------------- | ------------------------------------------------- | -------------------------------------------------- |
-| wasm-bindgen | `wasmLayer.node/bun/browser/browserWorker/workerd` | Default across supported runtimes | Scoped generated instance factory |
-| Node-API     | `nativeLayer.node/bun`              | Measured desktop hot paths                        | Unwind-contained native context; Nix-fleet product |
-| Subprocess   | `processLayer.node/bun`             | Coarse host-state/tree operations; hard isolation | Scoped child process and typed transport           |
+| Tier         | Constructor                                        | Use                                               | Boundary                                           |
+| ------------ | -------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------- |
+| wasm-bindgen | `wasmLayer.node/bun/browser/browserWorker/workerd` | Default across supported runtimes                 | Scoped generated instance factory                  |
+| Node-API     | `nativeLayer.node/bun`                             | Measured desktop hot paths                        | Unwind-contained native context; Nix-fleet product |
+| Subprocess   | `processLayer.node/bun`                            | Coarse host-state/tree operations; hard isolation | Scoped child process and typed transport           |
 
 Product Layers expose domain services; the foundation owns loading, jobs, resource release, errors, streaming, and codegen hooks. Native Rust callers depend directly on the core. Constructors do not detect a preferred tier, catch a failure to select another tier, or replay an operation during rebuild. Unsupported host functionality returns Unsupported, not a pretend portable implementation.
 
 ## Runtime packaging and admission (R06, R07, R09)
 
-| Export condition / entry        | Artifact contract                                                     |
-| ------------------------------- | --------------------------------------------------------------------- |
-| `workerd` | Statically imported precompiled `WebAssembly.Module`; no fetch or runtime compilation |
-| `bun` | Inline bytes and web glue |
-| `node` | Node CJS bindgen glue, isolated in a CommonJS package boundary |
-| `browser`, `default` | External emitted wasm asset using pinned bindgen URL/fetch/streaming glue |
-| `./browser-worker`, `./browser-worker/load` | External wasm asset in a browser Worker |
-| `./workerd`, `./workerd/load` | Explicit precompiled-module entry |
-| `./inline`, `./inline/load` | Explicit inline bytes; no fetch |
-| Explicit `./url` | Application-supplied asset URL/Response |
-| Explicit native/process entries | Desktop-only imports, excluded from browser graphs |
+| Export condition / entry                    | Artifact contract                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `workerd`                                   | Statically imported precompiled `WebAssembly.Module`; no fetch or runtime compilation |
+| `bun`                                       | Inline bytes and web glue                                                             |
+| `node`                                      | Node CJS bindgen glue, isolated in a CommonJS package boundary                        |
+| `browser`, `default`                        | External emitted wasm asset using pinned bindgen URL/fetch/streaming glue             |
+| `./browser-worker`, `./browser-worker/load` | External wasm asset in a browser Worker                                               |
+| `./workerd`, `./workerd/load`               | Explicit precompiled-module entry                                                     |
+| `./inline`, `./inline/load`                 | Explicit inline bytes; no fetch                                                       |
+| Explicit `./url`                            | Application-supplied asset URL/Response                                               |
+| Explicit native/process entries             | Desktop-only imports, excluded from browser graphs                                    |
 
 Conditional exports select a wasm packaging adapter, not a delivery tier. Order conditions as `workerd`, `bun`, `node`, `browser`, `default`: Bun also matches `node`, so `bun` must precede it. The fresh-instance `./load` entry uses inline bytes on Node/Bun, external assets on browser/default, and precompiled Modules on workerd. Browser glue retains `new URL(..., import.meta.url)` and bindgen's fetch/`instantiateStreaming` path; serve `application/wasm`. Inline/workerd glue omits the unused default module path so bundlers do not emit a duplicate asset. There is no automatic switch to inline or another tier. Browser compilation depends on the application's CSP. Darwin Node-API libraries link with `-Clink-arg=-Wl,-undefined,dynamic_lookup` only for runtime-supplied `_napi_*` symbols.
 
@@ -131,10 +131,10 @@ Effect capability -> scoped callback -> Rust job -> bounded write/pull -> owned 
        interrupt -> abort or settle-only      -> cancelAndJoin -> release
 ```
 
-| Capability mode | Interrupt behavior                                                                                                |
-| --------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `abortable`     | Send cancellation to the actual host operation and await its stop acknowledgment                                  |
-| `settle-only` | Await actual job settlement and discard its result; any non-abortable host operation may finish, but cannot touch retired state |
+| Capability mode | Interrupt behavior                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `abortable`     | Send cancellation to the actual host operation and await its stop acknowledgment                                                |
+| `settle-only`   | Await actual job settlement and discard its result; any non-abortable host operation may finish, but cannot touch retired state |
 
 Read/fetch and other host capabilities are explicit typed services. Their adapters run Effects in the operation's scope, not untracked global runtimes. Each declares its cancellation mode. Late settle-only callbacks retain only host completion bookkeeping, not Rust jobs or borrowed views.
 
@@ -323,12 +323,12 @@ Fully bounded `Schema.Int` is admitted directly. The smallest admitted width fit
 
 ### Extension vocabulary and regex
 
-| Namespace                                                                         | Ownership and compatibility                                                                           |
-| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `https://github.com/overengineeringstudio/effect-utils/vocabulary/effect-rust/v1` | Repository-owned logical vocabulary URI, not a promise of a hosted schema endpoint                    |
-| `x-effect-rust-*`                                                                 | Repository-owned lowercase ASCII JSON Schema keywords; suffix matches `[a-z][a-z0-9-]*`               |
-| Contract identifiers                                                              | Owner-declared, case-sensitive identifiers unique within the contract set; collisions fail generation |
-| `effect-rust/*` live annotations | Repository-owned, case-sensitive string keys exported by `EffectRust`; live metadata is distinct from JSON Schema keywords |
+| Namespace                                                                         | Ownership and compatibility                                                                                                |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `https://github.com/overengineeringstudio/effect-utils/vocabulary/effect-rust/v1` | Repository-owned logical vocabulary URI, not a promise of a hosted schema endpoint                                         |
+| `x-effect-rust-*`                                                                 | Repository-owned lowercase ASCII JSON Schema keywords; suffix matches `[a-z][a-z0-9-]*`                                    |
+| Contract identifiers                                                              | Owner-declared, case-sensitive identifiers unique within the contract set; collisions fail generation                      |
+| `effect-rust/*` live annotations                                                  | Repository-owned, case-sensitive string keys exported by `EffectRust`; live metadata is distinct from JSON Schema keywords |
 
 The JSON Schema 2020-12 dialect meta-schema declares the semantic vocabulary as required in `$vocabulary`; generated contract schemas select that dialect with `$schema`. Vocabulary and dialect version URIs end in `/v[1-9][0-9]*`. Unknown required vocabularies, unknown extension keywords, and incompatible major versions fail closed, never silently erase semantics. Extensions carry integer width/representation, millisecond DateTime, brands, and portable pattern flags. Register extensions once in the compiler with both emitters and shared vectors.
 
@@ -379,15 +379,15 @@ Compiler.compile(contracts, {
 })
 ```
 
-| Semantic field     | Generated Rust                                                            | Effect type / wire                                      |
-| ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------- |
-| u64/i64 | Width-checked integer/newtype and serde adapters | Bounded bigint; decimal strings on JSON, bigint direct |
-| DateTime | `TimestampMillis` enforcing millisecond precision | `DateTime.Utc`; strict RFC3339 JSON, epoch millis direct |
-| Missing-only       | `Option<T>` with missing-only codec                                       | `optionalKey`, rejects explicit null unless T admits it |
-| Required nullable  | `Option<T>` with required-presence codec                                  | `NullOr`, missing key rejected                          |
-| Optional nullable | `Patch<T> { Absent, Null, Value(T) }` | Raw `optionalKey(NullOr(T))`: missing / null / value |
-| Constrained string | Named validating newtype                                                  | Refined or branded string                               |
-| Record             | Sorted-key map                                                            | Canonical sorted keys on encode                         |
+| Semantic field     | Generated Rust                                    | Effect type / wire                                       |
+| ------------------ | ------------------------------------------------- | -------------------------------------------------------- |
+| u64/i64            | Width-checked integer/newtype and serde adapters  | Bounded bigint; decimal strings on JSON, bigint direct   |
+| DateTime           | `TimestampMillis` enforcing millisecond precision | `DateTime.Utc`; strict RFC3339 JSON, epoch millis direct |
+| Missing-only       | `Option<T>` with missing-only codec               | `optionalKey`, rejects explicit null unless T admits it  |
+| Required nullable  | `Option<T>` with required-presence codec          | `NullOr`, missing key rejected                           |
+| Optional nullable  | `Patch<T> { Absent, Null, Value(T) }`             | Raw `optionalKey(NullOr(T))`: missing / null / value     |
+| Constrained string | Named validating newtype                          | Refined or branded string                                |
+| Record             | Sorted-key map                                    | Canonical sorted keys on encode                          |
 
 Sub-millisecond DateTime is rejected, not silently truncated. Required-presence and missing-only codecs remain distinct even when both use `Option<T>`. `Patch::Absent` omits the field and must never collapse into `Null`.
 
@@ -439,9 +439,7 @@ The same compiler IR owns both codecs. Rust core types may carry **one** feature
 
 ```ts
 const Sample = Schema.Struct({
-  id: Schema.BigInt.check(
-    Schema.isBetweenBigInt({ minimum: 0n, maximum: 18446744073709551615n }),
-  ),
+  id: Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: 0n, maximum: 18446744073709551615n })),
   delta: Schema.BigInt.check(
     Schema.isBetweenBigInt({ minimum: -9223372036854775808n, maximum: 9223372036854775807n }),
   ),
@@ -455,11 +453,11 @@ Trusted opt-in skips redundant Schema traversal only; mandatory envelope, length
 
 ## Consumer pilots (R01–R16)
 
-| Consumer | Boundary exercised | Recorded result |
-| --- | --- | --- |
-| [Content-address byte engine](../content-address/spec.md) | Effect-owned descriptors, direct Rust reuse, streams, host callbacks, wasm/native | #1602: 35 parity cases per Node/Bun runtime, zero disagreements; JavaScript remains default |
-| internal app pilot A (image/byte processing) | Producer ownership, packaging, shared aggregate dependencies | Aggregate wasm 34–37% smaller; faster warm init; inline first init 342 vs external 85 ms in Chromium |
-| internal app pilot B (stateful matcher) | Rust-owned contracts, stateful lifetime and teardown | 41/41 parity; 10k create/drop with zero leaks; generated boundary 3.2–5.4× slower than raw before q53 |
+| Consumer                                                  | Boundary exercised                                                                | Recorded result                                                                                       |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [Content-address byte engine](../content-address/spec.md) | Effect-owned descriptors, direct Rust reuse, streams, host callbacks, wasm/native | #1602: 35 parity cases per Node/Bun runtime, zero disagreements; JavaScript remains default           |
+| internal app pilot A (image/byte processing)              | Producer ownership, packaging, shared aggregate dependencies                      | Aggregate wasm 34–37% smaller; faster warm init; inline first init 342 vs external 85 ms in Chromium  |
+| internal app pilot B (stateful matcher)                   | Rust-owned contracts, stateful lifetime and teardown                              | 41/41 parity; 10k create/drop with zero leaks; generated boundary 3.2–5.4× slower than raw before q53 |
 
 The [pilot A record](./.experiments/pilot-a-image-byte-processing.md) and [pilot B record](./.experiments/pilot-b-stateful-matcher.md) preserve the anonymized historical observations. [The q53 before/after benchmark](./.experiments/q53-direct-transport.md) measures the later real service product with an unchanged harness; shared-host load limits absolute claims, and native-byte cells establish neither improvement nor regression. [Annotation-first](./.experiments/wa-annotation-first.md) and [tag-order friction](./.experiments/t-tag-order-friction.md) record the evidence behind the corresponding cutovers.
 

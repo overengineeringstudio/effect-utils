@@ -16,13 +16,13 @@ The published pilot summary compares raw bindings with the generated JSON/Effect
 
 ## Result
 
-| Historical pilot observation | Result |
-| --- | --- |
-| Behavior parity | 41/41 |
-| Resource stress | 10,000 create/drop cycles; zero leaks reported |
-| Generated boundary versus raw, Bun | 3.2× slower |
-| Generated boundary versus raw, Node | 5.4× slower |
-| Warm call scale | Approximately 20–45 µs; codecs already hoisted |
+| Historical pilot observation        | Result                                         |
+| ----------------------------------- | ---------------------------------------------- |
+| Behavior parity                     | 41/41                                          |
+| Resource stress                     | 10,000 create/drop cycles; zero leaks reported |
+| Generated boundary versus raw, Bun  | 3.2× slower                                    |
+| Generated boundary versus raw, Node | 5.4× slower                                    |
+| Warm call scale                     | Approximately 20–45 µs; codecs already hoisted |
 
 The leak result is a reported scoped-resource observation, not proof of arbitrary heap/RSS reclamation, poisoned-instance cleanup, or production workerd memory admission.
 

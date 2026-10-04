@@ -16,12 +16,12 @@ On a populated Linux x86_64 worktree, pin Buck2 `2026-08-31-be6971d47dcc835b7356
 
 ## Result
 
-| Fresh daemon scenario | Observed result |
-| --- | --- |
-| Checked-in notify, default isolation | Connection timeout; 90.99 s command wall time |
-| notify, fresh isolation | Connection timeout; 90.77 s |
-| Ignore root editor-view tree, fresh isolation | Connection timeout; 90.66 s |
-| Temporary fs_hash_crawler, fresh isolation | Connected after 54.33 s; command completed in 111.45 s, approximately 57 s additional full rescan |
+| Fresh daemon scenario                         | Observed result                                                                                   |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Checked-in notify, default isolation          | Connection timeout; 90.99 s command wall time                                                     |
+| notify, fresh isolation                       | Connection timeout; 90.77 s                                                                       |
+| Ignore root editor-view tree, fresh isolation | Connection timeout; 90.66 s                                                                       |
+| Temporary fs_hash_crawler, fresh isolation    | Connected after 54.33 s; command completed in 111.45 s, approximately 57 s additional full rescan |
 
 Failed notify logs ended at `Creating file watcher`. Generated root and package editor-view trees occupied 407 MiB and 274 MiB. Load1 was 23.24, memory PSI some avg60 0.00, and 78 GiB memory was available. Watchman was not installed.
 

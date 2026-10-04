@@ -16,13 +16,13 @@ The published pilot summary compares a two-core aggregate with the previous pair
 
 ## Result
 
-| Historical pilot observation | Result |
-| --- | --- |
-| Aggregate wasm compared with previous pair | 34–37% smaller |
-| Warm initialization | 6–10 ms versus 14–21 ms |
-| Chromium first initialization | Inline base64 342 ms versus external asset 85 ms |
-| Manual glue | 120 → 123 lines; no overall reduction |
-| Effect dependency mismatch | Mixed Effect RCs produced `self._build is not a function` |
+| Historical pilot observation               | Result                                                    |
+| ------------------------------------------ | --------------------------------------------------------- |
+| Aggregate wasm compared with previous pair | 34–37% smaller                                            |
+| Warm initialization                        | 6–10 ms versus 14–21 ms                                   |
+| Chromium first initialization              | Inline base64 342 ms versus external asset 85 ms          |
+| Manual glue                                | 120 → 123 lines; no overall reduction                     |
+| Effect dependency mismatch                 | Mixed Effect RCs produced `self._build is not a function` |
 
 The q52 decision request also reported a 2.49 MB inline-loader JavaScript artifact. That is a loader size, not the aggregate wasm size or a measured compressed network transfer.
 

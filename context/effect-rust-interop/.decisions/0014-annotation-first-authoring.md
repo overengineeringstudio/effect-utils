@@ -24,13 +24,13 @@ Effect-owned Rust types can expose optional schemars `JsonSchema` implementation
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
-| Plain Schema plus annotations (selected) | Idiomatic ownership; extra layout/codec policy remains explicit |
-| Mandatory Wire vocabulary | Easy recognition, duplicate authoring language |
-| Tagged Patch ADT in TS | Symmetric spelling, non-idiomatic optional fields |
-| Mandatory width for bounded number fields | Predictable layout, unnecessary authoring friction |
-| schemars derives over emitted types | Less compiler output, can lose source constraints |
+| Option                                    | Tradeoff                                                        |
+| ----------------------------------------- | --------------------------------------------------------------- |
+| Plain Schema plus annotations (selected)  | Idiomatic ownership; extra layout/codec policy remains explicit |
+| Mandatory Wire vocabulary                 | Easy recognition, duplicate authoring language                  |
+| Tagged Patch ADT in TS                    | Symmetric spelling, non-idiomatic optional fields               |
+| Mandatory width for bounded number fields | Predictable layout, unnecessary authoring friction              |
+| schemars derives over emitted types       | Less compiler output, can lose source constraints               |
 
 ## Consequences
 

@@ -26,13 +26,13 @@ Canonical JSON remains unchanged for process and storage boundaries: decimal-str
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
+| Option                                               | Tradeoff                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------- |
 | Typed direct plus separate canonical JSON (selected) | Less conversion, one additional representation with shared semantics |
-| Remove JSON stringification only | Retains value-tree and representation conversions |
-| Trusted/raw calls for hot paths | Lower overhead by opting out of contract enforcement |
-| Universal asynchronous wrapper | Uniform implementation, avoidable synchronous lifecycle cost |
-| Permit multiple physical Effect copies | Broken service/schema identity becomes runtime-dependent |
+| Remove JSON stringification only                     | Retains value-tree and representation conversions                    |
+| Trusted/raw calls for hot paths                      | Lower overhead by opting out of contract enforcement                 |
+| Universal asynchronous wrapper                       | Uniform implementation, avoidable synchronous lifecycle cost         |
+| Permit multiple physical Effect copies               | Broken service/schema identity becomes runtime-dependent             |
 
 ## Consequences
 

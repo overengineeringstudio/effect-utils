@@ -23,28 +23,28 @@ Raw adapters already returned JavaScript values before the change; this is not a
 
 All 20 cells below are median nanoseconds per call. After/before compares generated medians; raw medians are both shown because adapter representation also changed.
 
-| Runtime | Tier | Workload | Raw before → after (ns) | Generated before (ns) | Generated after (ns) | After/before |
-| --- | --- | --- | ---: | ---: | ---: | ---: |
-| Node | wasm | primitive | 58 → 58 | 4,020 | 431 | 0.107× |
-| Node | wasm | domain | 8,251 → 9,840 | 34,334 | 18,939 | 0.552× |
-| Node | wasm | expected-error | 4,830 → 5,753 | 22,828 | 15,360 | 0.673× |
-| Node | wasm | bytes-1KiB | 3,395 → 3,651 | 7,531 | 4,304 | 0.571× |
-| Node | wasm | frame-256rows | 1,978 → 1,951 | 6,121 | 2,433 | 0.398× |
-| Node | native | primitive | 338 → 345 | 4,445 | 943 | 0.212× |
-| Node | native | domain | 17,693 → 14,800 | 68,859 | 26,112 | 0.379× |
-| Node | native | expected-error | 7,999 → 10,653 | 29,496 | 25,319 | 0.858× |
-| Node | native | bytes-1KiB | 23,397 → 28,880 | 27,739 | 28,670 | 1.034× |
-| Node | native | frame-256rows | 11,762 → 12,937 | 15,643 | 14,515 | 0.928× |
-| Bun | wasm | primitive | 62 → 80 | 3,067 | 412 | 0.134× |
-| Bun | wasm | domain | 8,952 → 9,254 | 28,937 | 16,832 | 0.582× |
-| Bun | wasm | expected-error | 1,554 → 2,536 | 11,221 | 6,561 | 0.585× |
-| Bun | wasm | bytes-1KiB | 5,060 → 5,386 | 8,406 | 5,886 | 0.700× |
-| Bun | wasm | frame-256rows | 1,133 → 1,143 | 4,995 | 1,474 | 0.295× |
-| Bun | native | primitive | 308 → 327 | 3,695 | 806 | 0.218× |
-| Bun | native | domain | 16,488 → 13,110 | 54,361 | 24,182 | 0.445× |
-| Bun | native | expected-error | 3,577 → 5,677 | 14,222 | 10,159 | 0.714× |
-| Bun | native | bytes-1KiB | 23,629 → 27,411 | 28,093 | 28,305 | 1.008× |
-| Bun | native | frame-256rows | 11,684 → 12,615 | 15,870 | 14,536 | 0.916× |
+| Runtime | Tier   | Workload       | Raw before → after (ns) | Generated before (ns) | Generated after (ns) | After/before |
+| ------- | ------ | -------------- | ----------------------: | --------------------: | -------------------: | -----------: |
+| Node    | wasm   | primitive      |                 58 → 58 |                 4,020 |                  431 |       0.107× |
+| Node    | wasm   | domain         |           8,251 → 9,840 |                34,334 |               18,939 |       0.552× |
+| Node    | wasm   | expected-error |           4,830 → 5,753 |                22,828 |               15,360 |       0.673× |
+| Node    | wasm   | bytes-1KiB     |           3,395 → 3,651 |                 7,531 |                4,304 |       0.571× |
+| Node    | wasm   | frame-256rows  |           1,978 → 1,951 |                 6,121 |                2,433 |       0.398× |
+| Node    | native | primitive      |               338 → 345 |                 4,445 |                  943 |       0.212× |
+| Node    | native | domain         |         17,693 → 14,800 |                68,859 |               26,112 |       0.379× |
+| Node    | native | expected-error |          7,999 → 10,653 |                29,496 |               25,319 |       0.858× |
+| Node    | native | bytes-1KiB     |         23,397 → 28,880 |                27,739 |               28,670 |       1.034× |
+| Node    | native | frame-256rows  |         11,762 → 12,937 |                15,643 |               14,515 |       0.928× |
+| Bun     | wasm   | primitive      |                 62 → 80 |                 3,067 |                  412 |       0.134× |
+| Bun     | wasm   | domain         |           8,952 → 9,254 |                28,937 |               16,832 |       0.582× |
+| Bun     | wasm   | expected-error |           1,554 → 2,536 |                11,221 |                6,561 |       0.585× |
+| Bun     | wasm   | bytes-1KiB     |           5,060 → 5,386 |                 8,406 |                5,886 |       0.700× |
+| Bun     | wasm   | frame-256rows  |           1,133 → 1,143 |                 4,995 |                1,474 |       0.295× |
+| Bun     | native | primitive      |               308 → 327 |                 3,695 |                  806 |       0.218× |
+| Bun     | native | domain         |         16,488 → 13,110 |                54,361 |               24,182 |       0.445× |
+| Bun     | native | expected-error |           3,577 → 5,677 |                14,222 |               10,159 |       0.714× |
+| Bun     | native | bytes-1KiB     |         23,629 → 27,411 |                28,093 |               28,305 |       1.008× |
+| Bun     | native | frame-256rows  |         11,684 → 12,615 |                15,870 |               14,536 |       0.916× |
 
 Before, domain generated/raw overhead was 3.23–4.16× wasm and 3.30–3.89× native. Generated primitive cost fell from 3,067–4,445 ns to 412–943 ns. Generated domain medians improved by roughly 1.7–2.6× in these runs; generated cost is not raw-call cost.
 
