@@ -6,6 +6,13 @@ cd "$source_root"
 bun scripts/buck2-cache-posture.ts "$source_root"
 grep -Fq 'allow_cache_uploads = true' .buckconfig.local || { echo '::error::publisher cache posture was not selected'; exit 1; }
 buck="${BUCK2_BIN:?BUCK2_BIN not set}"
+# `log show` emits numeric protobuf enums in the pinned Buck2 release:
+# https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_data/data.proto
+readonly ACTION_EXECUTION_KIND_LOCAL=1
+readonly ACTION_EXECUTION_KIND_ACTION_CACHE=3
+readonly UPLOAD_RESULT_UPLOADED=1
+# LOCAL, REMOTE, LOCAL_DEP_FILE, LOCAL_WORKER, LOCAL_ACTION_CACHE, REMOTE_WORKER.
+readonly EXECUTED_OR_LOCAL_CACHE_KINDS='[1,2,7,8,10,11]'
 context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"
 target='effect_utils//packages/@overeng/ci-tools:ci-tools-candidate'
 test_target='effect_utils//packages/@overeng/content-address:test'
@@ -21,16 +28,17 @@ test_evidence_c="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-c.js
 trap 'rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c"; rm -rf "$context_b"' EXIT
 
 # Context A executes locally and uploads run-unique source inputs.
+# `log show --recent` uses zero-based history; 0 is the command just run.
 "$buck" kill
 rm -rf buck-out
 "$buck" build --local-only "$target"
-"$buck" log show --recent 1 > "$evidence_a"
-if ! jq -e 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.execution_kind == "ACTION_EXECUTION_KIND_LOCAL" and $action.cache_upload_result == "UPLOAD_RESULT_UPLOADED")' "$evidence_a" >/dev/null; then
+"$buck" log show --recent 0 > "$evidence_a"
+if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$evidence_a" >/dev/null; then
   echo '::error::Context A did not report a successful upload for a locally executed action'
   exit 1
 fi
 "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
-"$buck" log show --recent 1 > "$test_evidence_a"
+"$buck" log show --recent 0 > "$test_evidence_a"
 if ! jq -e 'select(.Event.data.SpanEnd.data.TestRun.command_report.details.command_kind.command.LocalCommand)' "$test_evidence_a" >/dev/null; then
   echo '::error::Context A did not execute the representative unit-test lane locally'
   exit 1
@@ -64,19 +72,19 @@ if grep -Fq 'http_headers' .buckconfig.local; then echo '::error::reader cache i
 
 # The independent build must hit the remote action cache, not run an action.
 "$buck" build --local-only "$target"
-"$buck" log show --recent 1 > "$evidence_b"
-if ! jq -e 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind == "ACTION_EXECUTION_KIND_ACTION_CACHE")' "$evidence_b" >/dev/null; then
+"$buck" log show --recent 0 > "$evidence_b"
+if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind == $action_cache)' "$evidence_b" >/dev/null; then
   echo '::error::Context B did not report a remote action-cache hit'
   exit 1
 fi
-if jq -e 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind as $kind | $kind == "ACTION_EXECUTION_KIND_LOCAL" or $kind == "ACTION_EXECUTION_KIND_REMOTE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_DEP_FILE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_ACTION_CACHE" or $kind == "ACTION_EXECUTION_KIND_LOCAL_WORKER" or $kind == "ACTION_EXECUTION_KIND_REMOTE_WORKER")' "$evidence_b" >/dev/null; then
+if jq -e --argjson kinds "$EXECUTED_OR_LOCAL_CACHE_KINDS" 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind as $kind | $kinds | index($kind))' "$evidence_b" >/dev/null; then
   echo '::error::Context B executed an action or reused local action state instead of relying on the remote action cache'
   exit 1
 fi
 
 # The representative unit test must hit the remote test cache, not run locally.
 "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
-"$buck" log show --recent 1 > "$test_evidence_b"
+"$buck" log show --recent 0 > "$test_evidence_b"
 if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_b" >/dev/null; then
   echo '::error::Context B did not report the cached representative unit test as passing'
   exit 1
@@ -89,7 +97,7 @@ fi
 # An unrelated mutation must not alter the representative test action key.
 printf '%s\n' '' "// trusted irrelevant-mutation proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> README.md
 "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
-"$buck" log show --recent 1 > "$test_evidence_c"
+"$buck" log show --recent 0 > "$test_evidence_c"
 if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_c" >/dev/null; then
   echo '::error::The irrelevant mutation prevented the cached representative unit test from passing'
   exit 1
