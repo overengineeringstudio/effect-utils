@@ -45,18 +45,25 @@ cache address, CAS address, instance name, and TLS flag must be supplied
 together; the resolved engine address must be a string. Buck requires the engine
 address to initialize its RE client even for cache-only local execution.
 
-Public effect-utils uses the public tier. An authorized tailnet writer or protected public publisher holding
-`BUCK2_CACHE_WRITE_BASIC_AUTH` gets an untracked `.buckconfig.local` overlay
-(`scripts/buck2-cache-posture.ts`) that sets `allow_cache_uploads = true`,
-`default_allow_cache_upload = true`, and
-`http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH`. Buck
-expands the variable in the daemon, so no credential value is written to a file.
+Public effect-utils reads the public tier anonymously. Protected public publishers
+holding `BUCK2_CACHE_WRITE_BASIC_AUTH` receive the publisher overlay.
+Tailnet hosts resolve their own raw `username:password` credential into
+`BUCK2_PRIVATE_CACHE_WRITE_AUTH`; the devenv launcher converts it to
+`BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH` before starting Buck. The private writer
+also declares `BUCK2_PRIVATE_CACHE_ADDRESS=grpc://<private-host>:<port>`.
+Its overlay sets all three RE client addresses, disables TLS for the direct
+private listener, permits root-authorized uploads, retains the trusted private
+archive origin, and references the Basic header variable. Credential values
+never enter the config file; the daemon expands the variable at startup.
+The public read-only override takes precedence over either credential.
+No publisher credential is a fallback for a host writer.
 
-Executor platforms set `remote_enabled = False` and read `remote_cache_enabled`
-and `allow_cache_uploads` from the root config (cache-only: local execution,
-remote reuse). `BUCK2_NO_REMOTE_CACHE=1` selects a local overlay that sets
-`remote_cache_enabled = false` and disables uploads independently of the
-public read-only and protected publisher postures (BUILD.BUCK.REUSE-R04).
+Default executor platforms deny remote-cache reads and writes regardless of
+root upload policy. Audited actions request the paired `cache_hermetic` execution
+platform, which reads `remote_cache_enabled` and `allow_cache_uploads` from root
+config (local execution, remote reuse; `remote_enabled = False`).
+`BUCK2_NO_REMOTE_CACHE=1` wins over all credentials and disables reads/uploads.
+Read-only endpoint outages fail open; either selected writer posture fails closed.
 
 ## Reuse Verification
 

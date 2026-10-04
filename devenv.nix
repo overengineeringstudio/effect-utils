@@ -370,6 +370,16 @@ let
     }
   '';
   standaloneBuckCachePosture = ''
+    if [ -n "''${BUCK2_PRIVATE_CACHE_WRITE_AUTH:-}" ] \
+      && [ "''${BUCK2_PUBLIC_CACHE_READ_ONLY:-}" != 1 ] \
+      && [ "''${BUCK2_NO_REMOTE_CACHE:-}" != 1 ]; then
+      auth="$BUCK2_PRIVATE_CACHE_WRITE_AUTH"
+      case "$auth" in
+        publisher:*|:*|*:|"''${auth%%:*}") echo "private cache writer requires a per-host username:password credential" >&2; exit 1 ;;
+      esac
+      export BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$auth" | ${pkgs.coreutils}/bin/base64 -w0)"
+      unset auth BUCK2_PRIVATE_CACHE_WRITE_AUTH
+    fi
     ${pkgs.bun}/bin/bun "$root/scripts/buck2-cache-posture.ts" "$root" --probe
   '';
 

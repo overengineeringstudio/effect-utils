@@ -29,6 +29,14 @@
 
 ### Changed
 
+- Shared Buck cache reads and writes now require an audited hermetic execution
+  platform; unadmitted actions default to no shared reuse. Admitted JavaScript,
+  materialization, TypeScript and static-check actions start under projected
+  native `env -i` before any interpreter. Arbitrary package check/build scripts
+  are scrubbed but remain uncached.
+- Tailnet host writers use per-host private-tier credentials and an explicit
+  private endpoint; public read-only posture wins over credentials and selected
+  writer outages fail closed.
 - Consumer Buck roots can map nested checkout patch paths to their exporting
   cells; the published rules cell exports the shared pnpm patches without loading
   standalone package declarations.

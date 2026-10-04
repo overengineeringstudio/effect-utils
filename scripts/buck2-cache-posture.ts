@@ -87,6 +87,32 @@ const trustedCacheBlock = ({ tier, urlPrefix }: TrustedArchiveOrigin): string =>
   tier = ${tier}
 ${MANAGED_END}`
 
+const privateWriterCacheBlock = ({
+  env,
+  trustedOrigin,
+}: {
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly trustedOrigin: TrustedArchiveOrigin
+}): string => {
+  const address = env['BUCK2_PRIVATE_CACHE_ADDRESS']
+  if (address === undefined || /^grpc:\/\/[^/\s]+$/u.test(address) === false)
+    return fail('private writer requires a declared grpc:// BUCK2_PRIVATE_CACHE_ADDRESS')
+  return `${MANAGED_BEGIN}
+[buck2]
+  remote_cache_enabled = true
+  allow_cache_uploads = true
+[buck2_re_client]
+  action_cache_address = ${address}
+  cas_address = ${address}
+  engine_address = ${address}
+  tls = false
+  http_headers = authorization: Basic $BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH
+[archive_origin]
+  url_prefix = ${trustedOrigin.urlPrefix}
+  tier = ${trustedOrigin.tier}
+${MANAGED_END}`
+}
+
 const fail = (message: string): never => {
   throw new Error(`standalone Buck cache posture: ${message}`)
 }
@@ -132,11 +158,13 @@ export const standaloneCachePostureConfig = ({
   const managed =
     env['BUCK2_NO_REMOTE_CACHE'] === '1'
       ? NO_REMOTE_CACHE_BLOCK
-      : (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
-        ? PUBLISHER_CACHE_BLOCK
-        : env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1'
-          ? PUBLIC_READ_CACHE_BLOCK
-          : trustedCacheBlock(trustedOrigin)
+      : env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1'
+        ? PUBLIC_READ_CACHE_BLOCK
+        : (env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
+          ? privateWriterCacheBlock({ env, trustedOrigin })
+          : (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
+            ? PUBLISHER_CACHE_BLOCK
+            : trustedCacheBlock(trustedOrigin)
   const unmanaged = withoutManaged.content
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }
@@ -199,9 +227,9 @@ export const reconcileStandaloneCachePostureForInvocation = async ({
     deadlineMs,
   })
   if (available === true) return true
-  if ((env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== '') {
+  if (values['buck2.allow_cache_uploads'] === 'true') {
     const message =
-      'REAPI GetCapabilities failed for cache publisher; refusing to run without remote cache'
+      'REAPI GetCapabilities failed for cache writer; refusing to run without remote cache'
     if (env['GITHUB_ACTIONS'] === 'true')
       process.stderr.write(`::error title=Buck2 cache::${message}\n`)
     return fail(message)

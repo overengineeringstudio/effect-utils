@@ -232,10 +232,22 @@ overrides are ignored too.
 The reconciler reads the tracked private archive origin from
 `archive_origin.trusted_url_prefix` and `archive_origin.trusted_tier`. Public
 read-only jobs set `BUCK2_PUBLIC_CACHE_READ_ONLY=1`; protected public publishers
-provide `BUCK2_CACHE_WRITE_BASIC_AUTH`; `BUCK2_NO_REMOTE_CACHE=1` disables reads
-and uploads. Read-only endpoint outages fail open, while publishers fail closed.
-Run the reconciler before every invocation so local posture and outage recovery
-stay synchronized. Do not put credentials in tracked configuration.
+provide `BUCK2_CACHE_WRITE_BASIC_AUTH`. A tailnet host resolves its own
+`BUCK2_PRIVATE_CACHE_WRITE_AUTH=username:password` credential and declares
+`BUCK2_PRIVATE_CACHE_ADDRESS=grpc://<private-host>:<port>`. The devenv launcher
+converts the raw credential into `BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH`; direct
+reconciler callers must provide that base64 variable themselves. The private
+overlay binds all three RE addresses and keeps the private archive origin.
+Do not use the public publisher credential as a host credential.
+
+`BUCK2_NO_REMOTE_CACHE=1` disables reads and uploads, and public read-only posture
+wins over either writer credential. Read-only endpoint outages fail open; writers
+fail closed. Run the reconciler before every invocation and stop an existing
+daemon before changing credentials/endpoints. Only audited rules requesting the
+`cache_hermetic` execution constraint may reuse/upload; the default platform
+denies both even when root policy allows writes. The complete lane inventory and
+current sandbox limits are in the [execution spec](context/builds/04-buck2/05-execution/spec.md#audited-action-inventory).
+Do not put credentials in tracked configuration.
 
 ### Nix Artifact Import Checks
 
