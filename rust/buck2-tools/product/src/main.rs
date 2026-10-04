@@ -1222,6 +1222,15 @@ fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
             "the bundle already declares its Info.plist path",
         ));
     }
+    let stamp_relative = format!("{bundle_root}/Contents/Resources/nix-build-stamp.json");
+    if args.bundle_stamp.is_some()
+        && (executables.contains_key(&stamp_relative) || resources.contains_key(&stamp_relative))
+    {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "the bundle already declares its build stamp path",
+        ));
+    }
     let mut files = BTreeMap::new();
     let mut runtime_executables = Vec::new();
     for (relative, source) in &executables {
@@ -1266,7 +1275,7 @@ fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
                 format!("could not read the bundle build stamp: {error}"),
             )
         })?;
-        files.insert(format!("{bundle_root}/Contents/Resources/nix-build-stamp.json"), contents);
+        files.insert(stamp_relative, contents);
     }
     let artifact = archive_tree(files, &executables.keys().cloned().collect::<Vec<_>>())?;
     let provenance_bytes = fs::read(&args.provenance).map_err(|error| {
@@ -1662,6 +1671,11 @@ mod tests {
         let mut arguments = app_bundle_args(temporary.path());
         arguments.main_executable = "Applications/Demo.app/Contents/MacOS/absent".into();
         assert!(package_app_bundle(arguments).unwrap_err().to_string().contains("main executable must be one"));
+        let mut arguments = app_bundle_args(temporary.path());
+        arguments.bundle_resources = vec![
+            "Applications/Demo.app/Contents/Resources/nix-build-stamp.json=absent".into()
+        ];
+        assert!(package_app_bundle(arguments).unwrap_err().to_string().contains("already declares its build stamp"));
         assert!(!temporary.path().join("artifact.tar").exists());
     }
 

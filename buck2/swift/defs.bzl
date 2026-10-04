@@ -1,13 +1,10 @@
 """Minimal Darwin Swift app-bundle build product."""
 
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2/products:defs.bzl", "BuildProductInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
-BuildProductInfo = provider(fields = {
-    "descriptor": Artifact,
-    "payload": Artifact,
-})
 
 def _validate_bundle_component(value, subject):
     if not value or value != value.strip():
