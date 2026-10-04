@@ -76,6 +76,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
     },
     shouldTransformCachedModule({ id }) {
       if (id === resolvedId && embedded?.type !== 'nix') return true
+      return undefined
     },
     configureServer(server) {
       if (embedded?.type === 'nix') return
