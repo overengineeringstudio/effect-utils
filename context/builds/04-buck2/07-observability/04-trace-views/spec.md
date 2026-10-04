@@ -48,7 +48,7 @@ are all zero, rehash the original input with an appended `u32be(counter)`
 starting at 1. The same full-view rule applies to seeded commands; a seeded
 critical view instead inherits the caller job trace ID. Job roots carry
 `cicd.pipeline.run.id` for run lookup. Eligible completed views export to
-dev3 Alloy; forks keep only the local spool. Neither view needs an archived
+the configured collector under consumer admission; forks keep only the local spool. Neither view needs an archived
 record or read-time transformation.
 
 Measured shape on the largest cold-CI command (12,622 spans): full view

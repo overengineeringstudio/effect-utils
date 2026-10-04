@@ -12,8 +12,9 @@ as authority transfers (BUILD.AUTH-R09).
   are the only hand-authored dependency inputs (BUILD.BUCK-A04).
 - **BUILD.BUCK.MAT-A02 Package supply:** Registry tarballs fetched by Buck supply package
   bytes; lockfile integrity hashes pin them through a generated, freshness-gated
-  sha256 sidecar. Fetched bytes are trusted at link time within the
-  single-operator boundary (BUILD.BUCK-A05). No ambient package store exists.
+  sha256 sidecar. Digest verification establishes byte identity, not writer trust:
+  shared-cache use follows the mitigated-writer policy (BUILD.BUCK-A05) and
+  audited hermetic-lane admission. No ambient package store exists.
 
 ## Acceptable Tradeoffs
 

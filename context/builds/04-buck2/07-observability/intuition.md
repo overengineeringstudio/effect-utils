@@ -16,7 +16,7 @@ The mental model is a local conversion followed by one export burst:
 identity:  caller task -> command span -> wrapper trace id (BUCK_WRAPPER_UUID)
 capture:   Buck event log + caller spans -> local retry spool
 derive:    event-log adapter -> {full view, critical view} + bounded metrics
-deliver:   job-end OTLP -> dev3 collector -> Tempo 30 d · Mimir trends
+deliver:   job-end OTLP -> configured collector -> consumer-selected retention/backends
 report:    Jobs API timings -> PR table + gantt + p50 delta -> Grafana trace links
 ```
 

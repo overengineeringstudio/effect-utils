@@ -101,8 +101,8 @@ spool removal, derived traces cannot be regenerated. _Avoid_: "run record",
 **Span Spool** is the existing otel-span JSONL spool
 (`OTEL_SPAN_SPOOL_DIR`), retained within the Local Spool for export retry.
 
-**OTLP Delivery** sends derived traces to the dev3 collector over a tailnet
-ACL grant. Fork jobs keep a Local Spool but do not export.
+**OTLP Delivery** sends derived traces to a configured collector under the
+consumer's export admission policy. Fork jobs keep a Local Spool but do not export.
 
 ### Derived artifacts
 

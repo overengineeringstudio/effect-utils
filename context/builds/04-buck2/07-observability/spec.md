@@ -25,7 +25,7 @@ devenv tasks run [01] -> Buck command + native event log [03]
                                            │ convert -> trace views [04]
                                            │ one burst at job end [05]
                                            v
-                                  dev3 Alloy :4318 -> Tempo (30 d)
+                                  configured collector -> consumer-selected backend
                                            │
 attempt close [01] -> small pipeline trace linking started job IDs
 GitHub Workflow Runs API -> successful main run IDs ───┐

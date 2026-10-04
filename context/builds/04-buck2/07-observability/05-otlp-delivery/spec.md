@@ -8,7 +8,7 @@ Draft.
 
 ## Scope
 
-**Defines:** producer-side OTLP batch formation, late tailnet join, direct export to dev3 Alloy, local retry and failure behavior.
+**Defines:** producer-side OTLP batch formation, late collector connectivity, direct export to a configured collector, local retry and failure behavior.
 
 **Does not define:** a record manifest, upload endpoint, ingest worker, archive, SQLite index, resolver, Tempo readback, or fleet backend deployment.
 
@@ -19,19 +19,19 @@ job build + Buck native evidence
   -> 03 decode -> 04 Buck views + bounded metrics
   -> #1477 join task/command/critical spans into the one job trace
   -> persist OTLP batches in local retry spool
-  -> trusted CI: late tailnet join -> single job-end export burst
-                          OTLP/HTTP -> dev3 Alloy :4318 -> Tempo/Mimir
+  -> admitted CI: late collector connectivity -> single job-end export burst
+                          OTLP/HTTP -> configured collector -> consumer-selected backends
      forks or unreachable endpoint: keep local spool; do not export
 attempt close: CI finalizer -> pipeline-run link trace -> same delivery path
 ```
 
-The CI workflow joins the tailnet **after** build work and span joining, immediately before export. Joining before build can change DNS/routes and break Buck; [the observed upload-mode incident](https://github.com/overengineeringstudio/effect-utils/actions/runs/36452247266) motivates the late join. A single burst means one export phase per completed job, possibly several bounded HTTP requests; it is not a per-task streaming export or a repeated workflow step. A retry of failed chunks is recovery from that phase, not another capture/conversion run. At attempt close, the always-run finalizer depends on work jobs and emits the deterministic pipeline-run root with links to known job roots; it does not need their artifacts or native evidence.
+The CI adapter establishes required collector connectivity **after** build work and span joining, immediately before export. A consumer may select a late tailnet join; joining before build can change DNS/routes and break Buck; [the observed upload-mode incident](https://github.com/overengineeringstudio/effect-utils/actions/runs/36452247266) motivates the late join. A single burst means one export phase per completed job, possibly several bounded HTTP requests; it is not a per-task streaming export or a repeated workflow step. A retry of failed chunks is recovery from that phase, not another capture/conversion run. At attempt close, the always-run finalizer depends on work jobs and emits the deterministic pipeline-run root with links to known job roots; it does not need their artifacts or native evidence.
 
 The generated CI workflow passes the OTLP endpoint only to the job-end export
 step and the attempt-close finalizer, not to the build job environment. This
 keeps unrelated child processes from exporting pre-burst spans directly.
 
-The endpoint is a configured tailnet-reachable dev3 Alloy OTLP/HTTP receiver at port 4318. POST trace and metric payloads to the standard OTLP/HTTP `/v1/traces` and `/v1/metrics` routes; preserve OTLP trace IDs and span IDs from 01/04. Split serialized payloads into requests below the observed ~3.5 MB collector body limit; splitting must not alter span ancestry or metric labels. Dotfiles configures Alloy and ACL; endpoint addresses never enter portable trace attributes or fixtures. In CI, `CI_EVIDENCE_MODE=upload` selects export for same-repo PR and main jobs, which reach the endpoint under their tailnet ACL; any other value spools only. Ordinary forks receive no such access and remain spool-only. Local runs export when the configured endpoint is reachable on the tailnet and otherwise spool. No CI-provider artifact, GitHub API, upload service, or public ingress carries telemetry.
+The consumer supplies an OTLP/HTTP collector endpoint and export admission policy. POST trace and metric payloads to the standard OTLP/HTTP `/v1/traces` and `/v1/metrics` routes; preserve OTLP trace IDs and span IDs from 01/04. Split serialized payloads into requests below the observed ~3.5 MB collector body limit; splitting must not alter span ancestry or metric labels. The consumer configures the collector and network access control; endpoint addresses never enter portable trace attributes or fixtures. In CI, `CI_EVIDENCE_MODE=upload` selects export for same-repo PR and main jobs, which reach the endpoint under the consumer's export admission policy; any other value spools only. Ordinary forks receive no such access and remain spool-only. Local runs export when the configured endpoint is reachable on the tailnet and otherwise spool. No CI-provider artifact, GitHub API, upload service, or public ingress carries telemetry.
 
 ## Local Retry (BUILD.BUCK.OBS.ING-R03/R09)
 
@@ -51,7 +51,7 @@ A malformed or unreadable response is ambiguous and leaves the chunk pending.
 Any nonzero rejection keeps the **whole original chunk** pending, reports
 the rejected count/message locally and retries with bounded backoff; it
 cannot silently discard rejected data. Network failure, timeout, server
-rejection, lost acknowledgement, missing endpoint and tailnet admission
+rejection, lost acknowledgement, missing endpoint and collector admission
 failure also retain the chunk. Permanent errors surface locally without
 changing the Buck result. Retries resend the same bytes, preserving trace
 and span IDs rather than minting new identity. Already accepted spans (or
@@ -101,17 +101,17 @@ are bounded trace/span facts (provider may also describe a resource), never
 metric labels. No legacy aliases or dual emission are supported. Attribute
 renames do not alter deterministic run/trace IDs or historical retained spans.
 
-Tempo keeps traces for 30 days; Mimir keeps bounded trend metrics under fleet policy. There is no one-year native-log archive. When the producer's local spool is gone, this specification promises neither trace replay nor reconstruction from another host. Tempo search lag is a UI/search property, not an exporter acceptance gate; by-ID visibility also cannot be inferred from an HTTP success.
+The consumer selects backend trace and bounded trend-metric retention policy. There is no one-year native-log archive. When the producer's local spool is gone, this specification promises neither trace replay nor reconstruction from another host. Tempo search lag is a UI/search property, not an exporter acceptance gate; by-ID visibility also cannot be inferred from an HTTP success.
 
 ## Ownership and Conformance
 
 | Owner        | Contract                                                                                                                |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | effect-utils | Buck capture, adapter, views, batch encoder, local pending spool, and direct OTLP retry                                 |
-| dotfiles     | Alloy tailnet :4318 ACL/routing and Tempo/Mimir retention                                                               |
+| consumer     | Configured collector endpoint, network access/routing, backend routing and retention                                                               |
 | CI adapter   | Job-end late join and one export phase; always-run attempt-close trace; no fleet read permission for comment generation |
 
-- A trusted PR job that completes Buck then joins the tailnet sends its single job trace (with nested task and command spans) plus linked full views in one bounded burst; a fork sends none and leaves pending bytes locally.
+- An admitted PR job that completes Buck then establishes collector connectivity sends its single job trace (with nested task and command spans) plus linked full views in one bounded burst; a fork sends none and leaves pending bytes locally.
 - A 2xx response with `partial_success.rejected_spans > 0` (or
   `rejected_data_points > 0` for metrics) retains the whole chunk and
   reports the rejected count. Retrying sends identical bytes/IDs; the
