@@ -176,7 +176,7 @@ pkgs.runCommand "${name}-buck2-import"
     ${scan} archive "$archive"
     mkdir -p "$out"
     ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
-      --no-same-owner --no-same-permissions
+      --no-same-owner --no-same-permissions --delay-directory-restore
     ${scan} tree "$out"
     ${inspector} "$descriptor" "$out"
     ${lib.optionalString (runtimeKind == "elf-dynamic") ''
