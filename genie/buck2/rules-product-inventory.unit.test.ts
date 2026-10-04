@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { buck2RulesInventory } from '../../nix/buck2-rules/inventory.json.genie.ts'
+import { pnpmPatchedDependencies } from '../external.ts'
 
 const repoRoot = new URL('../../', import.meta.url)
 
@@ -46,6 +47,8 @@ const expectedFiles = [
   'packages/@overeng/buck2-tools/src/typescript-runner.ts',
   'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
+  'packages/@overeng/utils-storybook/patches/@storybook__builder-vite@10.6.0.patch',
+  'packages/@overeng/utils/patches/@stylexjs__babel-plugin@0.19.0.patch',
 ] as const
 
 describe('Buck rules product inventory', () => {
@@ -58,7 +61,7 @@ describe('Buck rules product inventory', () => {
     expect(new Set(buck2RulesInventory.files).size).toBe(buck2RulesInventory.files.length)
   })
 
-  it('contains runtime and capability inputs but no effect-utils package product targets', () => {
+  it('ships runtime, capability, and registered patch inputs but no package product targets', () => {
     expect(buck2RulesInventory.files).toContain('buck2-member.json')
     expect(buck2RulesInventory.files).toContain(
       'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
@@ -75,7 +78,7 @@ describe('Buck rules product inventory', () => {
           path !== 'packages/@overeng/megarepo/src/buck2-manifest.ts' &&
           path !== 'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
       ),
-    ).toEqual([])
+    ).toEqual(Object.values(pnpmPatchedDependencies()).toSorted())
   })
 
   it('ships every local load and rule tool source referenced by shipped .bzl files', () => {
