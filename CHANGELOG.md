@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- The trusted fresh-root Buck2 cache proof reads the latest command's event log
+  with zero-based history and checks the pinned release's numeric action and
+  upload enums.
+
 ### Changed
 
 - Consumer Buck roots can map nested checkout patch paths to their exporting
