@@ -44,6 +44,8 @@
 - Browser Vite consumers reuse the canonical CLI build-identity formatter through
   `createBuildIdentityPlugin`, including immutable Nix metadata, worktree/HMR
   revisions, and runtime deployment identity injection.
+  Source identities refresh on Git revision/index changes, source creation/deletion,
+  and production watch rebuilds; embedded Nix identities remain immutable.
 - Consumer Buck roots can map nested checkout patch paths to their exporting
   cells; the published rules cell exports the shared pnpm patches without loading
   standalone package declarations.

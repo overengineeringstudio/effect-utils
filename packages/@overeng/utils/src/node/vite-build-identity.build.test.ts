@@ -1,11 +1,20 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { runInNewContext } from 'node:vm'
 
-import { createServer, type ViteDevServer } from 'vite'
-import { expect, it } from 'vitest'
+import { build, createServer, type ViteDevServer } from 'vite'
+import { expect, it, vi } from 'vitest'
 
 import { createBuildIdentityPlugin } from './vite-build-identity.js'
 
@@ -124,6 +133,120 @@ it('reads the served worktree revision and dirty state instead of a stale shell 
     expect(result.deploymentId).toBe('dev (HMR)')
   } finally {
     await server?.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('refreshes served identity after creating, deleting, and committing worktree files', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'build-identity-events-'))
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
+  let server: ViteDevServer | undefined
+  try {
+    git('init', '--quiet')
+    writeFileSync(join(root, '.gitignore'), 'node_modules/\ndist/\n')
+    writeFileSync(join(root, 'entry.js'), 'export const value = 1\n')
+    git('add', '.')
+    const commitArgs = [
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--quiet',
+      '-m',
+      'fixture',
+    ]
+    git(...commitArgs)
+    server = await createServer({
+      configFile: false,
+      root,
+      logLevel: 'silent',
+      optimizeDeps: { noDiscovery: true },
+      plugins: [
+        createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
+      ],
+      server: { middlewareMode: true },
+    })
+    await new Promise<void>((resolve) => server!.watcher.once('ready', resolve))
+    const identity = async () => (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
+    expect((await identity()).dirty).toBe(false)
+    writeFileSync(join(root, 'new.txt'), 'untracked\n')
+    await vi.waitFor(async () => expect((await identity()).dirty).toBe(true))
+    rmSync(join(root, 'new.txt'))
+    await vi.waitFor(async () => expect((await identity()).dirty).toBe(false))
+    writeFileSync(join(root, 'entry.js'), 'export const value = 2\n')
+    await vi.waitFor(async () => expect((await identity()).dirty).toBe(true))
+    git('add', '.')
+    git(...commitArgs)
+    const revision = git('rev-parse', '--short', 'HEAD')
+    await vi.waitFor(async () => {
+      expect((await identity()).rev).toBe(revision)
+      expect((await identity()).dirty).toBe(false)
+    })
+  } finally {
+    await server?.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('refreshes local metadata and browser identity on production watch rebuilds', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'build-identity-watch-'))
+  let closeWatcher: (() => Promise<void>) | undefined
+  try {
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
+    git('init', '--quiet')
+    writeFileSync(join(root, '.gitignore'), 'node_modules/\ndist/\n')
+    writeFileSync(
+      join(root, 'entry.js'),
+      "import {buildIdentity} from 'virtual:build-identity'; globalThis.identity=buildIdentity;\n",
+    )
+    git('add', '.')
+    git(
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--quiet',
+      '-m',
+      'fixture',
+    )
+    const output = await build({
+      configFile: false,
+      root,
+      logLevel: 'silent',
+      plugins: [
+        createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
+      ],
+      build: { watch: {}, minify: false, rollupOptions: { input: join(root, 'entry.js') } },
+    })
+    if ('close' in output) closeWatcher = output.close.bind(output)
+    await vi.waitFor(() =>
+      expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(false),
+    )
+    writeFileSync(
+      join(root, 'entry.js'),
+      "import {buildIdentity} from 'virtual:build-identity'; globalThis.identity=buildIdentity; globalThis.changed=true;\n",
+    )
+    await vi.waitFor(() =>
+      expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(true),
+    )
+    await vi.waitFor(() => {
+      const assets = join(root, 'dist/assets')
+      const entry = readdirSync(assets).find((name) => name.endsWith('.js'))!
+      const browser: { identity?: { dirty: boolean }; changed?: boolean } = {}
+      runInNewContext(readFileSync(join(assets, entry), 'utf8'), browser)
+      expect(browser.changed).toBe(true)
+      expect(browser.identity?.dirty).toBe(true)
+    })
+  } finally {
+    await closeWatcher?.()
     rmSync(root, { recursive: true, force: true })
   }
 })

@@ -1,5 +1,7 @@
 // Checked JavaScript: Vite config dependencies must load under Node from node_modules.
 import { execFileSync } from 'node:child_process'
+import { watch } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { parseCliBuildStamp, resolveCliBuildIdentity } from './cli-build-identity.js'
@@ -7,18 +9,20 @@ import { parseCliBuildStamp, resolveCliBuildIdentity } from './cli-build-identit
 const virtualId = 'virtual:build-identity'
 const resolvedId = `\0${virtualId}`
 
+/** @param {string} root @param {string[]} args */
+const readGit = (root, args) =>
+  execFileSync('git', ['--no-optional-locks', '-C', root, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim()
+
 /** @param {string} root @returns {import('./cli-build-identity.js').LocalStamp} */
 const localStamp = (root) => {
-  const git = (/** @type {string[]} */ args) =>
-    execFileSync('git', ['-C', root, ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim()
   return {
     type: 'local',
-    rev: git(['rev-parse', '--short', 'HEAD']),
+    rev: readGit(root, ['rev-parse', '--short', 'HEAD']),
     ts: Math.floor(Date.now() / 1000),
-    dirty: git(['status', '--porcelain', '--untracked-files=normal']) !== '',
+    dirty: readGit(root, ['status', '--porcelain', '--untracked-files=normal']) !== '',
   }
 }
 
@@ -37,6 +41,8 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   /** @type {import('./cli-build-identity.js').ResolveBuildIdentityOptions} */
   let browserOptions
   const embedded = parseCliBuildStamp(buildStamp)
+  /** @type {Array<() => void>} */
+  const cleanup = []
   const resolveIdentity = () => {
     browserOptions = {
       baseVersion,
@@ -64,6 +70,52 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       root = config.root
       serving = config.command === 'serve'
       resolveIdentity()
+    },
+    buildStart() {
+      if (!serving && embedded?.type !== 'nix') resolveIdentity()
+    },
+    shouldTransformCachedModule({ id }) {
+      if (id === resolvedId && embedded?.type !== 'nix') return true
+    },
+    configureServer(server) {
+      if (embedded?.type === 'nix') return
+      const refresh = () => {
+        const previous = identity.machineVersion
+        resolveIdentity()
+        if (previous === identity.machineVersion) return
+        const module = server.moduleGraph.getModuleById(resolvedId)
+        if (module === undefined) return
+        server.moduleGraph.invalidateModule(module)
+        server.ws.send({ type: 'full-reload' })
+      }
+      server.watcher.on('add', refresh)
+      server.watcher.on('unlink', refresh)
+      cleanup.push(() => {
+        server.watcher.off('add', refresh)
+        server.watcher.off('unlink', refresh)
+      })
+      // Git metadata is excluded by Vite's source watcher. Watch directories so
+      // atomic index/ref replacement and linked worktrees remain observable.
+      const gitDirectory = readGit(root, ['rev-parse', '--absolute-git-dir'])
+      const commonDirectory = readGit(root, [
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-common-dir',
+      ])
+      const directories = new Set([gitDirectory, commonDirectory])
+      for (const directory of directories) {
+        const watcher = watch(directory, (_event, filename) => {
+          if (filename === 'HEAD' || filename === 'index' || filename === 'packed-refs') refresh()
+        })
+        cleanup.push(() => watcher.close())
+      }
+      const refs = watch(join(commonDirectory, 'refs'), { recursive: true }, (_event, filename) => {
+        if (filename !== null && !filename.endsWith('.lock')) refresh()
+      })
+      cleanup.push(() => refs.close())
+    },
+    closeBundle() {
+      for (const dispose of cleanup.splice(0)) dispose()
     },
     resolveId(id) {
       return id === virtualId ? resolvedId : undefined
