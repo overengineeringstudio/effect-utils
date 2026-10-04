@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- TypeScript Buck projections resolve source labels through the nearest declared
+  package boundary, including workspace manifests nested under the consuming package.
 - The trusted fresh-root Buck2 cache proof reads the latest command's event log
   with zero-based history and checks the pinned release's numeric action and
   upload enums.

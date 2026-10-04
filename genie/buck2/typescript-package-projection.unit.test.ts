@@ -127,6 +127,33 @@ describe('declared-closure package projection', () => {
     expect(outputsByAdmission.effectRpcTanstackBasic).toContain('exclude = STATIC_SOURCE_EXCLUDES)')
   })
 
+  it('resolves a nested workspace manifest through its own Buck package', () => {
+    const parent = buck2TypeScriptAdmissions.effectRpcTanstack
+    const nested = buck2TypeScriptAdmissions.effectRpcTanstackBasic
+    const output = buck2TypeScriptPackageProjection({
+      ...parent,
+      workspacePackages: [
+        {
+          meta: { workspace: { memberPath: parent.packagePath } },
+          data: {
+            name: parent.packageName,
+            dependencies: { [nested.packageName]: 'workspace:*' },
+          },
+        },
+        {
+          meta: { workspace: { memberPath: nested.packagePath } },
+          data: { name: nested.packageName },
+        },
+      ],
+    }).stringify(genieContext)
+    const manifests = output.split('    workspace_manifests = [\n')[1]?.split('    ],')[0]
+    const labels = manifests
+      ?.trim()
+      .split('\n')
+      .map((line) => JSON.parse(line.trim().slice(0, -1)))
+    expect(labels).toEqual([`//${nested.packagePath}:package.json`])
+  })
+
   it('wires each admitted package only to its normalized dependency view', () => {
     for (const admitted of admittedPackages) {
       expect(admitted.output).toContain(`    actual = "${admitted.dependencyView}",`)

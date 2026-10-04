@@ -852,12 +852,12 @@ export const buck2TypeScriptPackageProjection = ({
   const visibility = ['PUBLIC'] as const
   const runtimeEntry = stagedModuleName(packageTreeRuntime.entry)
   const sourceLabel = (repoRelativePath: string): string => {
-    if (repoRelativePath.startsWith(`${packagePath}/`) === true) {
-      return repoRelativePath.slice(packagePath.length + 1)
-    }
     const sourcePackage = [...buckPackagePaths]
       .filter((candidate) => repoRelativePath.startsWith(`${candidate}/`) === true)
       .toSorted((left, right) => right.length - left.length || compareStrings({ left, right }))[0]
+    if (sourcePackage === packagePath) {
+      return repoRelativePath.slice(packagePath.length + 1)
+    }
     if (sourcePackage !== undefined) {
       return `//${sourcePackage}:${repoRelativePath.slice(sourcePackage.length + 1)}`
     }
