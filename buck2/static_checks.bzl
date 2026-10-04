@@ -4,7 +4,7 @@ load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cach
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 
 STATIC_SOURCE_GLOBS = [
     "**/*.cjs",
@@ -97,7 +97,7 @@ def _repository_static_check_impl(ctx):
     sources, source_tree = _collect_static_sources(ctx, "source", True)
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
     args = cmd_args([
-        toolchain.bun,
+        hermetic_bun_command(ctx, toolchain.bun),
         ctx.attrs._runner,
         "--kind",
         ctx.attrs.kind,
@@ -148,7 +148,7 @@ def _repository_policy_check_impl(ctx):
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
     hermetic_action(ctx,
         cmd_args([
-            toolchain.bun,
+            hermetic_bun_command(ctx, toolchain.bun),
             ctx.attrs._runner,
             "--manifest",
             manifest,

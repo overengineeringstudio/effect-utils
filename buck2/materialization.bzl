@@ -2,7 +2,7 @@
 
 load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 
 
 PackageTreeInfo = provider(fields = {
@@ -48,7 +48,7 @@ def _package_tree_impl(ctx):
     # Only the declared modules are present: an undeclared one fails closed.
     runtime_tree = ctx.attrs.runtime[DefaultInfo].default_outputs[0]
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
         "--output",
         out.as_output(),

@@ -210,6 +210,10 @@ constraint only for their audited action set. Every admitted run starts the
 projected native GNU `env -i` before Bun, a shell or another interpreter; only
 literal declared environment, `LC_ALL=C`, `TZ=UTC`, and Buck-owned
 `BUCK_SCRATCH_PATH`/`TMPDIR` survive. The env executable and manifest are inputs.
+Admitted Bun launchers also use `--no-env-file`, `--no-install`, and an empty
+declared `--config=<artifact>`: env clearing alone cannot stop dotenv discovery
+or `bunfig.toml` preloads. Bun children receive the same flags with an empty
+scratch config, so package-local startup hooks cannot bypass the runner contract.
 
 | Action family | Admission and audited boundary |
 | --- | --- |

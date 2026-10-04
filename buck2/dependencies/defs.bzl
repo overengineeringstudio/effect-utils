@@ -47,7 +47,7 @@ maps have exactly the keys ``linux_x86_64``, ``linux_aarch64``, and
 """
 
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 
 PnpmPackageInfo = provider(fields = {
     "bins": provider_field(dict[str, str]),
@@ -502,7 +502,7 @@ def _store_entry_impl(ctx):
 
     out = ctx.actions.declare_output("entry", dir = True)
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         ctx.attrs.runtime,
         "--mode",
         "entry",
@@ -630,7 +630,7 @@ def _store_scc_impl(ctx):
 
     out = ctx.actions.declare_output("group", dir = True)
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         ctx.attrs.runtime,
         "--mode",
         "scc",
@@ -754,7 +754,7 @@ def _store_view_impl(ctx):
     }, pretty = True)
 
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         ctx.attrs.runtime,
         "--mode",
         "view",
@@ -865,7 +865,7 @@ def _runtime_closure_impl(ctx):
     roots = _unique_artifacts(roots)
     out = ctx.actions.declare_output("runtime-closure", dir = True)
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         ctx.attrs.runtime,
         "--output",
         out.as_output(),

@@ -8,7 +8,7 @@ load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 
 JavaScriptExecutableInfo = provider(fields = {
     "package_tree": Artifact,
@@ -36,7 +36,7 @@ def _configured_args(ctx, command, positional):
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
     runner_tree = ctx.attrs._runner[DefaultInfo].default_outputs[0]
     args = cmd_args([
-        toolchain.bun,
+        hermetic_bun_command(ctx, toolchain.bun),
         cmd_args(runner_tree, format = "{}/javascript-runner.ts"),
         command,
         toolchain.bun,

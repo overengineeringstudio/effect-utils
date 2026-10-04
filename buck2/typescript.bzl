@@ -8,7 +8,7 @@ before and after execution so TypeScript actions remain write-free.
 load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 
 TsgoTypecheckInfo = provider(fields = {
     "toolchain_identity": str,
@@ -38,7 +38,7 @@ def _tsgo_typecheck_impl(ctx):
     verdict = ctx.actions.declare_output("typecheck.ok")
 
     args = cmd_args([
-        toolchain.bun,
+        hermetic_bun_command(ctx, toolchain.bun),
         toolchain.runner,
         "typecheck",
         toolchain.executable,
@@ -100,7 +100,7 @@ def _tsgo_emit_impl(ctx):
     directory = ctx.actions.declare_output(ctx.attrs.out_dir, dir = True)
 
     args = cmd_args([
-        toolchain.bun,
+        hermetic_bun_command(ctx, toolchain.bun),
         toolchain.runner,
         "emit",
         toolchain.executable,

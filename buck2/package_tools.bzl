@@ -5,7 +5,7 @@ load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 JavaScriptModuleInfo = provider(fields = {
     "module": Artifact,
     "descriptor": Artifact,
@@ -76,7 +76,7 @@ def _runner_args(ctx, mode, output = None):
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
     toolchain = ctx.attrs._bun[BunToolchainInfo]
     args = cmd_args([
-        toolchain.executable,
+        hermetic_bun_command(ctx, toolchain.executable) if mode != "exec" else toolchain.executable,
         package_command_runtime_inputs(ctx),
         mode,
         toolchain.executable,
@@ -269,7 +269,7 @@ def _package_bundle_impl(ctx):
         ctx.attrs.package_tree.label,
     )
     args = cmd_args([
-        toolchain.executable,
+        hermetic_bun_command(ctx, toolchain.executable),
         package_command_runtime_inputs(ctx),
         "bundle",
         toolchain.executable,
