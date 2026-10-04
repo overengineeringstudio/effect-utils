@@ -346,7 +346,6 @@ in
     fatMachOLipo
     hostileMachOOtool
     wasmGuestProduct
-    wasmGuestImport
     ;
   wasmGuestImport = importProduct wasmGuestProduct {
     os = "wasm";

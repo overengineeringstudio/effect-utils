@@ -28,48 +28,9 @@ if (
 const version = moduleBytes.readUInt32LE(4)
 if (version !== 1) throw new Error(`unsupported wasm version: ${version}`)
 
-const imports: string[] = []
-let offset = 8
-while (offset + 8 <= moduleBytes.length) {
-  const section = moduleBytes[offset]
-  offset += 1
-  let size = 0
-  let shift = 0
-  while (offset < moduleBytes.length) {
-    const byte = moduleBytes[offset] ?? 0
-    offset += 1
-    size |= (byte & 0x7f) << shift
-    if ((byte & 0x80) === 0) break
-    shift += 7
-  }
-  if (section === 2) {
-    const end = offset + size
-    let count = 0
-    shift = 0
-    while (offset < end) {
-      const byte = moduleBytes[offset] ?? 0
-      offset += 1
-      count |= (byte & 0x7f) << shift
-      if ((byte & 0x80) === 0) break
-      shift += 7
-    }
-    for (let index = 0; index < count; index += 1) {
-      const moduleLength = moduleBytes[offset] ?? 0
-      offset += 1
-      const module = moduleBytes.subarray(offset, offset + moduleLength).toString('utf8')
-      offset += moduleLength
-      const nameLength = moduleBytes[offset] ?? 0
-      offset += 1
-      const name = moduleBytes.subarray(offset, offset + nameLength).toString('utf8')
-      offset += nameLength
-      imports.push(`${module}.${name}`)
-      offset += 1
-    }
-    break
-  }
-  offset += size
-}
-imports.sort()
+const imports = WebAssembly.Module.imports(new WebAssembly.Module(moduleBytes))
+  .map(({ module, name }) => `${module}.${name}`)
+  .sort()
 
 const entrypoint = required('entrypoint')
 const header = Buffer.alloc(512, 0)
@@ -83,6 +44,7 @@ header.write(`${size}\0`, 124, 'ascii')
 header.write('0', 156, 'ascii')
 header.write('ustar\0', 257, 'ascii')
 header.write('00', 263, 'ascii')
+header.fill(0x20, 148, 156)
 let checksum = 0
 for (const byte of header) checksum += byte
 header.write(checksum.toString(8).padStart(6, '0'), 148, 'ascii')
