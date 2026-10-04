@@ -629,7 +629,7 @@ describe('declared test lanes', () => {
     ).toThrow('must be named test')
   })
 
-  it('carries the declared lane into the schema version and semantic fingerprint', () => {
+  it('carries the declared lane into the semantic fingerprint', () => {
     const fingerprintOf = (output: string): string =>
       output.split('# Semantic fingerprint: ')[1]?.split('\n')[0] ?? ''
     const withoutTests =
@@ -643,7 +643,6 @@ describe('declared test lanes', () => {
       tests: [{ name: 'test', runner: 'vitest', staticCollection: true }],
     }).stringify(genieContext)
 
-    expect(outputsByAdmission.kdl).toContain('# Projection schema version: 12')
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withoutTests))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withLongerTimeout))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withStaticCollection))

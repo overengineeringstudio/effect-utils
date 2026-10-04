@@ -3491,6 +3491,7 @@ cargo.rust_library(
         "OUT_DIR": "$(location :napi-3-build-script-run[out_dir])",
     },
     features = [
+        "dyn-symbols",
         "napi1",
         "napi2",
         "napi3",
@@ -3542,6 +3543,7 @@ cargo.rust_binary(
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
+        "dyn-symbols",
         "napi1",
         "napi2",
         "napi3",
@@ -3574,6 +3576,7 @@ buildscript_run(
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
+        "dyn-symbols",
         "napi1",
         "napi2",
         "napi3",
@@ -3755,6 +3758,7 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
+        "dyn-symbols",
         "napi1",
         "napi2",
         "napi3",

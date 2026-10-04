@@ -44,7 +44,8 @@ sha2 = "0.11"
 tempfile = "3"
 # Exact match with the hub's wasm-bindgen-cli toolchain.
 wasm-bindgen = "=0.2.127"
-napi = { version = "=3.13.0", default-features = false, features = ["napi4"] }
+# Dynamic host-symbol lookup also permits standalone Rust test executables.
+napi = { version = "=3.13.0", default-features = false, features = ["napi4", "dyn-symbols"] }
 napi-derive = "=3.6.9"
 
 [profile.release]
