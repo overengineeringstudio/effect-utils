@@ -178,8 +178,7 @@ let
           ] runtime;
           bundleRootPrefix = value.bundleRoot + "/";
           insideBundleRoot =
-            path:
-            builtins.substring 0 (builtins.stringLength bundleRootPrefix) path == bundleRootPrefix;
+            path: builtins.substring 0 (builtins.stringLength bundleRootPrefix) path == bundleRootPrefix;
           paths = map (entry: entry.path) value.executables;
           validateExecutable =
             entry:
@@ -191,17 +190,25 @@ let
                 "path"
                 "signingPolicy"
               ] entry;
-              dynamic = validateRuntime ((builtins.removeAttrs executable [ "path" ]) // {
-                kind = "mach-o-dynamic";
-                inspectionContract = "mach-o-dynamic/v1";
-                inherit (value) installNamePolicy rpathPolicy;
-              });
+              dynamic = validateRuntime (
+                (builtins.removeAttrs executable [ "path" ])
+                // {
+                  kind = "mach-o-dynamic";
+                  inspectionContract = "mach-o-dynamic/v1";
+                  inherit (value) installNamePolicy rpathPolicy;
+                }
+              );
             in
             force [
               dynamic
               (ensure (safePath executable.path) "bundle executable path must be safe")
-              (ensure (builtins.elem executable.signingPolicy [ "adhoc/v1" "embedded/v1" ]) "bundle executable signing policy is unsupported")
-              (ensure (executable.dylibs == builtins.sort builtins.lessThan executable.dylibs) "bundle executable dylibs must be sorted")
+              (ensure (builtins.elem executable.signingPolicy [
+                "adhoc/v1"
+                "embedded/v1"
+              ]) "bundle executable signing policy is unsupported")
+              (ensure (
+                executable.dylibs == builtins.sort builtins.lessThan executable.dylibs
+              ) "bundle executable dylibs must be sorted")
               (ensure (builtins.all (
                 dylib: builtins.match "(/usr/lib|/System/Library)/.*" dylib != null
               ) executable.dylibs) "bundle executable dylibs must use system install names")
@@ -219,13 +226,9 @@ let
           (ensure (
             paths == builtins.sort builtins.lessThan paths
           ) "descriptor.runtime.executables must be sorted by path")
-          (ensure (
-            builtins.all insideBundleRoot paths
-          ) "descriptor.runtime.executables must live inside the bundle root")
+          (ensure (builtins.all insideBundleRoot paths) "descriptor.runtime.executables must live inside the bundle root")
           (ensure (safePath value.mainExecutable) "descriptor.runtime.mainExecutable must be a safe relative path")
-          (ensure (
-            builtins.elem value.mainExecutable paths
-          ) "descriptor.runtime.mainExecutable must name a declared bundle executable")
+          (ensure (builtins.elem value.mainExecutable paths) "descriptor.runtime.mainExecutable must name a declared bundle executable")
           (ensure (
             value.installNamePolicy == "system-only/v1"
           ) "descriptor.runtime.installNamePolicy must be system-only/v1")
@@ -373,8 +376,13 @@ let
               value.entrypoints == map (entry: entry.path) runtime.executables
             ) "descriptor.entrypoints must be exactly the runtime bundle executables")
             (ensure (builtins.all (
-              entry: entry.architecture == (
-                { x86_64 = "x86_64"; aarch64 = "arm64"; }.${platform.architecture} or null
+              entry:
+              entry.architecture == (
+                {
+                  x86_64 = "x86_64";
+                  aarch64 = "arm64";
+                }
+                .${platform.architecture} or null
               )
             ) runtime.executables) "bundle executable architecture must match descriptor.platform.architecture")
           ]

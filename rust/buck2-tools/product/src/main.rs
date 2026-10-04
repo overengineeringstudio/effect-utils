@@ -1,13 +1,13 @@
 mod npm_manifest;
 
 use buck2_tool_core::{
-    ToolError, ToolResult, canonical_json, normalized_relative, safe_text, sha256_bytes,
-    sha256_sri, verify_execution_capability,
+    canonical_json, normalized_relative, safe_text, sha256_bytes, sha256_sri,
+    verify_execution_capability, ToolError, ToolResult,
 };
 use clap::{Args, Parser, Subcommand};
 use flate2::{Compression, GzBuilder};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},

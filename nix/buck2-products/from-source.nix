@@ -147,9 +147,8 @@ assert lib.assertMsg (
     && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" cargoWorkspaceRoot)
   )
 ) "buck2-products: cargoWorkspaceRoot must be a safe relative path on a native product";
-assert lib.assertMsg (
-  !importNative || isBuildProduct
-) "buck2-products: importNative requires a native, compiled-executable, or swift-app-bundle product";
+assert lib.assertMsg (!importNative || isBuildProduct)
+  "buck2-products: importNative requires a native, compiled-executable, or swift-app-bundle product";
 assert lib.assertMsg (
   cliBuildStamp == null
   || (
