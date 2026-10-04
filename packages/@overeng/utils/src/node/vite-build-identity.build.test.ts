@@ -112,7 +112,7 @@ it('reads the served worktree revision and dirty state instead of a stale shell 
       '-m',
       'fixture',
     )
-    const rev = git('rev-parse', '--short', 'HEAD')
+    const rev = git('rev-parse', 'HEAD')
     writeFileSync(join(root, 'entry.js'), 'export const value = 2\n')
     server = await createServer({
       configFile: false,
@@ -167,9 +167,20 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       plugins: [
         createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
       ],
-      server: { middlewareMode: true },
+      server: { host: '127.0.0.1', port: 0 },
     })
     await vi.waitUntil(() => server!.watcher.getWatched()[root]?.includes('entry.js'))
+    await server.listen()
+    const probeUrl = new URL('build-identity.json', server.resolvedUrls!.local[0]!)
+    const response = await fetch(probeUrl)
+    expect(response.headers.get('cache-control')).toBe('no-cache')
+    expect(await response.json()).toMatchObject({
+      rev: git('rev-parse', 'HEAD'),
+      dirty: false,
+      sourceKind: 'local',
+    })
+    const head = await fetch(probeUrl, { method: 'HEAD' })
+    expect(await head.text()).toBe('')
     const identity = async () => (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
     expect((await identity()).dirty).toBe(false)
     writeFileSync(join(root, 'new.txt'), 'untracked\n')
@@ -180,11 +191,12 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     await vi.waitFor(async () => expect((await identity()).dirty).toBe(true))
     git('add', '.')
     git(...commitArgs)
-    const revision = git('rev-parse', '--short', 'HEAD')
+    const revision = git('rev-parse', 'HEAD')
     await vi.waitFor(async () => {
       expect((await identity()).rev).toBe(revision)
       expect((await identity()).dirty).toBe(false)
     })
+    expect(await (await fetch(probeUrl)).json()).toEqual(await identity())
   } finally {
     await server?.close()
     rmSync(root, { recursive: true, force: true })

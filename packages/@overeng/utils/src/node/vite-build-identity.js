@@ -20,7 +20,7 @@ const readGit = (root, args) =>
 const localStamp = (root) => {
   return {
     type: 'local',
-    rev: readGit(root, ['rev-parse', '--short', 'HEAD']),
+    rev: readGit(root, ['rev-parse', 'HEAD']),
     ts: Math.floor(Date.now() / 1000),
     dirty: readGit(root, ['status', '--porcelain', '--untracked-files=normal']) !== '',
   }
@@ -79,6 +79,20 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       return undefined
     },
     configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        if (
+          request.url?.split('?')[0] !== '/build-identity.json' ||
+          (request.method !== 'GET' && request.method !== 'HEAD')
+        ) {
+          next()
+          return
+        }
+        response.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-cache',
+        })
+        response.end(request.method === 'HEAD' ? undefined : `${JSON.stringify(identity)}\n`)
+      })
       if (embedded?.type === 'nix') return
       const refresh = () => {
         const previous = identity.machineVersion

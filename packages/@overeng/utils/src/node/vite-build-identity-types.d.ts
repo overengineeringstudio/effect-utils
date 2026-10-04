@@ -16,6 +16,8 @@ export interface BuildIdentityVitePlugin {
  * pure Nix builds use only their embedded revision and reproducible commit time.
  * Source serving refreshes on Git and source-file changes; watched builds refresh
  * both the emitted metadata and browser module on each rebuild.
+ * Vite serves the same canonical snapshot at GET/HEAD /build-identity.json with
+ * no-cache headers; source revisions retain the complete Git HEAD object ID.
  * Static hosts inject globalThis.__BUILD_DEPLOYMENT_ID__ before browser entry modules.
  */
 export declare const createBuildIdentityPlugin: (

@@ -46,6 +46,8 @@
   revisions, and runtime deployment identity injection.
   Source identities refresh on Git revision/index changes, source creation/deletion,
   and production watch rebuilds; embedded Nix identities remain immutable.
+  The dev server exposes the same canonical JSON at `/build-identity.json` with
+  no-cache headers and the complete source revision for exact served-source checks.
 - Consumer Buck roots can map nested checkout patch paths to their exporting
   cells; the published rules cell exports the shared pnpm patches without loading
   standalone package declarations.
