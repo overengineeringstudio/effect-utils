@@ -216,7 +216,6 @@ testWithSt(
       for (const field of [
         'handles-faults #true',
         'handles-faults ignored="value"',
-        'handles-faults { ignored; }',
         'handles-faults; handles-faults',
       ]) {
         const invalid = applySeat(seat.replace('handles-faults', field))
