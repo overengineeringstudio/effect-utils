@@ -82,25 +82,19 @@ fixture_dependency = rule(
     attrs = {"src": attrs.source(default = "//:fixture-dependency.txt")},
 )
 
-def fixture_negative_cases():
-    for suffix, constraint in [
-        ("alias_at", "@rules//buck2/platforms:cache_hermetic"),
-        ("alias", "rules//buck2/platforms:cache_hermetic"),
-        ("relative", "//buck2/platforms:cache_hermetic"),
-        ("canonical", "effect_utils//buck2/platforms:cache_hermetic"),
-    ]:
-        vitest_collect(
-            name = "uncacheable_collect_" + suffix,
-            package_tree = ":package_tree",
-            cacheable = False,
-            exec_compatible_with = [constraint],
-        )
-        package_bin_check(
-            name = "unadmitted_check_" + suffix,
-            package_tree = ":package_tree",
-            entrypoint = "check.ts",
-            exec_compatible_with = [constraint],
-        )
+def fixture_negative_cases(suffix, constraint):
+    vitest_collect(
+        name = "uncacheable_collect_" + suffix,
+        package_tree = "//:package_tree",
+        cacheable = False,
+        exec_compatible_with = [constraint],
+    )
+    package_bin_check(
+        name = "unadmitted_check_" + suffix,
+        package_tree = "//:package_tree",
+        entrypoint = "check.ts",
+        exec_compatible_with = [constraint],
+    )
 BZL
 cat > "$work/buck2/toolchains/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency")
@@ -117,16 +111,14 @@ fixture_dependency(name = "javascript_action_runtime", visibility = ["PUBLIC"])
 fixture_dependency(name = "package_command_runtime", visibility = ["PUBLIC"])
 BUCK
 cat > "$work/BUCK" <<'BUCK'
-load("//:fixture.bzl", "fixture_dependency", "fixture_negative_cases")
+load("//:fixture.bzl", "fixture_dependency")
 load("@rules//buck2:javascript.bzl", "vitest_collect")
 load("@rules//buck2:package_tools.bzl", "package_bin_check")
 load("@prelude//:prelude.bzl", "native")
 
 native.export_file(name = "fixture-dependency.txt", visibility = ["PUBLIC"])
 
-fixture_dependency(name = "package_tree")
-
-fixture_negative_cases()
+fixture_dependency(name = "package_tree", visibility = ["PUBLIC"])
 
 vitest_collect(
     name = "admitted_collect",
@@ -144,6 +136,34 @@ package_bin_check(
     entrypoint = "check.ts",
 )
 BUCK
+# Separate packages keep a load-time rejection for one spelling from masking
+# another case or breaking the positive controls before analysis starts.
+for row in \
+  'alias_at @rules//buck2/platforms:cache_hermetic' \
+  'alias rules//buck2/platforms:cache_hermetic' \
+  'relative //buck2/platforms:cache_hermetic' \
+  'canonical effect_utils//buck2/platforms:cache_hermetic'; do
+  spelling="${row%% *}"
+  constraint="${row#* }"
+  mkdir -p "$work/$spelling"
+  cat > "$work/$spelling/BUCK" <<BUCK
+load("//:fixture.bzl", "fixture_negative_cases")
+
+fixture_negative_cases("$spelling", "$constraint")
+BUCK
+done
+mkdir -p "$work/override"
+cat > "$work/override/BUCK" <<'BUCK'
+load("@rules//buck2:package_tools.bzl", "package_bin_check")
+
+package_bin_check(
+    name = "caller_override",
+    package_tree = "//:package_tree",
+    entrypoint = "check.ts",
+    exec_compatible_with = ["@rules//buck2/platforms:cache_hermetic"],
+    _cache_admission_constraint = "//buck2/platforms:host_platform",
+)
+BUCK
 
 cd "$work"
 for target in admitted_collect default_uncacheable_collect default_unadmitted_check; do
@@ -156,9 +176,9 @@ for target in admitted_collect default_uncacheable_collect default_unadmitted_ch
 done
 
 for family in uncacheable_collect unadmitted_check; do
-  for spelling in alias_at alias relative canonical; do
+  for spelling in canonical relative alias alias_at; do
     target="${family}_${spelling}"
-    if "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//:$target" > "$work/$target.log" 2>&1; then
+    if "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//$spelling:$target" > "$work/$target.log" 2>&1; then
       cat "$work/$target.log" >&2
       printf 'Cache admission unexpectedly accepted: %s\n' "$target" >&2
       exit 1
@@ -171,3 +191,16 @@ for family in uncacheable_collect unadmitted_check; do
     printf 'PASS rejected: %s\n' "$target"
   done
 done
+
+if "$buck" --isolation-dir cache-admission-check audit providers effect_utils//override:caller_override > "$work/override.log" 2>&1; then
+  cat "$work/override.log" >&2
+  printf 'Caller unexpectedly overrode the rule-owned cache admission marker\n' >&2
+  exit 1
+fi
+if ! grep -Fq 'Error coercing attribute `_cache_admission_constraint`' "$work/override.log" ||
+  ! grep -Fq 'default_only is not allowed to be specified' "$work/override.log"; then
+  cat "$work/override.log" >&2
+  printf 'Caller override failed for a reason other than rule-owned admission\n' >&2
+  exit 1
+fi
+printf 'PASS rejected: caller_override\n'
