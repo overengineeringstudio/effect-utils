@@ -1,15 +1,14 @@
 """Rust interop products: one wasm compilation per group, native-only Node-API."""
 
 load("@prelude//:prelude.bzl", "native")
+load("@prelude//rust:rust_toolchain.bzl", "PanicRuntime", "RustToolchainInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2/products:defs.bzl", "BuildProductInfo")
+load("//buck2/rust:toolchains.bzl", "WASM_OPT_FLAGS")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
-load("//buck2/platforms:defs.bzl", "host_execution_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
-load("@prelude//rust:rust_toolchain.bzl", "PanicRuntime", "RustToolchainInfo")
-load("//buck2/rust:toolchains.bzl", "WASM_OPT_FLAGS")
-load("//buck2/products:defs.bzl", "BuildProductInfo")
 
 RustInteropProductInfo = provider(fields = {"package": Artifact, "kind": str})
-
 
 def _wasm_transition_impl(platform, refs, attrs):
     constraints = dict(platform.configuration.constraints)
@@ -30,7 +29,6 @@ _wasm_transition = transition(
     attrs = ["opt_level", "lto", "strip"],
 )
 
-
 def _product_impl(ctx):
     if ctx.attrs.kind == "napi":
         toolchain = ctx.attrs._rust[RustToolchainInfo]
@@ -44,9 +42,12 @@ def _product_impl(ctx):
         ctx.attrs._bun[BunToolchainInfo].executable,
         ctx.attrs._packager,
         ctx.attrs.kind,
-        "--input", outputs[0],
-        "--output", package.as_output(),
-        "--name", ctx.attrs.out_name,
+        "--input",
+        outputs[0],
+        "--output",
+        package.as_output(),
+        "--name",
+        ctx.attrs.out_name,
     ])
     if ctx.attrs.kind == "wasm":
         bindgen = ctx.attrs._bindgen[BuckSupportToolInfo]
@@ -76,12 +77,11 @@ _WASM_ATTRS.update({
     "_bindgen": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:tool_wasm_bindgen", providers = [BuckSupportToolInfo])),
     "_wasm_opt": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:tool_wasm_opt", providers = [BuckSupportToolInfo])),
 })
-_rust_wasm_bindgen_library = rule(impl = _product_impl, attrs = _WASM_ATTRS)
+_rust_wasm_bindgen_library = cache_guarded_rule(impl = _product_impl, attrs = _WASM_ATTRS)
 _NAPI_ATTRS = dict(_COMMON_ATTRS)
 _NAPI_ATTRS["crate"] = attrs.dep(providers = [DefaultInfo])
 _NAPI_ATTRS["_rust"] = attrs.default_only(attrs.toolchain_dep(default = "//buck2/toolchains:rust", providers = [RustToolchainInfo]))
-_rust_napi_library = rule(impl = _product_impl, attrs = _NAPI_ATTRS)
-
+_rust_napi_library = cache_guarded_rule(impl = _product_impl, attrs = _NAPI_ATTRS)
 
 def rust_wasm_bindgen_library(name, crate, out_name = None, profile = {}, **kwargs):
     """Node CJS, inline web, URL, and Workers precompiled-Module package entries."""
@@ -95,7 +95,6 @@ def rust_wasm_bindgen_library(name, crate, out_name = None, profile = {}, **kwar
         out_name = out_name or name.replace("-", "_"),
         **dict(kwargs, **profile)
     )
-
 
 def rust_napi_library(name, crate, out_name = None, **kwargs):
     """Native builder only; panic=abort is never admitted for Node-API products."""
@@ -124,14 +123,22 @@ def _wasm_guest_impl(ctx):
     command = cmd_args([
         ctx.attrs._bun[BunToolchainInfo].executable,
         ctx.attrs._packager,
-        "--input", outputs[0],
-        "--payload", payload.as_output(),
-        "--descriptor", descriptor.as_output(),
-        "--name", ctx.attrs.product_name,
-        "--entrypoint", ctx.attrs.entrypoint,
-        "--target", str(ctx.label.raw_target()),
-        "--harness", ctx.attrs.harness,
-        "--provenance", provenance,
+        "--input",
+        outputs[0],
+        "--payload",
+        payload.as_output(),
+        "--descriptor",
+        descriptor.as_output(),
+        "--name",
+        ctx.attrs.product_name,
+        "--entrypoint",
+        ctx.attrs.entrypoint,
+        "--target",
+        str(ctx.label.raw_target()),
+        "--harness",
+        ctx.attrs.harness,
+        "--provenance",
+        provenance,
     ])
     ctx.actions.run(command, category = "rust_wasm_guest")
     return [
@@ -143,7 +150,7 @@ def _wasm_guest_impl(ctx):
         BuildProductInfo(descriptor = descriptor, payload = payload),
     ]
 
-_wasm_guest = rule(impl = _wasm_guest_impl, attrs = {
+_wasm_guest = cache_guarded_rule(impl = _wasm_guest_impl, attrs = {
     "crate": attrs.transition_dep(cfg = _wasm_transition, providers = [DefaultInfo]),
     "product_name": attrs.string(),
     "entrypoint": attrs.string(),
@@ -173,34 +180,31 @@ def rust_wasm_guest(name, crate, product_name, entrypoint, harness, recipe, tool
         **dict(kwargs, **profile)
     )
 
-
 def _aggregator_source_impl(ctx):
     return [DefaultInfo(default_output = ctx.actions.write("src/lib.rs", ctx.attrs.source))]
 
-_aggregator_source = rule(impl = _aggregator_source_impl, attrs = {
+_aggregator_source = cache_guarded_rule(impl = _aggregator_source_impl, attrs = {
     "source": attrs.string(),
 })
-
 
 def _aggregator_impl(ctx):
     entries = {group: dep[RustInteropProductInfo].package for group, dep in ctx.attrs.groups.items()}
     entries["index.ts"] = ctx.actions.write("index.ts", ctx.attrs.entry)
     entries["manifest.json"] = ctx.actions.write_json("manifest.json", ctx.attrs.manifest)
+
     # Copied, not symlinked: runtimes and bundlers resolve `./<group>/…` from the entry's real path.
     app = ctx.actions.copied_dir("app", entries)
     return [DefaultInfo(default_output = app), RustInteropProductInfo(package = app, kind = "aggregator")]
 
-_aggregator = rule(impl = _aggregator_impl, attrs = {
+_aggregator = cache_guarded_rule(impl = _aggregator_impl, attrs = {
     "groups": attrs.dict(attrs.string(), attrs.dep(providers = [RustInteropProductInfo])),
     "entry": attrs.string(),
     "manifest": attrs.dict(attrs.string(), attrs.list(attrs.string())),
 })
 
-
 def _identifier(value):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
     return value and value[0] in alphabet and all([c in alphabet + "0123456789" for c in value.elems()])
-
 
 def rust_wasm_aggregator(name, manifest, cores, wasm_bindgen = "//rust/third-party:wasm-bindgen", profile = {}, **kwargs):
     """Generate the app's Rust crate and TS entry in buck-out, never a Cargo workspace."""
@@ -233,15 +237,16 @@ def rust_wasm_aggregator(name, manifest, cores, wasm_bindgen = "//rust/third-par
                     fail("invalid or duplicate aggregator export: " + export)
                 exported[export] = True
                 source.extend([
-                    '#[wasm_bindgen(js_name = ' + export + ')]',
-                    'pub fn export_' + str(len(exported)) + '(' + signature["args"] + ') -> ' + signature["returns"] + ' {',
-                    '    ' + signature["expression"],
-                    '}',
+                    "#[wasm_bindgen(js_name = " + export + ")]",
+                    "pub fn export_" + str(len(exported)) + "(" + signature["args"] + ") -> " + signature["returns"] + " {",
+                    "    " + signature["expression"],
+                    "}",
                 ])
         source_name = name + "-" + group + "-source"
         crate_name = name + "-" + group + "-crate"
         product_name = name + "-" + group
         _aggregator_source(name = source_name, source = "\n".join(source) + "\n")
+
         # wasm-bindgen's macros read Cargo's package environment; the generated crate
         # root is its manifest directory inside the Buck source tree.
         package_env = {
@@ -256,12 +261,11 @@ def rust_wasm_aggregator(name, manifest, cores, wasm_bindgen = "//rust/third-par
         if group == "eager":
             entry.append('export * as eager from "./eager/web/inline.js"')
         else:
-            entry.append('export const ' + alias + ' = () => import("./' + group + '/web/inline.js")')
+            entry.append("export const " + alias + ' = () => import("./' + group + '/web/inline.js")')
     unused = [core for core in cores if core not in assigned]
     if unused:
         fail("unassigned aggregator cores: " + ", ".join(unused))
     _aggregator(name = name, groups = groups, manifest = manifest, entry = "\n".join(entry) + "\n", **kwargs)
-
 
 def _smoke_impl(ctx):
     if ctx.attrs.runtime == "bun":
@@ -278,7 +282,7 @@ def _smoke_impl(ctx):
         default_executor = CommandExecutorConfig(local_enabled = True, remote_enabled = False, remote_cache_enabled = root_remote_cache_enabled(), allow_cache_uploads = root_allow_cache_uploads(), use_windows_path_separators = False),
     )]
 
-rust_interop_smoke = rule(impl = _smoke_impl, attrs = {
+rust_interop_smoke = cache_guarded_rule(impl = _smoke_impl, attrs = {
     "product": attrs.dep(providers = [RustInteropProductInfo]),
     "runtime": attrs.enum(["node", "bun"], default = "node"),
     "script": attrs.source(),

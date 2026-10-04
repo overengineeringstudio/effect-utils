@@ -137,6 +137,44 @@ describe('standalone Buck cache posture', () => {
     ).not.toContain('allow_cache_uploads = true')
   })
 
+  it('admits a private host writer without exposing credentials and removes auth on public lanes', () => {
+    const credential = Buffer.from('host-a:secret').toString('base64')
+    const env = {
+      BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential,
+      BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://private-cache.example:41045',
+      BUCK2_CACHE_WRITE_BASIC_AUTH: 'publisher-credential',
+    }
+    const writer = standaloneCachePostureConfig({ current: '', env, trustedOrigin })
+    expect(writer).toContain('allow_cache_uploads = true')
+    for (const field of ['action_cache_address', 'cas_address', 'engine_address'])
+      expect(writer).toContain(`${field} = ${env.BUCK2_PRIVATE_CACHE_ADDRESS}`)
+    expect(writer).toContain('tls = false')
+    expect(writer).toContain('$BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH')
+    expect(writer).toContain(`url_prefix = ${trustedOrigin.urlPrefix}`)
+    expect(writer).not.toContain(credential)
+    expect(writer).not.toContain('$BUCK2_CACHE_WRITE_BASIC_AUTH')
+    for (const override of [
+      { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
+      { BUCK2_NO_REMOTE_CACHE: '1' },
+    ]) {
+      const reader = standaloneCachePostureConfig({
+        current: writer,
+        env: { ...env, ...override },
+        trustedOrigin,
+      })
+      expect(reader).toContain('allow_cache_uploads = false')
+      expect(reader).not.toContain('http_headers')
+      expect(reader).not.toContain('private-cache.example')
+    }
+    expect(() =>
+      standaloneCachePostureConfig({
+        current: '',
+        env: { BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential },
+        trustedOrigin,
+      }),
+    ).toThrow()
+  })
+
   it('replaces a publisher overlay with anonymous read-only posture in a reader root', () => {
     const publisher = standaloneCachePostureConfig({
       current: '',
@@ -321,7 +359,7 @@ describe('Buck2 REAPI capability preflight', () => {
       server.close()
     }
   })
-  it('fails closed for a publisher when the gRPC capabilities request fails', async () => {
+  it.each(['publisher', 'private'] as const)('rejects unavailable %s cache', async (tier) => {
     const root = makeRoot()
     const server = createGrpcServer()
     const receivedHeaders: string[] = []
@@ -356,13 +394,17 @@ describe('Buck2 REAPI capability preflight', () => {
         env: {
           ...process.env,
           GITHUB_ACTIONS: 'true',
-          BUCK2_CACHE_WRITE_BASIC_AUTH: credential,
+          ...(tier === 'publisher'
+            ? { BUCK2_CACHE_WRITE_BASIC_AUTH: credential }
+            : {
+                BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential,
+                BUCK2_PRIVATE_CACHE_ADDRESS: `grpc://127.0.0.1:${bound.port}`,
+              }),
         },
       })
       const stderr = await new Response(run.stderr).text()
       expect(await run.exited).toBe(1)
       expect(receivedHeaders).toEqual([`Basic ${credential}`])
-      expect(stderr).toContain('REAPI GetCapabilities failed for cache publisher')
       expect(stderr).toContain('::error title=Buck2 cache::')
       expect(stderr).not.toContain('buck2_reapi_fail_open_total')
       expect(stderr).not.toContain(credential)

@@ -1,6 +1,7 @@
 """Provider-backed manifests for out-of-process editor snapshot publication."""
 
 load("//buck2:materialization.bzl", "PackageTreeInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 
 _EDITOR_VIEW_INPUTS_SCHEMA = "effect-utils/editor-view-inputs/v1"
 
@@ -12,7 +13,6 @@ def _unique_artifacts(artifacts):
             seen[artifact] = True
             unique.append(artifact)
     return unique
-
 
 def _editor_view_inputs_impl(ctx):
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
@@ -31,15 +31,13 @@ def _editor_view_inputs_impl(ctx):
         ),
     ]
 
-
-_editor_view_inputs = rule(
+_editor_view_inputs = cache_guarded_rule(
     impl = _editor_view_inputs_impl,
     attrs = {
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "editor_inputs": attrs.source(),
     },
 )
-
 
 def editor_view_inputs(name, editor_inputs, package_tree, **kwargs):
     """Write exact package-tree/read-root paths for a trusted external publisher."""

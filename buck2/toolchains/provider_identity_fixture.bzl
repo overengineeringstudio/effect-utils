@@ -1,6 +1,6 @@
 """Cross-cell analysis fixture for hub-owned product provider identities."""
 
-load("//buck2/platforms:defs.bzl", "ProductPlatformInfo")
+load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule")
 load("//buck2/products:defs.bzl", "build_product")
 load("//buck2/provenance:defs.bzl", "product_executable_info")
 
@@ -17,7 +17,7 @@ def _product_executable_impl(ctx):
         ),
     ]
 
-_product_executable = rule(
+_product_executable = cache_guarded_rule(
     impl = _product_executable_impl,
     attrs = {
         "executable": attrs.source(),

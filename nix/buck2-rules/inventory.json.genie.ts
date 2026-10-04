@@ -11,6 +11,7 @@ const files = [
   'buck2/dependencies/runtime-closure.ts',
   'buck2/editor_view.bzl',
   'buck2/go/defs.bzl',
+  'buck2/hermetic.bzl',
   'buck2/javascript.bzl',
   'buck2/materialization.bzl',
   'buck2/package_tools.bzl',

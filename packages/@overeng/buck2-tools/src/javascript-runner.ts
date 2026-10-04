@@ -624,7 +624,13 @@ const runCommand = async ({
               join(options.packageTree, options.entrypoint ?? fail('missing entrypoint')),
               ...options.args,
             ]
-  const child = Bun.spawn([...command], {
+  const containedCommand = [...command]
+  if (containedCommand[0] === options.bun) {
+    const bunConfig = join(scratch, 'bunfig.toml')
+    await Bun.write(bunConfig, '')
+    containedCommand.splice(1, 0, '--no-env-file', '--no-install', `--config=${bunConfig}`)
+  }
+  const child = Bun.spawn(containedCommand, {
     cwd: options.packageTree,
     env: environment,
     stdin: 'ignore',

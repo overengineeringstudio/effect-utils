@@ -5,7 +5,9 @@ complete declared action input. The pinned runner hashes every declared input
 before and after execution so TypeScript actions remain write-free.
 """
 
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
@@ -19,7 +21,6 @@ TsgoEmitInfo = provider(fields = {
     "toolchain_identity": str,
 })
 
-
 def _require_relative_path(value, field):
     if not value:
         fail("{} must not be empty".format(field))
@@ -29,7 +30,6 @@ def _require_relative_path(value, field):
         if component == "" or component == "." or component == "..":
             fail("{} must be normalized: {}".format(field, value))
 
-
 def _tsgo_typecheck_impl(ctx):
     _require_relative_path(ctx.attrs.project, "project")
     toolchain = ctx.attrs._tsgo[EffectTsgoToolchainInfo]
@@ -37,7 +37,7 @@ def _tsgo_typecheck_impl(ctx):
     verdict = ctx.actions.declare_output("typecheck.ok")
 
     args = cmd_args([
-        toolchain.bun,
+        hermetic_bun_command(ctx, toolchain.bun),
         toolchain.runner,
         "typecheck",
         toolchain.executable,
@@ -50,12 +50,12 @@ def _tsgo_typecheck_impl(ctx):
     args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "tsgo_typecheck",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = True,
     )
     return [
         DefaultInfo(default_output = verdict),
@@ -65,10 +65,10 @@ def _tsgo_typecheck_impl(ctx):
         ),
     ]
 
-
-tsgo_typecheck = rule(
+_tsgo_typecheck = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _tsgo_typecheck_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "project": attrs.string(default = "tsconfig.json"),
         "_tsgo": attrs.default_only(attrs.exec_dep(
@@ -79,9 +79,15 @@ tsgo_typecheck = rule(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
         )),
-    },
+    }),
 )
 
+def tsgo_typecheck(name, **kwargs):
+    _tsgo_typecheck(
+        name = name,
+        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        **kwargs
+    )
 
 def _tsgo_emit_impl(ctx):
     _require_relative_path(ctx.attrs.project, "project")
@@ -93,7 +99,7 @@ def _tsgo_emit_impl(ctx):
     directory = ctx.actions.declare_output(ctx.attrs.out_dir, dir = True)
 
     args = cmd_args([
-        toolchain.bun,
+        hermetic_bun_command(ctx, toolchain.bun),
         toolchain.runner,
         "emit",
         toolchain.executable,
@@ -112,12 +118,12 @@ def _tsgo_emit_impl(ctx):
         _require_relative_path(declaration_path, "declaration source")
         args.add("--copy-declaration", declaration_path)
     args.add(cmd_args(hidden = ctx.attrs.declaration_sources.values()))
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "tsgo_emit",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = True,
     )
     return [
         DefaultInfo(default_output = directory),
@@ -127,10 +133,10 @@ def _tsgo_emit_impl(ctx):
         ),
     ]
 
-
-tsgo_emit = rule(
+_tsgo_emit = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _tsgo_emit_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "project": attrs.string(default = "tsconfig.json"),
         "out_dir": attrs.string(default = "dist"),
@@ -148,5 +154,12 @@ tsgo_emit = rule(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
         )),
-    },
+    }),
 )
+
+def tsgo_emit(name, **kwargs):
+    _tsgo_emit(
+        name = name,
+        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        **kwargs
+    )

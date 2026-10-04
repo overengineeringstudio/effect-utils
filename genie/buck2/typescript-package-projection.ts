@@ -460,11 +460,6 @@ const projectTestTarget = ({
       `Vitest target ${target.name} cannot inherit ${inheritedEnv.join(', ')} because its derived collection action requires every input in the action identity`,
     )
   }
-  if (target.runner === 'vitest' && cacheable === false) {
-    throw new Error(
-      `Vitest target ${target.name} cannot be uncacheable because its derived collection action has no per-action remote-cache read switch`,
-    )
-  }
   if (inheritedEnv.length > 0 && cacheable === true) {
     throw new Error(
       `Test target ${target.name} inherits ${inheritedEnv.join(', ')} from the ambient environment, whose values are outside the action identity, so it must declare cacheable: false`,

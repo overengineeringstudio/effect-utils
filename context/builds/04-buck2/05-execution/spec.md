@@ -200,6 +200,71 @@ credentials, authenticated key logs, AC instance mangling per repo, validation
 and a purge runbook. Public PR write denial is server-enforced. This admission
 contract does not operate the cache or create credentials (axe record `4pmebr`).
 
+### Audited action inventory
+
+Admission is the execution constraint `@rules//buck2/platforms:cache_hermetic`,
+not `local_only` or an upload bit. The default native platform denies both
+remote-cache reads and writes. Its paired hermetic platform enables only the
+root-authorized cache policy; remote execution remains disabled. Macros add the
+constraint only for their audited action set. Action rules use
+`cache_guarded_rule`: its rule-definition-owned eligibility predicate defaults
+to denial, and analysis compares Buck's resolved execution constraints with the
+canonical label of a default-only admission attribute before registering actions.
+Relative labels and cell aliases therefore cannot admit an unaudited rule or a
+`cacheable = False` collection through raw `exec_compatible_with`.
+Every admitted run starts the projected native GNU `env -i` before Bun, a shell or another interpreter; only
+literal declared environment, `LC_ALL=C`, `TZ=UTC`, and Buck-owned
+`BUCK_SCRATCH_PATH`/`TMPDIR` survive. The env executable and manifest are inputs.
+The substituted multicall binary is selected with `--coreutils-prog=env`;
+dispatch must not depend on a symlink basename erased by capability projection.
+Admitted Bun launchers also use `--no-env-file`, `--no-install`, and an empty
+declared `--config=<artifact>`: env clearing alone cannot stop dotenv discovery
+or `bunfig.toml` preloads. Bun children receive the same flags with an empty
+scratch config, so package-local startup hooks cannot bypass the runner contract.
+
+| Action family                                                                                    | Admission and audited boundary                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Declared pnpm closure/package materialization                                                    | Admitted: staged source map, normalized declared read roots, pinned archive/materialization tools; no install-time network or ambient tool discovery.                                                                                                                                                                                                                                                                                                          |
+| TypeScript check/emit                                                                            | Admitted: projected Bun/tsgo, source/dependency view, declaration sources and exact arguments; scrubbed outer launcher.                                                                                                                                                                                                                                                                                                                                        |
+| Static formatter/linter, Nix-source and Devenv trace-source checks                               | Admitted: declared source set, configuration, projected native tool and runner; scrubbed outer launcher. Trace-source audit reads only the declared source view; Nix-source mode invokes attested nixfmt/deadnix over explicit files.                                                                                                                                                                                                                          |
+| Weaver registry and version-pin checks                                                           | Admitted: declared registry/model and pin sources, attested Weaver/model locator, and scrubbed Bun launcher; registry copy/rewrite uses executor scratch and invokes only the pinned checker.                                                                                                                                                                                                                                                                  |
+| JavaScript collection runner                                                                     | Admitted only for deterministic `cacheable` lanes: complete runner-relative module closure, declared package/read roots, config/selection/runtime and fingerprint tool. The runner constructs the child's env/PATH from declared tools and scratch, checks input immutability, and normalizes collected paths. A false-cacheable lane uses the default deny platform and disables uploads while retaining env scrubbing. Inherited-env collection is rejected. |
+| Package command runner, portable bundle                                                          | Admitted bundle mode: runner plus declared parser closure, complete package/read-root map, platform-gated manifest and projected Bun. A label-named hardlink farm contains resolution, emitted module comments reject host paths, and the descriptor binds the bytes.                                                                                                                                                                                          |
+| Package command runner, arbitrary check/build entrypoints                                        | Scrubbed before runner startup but **not admitted**: an arbitrary script may read undeclared files, network or host state despite receiving only literal child env and passing input-immutability checks. Launch/exec mode remains interactive and uncached.                                                                                                                                                                                                   |
+| External test orchestration, native compilation, repository validation and remaining run actions | No blanket admission. The default deny platform prevents shared reads/writes until the family's complete action closure is audited. Deterministic verdict actions have their own declared admission; flaky/host-dependent suites remain uncached.                                                                                                                                                                                                              |
+
+The prerequisite categories `pnpm_extract`, `pnpm_store_entry`,
+`pnpm_store_scc`, `pnpm_store_view`, `package_tree`, and `tsgo_emit` belong
+to the admitted materialization/TypeScript families above. Their macros select
+the hermetic platform independently: a verdict hit does not admit its ancestors.
+Partial rule imports that omit those macros' admission changes retain default
+denial until the complete contract is imported. This classification does not
+admit native compilation or executable build scripts.
+
+Repository `workspace-contract` and `genie-import-closure` modes are not
+promoted with the source-only checks: the former executes Cargo/Nix through a
+shell script and the latter invokes a product-backed checker/server. Auditing
+their complete subprocess/configuration boundaries is distinct from the
+source-only modes. Product executable/support staging remains unadmitted where
+the target also owns native compilation; a copy action alone cannot admit its
+target's other actions. Rust build scripts remain host-dependent and denied.
+
+Hash-and-size-validated pnpm archive acquisition is admitted separately from
+offline extraction. The network source is an explicit CAS/registry acquisition
+capability; a successful output must match both declared digest and byte size
+before atomic publication. Nix-backed acquisition reads the explicit immutable
+store root and verifies the same output identity. Complete acquisition/import
+sources and projected Bun participate in the action key; launchers clear env,
+dotenv/preloads and implicit installation. Endpoint availability can fail an
+acquisition but cannot alter a successful output's pinned bytes.
+
+These local runners do not provide an OS filesystem/network sandbox. GNU env
+scrubbing is startup enforcement, declared-input hashing detects mutation, and
+the bundle farm prevents resolver escape; none is a general undeclared-read
+sandbox. Auditing a runner does not certify every arbitrary program it launches.
+Tests that need host/network access are not promoted merely because they use
+the same runner. Feasible sandbox enforcement remains an explicit design question.
+
 ## Open Design Questions
 
 - **BUILD.BUCK.EXEC-DQ01 Verdict artifact implementation:** Blocked by
@@ -208,7 +273,7 @@ contract does not operate the cache or create credentials (axe record `4pmebr`).
   independent same-platform warm-context proof of both pass and fail reuse, plus
   relevant/irrelevant mutation and crash/flaky controls. The mechanism is selected;
   implementation and its proof are not claimed complete.
-- **BUILD.BUCK.EXEC-DQ02 Hermetic lane enforcement:** Blocked on audited lane
-  inventory, scrubbed-env implementation and feasible sandbox enforcement. Resolve
-  with undeclared-env/file controls under identical keys and platform/toolchain
-  changes proving key separation; cache writes remain conditional on admission.
+- **BUILD.BUCK.EXEC-DQ02 Filesystem/network sandbox enforcement:** The inventory
+  and startup env scrubbing above are implemented; local actions still need a
+  feasible OS-level sandbox where declared-closure controls do not enforce all
+  undeclared reads. Unlisted and host-dependent actions remain default-deny.

@@ -1,5 +1,6 @@
 """Dependency-only aggregates for repository check entry points."""
 
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 
 def _check_aggregate_impl(ctx):
     outputs = []
@@ -9,8 +10,7 @@ def _check_aggregate_impl(ctx):
         outputs.extend(info.other_outputs)
     return [DefaultInfo(other_outputs = outputs)]
 
-
-check_aggregate = rule(
+check_aggregate = cache_guarded_rule(
     impl = _check_aggregate_impl,
     attrs = {
         "targets": attrs.list(attrs.dep()),

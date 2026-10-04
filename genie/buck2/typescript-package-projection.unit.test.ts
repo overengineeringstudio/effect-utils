@@ -548,15 +548,6 @@ describe('declared test lanes', () => {
     ).toThrow('derived collection action requires every input in the action identity')
   })
 
-  it('refuses an uncacheable Vitest lane because its collection stays cacheable', () => {
-    expect(() =>
-      buck2TypeScriptPackageProjection({
-        ...kdlAdmissionWithoutTests,
-        tests: [{ name: 'test', runner: 'vitest', cacheable: false }],
-      }).stringify(genieContext),
-    ).toThrow('derived collection action has no per-action remote-cache read switch')
-  })
-
   it('refuses test selections the package tree does not carry', () => {
     expect(() =>
       buck2TypeScriptPackageProjection({

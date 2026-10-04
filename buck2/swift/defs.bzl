@@ -1,10 +1,9 @@
 """Minimal Darwin Swift app-bundle build product."""
 
-load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/products:defs.bzl", "BuildProductInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
-
 
 def _validate_bundle_component(value, subject):
     if not value or value != value.strip():
@@ -83,8 +82,10 @@ def _swift_app_bundle_impl(ctx):
             ctx.attrs._compiler_runner,
             swiftc.store_path,
             "-O",
-            "-target", triple,
-            "-o", executable.as_output(),
+            "-target",
+            triple,
+            "-o",
+            executable.as_output(),
             combined,
         ])
         compile_args.add(cmd_args(hidden = [swiftc.executable, swiftc.manifest]))
@@ -92,6 +93,7 @@ def _swift_app_bundle_impl(ctx):
             compile_args.add(["-framework", framework])
         for library in ctx.attrs.libraries.get(name, []):
             compile_args.add(["-l{}".format(library)])
+
         # The declared Nix capability carries the SDK; hostile host values make
         # any ambient Xcode discovery fail closed instead of falling back.
         ctx.actions.run(
@@ -161,17 +163,28 @@ def _swift_app_bundle_impl(ctx):
     args = cmd_args([
         ctx.attrs._descriptor_tool[RunInfo],
         "package-app-bundle",
-        "--bundle-root", bundle_root,
-        "--main-executable", bundle_root_prefix + "Contents/MacOS/" + ctx.attrs.main_executable,
-        "--artifact", payload.as_output(),
-        "--name", ctx.attrs.product_name,
-        "--target", str(ctx.label.raw_target()),
-        "--platform-os", platform.os,
-        "--platform-architecture", platform.architecture,
-        "--platform-abi", platform.abi,
-        "--provenance", provenance,
-        "--descriptor", descriptor.as_output(),
-        "--bundle-plist", plist,
+        "--bundle-root",
+        bundle_root,
+        "--main-executable",
+        bundle_root_prefix + "Contents/MacOS/" + ctx.attrs.main_executable,
+        "--artifact",
+        payload.as_output(),
+        "--name",
+        ctx.attrs.product_name,
+        "--target",
+        str(ctx.label.raw_target()),
+        "--platform-os",
+        platform.os,
+        "--platform-architecture",
+        platform.architecture,
+        "--platform-abi",
+        platform.abi,
+        "--provenance",
+        provenance,
+        "--descriptor",
+        descriptor.as_output(),
+        "--bundle-plist",
+        plist,
     ])
     if stamp_input != None:
         args.add(["--bundle-stamp", stamp_input])
@@ -204,7 +217,7 @@ def _swift_app_bundle_impl(ctx):
         BuildProductInfo(descriptor = descriptor, payload = payload),
     ]
 
-_swift_app_bundle = rule(
+_swift_app_bundle = cache_guarded_rule(
     impl = _swift_app_bundle_impl,
     attrs = {
         "binaries": attrs.list(attrs.string()),

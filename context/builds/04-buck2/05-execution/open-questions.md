@@ -25,8 +25,10 @@ lane; the fixes are owned here, not there:
 implementation and pass/fail reuse proof. Local test executions are not uploaded
 by the pinned Buck2. Compilation reuse is not evidence of verdict reuse.
 
-## BUILD.BUCK.EXEC-DQ02: Hermetic lane admission enforcement
+## BUILD.BUCK.EXEC-DQ02: Filesystem/network sandbox enforcement
 
-[Spec](./spec.md#open-design-questions). Blocked on complete audited lane inputs,
-scrubbed environments and feasible sandbox enforcement. Undeclared host state
-must fail closed or exclude the lane from both cache reads and writes.
+[Spec](./spec.md#audited-action-inventory) records the audited action inventory,
+native env-scrubbed launcher and default-deny execution platforms. These enforce
+startup env and shared-cache admission, not a general filesystem/network sandbox.
+The remaining question is feasible OS containment where declared-closure controls
+cannot enforce undeclared reads. Host-dependent/unlisted lanes stay uncached.

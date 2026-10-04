@@ -4,8 +4,9 @@ load("@prelude//go_bootstrap:go_bootstrap.bzl", "GoBootstrapToolchainInfo")
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapToolchainInfo")
 load(
     "//buck2/platforms:defs.bzl",
-    "admitted_rust_target_triple",
     "ProductPlatformInfo",
+    "admitted_rust_target_triple",
+    "cache_guarded_rule",
     "host_execution_constraints",
     "native_execution_constraints",
     "product_platform_constraints",
@@ -119,7 +120,7 @@ def _configured_rust_toolchain_impl(ctx):
         ),
     ]
 
-_configured_rust_toolchain = rule(
+_configured_rust_toolchain = cache_guarded_rule(
     impl = _configured_rust_toolchain_impl,
     attrs = {
         "archiver": attrs.exec_dep(providers = [RunInfo]),
@@ -160,12 +161,10 @@ def configured_rust_toolchain(
         **kwargs
     )
 
-
 BunToolchainInfo = provider(fields = {
     "executable": str,
     "identity": str,
 })
-
 
 def _require_nix_store_binary(executable, binary, tool):
     if not executable.startswith("/nix/store/"):
@@ -177,7 +176,6 @@ def _require_nix_store_binary(executable, binary, tool):
         if component == "" or component == "." or component == "..":
             fail("{} executable path is not normalized: {}".format(tool, executable))
 
-
 def _nix_python_bootstrap_toolchain_impl(ctx):
     _require_nix_store_binary(ctx.attrs.interpreter, "python3", "Python bootstrap")
     return [
@@ -185,15 +183,13 @@ def _nix_python_bootstrap_toolchain_impl(ctx):
         PythonBootstrapToolchainInfo(interpreter = ctx.attrs.interpreter),
     ]
 
-
-_nix_python_bootstrap_toolchain = rule(
+_nix_python_bootstrap_toolchain = cache_guarded_rule(
     impl = _nix_python_bootstrap_toolchain_impl,
     attrs = {
         "interpreter": attrs.string(),
     },
     is_toolchain_rule = True,
 )
-
 
 def nix_python_bootstrap_toolchain(name, capabilities, generation, **kwargs):
     """Declares the exact Nix interpreter prelude's bootstrap scripts run under.
@@ -225,7 +221,6 @@ def nix_python_bootstrap_toolchain(name, capabilities, generation, **kwargs):
         **kwargs
     )
 
-
 def _bun_toolchain_impl(ctx):
     _require_nix_store_binary(ctx.attrs.executable, "bun", "Bun")
     return [
@@ -236,14 +231,12 @@ def _bun_toolchain_impl(ctx):
         ),
     ]
 
-
-_bun_toolchain = rule(
+_bun_toolchain = cache_guarded_rule(
     impl = _bun_toolchain_impl,
     attrs = {
         "executable": attrs.string(),
     },
 )
-
 
 def bun_toolchain(name, capabilities, generation, **kwargs):
     """Declares the exact Nix Bun executable used by JavaScript actions."""
@@ -259,14 +252,12 @@ def bun_toolchain(name, capabilities, generation, **kwargs):
         **kwargs
     )
 
-
 EffectTsgoToolchainInfo = provider(fields = {
     "bun": str,
     "executable": str,
     "identity": str,
     "runner": Artifact,
 })
-
 
 def _effect_tsgo_toolchain_impl(ctx):
     _require_nix_store_binary(ctx.attrs.bun, "bun", "Bun")
@@ -281,8 +272,7 @@ def _effect_tsgo_toolchain_impl(ctx):
         ),
     ]
 
-
-_effect_tsgo_toolchain = rule(
+_effect_tsgo_toolchain = cache_guarded_rule(
     impl = _effect_tsgo_toolchain_impl,
     attrs = {
         "bun": attrs.string(),
@@ -290,7 +280,6 @@ _effect_tsgo_toolchain = rule(
         "runner": attrs.source(),
     },
 )
-
 
 def effect_tsgo_toolchain(name, capabilities, generation, runner, **kwargs):
     """Declares the exact Nix Bun/effect-tsgo pair used by TypeScript actions."""
@@ -315,7 +304,6 @@ def effect_tsgo_toolchain(name, capabilities, generation, runner, **kwargs):
         **kwargs
     )
 
-
 def _nix_go_bootstrap_toolchain_impl(ctx):
     _require_nix_store_binary(ctx.attrs.go, "go", "Go")
     return [
@@ -332,8 +320,7 @@ def _nix_go_bootstrap_toolchain_impl(ctx):
         ),
     ]
 
-
-_nix_go_bootstrap_toolchain = rule(
+_nix_go_bootstrap_toolchain = cache_guarded_rule(
     impl = _nix_go_bootstrap_toolchain_impl,
     attrs = {
         "env_go_arch": attrs.string(),
@@ -343,7 +330,6 @@ _nix_go_bootstrap_toolchain = rule(
     },
     is_toolchain_rule = True,
 )
-
 
 def go_platform_pair():
     """Returns the (GOOS, GOARCH) pair for the admitted native host."""
@@ -355,7 +341,6 @@ def go_platform_pair():
     if host.os.is_macos and host.arch.is_aarch64:
         return ("darwin", "arm64")
     fail("Go toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
-
 
 def nix_go_bootstrap_toolchain(name, capabilities, generation, **kwargs):
     """Declares the exact Nix Go distribution every Go action compiles with.
