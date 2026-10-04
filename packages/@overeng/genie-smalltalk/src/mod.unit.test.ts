@@ -88,9 +88,7 @@ describe('Smalltalk declarations', () => {
     ).toBe(
       'version 2\nagent "garden/orchard" {\n  restart "never"\n  rollout "manual"\n  fresh-context\n  handles-faults\n}\n',
     )
-    expect(emit([agent({ id: 'garden/orchard' })])).toBe(
-      'version 2\nagent "garden/orchard" {\n}\n',
-    )
+    expect(emit([agent({ id: 'garden/orchard' })])).toBe('version 2\nagent "garden/orchard" {\n}\n')
   })
   it.each(['automatic', 'auto', '', 1, true, ['manual'], { value: 'manual' }])(
     'rejects invalid rollout policy %j',
