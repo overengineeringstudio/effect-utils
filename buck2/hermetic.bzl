@@ -22,6 +22,17 @@ def hermetic_execution_constraints(constraints = []):
     return constraints + ["@rules//buck2/platforms:cache_hermetic"]
 
 
+def hermetic_bun_command(ctx, executable, config_name = "runner-bunfig.toml"):
+    # env -i cannot prevent Bun reloading .env or executing bunfig preloads.
+    # An empty declared config, not an ambient file, owns runner startup.
+    return cmd_args([
+        executable,
+        "--no-env-file",
+        "--no-install",
+        cmd_args(ctx.actions.write(config_name, ""), format = "--config={}"),
+    ])
+
+
 def hermetic_action(ctx, arguments, env = {}, cacheable = True, **kwargs):
     tool = ctx.attrs._action_env[BuckSupportToolInfo]
     # GNU env expands only these executor-owned variables before -i. No shell
