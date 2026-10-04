@@ -63,7 +63,10 @@ macro_rules! decimal_module {
 
             /// # Errors
             /// Propagates serializer failures.
-            pub fn serialize<S: Serializer>(value: &$integer, serializer: S) -> Result<S::Ok, S::Error> {
+            pub fn serialize<S: Serializer>(
+                value: &$integer,
+                serializer: S,
+            ) -> Result<S::Ok, S::Error> {
                 if serializer.is_human_readable() {
                     serializer.collect_str(value)
                 } else {
@@ -99,8 +102,26 @@ macro_rules! decimal_module {
     };
 }
 
-decimal_module!(u64_decimal, u64, u128, deserialize_u128, serialize_u128, visit_u128, canonical_unsigned, "a canonical base-10 u64 string or an in-process u64 bigint");
-decimal_module!(i64_decimal, i64, i128, deserialize_i128, serialize_i128, visit_i128, |text: &str| canonical_unsigned(text.strip_prefix('-').unwrap_or(text)) && text != "-0", "a canonical base-10 i64 string or an in-process i64 bigint");
+decimal_module!(
+    u64_decimal,
+    u64,
+    u128,
+    deserialize_u128,
+    serialize_u128,
+    visit_u128,
+    canonical_unsigned,
+    "a canonical base-10 u64 string or an in-process u64 bigint"
+);
+decimal_module!(
+    i64_decimal,
+    i64,
+    i128,
+    deserialize_i128,
+    serialize_i128,
+    visit_i128,
+    |text: &str| canonical_unsigned(text.strip_prefix('-').unwrap_or(text)) && text != "-0",
+    "a canonical base-10 i64 string or an in-process i64 bigint"
+);
 
 /// A UTC instant with millisecond precision and a four-digit wire year.
 ///
@@ -199,7 +220,8 @@ impl Serialize for TimestampMillis {
         if serializer.is_human_readable() {
             serializer.collect_str(self)
         } else {
-            #[allow(clippy::cast_precision_loss)] // Four-digit RFC3339 years are inside the exact JS integer range.
+            #[allow(clippy::cast_precision_loss)]
+            // Four-digit RFC3339 years are inside the exact JS integer range.
             serializer.serialize_f64(self.0 as f64)
         }
     }
@@ -217,10 +239,14 @@ impl<'de> Deserialize<'de> for TimestampMillis {
                 text.parse().map_err(E::custom)
             }
             fn visit_f64<E: de::Error>(self, millis: f64) -> Result<Self::Value, E> {
-                if !millis.is_finite() || millis.fract() != 0.0 || millis.abs() > 9_007_199_254_740_991.0 {
+                if !millis.is_finite()
+                    || millis.fract() != 0.0
+                    || millis.abs() > 9_007_199_254_740_991.0
+                {
                     return Err(E::custom("expected integral epoch milliseconds"));
                 }
-                #[allow(clippy::cast_possible_truncation)] // Safe integral milliseconds fit i64 exactly.
+                #[allow(clippy::cast_possible_truncation)]
+                // Safe integral milliseconds fit i64 exactly.
                 TimestampMillis::from_unix_millis(millis as i64).map_err(E::custom)
             }
         }
@@ -344,7 +370,9 @@ pub mod f32 {
     /// # Errors
     /// Rejects non-finite values instead of serializing JSON null.
     pub fn serialize<S: Serializer>(value: &f32, serializer: S) -> Result<S::Ok, S::Error> {
-        if !value.is_finite() { return Err(serde::ser::Error::custom("expected a finite f32")); }
+        if !value.is_finite() {
+            return Err(serde::ser::Error::custom("expected a finite f32"));
+        }
         serializer.serialize_f64(f64::from(*value))
     }
     /// # Errors
@@ -353,7 +381,9 @@ pub mod f32 {
         struct Visitor;
         impl de::Visitor<'_> for Visitor {
             type Value = f32;
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("a finite binary32 number") }
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a finite binary32 number")
+            }
             #[allow(clippy::cast_precision_loss)] // Binary32 fields explicitly round numeric JSON, including integer tokens.
             fn visit_i64<E: de::Error>(self, value: i64) -> Result<f32, E> {
                 self.visit_f64(value as f64)
@@ -363,9 +393,12 @@ pub mod f32 {
                 self.visit_f64(value as f64)
             }
             fn visit_f64<E: de::Error>(self, value: f64) -> Result<f32, E> {
-                #[allow(clippy::cast_possible_truncation)] // Rounding to binary32 is the explicit contract policy.
+                #[allow(clippy::cast_possible_truncation)]
+                // Rounding to binary32 is the explicit contract policy.
                 let rounded = value as f32;
-                if !value.is_finite() || !rounded.is_finite() { return Err(E::custom("f32 overflow or non-finite input")); }
+                if !value.is_finite() || !rounded.is_finite() {
+                    return Err(E::custom("f32 overflow or non-finite input"));
+                }
                 Ok(rounded)
             }
         }
@@ -383,9 +416,15 @@ pub fn decode_json<T: de::DeserializeOwned>(input: &str) -> Result<T, Validation
     let mut deserializer = serde_json::Deserializer::from_str(input);
     let value: json::Value = serde_path_to_error::deserialize(&mut deserializer)
         .map_err(|error| ValidationError::new(rooted(error.path()), error.inner().to_string()))?;
-    deserializer.end().map_err(|error| ValidationError::new("$", error.to_string()))?;
+    deserializer
+        .end()
+        .map_err(|error| ValidationError::new("$", error.to_string()))?;
     let json = &json::Json;
-    let decoder = crate::direct::Decoder { backend: &json, value: &value, depth: 0 };
+    let decoder = crate::direct::Decoder {
+        backend: &json,
+        value: &value,
+        depth: 0,
+    };
     serde_path_to_error::deserialize(decoder)
         .map_err(|error| ValidationError::new(rooted(error.path()), error.inner().to_string()))
 }
@@ -446,7 +485,8 @@ impl Serialize for Canonical<'_> {
             serde_json::Value::Number(number) if number.is_f64() => {
                 let value = number.as_f64().expect("finite serde number");
                 let text = ryu_js::Buffer::new().format_finite(value).to_owned();
-                let raw = serde_json::value::RawValue::from_string(text).map_err(serde::ser::Error::custom)?;
+                let raw = serde_json::value::RawValue::from_string(text)
+                    .map_err(serde::ser::Error::custom)?;
                 raw.serialize(serializer)
             }
             other => other.serialize(serializer),
@@ -479,7 +519,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-
     #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Integers {
@@ -503,9 +542,15 @@ mod tests {
             ("0.1", 0.1_f32),
         ] {
             let json = format!("{{\"value\":{text}}}");
-            assert_eq!(serde_json::from_str::<FloatSample>(&json).unwrap().value, expected);
+            assert_eq!(
+                serde_json::from_str::<FloatSample>(&json).unwrap().value,
+                expected
+            );
             let value: serde_json::Value = serde_json::from_str(&json).unwrap();
-            assert_eq!(serde_json::from_value::<FloatSample>(value).unwrap().value, expected);
+            assert_eq!(
+                serde_json::from_value::<FloatSample>(value).unwrap().value,
+                expected
+            );
             assert_eq!(decode_json::<FloatSample>(&json).unwrap().value, expected);
         }
         assert!(serde_json::from_str::<FloatSample>("{\"value\":3.4028236e38}").is_err());

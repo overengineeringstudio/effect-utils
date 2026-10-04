@@ -81,7 +81,9 @@ pub type ReadFuture<'a> = Pin<Box<dyn Future<Output = Result<Bytes, Error>> + Se
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Request<TPath> {
-    Read { path: TPath },
+    Read {
+        path: TPath,
+    },
     ReadRange {
         path: TPath,
         #[serde(serialize_with = "serialize_offset")]
@@ -118,8 +120,18 @@ impl Request<&str> {
     #[must_use]
     pub fn into_owned(self) -> Request<String> {
         match self {
-            Self::Read { path } => Request::Read { path: path.to_owned() },
-            Self::ReadRange { path, offset, max_bytes } => Request::ReadRange { path: path.to_owned(), offset, max_bytes },
+            Self::Read { path } => Request::Read {
+                path: path.to_owned(),
+            },
+            Self::ReadRange {
+                path,
+                offset,
+                max_bytes,
+            } => Request::ReadRange {
+                path: path.to_owned(),
+                offset,
+                max_bytes,
+            },
             Self::Yield => Request::Yield,
         }
     }
@@ -152,13 +164,28 @@ impl<M: Mode> Clone for Source<M> {
 
 impl<M: Mode> Source<M> {
     #[cfg(target_arch = "wasm32")]
-    pub fn new(callback: impl for<'a> Fn(Request<&'a str>, CancellationToken) -> ReadFuture<'a> + 'static) -> Self {
-        Self { call: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
+    pub fn new(
+        callback: impl for<'a> Fn(Request<&'a str>, CancellationToken) -> ReadFuture<'a> + 'static,
+    ) -> Self {
+        Self {
+            call: Shared::new(callback),
+            cancellation: CancellationToken::new(),
+            mode: PhantomData,
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(callback: impl for<'a> Fn(Request<&'a str>, CancellationToken) -> ReadFuture<'a> + Send + Sync + 'static) -> Self {
-        Self { call: Shared::new(callback), cancellation: CancellationToken::new(), mode: PhantomData }
+    pub fn new(
+        callback: impl for<'a> Fn(Request<&'a str>, CancellationToken) -> ReadFuture<'a>
+            + Send
+            + Sync
+            + 'static,
+    ) -> Self {
+        Self {
+            call: Shared::new(callback),
+            cancellation: CancellationToken::new(),
+            mode: PhantomData,
+        }
     }
 
     /// Binds this capability to a caller-owned cancellation scope.

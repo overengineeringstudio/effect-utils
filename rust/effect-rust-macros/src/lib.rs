@@ -382,10 +382,18 @@ impl Wire {
             Type::Path(path) => {
                 let name = type_name(ty);
                 match name.as_str() {
-                    "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "f32" | "f64" | "bool" => Ok(Self::Scalar(ty.clone())),
+                    "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "f32" | "f64" | "bool" => {
+                        Ok(Self::Scalar(ty.clone()))
+                    }
                     "u64" | "i64" => Ok(Self::Wide(ty.clone())),
-                    "u128" | "i128" => Err(syn::Error::new_spanned(ty, "128-bit exports have no portable direct wire width: use u64 or i64")),
-                    "usize" | "isize" => Err(syn::Error::new_spanned(ty, "architecture-dependent integer width: use u32/u64 or i32/i64")),
+                    "u128" | "i128" => Err(syn::Error::new_spanned(
+                        ty,
+                        "128-bit exports have no portable direct wire width: use u64 or i64",
+                    )),
+                    "usize" | "isize" => Err(syn::Error::new_spanned(
+                        ty,
+                        "architecture-dependent integer width: use u32/u64 or i32/i64",
+                    )),
                     "String" => Ok(Self::String),
                     "Bytes" => Ok(Self::Bytes),
                     "Vec"

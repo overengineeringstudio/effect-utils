@@ -43,8 +43,12 @@ pub enum I64 {}
 pub enum F32 {}
 
 impl JsonSchema for F32 {
-    fn inline_schema() -> bool { true }
-    fn schema_name() -> Cow<'static, str> { "F32".into() }
+    fn inline_schema() -> bool {
+        true
+    }
+    fn schema_name() -> Cow<'static, str> {
+        "F32".into()
+    }
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         json_schema!({ "type": "number", "format": "float", "x-effect-rust-width": "f32", "x-effect-rust-nonfinite": "reject" })
     }

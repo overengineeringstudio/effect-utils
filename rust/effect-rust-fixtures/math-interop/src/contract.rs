@@ -172,7 +172,9 @@ mod tests {
     fn shared_vectors_decode_and_encode_canonically() {
         let vectors: Vec<Vector> = serde_json::from_str(super::CONTRACT_VECTORS_JSON).unwrap();
         for vector in vectors {
-            let input = vector.input_json.unwrap_or_else(|| vector.input.to_string());
+            let input = vector
+                .input_json
+                .unwrap_or_else(|| vector.input.to_string());
             let result = match vector.contract.as_str() {
                 "Discount" => roundtrip::<Discount>(&input),
                 "Order" => roundtrip::<Order>(&input),
@@ -184,7 +186,13 @@ mod tests {
             let label = format!("{}/{}", vector.contract, vector.name);
             match (vector.accept, result) {
                 (true, Ok(encoded)) => {
-                    let canonical = vector.canonical_json.unwrap_or_else(|| encode_json(vector.canonical.as_ref().unwrap_or(&vector.input), &["kind"]).unwrap());
+                    let canonical = vector.canonical_json.unwrap_or_else(|| {
+                        encode_json(
+                            vector.canonical.as_ref().unwrap_or(&vector.input),
+                            &["kind"],
+                        )
+                        .unwrap()
+                    });
                     assert_eq!(encoded, canonical, "{label}");
                 }
                 (false, Err(_)) => {}

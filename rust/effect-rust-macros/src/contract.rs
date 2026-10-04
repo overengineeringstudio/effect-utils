@@ -614,22 +614,86 @@ mod tests {
             (quote!(#[wire(u64)] id: u32), false),
             (quote!(#[wire(f32)] ratio: f64), false),
         ] {
-            let result = expand(quote!(), quote!(#[derive(Serialize, JsonSchema)] struct Order { #fields }));
+            let result = expand(
+                quote!(),
+                quote!(#[derive(Serialize, JsonSchema)] struct Order { #fields }),
+            );
             assert_eq!(result.is_ok(), admitted, "numeric fields: {fields}");
         }
-        assert!(expand(quote!(), quote!(#[derive(Serialize)] struct Order { id: u32 })).is_err());
+        assert!(expand(
+            quote!(),
+            quote!(
+                #[derive(Serialize)]
+                struct Order {
+                    id: u32,
+                }
+            )
+        )
+        .is_err());
     }
 
     #[test]
     fn enum_and_brand_admission_requires_portable_tagged_patterns() {
         for (args, item, admitted) in [
-            (quote!(), quote!(#[derive(Serialize, JsonSchema)] #[serde(tag = "kind")] enum Shape { A }), true),
-            (quote!(), quote!(enum Shape { A }), false),
-            (quote!(), quote!(#[derive(Serialize, JsonSchema)] #[serde(tag = "kind", content = "value")] enum Shape { A }), false),
-            (quote!(pattern = "^a$"), quote!(struct Name(String);), true),
-            (quote!(pattern = "[a-z]+"), quote!(struct Name(String);), false),
-            (quote!(pattern = "^(a$"), quote!(struct Name(String);), false),
-            (quote!(pattern = "^a$"), quote!(struct Name(pub String);), false),
+            (
+                quote!(),
+                quote!(
+                    #[derive(Serialize, JsonSchema)]
+                    #[serde(tag = "kind")]
+                    enum Shape {
+                        A,
+                    }
+                ),
+                true,
+            ),
+            (
+                quote!(),
+                quote!(
+                    enum Shape {
+                        A,
+                    }
+                ),
+                false,
+            ),
+            (
+                quote!(),
+                quote!(
+                    #[derive(Serialize, JsonSchema)]
+                    #[serde(tag = "kind", content = "value")]
+                    enum Shape {
+                        A,
+                    }
+                ),
+                false,
+            ),
+            (
+                quote!(pattern = "^a$"),
+                quote!(
+                    struct Name(String);
+                ),
+                true,
+            ),
+            (
+                quote!(pattern = "[a-z]+"),
+                quote!(
+                    struct Name(String);
+                ),
+                false,
+            ),
+            (
+                quote!(pattern = "^(a$"),
+                quote!(
+                    struct Name(String);
+                ),
+                false,
+            ),
+            (
+                quote!(pattern = "^a$"),
+                quote!(
+                    struct Name(pub String);
+                ),
+                false,
+            ),
         ] {
             let result = expand(args, item.clone());
             assert_eq!(result.is_ok(), admitted, "contract item: {item}");

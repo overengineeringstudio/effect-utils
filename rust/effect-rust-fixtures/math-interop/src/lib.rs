@@ -17,9 +17,15 @@ impl std::fmt::Display for ArithmeticError {
         match self {
             Self::DivideByZero { dividend } => write!(f, "cannot divide {dividend} by zero"),
             Self::Overflow { dividend, divisor } => write!(f, "{dividend}/{divisor} overflows i32"),
-            Self::InvalidChunkSize { chunk } => write!(f, "chunk size must be 1..=1048576, got {chunk}"),
-            Self::PriceOverflow { quantity } => write!(f, "order total overflows u64 at quantity {quantity}"),
-            Self::WideBounds { unsigned, signed } => write!(f, "{unsigned}/{signed} are wide boundary values"),
+            Self::InvalidChunkSize { chunk } => {
+                write!(f, "chunk size must be 1..=1048576, got {chunk}")
+            }
+            Self::PriceOverflow { quantity } => {
+                write!(f, "order total overflows u64 at quantity {quantity}")
+            }
+            Self::WideBounds { unsigned, signed } => {
+                write!(f, "{unsigned}/{signed} are wide boundary values")
+            }
         }
     }
 }
@@ -127,13 +133,21 @@ pub fn sum_json_integers(input: contract::NumericOperands) -> i64 {
 }
 
 #[effect_rust::export(name = "roundTripFloat")]
-pub fn round_trip_float(env: contract::FloatSample) -> contract::FloatSample { env }
+pub fn round_trip_float(env: contract::FloatSample) -> contract::FloatSample {
+    env
+}
 
 #[effect_rust::export(name = "roundTripWide")]
-pub fn round_trip_wide(input: contract::WideSample) -> contract::WideSample { input }
+pub fn round_trip_wide(input: contract::WideSample) -> contract::WideSample {
+    input
+}
 
 #[effect_rust::export(name = "roundTripRecord")]
-pub fn round_trip_record(input: std::collections::BTreeMap<String, u32>) -> std::collections::BTreeMap<String, u32> { input }
+pub fn round_trip_record(
+    input: std::collections::BTreeMap<String, u32>,
+) -> std::collections::BTreeMap<String, u32> {
+    input
+}
 
 #[effect_rust::export(name = "wideFailure", error_tag = "reason")]
 pub fn wide_failure(unsigned: u64, signed: i64) -> Result<(), ArithmeticError> {
@@ -141,9 +155,15 @@ pub fn wide_failure(unsigned: u64, signed: i64) -> Result<(), ArithmeticError> {
 }
 
 #[effect_rust::export(async, name = "asyncRoundTripWide", error_tag = "reason")]
-pub async fn async_round_trip_wide(input: contract::WideSample, fail: bool) -> Result<contract::WideSample, ArithmeticError> {
+pub async fn async_round_trip_wide(
+    input: contract::WideSample,
+    fail: bool,
+) -> Result<contract::WideSample, ArithmeticError> {
     if fail {
-        Err(ArithmeticError::WideBounds { unsigned: input.unsigned, signed: input.signed })
+        Err(ArithmeticError::WideBounds {
+            unsigned: input.unsigned,
+            signed: input.signed,
+        })
     } else {
         Ok(input)
     }
