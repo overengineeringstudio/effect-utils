@@ -14,13 +14,20 @@ pub struct ValidationError {
 impl ValidationError {
     #[must_use]
     pub fn new(path: impl Into<String>, message: impl Into<String>) -> Self {
-        Self { path: path.into(), message: message.into() }
+        Self {
+            path: path.into(),
+            message: message.into(),
+        }
     }
 }
 
 impl fmt::Display for ValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.path.is_empty() { formatter.write_str(&self.message) } else { write!(formatter, "{}: {}", self.path, self.message) }
+        if self.path.is_empty() {
+            formatter.write_str(&self.message)
+        } else {
+            write!(formatter, "{}: {}", self.path, self.message)
+        }
     }
 }
 
@@ -46,18 +53,28 @@ macro_rules! decimal_module {
                 if !($canonical)(text) {
                     return Err(ValidationError::new("", $expecting));
                 }
-                text.parse().map_err(|_| ValidationError::new("", concat!("decimal value is out of range for ", stringify!($integer))))
+                text.parse().map_err(|_| {
+                    ValidationError::new(
+                        "",
+                        concat!("decimal value is out of range for ", stringify!($integer)),
+                    )
+                })
             }
 
             /// # Errors
             /// Propagates serializer failures.
-            pub fn serialize<S: Serializer>(value: &$integer, serializer: S) -> Result<S::Ok, S::Error> {
+            pub fn serialize<S: Serializer>(
+                value: &$integer,
+                serializer: S,
+            ) -> Result<S::Ok, S::Error> {
                 serializer.collect_str(value)
             }
 
             /// # Errors
             /// Rejects JSON numbers, non-canonical strings, and out-of-range values.
-            pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<$integer, D::Error> {
+            pub fn deserialize<'de, D: Deserializer<'de>>(
+                deserializer: D,
+            ) -> Result<$integer, D::Error> {
                 struct DecimalVisitor;
                 impl de::Visitor<'_> for DecimalVisitor {
                     type Value = $integer;
@@ -74,8 +91,18 @@ macro_rules! decimal_module {
     };
 }
 
-decimal_module!(u64_decimal, u64, canonical_unsigned, "a canonical base-10 u64 string");
-decimal_module!(i64_decimal, i64, |text: &str| canonical_unsigned(text.strip_prefix('-').unwrap_or(text)) && text != "-0", "a canonical base-10 i64 string");
+decimal_module!(
+    u64_decimal,
+    u64,
+    canonical_unsigned,
+    "a canonical base-10 u64 string"
+);
+decimal_module!(
+    i64_decimal,
+    i64,
+    |text: &str| canonical_unsigned(text.strip_prefix('-').unwrap_or(text)) && text != "-0",
+    "a canonical base-10 i64 string"
+);
 
 /// A UTC instant with millisecond precision and a four-digit wire year.
 ///
@@ -90,7 +117,9 @@ impl TimestampMillis {
     pub fn from_unix_millis(millis: i64) -> Result<Self, ValidationError> {
         let date = DateTime::<Utc>::from_timestamp_millis(millis)
             .filter(|date| (0..=9999).contains(&date.year()))
-            .ok_or_else(|| ValidationError::new("", "timestamp is outside the four-digit RFC3339 year range"))?;
+            .ok_or_else(|| {
+                ValidationError::new("", "timestamp is outside the four-digit RFC3339 year range")
+            })?;
         Ok(Self(date.timestamp_millis()))
     }
 
@@ -104,20 +133,35 @@ impl FromStr for TimestampMillis {
     type Err = ValidationError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        let invalid = || ValidationError::new("", "expected an RFC3339 timestamp with explicit zone and millisecond precision");
+        let invalid = || {
+            ValidationError::new(
+                "",
+                "expected an RFC3339 timestamp with explicit zone and millisecond precision",
+            )
+        };
         let bytes = text.as_bytes();
         let body = if let Some(body) = bytes.strip_suffix(b"Z") {
             body
         } else if bytes.len() >= 25 {
             let (body, zone) = bytes.split_at(bytes.len() - 6);
-            if !matches!(zone[0], b'+' | b'-') || zone[3] != b':' || !zone[1..3].iter().all(u8::is_ascii_digit) || !zone[4..6].iter().all(u8::is_ascii_digit) {
+            if !matches!(zone[0], b'+' | b'-')
+                || zone[3] != b':'
+                || !zone[1..3].iter().all(u8::is_ascii_digit)
+                || !zone[4..6].iter().all(u8::is_ascii_digit)
+            {
                 return Err(invalid());
             }
             body
         } else {
             return Err(invalid());
         };
-        if body.len() < 19 || body[4] != b'-' || body[7] != b'-' || body[10] != b'T' || body[13] != b':' || body[16] != b':' {
+        if body.len() < 19
+            || body[4] != b'-'
+            || body[7] != b'-'
+            || body[10] != b'T'
+            || body[13] != b':'
+            || body[16] != b':'
+        {
             return Err(invalid());
         }
         for range in [0..4, 5..7, 8..10, 11..13, 14..16, 17..19] {
@@ -126,12 +170,19 @@ impl FromStr for TimestampMillis {
             }
         }
         if body.len() > 19
-            && (body[19] != b'.' || body.len() == 20 || !body[20..].iter().all(u8::is_ascii_digit) || (body.len() > 23 && body[23..].iter().any(|digit| *digit != b'0'))) {
+            && (body[19] != b'.'
+                || body.len() == 20
+                || !body[20..].iter().all(u8::is_ascii_digit)
+                || (body.len() > 23 && body[23..].iter().any(|digit| *digit != b'0')))
+        {
             return Err(invalid());
         }
         let date = DateTime::parse_from_rfc3339(text).map_err(|_| invalid())?;
         if date.nanosecond() >= 1_000_000_000 {
-            return Err(ValidationError::new("", "leap seconds are outside the millisecond timestamp profile"));
+            return Err(ValidationError::new(
+                "",
+                "leap seconds are outside the millisecond timestamp profile",
+            ));
         }
         Self::from_unix_millis(date.timestamp_millis())
     }
@@ -189,7 +240,9 @@ impl<T> Patch<T> {
 impl<T: Serialize> Serialize for Patch<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::Absent => Err(serde::ser::Error::custom("absent patch fields must be omitted")),
+            Self::Absent => Err(serde::ser::Error::custom(
+                "absent patch fields must be omitted",
+            )),
             Self::Null => serializer.serialize_none(),
             Self::Value(value) => value.serialize(serializer),
         }
@@ -210,7 +263,10 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Patch<T> {
             fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
                 Ok(Patch::Null)
             }
-            fn visit_some<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+            fn visit_some<D: Deserializer<'de>>(
+                self,
+                deserializer: D,
+            ) -> Result<Self::Value, D::Error> {
                 T::deserialize(deserializer).map(Patch::Value)
             }
         }
@@ -223,7 +279,9 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Patch<T> {
 ///
 /// # Errors
 /// Propagates the field type's errors; a missing key fails as `missing field`.
-pub fn required<'de, T: Deserialize<'de>, D: Deserializer<'de>>(deserializer: D) -> Result<T, D::Error> {
+pub fn required<'de, T: Deserialize<'de>, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<T, D::Error> {
     T::deserialize(deserializer)
 }
 
@@ -237,19 +295,29 @@ pub mod timestamp_millis {
     /// # Errors
     /// Rejects sub-millisecond precision and instants outside the four-digit year range
     /// instead of silently truncating them.
-    pub fn serialize<S: Serializer>(value: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(
+        value: &DateTime<Utc>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
         if !value.timestamp_subsec_nanos().is_multiple_of(1_000_000) {
-            return Err(serde::ser::Error::custom("timestamp carries sub-millisecond precision"));
+            return Err(serde::ser::Error::custom(
+                "timestamp carries sub-millisecond precision",
+            ));
         }
-        TimestampMillis::from_unix_millis(value.timestamp_millis()).map_err(serde::ser::Error::custom)?.serialize(serializer)
+        TimestampMillis::from_unix_millis(value.timestamp_millis())
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
     }
 
     /// # Errors
     /// Same admission as [`TimestampMillis`].
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<DateTime<Utc>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<DateTime<Utc>, D::Error> {
         let timestamp = TimestampMillis::deserialize(deserializer)?;
         // The TimestampMillis invariant guarantees representability.
-        DateTime::<Utc>::from_timestamp_millis(timestamp.as_unix_millis()).ok_or_else(|| serde::de::Error::custom("unrepresentable timestamp"))
+        DateTime::<Utc>::from_timestamp_millis(timestamp.as_unix_millis())
+            .ok_or_else(|| serde::de::Error::custom("unrepresentable timestamp"))
     }
 }
 
@@ -264,9 +332,12 @@ pub fn normalize_js_numbers(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Number(number) if number.is_f64() => {
             let value = number.as_f64().expect("f64 JSON number");
-            if value.is_finite() && value.fract() == 0.0
-                && (-9_007_199_254_740_991.0..=9_007_199_254_740_991.0).contains(&value) {
-                #[allow(clippy::cast_possible_truncation)] // Finite integral safe doubles fit i64 exactly.
+            if value.is_finite()
+                && value.fract() == 0.0
+                && (-9_007_199_254_740_991.0..=9_007_199_254_740_991.0).contains(&value)
+            {
+                #[allow(clippy::cast_possible_truncation)]
+                // Finite integral safe doubles fit i64 exactly.
                 let integer = value as i64;
                 *number = serde_json::Number::from(integer);
             }
@@ -306,13 +377,17 @@ impl<'de> de::Visitor<'de> for StrictSeed {
     }
     fn visit_i64<E: de::Error>(self, value: i64) -> Result<(), E> {
         if value.unsigned_abs() > MAX_SAFE_INTEGER {
-            return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string"));
+            return Err(E::custom(
+                "unsafe JSON integer; use a width-annotated decimal string",
+            ));
         }
         Ok(())
     }
     fn visit_u64<E: de::Error>(self, value: u64) -> Result<(), E> {
         if value > MAX_SAFE_INTEGER {
-            return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string"));
+            return Err(E::custom(
+                "unsafe JSON integer; use a width-annotated decimal string",
+            ));
         }
         Ok(())
     }
@@ -323,7 +398,12 @@ impl<'de> de::Visitor<'de> for StrictSeed {
         if self.depth >= MAX_DEPTH {
             return Err(de::Error::custom("JSON depth exceeds 128"));
         }
-        while seq.next_element_seed(StrictSeed { depth: self.depth + 1 })?.is_some() {}
+        while seq
+            .next_element_seed(StrictSeed {
+                depth: self.depth + 1,
+            })?
+            .is_some()
+        {}
         Ok(())
     }
     fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
@@ -335,7 +415,9 @@ impl<'de> de::Visitor<'de> for StrictSeed {
             if !keys.insert(key) {
                 return Err(de::Error::custom("duplicate object key"));
             }
-            map.next_value_seed(StrictSeed { depth: self.depth + 1 })?;
+            map.next_value_seed(StrictSeed {
+                depth: self.depth + 1,
+            })?;
         }
         Ok(())
     }
@@ -354,19 +436,30 @@ pub fn decode_json<T: de::DeserializeOwned>(input: &str) -> Result<T, Validation
     let mut strict = serde_json::Deserializer::from_str(input);
     let mut track = serde_path_to_error::Track::new();
     StrictSeed { depth: 0 }
-        .deserialize(serde_path_to_error::Deserializer::new(&mut strict, &mut track))
+        .deserialize(serde_path_to_error::Deserializer::new(
+            &mut strict,
+            &mut track,
+        ))
         .map_err(|error| ValidationError::new(rooted(&track.path()), error.to_string()))?;
-    strict.end().map_err(|error| ValidationError::new("$", error.to_string()))?;
+    strict
+        .end()
+        .map_err(|error| ValidationError::new("$", error.to_string()))?;
     let mut deserializer = serde_json::Deserializer::from_str(input);
     let value = serde_path_to_error::deserialize(&mut deserializer)
         .map_err(|error| ValidationError::new(rooted(error.path()), error.inner().to_string()))?;
-    deserializer.end().map_err(|error| ValidationError::new("$", error.to_string()))?;
+    deserializer
+        .end()
+        .map_err(|error| ValidationError::new("$", error.to_string()))?;
     Ok(value)
 }
 
 fn rooted(path: &serde_path_to_error::Path) -> String {
     let path = path.to_string();
-    if path == "." { "$".to_owned() } else { format!("$.{path}") }
+    if path == "." {
+        "$".to_owned()
+    } else {
+        format!("$.{path}")
+    }
 }
 
 /// Canonical JSON view: the first present tag key (string-valued) leads, then the
@@ -379,12 +472,24 @@ struct Canonical<'a> {
 impl Serialize for Canonical<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::{SerializeMap as _, SerializeSeq as _};
-        let nested = |value| Canonical { value, tag_fields: self.tag_fields };
+        let nested = |value| Canonical {
+            value,
+            tag_fields: self.tag_fields,
+        };
         match self.value {
             serde_json::Value::Object(object) => {
-                let tag = self.tag_fields.iter().copied().find(|key| matches!(object.get(*key), Some(serde_json::Value::String(_))));
-                let mut entries: Vec<_> = object.iter().filter(|(key, _)| Some(key.as_str()) != tag).collect();
-                entries.sort_unstable_by(|(left, _), (right, _)| left.encode_utf16().cmp(right.encode_utf16()));
+                let tag = self
+                    .tag_fields
+                    .iter()
+                    .copied()
+                    .find(|key| matches!(object.get(*key), Some(serde_json::Value::String(_))));
+                let mut entries: Vec<_> = object
+                    .iter()
+                    .filter(|(key, _)| Some(key.as_str()) != tag)
+                    .collect();
+                entries.sort_unstable_by(|(left, _), (right, _)| {
+                    left.encode_utf16().cmp(right.encode_utf16())
+                });
                 let mut map = serializer.serialize_map(Some(object.len()))?;
                 if let Some(key) = tag {
                     map.serialize_entry(key, &object[key])?;
@@ -413,9 +518,17 @@ impl Serialize for Canonical<'_> {
 ///
 /// # Errors
 /// Propagates serialization failures such as an unomitted `Patch::Absent`.
-pub fn encode_json<T: Serialize + ?Sized>(value: &T, tag_fields: &[&str]) -> Result<String, ValidationError> {
-    let value = serde_json::to_value(value).map_err(|error| ValidationError::new("$", error.to_string()))?;
-    serde_json::to_string(&Canonical { value: &value, tag_fields }).map_err(|error| ValidationError::new("$", error.to_string()))
+pub fn encode_json<T: Serialize + ?Sized>(
+    value: &T,
+    tag_fields: &[&str],
+) -> Result<String, ValidationError> {
+    let value = serde_json::to_value(value)
+        .map_err(|error| ValidationError::new("$", error.to_string()))?;
+    serde_json::to_string(&Canonical {
+        value: &value,
+        tag_fields,
+    })
+    .map_err(|error| ValidationError::new("$", error.to_string()))
 }
 
 #[cfg(test)]
@@ -426,22 +539,35 @@ mod tests {
     #[test]
     fn object_numbers_normalize_recursively_without_weakening_json_text() {
         #[derive(Debug, PartialEq, Deserialize)]
-        struct Numbers { unsigned: u32, signed: i32, safe: Vec<i64> }
+        struct Numbers {
+            unsigned: u32,
+            signed: i32,
+            safe: Vec<i64>,
+        }
         let mut value = json!({
             "unsigned": 4_294_967_295.0,
             "signed": -2_147_483_648.0,
             "safe": [9_007_199_254_740_991.0, -9_007_199_254_740_991.0, -0.0]
         });
         normalize_js_numbers(&mut value);
-        assert_eq!(serde_json::from_value::<Numbers>(value).unwrap(),
-            Numbers { unsigned: u32::MAX, signed: i32::MIN, safe: vec![9_007_199_254_740_991, -9_007_199_254_740_991, 0] });
+        assert_eq!(
+            serde_json::from_value::<Numbers>(value).unwrap(),
+            Numbers {
+                unsigned: u32::MAX,
+                signed: i32::MIN,
+                safe: vec![9_007_199_254_740_991, -9_007_199_254_740_991, 0]
+            }
+        );
         for number in [1.5, 9_007_199_254_740_992.0, -9_007_199_254_740_992.0] {
             let mut value = json!(number);
             normalize_js_numbers(&mut value);
             assert!(serde_json::from_value::<i64>(value).is_err());
         }
         for text in ["1.0", "1e0", "-0.0"] {
-            assert!(decode_json::<u32>(text).is_err(), "accepted noncanonical text {text}");
+            assert!(
+                decode_json::<u32>(text).is_err(),
+                "accepted noncanonical text {text}"
+            );
         }
         assert_eq!(decode_json::<u32>("1").unwrap(), 1);
     }
@@ -457,22 +583,72 @@ mod tests {
 
     #[test]
     fn wide_integer_boundaries_roundtrip_as_strings() {
-        for value in [Integers { unsigned: 0, signed: 0 }, Integers { unsigned: u64::MAX, signed: i64::MIN }, Integers { unsigned: 9_007_199_254_740_993, signed: i64::MAX }] {
+        for value in [
+            Integers {
+                unsigned: 0,
+                signed: 0,
+            },
+            Integers {
+                unsigned: u64::MAX,
+                signed: i64::MIN,
+            },
+            Integers {
+                unsigned: 9_007_199_254_740_993,
+                signed: i64::MAX,
+            },
+        ] {
             let json = serde_json::to_value(&value).unwrap();
-            assert_eq!(json, json!({"unsigned": value.unsigned.to_string(), "signed": value.signed.to_string()}));
+            assert_eq!(
+                json,
+                json!({"unsigned": value.unsigned.to_string(), "signed": value.signed.to_string()})
+            );
             assert_eq!(serde_json::from_value::<Integers>(json).unwrap(), value);
         }
     }
 
     #[test]
     fn noncanonical_and_out_of_width_integers_are_rejected() {
-        for text in ["", "00", "01", "+1", "-0", " 1", "1 ", "1.0", "1e0", "١", "18446744073709551616"] {
-            assert!(u64_decimal::parse(text).is_err(), "accepted unsigned {text:?}");
+        for text in [
+            "",
+            "00",
+            "01",
+            "+1",
+            "-0",
+            " 1",
+            "1 ",
+            "1.0",
+            "1e0",
+            "١",
+            "18446744073709551616",
+        ] {
+            assert!(
+                u64_decimal::parse(text).is_err(),
+                "accepted unsigned {text:?}"
+            );
         }
-        for text in ["", "00", "-00", "-01", "+1", "-0", " 1", "1.0", "1e0", "9223372036854775808", "-9223372036854775809"] {
-            assert!(i64_decimal::parse(text).is_err(), "accepted signed {text:?}");
+        for text in [
+            "",
+            "00",
+            "-00",
+            "-01",
+            "+1",
+            "-0",
+            " 1",
+            "1.0",
+            "1e0",
+            "9223372036854775808",
+            "-9223372036854775809",
+        ] {
+            assert!(
+                i64_decimal::parse(text).is_err(),
+                "accepted signed {text:?}"
+            );
         }
-        for value in [json!({"unsigned": 1, "signed": "1"}), json!({"unsigned": "1", "signed": 1}), json!({"unsigned": null, "signed": "1"})] {
+        for value in [
+            json!({"unsigned": 1, "signed": "1"}),
+            json!({"unsigned": "1", "signed": 1}),
+            json!({"unsigned": null, "signed": "1"}),
+        ] {
             assert!(serde_json::from_value::<Integers>(value).is_err());
         }
     }
@@ -490,12 +666,28 @@ mod tests {
             assert_eq!(timestamp.to_string(), expected);
             assert_eq!(serde_json::to_value(timestamp).unwrap(), json!(expected));
         }
-        assert_eq!(TimestampMillis::from_unix_millis(-1).unwrap().as_unix_millis(), -1);
+        assert_eq!(
+            TimestampMillis::from_unix_millis(-1)
+                .unwrap()
+                .as_unix_millis(),
+            -1
+        );
     }
 
     #[test]
     fn invalid_dates_zones_submillis_and_unrepresentable_instants_are_rejected() {
-        for text in ["2026-10-01T03:04:05", "2026-10-01T03:04:05.1234Z", "2026-10-01T03:04:05.000000001Z", "2026-02-29T00:00:00Z", "2026-10-01T24:00:00Z", "2026-10-01T03:04:05+24:00", "2026-10-01T03:04:05.Z", "2016-12-31T23:59:60Z", "10000-01-01T00:00:00Z", "9999-12-31T23:59:59-01:00"] {
+        for text in [
+            "2026-10-01T03:04:05",
+            "2026-10-01T03:04:05.1234Z",
+            "2026-10-01T03:04:05.000000001Z",
+            "2026-02-29T00:00:00Z",
+            "2026-10-01T24:00:00Z",
+            "2026-10-01T03:04:05+24:00",
+            "2026-10-01T03:04:05.Z",
+            "2016-12-31T23:59:60Z",
+            "10000-01-01T00:00:00Z",
+            "9999-12-31T23:59:59-01:00",
+        ] {
             assert!(text.parse::<TimestampMillis>().is_err(), "accepted {text}");
         }
         assert!(TimestampMillis::from_unix_millis(i64::MAX).is_err());
@@ -511,7 +703,11 @@ mod tests {
 
     #[test]
     fn patch_preserves_absent_null_and_present_states() {
-        for (value, expected) in [(json!({}), Patch::Absent), (json!({"name": null}), Patch::Null), (json!({"name": "Ada"}), Patch::Value("Ada".to_owned()))] {
+        for (value, expected) in [
+            (json!({}), Patch::Absent),
+            (json!({"name": null}), Patch::Null),
+            (json!({"name": "Ada"}), Patch::Value("Ada".to_owned())),
+        ] {
             let update: Update = serde_json::from_value(value.clone()).unwrap();
             assert_eq!(update.name, expected);
             assert_eq!(serde_json::to_value(&update).unwrap(), value);

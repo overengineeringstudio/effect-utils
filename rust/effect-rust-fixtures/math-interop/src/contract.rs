@@ -30,10 +30,16 @@ pub struct Order {
 
 #[effect_rust::contract]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum Discount {
     None,
-    Percent { percent: u8 },
+    Percent {
+        percent: u8,
+    },
     Fixed {
         #[wire(u64)]
         amount_cents: u64,
@@ -55,9 +61,16 @@ pub struct Receipt {
 
 #[effect_rust::contract]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum Quote {
-    Priced { receipt: Receipt, note: Option<String> },
+    Priced {
+        receipt: Receipt,
+        note: Option<String>,
+    },
     Free {
         #[wire(u64)]
         order_id: u64,
@@ -87,10 +100,14 @@ fn safe_integer<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64
 /// Prices an order; `note: null` clears the note, `Absent` keeps none.
 #[must_use]
 pub fn quote(order: Order, discount: &Discount) -> Option<Quote> {
-    let gross = order.unit_price_cents.checked_mul(u64::from(order.quantity))?;
+    let gross = order
+        .unit_price_cents
+        .checked_mul(u64::from(order.quantity))?;
     let total = match discount {
         Discount::None => gross,
-        Discount::Percent { percent } => gross.checked_mul(u64::from(100_u8.saturating_sub(*percent)))? / 100,
+        Discount::Percent { percent } => {
+            gross.checked_mul(u64::from(100_u8.saturating_sub(*percent)))? / 100
+        }
         Discount::Fixed { amount_cents } => gross.saturating_sub(*amount_cents),
     };
     if total == 0 {
@@ -100,7 +117,15 @@ pub fn quote(order: Order, discount: &Discount) -> Option<Quote> {
         Patch::Absent | Patch::Null => None,
         Patch::Value(note) => Some(note),
     };
-    Some(Quote::Priced { receipt: Receipt { order_id: order.id, sku: order.sku, total_cents: total, placed_at: order.placed_at }, note })
+    Some(Quote::Priced {
+        receipt: Receipt {
+            order_id: order.id,
+            sku: order.sku,
+            total_cents: total,
+            placed_at: order.placed_at,
+        },
+        note,
+    })
 }
 
 #[cfg(test)]
@@ -117,7 +142,9 @@ mod tests {
         canonical: Option<serde_json::Value>,
     }
 
-    fn roundtrip<T: serde::de::DeserializeOwned + Serialize>(input: &str) -> Result<String, effect_rust::ValidationError> {
+    fn roundtrip<T: serde::de::DeserializeOwned + Serialize>(
+        input: &str,
+    ) -> Result<String, effect_rust::ValidationError> {
         encode_json(&decode_json::<T>(input)?, &["kind"])
     }
 
@@ -136,7 +163,11 @@ mod tests {
             let label = format!("{}/{}", vector.contract, vector.name);
             match (vector.accept, result) {
                 (true, Ok(encoded)) => {
-                    let canonical = encode_json(vector.canonical.as_ref().unwrap_or(&vector.input), &["kind"]).unwrap();
+                    let canonical = encode_json(
+                        vector.canonical.as_ref().unwrap_or(&vector.input),
+                        &["kind"],
+                    )
+                    .unwrap();
                     assert_eq!(encoded, canonical, "{label}");
                 }
                 (false, Err(_)) => {}
@@ -174,7 +205,10 @@ mod tests {
         let input = r#"{"id":"9007199254740993","sku":"ABC-1234","quantity":3,"unitPriceCents":"250","placedAt":"2026-10-02T12:00:00.5+02:00"}"#;
         let order: Order = decode_json(input).unwrap();
         assert_eq!(order.note, Patch::Absent);
-        assert_eq!(encode_json(&order, &[]).unwrap(), r#"{"id":"9007199254740993","placedAt":"2026-10-02T10:00:00.500Z","quantity":3,"sku":"ABC-1234","unitPriceCents":"250"}"#);
+        assert_eq!(
+            encode_json(&order, &[]).unwrap(),
+            r#"{"id":"9007199254740993","placedAt":"2026-10-02T10:00:00.500Z","quantity":3,"sku":"ABC-1234","unitPriceCents":"250"}"#
+        );
         let cleared: Order = decode_json(&input.replace('}', r#","note":null}"#)).unwrap();
         assert_eq!(cleared.note, Patch::Null);
     }

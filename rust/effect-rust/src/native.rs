@@ -23,7 +23,10 @@ impl PanicError {
                 Err(_) => "non-string panic payload".to_owned(),
             },
         };
-        Self { name: name.to_owned(), message }
+        Self {
+            name: name.to_owned(),
+            message,
+        }
     }
 }
 
@@ -39,7 +42,8 @@ impl std::error::Error for PanicError {}
 /// # Errors
 /// Converts an unwinding panic into `PanicError`. Aborting panics cannot be caught.
 pub fn guard<T>(name: &str, operation: impl FnOnce() -> T) -> Result<T, PanicError> {
-    catch_unwind(AssertUnwindSafe(operation)).map_err(|payload| PanicError::from_payload(name, payload))
+    catch_unwind(AssertUnwindSafe(operation))
+        .map_err(|payload| PanicError::from_payload(name, payload))
 }
 
 /// Guards **every poll**, including polls after host awaits, and completion-time
@@ -51,7 +55,13 @@ pub fn guard<T>(name: &str, operation: impl FnOnce() -> T) -> Result<T, PanicErr
 pub async fn guard_future<F: Future>(name: &str, future: F) -> Result<F::Output, PanicError> {
     let mut future = pin!(Some(future));
     poll_fn(|context| {
-        let result = match guard(name, || future.as_mut().as_pin_mut().expect("pending future").poll(context)) {
+        let result = match guard(name, || {
+            future
+                .as_mut()
+                .as_pin_mut()
+                .expect("pending future")
+                .poll(context)
+        }) {
             Ok(Poll::Pending) => return Poll::Pending,
             Ok(Poll::Ready(output)) => Ok(output),
             Err(error) => Err(error),
@@ -60,7 +70,8 @@ pub async fn guard_future<F: Future>(name: &str, future: F) -> Result<F::Output,
         // A poll panic remains the primary defect if cleanup also panics.
         let dropped = guard(name, || future.as_mut().set(None));
         Poll::Ready(result.and_then(|output| dropped.map(|()| output)))
-    }).await
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -74,7 +85,10 @@ mod tests {
         assert_eq!(error.name, "hash");
         assert_eq!(error.message, "bad hash state");
         assert!(error.to_string().starts_with("RUST_PANIC:"));
-        let owned = guard("owned", || std::panic::panic_any(String::from("owned payload"))).unwrap_err();
+        let owned = guard("owned", || {
+            std::panic::panic_any(String::from("owned payload"))
+        })
+        .unwrap_err();
         assert_eq!(owned.message, "owned payload");
         let opaque = guard("opaque", || std::panic::panic_any(17_u32)).unwrap_err();
         assert_eq!(opaque.message, "non-string panic payload");
@@ -104,9 +118,17 @@ mod tests {
     fn first_poll_panic_is_caught_and_domain_failure_is_not_a_panic() {
         let mut panicking = pin!(guard_future("first", async { panic!("first poll") }));
         let mut context = Context::from_waker(Waker::noop());
-        assert!(matches!(panicking.as_mut().poll(&mut context), Poll::Ready(Err(_))));
-        let mut domain_failure = pin!(guard_future("domain", async { Err::<(), _>("expected failure") }));
-        assert_eq!(domain_failure.as_mut().poll(&mut context), Poll::Ready(Ok(Err("expected failure"))));
+        assert!(matches!(
+            panicking.as_mut().poll(&mut context),
+            Poll::Ready(Err(_))
+        ));
+        let mut domain_failure = pin!(guard_future("domain", async {
+            Err::<(), _>("expected failure")
+        }));
+        assert_eq!(
+            domain_failure.as_mut().poll(&mut context),
+            Poll::Ready(Ok(Err("expected failure")))
+        );
     }
 
     #[test]
@@ -124,7 +146,10 @@ mod tests {
             }
         }
         let mut guarded = pin!(guard_future("cleanup", DropPanic));
-        let Poll::Ready(Err(error)) = guarded.as_mut().poll(&mut Context::from_waker(Waker::noop())) else {
+        let Poll::Ready(Err(error)) = guarded
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+        else {
             panic!("completion cleanup panic escaped its boundary");
         };
         assert_eq!(error.message, "completion cleanup");
@@ -143,7 +168,10 @@ mod tests {
             let _guard = DropPanic;
             std::future::pending::<()>().await;
         };
-        let mut guarded = pin!(guard_future("cancel", crate::host::cancel_future(&token, future)));
+        let mut guarded = pin!(guard_future(
+            "cancel",
+            crate::host::cancel_future(&token, future)
+        ));
         let mut context = Context::from_waker(Waker::noop());
         assert_eq!(guarded.as_mut().poll(&mut context), Poll::Pending);
         token.cancel();

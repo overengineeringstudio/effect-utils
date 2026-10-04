@@ -26,13 +26,19 @@ pub fn hasher() -> hash_core::Hasher {
 }
 
 #[effect_rust::export(async, name = "hashAll")]
-pub async fn hash_all(source: host::Source<host::Abortable>, paths: Vec<String>) -> Result<String, SourceError> {
+pub async fn hash_all(
+    source: host::Source<host::Abortable>,
+    paths: Vec<String>,
+) -> Result<String, SourceError> {
     let mut hasher = hash_core::Hasher::default();
     for path in paths {
-        let bytes = source.read(&path).await.map_err(|error| SourceError::Read {
-            path,
-            message: error.to_string(),
-        })?;
+        let bytes = source
+            .read(&path)
+            .await
+            .map_err(|error| SourceError::Read {
+                path,
+                message: error.to_string(),
+            })?;
         hasher.update(&bytes);
     }
     Ok(hasher.finish())
@@ -45,10 +51,13 @@ pub async fn read_range(
     offset: u64,
     max_bytes: u32,
 ) -> Result<Bytes, SourceError> {
-    source.read_range(&path, offset, max_bytes).await.map_err(|error| SourceError::Read {
-        path,
-        message: error.to_string(),
-    })
+    source
+        .read_range(&path, offset, max_bytes)
+        .await
+        .map_err(|error| SourceError::Read {
+            path,
+            message: error.to_string(),
+        })
 }
 
 #[effect_rust::export(async, name = "hashRanges")]
@@ -60,25 +69,37 @@ pub async fn hash_ranges(
     let mut hasher = hash_core::Hasher::default();
     let mut offset = 0_u64;
     loop {
-        let bytes = source.read_range(&path, offset, max_bytes).await.map_err(|error| SourceError::Read {
-            path: path.clone(),
-            message: error.to_string(),
-        })?;
-        if bytes.is_empty() { break; }
+        let bytes = source
+            .read_range(&path, offset, max_bytes)
+            .await
+            .map_err(|error| SourceError::Read {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        if bytes.is_empty() {
+            break;
+        }
         hasher.update(&bytes);
-        offset = offset.checked_add(bytes.len() as u64).ok_or_else(|| SourceError::Read {
-            path: path.clone(),
-            message: "range offset exceeds u64".to_owned(),
-        })?;
-        source.yield_now().await.map_err(|error| SourceError::Read {
-            path: path.clone(),
-            message: error.to_string(),
-        })?;
+        offset = offset
+            .checked_add(bytes.len() as u64)
+            .ok_or_else(|| SourceError::Read {
+                path: path.clone(),
+                message: "range offset exceeds u64".to_owned(),
+            })?;
+        source
+            .yield_now()
+            .await
+            .map_err(|error| SourceError::Read {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
     }
     Ok(hasher.finish())
 }
 
 #[effect_rust::export(borrowed, name = "borrowedChecksum")]
 pub fn borrowed_checksum(bytes: &[u8]) -> u32 {
-    bytes.iter().fold(0_u32, |sum, byte| sum.wrapping_add(u32::from(*byte)))
+    bytes
+        .iter()
+        .fold(0_u32, |sum, byte| sum.wrapping_add(u32::from(*byte)))
 }

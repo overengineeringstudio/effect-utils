@@ -19,7 +19,9 @@ struct State {
 
 impl State {
     fn waiters(&self) -> MutexGuard<'_, Vec<Option<Waker>>> {
-        self.waiters.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.waiters
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -59,12 +61,19 @@ impl CancellationToken {
     /// # Errors
     /// Returns `CancellationError` once this token or any clone is cancelled.
     pub fn check(&self) -> Result<(), CancellationError> {
-        if self.is_cancelled() { Err(CancellationError) } else { Ok(()) }
+        if self.is_cancelled() {
+            Err(CancellationError)
+        } else {
+            Ok(())
+        }
     }
 
     /// Waits for cancellation without holding a lock across a poll or await.
     pub fn cancelled(&self) -> Cancelled<'_> {
-        Cancelled { token: self, slot: None }
+        Cancelled {
+            token: self,
+            slot: None,
+        }
     }
 }
 
@@ -87,7 +96,10 @@ impl Future for Cancelled<'_> {
         }
         if let Some(slot) = this.slot {
             let waker = &mut waiters[slot];
-            if !waker.as_ref().is_some_and(|waker| waker.will_wake(context.waker())) {
+            if !waker
+                .as_ref()
+                .is_some_and(|waker| waker.will_wake(context.waker()))
+            {
                 *waker = Some(context.waker().clone());
             }
         } else {
@@ -140,15 +152,27 @@ mod tests {
         let second_waker = Waker::from(second_counter.clone());
         let mut first = token.cancelled();
         let mut second = token.cancelled();
-        assert_eq!(Pin::new(&mut first).poll(&mut Context::from_waker(&first_waker)), Poll::Pending);
-        assert_eq!(Pin::new(&mut second).poll(&mut Context::from_waker(&second_waker)), Poll::Pending);
+        assert_eq!(
+            Pin::new(&mut first).poll(&mut Context::from_waker(&first_waker)),
+            Poll::Pending
+        );
+        assert_eq!(
+            Pin::new(&mut second).poll(&mut Context::from_waker(&second_waker)),
+            Poll::Pending
+        );
         clone.cancel();
         token.cancel();
         assert_eq!(token.check(), Err(CancellationError));
         assert_eq!(first_counter.0.load(Ordering::Relaxed), 1);
         assert_eq!(second_counter.0.load(Ordering::Relaxed), 1);
-        assert_eq!(Pin::new(&mut first).poll(&mut Context::from_waker(&first_waker)), Poll::Ready(()));
-        assert_eq!(Pin::new(&mut second).poll(&mut Context::from_waker(&second_waker)), Poll::Ready(()));
+        assert_eq!(
+            Pin::new(&mut first).poll(&mut Context::from_waker(&first_waker)),
+            Poll::Ready(())
+        );
+        assert_eq!(
+            Pin::new(&mut second).poll(&mut Context::from_waker(&second_waker)),
+            Poll::Ready(())
+        );
     }
 
     #[test]
@@ -159,11 +183,20 @@ mod tests {
         let stale_waker = Waker::from(stale_counter.clone());
         let live_waker = Waker::from(live_counter.clone());
         let mut dropped = token.cancelled();
-        assert_eq!(Pin::new(&mut dropped).poll(&mut Context::from_waker(&stale_waker)), Poll::Pending);
+        assert_eq!(
+            Pin::new(&mut dropped).poll(&mut Context::from_waker(&stale_waker)),
+            Poll::Pending
+        );
         drop(dropped);
         let mut live = token.cancelled();
-        assert_eq!(Pin::new(&mut live).poll(&mut Context::from_waker(&stale_waker)), Poll::Pending);
-        assert_eq!(Pin::new(&mut live).poll(&mut Context::from_waker(&live_waker)), Poll::Pending);
+        assert_eq!(
+            Pin::new(&mut live).poll(&mut Context::from_waker(&stale_waker)),
+            Poll::Pending
+        );
+        assert_eq!(
+            Pin::new(&mut live).poll(&mut Context::from_waker(&live_waker)),
+            Poll::Pending
+        );
         token.cancel();
         assert_eq!(stale_counter.0.load(Ordering::Relaxed), 0);
         assert_eq!(live_counter.0.load(Ordering::Relaxed), 1);
@@ -174,6 +207,9 @@ mod tests {
         let token = CancellationToken::new();
         token.cancel();
         let mut waiter = token.cancelled();
-        assert_eq!(Pin::new(&mut waiter).poll(&mut Context::from_waker(Waker::noop())), Poll::Ready(()));
+        assert_eq!(
+            Pin::new(&mut waiter).poll(&mut Context::from_waker(Waker::noop())),
+            Poll::Ready(())
+        );
     }
 }

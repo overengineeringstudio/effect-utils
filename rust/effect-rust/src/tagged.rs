@@ -10,7 +10,9 @@
 //! `#[effect_rust::contract]` implements [`TaggedUnion`] for tagged enums; the
 //! trait is public so hand-written contracts can opt into the same decoder.
 
-use serde::de::{self, value::MapAccessDeserializer, DeserializeSeed, Deserializer, MapAccess, Visitor};
+use serde::de::{
+    self, value::MapAccessDeserializer, DeserializeSeed, Deserializer, MapAccess, Visitor,
+};
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -26,19 +28,27 @@ pub trait TaggedUnion: Sized {
     ///
     /// # Errors
     /// Variant payload errors.
-    fn deserialize_variant<'de, D: Deserializer<'de>>(index: usize, payload: D) -> Result<Self, D::Error>;
+    fn deserialize_variant<'de, D: Deserializer<'de>>(
+        index: usize,
+        payload: D,
+    ) -> Result<Self, D::Error>;
 }
 
 /// Decodes a [`TaggedUnion`]; use as the body of its `Deserialize` impl.
 ///
 /// # Errors
 /// Missing, duplicate, non-string or unknown tags and variant payload errors.
-pub fn deserialize<'de, T: TaggedUnion, D: Deserializer<'de>>(deserializer: D) -> Result<T, D::Error> {
+pub fn deserialize<'de, T: TaggedUnion, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<T, D::Error> {
     deserializer.deserialize_map(TaggedVisitor::<T>(PhantomData))
 }
 
 fn tag_index<T: TaggedUnion, E: de::Error>(tag: &str) -> Result<usize, E> {
-    T::TAGS.iter().position(|known| *known == tag).ok_or_else(|| E::unknown_variant(tag, T::TAGS))
+    T::TAGS
+        .iter()
+        .position(|known| *known == tag)
+        .ok_or_else(|| E::unknown_variant(tag, T::TAGS))
 }
 
 /// Resolves the tag while the deserializer is positioned on its value, so path
@@ -59,7 +69,12 @@ impl<'de, T: TaggedUnion> Visitor<'de> for TaggedVisitor<T> {
     type Value = T;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "a `{}` object tagged by `{}`", T::NAME, T::TAG_FIELD)
+        write!(
+            formatter,
+            "a `{}` object tagged by `{}`",
+            T::NAME,
+            T::TAG_FIELD
+        )
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<T, A::Error> {
@@ -83,7 +98,9 @@ impl<'de, T: TaggedUnion> Visitor<'de> for TaggedVisitor<T> {
         }
         let tag = match object.remove(T::TAG_FIELD) {
             Some(serde_json::Value::String(tag)) => tag,
-            Some(other) => return Err(de::Error::invalid_type(unexpected(&other), &"a string tag")),
+            Some(other) => {
+                return Err(de::Error::invalid_type(unexpected(&other), &"a string tag"))
+            }
             None => return Err(de::Error::missing_field(T::TAG_FIELD)),
         };
         let index = tag_index::<T, A::Error>(&tag)?;
