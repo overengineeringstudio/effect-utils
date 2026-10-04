@@ -1,3 +1,4 @@
+/** Canonical package version and embedded stamp supplied by a Vite consumer. */
 export interface BuildIdentityPluginOptions {
   readonly baseVersion: string
   /** Canonical JSON Nix stamp, or the source placeholder '__CLI_BUILD_STAMP__'. */

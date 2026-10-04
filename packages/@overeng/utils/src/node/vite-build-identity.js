@@ -71,7 +71,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
     load(id) {
       if (id !== resolvedId) return undefined
       const formatterPath = fileURLToPath(new URL('./cli-build-identity.js', import.meta.url))
-      return `import { resolveCliBuildIdentity } from ${JSON.stringify(formatterPath)};\nexport const buildIdentity = resolveCliBuildIdentity(${JSON.stringify(browserOptions)});\nexport const deploymentId = ${serving ? JSON.stringify('dev (HMR)') : 'globalThis.__BUILD_DEPLOYMENT_ID__'};\n`
+      return `import { resolveCliBuildIdentity } from ${JSON.stringify(formatterPath)};\nexport const buildIdentity = resolveCliBuildIdentity(${JSON.stringify(browserOptions)});\nexport const deploymentId = ${serving === true ? JSON.stringify('dev (HMR)') : 'globalThis.__BUILD_DEPLOYMENT_ID__'};\n`
     },
     generateBundle() {
       this.emitFile({
