@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
@@ -23,6 +24,7 @@ const sourcePaths = [
   'packages/@overeng/content-address/src/schema.ts',
   'packages/@overeng/effect-rust/src/mod.ts',
   'pnpm-lock.yaml',
+  'flake.lock',
   'rust/Cargo.toml',
   'rust/Cargo.lock',
 ]
@@ -165,11 +167,28 @@ NodeRuntime.runMain(
     )
     // JSON Schema cannot carry comments: generation.json owns its provenance.
     // Rust/TOML use native comments in addition to the enclosing manifest.
-    for (const path of Object.keys(files)) {
+    for (const [path, content] of Object.entries(files)) {
       const prefix =
         path.endsWith('.rs') === true ? '//' : path.endsWith('.toml') === true ? '#' : undefined
-      if (prefix !== undefined)
-        files[path] = `${provenance.map((line) => `${prefix} ${line}`).join('\n')}\n${files[path]}`
+      const source =
+        prefix === undefined
+          ? content
+          : `${provenance.map((line) => `${prefix} ${line}`).join('\n')}\n${content}`
+      files[path] =
+        path.endsWith('.rs') === true
+          ? yield* Effect.try({
+              try: () =>
+                execFileSync('rustfmt', ['--edition', '2021', '--emit', 'stdout'], {
+                  input: source,
+                  encoding: 'utf8',
+                }),
+              catch: (cause) =>
+                new ContractGenerationError({
+                  message: `Formatting ${contractPath}/${path} failed: ${cause}`,
+                  paths: [`${contractPath}/${path}`],
+                }),
+            })
+          : source
     }
     const artifacts = Object.entries(files)
       .map(([path, content]) => ({ path, sha256: sha256({ content }) }))

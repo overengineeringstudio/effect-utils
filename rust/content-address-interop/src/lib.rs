@@ -3,7 +3,7 @@ use content_address_contract::{
     ContentAddressContract1, ContentDescriptor, ContentDigest, MediaType,
 };
 use content_address_core::{Digest, EntryKind, TreeHasher};
-use effect_rust::{Bytes, host};
+use effect_rust::{host, Bytes};
 
 /// Preorder records supplied by the host; `path` is root-relative (`.` for root).
 #[effect_rust::contract]
@@ -96,10 +96,13 @@ pub async fn hash_tree(
                     }
                     hasher.update(&bytes);
                     offset += bytes.len() as u64;
-                    source.yield_now().await.map_err(|error| ContentAddressError::Read {
-                        path: read_path.clone(),
-                        message: error.to_string(),
-                    })?;
+                    source
+                        .yield_now()
+                        .await
+                        .map_err(|error| ContentAddressError::Read {
+                            path: read_path.clone(),
+                            message: error.to_string(),
+                        })?;
                 }
             }
         }

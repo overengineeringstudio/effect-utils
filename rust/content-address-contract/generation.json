@@ -8,6 +8,10 @@
   },
   "inputs": [
     {
+      "path": "flake.lock",
+      "sha256": "80638622b37c8c7349f3734af5cecac8ba036a0fb21a612d95e7f59463131382"
+    },
+    {
       "path": "packages/@overeng/content-address/src/generate-contract.ts",
       "sha256": "bd41f8902fa45ab655b83a21e6f4c0f87cd40c88ee47c24c0846e58b053ffcfc"
     },

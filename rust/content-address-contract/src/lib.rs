@@ -16,18 +16,24 @@ pub type I16 = i16;
 pub type I32 = i32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidationError { pub path: String, pub message: String }
+pub struct ValidationError {
+    pub path: String,
+    pub message: String,
+}
 impl ValidationError {
     pub fn new(path: impl Into<String>, message: impl Into<String>) -> Self {
-        Self { path: path.into(), message: message.into() }
+        Self {
+            path: path.into(),
+            message: message.into(),
+        }
     }
 }
 impl std::fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}: {}", self.path, self.message) }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.path, self.message)
+    }
 }
 impl std::error::Error for ValidationError {}
-
-
 
 // Keep authored bounds independent of storage width. Every construction path validates,
 // including binary decoding; the private native field cannot bypass the invariant.
@@ -38,16 +44,25 @@ macro_rules! bounded_integer {
         impl<const MIN: $native, const MAX: $native> $name<MIN, MAX> {
             pub fn new(value: $native) -> Result<Self, ValidationError> {
                 if MIN > MAX || value < MIN || value > MAX {
-                    return Err(ValidationError::new("$", format!("integer must be in {MIN}..={MAX}")));
+                    return Err(ValidationError::new(
+                        "$",
+                        format!("integer must be in {MIN}..={MAX}"),
+                    ));
                 }
                 Ok(Self(value))
             }
-            pub fn into_inner(self) -> $native { self.0 }
-            pub fn as_inner(&self) -> &$native { &self.0 }
+            pub fn into_inner(self) -> $native {
+                self.0
+            }
+            pub fn as_inner(&self) -> &$native {
+                &self.0
+            }
         }
         impl<const MIN: $native, const MAX: $native> TryFrom<$native> for $name<MIN, MAX> {
             type Error = ValidationError;
-            fn try_from(value: $native) -> Result<Self, Self::Error> { Self::new(value) }
+            fn try_from(value: $native) -> Result<Self, Self::Error> {
+                Self::new(value)
+            }
         }
         impl<const MIN: $native, const MAX: $native> Serialize for $name<MIN, MAX> {
             fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -59,24 +74,40 @@ macro_rules! bounded_integer {
             fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
                 if $number {
                     struct NumberVisitor<const LOW: $native, const HIGH: $native>;
-                    impl<const LOW: $native, const HIGH: $native> serde::de::Visitor<'_> for NumberVisitor<LOW, HIGH> {
+                    impl<const LOW: $native, const HIGH: $native> serde::de::Visitor<'_>
+                        for NumberVisitor<LOW, HIGH>
+                    {
                         type Value = $name<LOW, HIGH>;
                         fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                             write!(f, "an integer in {LOW}..={HIGH}")
                         }
-                        fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                        fn visit_u64<E: serde::de::Error>(
+                            self,
+                            value: u64,
+                        ) -> Result<Self::Value, E> {
                             let value = <$native>::try_from(value).map_err(E::custom)?;
                             $name::new(value).map_err(E::custom)
                         }
-                        fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                        fn visit_i64<E: serde::de::Error>(
+                            self,
+                            value: i64,
+                        ) -> Result<Self::Value, E> {
                             let value = <$native>::try_from(value).map_err(E::custom)?;
                             $name::new(value).map_err(E::custom)
                         }
-                        fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Self::Value, E> {
-                            if !value.is_finite() || value.fract() != 0.0
+                        fn visit_f64<E: serde::de::Error>(
+                            self,
+                            value: f64,
+                        ) -> Result<Self::Value, E> {
+                            if !value.is_finite()
+                                || value.fract() != 0.0
                                 || !(-9007199254740991.0..=9007199254740991.0).contains(&value)
-                                || value < LOW as f64 || value > HIGH as f64 {
-                                return Err(E::custom("expected a safe integer within the authored bounds"));
+                                || value < LOW as f64
+                                || value > HIGH as f64
+                            {
+                                return Err(E::custom(
+                                    "expected a safe integer within the authored bounds",
+                                ));
                             }
                             // The finite, integral, safe-number and native-bound checks make this narrowing exact.
                             $name::new(value as $native).map_err(E::custom)
@@ -96,23 +127,40 @@ macro_rules! bounded_integer {
         impl<const MIN: $native, const MAX: $native> borsh::BorshDeserialize for $name<MIN, MAX> {
             fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
                 let value = <$native as borsh::BorshDeserialize>::deserialize_reader(reader)?;
-                Self::new(value).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+                Self::new(value)
+                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
             }
         }
     };
 }
-bounded_integer!(BoundedNumberU64, u64, u64, |value: u64| value, |value: u64| value, true);
+bounded_integer!(
+    BoundedNumberU64,
+    u64,
+    u64,
+    |value: u64| value,
+    |value: u64| value,
+    true
+);
 
-
-
-
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, borsh::BorshSerialize, borsh::BorshDeserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    borsh::BorshSerialize,
+    borsh::BorshDeserialize,
+)]
 #[borsh(crate = "borsh")]
 pub struct Null;
 impl Serialize for Null {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> { serializer.serialize_unit() }
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_unit()
+    }
 }
 impl<'de> Deserialize<'de> for Null {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -121,41 +169,58 @@ impl<'de> Deserialize<'de> for Null {
 }
 
 #[doc(hidden)]
-pub fn required<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(deserializer: D) -> Result<T, D::Error> {
+pub fn required<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<T, D::Error> {
     T::deserialize(deserializer)
 }
 #[doc(hidden)]
-pub fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<T>, D::Error> {
+pub fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
     T::deserialize(deserializer).map(Some)
 }
 
 #[doc(hidden)]
 pub mod tagged {
-    use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor, value::MapAccessDeserializer};
+    use serde::de::{
+        self, value::MapAccessDeserializer, DeserializeSeed, Deserializer, MapAccess, Visitor,
+    };
     use std::{fmt, marker::PhantomData};
     pub trait TaggedUnion: Sized {
         const NAME: &'static str;
         const TAG_FIELD: &'static str;
         const TAGS: &'static [&'static str];
-        fn deserialize_variant<'de, D: Deserializer<'de>>(index: usize, payload: D) -> Result<Self, D::Error>;
+        fn deserialize_variant<'de, D: Deserializer<'de>>(
+            index: usize,
+            payload: D,
+        ) -> Result<Self, D::Error>;
     }
     fn tag_index<T: TaggedUnion, E: de::Error>(tag: &str) -> Result<usize, E> {
-        T::TAGS.iter().position(|known| *known == tag).ok_or_else(|| E::unknown_variant(tag, T::TAGS))
+        T::TAGS
+            .iter()
+            .position(|known| *known == tag)
+            .ok_or_else(|| E::unknown_variant(tag, T::TAGS))
     }
     struct TagSeed<T>(PhantomData<T>);
     impl<'de, T: TaggedUnion> DeserializeSeed<'de> for TagSeed<T> {
         type Value = usize;
         fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<usize, D::Error> {
-            let tag = <std::borrow::Cow<'de, str> as serde::Deserialize>::deserialize(deserializer)?;
+            let tag =
+                <std::borrow::Cow<'de, str> as serde::Deserialize>::deserialize(deserializer)?;
             tag_index::<T, D::Error>(&tag)
         }
     }
     struct TaggedVisitor<T>(PhantomData<T>);
     impl<'de, T: TaggedUnion> Visitor<'de> for TaggedVisitor<T> {
         type Value = T;
-        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "a {} object tagged by {}", T::NAME, T::TAG_FIELD) }
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "a {} object tagged by {}", T::NAME, T::TAG_FIELD)
+        }
         fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<T, A::Error> {
-            let first = map.next_key::<String>()?.ok_or_else(|| de::Error::missing_field(T::TAG_FIELD))?;
+            let first = map
+                .next_key::<String>()?
+                .ok_or_else(|| de::Error::missing_field(T::TAG_FIELD))?;
             if first == T::TAG_FIELD {
                 let index = map.next_value_seed(TagSeed::<T>(PhantomData))?;
                 return T::deserialize_variant(index, MapAccessDeserializer::new(map));
@@ -164,7 +229,9 @@ pub mod tagged {
             let mut object = serde_json::Map::new();
             object.insert(first, map.next_value()?);
             while let Some((key, value)) = map.next_entry::<String, serde_json::Value>()? {
-                if object.contains_key(&key) { return Err(de::Error::custom(format_args!("duplicate field {key}"))); }
+                if object.contains_key(&key) {
+                    return Err(de::Error::custom(format_args!("duplicate field {key}")));
+                }
                 object.insert(key, value);
             }
             let tag = match object.remove(T::TAG_FIELD) {
@@ -172,16 +239,21 @@ pub mod tagged {
                 _ => return Err(de::Error::custom("missing or non-string discriminant")),
             };
             let index = tag_index::<T, A::Error>(&tag)?;
-            T::deserialize_variant(index, serde_json::Value::Object(object)).map_err(de::Error::custom)
+            T::deserialize_variant(index, serde_json::Value::Object(object))
+                .map_err(de::Error::custom)
         }
     }
-    pub fn deserialize<'de, T: TaggedUnion, D: Deserializer<'de>>(deserializer: D) -> Result<T, D::Error> {
+    pub fn deserialize<'de, T: TaggedUnion, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<T, D::Error> {
         deserializer.deserialize_map(TaggedVisitor::<T>(PhantomData))
     }
 }
 
 // Validate strict I-JSON without buffering values; typed decoding remains streaming and preserves serde paths.
-struct StrictSeed { depth: usize }
+struct StrictSeed {
+    depth: usize,
+}
 impl<'de> serde::de::DeserializeSeed<'de> for StrictSeed {
     type Value = ();
     fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
@@ -190,30 +262,63 @@ impl<'de> serde::de::DeserializeSeed<'de> for StrictSeed {
 }
 impl<'de> serde::de::Visitor<'de> for StrictSeed {
     type Value = ();
-    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("strict I-JSON") }
-    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> { Ok(()) }
-    fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<(), E> { Ok(()) }
-    fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<(), E> { Ok(()) }
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("strict I-JSON")
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<(), E> {
+        Ok(())
+    }
     fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<(), E> {
-        if !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value) { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }
+        if !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value) {
+            return Err(E::custom(
+                "unsafe JSON integer; use a width-annotated decimal string",
+            ));
+        }
         Ok(())
     }
     fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<(), E> {
-        if value > 9_007_199_254_740_991 { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }
+        if value > 9_007_199_254_740_991 {
+            return Err(E::custom(
+                "unsafe JSON integer; use a width-annotated decimal string",
+            ));
+        }
         Ok(())
     }
-    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<(), E> { Err(E::custom("JSON integers must use canonical base-10 notation")) }
+    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<(), E> {
+        Err(E::custom(
+            "JSON integers must use canonical base-10 notation",
+        ))
+    }
     fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
-        if self.depth >= 128 { return Err(serde::de::Error::custom("JSON depth exceeds 128")); }
-        while seq.next_element_seed(StrictSeed { depth: self.depth + 1 })?.is_some() {}
+        if self.depth >= 128 {
+            return Err(serde::de::Error::custom("JSON depth exceeds 128"));
+        }
+        while seq
+            .next_element_seed(StrictSeed {
+                depth: self.depth + 1,
+            })?
+            .is_some()
+        {}
         Ok(())
     }
     fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-        if self.depth >= 128 { return Err(serde::de::Error::custom("JSON depth exceeds 128")); }
+        if self.depth >= 128 {
+            return Err(serde::de::Error::custom("JSON depth exceeds 128"));
+        }
         let mut keys = std::collections::BTreeSet::new();
         while let Some(key) = map.next_key::<String>()? {
-            if !keys.insert(key) { return Err(serde::de::Error::custom("duplicate object key")); }
-            map.next_value_seed(StrictSeed { depth: self.depth + 1 })?;
+            if !keys.insert(key) {
+                return Err(serde::de::Error::custom("duplicate object key"));
+            }
+            map.next_value_seed(StrictSeed {
+                depth: self.depth + 1,
+            })?;
         }
         Ok(())
     }
@@ -224,14 +329,23 @@ pub fn decode_json<T: serde::de::DeserializeOwned>(input: &str) -> Result<T, Val
     let mut strict = serde_json::Deserializer::from_str(input);
     strict.disable_recursion_limit();
     let mut track = serde_path_to_error::Track::new();
-    StrictSeed { depth: 0 }.deserialize(serde_path_to_error::Deserializer::new(&mut strict, &mut track))
+    StrictSeed { depth: 0 }
+        .deserialize(serde_path_to_error::Deserializer::new(
+            &mut strict,
+            &mut track,
+        ))
         .map_err(|error| ValidationError::new(format!("$.{}", track.path()), error.to_string()))?;
-    strict.end().map_err(|error| ValidationError::new("$", error.to_string()))?;
+    strict
+        .end()
+        .map_err(|error| ValidationError::new("$", error.to_string()))?;
     let mut deserializer = serde_json::Deserializer::from_str(input);
     deserializer.disable_recursion_limit();
-    let value = serde_path_to_error::deserialize(&mut deserializer)
-        .map_err(|error| ValidationError::new(format!("$.{}", error.path()), error.inner().to_string()))?;
-    deserializer.end().map_err(|error| ValidationError::new("$", error.to_string()))?;
+    let value = serde_path_to_error::deserialize(&mut deserializer).map_err(|error| {
+        ValidationError::new(format!("$.{}", error.path()), error.inner().to_string())
+    })?;
+    deserializer
+        .end()
+        .map_err(|error| ValidationError::new("$", error.to_string()))?;
     Ok(value)
 }
 
@@ -242,21 +356,40 @@ impl Serialize for Canonical<'_> {
         match self.0 {
             serde_json::Value::Object(object) => {
                 let mut map = serializer.serialize_map(Some(object.len()))?;
-                let tag = TAG_FIELDS.iter().find(|key| matches!(object.get(**key), Some(serde_json::Value::String(_))));
-                if let Some(key) = tag { map.serialize_entry(*key, &Canonical(&object[*key]))?; }
+                let tag = TAG_FIELDS
+                    .iter()
+                    .find(|key| matches!(object.get(**key), Some(serde_json::Value::String(_))));
+                if let Some(key) = tag {
+                    map.serialize_entry(*key, &Canonical(&object[*key]))?;
+                }
                 // UTF-16 ordering matches the JS canonical encoder. Rust's BTreeMap order already agrees for BMP-only keys.
-                if object.keys().any(|key| key.chars().any(|character| character as u32 >= 0x10000)) {
+                if object
+                    .keys()
+                    .any(|key| key.chars().any(|character| character as u32 >= 0x10000))
+                {
                     let mut entries: Vec<_> = object.iter().collect();
-                    entries.sort_unstable_by(|(left, _), (right, _)| left.encode_utf16().cmp(right.encode_utf16()));
-                    for (key, value) in entries { if tag.is_none_or(|tag| *tag != key) { map.serialize_entry(key, &Canonical(value))?; } }
+                    entries.sort_unstable_by(|(left, _), (right, _)| {
+                        left.encode_utf16().cmp(right.encode_utf16())
+                    });
+                    for (key, value) in entries {
+                        if tag.is_none_or(|tag| *tag != key) {
+                            map.serialize_entry(key, &Canonical(value))?;
+                        }
+                    }
                 } else {
-                    for (key, value) in object { if tag.is_none_or(|tag| *tag != key) { map.serialize_entry(key, &Canonical(value))?; } }
+                    for (key, value) in object {
+                        if tag.is_none_or(|tag| *tag != key) {
+                            map.serialize_entry(key, &Canonical(value))?;
+                        }
+                    }
                 }
                 map.end()
             }
             serde_json::Value::Array(array) => {
                 let mut seq = serializer.serialize_seq(Some(array.len()))?;
-                for value in array { seq.serialize_element(&Canonical(value))?; }
+                for value in array {
+                    seq.serialize_element(&Canonical(value))?;
+                }
                 seq.end()
             }
             other => other.serialize(serializer),
@@ -265,29 +398,52 @@ impl Serialize for Canonical<'_> {
 }
 /// Encode canonical JSON: sorted keys, discriminants first, decimal strings and UTC millisecond timestamps.
 pub fn encode_json<T: Serialize>(value: &T) -> Result<String, ValidationError> {
-    let value = serde_json::to_value(value).map_err(|error| ValidationError::new("$", error.to_string()))?;
-    serde_json::to_string(&Canonical(&value)).map_err(|error| ValidationError::new("$", error.to_string()))
+    let value = serde_json::to_value(value)
+        .map_err(|error| ValidationError::new("$", error.to_string()))?;
+    serde_json::to_string(&Canonical(&value))
+        .map_err(|error| ValidationError::new("$", error.to_string()))
 }
 
 /// Mandatory Borsh framing: contract ID u32 LE, version u16 LE, followed by the payload.
-pub fn encode_frame<T: borsh::BorshSerialize>(value: &T, contract_id: u32, version: u16) -> Result<Vec<u8>, ValidationError> {
+pub fn encode_frame<T: borsh::BorshSerialize>(
+    value: &T,
+    contract_id: u32,
+    version: u16,
+) -> Result<Vec<u8>, ValidationError> {
     let mut output = Vec::new();
     output.extend_from_slice(&contract_id.to_le_bytes());
     output.extend_from_slice(&version.to_le_bytes());
-    borsh::BorshSerialize::serialize(value, &mut output).map_err(|error| ValidationError::new("$/payload", error.to_string()))?;
+    borsh::BorshSerialize::serialize(value, &mut output)
+        .map_err(|error| ValidationError::new("$/payload", error.to_string()))?;
     Ok(output)
 }
-pub fn decode_frame<T: borsh::BorshDeserialize>(input: &[u8], contract_id: u32, version: u16) -> Result<T, ValidationError> {
-    if input.len() < 6 { return Err(ValidationError::new("$/header", "truncated frame header")); }
-    if input[..4] != contract_id.to_le_bytes() { return Err(ValidationError::new("$/header/contractId", "contract ID mismatch")); }
-    if input[4..6] != version.to_le_bytes() { return Err(ValidationError::new("$/header/version", "version mismatch")); }
-    borsh::from_slice(&input[6..]).map_err(|error| ValidationError::new("$/payload", error.to_string()))
+pub fn decode_frame<T: borsh::BorshDeserialize>(
+    input: &[u8],
+    contract_id: u32,
+    version: u16,
+) -> Result<T, ValidationError> {
+    if input.len() < 6 {
+        return Err(ValidationError::new("$/header", "truncated frame header"));
+    }
+    if input[..4] != contract_id.to_le_bytes() {
+        return Err(ValidationError::new(
+            "$/header/contractId",
+            "contract ID mismatch",
+        ));
+    }
+    if input[4..6] != version.to_le_bytes() {
+        return Err(ValidationError::new("$/header/version", "version mismatch"));
+    }
+    borsh::from_slice(&input[6..])
+        .map_err(|error| ValidationError::new("$/payload", error.to_string()))
 }
 
 const TAG_FIELDS: &[&str] = &[];
 
 #[doc = "Codec from contract content-address-contract (IR v1)."]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize, borsh::BorshSerialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize, borsh::BorshSerialize,
+)]
 #[borsh(crate = "borsh")]
 #[serde(try_from = "String")]
 pub struct Codec(String);
@@ -295,30 +451,87 @@ impl Codec {
     pub fn new(value: impl Into<String>) -> Result<Self, ValidationError> {
         let value = value.into();
         let length = value.chars().take(1).count();
-        if length < 1 { return Err(ValidationError::new("Codec", "string shorter than minLength")); }
-        static REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new("^([^\u{9}-\u{d}    -     　﻿]([\u{0}-􏿿]*[^\u{9}-\u{d}    -     　﻿])?)?\\z").expect("admitted portable regex"));
-        if !REGEX.is_match(&value) { return Err(ValidationError::new("Codec", "string must match ^([^\u{9}-\u{d}    -     　﻿]([\u{0}-􏿿]*[^\u{9}-\u{d}    -     　﻿])?)?$")); }
+        if length < 1 {
+            return Err(ValidationError::new(
+                "Codec",
+                "string shorter than minLength",
+            ));
+        }
+        static REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            regex::Regex::new(
+                "^([^\u{9}-\u{d}    -     　﻿]([\u{0}-􏿿]*[^\u{9}-\u{d}    -     　﻿])?)?\\z",
+            )
+            .expect("admitted portable regex")
+        });
+        if !REGEX.is_match(&value) {
+            return Err(ValidationError::new("Codec", "string must match ^([^\u{9}-\u{d}    -     　﻿]([\u{0}-􏿿]*[^\u{9}-\u{d}    -     　﻿])?)?$"));
+        }
         Ok(Self(value))
     }
-    pub fn as_str(&self) -> &str { &self.0 }
-    pub fn into_inner(self) -> String { self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+    pub fn into_inner(self) -> String {
+        self.0
+    }
 }
-impl TryFrom<String> for Codec { type Error = ValidationError; fn try_from(value: String) -> Result<Self, Self::Error> { Self::new(value) } }
-impl TryFrom<&str> for Codec { type Error = ValidationError; fn try_from(value: &str) -> Result<Self, Self::Error> { Self::new(value) } }
-impl std::str::FromStr for Codec { type Err = ValidationError; fn from_str(value: &str) -> Result<Self, Self::Err> { Self::new(value) } }
-impl AsRef<str> for Codec { fn as_ref(&self) -> &str { &self.0 } }
-impl std::borrow::Borrow<str> for Codec { fn borrow(&self) -> &str { &self.0 } }
-impl std::fmt::Display for Codec { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.0) } }
-impl serde::Serialize for Codec { fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> { serializer.serialize_str(&self.0) } }
+impl TryFrom<String> for Codec {
+    type Error = ValidationError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+impl TryFrom<&str> for Codec {
+    type Error = ValidationError;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+impl std::str::FromStr for Codec {
+    type Err = ValidationError;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::new(value)
+    }
+}
+impl AsRef<str> for Codec {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+impl std::borrow::Borrow<str> for Codec {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+impl std::fmt::Display for Codec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl serde::Serialize for Codec {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
 impl borsh::BorshDeserialize for Codec {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let value = <String as borsh::BorshDeserialize>::deserialize_reader(reader)?;
-        Self::new(value).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        Self::new(value)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 }
 
 #[doc = "ContentDescriptor from contract content-address-contract (IR v1)."]
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    borsh::BorshSerialize,
+    borsh::BorshDeserialize,
+)]
 #[borsh(crate = "borsh")]
 #[serde(deny_unknown_fields)]
 pub struct ContentDescriptor {
@@ -330,43 +543,100 @@ pub struct ContentDescriptor {
     pub byte_length: BoundedNumberU64<0, 9007199254740991>,
     #[serde(rename = "mediaType", deserialize_with = "required")]
     pub media_type: MediaType,
-    #[serde(rename = "codec", default, skip_serializing_if = "Option::is_none", deserialize_with = "present")]
+    #[serde(
+        rename = "codec",
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
     pub codec: Option<Codec>,
-    #[serde(rename = "schemaVersion", default, skip_serializing_if = "Option::is_none", deserialize_with = "present")]
+    #[serde(
+        rename = "schemaVersion",
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
     pub schema_version: Option<BoundedNumberU64<0, 9007199254740991>>,
 }
 
 #[doc = "ContentDigest from contract content-address-contract (IR v1)."]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize, borsh::BorshSerialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize, borsh::BorshSerialize,
+)]
 #[borsh(crate = "borsh")]
 #[serde(try_from = "String")]
 pub struct ContentDigest(String);
 impl ContentDigest {
     pub fn new(value: impl Into<String>) -> Result<Self, ValidationError> {
         let value = value.into();
-        static REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new("^sha256:[a-f0-9]{64}\\z").expect("admitted portable regex"));
-        if !REGEX.is_match(&value) { return Err(ValidationError::new("ContentDigest", "string must match ^sha256:[a-f0-9]{64}$")); }
+        static REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            regex::Regex::new("^sha256:[a-f0-9]{64}\\z").expect("admitted portable regex")
+        });
+        if !REGEX.is_match(&value) {
+            return Err(ValidationError::new(
+                "ContentDigest",
+                "string must match ^sha256:[a-f0-9]{64}$",
+            ));
+        }
         Ok(Self(value))
     }
-    pub fn as_str(&self) -> &str { &self.0 }
-    pub fn into_inner(self) -> String { self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+    pub fn into_inner(self) -> String {
+        self.0
+    }
 }
-impl TryFrom<String> for ContentDigest { type Error = ValidationError; fn try_from(value: String) -> Result<Self, Self::Error> { Self::new(value) } }
-impl TryFrom<&str> for ContentDigest { type Error = ValidationError; fn try_from(value: &str) -> Result<Self, Self::Error> { Self::new(value) } }
-impl std::str::FromStr for ContentDigest { type Err = ValidationError; fn from_str(value: &str) -> Result<Self, Self::Err> { Self::new(value) } }
-impl AsRef<str> for ContentDigest { fn as_ref(&self) -> &str { &self.0 } }
-impl std::borrow::Borrow<str> for ContentDigest { fn borrow(&self) -> &str { &self.0 } }
-impl std::fmt::Display for ContentDigest { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.0) } }
-impl serde::Serialize for ContentDigest { fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> { serializer.serialize_str(&self.0) } }
+impl TryFrom<String> for ContentDigest {
+    type Error = ValidationError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+impl TryFrom<&str> for ContentDigest {
+    type Error = ValidationError;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+impl std::str::FromStr for ContentDigest {
+    type Err = ValidationError;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::new(value)
+    }
+}
+impl AsRef<str> for ContentDigest {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+impl std::borrow::Borrow<str> for ContentDigest {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+impl std::fmt::Display for ContentDigest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl serde::Serialize for ContentDigest {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
 impl borsh::BorshDeserialize for ContentDigest {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let value = <String as borsh::BorshDeserialize>::deserialize_reader(reader)?;
-        Self::new(value).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        Self::new(value)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 }
 
 #[doc = "MediaType from contract content-address-contract (IR v1)."]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize, borsh::BorshSerialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize, borsh::BorshSerialize,
+)]
 #[borsh(crate = "borsh")]
 #[serde(try_from = "String")]
 pub struct MediaType(String);
@@ -374,36 +644,108 @@ impl MediaType {
     pub fn new(value: impl Into<String>) -> Result<Self, ValidationError> {
         let value = value.into();
         let length = value.chars().take(1).count();
-        if length < 1 { return Err(ValidationError::new("MediaType", "string shorter than minLength")); }
-        static REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new("^([^\u{9}-\u{d}    -     　﻿]([\u{0}-􏿿]*[^\u{9}-\u{d}    -     　﻿])?)?\\z").expect("admitted portable regex"));
-        if !REGEX.is_match(&value) { return Err(ValidationError::new("MediaType", "string must match ^([^\u{9}-\u{d}    -     　﻿]([\u{0}-􏿿]*[^\u{9}-\u{d}    -     　﻿])?)?$")); }
+        if length < 1 {
+            return Err(ValidationError::new(
+                "MediaType",
+                "string shorter than minLength",
+            ));
+        }
+        static REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            regex::Regex::new(
+                "^([^\u{9}-\u{d}    -     　﻿]([\u{0}-􏿿]*[^\u{9}-\u{d}    -     　﻿])?)?\\z",
+            )
+            .expect("admitted portable regex")
+        });
+        if !REGEX.is_match(&value) {
+            return Err(ValidationError::new("MediaType", "string must match ^([^\u{9}-\u{d}    -     　﻿]([\u{0}-􏿿]*[^\u{9}-\u{d}    -     　﻿])?)?$"));
+        }
         Ok(Self(value))
     }
-    pub fn as_str(&self) -> &str { &self.0 }
-    pub fn into_inner(self) -> String { self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+    pub fn into_inner(self) -> String {
+        self.0
+    }
 }
-impl TryFrom<String> for MediaType { type Error = ValidationError; fn try_from(value: String) -> Result<Self, Self::Error> { Self::new(value) } }
-impl TryFrom<&str> for MediaType { type Error = ValidationError; fn try_from(value: &str) -> Result<Self, Self::Error> { Self::new(value) } }
-impl std::str::FromStr for MediaType { type Err = ValidationError; fn from_str(value: &str) -> Result<Self, Self::Err> { Self::new(value) } }
-impl AsRef<str> for MediaType { fn as_ref(&self) -> &str { &self.0 } }
-impl std::borrow::Borrow<str> for MediaType { fn borrow(&self) -> &str { &self.0 } }
-impl std::fmt::Display for MediaType { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.0) } }
-impl serde::Serialize for MediaType { fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> { serializer.serialize_str(&self.0) } }
+impl TryFrom<String> for MediaType {
+    type Error = ValidationError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+impl TryFrom<&str> for MediaType {
+    type Error = ValidationError;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+impl std::str::FromStr for MediaType {
+    type Err = ValidationError;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::new(value)
+    }
+}
+impl AsRef<str> for MediaType {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+impl std::borrow::Borrow<str> for MediaType {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+impl std::fmt::Display for MediaType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl serde::Serialize for MediaType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
 impl borsh::BorshDeserialize for MediaType {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let value = <String as borsh::BorshDeserialize>::deserialize_reader(reader)?;
-        Self::new(value).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        Self::new(value)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 }
 
 #[doc = "NonNegativeInt from contract content-address-contract (IR v1)."]
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    borsh::BorshSerialize,
+    borsh::BorshDeserialize,
+)]
 #[borsh(crate = "borsh")]
 #[serde(transparent)]
-pub struct NonNegativeInt(#[borsh(bound(serialize = "", deserialize = ""))] pub BoundedNumberU64<0, 9007199254740991>);
+pub struct NonNegativeInt(
+    #[borsh(bound(serialize = "", deserialize = ""))] pub BoundedNumberU64<0, 9007199254740991>,
+);
 
 #[doc = "content_address_contract_1 from contract content-address-contract (IR v1)."]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    borsh::BorshSerialize,
+    borsh::BorshDeserialize,
+)]
 #[borsh(crate = "borsh")]
 pub enum ContentAddressContract1 {
     #[serde(rename = "ContentDescriptor")]
@@ -413,31 +755,49 @@ pub enum ContentAddressContract1 {
 // Register through schemars, rather than inserting definitions under hard-coded names:
 // its generator owns reference paths, recursion, and collisions with other crates.
 mod effect_rust_schema_metadata {
-    pub(super) fn schema(json: &str, generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        let mut value: serde_json::Value = serde_json::from_str(json).expect("compiler-emitted schema JSON");
+    pub(super) fn schema(
+        json: &str,
+        generator: &mut schemars::SchemaGenerator,
+    ) -> schemars::Schema {
+        let mut value: serde_json::Value =
+            serde_json::from_str(json).expect("compiler-emitted schema JSON");
         rewrite(&mut value, generator);
         schemars::Schema::try_from(value).expect("compiler-emitted object schema")
     }
     fn rewrite(value: &mut serde_json::Value, generator: &mut schemars::SchemaGenerator) {
         match value {
             serde_json::Value::Array(values) => {
-                for value in values { rewrite(value, generator); }
+                for value in values {
+                    rewrite(value, generator);
+                }
             }
             serde_json::Value::Object(object) => {
-                for value in object.values_mut() { rewrite(value, generator); }
+                for value in object.values_mut() {
+                    rewrite(value, generator);
+                }
                 if let Some(reference) = object.get("$ref").and_then(serde_json::Value::as_str) {
                     let schema = match reference {
                         "#/$defs/Codec" => generator.subschema_for::<super::Codec>(),
-                        "#/$defs/ContentDescriptor" => generator.subschema_for::<super::ContentDescriptor>(),
-                        "#/$defs/ContentDigest" => generator.subschema_for::<super::ContentDigest>(),
+                        "#/$defs/ContentDescriptor" => {
+                            generator.subschema_for::<super::ContentDescriptor>()
+                        }
+                        "#/$defs/ContentDigest" => {
+                            generator.subschema_for::<super::ContentDigest>()
+                        }
                         "#/$defs/MediaType" => generator.subschema_for::<super::MediaType>(),
-                        "#/$defs/NonNegativeInt" => generator.subschema_for::<super::NonNegativeInt>(),
-                        "#/$defs/content_address_contract_1" => generator.subschema_for::<super::ContentAddressContract1>(),
+                        "#/$defs/NonNegativeInt" => {
+                            generator.subschema_for::<super::NonNegativeInt>()
+                        }
+                        "#/$defs/content_address_contract_1" => {
+                            generator.subschema_for::<super::ContentAddressContract1>()
+                        }
                         _ => unreachable!("compiler-emitted definition reference"),
                     };
                     object.remove("$ref");
                     if let serde_json::Value::Object(replacement) = schema.to_value() {
-                        for (key, value) in replacement { object.entry(key).or_insert(value); }
+                        for (key, value) in replacement {
+                            object.entry(key).or_insert(value);
+                        }
                     } else {
                         unreachable!("generated contracts have object schemas");
                     }
@@ -449,48 +809,72 @@ mod effect_rust_schema_metadata {
 }
 
 impl schemars::JsonSchema for Codec {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "Codec".into() }
-    fn schema_id() -> std::borrow::Cow<'static, str> { concat!(module_path!(), "::", "Codec").into() }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Codec".into()
+    }
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::", "Codec").into()
+    }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         effect_rust_schema_metadata::schema("{\"title\":\"Codec\",\"type\":\"string\",\"pattern\":\"^([^\\t-\\r    -     　﻿]([\\u0000-􏿿]*[^\\t-\\r    -     　﻿])?)?$\",\"x-effect-rust-pattern\":\"^([^\\t-\\r    -     　﻿]([\\u0000-􏿿]*[^\\t-\\r    -     　﻿])?)?$\",\"x-effect-rust-pattern-flags\":\"u\",\"minLength\":1}", generator)
     }
 }
 
 impl schemars::JsonSchema for ContentDescriptor {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "ContentDescriptor".into() }
-    fn schema_id() -> std::borrow::Cow<'static, str> { concat!(module_path!(), "::", "ContentDescriptor").into() }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ContentDescriptor".into()
+    }
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::", "ContentDescriptor").into()
+    }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         effect_rust_schema_metadata::schema("{\"title\":\"ContentDescriptor\",\"type\":\"object\",\"properties\":{\"_tag\":{\"$ref\":\"#/$defs/content_address_contract_1\"},\"digest\":{\"$ref\":\"#/$defs/ContentDigest\"},\"byteLength\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991,\"x-effect-rust-width\":\"u64\"},\"mediaType\":{\"$ref\":\"#/$defs/MediaType\"},\"codec\":{\"$ref\":\"#/$defs/Codec\"},\"schemaVersion\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991,\"x-effect-rust-width\":\"u64\"}},\"required\":[\"_tag\",\"digest\",\"byteLength\",\"mediaType\"],\"additionalProperties\":false,\"x-effect-rust-excess\":\"error\"}", generator)
     }
 }
 
 impl schemars::JsonSchema for ContentDigest {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "ContentDigest".into() }
-    fn schema_id() -> std::borrow::Cow<'static, str> { concat!(module_path!(), "::", "ContentDigest").into() }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ContentDigest".into()
+    }
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::", "ContentDigest").into()
+    }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         effect_rust_schema_metadata::schema("{\"title\":\"ContentDigest\",\"type\":\"string\",\"pattern\":\"^sha256:[a-f0-9]{64}$\",\"x-effect-rust-pattern\":\"^sha256:[a-f0-9]{64}$\",\"x-effect-rust-pattern-flags\":\"u\"}", generator)
     }
 }
 
 impl schemars::JsonSchema for MediaType {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "MediaType".into() }
-    fn schema_id() -> std::borrow::Cow<'static, str> { concat!(module_path!(), "::", "MediaType").into() }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "MediaType".into()
+    }
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::", "MediaType").into()
+    }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         effect_rust_schema_metadata::schema("{\"title\":\"MediaType\",\"type\":\"string\",\"pattern\":\"^([^\\t-\\r    -     　﻿]([\\u0000-􏿿]*[^\\t-\\r    -     　﻿])?)?$\",\"x-effect-rust-pattern\":\"^([^\\t-\\r    -     　﻿]([\\u0000-􏿿]*[^\\t-\\r    -     　﻿])?)?$\",\"x-effect-rust-pattern-flags\":\"u\",\"minLength\":1}", generator)
     }
 }
 
 impl schemars::JsonSchema for NonNegativeInt {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "NonNegativeInt".into() }
-    fn schema_id() -> std::borrow::Cow<'static, str> { concat!(module_path!(), "::", "NonNegativeInt").into() }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "NonNegativeInt".into()
+    }
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::", "NonNegativeInt").into()
+    }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         effect_rust_schema_metadata::schema("{\"title\":\"NonNegativeInt\",\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991,\"x-effect-rust-width\":\"u64\"}", generator)
     }
 }
 
 impl schemars::JsonSchema for ContentAddressContract1 {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "content_address_contract_1".into() }
-    fn schema_id() -> std::borrow::Cow<'static, str> { concat!(module_path!(), "::", "ContentAddressContract1").into() }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "content_address_contract_1".into()
+    }
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::", "ContentAddressContract1").into()
+    }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         effect_rust_schema_metadata::schema("{\"title\":\"content_address_contract_1\",\"type\":\"string\",\"enum\":[\"ContentDescriptor\"]}", generator)
     }

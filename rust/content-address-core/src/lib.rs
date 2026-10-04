@@ -14,7 +14,7 @@ impl fmt::Display for Digest {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut text = [0u8; 71];
         text[..7].copy_from_slice(b"sha256:");
-        for (byte, pair) in self.0.iter().zip(text[7..].chunks_exact_mut(2)) {
+        for (byte, pair) in self.0.iter().zip(text[7..].as_chunks_mut::<2>().0) {
             pair[0] = HEX[usize::from(byte >> 4)];
             pair[1] = HEX[usize::from(byte & 15)];
         }
@@ -215,7 +215,7 @@ impl TreeHasher {
 
 #[cfg(test)]
 mod tests {
-    use super::{Digest, EntryKind, Hasher, ParseDigestError, TreeHasher, hash};
+    use super::{hash, Digest, EntryKind, Hasher, ParseDigestError, TreeHasher};
 
     #[test]
     fn digest_parser_accepts_only_canonical_text() {

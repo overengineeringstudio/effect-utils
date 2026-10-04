@@ -139,6 +139,9 @@
 - Effect/Rust workspace packages participate in the root TypeScript project
   registry, and the distributed Buck rules include the service-packaging tool.
 - PTY client tests pair runtime module mocks with runtime cleanup on Vitest 5.
+- Content-address contract generation formats Rust with the pinned development
+  shell's rustfmt before hashing and publishing artifacts; the flake lock is part
+  of the generation inputs.
 
 ### Changed
 
