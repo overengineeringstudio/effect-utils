@@ -112,9 +112,9 @@ testWithSt(
     const socket = join(dir, 'daemon.sock')
     const gateway = join(dir, 'gateway.sock')
     const source = join(dir, 'mission.kdl')
+    const actor = process.env.ST_AGENT ?? 'person/genie-test'
     const isolatedEnv = {
       ...process.env,
-      ST_AGENT: undefined,
       HOME: join(dir, 'home'),
       XDG_CONFIG_HOME: join(dir, 'config'),
       XDG_DATA_HOME: join(dir, 'data'),
@@ -162,7 +162,7 @@ testWithSt(
             'publish',
             source,
             '--as',
-            'person/genie-test',
+            actor,
           ],
           { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
         )
@@ -187,7 +187,7 @@ testWithSt(
             'apply',
             seatSource,
             '--as',
-            'person/genie-test',
+            actor,
           ],
           { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
         )
