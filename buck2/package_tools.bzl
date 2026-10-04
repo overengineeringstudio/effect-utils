@@ -5,6 +5,7 @@ load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
 JavaScriptModuleInfo = provider(fields = {
     "module": Artifact,
     "descriptor": Artifact,
@@ -307,11 +308,10 @@ def _package_bundle_impl(ctx):
             format = _closure_root_name(read_root) + "\t{}",
         ))
     args.add(cmd_args(hidden = package_tree.read_roots))
-    ctx.actions.run(
+    hermetic_action(ctx,
         args,
         category = "package_bin_artifact",
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [
         DefaultInfo(
@@ -329,7 +329,7 @@ def _package_bundle_impl(ctx):
 
 _package_bin_artifact = rule(
     impl = _package_bundle_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "entrypoint": attrs.string(),
         "output": attrs.string(),
@@ -354,7 +354,7 @@ _package_bin_artifact = rule(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
         )),
-    },
+    }),
 )
 
 
@@ -366,6 +366,7 @@ def package_bin_artifact(
         name = name,
         default_target_platform = "@rules//buck2/platforms:javascript_portable",
         _platform_gated_packages = _platform_gated_packages,
+        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
         **kwargs
     )
 

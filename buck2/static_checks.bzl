@@ -4,6 +4,7 @@ load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cach
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
 
 STATIC_SOURCE_GLOBS = [
     "**/*.cjs",
@@ -110,19 +111,18 @@ def _repository_static_check_impl(ctx):
     for source_path in sorted(sources.keys()):
         args.add("--path", source_path)
     args.add(cmd_args(hidden = [source_tree, tool.manifest]))
-    ctx.actions.run(
+    hermetic_action(ctx,
         args,
         category = "{}_check".format(ctx.attrs.kind),
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [DefaultInfo(default_output = result)]
 
 
 _repository_static_check = rule(
     impl = _repository_static_check_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "kind": attrs.enum(["format", "lint"]),
         "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo])),
         "tool": attrs.exec_dep(providers = [BuckSupportToolInfo]),
@@ -133,7 +133,7 @@ _repository_static_check = rule(
         "_runner": attrs.default_only(attrs.source(
             default = "//packages/@overeng/buck2-tools:src/static-check-runner.ts",
         )),
-    },
+    }),
 )
 
 
@@ -146,7 +146,7 @@ def _repository_policy_check_impl(ctx):
         "sourcePaths": sorted(sources.keys()),
     })
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
-    ctx.actions.run(
+    hermetic_action(ctx,
         cmd_args([
             toolchain.bun,
             ctx.attrs._runner,
@@ -160,14 +160,13 @@ def _repository_policy_check_impl(ctx):
         category = "repository_policy_check",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [DefaultInfo(default_output = result)]
 
 
 _repository_policy_check = rule(
     impl = _repository_policy_check_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "declared_packages": attrs.list(attrs.string()),
         "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo])),
         "_javascript": attrs.default_only(attrs.exec_dep(
@@ -177,7 +176,7 @@ _repository_policy_check = rule(
         "_runner": attrs.default_only(attrs.source(
             default = "//packages/@overeng/buck2-tools:src/repository-policy-runner.ts",
         )),
-    },
+    }),
 )
 
 def _single_default_output(target, field):
@@ -317,25 +316,27 @@ def repository_static_checks(
         repository_source_sets,
         **kwargs):
     """Checks repository formatting, lint, source policy, and deterministic validation contracts."""
+    admitted_kwargs = dict(kwargs)
+    admitted_kwargs["exec_compatible_with"] = hermetic_execution_constraints(kwargs.get("exec_compatible_with", []))
     _repository_static_check(
         name = name + "_format",
         kind = "format",
         source_sets = source_sets,
         tool = "//buck2/toolchains:tool_oxfmt",
-        **kwargs
+        **admitted_kwargs
     )
     _repository_static_check(
         name = name + "_lint",
         kind = "lint",
         source_sets = source_sets,
         tool = "//buck2/toolchains:tool_oxlint",
-        **kwargs
+        **admitted_kwargs
     )
     _repository_policy_check(
         name = name + "_policy",
         declared_packages = declared_packages,
         source_sets = source_sets,
-        **kwargs
+        **admitted_kwargs
     )
     _repository_validation_check(
         name = "nix_source_check",
