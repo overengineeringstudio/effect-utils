@@ -492,29 +492,33 @@ fn asynchronous(export: &Export, backend: Backend) -> syn::Result<Tokens> {
 
 fn common(export: &Export, backend: Backend) -> Tokens {
     let error = backend.error();
-    let expected = if export.error.is_some() { quote! {
-        fn expected_error<E: serde::Serialize + effect_rust::ExportError>(error: &E) -> #error {
-            let value = match serde_json::to_value(error) {
-                Ok(value) => value,
-                Err(error) => return edge_error(format!("RUST_TRANSPORT:{error}")),
-            };
-            struct Tagged<'a>(&'a serde_json::Value, &'static str);
-            impl serde::Serialize for Tagged<'_> {
-                fn serialize<S: serde::Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
-                    use serde::ser::SerializeMap as _;
-                    let Some(object)=self.0.as_object() else {return serde::Serialize::serialize(self.0,serializer);};
-                    let mut map=serializer.serialize_map(Some(object.len()))?;
-                    if let Some(tag)=object.get(self.1){map.serialize_entry(self.1,tag)?;}
-                    for (key,value) in object {if key!=self.1{map.serialize_entry(key,value)?;}}
-                    map.end()
+    let expected = if export.error.is_some() {
+        quote! {
+            fn expected_error<E: serde::Serialize + effect_rust::ExportError>(error: &E) -> #error {
+                let value = match serde_json::to_value(error) {
+                    Ok(value) => value,
+                    Err(error) => return edge_error(format!("RUST_TRANSPORT:{error}")),
+                };
+                struct Tagged<'a>(&'a serde_json::Value, &'static str);
+                impl serde::Serialize for Tagged<'_> {
+                    fn serialize<S: serde::Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
+                        use serde::ser::SerializeMap as _;
+                        let Some(object)=self.0.as_object() else {return serde::Serialize::serialize(self.0,serializer);};
+                        let mut map=serializer.serialize_map(Some(object.len()))?;
+                        if let Some(tag)=object.get(self.1){map.serialize_entry(self.1,tag)?;}
+                        for (key,value) in object {if key!=self.1{map.serialize_entry(key,value)?;}}
+                        map.end()
+                    }
+                }
+                match serde_json::to_string(&Tagged(&value,E::TAG_KEY)) {
+                    Ok(json)=>edge_error(format!("RUST_ERROR:{json}")),
+                    Err(error)=>edge_error(format!("RUST_TRANSPORT:{error}")),
                 }
             }
-            match serde_json::to_string(&Tagged(&value,E::TAG_KEY)) {
-                Ok(json)=>edge_error(format!("RUST_ERROR:{json}")),
-                Err(error)=>edge_error(format!("RUST_TRANSPORT:{error}")),
-            }
         }
-    } } else { quote!() };
+    } else {
+        quote!()
+    };
     let schema = export.schema_export().map(|name| {
         let annotation = backend.annotation(&name);
         let (args, returns) = export.schema_positions();
@@ -532,15 +536,33 @@ fn common(export: &Export, backend: Backend) -> Tokens {
     quote!(#expected #schema)
 }
 
-pub(super) fn resource(ty: &syn::Type, class: &str, constructor: &Export, methods: &[Export], backend: Backend) -> syn::Result<Tokens> {
-    let cfg = match backend { Backend::Wasm => quote!(all(feature="wasm",target_arch="wasm32")), Backend::Napi => quote!(all(feature="napi",not(target_arch="wasm32"))) };
-    let module = match backend { Backend::Wasm => quote!(wasm), Backend::Napi => quote!(native) };
+pub(super) fn resource(
+    ty: &syn::Type,
+    class: &str,
+    constructor: &Export,
+    methods: &[Export],
+    backend: Backend,
+) -> syn::Result<Tokens> {
+    let cfg = match backend {
+        Backend::Wasm => quote!(all(feature = "wasm", target_arch = "wasm32")),
+        Backend::Napi => quote!(all(feature = "napi", not(target_arch = "wasm32"))),
+    };
+    let module = match backend {
+        Backend::Wasm => quote!(wasm),
+        Backend::Napi => quote!(native),
+    };
     let handle = format_ident!("EffectRust{class}Resource");
     let class_name = format!("{class}Resource");
     let class_annotation = backend.annotation(&class_name);
-    let impl_annotation = match backend { Backend::Wasm => quote!(#[wasm_bindgen::prelude::wasm_bindgen(js_class = #class_name)]), Backend::Napi => quote!(#[napi_derive::napi]) };
+    let impl_annotation = match backend {
+        Backend::Wasm => quote!(#[wasm_bindgen::prelude::wasm_bindgen(js_class = #class_name)]),
+        Backend::Napi => quote!(#[napi_derive::napi]),
+    };
     let error = backend.error();
-    let edge_error = match backend { Backend::Wasm => quote!(js_sys::Error::new(&message.to_string()).into()), Backend::Napi => quote!(napi::Error::from_reason(message.to_string())) };
+    let edge_error = match backend {
+        Backend::Wasm => quote!(js_sys::Error::new(&message.to_string()).into()),
+        Backend::Napi => quote!(napi::Error::from_reason(message.to_string())),
+    };
     let factory_name = constructor.name();
     let factory_annotation = backend.annotation(&factory_name);
     let constructor_common = common(constructor, backend);
