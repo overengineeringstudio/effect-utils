@@ -74,17 +74,43 @@ describe('Smalltalk declarations', () => {
       'workspace "/tmp/seat" create=#false',
     )
   })
+  it('emits manual rollout and fault handling as strict agent children', () => {
+    expect(
+      emit([
+        agent({
+          id: 'garden/orchard',
+          restart: 'never',
+          rollout: 'manual',
+          freshContext: true,
+          handlesFaults: true,
+        }),
+      ]),
+    ).toBe(
+      'version 2\nagent "garden/orchard" {\n  restart "never"\n  rollout "manual"\n  fresh-context\n  handles-faults\n}\n',
+    )
+    expect(emit([agent({ id: 'garden/orchard' })])).toBe('version 2\nagent "garden/orchard" {\n}\n')
+  })
+  it.each(['automatic', 'auto', '', 1, true, ['manual'], { value: 'manual' }])(
+    'rejects invalid rollout policy %j',
+    (rollout) => {
+      expect(() => agent({ id: 'garden/orchard', rollout } as never)).toThrow()
+    },
+  )
+  it.each([false, 'true', 1])('rejects non-bare fault handling flag %j', (handlesFaults) => {
+    expect(() => agent({ id: 'garden/orchard', handlesFaults } as never)).toThrow()
+  })
 })
 
 const stBin = process.env.ST_BIN
 const testWithSt = stBin !== undefined && stBin !== '' ? it : it.skip
 testWithSt(
-  'round-trips canonical mission through isolated st daemon',
+  'round-trips canonical mission and strict agent fields through isolated st daemon',
   async () => {
     const dir = mkdtempSync(join(tmpdir(), 'genie-st-'))
     const socket = join(dir, 'daemon.sock')
     const gateway = join(dir, 'gateway.sock')
     const source = join(dir, 'mission.kdl')
+    const actor = process.env.ST_AGENT ?? 'person/genie-test'
     const isolatedEnv = {
       ...process.env,
       HOME: join(dir, 'home'),
@@ -134,7 +160,7 @@ testWithSt(
             'publish',
             source,
             '--as',
-            'person/genie-test',
+            actor,
           ],
           { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
         )
@@ -143,6 +169,67 @@ testWithSt(
       const second = publish()
       expect(second.status, second.stderr).toBe(0)
       expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
+      const seatSource = join(dir, 'agent.kdl')
+      const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
+      const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
+      const applySeat = (declaration: string) => {
+        writeFileSync(seatSource, declaration)
+        return spawnSync(
+          stBin!,
+          [
+            '--endpoint',
+            `unix://${socket}`,
+            '--json',
+            'agents',
+            'apply',
+            seatSource,
+            '--as',
+            actor,
+          ],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      }
+      const applied = applySeat(seat)
+      expect(applied.status, applied.stderr).toBe(0)
+      const shown = spawnSync(
+        stBin!,
+        ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/orchard', '--kdl'],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(shown.status, shown.stderr).toBe(0)
+      expect(shown.stdout).toMatch(/^\s*handles-faults\s*$/mu)
+      const reapplied = applySeat(shown.stdout)
+      expect(reapplied.status, reapplied.stderr).toBe(0)
+      expect(JSON.parse(reapplied.stdout)).toMatchObject({ changed: false })
+      for (const field of [
+        'rollout "automatic"',
+        'rollout 1',
+        'rollout "manual"; rollout "manual"',
+        'rollout "manual" { ignored; }',
+        'rollout "manual" ignored="value"',
+      ]) {
+        const invalid = applySeat(seat.replace('rollout "manual"', field))
+        expect(invalid.status, field).not.toBe(0)
+      }
+      for (const field of [
+        'handles-faults #true',
+        'handles-faults ignored="value"',
+        'handles-faults; handles-faults',
+      ]) {
+        const invalid = applySeat(seat.replace('handles-faults', field))
+        expect(invalid.status, field).not.toBe(0)
+      }
+      const automatic = applySeat(emit([agent(launch)]))
+      expect(automatic.status, automatic.stderr).toBe(0)
+      expect(JSON.parse(automatic.stdout)).toMatchObject({ changed: true })
+      const automaticShown = spawnSync(
+        stBin!,
+        ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/orchard', '--kdl'],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(automaticShown.status, automaticShown.stderr).toBe(0)
+      expect(automaticShown.stdout).not.toContain('rollout')
+      expect(automaticShown.stdout).not.toContain('handles-faults')
     } finally {
       if (daemon.exitCode === null && daemon.signalCode === null) {
         const { promise, resolve } = Promise.withResolvers<void>()
@@ -150,7 +237,7 @@ testWithSt(
         daemon.kill('SIGTERM')
         await promise
       }
-      rmSync(dir, { recursive: true, force: true })
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
     }
   },
   60000,
