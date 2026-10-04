@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
+  flag and `rollout "manual"` policy. Omitting rollout preserves automatic rollout.
+
 ### Fixed
 
 - TypeScript Buck projections resolve source labels through the nearest declared

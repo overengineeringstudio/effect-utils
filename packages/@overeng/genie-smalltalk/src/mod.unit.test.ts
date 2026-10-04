@@ -74,6 +74,33 @@ describe('Smalltalk declarations', () => {
       'workspace "/tmp/seat" create=#false',
     )
   })
+  it('emits manual rollout and fault handling as strict agent children', () => {
+    expect(
+      emit([
+        agent({
+          id: 'garden/orchard',
+          restart: 'never',
+          rollout: 'manual',
+          freshContext: true,
+          handlesFaults: true,
+        }),
+      ]),
+    ).toBe(
+      'version 2\nagent "garden/orchard" {\n  restart "never"\n  rollout "manual"\n  fresh-context\n  handles-faults\n}\n',
+    )
+    expect(emit([agent({ id: 'garden/orchard' })])).toBe(
+      'version 2\nagent "garden/orchard" {\n}\n',
+    )
+  })
+  it.each(['automatic', 'auto', '', 1, true, ['manual'], { value: 'manual' }])(
+    'rejects invalid rollout policy %j',
+    (rollout) => {
+      expect(() => agent({ id: 'garden/orchard', rollout } as never)).toThrow()
+    },
+  )
+  it.each([false, 'true', 1])('rejects non-bare fault handling flag %j', (handlesFaults) => {
+    expect(() => agent({ id: 'garden/orchard', handlesFaults } as never)).toThrow()
+  })
 })
 
 const stBin = process.env.ST_BIN
@@ -143,6 +170,59 @@ testWithSt(
       const second = publish()
       expect(second.status, second.stderr).toBe(0)
       expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
+      const seatSource = join(dir, 'agent.kdl')
+      const seat = emit([
+        agent({ id: 'garden/orchard', rollout: 'manual', handlesFaults: true }),
+      ])
+      const applySeat = (declaration: string) => {
+        writeFileSync(seatSource, declaration)
+        return spawnSync(
+          stBin!,
+          [
+            '--endpoint',
+            `unix://${socket}`,
+            '--json',
+            'agents',
+            'apply',
+            seatSource,
+            '--as',
+            'person/genie-test',
+          ],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      }
+      const applied = applySeat(seat)
+      expect(applied.status, applied.stderr).toBe(0)
+      const shown = spawnSync(
+        stBin!,
+        ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/orchard', '--kdl'],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(shown.status, shown.stderr).toBe(0)
+      expect(shown.stdout).toContain('rollout "manual"')
+      expect(shown.stdout).toMatch(/^\s*handles-faults\s*$/mu)
+      const reapplied = applySeat(shown.stdout)
+      expect(reapplied.status, reapplied.stderr).toBe(0)
+      expect(JSON.parse(reapplied.stdout)).toMatchObject({ changed: false })
+      for (const field of [
+        'rollout "automatic"',
+        'rollout 1',
+        'rollout "manual"; rollout "manual"',
+        'rollout "manual" { ignored; }',
+        'rollout "manual" ignored="value"',
+      ]) {
+        const invalid = applySeat(seat.replace('rollout "manual"', field))
+        expect(invalid.status, field).not.toBe(0)
+      }
+      for (const field of [
+        'handles-faults #true',
+        'handles-faults ignored="value"',
+        'handles-faults { ignored; }',
+        'handles-faults; handles-faults',
+      ]) {
+        const invalid = applySeat(seat.replace('handles-faults', field))
+        expect(invalid.status, field).not.toBe(0)
+      }
     } finally {
       if (daemon.exitCode === null && daemon.signalCode === null) {
         const { promise, resolve } = Promise.withResolvers<void>()
