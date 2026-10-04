@@ -21,3 +21,10 @@ operate on the complete current registry. The exact-token
 `buck2:editor:recover-lock` task recovers only the named consumer's shared
 publication lock. These tasks require a real composed megarepo workspace and
 are not global check dependencies.
+
+## Test collection
+
+The JavaScript runner loads test modules when collecting their inventory without
+executing assertions. Static parsing is opt-in: the runner passes an explicit
+negative flag otherwise, rather than relying on the pinned Vitest CLI's default.
+This includes cases registered by imported helpers such as rule-test generators.
