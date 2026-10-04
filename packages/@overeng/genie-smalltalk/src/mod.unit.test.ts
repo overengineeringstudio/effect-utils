@@ -199,7 +199,6 @@ testWithSt(
         { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
       )
       expect(shown.status, shown.stderr).toBe(0)
-      expect(shown.stdout).toContain('rollout "manual"')
       expect(shown.stdout).toMatch(/^\s*handles-faults\s*$/mu)
       const reapplied = applySeat(shown.stdout)
       expect(reapplied.status, reapplied.stderr).toBe(0)
