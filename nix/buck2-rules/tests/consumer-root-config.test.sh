@@ -92,4 +92,16 @@ if render_config '{
   exit 1
 fi
 
+fixture_root="$(mktemp -d)"
+trap 'rm -rf "$fixture_root"' EXIT
+printf '%s\n' "$private_config" > "$fixture_root/.buckconfig"
+env -u BUCK2_NO_REMOTE_CACHE -u BUCK2_PUBLIC_CACHE_READ_ONLY -u BUCK2_CACHE_WRITE_BASIC_AUTH \
+  bun "$repo_root/scripts/buck2-cache-posture.ts" "$fixture_root"
+require_line "$(cat "$fixture_root/.buckconfig.local")" '  url_prefix = https://archives.example.invalid/cas/'
+require_line "$(cat "$fixture_root/.buckconfig.local")" '  tier = private'
+BUCK2_NO_REMOTE_CACHE=1 bun "$repo_root/scripts/buck2-cache-posture.ts" "$fixture_root"
+require_line "$(cat "$fixture_root/.buckconfig.local")" '  remote_cache_enabled = false'
+require_line "$(cat "$fixture_root/.buckconfig.local")" '  allow_cache_uploads = false'
+require_line "$(cat "$fixture_root/.buckconfig.local")" '  tier = public'
+
 echo 'buck2 consumer root config passed'
