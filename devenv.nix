@@ -1123,6 +1123,7 @@ in
     description = "Check JavaScript Buck product descriptor and artifact-import contracts";
     after = [ "genie:check" ];
     exec = trace.exec "nix:javascript-product-import:check" ''
+      export PATH="${pkgs.openssl}/bin:$PATH"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"
     '';
   };

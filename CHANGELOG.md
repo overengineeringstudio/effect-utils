@@ -9,6 +9,8 @@
 
 ### Fixed
 
+- The JavaScript product-import contract task declares OpenSSL instead of relying
+  on an ambient executable for its integrity fixture.
 - Swift source products select bundle-aware runtime inspection during Nix import.
 - Build-product imports defer read-only directory permissions until all archive
   children have been extracted.
