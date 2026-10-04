@@ -9,8 +9,8 @@ import { parseCliBuildStamp, resolveCliBuildIdentity } from './cli-build-identit
 const virtualId = 'virtual:build-identity'
 const resolvedId = `\0${virtualId}`
 
-/** @param {string} root @param {string[]} args */
-const readGit = (root, args) =>
+/** @param {{ root: string, args: string[] }} options */
+const readGit = ({ root, args }) =>
   execFileSync('git', ['--no-optional-locks', '-C', root, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -20,9 +20,9 @@ const readGit = (root, args) =>
 const localStamp = (root) => {
   return {
     type: 'local',
-    rev: readGit(root, ['rev-parse', 'HEAD']),
+    rev: readGit({ root, args: ['rev-parse', 'HEAD'] }),
     ts: Math.floor(Date.now() / 1000),
-    dirty: readGit(root, ['status', '--porcelain', '--untracked-files=normal']) !== '',
+    dirty: readGit({ root, args: ['status', '--porcelain', '--untracked-files=normal'] }) !== '',
   }
 }
 
@@ -63,7 +63,8 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         'Browser builds require a real revision and timestamp in the shared build stamp',
       )
     }
-    if (preserveSnapshot && identity.machineVersion === nextIdentity.machineVersion) return false
+    if (preserveSnapshot === true && identity.machineVersion === nextIdentity.machineVersion)
+      return false
     browserOptions = options
     identity = nextIdentity
     return true
@@ -76,7 +77,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       resolveIdentity()
     },
     buildStart() {
-      if (!serving && embedded?.type !== 'nix') resolveIdentity()
+      if (serving === false && embedded?.type !== 'nix') resolveIdentity()
     },
     shouldTransformCachedModule({ id }) {
       if (id === resolvedId && embedded?.type !== 'nix') return true
@@ -99,7 +100,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       })
       if (embedded?.type === 'nix') return
       const refresh = () => {
-        if (!resolveIdentity(true)) return
+        if (resolveIdentity(true) === false) return
         const module = server.moduleGraph.getModuleById(resolvedId)
         if (module === undefined) return
         server.moduleGraph.invalidateModule(module)
@@ -113,12 +114,11 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       })
       // Git metadata is excluded by Vite's source watcher. Watch directories so
       // atomic index/ref replacement and linked worktrees remain observable.
-      const gitDirectory = readGit(root, ['rev-parse', '--absolute-git-dir'])
-      const commonDirectory = readGit(root, [
-        'rev-parse',
-        '--path-format=absolute',
-        '--git-common-dir',
-      ])
+      const gitDirectory = readGit({ root, args: ['rev-parse', '--absolute-git-dir'] })
+      const commonDirectory = readGit({
+        root,
+        args: ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      })
       const directories = new Set([gitDirectory, commonDirectory])
       for (const directory of directories) {
         const watcher = watch(directory, (_event, filename) => {
@@ -127,7 +127,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         cleanup.push(() => watcher.close())
       }
       const refs = watch(join(commonDirectory, 'refs'), { recursive: true }, (_event, filename) => {
-        if (filename !== null && !filename.endsWith('.lock')) refresh()
+        if (filename !== null && filename.endsWith('.lock') === false) refresh()
       })
       cleanup.push(() => refs.close())
     },
@@ -151,7 +151,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
     },
     handleHotUpdate(context) {
       if (embedded?.type === 'nix') return
-      if (!resolveIdentity(true)) return
+      if (resolveIdentity(true) === false) return
       const module = context.server.moduleGraph.getModuleById(resolvedId)
       if (module === undefined) return
       context.server.moduleGraph.invalidateModule(module)
