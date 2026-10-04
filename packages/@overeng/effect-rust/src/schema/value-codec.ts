@@ -127,13 +127,15 @@ const withKeyContext = ({
   return contextual.ast
 }
 
+const identity = (value: unknown): unknown => value
+
 /** Prepare omission and union selection once, not once per field per call. */
 export const makeOptionalOmitter = (root: SchemaAST.AST): ((value: unknown) => unknown) => {
   const seen = new Map<SchemaAST.AST, (value: unknown) => unknown>()
   const compile = (ast: SchemaAST.AST): ((value: unknown) => unknown) => {
     const cached = seen.get(ast)
     if (cached !== undefined) return cached
-    let implementation: (value: unknown) => unknown = (value) => value
+    let implementation: (value: unknown) => unknown = identity
     const run = (value: unknown): unknown => implementation(value)
     seen.set(ast, run)
     if (ast._tag === 'Suspend') {

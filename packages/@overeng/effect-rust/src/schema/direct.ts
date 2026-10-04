@@ -1,4 +1,4 @@
-import { Schema, SchemaAST } from 'effect'
+import { type Schema, SchemaAST } from 'effect'
 
 import { decode as decodeSchema, encode as encodeSchema } from './validation.ts'
 import { makeOptionalOmitter, makeValueCodec } from './value-codec.ts'

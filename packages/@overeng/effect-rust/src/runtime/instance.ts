@@ -506,6 +506,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
   // A synchronous Rust call cannot interleave with scope release, poison, or
   // interruption. It needs the same generation check, but no job, abort signal,
   // callback fiber, or cancellation finalizer. Rebuilding still suspends.
+  // eslint-disable-next-line overeng/named-args -- Runtime.callSync follows Runtime.call's public positional (start, options) contract.
   const callSync = <T, TError = never>(
     start: (api: TApi) => T,
     callOptions?: CallOptions<TError>,

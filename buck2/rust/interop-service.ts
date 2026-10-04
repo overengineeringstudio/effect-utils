@@ -331,12 +331,12 @@ if (codecs.size > 0) {
     ...(encoders.size === 0
       ? []
       : [
-          ...(asyncEncodes
+          ...(asyncEncodes === true
             ? [
                 'const encodeInput = <A>(operation: string, encode: () => A) => Effect.try({ try: encode, catch: (cause) => new Interop.Input({ operation, message: message(cause), cause }) })',
               ]
             : []),
-          ...(syncEncodes
+          ...(syncEncodes === true
             ? [
                 'const encodeInputSync = <A>(operation: string, encode: () => A): A => { try { return encode() } catch (cause) { throw new Interop.Input({ operation, message: message(cause), cause }) } }',
               ]
@@ -345,12 +345,12 @@ if (codecs.size > 0) {
     ...(decoders.size === 0
       ? []
       : [
-          ...(asyncDecodes
+          ...(asyncDecodes === true
             ? [
                 'const decodeOutput = <A>(operation: string, decode: () => A) => Effect.try({ try: decode, catch: (cause) => new Interop.Transport({ operation, message: message(cause), cause }) })',
               ]
             : []),
-          ...(syncDecodes
+          ...(syncDecodes === true
             ? [
                 'const decodeOutputSync = <A>(operation: string, decode: () => A): A => { try { return decode() } catch (cause) { throw new Interop.Transport({ operation, message: message(cause), cause }) } }',
               ]
@@ -553,7 +553,7 @@ for (const entry of exportEntries) {
           : ''
       : ''
   const sync = syncEntry(entry)
-  if (sync) {
+  if (sync === true) {
     methodSource.push(
       `  ${entry.name}: (${args}) => runtime.callSync((api) => {`,
       ...encoded.map(
@@ -605,7 +605,7 @@ for (const entry of topLevelEntries) {
     .join(', ')
   const encoded = entry.args.filter((arg) => codec({ entry, position: arg.name }) !== undefined)
   const values = entry.args
-    .map((arg) => (encoded.includes(arg) ? `${arg.name}Wire` : arg.name))
+    .map((arg) => (encoded.includes(arg) === true ? `${arg.name}Wire` : arg.name))
     .join(', ')
   source.push(
     `  ${entry.name}: (${args}) => Effect.gen(function* () {`,
