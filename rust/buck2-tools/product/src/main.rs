@@ -1,13 +1,13 @@
 mod npm_manifest;
 
 use buck2_tool_core::{
-    canonical_json, normalized_relative, safe_text, sha256_bytes, sha256_sri,
-    verify_execution_capability, ToolError, ToolResult,
+    ToolError, ToolResult, canonical_json, normalized_relative, safe_text, sha256_bytes,
+    sha256_sri, verify_execution_capability,
 };
 use clap::{Args, Parser, Subcommand};
 use flate2::{Compression, GzBuilder};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},
@@ -210,7 +210,7 @@ fn elf_identity(
             return Err(fail(
                 "BUCK2_PRODUCT_ELF",
                 format!("unsupported ELF machine: {value}"),
-            ))
+            ));
         }
     };
     if machine != architecture {
@@ -295,7 +295,7 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
                 return Err(fail(
                     "BUCK2_PRODUCT_ELF",
                     "elf-dynamic/v1 forbids DT_RPATH and DT_RUNPATH",
-                ))
+                ));
             }
             0x6fff_fffe => version_needs_address = Some(value),
             0x6fff_ffff => version_needs_count = Some(value),
@@ -375,7 +375,7 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             return Err(fail(
                 "BUCK2_PRODUCT_ELF",
                 "incomplete ELF version-needs metadata",
-            ))
+            ));
         }
     }
     Ok(json!({
@@ -534,7 +534,7 @@ fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             return Err(fail(
                 "BUCK2_PRODUCT_MACHO",
                 format!("unsupported Mach-O CPU type: {value:#x}"),
-            ))
+            ));
         }
     };
     let expected_architecture = match architecture {
@@ -544,7 +544,7 @@ fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             return Err(fail(
                 "BUCK2_PRODUCT_PLATFORM",
                 format!("unsupported Darwin architecture: {value}"),
-            ))
+            ));
         }
     };
     if observed_architecture != expected_architecture {
@@ -591,7 +591,7 @@ fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
                 return Err(fail(
                     "BUCK2_PRODUCT_MACHO",
                     "mach-o-dynamic/v1 forbids LC_RPATH",
-                ))
+                ));
             }
             0x1d => {
                 if signature.is_some() {
@@ -784,7 +784,11 @@ fn archive_tree(files: BTreeMap<String, Vec<u8>>, executables: &[String]) -> Too
                 .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
         }
         for (path, contents) in files {
-            let mode = if executables.contains(&path) { 0o555 } else { 0o444 };
+            let mode = if executables.contains(&path) {
+                0o555
+            } else {
+                0o444
+            };
             let header = tar_header(
                 &path,
                 u64::try_from(contents.len())
@@ -1090,7 +1094,7 @@ fn package(args: PackageArgs) -> ToolResult<()> {
             return Err(fail(
                 "BUCK2_PRODUCT_RUNTIME",
                 format!("unsupported runtime contract: {value}"),
-            ))
+            ));
         }
     };
     let provenance_bytes = fs::read(&args.provenance).map_err(|error| {
@@ -1167,9 +1171,12 @@ fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
     let bundle_root = normalized_relative(&args.bundle_root, "bundle root")?.to_owned();
     let bundle_root_prefix = format!("{bundle_root}/");
     let parse_input = |spec: &str, kind: &str| -> ToolResult<(String, String)> {
-        let (relative, source) = spec
-            .split_once('=')
-            .ok_or_else(|| fail("BUCK2_PRODUCT_INPUT", format!("{kind} must be RELPATH=SRCPATH")))?;
+        let (relative, source) = spec.split_once('=').ok_or_else(|| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("{kind} must be RELPATH=SRCPATH"),
+            )
+        })?;
         let relative = normalized_relative(relative, kind)?;
         if !relative.starts_with(&bundle_root_prefix) {
             return Err(fail(
@@ -1523,13 +1530,11 @@ mod tests {
             );
         }
         assert_eq!(
-            modes["Applications/Demo.app/Contents/MacOS/demo"],
-            0o555,
+            modes["Applications/Demo.app/Contents/MacOS/demo"], 0o555,
             "the declared executable keeps its executable bit"
         );
         assert_eq!(
-            modes["Applications/Demo.app/Contents/Resources/icon.icns"],
-            0o444,
+            modes["Applications/Demo.app/Contents/Resources/icon.icns"], 0o444,
             "resources stay read-only"
         );
     }
@@ -1537,9 +1542,15 @@ mod tests {
     #[test]
     fn archive_tree_rejects_a_missing_declared_executable() {
         let mut files = BTreeMap::new();
-        files.insert("Applications/Demo.app/Contents/Info.plist".to_owned(), b"{}".to_vec());
-        let error = archive_tree(files, &["Applications/Demo.app/Contents/MacOS/demo".to_owned()])
-            .unwrap_err();
+        files.insert(
+            "Applications/Demo.app/Contents/Info.plist".to_owned(),
+            b"{}".to_vec(),
+        );
+        let error = archive_tree(
+            files,
+            &["Applications/Demo.app/Contents/MacOS/demo".to_owned()],
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("declared executable is missing"));
     }
 
@@ -1566,7 +1577,11 @@ mod tests {
             descriptor: temporary.path().join("descriptor.json"),
         };
         let error = package_app_bundle(arguments).unwrap_err();
-        assert!(error.to_string().contains("mach-o-app-bundle/v1 requires darwin/darwin"));
+        assert!(
+            error
+                .to_string()
+                .contains("mach-o-app-bundle/v1 requires darwin/darwin")
+        );
     }
 
     fn signature_with_cms(code_directory_flags: u32, cms_size: u32) -> Vec<u8> {
@@ -1596,9 +1611,24 @@ mod tests {
     fn app_bundle_args(root: &Path) -> PackageAppBundleArgs {
         let signature = signature_with_cms(2, 8);
         let mut executable = [
-            0xfeed_facfu32, 0x0100_000c, 0, 2, 2, 40, 0, 0,
-            0x32, 24, 1, 14 << 16, 14 << 16, 0,
-            0x1d, 16, 72, u32::try_from(signature.len()).unwrap(),
+            0xfeed_facfu32,
+            0x0100_000c,
+            0,
+            2,
+            2,
+            40,
+            0,
+            0,
+            0x32,
+            24,
+            1,
+            14 << 16,
+            14 << 16,
+            0,
+            0x1d,
+            16,
+            72,
+            u32::try_from(signature.len()).unwrap(),
         ]
         .into_iter()
         .flat_map(u32::to_le_bytes)
@@ -1608,14 +1638,20 @@ mod tests {
         fs::write(root.join("icon.icns"), b"icon").unwrap();
         fs::write(root.join("Info.plist"), b"<?xml version=\"1.0\"?><plist/>").unwrap();
         fs::write(root.join("stamp.json"), br#"{"version":"1.2.3"}"#).unwrap();
-        fs::write(root.join("provenance.json"), br#"{"schema":"buck-build-provenance/v1","recipe":"demo","toolchain":"swift-test"}"#).unwrap();
+        fs::write(
+            root.join("provenance.json"),
+            br#"{"schema":"buck-build-provenance/v1","recipe":"demo","toolchain":"swift-test"}"#,
+        )
+        .unwrap();
         PackageAppBundleArgs {
             bundle_root: "Applications/Demo.app".into(),
             bundle_executables: vec![format!(
-                "Applications/Demo.app/Contents/MacOS/demo={}", root.join("demo").display()
+                "Applications/Demo.app/Contents/MacOS/demo={}",
+                root.join("demo").display()
             )],
             bundle_resources: vec![format!(
-                "Applications/Demo.app/Contents/Resources/icon.icns={}", root.join("icon.icns").display()
+                "Applications/Demo.app/Contents/Resources/icon.icns={}",
+                root.join("icon.icns").display()
             )],
             bundle_plist: root.join("Info.plist"),
             bundle_stamp: Some(root.join("stamp.json")),
@@ -1636,30 +1672,53 @@ mod tests {
         let temporary = tempdir().unwrap();
         package_app_bundle(app_bundle_args(temporary.path())).unwrap();
         let first = fs::read(temporary.path().join("artifact.tar")).unwrap();
-        let descriptor: Value = serde_json::from_slice(
-            &fs::read(temporary.path().join("descriptor.json")).unwrap()
-        ).unwrap();
-        assert_eq!(descriptor["runtime"]["executables"][0], json!({
-            "architecture": "arm64", "dylibs": [], "minimumOs": "14.0",
-            "path": "Applications/Demo.app/Contents/MacOS/demo", "signingPolicy": "adhoc/v1"
-        }));
-        assert_eq!(descriptor["payload"]["digest"]["sri"], sha256_sri(&sha256_bytes(&first)).unwrap());
-        let entries = tar::Archive::new(first.as_slice()).entries().unwrap().map(|entry| {
-            let mut entry = entry.unwrap();
-            let path = entry.path().unwrap().into_owned();
-            let mode = entry.header().mode().unwrap();
-            let mut contents = Vec::new();
-            entry.read_to_end(&mut contents).unwrap();
-            (path, (mode, contents))
-        }).collect::<BTreeMap<_, _>>();
-        assert_eq!(entries[Path::new("Applications/Demo.app/Contents/Info.plist")].1,
-            fs::read(temporary.path().join("Info.plist")).unwrap());
-        assert_eq!(entries[Path::new("Applications/Demo.app/Contents/MacOS/demo")].0, 0o555);
-        assert_eq!(entries[Path::new("Applications/Demo.app/Contents/Resources/icon.icns")], (0o444, b"icon".to_vec()));
-        assert_eq!(entries[Path::new("Applications/Demo.app/Contents/Resources/nix-build-stamp.json")].1,
-            br#"{"version":"1.2.3"}"#);
+        let descriptor: Value =
+            serde_json::from_slice(&fs::read(temporary.path().join("descriptor.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            descriptor["runtime"]["executables"][0],
+            json!({
+                "architecture": "arm64", "dylibs": [], "minimumOs": "14.0",
+                "path": "Applications/Demo.app/Contents/MacOS/demo", "signingPolicy": "adhoc/v1"
+            })
+        );
+        assert_eq!(
+            descriptor["payload"]["digest"]["sri"],
+            sha256_sri(&sha256_bytes(&first)).unwrap()
+        );
+        let entries = tar::Archive::new(first.as_slice())
+            .entries()
+            .unwrap()
+            .map(|entry| {
+                let mut entry = entry.unwrap();
+                let path = entry.path().unwrap().into_owned();
+                let mode = entry.header().mode().unwrap();
+                let mut contents = Vec::new();
+                entry.read_to_end(&mut contents).unwrap();
+                (path, (mode, contents))
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            entries[Path::new("Applications/Demo.app/Contents/Info.plist")].1,
+            fs::read(temporary.path().join("Info.plist")).unwrap()
+        );
+        assert_eq!(
+            entries[Path::new("Applications/Demo.app/Contents/MacOS/demo")].0,
+            0o555
+        );
+        assert_eq!(
+            entries[Path::new("Applications/Demo.app/Contents/Resources/icon.icns")],
+            (0o444, b"icon".to_vec())
+        );
+        assert_eq!(
+            entries[Path::new("Applications/Demo.app/Contents/Resources/nix-build-stamp.json")].1,
+            br#"{"version":"1.2.3"}"#
+        );
         package_app_bundle(app_bundle_args(temporary.path())).unwrap();
-        assert_eq!(first, fs::read(temporary.path().join("artifact.tar")).unwrap());
+        assert_eq!(
+            first,
+            fs::read(temporary.path().join("artifact.tar")).unwrap()
+        );
     }
 
     #[test]
@@ -1667,15 +1726,29 @@ mod tests {
         let temporary = tempdir().unwrap();
         let mut arguments = app_bundle_args(temporary.path());
         arguments.bundle_resources = vec!["Applications/Other.app/icon=absent".into()];
-        assert!(package_app_bundle(arguments).unwrap_err().to_string().contains("outside the bundle root"));
+        assert!(
+            package_app_bundle(arguments)
+                .unwrap_err()
+                .to_string()
+                .contains("outside the bundle root")
+        );
         let mut arguments = app_bundle_args(temporary.path());
         arguments.main_executable = "Applications/Demo.app/Contents/MacOS/absent".into();
-        assert!(package_app_bundle(arguments).unwrap_err().to_string().contains("main executable must be one"));
+        assert!(
+            package_app_bundle(arguments)
+                .unwrap_err()
+                .to_string()
+                .contains("main executable must be one")
+        );
         let mut arguments = app_bundle_args(temporary.path());
-        arguments.bundle_resources = vec![
-            "Applications/Demo.app/Contents/Resources/nix-build-stamp.json=absent".into()
-        ];
-        assert!(package_app_bundle(arguments).unwrap_err().to_string().contains("already declares its build stamp"));
+        arguments.bundle_resources =
+            vec!["Applications/Demo.app/Contents/Resources/nix-build-stamp.json=absent".into()];
+        assert!(
+            package_app_bundle(arguments)
+                .unwrap_err()
+                .to_string()
+                .contains("already declares its build stamp")
+        );
         assert!(!temporary.path().join("artifact.tar").exists());
     }
 
