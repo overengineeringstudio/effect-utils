@@ -209,6 +209,7 @@ def _stage_product_executable(ctx, target):
 
 def _repository_validation_check_impl(ctx):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
+    audited = ctx.attrs.mode in ["nix-source", "devenv-trace-audit"]
     sources, source_tree = _collect_static_sources(ctx, "validation_source", False)
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
     hidden = [source_tree]
@@ -242,7 +243,7 @@ def _repository_validation_check_impl(ctx):
             hidden.append(tool.manifest)
     else:
         args = cmd_args([
-            toolchain.bun,
+            hermetic_bun_command(ctx, toolchain.bun) if audited else toolchain.bun,
             ctx.attrs._runner,
             "--mode",
             ctx.attrs.mode,
@@ -268,19 +269,27 @@ def _repository_validation_check_impl(ctx):
         if manifest != None:
             args.add("--manifest", manifest)
     args.add(cmd_args(hidden = hidden))
-    ctx.actions.run(
-        args,
-        category = "repository_validation",
-        identifier = ctx.attrs.name,
-        local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
-    )
+    if audited:
+        hermetic_action(ctx,
+            args,
+            category = "repository_validation",
+            identifier = ctx.attrs.name,
+            local_only = True,
+        )
+    else:
+        ctx.actions.run(
+            args,
+            category = "repository_validation",
+            identifier = ctx.attrs.name,
+            local_only = True,
+            allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+        )
     return [DefaultInfo(default_output = result)]
 
 
 _repository_validation_check = rule(
     impl = _repository_validation_check_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "checker": attrs.option(attrs.dep(), default = None),
         "declared_packages": attrs.list(attrs.string(), default = []),
         "mode": attrs.enum([
@@ -304,7 +313,7 @@ _repository_validation_check = rule(
         "_runner": attrs.default_only(attrs.source(
             default = "//packages/@overeng/buck2-tools:src/repository-validation-runner.ts",
         )),
-    },
+    }),
 )
 
 
@@ -346,7 +355,7 @@ def repository_static_checks(
             "deadnix": "//buck2/toolchains:tool_deadnix",
             "nixfmt": "//buck2/toolchains:tool_nixfmt",
         },
-        **kwargs
+        **admitted_kwargs
     )
     _repository_validation_check(
         name = "genie_import_closure_check",
@@ -360,7 +369,7 @@ def repository_static_checks(
         name = "devenv_trace_audit_check",
         mode = "devenv-trace-audit",
         source_sets = repository_source_sets,
-        **kwargs
+        **admitted_kwargs
     )
     _repository_validation_check(
         name = "workspace_contract_check",
