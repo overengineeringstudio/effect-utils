@@ -357,7 +357,7 @@ describe('Buck2 REAPI capability preflight', () => {
       server.close()
     }
   })
-  it('fails closed for a publisher when the gRPC capabilities request fails', async () => {
+  it.each(['publisher', 'private'] as const)('rejects unavailable %s cache', async (tier) => {
     const root = makeRoot()
     const server = createGrpcServer()
     const receivedHeaders: string[] = []
@@ -392,7 +392,12 @@ describe('Buck2 REAPI capability preflight', () => {
         env: {
           ...process.env,
           GITHUB_ACTIONS: 'true',
-          BUCK2_CACHE_WRITE_BASIC_AUTH: credential,
+          ...(tier === 'publisher'
+            ? { BUCK2_CACHE_WRITE_BASIC_AUTH: credential }
+            : {
+                BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential,
+                BUCK2_PRIVATE_CACHE_ADDRESS: `grpc://127.0.0.1:${bound.port}`,
+              }),
         },
       })
       const stderr = await new Response(run.stderr).text()
