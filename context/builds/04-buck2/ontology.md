@@ -21,7 +21,7 @@ project root: its canonical cell at `.`, the bundled prelude, and the
 Nix-produced capability cell. The composed Workspace, Owned Member, Member
 Mount, and Member Cell terms are retired with the composed Buck root
 (principal q5, 2026-09-25); megarepo's
-[`Mount`](../megarepo/ontology.md#source-mounts) names a source checkout that is
+[`Mount`](../../megarepo/ontology.md#source-mounts) names a source checkout that is
 never a cell.
 
 **Materialization** is a Buck action that produces a dependency surface
@@ -32,8 +32,7 @@ only. The pnpm store supplies bytes; manifests supply identity.
 that editors and test runners resolve through. It is Buck-produced state, never
 hand-installed.
 
-**Shared Cache** is the fleet REAPI action cache and CAS (bazel-remote on
-dev3). **Cache Namespace** is the key space determined by composition shape,
+**Shared Cache** is the selected trust domain's REAPI action cache and CAS. **Cache Namespace** is the key space determined by composition shape,
 cell names, platform labels, and isolation dir; discipline keeps it singular.
 
 **BuildProduct** is normalized Buck-produced payload bytes plus a portable
@@ -46,8 +45,9 @@ of a Nix store result without rebuilding repository sources.
 **Native Evidence** is Buck's event log, build report, invocation identity, and
 supported derived queries.
 
-**Deletion Ledger** is the roadmap record binding each admission to the
-producers, tasks, and install steps it deletes.
+**Deletion Ledger** is the machine-readable authority record binding each
+admission to producers, tasks and install steps it deletes, with measured net
+complexity and reconciliation history ([contract](../03-authority/spec.md)).
 
 ## Structure
 

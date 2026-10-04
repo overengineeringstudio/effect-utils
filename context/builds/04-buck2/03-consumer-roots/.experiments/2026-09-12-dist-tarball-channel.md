@@ -62,3 +62,9 @@ artifact-consumption edge is proven end to end. It does not show that the
 direction preserves vision criterion 6, source-granular invalidation across
 the edge, or atomic cross-repository refactors; those are what the proposal
 asks to give up, explicitly.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

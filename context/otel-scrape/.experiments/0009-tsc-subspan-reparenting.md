@@ -1,5 +1,9 @@
 # Experiment 0009 — sub-span re-parenting under an otel-scrape command span
 
+## Question
+
+What structured telemetry or fidelity evidence does the Experiment 0009 — sub-span re-parenting under an otel-scrape command span probe provide?
+
 Evidence for [decision 0018](../.decisions/0018-devenv-task-cooperation.md)
 (clause 4). Question: when a concrete command is wrapped by otel-scrape inside a
 task, do a task-parented sub-span emitter's spans (the devenv tsc phase-span
@@ -15,7 +19,7 @@ real devenv nesting on a real `tsgo --build`: `otel-span devenv.task.exec -- bas
 `tscWithDiagnostics` phase-span emit logic. Parentage read from the captured
 trace fetched back from the Tempo backend by trace id.
 
-## Findings
+## Result
 
 1. **Falsified.** In the faithful M4 path (trace `cd5972c1…`) the phase span's
    parent is the **task** span, not the `tsgo` (otel-scrape) span — they are
@@ -44,7 +48,7 @@ trace fetched back from the Tempo backend by trace id.
    plumbing is reasoned from the root cause as equivalent to the `ee161803`
    capture, not separately captured.
 
-## Verdict
+## Conclusion
 
 The naive claim is false; the minimal, general fix is clause 4 of decision 0018 —
 otel-scrape MUST export `OTEL_TASK_TRACEPARENT` (alongside `TRACEPARENT`) for its
@@ -58,3 +62,8 @@ an implementation choice left to the epic worker.
 
 Findings detail: `tmp/vista-issue866/m4-tsc-reparent-derisk.md` (gitignored).
 Trace ids: sibling `cd5972c1…`/`6741b6c1…`, fixed nesting `ee161803…`.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

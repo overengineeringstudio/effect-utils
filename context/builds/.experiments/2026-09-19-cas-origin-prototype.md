@@ -68,7 +68,7 @@ The GitHub asset metadata already declared the same SHA-256 and size. The
 archive's published manifest includes two runtime URL dependencies, so pnpm 11's
 default `blockExoticSubdeps` rejects it. The consumer fixture therefore set
 `blockExoticSubdeps: false`, matching the already-recorded direct-URL constraint
-in `context/buck2/05-composition/.experiments/2026-09-13-composition-bakeoff.md:194-200`.
+in `context/builds/04-buck2/03-consumer-roots/.experiments/2026-09-13-composition-bakeoff.md:194-200`.
 `--ignore-scripts` isolated transport from pnpm 11's unrelated build-approval
 gate.
 
@@ -88,7 +88,7 @@ Its implementation describes `SizedLRU` as keeping total size below `maxSize` by
 evicting items
 ([`cache/disk/lru.go`, lines 14-16](https://github.com/buchgr/bazel-remote/blob/v2.6.2/cache/disk/lru.go#L14-L16)).
 This matches the deployment's existing cache-only/disposable contract in
-`context/buck2/.decisions/0013-shared-cache-foundation.md:21-26`.
+`context/builds/.decisions/0013-shared-cache-foundation.md:21-26`.
 
 ## Result
 
@@ -206,7 +206,7 @@ Bare CAS keys do not replace that manifest function.
 Private artifacts cannot share a publicly readable CAS. bazel-remote 2.6.2 does
 not isolate CAS by instance name, and the accepted trust posture requires
 separate public and private data domains
-(`context/buck2/.decisions/0033-ci-cache-posture-two-trust-tiers.md:23-28,47-60`).
+(`context/builds/.decisions/0033-ci-cache-posture-two-trust-tiers.md:23-28,47-60`).
 A private, network-confined read-public endpoint and a public repository endpoint
 are different trust boundaries even when both use the same binary.
 
@@ -259,3 +259,9 @@ that bazel-remote's existing HTTP CAS is sufficient transport for all three
 read-public consumers, while separating that transport result from retention,
 provenance, authentication, offline availability, action-cache behavior, and
 public/private trust-domain requirements.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements; recorded outcomes do not
+relax protected identity, reuse or deletion constraints. The owning spec defines
+the current mechanism.

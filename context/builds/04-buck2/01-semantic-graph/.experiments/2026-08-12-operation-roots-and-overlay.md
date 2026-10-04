@@ -50,3 +50,9 @@ central package registry.
 
 Resolves the baseline and lifecycle parts of `BUCK.GRAPH.BIND.RUST-DQ6` and
 `BUCK.GRAPH.BIND.RUST-DQ7`. Exact API shape and watch freshness remain open.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

@@ -3,7 +3,7 @@
 ## OQ1: When does the TypeScript binding realize field-qualified dependency handles?
 
 - Blocks: implementation authority for
-  [decision 0005](../.decisions/0005-operation-dependency-roots.md).
+  [decision 0005](../../.decisions/0005-operation-dependency-roots.md).
 - Known gap: `catalog.compose` carries emitted dependency maps and workspace
   metadata, but does not expose the decision's immutable, field-qualified,
   branded handles through `GenieOutput.meta` for operations to consume.

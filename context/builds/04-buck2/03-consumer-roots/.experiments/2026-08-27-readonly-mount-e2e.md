@@ -119,3 +119,9 @@ COMP-R08/R10 implementation in mr. Records the genie-GENERATE cwd rule and
 the member editor-view gap as read-only-mount boundary facts; names the
 macOS RENAME_SWAP/APFS verifications required before fleet claims extend to
 Darwin.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

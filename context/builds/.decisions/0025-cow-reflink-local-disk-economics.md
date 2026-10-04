@@ -19,8 +19,8 @@ extract artifact.
 ## Evidence and Argument
 
 Measured on dev3, 2026-09-01
-([local-disk amortization ledger](../03-materialization/.experiments/2026-09-01-local-disk-amortization-ledger.md),
-[CoW primitives](../05-composition/.experiments/2026-09-01-cow-primitives-dev3.md)):
+([local-disk amortization ledger](../04-buck2/04-materialization/.experiments/2026-09-01-local-disk-amortization-ledger.md),
+[CoW primitives](../04-buck2/03-consumer-roots/.experiments/2026-09-01-cow-primitives-dev3.md)):
 
 - Twin composed roots share exactly 0 bytes (429 MB + 452 MB = 880 MB
   combined); machine-wide 28 `buck-out` trees hold 9.2 GB with no cross-root
@@ -74,7 +74,7 @@ overlay behavior).
   satisfied at a storage refresh.
 - Until the assembler change lands, the implementation still hardlinks —
   recorded as a staged divergence in
-  [.delta/DELTA-001](../03-materialization/.delta/DELTA-001-assembler-hardlinks-pending-0025.md).
+  [.delta/DELTA-001](../04-buck2/04-materialization/.delta/DELTA-001-assembler-hardlinks-pending-0025.md).
 - A hygiene pass is owed regardless of filesystem: GC of stale `buck-out`
   trees and stale composition roots, purge of contaminated immutable store
   commits plus a store-contamination guard, GC of orphaned editor snapshots,

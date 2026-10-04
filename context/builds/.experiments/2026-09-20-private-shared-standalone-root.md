@@ -90,3 +90,9 @@ resolve Geist through those aliases.
 The 06 Nix bridge question about private pnpm consumption of Nix-realized
 tarballs is resolved. Decision 0037's private `file:` route is implementable.
 Requirements and vision remain unchanged.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

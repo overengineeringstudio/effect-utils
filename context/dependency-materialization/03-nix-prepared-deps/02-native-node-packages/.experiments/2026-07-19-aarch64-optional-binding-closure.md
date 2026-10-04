@@ -45,7 +45,7 @@ host-invariant (equal realized output hash on aarch64-linux and x86_64-linux),
 while the default `--no-optional` FOD fails the same downstream build at
 runtime binding load.
 
-## VRS Impact
+## Intent Impact
 
 Confirms `DMP.NIX.NATIVE-R08` (completeness), `DMP.NIX-R11` (the opt-in
 resolves the runtime load), and the host-invariance premise behind `0008`/`0009`

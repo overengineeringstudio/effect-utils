@@ -105,3 +105,9 @@ The transfer is lossless and fail-closed for the bounded unit-test surface. Buck
 ## VRS Impact
 
 Advances BUCK-R06, BUCK-R09, BUCK-R12, and BUCK-R16 from analysis/build authority into test execution. It also establishes the ownership schema used by the remaining execution tranches: bounded work is declared in the admission registry, exceptional work names an existing source owner, and ambiguous partitions fail generation rather than relying on convention.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.EXEC requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

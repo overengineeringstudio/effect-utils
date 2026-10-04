@@ -39,7 +39,7 @@ over the tailnet. Fork jobs leave the local spool unexported. Export waits
 until build work ends, then joins the tailnet immediately before delivery
 (#1477). The collector is accessed over the tailnet ACL; no OTLP auth header,
 evidence upload service, archive, index, or reconciliation worker is required.
-A failed decode or export never changes the Buck result (BUCK.OBS-R01–R04).
+A failed decode or export never changes the Buck result (BUILD.BUCK.OBS-R01–R04).
 
 ## Children
 
@@ -60,7 +60,7 @@ for links, without reading Tempo from CI.
 ## Cross-Tree Relationships
 
 - **otel-scrape:** this lane owns direct event-log decoding under
-  [decision 0001](./.decisions/0001-composite-node-and-lane-ownership.md);
+  [decision 0001](.decisions/0001-composite-node-and-lane-ownership.md);
   otel-scrape keeps the wrapped-tool adapter contract.
 - **dotfiles fleet config:** Alloy's OTLP endpoint, the tailnet ACL grant,
   Tempo's 30-day retention, Mimir, and Grafana live there. This tree specifies
@@ -71,7 +71,7 @@ for links, without reading Tempo from CI.
 - **buck2 decision 0011:** the caller-side `otel-span` buck2 mode prepares
   environment and span identity; the caller invokes Buck directly and
   completes its command span post hoc, with no interposition
-  ([Amendment 1](../.decisions/0011-direct-native-evidence-observation.md)).
+  ([Amendment 1](../../.decisions/0011-direct-native-evidence-observation.md)).
 
 ## Open Design Questions
 

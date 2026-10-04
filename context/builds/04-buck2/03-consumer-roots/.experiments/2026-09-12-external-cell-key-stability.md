@@ -54,3 +54,9 @@ vision criterion 6 for every action that reads member sources.
 Grounds decision 0030 without the earlier hedge. Revisit condition 1 (upstream
 content-based external-cell keys) is the only thing that could change (1); (2)
 follows from (1).
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

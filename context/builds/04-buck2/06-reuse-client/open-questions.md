@@ -17,3 +17,14 @@ tree:
   [local event-log probe](../07-observability/03-event-log-adapter/.experiments/2026-09-24-local-event-log-probe.md).
   Undetermined whether the latency is load on the fleet dev host or the cache
   service itself — needs host-side evidence before a service change.
+
+## BUILD.BUCK.REUSE-DQ01: Lane budget values
+
+[Spec](./spec.md#open-design-questions). Blocked on honest measurements for
+edit-run, quick check, full tests and platform/host proof. No numbers are invented.
+
+## BUILD.BUCK.REUSE-DQ02: Writer attribution and purge integration
+
+[Spec](./spec.md#open-design-questions). Consumer/service owners must specify
+revocable per-host keys, authenticated write-key logging, quarantine and targeted
+AC purge. The public lane eligibility contract is not an authorization mechanism.

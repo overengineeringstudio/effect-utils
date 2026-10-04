@@ -13,7 +13,7 @@ repositories; `instance_name` is attribution rather than full isolation.
 
 Force-cold public CI does not meet the reuse and wall-clock budgets. The measured
 failure is retained in
-[the experiment](../04-reuse/.experiments/2026-09-12-ci-cache-posture.md).
+[the experiment](../04-buck2/06-reuse-client/.experiments/2026-09-12-ci-cache-posture.md).
 
 ## Evidence and Argument
 
@@ -107,3 +107,25 @@ Target: add a public-repository Buck2 cache tier; do not alter the private cache
   write succeeds, and neither endpoint can read the other's seeded CAS blob.
 - Return the public endpoint, CA contract, credential environment name, and
   rollback command to the effect-utils owner for the dispatch-only CI proof.
+
+## Amendment 1 — Mitigated Tailnet Cache Writers
+
+Axe record `4pmebr` permits any tailnet context to write the shared cache with
+mitigations; it supersedes blanket network-trust and protected-publisher-only
+write interpretations above, without exposing private CAS to public readers.
+
+Only audited hermetic lanes publish: scrubbed environments, declared exact tools
+and inputs, and actual sandbox enforcement where feasible. Host-dependent lanes
+neither read nor write; flaky tests are uncached. Enable AC key instance mangling
+per repository; CAS remains shared inside its trust domain. Revocable per-host
+write credentials and authenticated logged action keys support a purge runbook:
+revoke/quarantine writer, identify keys, stop the cache, remove matching AC files,
+restart and cold rebuild. Instance-generation rotation works only with mangling.
+Keep digest/dependency validation on, but do not confuse it with producer trust.
+Public PRs remain read-only, enforced server-side rather than by client flags alone.
+
+[Execution admission](../04-buck2/05-execution/spec.md#cache-writable-lane-admission)
+owns lane eligibility. Consumer policy/service realization owns authorization,
+credentials, key logs and purge operations. Mitigation design and enforcement
+remain explicit owning DQs; this amendment does not claim controls are implemented.
+Historical BUCK-A05 and REUSE-R01/R06 resolve through the [ID map](../.reference/id-map.md).

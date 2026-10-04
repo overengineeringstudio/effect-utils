@@ -99,9 +99,15 @@ without a real-lane hit and outage test.
 ## VRS Impact
 
 This experiment supplies the resolution signal for OQ2 and supports
-[decision 0033](../../.decisions/0033-ci-cache-posture-two-trust-tiers.md).
+[decision 0033](../../../.decisions/0033-ci-cache-posture-two-trust-tiers.md).
 The required constitutional follow-up refines BUCK-R06 and REUSE-R01, which
 currently require every admitted action to write the shared cache, while public
 pull requests must be read-only. That refinement must also align REUSE-A01,
 REUSE-R06, the root and reuse specs, the roadmap, and materialization DQ1 with
 the accepted two-tier topology.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.REUSE requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

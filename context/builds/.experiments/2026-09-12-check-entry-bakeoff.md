@@ -152,3 +152,9 @@ owns the repository check interface and residual task graph; Buck owns admitted
 deterministic actions and native evidence behind that interface. The decision
 does not change cache posture, composition requirements, or the prohibition on
 a launcher between the caller and Buck for direct product evidence.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

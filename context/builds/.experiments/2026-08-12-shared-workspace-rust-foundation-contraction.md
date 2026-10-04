@@ -103,6 +103,12 @@ cold vendor realization, and a minimal foundation task closure.
 ## VRS Impact
 
 Grounds [decision 0010](../.decisions/0010-admit-rust-stage-zero-support-tools.md)
-and the stage-zero contract in [02-execution](../02-execution/requirements.md)
+and the stage-zero contract in [02-execution](../04-buck2/05-execution/requirements.md)
 (EXEC-T01): bootstrap providers are exact, finite, and retired when the graph
 reproduces them.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

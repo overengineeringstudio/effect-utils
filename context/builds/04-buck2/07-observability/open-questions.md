@@ -7,7 +7,7 @@ experiments (as tested hypotheses).
 ## OQ1: What does delivering both views cost in Tempo? — open
 
 - Blocks: production volume tuning of [05 OTLP delivery](./05-otlp-delivery/spec.md);
-  the BUCK.OBS-T02 tradeoff.
+  the BUILD.BUCK.OBS-T02 tradeoff.
 - Both critical and full views are exported as separately identified traces
   (q24). A full CI run is ~67 k spans / ~61 MB OTLP JSON at the planning
   volume of ~90 runs/day; the critical view is ~6 k spans/run.
@@ -60,7 +60,7 @@ experiments (as tested hypotheses).
   touchpoint in the generated CI workflow (essential / replaceable /
   accidental) and the target "CI = `devenv tasks run check:*` + environment"
   shape; filed as a separate epic. This lane already applies the principle
-  (BUCK.OBS-R03).
+  (BUILD.BUCK.OBS-R03).
 - **buck2-tools Rust rewrite (q17):** decided as a full rewrite except the
   genie Buck2 generators — tracked in
   [issue #1394](https://github.com/overengineeringstudio/effect-utils/issues/1394)
@@ -69,11 +69,11 @@ experiments (as tested hypotheses).
 - The [roadmap](./roadmap.md) tracks the remaining rewrite slices; issue
   #1394 owns implementation scope rather than a design decision in this lane.
 - **Findings for other owners (q8):** serial `tsgo_emit` chain and 8-slot
-  contention ([02-execution](../02-execution/open-questions.md)), uncached
+  contention ([02-execution](../05-execution/open-questions.md)), uncached
   editor bootstrap and the publish tail
-  ([03-materialization](../03-materialization/open-questions.md)), cache
+  ([03-materialization](../04-materialization/open-questions.md)), cache
   service upload/materialization latency
-  ([04-reuse](../04-reuse/open-questions.md)). Recorded there; this lane owns
+  ([04-reuse](../06-reuse-client/open-questions.md)). Recorded there; this lane owns
   only their measurement.
 
 ## OQ7: How can task-level PR reads be isolated? — open, not gating

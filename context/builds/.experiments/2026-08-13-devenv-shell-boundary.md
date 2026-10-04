@@ -56,6 +56,12 @@ acceptance budget remains p50 at most 500 ms and p95 at most one second.
 ## VRS Impact
 
 Grounds the capability-projection boundary in
-[02-execution](../02-execution/spec.md): environment preparation is a
+[02-execution](../04-buck2/05-execution/spec.md): environment preparation is a
 mutation-free projection step, direct Buck fails closed on a missing or stale
 projection, and no shell activation becomes a hidden producer.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

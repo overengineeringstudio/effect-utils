@@ -80,3 +80,9 @@ and final fail-closed scans. Grounds DEPS-R02 without changing requirements.
 The fixture does not evidence a workspace injected-copy rewrite because
 `tui-core` has no workspace dependency; DEPS-R03's symlink-back remains a
 separate materialization step rather than guessed normalizer behavior.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

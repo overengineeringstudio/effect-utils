@@ -80,7 +80,13 @@ Buck-owns-all with cutover gated on that keying plus a real-editor soak.
 
 ## VRS Impact
 
-Decides [decision 0015](../../.decisions/0015-buck-owned-dependency-surface.md)
+Decides [decision 0015](../../../.decisions/0015-buck-owned-dependency-surface.md)
 and grounds DEPS-R03 (live workspace siblings via symlink-back), DEPS-R06
 (loud staleness versus the status quo's silent phantom-dependency green), and
 DEPS-R07 (per-cell pruned-lockfile keying as the fan-out gate).
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

@@ -94,3 +94,9 @@ requests, selected topology, and operation intent. Workspace inheritance,
 feature and target semantics, Reindeer aliases, and finer-than-Cargo-scope
 precision remain explicit open questions until the required experiments are
 retained and reproducible.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

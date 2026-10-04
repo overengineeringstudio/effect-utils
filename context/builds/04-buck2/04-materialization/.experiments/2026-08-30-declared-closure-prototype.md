@@ -59,6 +59,12 @@ platform filtering, the shared hardlink hazard, and a slower cold bootstrap.
 
 ## VRS Impact
 
-Ratified as [decision 0022](../../.decisions/0022-lockfile-derived-declared-closure.md);
+Ratified as [decision 0022](../../../.decisions/0022-lockfile-derived-declared-closure.md);
 decision 0015 superseded in mechanism (Amendment 3); DEPS-A02, DEPS-T01,
 DEPS-R02, DEPS-R04, DEPS-R07, and DEPS-R08 re-tensed to the closure mechanism.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

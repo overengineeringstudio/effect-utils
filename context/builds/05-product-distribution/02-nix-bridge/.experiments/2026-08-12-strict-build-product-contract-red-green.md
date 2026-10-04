@@ -70,3 +70,9 @@ static ELF Rust product.
 The spec now records the implemented exact schema, canonical digest algorithm,
 semantic/evidence provenance boundary, and validation-versus-admission
 distinction. Requirements and vision remain unchanged.
+
+## Intent Impact
+
+Historical evidence informs BUILD.DIST.NIX requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

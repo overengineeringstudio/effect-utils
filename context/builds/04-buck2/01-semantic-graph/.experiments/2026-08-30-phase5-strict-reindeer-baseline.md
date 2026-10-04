@@ -39,3 +39,9 @@ Do not disable strict fixup enforcement and do not admit the 224-package `otelit
 ## VRS Impact
 
 No requirement or decision changes. The result confirms decision 0017's bounded Cargo-manifest binding and the existing strict unresolved-fixup gate, but exposes an unresolved tension with Cargo's workspace-level lock semantics. Phase 5 cannot claim an `otel-scrape`-only selected topology until that lock-identity boundary is specified.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

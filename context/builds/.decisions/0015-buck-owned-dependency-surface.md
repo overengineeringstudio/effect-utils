@@ -15,7 +15,7 @@ uncontrolled install).
 
 Prototypes and a competitive benchmark (two independent agents, identical
 7-scenario protocol on real packages; retained in
-[../03-materialization/.experiments/](../03-materialization/.experiments/))
+[../03-materialization/.experiments/](../04-buck2/04-materialization/.experiments))
 established:
 
 - Per-package materialization is a 1–3 s Buck action from a manifest-only
@@ -79,7 +79,7 @@ machines; cross-machine caching applies to the actions consuming them.
 ## Amendment 1
 
 The de-risk investigation
-([../03-materialization/.experiments/2026-08-26-pruned-lockfile-keying.md](../03-materialization/.experiments/2026-08-26-pruned-lockfile-keying.md))
+([../03-materialization/.experiments/2026-08-26-pruned-lockfile-keying.md](../04-buck2/04-materialization/.experiments/2026-08-26-pruned-lockfile-keying.md))
 found the measured fan-out's root cause was an output-normalization bug (an
 unstripped JSON `prunedAt` timestamp plus the self-referential in-tree pruned
 lockfile), not keying: fixing normalization alone stops the consumer cascade
@@ -95,7 +95,7 @@ rewrite of every tree); (3) the real-editor soak stands unchanged.
 ## Amendment 2
 
 The two-path portability proof
-([../03-materialization/.experiments/2026-08-26-two-path-materializer-portability.md](../03-materialization/.experiments/2026-08-26-two-path-materializer-portability.md))
+([../03-materialization/.experiments/2026-08-26-two-path-materializer-portability.md](../04-buck2/04-materialization/.experiments/2026-08-26-two-path-materializer-portability.md))
 falsified the decision's categorical premise that pnpm virtual-store paths make
 the admitted tree non-portable. After removing non-runtime `storeDir` metadata,
 normalizing stage paths, and rejecting non-contained links, forced

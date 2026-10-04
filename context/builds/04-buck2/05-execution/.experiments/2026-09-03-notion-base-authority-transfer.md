@@ -85,3 +85,9 @@ Discharges the base half of the notion projection-chain authority transfer
 (base #1204, stacked under top #1205). BUCK-R06, BUCK-R07, BUCK-R09, BUCK-R12,
 and BUCK-R16 are re-evidenced for the admission. No requirement change is
 needed; the 16-edge deletion ledger item is tracked as top-transfer scope.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.EXEC requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

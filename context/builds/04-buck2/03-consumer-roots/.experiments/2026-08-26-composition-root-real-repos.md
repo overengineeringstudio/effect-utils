@@ -88,3 +88,9 @@ Falsifies COMP-A01 (now a requirement on mr, COMP-R10); amends COMP-R08
 (cell_aliases, toolchains cell content, hub platform labels, isolation-dir
 wrapper); adds the genie visibility obligation; feeds roadmap Phase 2
 sequencing (mr materialization before cache-namespace claims).
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

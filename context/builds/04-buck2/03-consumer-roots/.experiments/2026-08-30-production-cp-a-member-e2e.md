@@ -36,3 +36,9 @@ The real cp-a path is no longer only fixture-proven: production acquisition reac
 ## VRS Impact
 
 No requirement or decision changes. The evidence closes cache-policy lifecycle ordering and narrows the remaining Phase-2 gate to dependency-state availability for the real action. Decision 0020's cp-a mechanism and R6 identity model remain intact.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

@@ -116,5 +116,5 @@ does not gate this design.
   (serial/cached) cases; end-to-end trace readback with the wait span
   parented and linked.
 - Evidence: the five bakeoffs below and decisions
-  [0001](./.decisions/0001-direct-decode-rust-crate.md)–
-  [0003](./.decisions/0003-daemon-wait-at-ingest.md).
+  [0001](.decisions/0001-direct-decode-rust-crate.md)–
+  [0003](.decisions/0003-daemon-wait-at-ingest.md).

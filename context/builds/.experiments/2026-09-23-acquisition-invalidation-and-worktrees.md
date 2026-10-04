@@ -2,7 +2,17 @@
 
 Date: 2026-09-23
 
-## Environment
+## Question
+
+Do isolated worktrees repeat materialization, and does a real dependency archive
+mutation invalidate its consumers rather than the whole graph?
+
+## Method
+
+Use two detached roots with no action cache; mutate declared archive bytes and
+compare native commands and product outcomes with the warm baseline.
+
+### Environment
 
 Both experiments used detached physical worktrees on local disk at
 `3ce4b75a10`. The bulk-backed checkout is excluded from timing conclusions
@@ -11,7 +21,9 @@ root used the checked-in capability projection, notify watcher, private
 archive-origin posture, fresh `pair` isolation, and no remote execution or action
 cache.
 
-## Two-worktree sample
+## Result
+
+### Two-worktree sample
 
 The same Genie candidate was built independently in two physical worktrees.
 Both performed 587 local command actions, downloaded 50 MiB, and produced
@@ -27,7 +39,7 @@ per-worktree output materialization: the second fresh root still transferred 50
 MiB and occupied about 491 MB physically. This is the measured cost of isolated
 worktrees without a shared action cache.
 
-## Content-changing mutation
+### Content-changing mutation
 
 The real `effect@4.0.0-rc.112` archive was unpacked, a new
 `package/acquisition-proof.txt` file was added, and it was repacked. The fixture
@@ -47,3 +59,15 @@ This is a real archive-content transition rather than the earlier trailing-byte
 probe. It demonstrates dependency-directed invalidation while also making the
 cost visible: changing a high-fanout dependency intentionally reaches several
 package views and their consumers, but not the complete build graph.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.
+
+## Conclusion
+
+Without shared action reuse, both worktrees materialize the dependency bytes.
+The truthful Effect archive mutation reruns 45 consumers, not the 798-command
+complete warm baseline, supporting declared dependency-directed invalidation.

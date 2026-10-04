@@ -21,7 +21,7 @@ Buck target on its default branch.
 - Stack ledger measured with `gh pr view --json additions,deletions`
   (2026-09-12): #1260 +8772/−1962, #1261 +5904/−898, #1262 +1861/−1658,
   #1263 +9763/−3163, #1264 +985/−670, #1265 +1432/−383.
-- dotfiles decision 0018 (`context/buck2-adoption/.decisions/0018`) already
+- dotfiles decision 0018 (`schickling/dotfiles:context/builds/.decisions/0018`) already
   established that the ledger must be computed by a check and that a hard
   per-change budget punishes legitimately additive foundation changes.
 - The Deletion Ledger was already an ontology term and BUCK-R09/R15/R16
@@ -47,7 +47,7 @@ Buck target on its default branch.
    (BUCK-R01) and the wall-clock budgets (BUCK-R07) are constraints with
    tolerances; when they conflict with BUCK-R15, BUCK-R15 wins.
 2. The Deletion Ledger is machine-readable. Its contract lives in this node
-   ([spec.md](../spec.md), "Authority Ledger"); its instance lives in the
+   ([spec.md](../04-buck2/spec.md), "Authority Ledger"); its instance lives in the
    composition root that composes every consumer, next to the composition
    lock, because rows name private repositories. Progress views (the master
    epic) are rendered from the instance and hold no facts of their own.

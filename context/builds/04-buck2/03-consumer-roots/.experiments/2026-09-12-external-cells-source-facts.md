@@ -85,3 +85,9 @@ two conditions under which it is revisited: upstream content-based external
 cell keys, and a root-owned capability cell. COMP-R08/R10 and decision 0020
 are unaffected. See the companion fixture and hub records of the same date for
 the empirical confirmation.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

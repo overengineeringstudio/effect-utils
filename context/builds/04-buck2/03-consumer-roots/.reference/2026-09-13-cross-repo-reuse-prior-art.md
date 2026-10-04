@@ -100,3 +100,13 @@ This record separates source identity, artifact identity, cache identity, and ch
 ## VRS Impact
 
 Grounds decision 0034 (artifact-default composition without a registry) and the rejection of external cells, Bzlmod, task caches, Nix-only library composition, and checkout mechanisms as cross-repository reuse channels.
+
+## Relevant Facts
+
+The comparisons above are historical evidence for repository composition and
+artifact-granular cross-repository reuse.
+
+## Intent Impact
+
+BUILD.BUCK.ROOT keeps standalone-root identity; current products cross repositories
+by pinned digest rather than transporting a producer action graph.

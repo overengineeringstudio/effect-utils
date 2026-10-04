@@ -6,7 +6,7 @@ No consumer used the paused composed shape (`mr store worktree new --compose`,
 the composition root and publisher, dist overlays, the per-workspace
 capability resolver, and `cp -a` member mounts). All of it is deleted from mr
 and from effect-utils' own declaration. Composition is now limited to source
-mounts, which are never Buck cells (COMP-R02); COMP-R09 to COMP-R11 are
+mounts, which are never Buck cells (BUILD.BUCK.ROOT-R02); BUILD.BUCK.ROOT-R09 to BUILD.BUCK.ROOT-R11 are
 retired. The capability projection survives as the Nix
 `buck2-capabilities` output for standalone roots.
 
@@ -31,11 +31,11 @@ invalidation). The cost is the decision-0020 workspace shape and mr's mount
 pipeline (14,408 production lines by measurement), paid by effect-utils alone:
 no repository authors an `effect_utils//` label. Git external cells are
 rejected
-([decision 0030](../.decisions/0030-external-cells-are-not-a-composition-mechanism.md)).
+([decision 0030](../../.decisions/0030-external-cells-are-not-a-composition-mechanism.md)).
 The first artifact-composition proposal (merged by mistake as a PR-local record
 via #1271) ran its falsification spikes in PR #1282: URL tarball closure, digest
 refusal, and a root-owned capability cell passed; the consumer boundary failed.
-The [composition architecture bakeoff](./.experiments/2026-09-13-composition-bakeoff.md)
+The [composition architecture bakeoff](.experiments/2026-09-13-composition-bakeoff.md)
 (PR #1287) then compared composed cells, artifact-default libraries, a narrowed
 hybrid, and Nix outputs on the same edge, and the no-registry publication proof
 (PR #1289: `@overeng/utils` published as a release asset, dotfiles notion-scan
@@ -65,3 +65,9 @@ on unknown or duplicate kinds, a non-hub authority declaration, or an attempted
 member-owned override. A different consumer pin now requires an explicit
 architecture change backed by a demonstrated incompatibility; it is not an
 implicit per-member escape hatch.
+
+## BUILD.BUCK.ROOT-DQ01: Long-term edit-loop preparation
+
+[Spec](./spec.md#open-design-questions). Worktree-local bin first on PATH is
+selected; the long-term devenv dependency remains blocked on the alternatives
+bakeoff, not declared a permanent build requirement.

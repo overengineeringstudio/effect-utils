@@ -62,3 +62,9 @@ second condition of decision 0030's revisit clause and as an open question in
 05-composition. The mr projection contract in the 05-composition spec
 ("exactly one producer, installed per mount") stands until that refactor is
 decided.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

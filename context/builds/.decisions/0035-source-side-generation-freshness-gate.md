@@ -2,9 +2,11 @@
 
 ## Status
 
+Status: accepted
+
 Accepted on 2026-09-11.
 
-## Problem
+## Context
 
 Generated `BUCK`, composition, capability, dependency, and authority files define the graph Buck
 analyzes. A target inside that graph cannot prove the graph is current: stale generation can omit the
@@ -45,10 +47,21 @@ proof target itself.
   installation.
 - Freshness failure stops the entrypoint; Buck never runs against a graph already known to be stale.
 
-## Rejected alternatives
+## Options
+
+| Option | Outcome |
+| --- | --- |
+| Preserve the selected authority boundary | Accepted |
+| Move external/freshness authority into Buck | Rejected for the reasons below |
 
 - **A Buck freshness target:** circular authority; a stale graph can omit or weaken its own verifier.
 - **Regenerate during Buck analysis:** turns read-only analysis into mutation and creates a second
   producer race with `genie:run`.
 - **Rely only on a parallel CI lint job:** merge blocking would catch drift eventually, but individual
   Buck jobs could still publish false-green evidence from stale graph state.
+
+## Evidence and Argument
+
+The rejected alternatives above cross the declared authority boundary: the
+consumer of graph state cannot own its freshness proof, and live/relative inputs
+cannot become a bounded static action merely by wrapping their aggregate.

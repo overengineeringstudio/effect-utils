@@ -32,3 +32,9 @@ Admission 2 is complete. The materialization boundary now handles real workspace
 ## VRS Impact
 
 Discharges the second Phase-3 deletion-ledger entry in the roadmap and establishes the reusable source-sibling plus dist-sibling pattern for later TypeScript admissions. The transitional editor root install remains intentionally outside this transfer and is still deleted only at the Phase-4 dependency-surface gate.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.EXEC requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

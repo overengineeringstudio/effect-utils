@@ -52,7 +52,7 @@ justification.
 is preparation plus post-hoc completion, not interposition
 
 The observability lane's bakeoffs refined both halves of this decision
-([07-observability](../07-observability/spec.md); decisions q10, q11).
+([07-observability](../04-buck2/07-observability/spec.md); decisions q10, q11).
 
 - The "versioned adapter" is a **direct-decode Rust crate**: it decodes
   `*_events.pb.zst` directly (zstd + varint-length-delimited protobuf, a
@@ -74,8 +74,8 @@ The observability lane's bakeoffs refined both halves of this decision
   set is unchanged and unsatisfied-by-construction.
 
 Evidence: the
-[03-event-log-adapter decisions](../07-observability/03-event-log-adapter/spec.md)
+[03-event-log-adapter decisions](../04-buck2/07-observability/03-event-log-adapter/spec.md)
 (decode bakeoffs B1/B2/B2b, capture B3/B4) and
-[01-run-identity](../07-observability/01-run-identity/spec.md)
+[01-run-identity](../04-buck2/07-observability/01-run-identity/spec.md)
 (correlation B5; the emit-span surface already accepts a caller-chosen span
 id).

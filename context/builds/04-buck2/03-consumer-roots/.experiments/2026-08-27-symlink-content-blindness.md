@@ -73,3 +73,9 @@ mounts + cache upload must never combine). Kills the canonical-path
 alternative and the pin-bump hope for decision 0014's mount question. Adds
 two operational actions: guard the existing `repos/effect` symlink before
 member cells land, and audit the shared cache for symlink-rooted uploads.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

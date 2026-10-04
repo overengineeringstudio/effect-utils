@@ -72,7 +72,13 @@ is stripped during normalization.
 
 ## VRS Impact
 
-Feeds [decision 0015](../../.decisions/0015-buck-owned-dependency-surface.md)
+Feeds [decision 0015](../../../.decisions/0015-buck-owned-dependency-surface.md)
 and grounds DEPS-R05 (atomic editor views: two-hop link, snapshot flip, no
 dangling window, live tsserver survival) and DEPS-T01 (local-only trees from
 absolute virtual-store keys).
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

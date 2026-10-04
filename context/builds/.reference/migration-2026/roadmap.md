@@ -3,11 +3,11 @@
 This roadmap derives rollout order from the Buck2 VRS: sequencing, entry conditions, and dissolution targets,
 not migration state. Current authority, residual producers, transfers, measurements, and repository closes
 come only from `buck2-ledger.json` in the private `schickling/megarepo-all` composition root, under the
-[Authority Ledger contract](./spec.md#authority-ledger).
+[Authority Ledger contract](../../03-authority/spec.md#authority-ledger).
 
 ## Sequencing principle
 
-Whole-repository exclusivity is the endgame (BUCK-R01); admission order is by value: expensive,
+Whole-repository exclusivity is the endgame (BUILD.BUCK-R01); admission order is by value: expensive,
 high-leverage operations first, cheap operations only when migrating them provably pays. Every authority
 transfer carries its ledger row and deletes the superseded producer in the same
 change. A consumer closes only when every row is Buck-owned or excluded and its
@@ -17,7 +17,7 @@ reported with amortization, not sign-gated.
 ## Phase 0 — shared cache foundation
 
 **Entry conditions:** A cache-only REAPI service is reachable inside its trust boundary; clients use the
-canonical digest mode and cache namespace; outage and cross-worktree canaries satisfy BUCK-R06.
+canonical digest mode and cache namespace; outage and cross-worktree canaries satisfy BUILD.BUCK-R06.
 
 **Sequence:** Establish cache service and client configuration before admitting operations that depend on
 cross-context reuse. Preserve Buck-native evidence for local versus cached execution.
@@ -28,7 +28,7 @@ the shared-cache contract is the admitted path.
 ## Phase 1 — first TypeScript vertical slice
 
 **Entry conditions:** The selected operation has a hermetic TypeScript rule, declared dependency surface,
-deterministic projection, independent product bridge where applicable, and measurements within BUCK-R07.
+deterministic projection, independent product bridge where applicable, and measurements within BUILD.BUCK-R07.
 
 **Sequence:** Transfer one high-leverage package operation end to end before widening the graph. Prove relevant
 and irrelevant invalidation, hostile environment behavior, strict task ordering, and second-context reuse.
@@ -66,7 +66,7 @@ offline extraction, and per-importer assembly targets with deterministic
 freshness and platform selection.
 
 **Sequence:** Put the declared closure behind admitted packages before making
-it the common dependency surface. Re-measure cold bootstrap against BUCK-R07.
+it the common dependency surface. Re-measure cold bootstrap against BUILD.BUCK-R07.
 
 **Dissolution target:** Delete the ambient store input, install and deploy
 normalizers, install descriptors, transitional materializer, and CI store-cache
@@ -107,7 +107,7 @@ resolution paths.
   lock remain request and resolution authority; generated first-party rules and
   the strict Reindeer graph project that authority without a second lock.
 - Third-party Rust sources follow
-  [decision 0023](./.decisions/0023-buck-fetched-rust-crates.md): Reindeer uses
+  [decision 0023](../../.decisions/0023-buck-fetched-rust-crates.md): Reindeer uses
   `vendor = false` and emits `crate_archive` targets pinned by the authoritative
   Cargo lock. Ordinary Buck builds fetch the pinned archives; sandboxed
   from-source Nix builds provide the same bytes through `mkBuck2CargoArchives`
@@ -125,7 +125,7 @@ resolution paths.
   helper, and the direct Cargo release build are deleted. The independently
   realized Nix providers for stage-zero archive/product tools remain the
   intentional cycle-breaking boundary admitted by
-  [decision 0010](./.decisions/0010-admit-rust-stage-zero-support-tools.md).
+  [decision 0010](../../.decisions/0010-admit-rust-stage-zero-support-tools.md).
 - The CI `cargo` operation remains outside Buck by policy: it aggregates the
   workspace contract, Cargo tests, Clippy, and rustfmt. Buck owns Rust
   compilation and shipped products; the operation ledger does not claim that
@@ -177,7 +177,7 @@ and its legacy builders, FOD hashes, and prepared-install glue are deleted. Its 
 is reported with amortization, while the cumulative sum keeps falling from
 reconciliation to reconciliation.
 
-## Phase 7 — action-level remote execution (BUCK-R17)
+## Phase 7 — action-level remote execution (BUILD.BUCK-R17)
 
 **Entry conditions:** DELTA-001 (second-context key instability) is closed;
 the 0037 distribution layer is in use; an x86_64-linux worker host with
@@ -196,7 +196,7 @@ carries both tiers; no second cache backend is kept indefinitely.
 ## Observability lane (07-observability)
 
 The telemetry lane is specified in
-[07-observability](./07-observability/spec.md) and is sequenced
+[07-observability](../../04-buck2/07-observability/spec.md) and is sequenced
 independently of the admission phases: its VRS lands first, then the
 implementation stack (the event-log adapter crate, the `otel-span` buck2
 mode, run-record seal/upload, the ingest CLI, and a dotfiles brief for the
@@ -207,7 +207,7 @@ recorded as findings in the owning subsystems' open questions.
 ### Restricted public-waterfall publisher
 
 The PR waterfall reuses GitBucket's immutable public content-addressed store
-([trace-access spec](./07-observability/06-trace-access/spec.md#public-immutable-images-and-failure-path)).
+([trace-access spec](../../04-buck2/07-observability/06-trace-access/spec.md#public-immutable-images-and-failure-path)).
 The deployed GitHub Actions OIDC exchange restricts publication to configured
 repository names and immutable repository/owner IDs, event/ref/workflow
 constraints, and short-lived public PNG upload tokens.
@@ -219,7 +219,7 @@ Authorization and publication failures retain Mermaid. Retired stored
 credentials are an operator cleanup action after review, not workflow inputs.
 
 **Dissolution achieved:** The account-scoped publication compromise is removed
-from the report. [OQ4](./open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
+from the report. [OQ4](resolved-open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
 and trace-access DQ1 are resolved; the CAS host and V2 D2 T2 presentation are
 unchanged.
 
@@ -228,9 +228,9 @@ unchanged.
 - One authority transfer, ledger row, and deletion entry form the review unit.
 - Transfer evidence proves hermeticity, causality, native evidence, and
   independent import where a product crosses into Nix.
-- Shared rules and schemas remain free of consumer-private facts (BUCK-R14).
+- Shared rules and schemas remain free of consumer-private facts (BUILD.AUTH-R14).
 - Unit-test operations enter package by package after their hermetic runner and
   resource contracts are proved; integration and live-effect lanes remain
   outside Buck until separately bounded.
 - Local check orchestration and public-runner cache topology remain governed by
-  [open questions](./open-questions.md); sequencing does not pre-empt them.
+  [open questions](resolved-open-questions.md); sequencing does not pre-empt them.

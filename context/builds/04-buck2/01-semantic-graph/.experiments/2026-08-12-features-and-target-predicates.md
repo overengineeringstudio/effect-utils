@@ -44,3 +44,9 @@ decisions.
 
 Resolves the mechanical parts of `BUCK.GRAPH.BIND.RUST-DQ3` and
 `BUCK.GRAPH.BIND.RUST-DQ4`; retains their policy questions.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

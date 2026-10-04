@@ -32,3 +32,9 @@ The production one-writable-member cutover and tierA-scale Linux gate are comple
 ## VRS Impact
 
 Discharges the Phase-2 production materialization, canonical-label/standalone-config deletion, cross-member dist-overlay, CI-workspace, tierA-scale Linux, and shared-cache obligations in the roadmap. Decision 0020 remains unchanged. Darwin FSEvents invalidation remains explicitly open; the APFS copy/exchange/R6 primitive evidence in `2026-08-27-macos-apfs-primitives.md` is not overstated as that missing runtime receipt.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

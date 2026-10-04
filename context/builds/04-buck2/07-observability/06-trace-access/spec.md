@@ -94,7 +94,7 @@ Each GitHub API GET has a 20-second timeout and retries transient 5xx, 429, netw
 
 ## V2 D2 T2 Presentation
 
-This presentation realizes BUCK.OBS.ACCESS-R01–R04 and R07 without a Tempo read.
+This presentation realizes BUILD.BUCK.OBS.ACCESS-R01–R04 and R07 without a Tempo read.
 
 ```text
 Jobs API job windows + optional step windows
@@ -252,11 +252,11 @@ baseline`; a finalizer job never appears as a build row. The collector
   omitted timed steps are disclosed, and Slowest never implies a DAG critical path.
 - Compact selection preserves all other rows in collapsed details; the existing
   body limit still bounds both image and fallback comments.
-- Historical evidence: [PR access prototype](./.experiments/2026-09-25-pr-trace-access.md), [page variants](./.experiments/2026-09-26-pr-page-variants.md), and amended decisions [0001](./.decisions/0001-resolver-and-ci-links.md), [0002](./.decisions/0002-review-page-and-baseline.md), [0003](./.decisions/0003-versioned-agent-contract.md).
+- Historical evidence: [PR access prototype](.experiments/2026-09-25-pr-trace-access.md), [page variants](.experiments/2026-09-26-pr-page-variants.md), and amended decisions [0001](.decisions/0001-resolver-and-ci-links.md), [0002](.decisions/0002-review-page-and-baseline.md), [0003](.decisions/0003-versioned-agent-contract.md).
 
 ## Open Design Questions
 
-- **DQ1 Restricted GitBucket publisher authority — resolved:** The deployed
+- **BUILD.BUCK.OBS.ACCESS-DQ01 Restricted GitBucket publisher authority — resolved:** The deployed
   GitHub Actions OIDC exchange verifies GitHub's signature, issuer, service
   audience, expiry and configured repository names plus immutable repository/
   owner IDs, event/ref/workflow constraints. It mints only short-lived PNG
@@ -268,4 +268,4 @@ baseline`; a finalizer job never appears as a build row. The collector
   referenced two URLs verified as `200 image/png`, without publication warnings.
   The report's SSH branch and credential references are removed. Retired stored
   credentials are an operator cleanup action, not report inputs. Tracking:
-  [root open questions](../../open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication).
+  [root open questions](../../../.reference/migration-2026/resolved-open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication).

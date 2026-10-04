@@ -71,3 +71,9 @@ Grounds BUCK-R08 (disk anti-duplication, including the buck-out obligation —
 the pinned Buck2 has no content-addressed storage or hardlinking of its own)
 and the roadmap's pnpm store-consolidation item. Establishes that dependency
 disk economics flow through the shared pnpm store, not through Buck.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

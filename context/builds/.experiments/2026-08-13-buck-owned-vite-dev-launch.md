@@ -109,3 +109,9 @@ The production design should generate this launch contract from the semantic
 package model and dependency projection. It must not preserve the disposable
 directory-source prototype or treat a worktree-local package projection as
 authoritative action input.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

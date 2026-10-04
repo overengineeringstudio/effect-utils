@@ -147,3 +147,9 @@ remains a byte source rather than dependency authority.
 - `spec.md` now records the exact descriptor schema, canonicalization,
   Stage-2 argv, action inputs, and only allowed replay difference.
 - No requirement or accepted decision changed.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

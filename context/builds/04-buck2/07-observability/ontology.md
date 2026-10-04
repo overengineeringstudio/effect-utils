@@ -11,7 +11,7 @@ It was settled against a domain reference map of six federated sources
 
 **Pipeline Run** is one local entrypoint invocation or one CI pipeline attempt
 across all its jobs. It maps to OTel `cicd.pipeline.run.*`. _Avoid_: "CI run"
-for local runs; both use the same vocabulary (BUCK.OBS-R03).
+for local runs; both use the same vocabulary (BUILD.BUCK.OBS-R03).
 
 **Pipeline Run ID** is the provider-neutral identity of that invocation or
 attempt, minted only if absent and propagated across jobs. It is not a trace
@@ -155,7 +155,7 @@ wait:            peer commands on one daemon -> daemon wait (exact | inferred)
   command span; a wrapped process is otel-scrape's scoped "command span"; a CI
   step is a Task Run.
 - **Evidence:** Native Evidence (execution truth) vs. evidence at transfer
-  (BUCK-R12 proof) vs. probe evidence artifacts (context/ci). The spool holds
+  (BUILD.AUTH-R12 proof) vs. probe evidence artifacts (context/ci). The spool holds
   Native Evidence only until local retry succeeds or the spool expires.
 - **Materialization:** the root triple homograph plus upstream final/input
   materialization — always qualified.

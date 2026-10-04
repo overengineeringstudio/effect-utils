@@ -15,26 +15,26 @@ mount-source role, and the per-mount capability and dist-overlay projections.
 ## Evidence and Argument
 
 Four records of 2026-09-12 in
-[05-composition/.experiments](../05-composition/.experiments/):
+[05-composition/.experiments](../04-buck2/03-consumer-roots/.experiments):
 
-- [external-cells-source-facts](../05-composition/.experiments/2026-09-12-external-cells-source-facts.md):
+- [external-cells-source-facts](../04-buck2/03-consumer-roots/.experiments/2026-09-12-external-cells-source-facts.md):
   at the pinned release, external-cell sources resolve to the physical
   `buck-out/<iso>/external_cells/git/<commit>/…` path, which enters the input
   Merkle tree; fetch is a PATH `git` subprocess per project root, whole tree,
   no sharing, no submodules, no nested cells; upstream's own e2e test asserts
   the resulting over-invalidation and defers a content-based fix with no
   tracked plan.
-- [external-cells-fixture](../05-composition/.experiments/2026-09-12-external-cells-fixture.md):
+- [external-cells-fixture](../04-buck2/03-consumer-roots/.experiments/2026-09-12-external-cells-fixture.md):
   cross-cell load and deps work; an unrelated commit bump reruns a member
   action with identical output; a second project root refetches; no
   accepted-and-content-real live override exists.
-- [external-cell-key-stability](../05-composition/.experiments/2026-09-12-external-cell-key-stability.md):
+- [external-cell-key-stability](../04-buck2/03-consumer-roots/.experiments/2026-09-12-external-cell-key-stability.md):
   with cell name, path, label, platform, and isolation dir byte-identical, the
   external cell's action digest differs from the on-disk cell's; the hidden
   (non-argv) input case reruns on an unrelated bump while the on-disk cell runs
   zero commands. This is the direct negation of COMP-R02 (one cache namespace
   per repo) and vision criterion 6 for every source-consuming action.
-- [hub-as-external-cell](../05-composition/.experiments/2026-09-12-hub-as-external-cell.md):
+- [hub-as-external-cell](../04-buck2/03-consumer-roots/.experiments/2026-09-12-hub-as-external-cell.md):
   the real hub's platforms package is consumable externally; its toolchains
   package is not, because `buck2/toolchains/BUCK:1` and
   `configured.bzl:5,59` load the per-host `//.buck2/capabilities` projection

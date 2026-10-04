@@ -48,3 +48,9 @@ decision.
 
 Resolves the factual portions of `BUCK.GRAPH.BIND.RUST-DQ1` and
 `BUCK.GRAPH.BIND.RUST-DQ2`; preserves execution-profile policy as a DQ.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

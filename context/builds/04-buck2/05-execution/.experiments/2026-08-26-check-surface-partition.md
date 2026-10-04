@@ -84,3 +84,9 @@ Feeds the roadmap Phase 1 transfer-PR definition and EXEC-R10's parity-gate
 content for the first transfer; the ordering gate realizes DEPS-R06's
 loud-staleness principle at the check boundary; identifies two phantom
 `@overeng/tui-core` dependencies (genie, tui-stories) for cleanup.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.EXEC requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

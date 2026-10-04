@@ -96,3 +96,9 @@ run was the first build at its rebased revision; at one revision with the
 normal context warmed first, the sandbox reused 1,192 of 1,195 queried actions,
 and the remaining action failed identically in both contexts. DELTA-001 is
 removed. BUCK-R06 and REUSE-R02 remain unchanged.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

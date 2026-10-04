@@ -134,3 +134,9 @@ adjacent server access lines.
 
 Issue #1160 is therefore closed as a corrected observation, and the anomaly no
 longer gates tier-A validation.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

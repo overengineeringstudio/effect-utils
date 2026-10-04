@@ -62,9 +62,15 @@ stage-then-clone pipeline.
 
 ## VRS Impact
 
-Grounds [decision 0025](../../.decisions/0025-cow-reflink-local-disk-economics.md)
+Grounds [decision 0025](../../../.decisions/0025-cow-reflink-local-disk-economics.md)
 (reflink-first assembly; fleet filesystem requirement) and the DQ2
 resolution. Confirms the decision-0020 mechanism needs no change for CoW
 adoption. Un-parks pnpm store consolidation in the roadmap: the measured
 90%-dedup-where-shared result contradicts the "moot under 0022" parking
 while 36 of 38 projects still require the root install.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

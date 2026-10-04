@@ -12,7 +12,7 @@ Draft.
 
 **Does not define:** a record manifest, upload endpoint, ingest worker, archive, SQLite index, resolver, Tempo readback, or fleet backend deployment.
 
-## Job-End Delivery (BUCK.OBS.ING-R01/R08)
+## Job-End Delivery (BUILD.BUCK.OBS.ING-R01/R08)
 
 ```text
 job build + Buck native evidence
@@ -33,7 +33,7 @@ keeps unrelated child processes from exporting pre-burst spans directly.
 
 The endpoint is a configured tailnet-reachable dev3 Alloy OTLP/HTTP receiver at port 4318. POST trace and metric payloads to the standard OTLP/HTTP `/v1/traces` and `/v1/metrics` routes; preserve OTLP trace IDs and span IDs from 01/04. Split serialized payloads into requests below the observed ~3.5 MB collector body limit; splitting must not alter span ancestry or metric labels. Dotfiles configures Alloy and ACL; endpoint addresses never enter portable trace attributes or fixtures. In CI, `CI_EVIDENCE_MODE=upload` selects export for same-repo PR and main jobs, which reach the endpoint under their tailnet ACL; any other value spools only. Ordinary forks receive no such access and remain spool-only. Local runs export when the configured endpoint is reachable on the tailnet and otherwise spool. No CI-provider artifact, GitHub API, upload service, or public ingress carries telemetry.
 
-## Local Retry (BUCK.OBS.ING-R03/R09)
+## Local Retry (BUILD.BUCK.OBS.ING-R03/R09)
 
 ```text
 encoded OTLP chunk: write durable local pending bytes -> send -> acknowledge
@@ -61,7 +61,7 @@ guarantee Tempo deduplication. Local spool lifetime bounds recovery. No
 server-side queue, readback repair, reconciliation sweep, or status backed
 by Tempo queries exists.
 
-## Identity, Attributes, and Retention (BUCK.OBS.ING-R02/R04/R05/R06/R10)
+## Identity, Attributes, and Retention (BUILD.BUCK.OBS.ING-R02/R04/R05/R06/R10)
 
 Each job exports exactly one job trace (a local invocation exports its
 local equivalent). Its root carries `cicd.pipeline.run.id`; task spans,
@@ -120,4 +120,4 @@ Tempo keeps traces for 30 days; Mimir keeps bounded trend metrics under fleet po
 - A job root is discoverable by `cicd.pipeline.run.id`; the attempt-close
   root links started jobs' derived root IDs as unverified locators, without
   fabricating unstarted jobs or merging all jobs into one trace.
-- The historical experiments and decisions remain evidence, superseded where amended: [replay baseline](./.experiments/2026-09-25-ci-to-tempo-replay-baseline.md), [ingest bakeoff](./.experiments/2026-09-26-ingest-service-bakeoff.md), [0001](./.decisions/0001-ingest-parity-and-retention.md), [0002](./.decisions/0002-durable-ingest-and-tempo-readback.md). The [q18 delivery bakeoff](../02-local-spool/.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md) records the earlier bundle choice that [root decision 0004](../.decisions/0004-tempo-only-delivery-and-job-report.md) supersedes.
+- The historical experiments and decisions remain evidence, superseded where amended: [replay baseline](.experiments/2026-09-25-ci-to-tempo-replay-baseline.md), [ingest bakeoff](.experiments/2026-09-26-ingest-service-bakeoff.md), [0001](.decisions/0001-ingest-parity-and-retention.md), [0002](.decisions/0002-durable-ingest-and-tempo-readback.md). The [q18 delivery bakeoff](../02-local-spool/.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md) records the earlier bundle choice that [root decision 0004](../.decisions/0004-tempo-only-delivery-and-job-report.md) supersedes.

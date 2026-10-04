@@ -99,3 +99,9 @@ only the Go lane exercises because the module proxy serves nothing else.
 This experiment validates the Go authority path and supports decision 0029's
 official Go toolchain. It adds no requirement or specification change beyond
 that accepted decision.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

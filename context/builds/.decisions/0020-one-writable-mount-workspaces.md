@@ -9,13 +9,13 @@ cross-member source deps but left two things open: mr's mount mechanism and
 the workspace shape. Symlink mounts were then proven content-blind — Buck2
 hashes the target string, not the member content, so edits do not invalidate
 and one key serves stale artifacts
-([../05-composition/.experiments/2026-08-27-symlink-content-blindness.md](../05-composition/.experiments/2026-08-27-symlink-content-blindness.md)) —
+([../05-composition/.experiments/2026-08-27-symlink-content-blindness.md](../04-buck2/03-consumer-roots/.experiments/2026-08-27-symlink-content-blindness.md)) —
 and the interim proposal (read-only mounts with writable mounts deferred) was
 adversarially broken: the hub repo held two cell identities (root of its own
 builds, member in 255 compositions), violating COMP-R02 exactly where
 development happens, and Phase 2 itself would have manufactured the deferred
 writable-mount demand
-([../05-composition/.experiments/2026-08-27-adversarial-review-0020.md](../05-composition/.experiments/2026-08-27-adversarial-review-0020.md)).
+([../05-composition/.experiments/2026-08-27-adversarial-review-0020.md](../04-buck2/03-consumer-roots/.experiments/2026-08-27-adversarial-review-0020.md)).
 
 ## Evidence and Argument
 
@@ -28,7 +28,7 @@ Four investigations closed the space:
   worktrees ran 1:820; the practiced cross-repo flow is commit-mediated
   upstream-first.
 - The mount-mechanism e2e
-  ([../05-composition/.experiments/2026-08-27-readonly-mount-e2e.md](../05-composition/.experiments/2026-08-27-readonly-mount-e2e.md))
+  ([../05-composition/.experiments/2026-08-27-readonly-mount-e2e.md](../04-buck2/03-consumer-roots/.experiments/2026-08-27-readonly-mount-e2e.md))
   disqualified hardlink farms (chmod protects the store through shared
   inodes; demonstrated corruption laundering into the cache) and git-worktree
   mounts for the read-only role (no atomic regeneration: a half-failed
@@ -112,7 +112,7 @@ epic:
 ## Amendment 1
 
 macOS verification (mbp2021, APFS;
-[../05-composition/.experiments/2026-08-27-macos-apfs-primitives.md](../05-composition/.experiments/2026-08-27-macos-apfs-primitives.md))
+[../05-composition/.experiments/2026-08-27-macos-apfs-primitives.md](../04-buck2/03-consumer-roots/.experiments/2026-08-27-macos-apfs-primitives.md))
 discharged the Darwin-admission obligation: the production Nix GNU `mv -T
 --exchange` routes to renamex_np/RENAME_SWAP and is atomic (42,619 reader
 samples, zero intermediate states); cp -a, protection, teardown,

@@ -141,3 +141,9 @@ Discharges the top half of the notion projection-chain authority transfer
 and BUCK-R16 are re-evidenced for the admission. No requirement change is
 needed; the 4 intra-top edges plus 8-package dist-`types` rewrite are tracked
 as follow-up scope.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.EXEC requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

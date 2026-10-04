@@ -139,3 +139,9 @@ This experiment exercises the existing developer-entry contract: devenv remains
 the check verb, while its shell-entry and dispatch costs become explicit
 budgets. It does not change Buck authority, task semantics, cache trust, or the
 repository's check interface.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

@@ -63,3 +63,9 @@ content-real.
 
 Confirms the source read in `2026-09-12-external-cells-source-facts.md`;
 grounds decision 0030. No change to COMP-R08/R10.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

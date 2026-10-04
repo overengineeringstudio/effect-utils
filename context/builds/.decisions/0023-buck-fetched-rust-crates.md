@@ -15,8 +15,8 @@ should share that supply mechanism.
 ## Evidence and Argument
 
 Two experiments on 2026-08-30
-([non-vendored prototype](../01-semantic-graph/.experiments/2026-08-30-reindeer-nonvendored-prototype.md),
-[Nix supply bench](../01-semantic-graph/.experiments/2026-08-30-importcargolock-supply-bench.md))
+([non-vendored prototype](../04-buck2/01-semantic-graph/.experiments/2026-08-30-reindeer-nonvendored-prototype.md),
+[Nix supply bench](../04-buck2/01-semantic-graph/.experiments/2026-08-30-importcargolock-supply-bench.md))
 established:
 
 - The vendored shape is structurally incompatible with locked cp-a members:
@@ -71,7 +71,7 @@ re-verified by building their crates before the graph is admitted.
 ## Amendment 1
 
 The eight-fixup re-verification required by the Decision is complete
-([subsumption probe](../01-semantic-graph/.experiments/2026-08-30-nonvendored-fixup-subsumption.md)):
+([subsumption probe](../04-buck2/01-semantic-graph/.experiments/2026-08-30-nonvendored-fixup-subsumption.md)):
 the generated BUCK is byte-identical with the keys deleted and the full
 third-party tree builds green non-vendored. The keys are deleted at the flip,
 and the flip adds a lint rejecting `omit_srcs` and `extra_srcs` in a

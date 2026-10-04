@@ -6,7 +6,7 @@ volume), driven over ssh from dev3 — GNU coreutils 9.11 from the Nix store.
 ## Question
 
 Do the primitives decision
-[0020](../../.decisions/0020-one-writable-mount-workspaces.md) makes
+[0020](../../../.decisions/0020-one-writable-mount-workspaces.md) makes
 load-bearing — RENAME_EXCHANGE mount advance, `cp -a` materialization,
 chmod-based protection, and the "nothing writes into the mount" watcher claim
 — hold on macOS/APFS, so Darwin admission can proceed?
@@ -102,3 +102,9 @@ remain, gating the Darwin advance path only). Adds two rules to the mr
 implementation contract: the R6 manifest post-condition is mandatory on
 Darwin (covers the case-insensitivity collapse, the COMP-R10 shape), and mr
 branches on exit codes rather than `mv` stderr text (C3).
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

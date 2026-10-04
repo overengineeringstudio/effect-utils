@@ -2,9 +2,11 @@
 
 ## Status
 
+Status: accepted
+
 Accepted on 2026-09-11.
 
-## Problem
+## Context
 
 The former CI static lanes mixed deterministic repository checks with package-manager installation,
 change-relative history, Nix realization, and live integration. Treating each aggregate job as one
@@ -46,7 +48,12 @@ The remaining aggregate boundaries are classified rather than disguised:
 - Moving a remaining aggregate to `buck-owned` requires first splitting or eliminating its external
   members.
 
-## Rejected alternatives
+## Options
+
+| Option | Outcome |
+| --- | --- |
+| Preserve the selected authority boundary | Accepted |
+| Move external/freshness authority into Buck | Rejected for the reasons below |
 
 - **Reimplement Weaver validation in TypeScript:** duplicates an upstream semantic validator and would
   provide weaker evidence.
@@ -56,3 +63,9 @@ The remaining aggregate boundaries are classified rather than disguised:
   inside an action.
 - **Call the whole lint job Buck-owned now:** its lockfile check still realizes and mutates the root pnpm
   dependency topology.
+
+## Evidence and Argument
+
+The rejected alternatives above cross the declared authority boundary: the
+consumer of graph state cannot own its freshness proof, and live/relative inputs
+cannot become a bounded static action merely by wrapping their aggregate.

@@ -46,14 +46,14 @@ establish what the composition machinery costs and who uses it:
 
 ## Evidence and Argument
 
-- [2026-09-12-dist-tarball-channel](../../05-composition/.experiments/2026-09-12-dist-tarball-channel.md):
+- [2026-09-12-dist-tarball-channel](../../04-buck2/03-consumer-roots/.experiments/2026-09-12-dist-tarball-channel.md):
   an ordinary pnpm consumer installs `@overeng/tui-core` as a
   content-addressed dist tarball from the shared CAS (URL + sha512 integrity
   in `pnpm-lock.yaml`), tsgo resolves declarations from the installed dist,
   cold install 1.75 s, warm 0.13 s, one-byte drift refused at install. Gaps it
   exposed: `pnpm pack` produces an unusable artifact today (manifests describe
   the source layout), and bazel-remote is an evictable cache, not an origin.
-- [2026-09-12-external-cell-key-stability](../../05-composition/.experiments/2026-09-12-external-cell-key-stability.md)
+- [2026-09-12-external-cell-key-stability](../../04-buck2/03-consumer-roots/.experiments/2026-09-12-external-cell-key-stability.md)
   and decision 0030: there is no Buck2-native way to get criterion 6 without
   mr's mount pipeline. The choice is therefore between keeping L3 and its
   shape for criterion 6, or reinterpreting criterion 6.

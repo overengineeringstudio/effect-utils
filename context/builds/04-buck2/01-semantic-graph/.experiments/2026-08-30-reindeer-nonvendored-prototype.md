@@ -58,6 +58,12 @@ and the eight inert fixups need build verification.
 
 ## VRS Impact
 
-Grounds [decision 0023](../../.decisions/0023-buck-fetched-rust-crates.md);
+Grounds [decision 0023](../../../.decisions/0023-buck-fetched-rust-crates.md);
 narrows decision 0017 Amendment 1 (Amendment 2) and retires decision 0019's
 vendoring (Amendment 1).
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

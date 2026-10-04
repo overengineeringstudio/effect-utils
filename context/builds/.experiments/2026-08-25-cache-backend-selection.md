@@ -64,6 +64,12 @@ so a later swap costs three address lines and one cold cache.
 ## VRS Impact
 
 Grounds [decision 0013](../.decisions/0013-shared-cache-foundation.md) and the
-[04-reuse](../04-reuse/requirements.md) client contract (REUSE-R01, REUSE-R04,
+[04-reuse](../04-buck2/06-reuse-client/requirements.md) client contract (REUSE-R01, REUSE-R04,
 REUSE-R05): backend choice, buckconfig-file wiring, SHA256 pinning, upload
 enablement, hard-failure outage posture, and the batch-size limit.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

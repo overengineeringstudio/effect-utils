@@ -81,7 +81,7 @@ detected gaps; medium on busy-waiter recall (phenomenon-level blind spot).
 Settled [BUCK.OBS.ADP-R07](../requirements.md) and
 [decision 0003](../.decisions/0003-daemon-wait-at-ingest.md) (q23; the q12
 reframe demanded this bakeoff). The 62%-wait CI finding is cross-referenced
-to [02-execution](../../../02-execution/open-questions.md); upstream
+to [02-execution](../../../05-execution/open-questions.md); upstream
 acceptance stays open as [OQ2](../../open-questions.md).
 
 ## Intent Impact

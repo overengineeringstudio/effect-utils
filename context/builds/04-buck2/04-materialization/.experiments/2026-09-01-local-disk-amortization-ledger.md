@@ -56,9 +56,15 @@ reintroducing shared mutable inodes.
 
 ## VRS Impact
 
-Grounds [decision 0025](../../.decisions/0025-cow-reflink-local-disk-economics.md)
+Grounds [decision 0025](../../../.decisions/0025-cow-reflink-local-disk-economics.md)
 and the rewritten DEPS-R04. Corrects the assumption that the CAS design
 already delivered disk amortization; the acceptance-criteria framing in the
 execution epic references this ledger. Registers the hygiene targets: 9.2 GB
 stale `buck-out` trees, orphaned editor snapshots, and the contaminated
 immutable store commits measured the same day.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

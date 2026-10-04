@@ -46,3 +46,9 @@ The two bounded operations satisfy Buck ownership and invalidation requirements.
 ## Conclusion
 
 Admit both bounded checks to Buck and keep the merge-base-relative diff excluded.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

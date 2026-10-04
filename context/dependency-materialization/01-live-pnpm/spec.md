@@ -16,7 +16,7 @@ This spec defines:
   content, and install evidence.
 
 Product packaging is specified by the
-[Buck-to-Nix bridge](../../buck2/06-nix-bridge/spec.md), not this live-install spec.
+[Buck-to-Nix bridge](../../builds/05-product-distribution/02-nix-bridge/spec.md), not this live-install spec.
 
 ## Requirement Trace
 

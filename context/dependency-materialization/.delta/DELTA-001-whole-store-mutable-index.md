@@ -9,7 +9,7 @@ including pnpm-mutated derived indexes, across Materialization Roots. This gives
 measured second-root acceleration but does not satisfy the normative pure
 cross-root reusable-state boundary.
 
-## VRS
+## Intent
 
 - [DMP-R21 and DMP-R24](../requirements.md) admit only declared-input-derived,
   immutable state and hermetic topology work to cross-root reuse.

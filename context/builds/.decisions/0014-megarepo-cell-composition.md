@@ -15,7 +15,7 @@ into one graph.
 ## Evidence and Argument
 
 A two-member composition prototype
-([05-composition/.experiments/2026-08-25-cell-composition-key-stability.md](../05-composition/.experiments/2026-08-25-cell-composition-key-stability.md))
+([05-composition/.experiments/2026-08-25-cell-composition-key-stability.md](../04-buck2/03-consumer-roots/.experiments/2026-08-25-cell-composition-key-stability.md))
 proved: cross-cell target deps and cross-cell rule loads work with the bundled
 prelude declared only at the root; invalidation propagates correctly across
 cells; and — the load-bearing claim — action digests are byte-identical between
@@ -49,7 +49,7 @@ members and genie projects the root configuration. The key-stability
 discipline (canonical mounts, canonical cell names, shared platform labels,
 fixed isolation dir, no member `.buckroot`, `/nix/store` tool paths, real
 directories, full detector coverage) is normative in
-[05-composition](../05-composition/requirements.md).
+[05-composition](../04-buck2/03-consumer-roots/requirements.md).
 
 ## Consequences
 

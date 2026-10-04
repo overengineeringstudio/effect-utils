@@ -46,3 +46,9 @@ cross-platform proc-macro execution.
 
 Narrows `BUCK.GRAPH.BIND.RUST-DQ5` to the outstanding provider-fidelity and
 cross-platform admission proof.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

@@ -7,7 +7,7 @@ Date: 2026-08-26 — Host: dev3 (x86_64-linux) — Buck2 pin 2026-04-15
 
 Does the repository, wired per the validated client contract
 ([decision 0013](../.decisions/0013-shared-cache-foundation.md),
-[04-reuse spec](../04-reuse/spec.md)), achieve BUCK-R06 zero re-execution
+[04-reuse spec](../04-buck2/06-reuse-client/spec.md)), achieve BUCK-R06 zero re-execution
 for unchanged targets in a second same-platform context against the DEPLOYED
 fleet cache (dev3 bazel-remote, gRPC :41045) — not the localhost probe of the
 2026-08-25 selection experiment?
@@ -57,3 +57,9 @@ off `buck2 log what-ran`).
 Validates REUSE-R01/R02 mechanics on the deployed fleet service; grounds the
 Phase 0 checklist completion in epic #1147; no requirement changes. Phase 1
 budget gates (BUCK-R07) now measurable against this baseline.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

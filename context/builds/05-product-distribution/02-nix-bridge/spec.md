@@ -31,35 +31,6 @@ a declared local artifact path or fetched bytes with the same expected digest;
 transport identity grants no product authority. Generated JavaScript and package
 products use the stricter substitution contract below.
 
-## Descriptor
-
-```json
-{
-  "schema": "buck-build-product/v1",
-  "name": "fixture-tool",
-  "entrypoints": ["bin/fixture-tool"],
-  "payload": {
-    "file": "artifact.tar",
-    "format": "tar",
-    "sizeBytes": 123,
-    "digest": { "algorithm": "sha256", "sri": "sha256-...=" }
-  },
-  "platform": { "os": "linux", "architecture": "x86_64", "abi": "musl" },
-  "runtime": { "kind": "self-contained", "inspectionContract": "elf-static/v1" },
-  "semanticProvenance": {
-    "target": "//fixtures:tool",
-    "recipe": "fixture-tool/v1",
-    "toolchain": "rust-linux-musl/v1"
-  }
-}
-```
-
-Every object uses exact fields. Descriptor identity is SHA-256 over canonical
-JSON. Entry points and payload paths are normalized safe relative paths.
-Runtime is a tagged union whose fields and inspection contract depend on
-`kind`; acceptance of a descriptor kind does not imply an importer exists for
-it.
-
 ## Import Sequence
 
 1. Validate the exact descriptor schema and canonical descriptor digest.
@@ -136,10 +107,17 @@ and `productDigest`; it contains no Git revision. Source changes inside the
 declared closure change the derivation, while changes outside it do not.
 Directory-level package entries deliberately include all files in each closure
 package: changes to non-Buck files _within_ that package may still rebuild it.
-Consumers that embed a Git build stamp (for example SCG
-`__CLI_BUILD_STAMP__` or axe `cliBuildStamp`) opt into per-commit identity for
-that product; the consumer owns that exception and must not claim stable
-paths for it. Published effect-utils products keep their manifest-bound
+Consumers that embed a Git build stamp follow the profile selected under
+[component identity](../../01-identity/spec.md).
+For C, the committed product-rev projection supplies the product's closure
+revision and commit timestamp to `cliBuildStamp`; the caller must not inject the
+current repository HEAD for every product. `mkBuckProductFromSource` passes this
+as `--config build_identity.cli_build_stamp=...` before the Buck build
+(`nix/buck2-products/from-source.nix:107–109`). The stamp is a declared build
+input: unrelated commits preserve it; relevant closure changes require an
+in-PR generated refresh and freshness proof. This describes the required
+injection contract, not a claim that every consumer already implements C.
+Published effect-utils products keep their manifest-bound
 `producerCommit` and `effect-utils/buck-product-provenance/v1` unchanged
 (decision 0037).
 
@@ -171,7 +149,7 @@ manifest; the derivation itself is the substitution identity.
 
 `mkBuck2CargoArchives { pkgs; thirdPartyBuckFiles; gitSources ? {}; }` supplies
 `nix_store.crates_root` from the Reindeer graphs and their `git-archives.json`
-sidecars (BRIDGE-R08). Registry crates and undeclared GitHub repositories use
+sidecars (BUILD.DIST.NIX-R08). Registry crates and undeclared GitHub repositories use
 the reviewed archive URL and SHA-256 unchanged. A consumer declares
 `gitSources."owner/repo" = inputs.repo;` both in this Nix archive projection
 and in the `buck2-rust-deps` task module for a private Git dependency. The
@@ -199,7 +177,7 @@ Nix source bytes, and unknown values are rejected.
 
 ### Compiled-executable products
 
-`compiled-executable` refines BRIDGE-R01–R03 and BRIDGE-R05–R09. This
+`compiled-executable` refines BUILD.DIST.PRODUCT-R01–R03 and BUILD.DIST.NIX-R05–R09. This
 repository owns the inventory's `kind` discriminator: it is lowercase,
 hyphenated and exact; unknown values fail import rather than falling back
 to `native`. The kind denotes a Bun-compiled native CLI,
@@ -374,7 +352,7 @@ A substitution miss fails evaluation closed (decision 0037 amendment 3); the
 error names the product, store path, cache, and producer commit. Recovery is
 manual: build the producer flake at `producerCommit` with its own lock (no
 `follows`), which recreates the identical input-addressed path through the same
-Buck graph (BRIDGE-R08), and push that path to the private cache.
+Buck graph (BUILD.DIST.NIX-R08), and push that path to the private cache.
 
 ### Manifest row
 
@@ -440,3 +418,12 @@ The contract suite must include successful canonicalization/import and negative
 mutations for unknown and missing fields, alternate digest encodings, unsafe
 paths and archives, byte-size and digest mismatch, platform mismatch, runtime
 descriptor mismatch, unsupported runtime kind, and inspector failure.
+
+## Shared Product Contract
+
+The exact [descriptor schema](../01-product-contract/spec.md#descriptor) and
+BUILD.DIST.PRODUCT-R01–R04 are product-owned, not Nix-owned.
+Platform-independent Nix Git-source archives preserve executable bits, normalize
+symlink modes to `0555`, ignore physical hardlink topology and fix timestamps,
+ownership and gzip metadata; identical NAR sources produce identical archives
+on Linux and Darwin ([#1589](https://github.com/overengineeringstudio/effect-utils/pull/1589)).

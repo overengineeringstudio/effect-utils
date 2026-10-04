@@ -17,7 +17,7 @@ boundary.
 **Does not define:** the otel-span CLI's general surface (devenv otel module),
 the adapter that consumes the sidecar (03), or provider-specific CI wiring.
 
-## Job and Attempt Traces (BUCK.OBS.ID-R08..R13)
+## Job and Attempt Traces (BUILD.BUCK.OBS.ID-R08..R13)
 
 ```text
 PIPELINE_RUN_ID ── job key ── deterministic job trace (job root)
@@ -34,7 +34,7 @@ namespaced repository identity. Attempt numbers are positive decimals without
 leading zeros. The local UUID is lowercase RFC 4122 canonical form. The CI
 adapter supplies the whole identifier; a local entrypoint mints `local/<uuid>`
 only when absent. A present invalid or empty value warns and leaves telemetry
-unseeded without failing the task (BUCK.OBS-R01). Examples:
+unseeded without failing the task (BUILD.BUCK.OBS-R01). Examples:
 `ci/github/overengineeringstudio%2Feffect-utils/421/2` and
 `local/38d198bc-4ba9-42b1-b11c-60f1a2a00db1` are valid;
 `ci/github/repo/421` and `local/not-a-uuid` are invalid. Never use the
@@ -191,7 +191,7 @@ records it explicitly.
 **Call sites.** The devenv task shell (`trace.exec`), TypeScript subprocess
 spawners (the #1382 `otel-span emit-span` pattern), and CI job wrappers all
 use the same preparation and the same post-hoc emit; there is exactly one
-implementation of the validation invariant (BUCK.OBS.ID-T01).
+implementation of the validation invariant (BUILD.BUCK.OBS.ID-T01).
 
 **Salting.** The adapter (03) salts OTLP span ids with the first 8 bytes of
 `sha256("<log-uuid>:<buck-span-id>")` — deterministic from the log, unique
@@ -241,7 +241,7 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
   synthesizes missing jobs. A new trace links back to an outer caller;
   only a participating owner writes a forward link before its span ends.
   Stale task context cannot override either seed.
-- Seeded-run evidence: [traceparent bakeoff](./.experiments/2026-09-26-seeded-run-trace.md)
-  and [decision 0002](./.decisions/0002-seeded-pipeline-run-trace.md).
-- Caller-correlation evidence: [caller-correlation bakeoff](./.experiments/2026-09-25-caller-correlation-and-salting.md)
-  and [decision 0001](./.decisions/0001-otel-span-buck2-mode.md).
+- Seeded-run evidence: [traceparent bakeoff](.experiments/2026-09-26-seeded-run-trace.md)
+  and [decision 0002](.decisions/0002-seeded-pipeline-run-trace.md).
+- Caller-correlation evidence: [caller-correlation bakeoff](.experiments/2026-09-25-caller-correlation-and-salting.md)
+  and [decision 0001](.decisions/0001-otel-span-buck2-mode.md).

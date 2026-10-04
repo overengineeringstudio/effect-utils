@@ -86,3 +86,9 @@ an install byproduct; canonicalization required; exact normalization set);
 resolves the decision-0015 gate's keying question into a normalization fix
 plus a DEPS-R07 reading choice; flags an upstream pnpm serialization bug as a
 repro candidate.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

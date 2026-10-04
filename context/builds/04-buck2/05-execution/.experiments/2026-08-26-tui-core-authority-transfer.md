@@ -87,3 +87,9 @@ Validates BUCK-R06/R09/R12, EXEC-R10, DEPS-R02/R07/R08, decision 0015
 Amendment 2, and roadmap Phase 1's tui-core transfer/deletion-ledger milestone.
 No requirement change. Phase 2 may proceed; future package admissions repeat
 this exact transfer matrix at their authority boundary.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.EXEC requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

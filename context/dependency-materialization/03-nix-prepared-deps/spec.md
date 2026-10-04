@@ -9,7 +9,7 @@ Status: **Retired**
 
 Buck compiles products; Nix imports validated descriptors or reconstructs the
 pinned Buck graph from declared source, capabilities, and immutable dependency
-archives. See the [Buck-to-Nix bridge](../../buck2/06-nix-bridge/spec.md).
+archives. See the [Buck-to-Nix bridge](../../builds/05-product-distribution/02-nix-bridge/spec.md).
 
 There is no workspace pnpm installation, normalized prepared tree, downstream
 restore, per-root prepared-output hash declaration, or prepared-builder support

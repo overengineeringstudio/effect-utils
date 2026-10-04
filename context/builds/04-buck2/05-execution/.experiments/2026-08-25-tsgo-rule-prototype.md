@@ -77,3 +77,9 @@ Validates the [02-execution](../spec.md) TypeScript action shape and grounds
 EXEC-R02 (store-path toolchains: per-worktree tool paths appear verbatim in
 argv and would split keys) and DEPS-R02's dangling-symlink pruning (pnpm's
 platform-excluded optional-dep aliases are fatal to Buck input tracking).
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.EXEC requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

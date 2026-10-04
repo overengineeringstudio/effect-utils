@@ -3,7 +3,7 @@
 This document specifies how dependency-materialization identities enter the
 Buck semantic graph. It builds on [requirements.md](./requirements.md), the
 parent [dependency-materialization requirements](../requirements.md), and the
-canonical [Buck semantic-graph contract](../../buck2/01-semantic-graph/spec.md).
+canonical [Buck semantic-graph contract](../../builds/04-buck2/01-semantic-graph/spec.md).
 
 ## Status
 
@@ -18,7 +18,7 @@ needed to join those facts to Buck targets.
 
 **Does not define:** Buck's global authority model, generated package intent,
 language execution, toolchains, artifacts, Nix import, observability, cache
-trust, or admission. Those are owned by [`context/buck2`](../../buck2/).
+trust, or admission. Those are owned by [`context/builds`](../../builds/).
 
 ## Requirement Trace
 
@@ -150,10 +150,10 @@ Required mutation controls are:
 | Exact restoration                     | Original closure and artifact identity return             |
 
 Execution evidence and no-verdict semantics follow the Buck VRS evidence
-contract — `BUCK-R12`/`BUCK-R13` in
-[`context/buck2/requirements.md`](../../buck2/requirements.md) and
-[decision 0016](../../buck2/.decisions/0016-evidence-rigor-at-transfer.md).
-The former `context/buck2/05-evidence-verification` subsystem collapsed into
+contract — `BUILD.AUTH-R12`/`BUILD.BUCK-R13` in
+[`context/builds/04-buck2/requirements.md`](../../builds/04-buck2/requirements.md) and
+[decision 0016](../../builds/.decisions/0016-evidence-rigor-at-transfer.md).
+The former `context/builds/05-evidence-verification` subsystem collapsed into
 those requirements and that record.
 
 ## Historical Records
@@ -162,7 +162,7 @@ The accepted decisions in [`.decisions/`](./.decisions/) and experiments in
 [`.experiments/`](./.experiments/) predate the standalone Buck VRS. They remain
 the evidence trail for closure identity and the origin of broader decisions.
 Their general build-system conclusions are now normatively owned by the
-corresponding `context/buck2` subsystem.
+corresponding `context/builds` subsystem.
 
 ## Open Design Questions
 

@@ -133,3 +133,9 @@ COMP-R10's migration guards (S0 + foreign-real-dir refusal), the workflow
 contract rev 3, and two newly named open questions with owners required:
 cross-member TypeScript consumption, and retirement of in-mount write
 consumers in private-downstream and dotfiles devenv configurations.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

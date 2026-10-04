@@ -1,15 +1,19 @@
 # 0011 - Linux exact process observation starts as opt-in ptrace
 
-**Status:** Accepted.
+Status: accepted
 
-**Context:** Exact descendant process-tree evidence requires observing process
+## Context
+
+Exact descendant process-tree evidence requires observing process
 creation, exec, and exit events instead of sampling `/proc` after the fact.
 Linux exposes those lifecycle events through `ptrace` for a traced child tree,
 including short-lived descendants. `ptrace` also changes process execution
 semantics enough that it should not silently become the default backend for
 build and development commands.
 
-**Decision:** `otel-scrape` supports an explicit Linux-only
+## Decision
+
+`otel-scrape` supports an explicit Linux-only
 `ptrace-experimental` process backend. The default backend remains
 `direct-child`.
 
@@ -18,7 +22,7 @@ the observed process DAG, including immediate-exit descendants and nested
 descendants. The backend name stays experimental until perturbation, privilege,
 namespace, and operational behavior are validated beyond the fixture.
 
-**Consequences:**
+## Consequences
 
 - Linux can prove exact descendant spans without introducing a privileged helper
   in the first slice.
@@ -29,3 +33,15 @@ namespace, and operational behavior are validated beyond the fixture.
 - A future default Linux backend decision must consider ptrace perturbation
   against helper-based mechanisms such as eBPF or process connector style event
   sources.
+
+## Evidence and Argument
+
+The context and consequences above supply this record's rationale; this shape
+normalization adds no new implementation evidence or historical deliberation.
+
+## Options
+
+| Recorded design state | Disposition |
+| --- | --- |
+| Decision stated above | Accepted in the original record |
+| Prior limitation described in Context | Contrasted by the original rationale; no additional historical option claim |

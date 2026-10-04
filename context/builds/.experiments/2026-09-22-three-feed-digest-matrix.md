@@ -43,3 +43,14 @@ All 21 product digests are identical across all three feeds.
 The acquisition actions intentionally differ because origin URL or Nix-store
 path enters their identity. The product graph converges on verified archive
 content and produces identical outputs, which is the decision-0038 contract.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.
+
+## Conclusion
+
+The 21 digest comparisons support identical product bytes from CAS, registry and
+Nix-store feeds; differing acquisition actions are not product-identity divergence.

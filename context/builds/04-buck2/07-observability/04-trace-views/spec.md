@@ -116,7 +116,7 @@ enters a metric series.
 - An unseeded Buck command exports two independent, distinct, nonzero
   deterministic trace IDs without a fabricated task span or caller link;
   a seeded command puts only its critical view in the job trace.
-- Evidence: [span-shaping and metrics](./.experiments/2026-09-25-span-shaping-and-metrics.md),
-  [span-cap benchmark](./.experiments/2026-09-25-span-cap-benchmark.md),
-  decisions [0001](./.decisions/0001-trace-view-family.md),
-  [0002](./.decisions/0002-both-views-always-ingested.md).
+- Evidence: [span-shaping and metrics](.experiments/2026-09-25-span-shaping-and-metrics.md),
+  [span-cap benchmark](.experiments/2026-09-25-span-cap-benchmark.md),
+  decisions [0001](.decisions/0001-trace-view-family.md),
+  [0002](.decisions/0002-both-views-always-ingested.md).

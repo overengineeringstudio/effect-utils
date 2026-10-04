@@ -102,3 +102,9 @@ Confirms the existing one-way Nix-to-Buck local-store contract, independent
 target/execution platforms, fail-closed compatibility, and a static-musl first
 Rust product direction. Refines the platform vocabulary with an independent
 runtime-linkage dimension. It does not change requirements or admit a product.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.EXEC requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

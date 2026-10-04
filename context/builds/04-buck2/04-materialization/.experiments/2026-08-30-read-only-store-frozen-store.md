@@ -46,7 +46,7 @@ host re-derived the two stale FOD hashes found on the branch.
 The ambient-store design is repairable with `--frozen-store` plus store
 relocation plus a mount-aware guard, at ~150–250 lines. That bounds the cost of
 keeping the design; it does not remove the mutable-store state class, which
-[decision 0022](../../.decisions/0022-lockfile-derived-declared-closure.md)
+[decision 0022](../../../.decisions/0022-lockfile-derived-declared-closure.md)
 dissolves instead. `mkSharedHash` is defined separately in five build files and
 asserts cross-platform sharing without enforcing it.
 
@@ -57,3 +57,9 @@ decision 0015's "same-filesystem" wording to same-mount for as long as any
 hardlink-from-store path survives. The 2026-08-30 production cp-a record's
 conclusion is superseded: the remaining run needs neither a shared-cache
 precondition nor a writable projection.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

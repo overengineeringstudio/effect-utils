@@ -84,3 +84,9 @@ Validates DEPS-R04, DEPS-R05, and DEPS-R06 for the scoped tui-core publication
 mechanism and the Editor Surface/Staleness Gate sections of the materialization
 spec. No requirement change. The real-editor soak remains deliberately
 unvalidated here.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

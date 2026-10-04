@@ -161,3 +161,9 @@ operation-local use edges, generic erasure during normalization, and rejection
 of peer declarations as execution roots until peer-context semantics exist.
 The evidence-verification VRS should keep production admission blocked on the
 retained RED/GREEN fixtures named above.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

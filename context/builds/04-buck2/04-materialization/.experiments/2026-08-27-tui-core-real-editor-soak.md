@@ -85,3 +85,9 @@ with a real sibling edge.
 Validates decision 0015's real-editor soak gate for the scoped tui-core surface
 and DEPS-R05/R06 on Linux. No requirement change. Snapshot retention/GC and
 whole-workspace dependency authority remain later Phase-4 work.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

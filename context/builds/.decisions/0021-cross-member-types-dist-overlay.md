@@ -16,7 +16,7 @@ publish into read-only mounts.
 Today's cross-repo consumption is source aliasing into the mount — the
 pattern the Phase-1 partition retired in-repo because it re-checks member
 source in every consumer and bypasses the Buck2 boundary
-([../02-execution/.experiments/2026-08-26-check-surface-partition.md](../02-execution/.experiments/2026-08-26-check-surface-partition.md)).
+([../02-execution/.experiments/2026-08-26-check-surface-partition.md](../04-buck2/05-execution/.experiments/2026-08-26-check-surface-partition.md)).
 The mount-ignore audit already requires `**/dist` in the composition root's
 `[project] ignore` (untracked-drift findings), which makes dist content
 inside a mount digest-neutral: build inputs stay pure tracked sources while

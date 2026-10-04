@@ -1,7 +1,6 @@
 # Execution Spec
 
-This document specifies platforms, providers, and per-language action
-mechanics. It builds on [requirements.md](./requirements.md).
+This document specifies per-language action mechanics. It builds on [requirements.md](./requirements.md).
 
 ## Status
 
@@ -9,89 +8,19 @@ Draft.
 
 ## Scope
 
-**Defines:** configured platform identity, executable providers, stage zero,
-and the TypeScript and Rust action shapes.
+**Defines:** TypeScript, Rust and compiled JavaScript action shapes, typed
+verdicts and hermetic-lane admission.
 
-**Does not define:** dependency materialization (03), cache transport (04), or
-product import (06).
-
-## Platforms
-
-| Product platform label            | Execution platform label               | OS     | Architecture | ABI    | Native executable contract |
-| --------------------------------- | -------------------------------------- | ------ | ------------ | ------ | -------------------------- |
-| `//buck2/platforms:linux_x86_64`  | `//buck2/platforms:exec_linux_x86_64`  | linux  | x86_64       | glibc  | `elf-dynamic/v1`           |
-| `//buck2/platforms:linux_aarch64` | `//buck2/platforms:exec_linux_aarch64` | linux  | aarch64      | glibc  | `elf-dynamic/v1`           |
-| `//buck2/platforms:macos_aarch64` | `//buck2/platforms:exec_macos_aarch64` | darwin | aarch64      | darwin | `mach-o-dynamic/v1`        |
-
-Platform targets live in one canonical cell present in every composition
-(effect-utils as the hub), so the same labels resolve everywhere
-(EXEC-R01). Host detection may select among declared tuples for an interactive
-alias; the configured tuple becomes part of action and evidence identity and is
-never inferred during import. The `build_product` macro requires the intended
-product platform explicitly and compares all resolved platform fields against
-`ProductExecutableInfo` before packaging — a checked join, not a second
-platform authority.
-
-## Executable Providers
-
-```text
-BuckSupportToolInfo {
-  toolId, contentDigest, executable, executableStorePath,
-  closureIdentity, protocol, executionPlatform, runtimeContract
-}
-```
-
-Provider descriptors are data read before execution; they never permit actions
-to evaluate Nix. Devenv preparation projects exact files under the stable
-`.buck2/capabilities/` cell in complete immutable generations; the
-authoritative `defs.bzl` is atomically replaced only after a generation is
-complete, and a missing or stale projection fails closed. Actions using
-executor-local projected tools are explicitly local-only. Toolchain
-executables referenced in action command lines are `/nix/store` paths
-(EXEC-R02).
-
-`local-only` constrains execution placement; it does not disable shared action
-cache reads or writes. For an admitted local action, the canonical
-`/nix/store` realization path participates in the action key and binds the
-immutable local tool identity; the typed provider also binds protocol, runtime
-requirements, and exact execution-platform compatibility. Stage-zero
-capability descriptors additionally record explicit content and closure
-identities. The executable remains executor-local and is not transported
-through the Buck CAS.
-
-Remote execution requires the portable archive or execution-image contract
-from dependency-materialization
-[decision 0006](../../dependency-materialization/05-buck2-evidence/.decisions/0006-nix-exported-buck-toolchains.md);
-shared-cache reuse of a local action does not imply that contract has been met.
-
-Under BUCK-R17 the contract is realized as a worker image: an execution
-platform names the Nix closure that provides every tool its actions bind, a
-worker advertises the closures it holds as platform properties, and the
-scheduler places a cache miss only on a worker whose properties match. The
-first backend evaluated is NativeLink (cache, scheduler, one x86_64-linux
-worker) after the BUCK-R06 key-stability delta is closed; the rerunnable kit is
-in `.experiments/2026-09-19-nativelink-remote-execution.md`.
-
-A stage-zero provider binds an exact Nix realization identity, executable,
-protocol, and execution-platform constraint; a negative test proves an
-undeclared ambient copy is ignored; a graph-built replacement retires it
-(EXEC-T01).
-
-## Darwin Capability
-
-The Apple SDK is an executor-local Nix capability referenced by the compiler
-environment, not a Buck dependency or CAS input. Preflight fails before Buck
-when any exact tool or SDK root is absent. Compilation sets an invalid
-`DEVELOPER_DIR` deliberately so Xcode and `xcrun` cannot become an implicit
-fallback; inspection binds Nix cctools and sigtool identities. Native
-execution remains the proof that an ad-hoc signature is accepted by macOS.
+**Does not define:** [platforms/tools](../02-platforms-toolchains/spec.md),
+[materialization](../04-materialization/spec.md), [reuse](../06-reuse-client/spec.md)
+or [product import](../../05-product-distribution/02-nix-bridge/spec.md).
 
 ## TypeScript Actions
 
 The typecheck/build action stages package sources plus its materialized
 `node_modules` (03), then runs `tsgo` from a toolchain target. Prototype
 evidence
-([.experiments/2026-08-25-tsgo-rule-prototype.md](./.experiments/2026-08-25-tsgo-rule-prototype.md)):
+([.experiments/2026-08-25-tsgo-rule-prototype.md](.experiments/2026-08-25-tsgo-rule-prototype.md)):
 a ~40-line rule checks real tui-core with negligible overhead — cold 0.58 s
 including hashing a 104 MB closure, warm no-op 14 ms, single-file invalidation
 75 ms via watchman. Materialized closures must contain no dangling symlinks
@@ -104,14 +33,14 @@ staged tree, for cache-upload economics.
 
 Authored `Cargo.toml` is the request authority; workspace binding follows the
 rust-cargo decisions (0017–0019). Third-party source supply and product ordering
-follow [decision 0023](../.decisions/0023-buck-fetched-rust-crates.md) and
-[decision 0024](../.decisions/0024-rust-workspace-before-product-proof.md).
+follow [decision 0023](../../.decisions/0023-buck-fetched-rust-crates.md) and
+[decision 0024](../../.decisions/0024-rust-workspace-before-product-proof.md).
 Rust admission converges through the same provider and platform contracts;
 complete-lock Nix vendoring remains the transitional packaging boundary until
-products cross the bridge (BUCK-R10, roadmap Phase 5).
+products cross the bridge (BUILD.BUCK-R10, roadmap Phase 5).
 
 `cargo_build_script` writes a launcher whose shebang is the projected
-`rust-shell` executable (EXEC-R02). That capability exposes the native
+`rust-shell` executable (BUILD.BUCK.PLAT-R02). That capability exposes the native
 `pkgs.bash` binary directly, not a `writeShellScriptBin` wrapper: macOS cannot
 execute a script when its shebang interpreter is another script. Other Rust
 tool wrappers remain separate, including the Linux linker environment.
@@ -140,8 +69,8 @@ profiles, so the shared workspace profile is the supported boundary.
 
 ## Compiled JavaScript Executables
 
-`bun_compiled_product_executable` refines EXEC-R01, EXEC-R02, EXEC-R06,
-EXEC-R07, and EXEC-R09. It takes one portable `cli` module-v2 artifact,
+`bun_compiled_product_executable` refines BUILD.BUCK.PLAT-R01, BUILD.BUCK.PLAT-R02, BUILD.BUCK.EXEC-R06,
+BUILD.BUCK.EXEC-R07, and BUILD.BUCK.EXEC-R09. It takes one portable `cli` module-v2 artifact,
 its module descriptor, a declared `ProductPlatformInfo`, and the projected Bun
 toolchains. The build action runs the pinned Nix Bun bundler with
 `bun build <module> --compile --target bun-<os>-<arch>
@@ -177,3 +106,72 @@ ConfiguredOperation
 | Test           | semantic verdict, structured test summary, declared test outputs |
 | Compilation    | declared output roles and content identities                     |
 | Product        | `BuildProduct` descriptor path and payload path                  |
+
+## Cacheable Unit-Test Verdict Actions
+
+```text
+declared suite + closure + runner + policy -> cacheable Buck build action
+                                          -> result.json + structured report
+caller / test adapter -> cached result -> pass or fail, without rerunning suite
+```
+
+Unit tests are result-producing build actions, not a reliance on uploads from
+local `buck2 test` orchestration. Pinned Buck2 `be6971d4` never uploads local
+test executions (`orchestrator.rs:1533–1538`); compile hits alone therefore
+cannot prove verdict reuse. Axe record `ecwtsb` selects this mechanism;
+[issue #1600](https://github.com/overengineeringstudio/effect-utils/issues/1600)
+tracks implementation and its blocked proof. ADR
+[0026, Amendment 1](../../.decisions/0026-buck-owned-unit-tests.md) retains the
+unit-test authority and unchanged-input reuse goals.
+
+The action receives the suite's complete declared source/dependency closure,
+exact runner, scrubbed environment and deterministic policy. Its declared result
+artifact binds `schemaVersion: 1`, `verdict: "pass" | "fail"`, configured
+operation identity and report path. The report is a declared output, not stdout.
+The repository owns this exact, case-sensitive schema and verdict vocabulary;
+unknown versions/verdicts or missing report/output fail closed. A valid failed
+suite emits `verdict: "fail"` while the artifact-producing action succeeds, so
+its deterministic failure is reusable. Tool crashes, malformed outputs and
+infrastructure failures remain action failures and are not converted to verdicts.
+A reader/test adapter fails the gate for a failed verdict without becoming a
+second suite executor. It cannot turn a failed suite into a successful gate.
+Flaky or nonhermetic suites are explicitly uncached, not admitted as deterministic
+verdict reuse (BUILD.BUCK.EXEC-R07/R09; BUILD.BUCK.REUSE-R02).
+
+## Cache-Writable Lane Admission
+
+```text
+lane audit -> hermetic + deterministic -> policy-authorized writer -> publish
+           -> host-dependent            -> no cache reads or writes
+           -> flaky tests               -> uncached
+```
+
+Lane eligibility belongs here rather than the descriptor schema: it is a property
+of action inputs and execution, independent of endpoint identity or writer role.
+A cache-writable lane has an audited complete declared input closure, exact
+Buck/Nix/tool capabilities, a scrubbed environment and deterministic declared
+outputs/verdicts. It uses an actual sandbox where feasible; sandbox comments
+or execution-placement flags are not evidence. Where sandboxing is infeasible,
+the audit explicitly records enforcement and the absence of result-affecting
+undeclared access. Host-dependent lanes neither read nor write; flaky tests are
+uncached. Dirty source is permitted when every changed input participates in
+the action identity. Native and portable lanes must prove platform-correct keys.
+
+Any tailnet context may write eligible lanes with mitigations, not merely because
+of network location. Consumer cache policy and the service own revocable per-host
+credentials, authenticated key logs, AC instance mangling per repo, validation
+and a purge runbook. Public PR write denial is server-enforced. This admission
+contract does not operate the cache or create credentials (axe record `4pmebr`).
+
+## Open Design Questions
+
+- **BUILD.BUCK.EXEC-DQ01 Verdict artifact implementation:** Blocked by
+  [#1600](https://github.com/overengineeringstudio/effect-utils/issues/1600).
+  Resolve with the runner/result schema, failed-verdict gate propagation, and
+  independent same-platform warm-context proof of both pass and fail reuse, plus
+  relevant/irrelevant mutation and crash/flaky controls. The mechanism is selected;
+  implementation and its proof are not claimed complete.
+- **BUILD.BUCK.EXEC-DQ02 Hermetic lane enforcement:** Blocked on audited lane
+  inventory, scrubbed-env implementation and feasible sandbox enforcement. Resolve
+  with undeclared-env/file controls under identical keys and platform/toolchain
+  changes proving key separation; cache writes remain conditional on admission.

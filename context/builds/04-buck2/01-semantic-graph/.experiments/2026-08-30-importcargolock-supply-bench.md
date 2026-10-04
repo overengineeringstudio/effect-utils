@@ -46,6 +46,12 @@ means a second dependency-supply mechanism beside the JS closure.
 
 ## VRS Impact
 
-Grounds [decision 0023](../../.decisions/0023-buck-fetched-rust-crates.md)'s
+Grounds [decision 0023](../../../.decisions/0023-buck-fetched-rust-crates.md)'s
 rejection of the vendor option; the over-capture defect is moot once
 `buck2-rust-vendor` is deleted.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

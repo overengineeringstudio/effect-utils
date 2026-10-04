@@ -46,7 +46,7 @@ buck2's protected documents.
 
 ## Decision
 
-`context/buck2/07-observability/` is a composite node: no vision of its own
+`context/builds/04-buck2/07-observability/` is a composite node: no vision of its own
 (the buck2 vision applies), role stated atop its requirements, IDs
 `BUCK.OBS-R*` with path-prefixed child IDs and `refines:` links. It has five
 children in data-flow order: `01-run-identity`, `02-run-record`,

@@ -13,7 +13,7 @@ Draft.
 shape, and subsystem responsibilities.
 
 **Does not define:** deployment, activation, rollback, health, CI topology, or
-rollout sequencing ([roadmap.md](./roadmap.md)).
+rollout sequencing ([roadmap.md](../.reference/migration-2026/roadmap.md)).
 
 ## Architecture
 
@@ -24,23 +24,23 @@ authored intent (genie models, manifests, lockfiles)
 01 semantic graph ──projects──> BUCK files + closure descriptors
         |
         v
-05 standalone root (.buckconfig: repository cell at .)
+03 standalone root (.buckconfig: repository cell at .)
         |
         v
 configured Buck graph
    |         |          |
    v         v          v
-02 execution  03 materialization  ──> actions (typecheck, build, test, package)
+05 execution  04 materialization  ──> actions (typecheck, build, test, package)
 (toolchains,  (deps for actions          |
  platforms,    and editor surface)       |
  TS + Rust rules)                        v
-                              04 reuse (shared AC/CAS on dev3)
+                              06 reuse (policy-selected AC/CAS)
                                          |
                                          v
                               native evidence + BuildProduct
                                          |
                                          v
-                              06 nix-bridge (independent import)
+                              distribution / Nix bridge (independent import)
                                          |
                                          v
                               Nix store / system closures (consumer-owned)
@@ -56,7 +56,7 @@ configured Buck graph
 | Repository-local deterministic work        | Buck                  | Providers, configured platforms, action keys    |
 | Tools and system inputs                    | Nix                   | Immutable `/nix/store` providers                |
 | Cross-repository dependencies              | Published artifacts   | Nix substitution (decision 0037)                |
-| Shared reuse                               | Remote AC/CAS (dev3)  | REAPI cache-only, tailnet trust                 |
+| Shared reuse                               | Policy-selected remote AC/CAS  | REAPI cache-only, tailnet trust                 |
 | Portable artifact                          | Buck                  | `buck-build-product/v1` descriptor and payload  |
 | Product validation and store import        | Nix                   | Exact descriptor and payload checks             |
 | Deployment and all live effects            | Consumer              | Outside the Buck contract                       |
@@ -69,7 +69,7 @@ bundled prelude, and the Nix-produced capability cell. No tool synthesizes a
 cross-repository Buck root; megarepo member mounts are source checkouts, never
 cells. An external consumer building a public repository uses the same root
 and inhabits its own cache namespace. Mechanism:
-[05-composition](./05-composition/spec.md).
+[05-composition](./03-consumer-roots/spec.md).
 
 ## Invocation Flow
 
@@ -97,85 +97,30 @@ specified in [07-observability](./07-observability/spec.md).
 - A `BuildProduct` must not encode transport, activation, rollback, or health
   state.
 - Shared rules and fixtures must not depend on a consumer repository or carry
-  private facts (BUCK-R14).
+  private facts (BUILD.AUTH-R14).
 - No component interposes a launcher between the caller and Buck
-  ([decision 0011](./.decisions/0011-direct-native-evidence-observation.md)).
-
-## Authority Ledger
-
-The Deletion Ledger (ontology) is one machine-readable instance per
-composition root, next to the composition lock, rendered into every progress
-view ([decision 0031](./.decisions/0031-complexity-gate-and-authority-ledger.md)).
-This node owns the contract; the instance and its check live in the
-composition root because rows name private repositories.
-
-```text
-ledger
-  version                       contract version
-  repos[]                       every composed member: name, remote, ledger path patterns
-                                (what counts as build machinery: include/exclude globs)
-    legacyMarkers               per consumer close: path globs and text markers
-                                (path glob, extended regex); exceptions pair an
-                                exact path with an excluded row that declares it
-  rows[]                        one per (repo, operation, subject)
-    id                          "<repo>/<operation>/<subject>"
-    operation                   Semantic Operation (typecheck, dist, unit-test, lint, format,
-                                product, dependency-view, ...)
-    subject                     package, crate, or root the operation is for
-    status                      buck-owned | residual | legacy | claimed | excluded
-    producer                    current producer (buck | devenv | nix | pnpm | cargo | other)
-    target                      Buck label once buck-owned or claimed
-    dissolution                 for residual/legacy: the condition that retires the producer
-    exclusion                   for excluded: why it is outside Buck by policy (unbounded, live)
-    excludedPaths               for excluded: exact repository-relative files
-                                exempted from close markers by that row
-    transfer                    pr, merged revision, deleted producers (BUCK-R09)
-    net                         added, deleted, measured-at revision, measuring command,
-                                amortization rationale when added > deleted (BUCK-R15)
-    benchmark                   warm no-op, fresh with warm cache, hit rate unchanged,
-                                CI delta, evidence URI (BUCK-R16)
-    owner                       agent or human identity that holds the row while claimed
-  closes[]                      one per consumer adoption close: repo, revision, repo net,
-                                cumulative net (recorded, not gated)
-  reconciliations[]             trajectory snapshots: revision, cumulative net, date
-```
-
-Semantics the check enforces:
-
-- A row's `status` is derived from its fields, never free: `buck-owned`
-  requires `transfer.merged` and `net`; `claimed` requires `owner` and an
-  open `transfer.pr`; `residual`/`legacy` require `dissolution`; `excluded`
-  requires `exclusion`.
-- `net` is recomputed from the merged revision using the repo's path patterns;
-  a stored value that disagrees fails the check.
-- A consumer closes when it has no `residual`, `legacy`, or `claimed` rows,
-  and its legacy builders, FOD hashes, and prepared-install glue are deleted.
-  At the close revision the check scans tracked paths and text markers declared
-  for that consumer, plus legacy Nix builder paths derived from row evidence;
-  a match blocks close unless its exact path is declared by an excluded row
-  in the same repository and named in a marker exception. Missing marker
-  declarations and exceptions outside their excluded row paths block close.
-  The platform hub records `hubReady` (revision) when its residual list reaches
-  zero, a milestone rather than a close (BUCK-R15 as amended).
-  The consumer's row sum and amortization rationale remain recorded for
-  reporting; neither a negative sum nor a later sign change gates its close.
-- The last reconciliation's cumulative net must be lower than the previous
-  one's (BUCK-R15 trajectory); the cumulative sum itself carries no sign test.
-- Rendering is deterministic: the same instance renders the same progress
-  view; the view carries no fact absent from the instance.
-- The instance carries no secrets and no fleet endpoints; those stay in the
-  member configuration it references.
+  ([decision 0011](../.decisions/0011-direct-native-evidence-observation.md)).
 
 ## Requirement Trace
 
 | Requirements                 | Refinement             |
 | ---------------------------- | ---------------------- |
-| BUCK-R01, BUCK-R05           | 01 Semantic Graph      |
-| BUCK-R02, BUCK-R04           | 02 Execution           |
-| BUCK-R08, BUCK-R11           | 03 Materialization     |
-| BUCK-R06, BUCK-R07           | 04 Reuse               |
-| BUCK-R05, BUCK-R14           | 05 Composition         |
-| BUCK-R03, BUCK-R10           | 06 Nix Bridge          |
-| BUCK-R09, BUCK-R15, BUCK-R16 | Root: Authority Ledger |
-| BUCK-R13 (telemetry lane)    | 07 Observability       |
-| BUCK-R12, BUCK-R13           | Root + all subsystems  |
+| BUILD.BUCK-R01, BUILD.BUCK-R05           | 01 Semantic Graph      |
+| BUILD.BUCK-R02, BUILD.BUCK-R04           | 05 Execution           |
+| BUILD.BUCK-R08, BUILD.BUCK-R11           | 04 Materialization     |
+| BUILD.BUCK-R06, BUILD.BUCK-R07           | 06 Reuse               |
+| BUILD.BUCK-R05, BUILD.AUTH-R14           | 03 Consumer Roots         |
+| BUILD.BUCK-R03, BUILD.BUCK-R10           | Product Distribution / Nix Bridge          |
+| BUILD.AUTH-R09, BUILD.AUTH-R15, BUILD.AUTH-R16 | 03 Authority: Ledger |
+| BUILD.BUCK-R13 (telemetry lane)    | 07 Observability       |
+| BUILD.AUTH-R12, BUILD.BUCK-R13           | Root + all subsystems  |
+
+## Shared Foundations
+
+[Identity](../01-identity/spec.md) owns stamps, distinct from action identity.
+[Cache descriptors](../02-cache-contract/spec.md) own schema, not writer permission.
+[Authority](../03-authority/spec.md) owns the machine-readable ledger and
+BUILD.AUTH-R09/R12/R14/R15/R16; this realization consumes it.
+[Platforms and toolchains](./02-platforms-toolchains/spec.md) precede roots,
+materialization and execution. [Distribution](../05-product-distribution/spec.md)
+owns portable products and independent import outside this realization.

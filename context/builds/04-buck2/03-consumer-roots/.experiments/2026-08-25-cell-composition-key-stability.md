@@ -96,8 +96,14 @@ from a synthesized composition root.
 
 ## VRS Impact
 
-Decides [decision 0014](../../.decisions/0014-megarepo-cell-composition.md)
+Decides [decision 0014](../../../.decisions/0014-megarepo-cell-composition.md)
 and grounds every key-stability requirement in
 [05-composition](../requirements.md) (COMP-R01 through COMP-R08): canonical
 mounts and cell names, root-only declarations, shared platform labels, fixed
 isolation dir, real directories, and the synthesized-root-everywhere rule.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

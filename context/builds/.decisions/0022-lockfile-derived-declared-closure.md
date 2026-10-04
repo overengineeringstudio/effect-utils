@@ -9,7 +9,7 @@ dependency materialization by running pinned pnpm inside actions: a `deploy`
 prune, a frozen offline install against an ambient content-addressed store, a
 deploy-tree normalizer, and a canonical install descriptor. The production cp-a
 member run
-([../05-composition/.experiments/2026-08-30-production-cp-a-member-e2e.md](../05-composition/.experiments/2026-08-30-production-cp-a-member-e2e.md))
+([../05-composition/.experiments/2026-08-30-production-cp-a-member-e2e.md](../04-buck2/03-consumer-roots/.experiments/2026-08-30-production-cp-a-member-e2e.md))
 exposed the structural cost of that shape: the ambient store is mutable,
 Buck-unmanaged state that must exist, be warm, and be same-mount in every
 composition shape, and every new mount topology must route around it. The human
@@ -20,18 +20,18 @@ pnpm and Bun as tools.
 
 Three prototypes and a complexity ledger were produced on 2026-08-30:
 
-- [2026-08-30-declared-closure-prototype.md](../03-materialization/.experiments/2026-08-30-declared-closure-prototype.md):
+- [2026-08-30-declared-closure-prototype.md](../04-buck2/04-materialization/.experiments/2026-08-30-declared-closure-prototype.md):
   the rules_js model on stock Buck2 primitives works end to end in 188 lines;
   the real lockfile translates to 1,319 targets in 0.21 s; one dependency
   change re-runs 3 actions; assembled trees carry zero absolute symlinks and
   cost 2.2% marginal disk over content; node and tsc resolve without
   `--preserve-symlinks`.
-- [2026-08-30-workspace-artifact-prototype.md](../03-materialization/.experiments/2026-08-30-workspace-artifact-prototype.md):
+- [2026-08-30-workspace-artifact-prototype.md](../04-buck2/04-materialization/.experiments/2026-08-30-workspace-artifact-prototype.md):
   a single workspace-rooted artifact is cheapest to build but violates DEPS-R07
   by construction — 14 of 14 real lockfile commits changed the artifact bytes,
   cascading into every consumer — and cache-restored artifacts lose hardlinks
   (full tree bytes per worktree).
-- [2026-08-30-read-only-store-frozen-store.md](../03-materialization/.experiments/2026-08-30-read-only-store-frozen-store.md):
+- [2026-08-30-read-only-store-frozen-store.md](../04-buck2/04-materialization/.experiments/2026-08-30-read-only-store-frozen-store.md):
   the ambient-store design is repairable (`--frozen-store` plus store
   relocation), which bounds the cost of the alternative rather than motivating
   it.

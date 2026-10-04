@@ -2,7 +2,7 @@
 
 This document specifies the materialization action and the editor surface. It
 builds on [requirements.md](./requirements.md). Mechanisms are
-prototype-validated; see [.experiments/](./.experiments/).
+prototype-validated; see [.experiments/](.experiments).
 
 ## Status
 
@@ -26,12 +26,12 @@ translate (genie, freshness-gated)
   -> per importer:        node_modules assembly target
   -> platform constraints on optional/platform packages (select())
 
-fetch     download_file, remote-cacheable, network only here (DEPS-R08)
+fetch     download_file, remote-cacheable, network only here (BUILD.BUCK.MAT-R08)
 extract   tar -> package tree, remote-cacheable
 assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/<name>
           hardlinks from extract artifacts, relative symlinks for edges,
           workspace: edges as relative links, .bin entries as symlinks
-          local_only (DEPS-T01); public node_modules output
+          local_only (BUILD.BUCK.MAT-T01); public node_modules output
 ```
 
 No package manager executes inside Buck actions. pnpm is the developer-time
@@ -41,7 +41,7 @@ generation, so it cannot disagree with the lockfile except by staleness, which
 the freshness gate rejects. The lockfile's peer-suffixed snapshot keys map
 directly to virtual-store entries; peer resolution is not re-derived.
 
-Invalidation is structural (DEPS-R07): a changed package version re-runs its
+Invalidation is structural (BUILD.BUCK.MAT-R07): a changed package version re-runs its
 fetch and extract and the assemblies of importers whose closure contains it;
 unrelated importers are untouched. A change that leaves an importer's closure
 byte-identical re-runs nothing for it.
@@ -57,14 +57,14 @@ The assembled tree is relocatable (no absolute paths) but hardlinks share inodes
 with extract artifacts; Buck resets output modes, so read-only protection is
 applied on the published editor view, not inside `buck-out`. The retired
 deploy-based two-stage action and its normalizer are recorded in
-[the retained experiment](./.experiments/2026-08-26-two-stage-prune-install.md)
+[the retained experiment](.experiments/2026-08-26-two-stage-prune-install.md)
 and superseded by
-[the closure prototype](./.experiments/2026-08-30-declared-closure-prototype.md).
+[the closure prototype](.experiments/2026-08-30-declared-closure-prototype.md).
 
 The package-tree API projects declared workspace files into the output for
-cacheable consumers; the editor-surface realization provides DEPS-R03
+cacheable consumers; the editor-surface realization provides BUILD.BUCK.MAT-R03
 live-source links outside the cacheable package tree without weakening
-DEPS-R02.
+BUILD.BUCK.MAT-R02.
 
 ## Editor Surface
 

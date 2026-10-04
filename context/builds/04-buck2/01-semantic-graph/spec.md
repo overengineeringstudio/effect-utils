@@ -58,12 +58,12 @@ execute targets.
   through typed facets and field-qualified handles; handle generics are erased
   at the boundary (measured necessity: leaking them produced a 37.9 MB
   declaration and 1.54 GB memory; alias collisions occurred in 9 of 36
-  manifests — [decision 0005](../.decisions/0005-operation-dependency-roots.md)).
+  manifests — [decision 0005](../../.decisions/0005-operation-dependency-roots.md)).
 - **Rust:** authored `Cargo.toml` is the request authority; Cargo metadata
   preserves request facts. Binding mechanics follow the rust-cargo decisions
-  ([0017](../.decisions/0017-bounded-cargo-manifest-binding.md),
-  [0018](../.decisions/0018-cargo-default-feature-semantics.md),
-  [0019](../.decisions/0019-one-effect-utils-resolution-domain.md)).
+  ([0017](../../.decisions/0017-bounded-cargo-manifest-binding.md),
+  [0018](../../.decisions/0018-cargo-default-feature-semantics.md),
+  [0019](../../.decisions/0019-one-effect-utils-resolution-domain.md)).
 
 ## Projection
 

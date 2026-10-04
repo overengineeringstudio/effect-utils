@@ -5,8 +5,8 @@ The domain language of the megarepo tool (`mr`). This absorbs and supersedes
 
 Terms specific to Buck — cell, standalone root, isolation dir, action identity
 — are defined in
-[../buck2/ontology.md](../buck2/ontology.md) and
-[../buck2/05-composition/](../buck2/05-composition/requirements.md), and are
+[../buck2/ontology.md](../builds/04-buck2/ontology.md) and
+[../buck2/05-composition/](../builds/04-buck2/03-consumer-roots/requirements.md), and are
 used here without redefinition.
 
 ## Language

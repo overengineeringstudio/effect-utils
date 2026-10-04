@@ -62,3 +62,9 @@ Option C is technically viable for standalone and sandboxed source reconstructio
 ## VRS Impact
 
 Evidence only for Q57 / BRIDGE-R08. It proves the local and Nix-sandbox mechanism but does not close BUCK-R06 zero-action reuse, EXEC-R04 narrow invalidation, or BUCK-R17 remote execution. No requirement or decision changes.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

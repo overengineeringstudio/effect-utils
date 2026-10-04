@@ -29,7 +29,7 @@ Paths are local implementation details, never telemetry identifiers. The parent 
 
 Each traced caller invokes Buck directly with explicit `--event-log` and `--write-build-id` paths. The latter writes the Buck trace id despite the flag's historical name. The caller passes only a validated `BUCK_WRAPPER_UUID`; its sidecar associates the Buck command and caller command span without consulting a provider API. The adapter sees the event log even if export is disabled. Buck output remains authoritative when decoding fails.
 
-## Identity Attributes (BUCK.OBS.REC-R03/R05)
+## Identity Attributes (BUILD.BUCK.OBS.REC-R03/R05)
 
 | Field                      | Source                                       | Missing value                                |
 | -------------------------- | -------------------------------------------- | -------------------------------------------- |
@@ -68,4 +68,4 @@ An offline local invocation likewise spools only.
 - The finalizer links started jobs' unverified derived identities once at
   attempt close; skipped/unstarted jobs receive no link, and there is no
   roster record or server-owned root.
-- Historical evidence and amended decisions: [capture experiment](./.experiments/2026-09-24-cold-ci-event-log-capture.md), [delivery bakeoff](./.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md), [0001](./.decisions/0001-run-record-system-of-record.md), [0002](./.decisions/0002-untrusted-run-trust-signal.md), [0003](./.decisions/0003-seal-vcs-identity.md), [0004](./.decisions/0004-attempt-close-record.md).
+- Historical evidence and amended decisions: [capture experiment](.experiments/2026-09-24-cold-ci-event-log-capture.md), [delivery bakeoff](.experiments/2026-09-25-ci-agnostic-delivery-bakeoff.md), [0001](.decisions/0001-run-record-system-of-record.md), [0002](.decisions/0002-untrusted-run-trust-signal.md), [0003](.decisions/0003-seal-vcs-identity.md), [0004](.decisions/0004-attempt-close-record.md).

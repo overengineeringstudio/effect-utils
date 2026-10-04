@@ -25,12 +25,12 @@ repository checkout = Buck project root           megarepo workspace
 
 ## Standalone Root
 
-Each repository's tracked checkout is its Buck project root (COMP-R01). Its
+Each repository's tracked checkout is its Buck project root (BUILD.BUCK.ROOT-R01). Its
 tracked `.buckconfig` has this shape:
 
 ```ini
 [cells]
-  <canonical-cell> = .                   # COMP-R03
+  <canonical-cell> = .                   # BUILD.BUCK.ROOT-R03
   capabilities = .buck2/capabilities     # Nix-produced projection
   prelude = prelude
 [cell_aliases]
@@ -47,9 +47,9 @@ tracked `.buckconfig` has this shape:
 ```
 
 The tracked `.buckroot` keeps Buck from discovering an outer project
-(COMP-R06). The detector spec covers every cell (COMP-R04). Platform labels
+(BUILD.BUCK.ROOT-R06). The detector spec covers every cell (BUILD.BUCK.ROOT-R04). Platform labels
 are effect-utils' `buck2/platforms` `host_platform` / `host_execution_platform`
-targets (COMP-R05). Each root has one fixed isolation dir (COMP-R07).
+targets (BUILD.BUCK.ROOT-R05). Each root has one fixed isolation dir (BUILD.BUCK.ROOT-R07).
 
 A consumer root (`nix/buck2-products/consumer-root.nix`) has the same shape
 with one more cell, `rules = .buck2/rules`: the shipped rules product, which
@@ -92,7 +92,7 @@ manifest from the same generation, so `$(location //buck2/toolchains:<input>)`
 in a Reindeer buildscript environment is a declared action input, not ambient
 host state. The consumer owns the Nix derivation and the local Buck declaration;
 the generic rules contain no consumer or vendor-specific source paths
-(COMP-R03, COMP-R05).
+(BUILD.BUCK.ROOT-R03, BUILD.BUCK.ROOT-R05).
 
 `buck2-member.json` (schema version 2) declares only capabilities:
 
@@ -129,7 +129,7 @@ the capability-backed one.
 
 The bootstrap interpreter those prelude tools need is admitted in exactly one
 realization — the hermetic, Nix-realized `python_bootstrap` toolchain of
-[decision 0028](../.decisions/0028-hermetic-python-bootstrap-for-consumer-cells.md).
+[decision 0028](../../.decisions/0028-hermetic-python-bootstrap-for-consumer-cells.md).
 Ambient interpreters and CPython build edges stay refused, mechanically, by
 `nix/devenv-modules/tasks/shared/tests/buck2-no-python-actions.test.sh`.
 
@@ -138,10 +138,10 @@ Ambient interpreters and CPython build edges stay refused, mechanically, by
 `mr apply` places each member at `repos/<name>` as a symlink into the megarepo
 store (branch, tag, or commit worktree). A source mount exists for reading,
 editing, and running the member's own tooling from its own root; it is never a
-Buck cell (COMP-R02). A repository that needs another repository's outputs
+Buck cell (BUILD.BUCK.ROOT-R02). A repository that needs another repository's outputs
 consumes its published artifacts through Nix substitution or the
 manifest-derived registry, never its mount. Because a mount is an absolute
-symlink, Buck could not see its content anyway (COMP-R08).
+symlink, Buck could not see its content anyway (BUILD.BUCK.ROOT-R08).
 
 The composed Buck root — a synthesized `.buckconfig` spanning `repos/<member>`
 cells, read-only `cp -a` mounts, dist overlays, and a per-workspace capability
@@ -155,4 +155,24 @@ creates only standalone worktrees.
 - Presence of additional targets does not perturb an unrelated target's
   digests.
 - Cross-cell `load()` of the shipped rules cell works; shared rules stay free
-  of private facts (BUCK-R14).
+  of private facts (BUILD.AUTH-R14).
+
+## RE Overlay and Source Cell Mapping
+
+Root preparation materializes the [reuse client overlay](../06-reuse-client/spec.md#client-contract)
+before daemon startup; CLI overrides do not reach RE. `mkConsumerBuckRoot` uses
+`engineAddress` defaulting to the action-cache address rather than omitting
+`engine_address` ([#1596](https://github.com/overengineeringstudio/effect-utils/pull/1596)).
+`patchSourceCells` maps declared producer source cells to the shipped consumer
+rules cell while preserving the consumer repository's source labels
+([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)). This is
+root materialization, not a new cross-repository graph or cache policy.
+
+## Open Design Questions
+
+- **BUILD.BUCK.ROOT-DQ01 Worktree edit-loop preparation:** Per-worktree devenv
+  PATH links built Buck products into a worktree-local bin directory placed first
+  on PATH (axe record `73o54a`). This directory is a runtime consumer surface, not
+  an executable provider path entering action keys. The long-term devenv dependency
+  is unsettled, blocked on a devenv-versus-alternatives bakeoff measuring startup,
+  edit-run ergonomics and retained complexity. Consumer profiles own fleet binding.

@@ -59,3 +59,9 @@ cross-architecture controls.
 Refines `BUCK.GRAPH.BIND.RUST-R12` and decision 0003 with the proved supported
 bridge, rejects custom projected locks, and selects the dedicated mixed-repo
 workspace boundary.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

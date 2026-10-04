@@ -54,3 +54,9 @@ was admitted by
 [decision 0010](../.decisions/0010-admit-rust-stage-zero-support-tools.md);
 that decision supersedes this experiment's then-current rejection without
 rewriting the historical result.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

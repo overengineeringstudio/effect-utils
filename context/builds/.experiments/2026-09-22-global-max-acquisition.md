@@ -125,3 +125,9 @@ amendments to the vision's product-miss bullet, BUCK-R06/R17, BRIDGE-R08, and
 decision 0037. EXEC-R04 and BUCK-R08 remain unchanged and are strengthened by
 the measured one-command invalidation and removal of the 646 MiB per-product
 archive input closure.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

@@ -132,3 +132,9 @@ rollback, health, and independent conformance controls.
 Refines the artifact-system bridge specification with a required runtime tagged
 union, semantic/evidence provenance separation, descriptor-digest joins, and a
 contract-hardening gate before the shared Rust-first admission sequence.
+
+## Intent Impact
+
+Historical evidence informs BUILD.DIST.NIX requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

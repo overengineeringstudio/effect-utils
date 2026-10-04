@@ -37,6 +37,12 @@ byte-unchanged lock assertion) remains the only prerequisite.
 
 ## VRS Impact
 
-Amends [decision 0023](../../.decisions/0023-buck-fetched-rust-crates.md)
+Amends [decision 0023](../../../.decisions/0023-buck-fetched-rust-crates.md)
 (Amendment 1): fixup re-verification is complete; the migration item becomes
 key deletion plus the lint.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

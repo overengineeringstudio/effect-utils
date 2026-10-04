@@ -121,3 +121,9 @@ prerequisites; no cache or execution result is claimed.
 
 No requirement or decision changes. This evidence records an unresolved
 execution proof and preserves the exact rerunnable fixture.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

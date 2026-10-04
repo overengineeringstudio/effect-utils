@@ -26,7 +26,7 @@ Subsystem questions live in their subsystem (`03-materialization`,
 
 ## OQ2: How do public-repo CI runners share the cache with the private fleet? — resolved by decision 0033
 
-- Blocks: BUCK-R06/R07 measurability in PR CI; consumer digest comparison
+- Blocks: BUILD.BUCK-R06/R07 measurability in PR CI; consumer digest comparison
   (Phase 6); DQ1 in `03-materialization`.
 - Constraint (q6, 2026-09-12): public repositories (effect-utils, livestore)
   run CI on Namespace runners to take load off dev3; private repositories stay
@@ -37,16 +37,16 @@ Subsystem questions live in their subsystem (`03-materialization`,
   read and no PR write-back; a Namespace-native cache volume; distinct cache
   namespaces per trust tier with `main`-only write-back.
 - Decision evidence: the
-  [cache-posture experiment](./04-reuse/.experiments/2026-09-12-ci-cache-posture.md)
+  [cache-posture experiment](../../04-buck2/06-reuse-client/.experiments/2026-09-12-ci-cache-posture.md)
   eliminated the unsafe and non-REAPI options and established the required
   trust boundary. It produced no unchanged-head hit because the public tier
   does not yet exist; that measurement remains deployment proof, not evidence
   for choosing a different topology.
 - Resolution: resolved by
-  [decision 0033](./.decisions/0033-ci-cache-posture-two-trust-tiers.md).
+  [decision 0033](../../.decisions/0033-ci-cache-posture-two-trust-tiers.md).
   Public pull requests read but never write the isolated public tier; protected
   public `main` and both private lanes read and write within their trust tiers.
-- Follow-up: refine BUCK-R06 and REUSE-R01 for the public read-only lane.
+- Follow-up: refine BUILD.BUCK-R06 and BUILD.BUCK.REUSE-R01 for the public read-only lane.
 - Deployment blocker: the public-only cache tier is not deployed; until it is
   deployed and proven from a Namespace lane, public CI stays force-cold.
 
@@ -70,7 +70,7 @@ Subsystem questions live in their subsystem (`03-materialization`,
 ## OQ4: How is the GitBucket waterfall publisher restricted to public PNG publication?
 
 - Spec question:
-  [trace-access DQ1](./07-observability/06-trace-access/spec.md#open-design-questions).
+  [trace-access DQ1](../../04-buck2/07-observability/06-trace-access/spec.md#open-design-questions).
 - **Resolved:** The deployed GitBucket Actions OIDC exchange verifies GitHub's
   signature/issuer, a service-specific audience, expiry and configured
   repository names plus immutable repository/owner IDs, event/ref/workflow
@@ -87,4 +87,4 @@ Subsystem questions live in their subsystem (`03-materialization`,
 - The report job's explicit OIDC permission override leaves existing
   workflow-level Tailscale OIDC authority unchanged.
 - Sequencing and dissolution:
-  [restricted public-waterfall publisher](./roadmap.md#restricted-public-waterfall-publisher).
+  [restricted public-waterfall publisher](roadmap.md#restricted-public-waterfall-publisher).

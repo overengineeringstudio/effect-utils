@@ -11,7 +11,7 @@ arbitrary TraceQL or caller-supplied tenant headers. Dotfiles owns the Tempo
 writer/Grafana cutover and proxy access policy; this lane owns the report's
 consumer contract. Revisit only after complete matching task spans from seven
 successful main runs and safe read isolation have been measured
-([decision 0004](./.decisions/0004-tempo-only-delivery-and-job-report.md)).
+([decision 0004](.decisions/0004-tempo-only-delivery-and-job-report.md)).
 
 ## Tempo durability and lifecycle
 

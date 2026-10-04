@@ -89,3 +89,9 @@ Originally added `BUCK.GRAPH.BIND.RUST-R10` and
 decision 0002, and opened `BUCK.GRAPH.BIND.RUST-DQ4`. The implementation
 evidence now closes the Nix-locality condition on decision 0003 for
 `x86_64-linux`; other platforms remain separate admission cells.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.GRAPH requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

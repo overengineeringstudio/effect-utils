@@ -317,4 +317,10 @@ No prototype code is proposed for merge. The disposable dotfiles worktree, local
 
 ## VRS Impact
 
-Grounds [decision 0034](../../.decisions/0034-artifact-default-composition-no-registry.md): artifact-default cross-repository composition, with the durable origin later fixed as the release-asset layout (no registry) by q23. Cells win incremental delta, invalidation correctness, shared-cache efficiency, and one-shot cross-repository testing; artifacts win standing machinery, durability, editor and standalone ergonomics, multi-agent behaviour, and observability. The falsifiers listed above were met by the no-registry publication edge (PR #1289) except the strict second-install no-op, which decision 0034 carries as a consumer requirement.
+Grounds [decision 0034](../../../.decisions/0034-artifact-default-composition-no-registry.md): artifact-default cross-repository composition, with the durable origin later fixed as the release-asset layout (no registry) by q23. Cells win incremental delta, invalidation correctness, shared-cache efficiency, and one-shot cross-repository testing; artifacts win standing machinery, durability, editor and standalone ergonomics, multi-agent behaviour, and observability. The falsifiers listed above were met by the no-registry publication edge (PR #1289) except the strict second-install no-op, which decision 0034 carries as a consumer requirement.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.ROOT requirements; recorded outcomes do not
+relax protected identity, reuse or deletion constraints. The owning spec defines
+the current mechanism.

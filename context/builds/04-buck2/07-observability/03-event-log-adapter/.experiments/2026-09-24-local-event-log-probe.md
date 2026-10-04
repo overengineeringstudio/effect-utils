@@ -55,7 +55,7 @@ Motivating evidence for the whole lane (q6) and for direct decode
 ([decision 0001](../.decisions/0001-direct-decode-rust-crate.md)): the
 stage split exists _only_ in raw spans. The upload/materialization latency
 findings are cross-referenced to
-[04-reuse](../../../04-reuse/open-questions.md) (q8).
+[04-reuse](../../../06-reuse-client/open-questions.md) (q8).
 
 ## Intent Impact
 

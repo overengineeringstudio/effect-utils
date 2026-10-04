@@ -33,3 +33,9 @@ The structural cut is complete: repository checks and Buck-backed check tasks no
 ## VRS Impact
 
 The composition spec now defines the repository root as the check root and limits mr to explicit composition operations. The three residual ledger rows for `composition-mr-check`, `composition-mr-lock-sync-check`, and `composition-mr-source-policy-check` can close when this change lands. The stale Genie product must be repaired by its owning publication slice before successful aggregate timings can replace the rejected samples above.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

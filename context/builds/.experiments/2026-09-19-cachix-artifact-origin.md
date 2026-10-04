@@ -116,3 +116,9 @@ The result supplies transport, auth, mutability, and retention evidence for the
 q44 reframe. It shows that the existing public Cachix cache can transport the
 same archive to all three consumer kinds, while a private cache cannot satisfy
 all native clients. It changes no requirement or decision.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

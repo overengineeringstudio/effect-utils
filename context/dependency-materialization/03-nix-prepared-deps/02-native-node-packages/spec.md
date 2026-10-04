@@ -33,7 +33,7 @@ Traces: DMP.NIX.NATIVE-R02, DMP.NIX.NATIVE-R07.
 Platform-specific native outputs are explicit product inputs or runtime wrapper
 inputs. Managed live installs do not execute lifecycle scripts to produce them.
 Buck product imports validate the declared runtime boundary; see the
-[Buck-to-Nix bridge](../../../buck2/06-nix-bridge/spec.md).
+[Buck-to-Nix bridge](../../../builds/05-product-distribution/02-nix-bridge/spec.md).
 
 ## Retired Realization
 

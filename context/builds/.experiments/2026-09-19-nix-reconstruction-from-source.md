@@ -162,3 +162,9 @@ same-commit equivalence claim is testable.
 ## VRS Impact
 
 Evidence only for q44 (2026-09-19). No requirement or decision changes.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

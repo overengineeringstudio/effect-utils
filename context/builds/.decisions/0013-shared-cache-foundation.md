@@ -66,7 +66,7 @@ the roadmap.
 - Remote execution remains a separate future decision; NativeLink is the
   designated candidate then.
 - Cache outage posture and reuse criteria live in
-  [04-reuse](../04-reuse/requirements.md).
+  [04-reuse](../04-buck2/06-reuse-client/requirements.md).
 
 ## Amendment 1
 

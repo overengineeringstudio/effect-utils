@@ -80,3 +80,9 @@ supersedes the old `tui-core`-only task contract, and completes the root
 package-manager installation producer deletion. Decision 0035 records the
 narrow committed-graph bootstrap exception that keeps source freshness
 non-circular.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

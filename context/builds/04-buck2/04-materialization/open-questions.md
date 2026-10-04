@@ -1,6 +1,6 @@
 # Materialization Open Questions
 
-## DQ1: How should CI obtain fetch artifacts without a warm buck-out?
+## BUILD.BUCK.MAT-DQ01: How should CI obtain fetch artifacts without a warm buck-out?
 
 - Blocks: CI wall-clock and registry dependence once the declared closure
   lands (decision 0022).
@@ -17,15 +17,15 @@
   keyed on the sidecar digest with a single fail-closed publisher is the
   fallback if the runner spike fails.
 
-## DQ2: Can hardlink aliasing inside `buck-out` be made safe?
+## BUILD.BUCK.MAT-DQ02: Can hardlink aliasing inside `buck-out` be made safe?
 
-RESOLVED by [decision 0025](../.decisions/0025-cow-reflink-local-disk-economics.md)
+RESOLVED by [decision 0025](../../.decisions/0025-cow-reflink-local-disk-economics.md)
 (2026-09-01): assembly becomes reflink-first — copy-on-write clones carry
 independent inodes with shared blocks, eliminating the write-through
 corruption hazard instead of documenting it. Hardlink sharing into assembled
-trees is rejected (rewritten DEPS-R04). Until the assembler change lands the
+trees is rejected (rewritten BUILD.BUCK.MAT-R04). Until the assembler change lands the
 divergence is tracked as
-[DELTA-001](./.delta/DELTA-001-assembler-hardlinks-pending-0025.md); on
+[DELTA-001](.delta/DELTA-001-assembler-hardlinks-pending-0025.md); on
 filesystems without reflink support the fallback is a plain copy, and the
 original hazard cannot recur because links are no longer produced.
 

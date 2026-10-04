@@ -38,7 +38,7 @@ Those categories map to existing effect-utils DMP subsystems:
 | -------------------------------------- | ---------------------------------------------------------- |
 | shared-store prune/status/repair       | [04-store-authority](../../04-store-authority/spec.md)     |
 | prepared FOD freshness and hash proof  | [03-nix-prepared-deps](../../03-nix-prepared-deps/spec.md) |
-| Buck2 clean-root/profile evidence      | [Buck repository build](../../../buck2/spec.md)            |
+| Buck2 clean-root/profile evidence      | [Buck repository build](../../../builds/04-buck2/spec.md)            |
 | benchmarks, skips, and proof taxonomy  | [07-verification](../spec.md)                              |
 | build-log and machine-readable records | [06-observability](../../06-observability/spec.md)         |
 
@@ -54,7 +54,7 @@ whole Store Cache realization. Its split-files-pool corruption proof remains
 valid; current repair keeps graphs root-local and delegates whole-cache lifecycle
 to the package manager under the cache-owner boundary.
 
-## VRS Impact
+## Intent Impact
 
 - The split-pool failure remains negative evidence for DMP.STORE-R03 and
   DMP.STORE-R16.

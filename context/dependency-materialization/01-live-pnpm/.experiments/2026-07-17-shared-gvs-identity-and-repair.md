@@ -48,7 +48,7 @@ default for authority and repair containment, not because this experiment
 proved it globally faster or smaller. That optimization claim remains pending a
 direct topology-reuse comparison.
 
-## VRS Impact
+## Intent Impact
 
 - Supports DMP.LIVE-R07 and DMP.STORE-R02 by proving pnpm must remain the sole
   Dependency Edge writer and repair must discard owned state.

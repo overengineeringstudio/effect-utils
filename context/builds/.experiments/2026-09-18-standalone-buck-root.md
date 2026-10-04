@@ -79,7 +79,7 @@ zero-local-action acceptance does not hold. `buck2 log what-ran` identified
 sandbox was not tuned further to hide this BUCK-R06 key-stability regression.
 
 The dev4 row is the cross-architecture evidence cited by the portable-product
-question in `context/buck2/04-reuse/open-questions.md` on PR #1309. The
+question in `context/builds/04-buck2/06-reuse-client/open-questions.md` on PR #1309. The
 aarch64 keys were also not fully reusable: eight actions ran locally, across
 `package_tree`, `tsgo_typecheck`, and `tsgo_emit`. This is informational and
 does not change S8 acceptance.
@@ -112,3 +112,9 @@ that result as a test-ordering artifact: after warming the sampled revision,
 the sandbox reused every successful action. S14 owns deletion of the remaining
 composition-dependent `check:quick` residual gates and its composed
 before/after control.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

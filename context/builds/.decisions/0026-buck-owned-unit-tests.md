@@ -48,3 +48,16 @@ legacy: they are unbounded and stay outside Buck by policy.
   and BUCK-R15 accounting covers the added rule surface.
 - A failed spike reopens the question with evidence; the direction costs only
   the spike until then.
+
+## Amendment 1 — Cacheable Verdict Build Actions
+
+Axe record `ecwtsb` selects cacheable Buck build actions producing a typed
+pass/fail result and structured report. Pinned Buck2 `be6971d4` never uploads
+local test executions (`orchestrator.rs:1533–1538`), so that orchestration cannot
+satisfy the unchanged-input reuse claim.
+[Issue #1600](https://github.com/overengineeringstudio/effect-utils/issues/1600)
+tracks implementation and proof. The unit-test admission goal is unchanged.
+[Execution](../04-buck2/05-execution/spec.md#cacheable-unit-test-verdict-actions) owns
+the mechanism; [reuse](../04-buck2/06-reuse-client/spec.md#action-reuse-versus-verdict-reuse)
+proves action reuse separately from verdict reuse. Historical BUCK-R06/EXEC-R07/
+REUSE-R02 resolve through the [ID map](../.reference/id-map.md).

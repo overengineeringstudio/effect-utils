@@ -78,7 +78,13 @@ Tier c is a fallback only with remote cache disabled for affected actions.
 
 ## VRS Impact
 
-Feeds [decision 0015](../../.decisions/0015-buck-owned-dependency-surface.md)
+Feeds [decision 0015](../../../.decisions/0015-buck-owned-dependency-surface.md)
 and grounds DEPS-R01 (manifest-only inputs), DEPS-R02 (fixed-path staging and
 normalization), and DEPS-R08 (fail-closed offline). Parks the exact closure
 compiler as the dormant future-tier front-end.
+
+## Intent Impact
+
+Historical evidence informs BUILD.BUCK.MAT requirements and their implementation;
+recorded outcomes do not relax protected reuse, identity or deletion constraints.
+The current owning spec, not this experiment, defines the mechanism.

@@ -155,7 +155,7 @@ native/build integration work.
 Live pnpm roots do not emit a second profile artifact. Their generated install
 contract plus install and projection hashes are the evidence used to decide
 whether installation is current. Immutable product descriptors and archive
-digests belong to the [Buck-to-Nix bridge](../buck2/06-nix-bridge/spec.md).
+digests belong to the [Buck-to-Nix bridge](../builds/05-product-distribution/02-nix-bridge/spec.md).
 
 The prepared-install profile producer, evaluated hash-repair targets,
 per-install-root hash registry, source-support exports, and aggregate manifest
