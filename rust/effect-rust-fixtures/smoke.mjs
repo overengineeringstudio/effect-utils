@@ -216,7 +216,7 @@ const checkHashModes = async (api) => {
   )
 }
 
-const checkMathModes = (api) => {
+const checkMathModes = async (api) => {
   assert.equal(api.checkedDivide(84, 2), 42)
   assert.throws(
     () => api.checkedDivide(84, 0),
@@ -313,6 +313,12 @@ const checkMathModes = (api) => {
   for (const signed of [-9223372036854775809n, 9223372036854775808n]) {
     assert.throws(() => api.roundTripWide({ unsigned: 0n, signed }), /RUST_INPUT:/)
   }
+  const wide = { unsigned: 18446744073709551615n, signed: -9223372036854775808n }
+  assert.deepEqual(await api.asyncRoundTripWide(wide, false).result, wide)
+  await assert.rejects(api.asyncRoundTripWide(wide, true).result, (error) => {
+    assert.deepEqual(error.rustError, { reason: 'WideBounds', ...wide })
+    return true
+  })
   const record = Object.fromEntries([
     ['a\u0000b', 1],
     ['__proto__', 2],
@@ -361,7 +367,7 @@ const checkPackage = async (directory) => {
   assert.equal(absolute, expected, `${runtime} must resolve its own export condition`)
   const api = await withoutFetch(() => load(absolute))
   await checkHashModes(api)
-  checkMathModes(api)
+  await checkMathModes(api)
   checkManifest({ directory })
   const result = {
     entry: relative(directory, absolute),
@@ -426,7 +432,7 @@ const checkAggregator = async (directory) => {
     undefined,
     'eager-group exports must not be linked into the lazy wasm',
   )
-  checkMathModes(lazy)
+  await checkMathModes(lazy)
   checkManifest({ directory: join(directory, 'lazy') })
   const result = { groups: Object.keys(manifest), sha256, ...checkArithmetic(lazy) }
   assert.throws(() => lazy.panicTest(), WebAssembly.RuntimeError)

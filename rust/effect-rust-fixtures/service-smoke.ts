@@ -152,6 +152,11 @@ const program = (transport: 'wasm' | 'native') =>
         unsigned: 18446744073709551615n,
         signed: -9223372036854775808n,
       })
+      const wide = { unsigned: 18446744073709551615n, signed: -9223372036854775808n }
+      assert.deepEqual(yield* fixture.asyncRoundTripWide(wide, false), wide)
+      const asyncError = yield* fixture.asyncRoundTripWide(wide, true).pipe(Effect.flip)
+      assert.ok(asyncError instanceof ArithmeticError)
+      assert.deepEqual(asyncError.reason, { _tag: 'WideBounds', ...wide })
       const dropsBeforeScope = yield* fixture.counterDrops()
       const escapedCounter = yield* Effect.scoped(
         Effect.gen(function* () {

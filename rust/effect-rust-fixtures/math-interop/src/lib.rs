@@ -140,6 +140,15 @@ pub fn wide_failure(unsigned: u64, signed: i64) -> Result<(), ArithmeticError> {
     Err(ArithmeticError::WideBounds { unsigned, signed })
 }
 
+#[effect_rust::export(async, name = "asyncRoundTripWide", error_tag = "reason")]
+pub async fn async_round_trip_wide(input: contract::WideSample, fail: bool) -> Result<contract::WideSample, ArithmeticError> {
+    if fail {
+        Err(ArithmeticError::WideBounds { unsigned: input.unsigned, signed: input.signed })
+    } else {
+        Ok(input)
+    }
+}
+
 pub struct Chunks {
     remaining: u32,
     chunk: u32,
