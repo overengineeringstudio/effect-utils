@@ -67,6 +67,25 @@ checks each executable through the canonical Mach-O inspector without
 rewriting the payload. Mutable application installation or signing is not
 part of the product.
 
+### Raw Wasm Guests
+
+Raw wasm guests use `runtime.kind = "wasm-guest"` with
+`inspectionContract = "wasm32-unknown-unknown/v1"`, the exact target triple,
+a declared host `harness`, sorted `module.name` imports, and required
+`runtime.exports`: the complete export list of exact `{ name, kind }` objects
+observed by `WebAssembly.Module.exports`, sorted by UTF-8 export name bytes.
+Export names are unique; kinds are `function`, `table`, `memory`, `global`, or
+`tag` (the exception-handling export kind supported by Node's WebAssembly API).
+Both export names and kinds are bound into descriptor identity. Their platform
+is `{ os: "wasm", architecture: "wasm32", abi: "unknown" }`; it does not claim a
+native host platform. `rust_wasm_guest` reuses the declared wasm Rust toolchain
+without wasm-bindgen generation. Packaging compiles the module once and records
+its imports and exports; the Nix inspector independently compiles the module
+and compares both complete lists with the descriptor. Missing, extra, renamed,
+or differently typed exports fail admission. Each consumer proves its declared
+host harness. The payload uses USTAR name/prefix fields without truncation;
+paths that cannot fit their 100/155-byte UTF-8 limits fail before artifact output.
+
 ## Namespace and Compatibility
 
 `buck-build-product/v1` is the existing repository-owned schema identifier,

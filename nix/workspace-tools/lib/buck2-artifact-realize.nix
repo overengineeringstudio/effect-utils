@@ -29,6 +29,7 @@
       }
     else
       null,
+  inspectWasmGuest ? import ./buck2-runtime-inspect-wasm-guest.nix { inherit pkgs; },
 }:
 
 let
@@ -40,6 +41,7 @@ let
     "elf-static"
     "mach-o-dynamic"
     "mach-o-app-bundle"
+    "wasm-guest"
   ];
   # The contract is pure Nix; a store-less, read-only evaluator applies it to a
   # descriptor that only exists inside this build.
@@ -95,6 +97,8 @@ let
       inspectElfStatic
     else if runtimeKind == "mach-o-dynamic" then
       inspectMachODynamic
+    else if runtimeKind == "wasm-guest" then
+      inspectWasmGuest
     else
       inspectMachOAppBundle;
   declared = builtins.toJSON {

@@ -1,0 +1,16 @@
+[package]
+name = "effect-rust-fixture-napi"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "effect_rust_fixture_napi"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hash-core = { path = "../hash-core" }
+math-core = { path = "../math-core" }
+napi.workspace = true
+napi-derive.workspace = true

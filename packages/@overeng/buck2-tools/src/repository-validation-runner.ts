@@ -321,6 +321,10 @@ const checkWorkspaceContract = ({
     'buck2-events',
     'buck2-product',
     'buck2-tool-core',
+    'effect-rust-fixture-napi',
+    'effect-rust-fixture-wasm',
+    'hash-core',
+    'math-core',
     'otel-scrape',
     'otelite',
   ]

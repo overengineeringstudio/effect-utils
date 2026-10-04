@@ -8,6 +8,8 @@
   packaging and independent per-executable Mach-O inspection during Nix import.
 - `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
   flag and `rollout "manual"` policy. Omitting rollout preserves automatic rollout.
+- Raw wasm32 guest Buck products with a declared host harness, module import
+  descriptors, and independent Nix runtime inspection.
 
 ### Fixed
 
@@ -21,6 +23,9 @@
 - The trusted fresh-root Buck2 cache proof reads the latest command's event log
   with zero-based history and checks the pinned release's numeric action and
   upload enums.
+- The Buck Git-archive hardlink regression constructs its physical fixture in the
+  test sandbox, so source substitution and store optimization cannot invalidate
+  its inode precondition.
 
 ### Changed
 

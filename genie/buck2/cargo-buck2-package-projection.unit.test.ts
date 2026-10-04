@@ -259,6 +259,54 @@ const compileEnvironment = (rule: string): Readonly<Record<string, string>> => {
   )
 }
 
+describe('Cargo dual Node-API and wasm products', () => {
+  it('keeps macOS dynamic symbol lookup native-only on the shared cdylib', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        adapter: {
+          manifest: '[package]\nname = "adapter"\n\n[lib]\ncrate-type = ["cdylib", "rlib"]',
+          files: ['src/lib.rs'],
+        },
+      },
+      render: 'adapter',
+      projectOptions: {
+        napi: { name: 'native-addon' },
+        wasmBindgen: { name: 'wasm-addon' },
+      },
+    })
+    // Both product wrappers consume the same library under different target configurations.
+    for (const [kind, name] of [
+      ['rust_napi_library', 'native-addon'],
+      ['rust_wasm_bindgen_library', 'wasm-addon'],
+    ]) {
+      const product = rendered.match(new RegExp(`^${kind}\\(\\n([\\s\\S]*?)^\\)`, 'm'))?.[1]
+      expect(product).toContain(`name = "${name}"`)
+      expect(product).toContain('crate = ":lib"')
+    }
+    const library = renderedRules(rendered)['lib']
+    const flagsExpression = library?.match(/^    rustc_flags = (.*),$/m)?.[1]
+    if (flagsExpression === undefined) throw new Error('Shared cdylib has no rustc flags')
+    // The generated select expression is also valid JavaScript. Evaluate its branches rather
+    // than pinning the source spelling; wasm retains macOS through the product transition.
+    const evaluateFlags = (conditions: readonly string[]): unknown =>
+      new Function('select', `return ${flagsExpression}`)(
+        (branches: Readonly<Record<string, readonly string[]>>) => {
+          const matching = Object.keys(branches).filter((key) => conditions.includes(key))
+          if (matching.length > 1) throw new Error('Ambiguous target configuration')
+          return branches[matching[0] ?? 'DEFAULT']
+        },
+      )
+    expect(evaluateFlags(['prelude//os/constraints:macos'])).toEqual([
+      '-Clink-arg=-Wl,-undefined,dynamic_lookup',
+    ])
+    expect(evaluateFlags(['prelude//os/constraints:macos', '//buck2/rust:wasm32_config'])).toEqual(
+      [],
+    )
+    expect(evaluateFlags(['//buck2/rust:wasm32_config'])).toEqual([])
+    expect(evaluateFlags([])).toEqual([])
+  })
+})
+
 describe('Cargo compile-time package identity', () => {
   it('inherits package fields and separates library, binary, and build-script target names', () => {
     const rendered = renderCargoFixture({

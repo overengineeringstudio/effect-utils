@@ -24,6 +24,10 @@ execution-platform = true
 target = "aarch64-apple-darwin"
 execution-platform = true
 
+[platform.wasm32]
+target = "wasm32-unknown-unknown"
+execution-platform = false
+
 [cargo]
 
 [buck]

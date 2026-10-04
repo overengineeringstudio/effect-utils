@@ -23,12 +23,52 @@ export type CargoBuck2ProductOptions = {
   readonly entrypoint?: string
 }
 
+/** One smoke target per runtime, each named `<product>-smoke-<runtime>`. */
+export type CargoBuck2InteropSmokeOptions = {
+  readonly script: string
+  readonly runtimes: readonly ('node' | 'bun')[]
+}
+
+/** Size profile overrides for a wasm product; omitted fields keep the fleet defaults. */
+export type CargoBuck2WasmProfile = {
+  readonly optLevel?: '0' | '1' | '2' | '3' | 's' | 'z'
+  readonly lto?: 'fat' | 'thin' | 'off'
+  readonly strip?: 'symbols' | 'debuginfo' | 'none'
+}
+
+/** Glue and conditional package outputs for the package's Cargo cdylib. */
+export type CargoBuck2WasmBindgenOptions = {
+  readonly name: string
+  readonly outName?: string
+  readonly profile?: CargoBuck2WasmProfile
+  readonly smoke?: CargoBuck2InteropSmokeOptions
+}
+
+/** Raw wasm32 guest product for one declared host harness. */
+export type CargoBuck2WasmGuestOptions = {
+  readonly name: string
+  readonly productName: string
+  readonly entrypoint: string
+  readonly harness: string
+  readonly recipe: string
+  readonly toolchain: string
+}
+
+/** Node-API addon output for the package's Cargo cdylib. */
+export type CargoBuck2NapiOptions = {
+  readonly name: string
+  readonly smoke?: CargoBuck2InteropSmokeOptions
+}
+
 export type CargoBuck2PackageProjectionOptions = {
   /** One product named after the package from its only binary. Exclusive with `buildProducts`. */
   readonly buildProduct?: boolean
   /** Several products from one package, one per named Cargo binary. */
   readonly buildProducts?: readonly CargoBuck2ProductOptions[]
   readonly cliBuildStamp?: boolean
+  readonly wasmBindgen?: CargoBuck2WasmBindgenOptions
+  readonly napi?: CargoBuck2NapiOptions
+  readonly wasmGuest?: CargoBuck2WasmGuestOptions
   /**
    * Files the package's build script reads besides the package's Rust sources, by
    * repository-relative path. A file in another Buck package names the label providing it
@@ -320,6 +360,9 @@ const cargoBuck2PackageProjectionFor = ({
   buildProducts,
   buildScriptInputs,
   cliBuildStamp = false,
+  wasmBindgen,
+  wasmGuest,
+  napi,
   sourceUrl,
   foreignMember,
 }: CargoBuck2PackageProjectionOptions & {
@@ -516,6 +559,13 @@ const cargoBuck2PackageProjectionFor = ({
     packageName,
     sources,
   })
+  if (wasmBindgen !== undefined || wasmGuest !== undefined || napi !== undefined) {
+    if (library?.crateTypes?.includes('cdylib') !== true) {
+      throw new Error(
+        `Rust interop products require Cargo [lib] crate-type to contain "cdylib" in ${member.manifestPath}`,
+      )
+    }
+  }
   for (const binary of declaredBinaries) {
     const undefinedFeatures = (binary.requiredFeatures ?? []).filter(
       (feature) => featureState.definedFeatures.has(feature) === false,
@@ -732,6 +782,9 @@ const cargoBuck2PackageProjectionFor = ({
     version,
     // Absent unless requested so single-product fingerprints stay byte-identical.
     ...(buildProducts === undefined ? {} : { products }),
+    ...(wasmBindgen === undefined ? {} : { wasmBindgen }),
+    ...(wasmGuest === undefined ? {} : { wasmGuest }),
+    ...(napi === undefined ? {} : { napi }),
     // Absent for feature-free packages so their fingerprints stay byte-identical.
     ...(enabledFeatures.length === 0 ? {} : { enabledFeatures }),
     ...(featureState.activeOptional.size === 0
@@ -777,6 +830,8 @@ const cargoBuck2PackageProjectionFor = ({
       ? []
       : renderStringList({ name: 'features', values: enabledFeatures })
   const commonRuleLines = [`    edition = ${starlarkString(edition)},`, ...featureLines]
+  const renderRustcFlags = (terms: readonly string[]): readonly string[] =>
+    terms.length === 0 ? [] : [`    rustc_flags = ${terms.join(' + ')},`]
   const normalConditional = activeConditionalNormalDependencies
   const renderRule = ({
     rule,
@@ -819,10 +874,20 @@ const cargoBuck2PackageProjectionFor = ({
       crateName: crate,
       ...(rule === 'rust_binary' ? { binName: name } : {}),
     }),
-    // The build script's `cargo:rustc-*` directives (cfgs, link flags) reach every target.
-    ...(buildScript === undefined
-      ? []
-      : [`    rustc_flags = [${starlarkString(`@$(location :${buildScriptRun}[rustc_flags])`)}],`]),
+    ...renderRustcFlags([
+      // The build script's `cargo:rustc-*` directives (cfgs, link flags) reach every target.
+      ...(buildScript === undefined
+        ? []
+        : [`[${starlarkString(`@$(location :${buildScriptRun}[rustc_flags])`)}]`]),
+      // Node-API symbols resolve from the loading node/bun process. Mach-O ld rejects undefined
+      // dylib symbols unless told to defer them, as napi-build's setup() does for Cargo.
+      // Wasm transitions retain the host OS constraint, but never use Mach-O link flags.
+      ...(rule === 'rust_library' && napi !== undefined
+        ? [
+            `select({${starlarkString(`${buck2LoadLabelPrefix}/rust:wasm32_config`)}: [], "DEFAULT": select({"prelude//os/constraints:macos": ["-Clink-arg=-Wl,-undefined,dynamic_lookup"], "DEFAULT": []})})`,
+          ]
+        : []),
+    ]),
     ...(visibility === undefined
       ? []
       : renderStringList({ name: 'visibility', values: visibility })),
@@ -940,6 +1005,70 @@ const cargoBuck2PackageProjectionFor = ({
       }),
     )
   }
+  if (wasmBindgen !== undefined) {
+    rules.push(
+      'rust_wasm_bindgen_library(',
+      `    name = ${starlarkString(wasmBindgen.name)},`,
+      '    crate = ":lib",',
+      ...(wasmBindgen.outName === undefined
+        ? []
+        : [`    out_name = ${starlarkString(wasmBindgen.outName)},`]),
+      ...(wasmBindgen.profile === undefined
+        ? []
+        : [
+            `    profile = {${(
+              [
+                ['opt_level', wasmBindgen.profile.optLevel],
+                ['lto', wasmBindgen.profile.lto],
+                ['strip', wasmBindgen.profile.strip],
+              ] as const
+            )
+              .flatMap(([key, value]) =>
+                value === undefined ? [] : [`${starlarkString(key)}: ${starlarkString(value)}`],
+              )
+              .join(', ')}},`,
+          ]),
+      ')',
+      '',
+    )
+  }
+  if (wasmGuest !== undefined) {
+    rules.push(
+      'rust_wasm_guest(',
+      `    name = ${starlarkString(wasmGuest.name)},`,
+      '    crate = ":lib",',
+      `    product_name = ${starlarkString(wasmGuest.productName)},`,
+      `    entrypoint = ${starlarkString(wasmGuest.entrypoint)},`,
+      `    harness = ${starlarkString(wasmGuest.harness)},`,
+      `    recipe = ${starlarkString(wasmGuest.recipe)},`,
+      `    toolchain = ${starlarkString(wasmGuest.toolchain)},`,
+      ')',
+      '',
+    )
+  }
+  if (napi !== undefined) {
+    rules.push(
+      'rust_napi_library(',
+      `    name = ${starlarkString(napi.name)},`,
+      '    crate = ":lib",',
+      ')',
+      '',
+    )
+  }
+  for (const interop of [wasmBindgen, napi]) {
+    if (interop?.smoke === undefined) continue
+    for (const runtime of interop.smoke.runtimes) {
+      rules.push(
+        'rust_interop_smoke(',
+        `    name = ${starlarkString(`${interop.name}-smoke-${runtime}`)},`,
+        `    product = ${starlarkString(`:${interop.name}`)},`,
+        `    runtime = ${starlarkString(runtime)},`,
+        `    script = ${starlarkString(interop.smoke.script)},`,
+        ')',
+        '',
+      )
+    }
+  }
   // A product package in another cell than the rules must name the rules
   // cell: a label attribute resolves in the calling package's cell.
   const rulesCell = buck2LoadLabelPrefix.match(/^@([A-Za-z0-9][A-Za-z0-9._-]*)\/\//)?.[1]
@@ -983,6 +1112,18 @@ const cargoBuck2PackageProjectionFor = ({
     '',
     'load("@prelude//:prelude.bzl", "native")',
     `load(${starlarkString(`${buck2LoadLabelPrefix}:static_checks.bzl`)}, "static_source_set")`,
+    ...(wasmBindgen === undefined && napi === undefined && wasmGuest === undefined
+      ? []
+      : [
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:interop.bzl`)}, ${[
+            ...(wasmBindgen === undefined ? [] : ['"rust_wasm_bindgen_library"']),
+            ...(wasmGuest === undefined ? [] : ['"rust_wasm_guest"']),
+            ...(napi === undefined ? [] : ['"rust_napi_library"']),
+            ...(wasmBindgen?.smoke === undefined && napi?.smoke === undefined
+              ? []
+              : ['"rust_interop_smoke"']),
+          ].join(', ')})`,
+        ]),
     ...(products.length > 0
       ? [
           `load(${starlarkString(`${buck2LoadLabelPrefix}/products:defs.bzl`)}, "build_product")`,
@@ -1672,7 +1813,11 @@ const resolveDependencyTable = ({
     )
     .toSorted((left, right) => compareStrings({ left: left.name, right: right.name }))
 
-type CargoLibraryTarget = { readonly name: string; readonly path: string }
+type CargoLibraryTarget = {
+  readonly name: string
+  readonly path: string
+  readonly crateTypes?: readonly string[]
+}
 type CargoBinaryTarget = {
   readonly crateRoot: string
   readonly name: string
@@ -1708,10 +1853,16 @@ const discoverCargoTargets = ({
   const autobins = autoTarget('autobins')
 
   const explicitLibrary = manifest.lib
-  if (explicitLibrary?.['proc-macro'] === true || explicitLibrary?.['crate-type'] !== undefined) {
-    throw new Error(
-      `Cargo proc-macro and crate-type library semantics are unsupported in ${member.manifestPath}`,
-    )
+  if (explicitLibrary?.['proc-macro'] === true) {
+    throw new Error(`Cargo proc-macro library semantics are unsupported in ${member.manifestPath}`)
+  }
+  const crateTypes = explicitLibrary?.['crate-type']
+  if (
+    crateTypes !== undefined &&
+    (crateTypes.length === 0 ||
+      crateTypes.some((type) => !['lib', 'rlib', 'cdylib'].includes(type)))
+  ) {
+    throw new Error(`Unsupported Cargo library crate-type in ${member.manifestPath}`)
   }
   const defaultLibraryPath = 'src/lib.rs'
   let library: CargoLibraryTarget | undefined
@@ -1724,7 +1875,11 @@ const discoverCargoTargets = ({
           : `Cargo library path is not a discovered Rust source: ${libraryPath}`,
       )
     }
-    library = { name: explicitLibrary.name ?? crateIdentifier(packageName), path: libraryPath }
+    library = {
+      name: explicitLibrary.name ?? crateIdentifier(packageName),
+      path: libraryPath,
+      ...(crateTypes === undefined ? {} : { crateTypes }),
+    }
   } else if (autolib === true && sourceSet.has(defaultLibraryPath) === true) {
     library = { name: crateIdentifier(packageName), path: defaultLibraryPath }
   }
@@ -2402,6 +2557,10 @@ const effectUtilsWorkspaceMemberManifestPaths = [
   'rust/buck2-tools/core/Cargo.toml',
   'rust/buck2-tools/events/Cargo.toml',
   'rust/buck2-tools/product/Cargo.toml',
+  'rust/effect-rust-fixtures/hash-core/Cargo.toml',
+  'rust/effect-rust-fixtures/math-core/Cargo.toml',
+  'rust/effect-rust-fixtures/wasm-adapter/Cargo.toml',
+  'rust/effect-rust-fixtures/napi-adapter/Cargo.toml',
 ] as const
 
 /** Repository-relative paths of effect-utils Cargo workspace members governed by the projection. */

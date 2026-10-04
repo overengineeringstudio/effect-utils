@@ -79,6 +79,20 @@ support_tool(
 )
 
 support_tool(
+    name = "tool_wasm_bindgen",
+    protocol = "rustwasm/wasm-bindgen/v0.2.127",
+    tool_id = "wasm-bindgen",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_wasm_opt",
+    protocol = "webassembly/binaryen/v132",
+    tool_id = "wasm-opt",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
     name = "tool_deadnix",
     protocol = "astro/deadnix/v1",
     tool_id = "deadnix",

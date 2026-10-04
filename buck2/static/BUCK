@@ -216,7 +216,11 @@ repository_static_checks(
     "//rust/buck2-tools/archive-tool:static_sources",
     "//rust/buck2-tools/core:static_sources",
     "//rust/buck2-tools/events:static_sources",
-    "//rust/buck2-tools/product:static_sources"
+    "//rust/buck2-tools/product:static_sources",
+    "//rust/effect-rust-fixtures/hash-core:static_sources",
+    "//rust/effect-rust-fixtures/math-core:static_sources",
+    "//rust/effect-rust-fixtures/napi-adapter:static_sources",
+    "//rust/effect-rust-fixtures/wasm-adapter:static_sources"
 ],
     visibility = ["PUBLIC"],
 )
