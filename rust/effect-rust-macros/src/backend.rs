@@ -181,11 +181,20 @@ pub(super) fn generate(export: &Export, backend: Backend) -> syn::Result<Tokens>
     })
 }
 
+// Adapter bindings cannot share the caller's identifiers with injected env,
+// resource state or temporary values. The export manifest retains authored names.
+fn argument_names(export: &Export, backend: Backend) -> Vec<syn::Ident> {
+    export.args.iter().enumerate().map(|(index, (name, _))| {
+        if backend == Backend::Napi { format_ident!("__effect_rust_arg_{index}") } else { name.clone() }
+    }).collect()
+}
+
 fn arguments(export: &Export, backend: Backend) -> (Vec<Tokens>, Vec<Tokens>, Vec<Tokens>) {
     let mut declarations = Vec::new();
     let mut decode = Vec::new();
     let mut calls = Vec::new();
-    for (name, wire) in &export.args {
+    let names = argument_names(export, backend);
+    for ((_, wire), name) in export.args.iter().zip(&names) {
         let ty = if matches!(wire, Wire::Scalar(ty) if super::scalar_integer(ty))
             || (backend == Backend::Napi
                 && matches!(wire, Wire::Scalar(ty) if super::type_name(ty)=="f32"))
@@ -576,7 +585,7 @@ pub(super) fn resource(
                 }
             }
         });
-        let names = method.args.iter().map(|(name, _)| name);
+        let names = argument_names(method, backend);
         bodies.push(quote! {
             #annotation
             pub fn #ident(&mut self, #env #(#args),*) -> Result<#output, #error> {

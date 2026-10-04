@@ -354,6 +354,14 @@ pub mod f32 {
         impl de::Visitor<'_> for Visitor {
             type Value = f32;
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("a finite binary32 number") }
+            #[allow(clippy::cast_precision_loss)] // Binary32 fields explicitly round numeric JSON, including integer tokens.
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<f32, E> {
+                self.visit_f64(value as f64)
+            }
+            #[allow(clippy::cast_precision_loss)] // Binary32 fields explicitly round numeric JSON, including integer tokens.
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<f32, E> {
+                self.visit_f64(value as f64)
+            }
             fn visit_f64<E: de::Error>(self, value: f64) -> Result<f32, E> {
                 #[allow(clippy::cast_possible_truncation)] // Rounding to binary32 is the explicit contract policy.
                 let rounded = value as f32;
@@ -479,6 +487,40 @@ mod tests {
         unsigned: u64,
         #[serde(with = "i64_decimal")]
         signed: i64,
+    }
+    #[derive(Debug, Deserialize)]
+    struct FloatSample {
+        #[serde(with = "super::f32")]
+        value: f32,
+    }
+
+    #[test]
+    fn binary32_serde_accepts_integer_tokens_and_rejects_overflow() {
+        for (text, expected) in [
+            ("1", 1.0_f32),
+            ("-1", -1.0_f32),
+            ("9007199254740992", 9_007_199_254_740_992.0_f32),
+            ("0.1", 0.1_f32),
+        ] {
+            let json = format!("{{\"value\":{text}}}");
+            assert_eq!(serde_json::from_str::<FloatSample>(&json).unwrap().value, expected);
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(serde_json::from_value::<FloatSample>(value).unwrap().value, expected);
+            assert_eq!(decode_json::<FloatSample>(&json).unwrap().value, expected);
+        }
+        assert!(serde_json::from_str::<FloatSample>("{\"value\":3.4028236e38}").is_err());
+    }
+
+    #[test]
+    fn fixed_sequences_reject_missing_and_trailing_elements() {
+        assert_eq!(decode_json::<[u32; 2]>("[1,2]").unwrap(), [1, 2]);
+        assert_eq!(decode_json::<(u32, u32)>("[1,2]").unwrap(), (1, 2));
+        assert_eq!(decode_json::<[u32; 0]>("[]").unwrap(), [0_u32; 0]);
+        for json in ["[1]", "[1,2,3]"] {
+            assert!(decode_json::<[u32; 2]>(json).is_err(), "accepted {json}");
+            assert!(decode_json::<(u32, u32)>(json).is_err(), "accepted {json}");
+        }
+        assert!(decode_json::<[u32; 0]>("[1]").is_err());
     }
 
     #[test]

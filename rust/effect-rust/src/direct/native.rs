@@ -77,7 +77,7 @@ impl<'env> Reader for Native<'env> {
     }
     fn get(&self, value: &Unknown<'env>, key: &str) -> Result<Unknown<'env>, Error> {
         let object: Object = self.read(value, ValueType::Object)?;
-        object.get_named_property(key).map_err(error)
+        object.get_property(self.env.create_string(key).map_err(error)?).map_err(error)
     }
     fn length(&self, value: &Unknown<'env>) -> Result<usize, Error> {
         let object: Object = self.read(value, ValueType::Object)?;
@@ -104,7 +104,7 @@ impl<'env> Writer for Native<'env> {
             let property = napi::Property::new().with_utf8_name(key).map_err(error)?.with_value(&value);
             object.define_properties(&[property]).map_err(error)
         } else {
-            object.set_named_property(key, value).map_err(error)
+            object.set_property(self.env.create_string(key).map_err(error)?, value).map_err(error)
         }
     }
     fn push(&self, array: &Unknown<'env>, index: usize, value: Unknown<'env>) -> Result<(), Error> {

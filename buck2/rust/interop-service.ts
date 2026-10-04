@@ -272,7 +272,8 @@ const decoders = new Set(
   exportEntries.flatMap((entry) => codec({ entry, position: '$returns' }) ?? []),
 )
 const syncEntry = (entry: Export): boolean =>
-  entry.mode === 'sync' && entry.resource === undefined
+  (entry.mode === 'sync' || entry.mode === 'borrowed' || entry.mode === 'frame') &&
+  entry.resource === undefined
 const syncEncodes = exportEntries.some((entry) => syncEntry(entry) && entry.args.some((arg) => codec({ entry, position: arg.name }) !== undefined))
 const asyncEncodes = exportEntries.some((entry) => !syncEntry(entry) && entry.args.some((arg) => codec({ entry, position: arg.name }) !== undefined))
 const syncDecodes = exportEntries.some((entry) => syncEntry(entry) && codec({ entry, position: '$returns' }) !== undefined)
@@ -501,7 +502,7 @@ for (const entry of exportEntries) {
           ? `.pipe(Sink.mapEffect((result) => decodeOutput(${operation}, () => decode${resultCodec}(result))))`
           : ''
       : ''
-  const sync = method === 'call' && entry.mode !== 'async' && entry.resource?.role !== 'method'
+  const sync = syncEntry(entry)
   if (sync) {
     methodSource.push(
       `  ${entry.name}: (${args}) => runtime.callSync((api) => {`,

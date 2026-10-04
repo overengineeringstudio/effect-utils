@@ -24,7 +24,7 @@ impl Reader for Wasm {
     fn unsigned(&self, value: &JsValue) -> Result<u64, Error> { u64::try_from(value.clone()).map_err(|_| Error("bigint outside u64 range".into())) }
     fn signed(&self, value: &JsValue) -> Result<i64, Error> { i64::try_from(value.clone()).map_err(|_| Error("bigint outside i64 range".into())) }
     fn keys(&self, value: &JsValue) -> Result<Vec<String>, Error> {
-        js_sys::Object::keys(value.unchecked_ref()).iter().map(|key| self.string(&key)).collect()
+        js_sys::Object::keys(value.unchecked_ref::<js_sys::Object>()).iter().map(|key| self.string(&key)).collect()
     }
     fn get(&self, value: &JsValue, key: &str) -> Result<JsValue, Error> { js_sys::Reflect::get(value, &JsValue::from_str(key)).map_err(error) }
     fn length(&self, value: &JsValue) -> Result<usize, Error> { Ok(value.unchecked_ref::<js_sys::Array>().length() as usize) }
@@ -48,7 +48,7 @@ impl Writer for Wasm {
             let descriptor = js_sys::Object::new();
             js_sys::Reflect::set(&descriptor, &JsValue::from_str("value"), &value).map_err(error)?;
             for name in ["enumerable", "writable", "configurable"] { js_sys::Reflect::set(&descriptor, &JsValue::from_str(name), &JsValue::TRUE).map_err(error)?; }
-            js_sys::Reflect::define_property(object.unchecked_ref(), &JsValue::from_str(key), &descriptor).map_err(error)?;
+            js_sys::Reflect::define_property(object.unchecked_ref::<js_sys::Object>(), &JsValue::from_str(key), &descriptor).map_err(error)?;
         } else {
             js_sys::Reflect::set(object, &JsValue::from_str(key), &value).map_err(error)?;
         }

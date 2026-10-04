@@ -120,7 +120,7 @@ export type SourceRequest =
 /** Request callback shared by Node-API and wasm adapter bridges. */
 export type SourceCallback = (request: SourceRequest) => Promise<Uint8Array>
 /** Scoped Source bridge with range reads and cooperative host task yielding. */
-export type HostSource = HostCapability<readonly [SourceRequest], Uint8Array>
+export type HostSource = HostCapability<readonly [unknown], Uint8Array>
 
 /** A cancellable event-loop task, not a microtask-only scheduler yield. */
 export const eventLoopYield: Effect.Effect<void> = Effect.callback<void>((resume) => {
@@ -135,7 +135,7 @@ export const hostSource = Effect.fn('effect-rust.hostSource')(function* <TError,
 ) {
   return yield* hostCapability(
     mode,
-    Effect.fn('effect-rust.Source.call')(function* (request: SourceRequest) {
+    Effect.fn('effect-rust.Source.call')(function* (request: unknown) {
       const decoded = yield* decodeSourceRequest(request).pipe(
         Effect.mapError(
           (cause) =>

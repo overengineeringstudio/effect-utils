@@ -122,6 +122,8 @@ const program = (transport: 'wasm' | 'native') => Effect.scoped(
     for (const unsigned of [9007199254740991n, 9007199254740992n, 9007199254740993n, 18446744073709551615n]) {
       assert.deepEqual(yield* fixture.roundTripWide({ unsigned, signed: -9223372036854775808n }), { unsigned, signed: -9223372036854775808n })
     }
+    const record = Object.fromEntries([['a\u0000b', 1], ['__proto__', 2], ['constructor', 3]])
+    assert.deepEqual(yield* fixture.roundTripRecord(record), record)
     const wideError = yield* fixture.wideFailure(18446744073709551615n, -9223372036854775808n).pipe(Effect.flip)
     assert.ok(wideError instanceof ArithmeticError)
     assert.deepEqual(wideError.reason, { _tag: 'WideBounds', unsigned: 18446744073709551615n, signed: -9223372036854775808n })

@@ -11,13 +11,13 @@ export const excess = 'effect-rust/excess'
 export const nonExhaustive = 'effect-rust/nonExhaustive'
 
 /** Explicit finite IEEE binary32: numeric input rounds to nearest; overflow fails. */
-export const F32 = Schema.Number.check(
+export const F32 = Schema.Finite.check(
   Schema.makeFilter<number>((value) => Number.isFinite(Math.fround(value)), {
     expected: 'finite binary32 input',
   }),
 ).annotate({ [width]: 'f32' }).pipe(
   Schema.decodeTo(
-    Schema.Number.check(
+    Schema.Finite.check(
       Schema.makeFilter<number>((value) => Number.isFinite(Math.fround(value)), {
         expected: 'finite binary32 value',
       }),

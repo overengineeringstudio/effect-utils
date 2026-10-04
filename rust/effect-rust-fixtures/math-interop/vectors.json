@@ -252,6 +252,7 @@
   { "contract": "FloatSample", "name": "negative zero normalizes in JSON", "input": { "value": 0 }, "inputJson": "{\"value\":-0}", "accept": true, "canonicalJson": "{\"value\":0}" },
   { "contract": "FloatSample", "name": "float field accepts integral fraction token", "input": { "value": 1 }, "inputJson": "{\"value\":1.0}", "accept": true, "canonicalJson": "{\"value\":1}" },
   { "contract": "FloatSample", "name": "float field accepts exponent token", "input": { "value": 1 }, "inputJson": "{\"value\":1e0}", "accept": true, "canonicalJson": "{\"value\":1}" },
+  { "contract": "FloatSample", "name": "float integer token above safe-integer limit", "input": { "value": 9007199254740992 }, "accept": true, "canonicalJson": "{\"value\":9007199254740992}" },
   { "contract": "FloatSample", "name": "NaN rejected", "input": { "value": "NaN" }, "inputJson": "{\"value\":NaN}", "accept": false },
   { "contract": "FloatSample", "name": "Infinity rejected", "input": { "value": "Infinity" }, "inputJson": "{\"value\":Infinity}", "accept": false },
   { "contract": "FloatSample", "name": "negative Infinity rejected", "input": { "value": "-Infinity" }, "inputJson": "{\"value\":-Infinity}", "accept": false },

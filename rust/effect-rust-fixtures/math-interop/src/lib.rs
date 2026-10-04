@@ -127,10 +127,13 @@ pub fn sum_json_integers(input: contract::NumericOperands) -> i64 {
 }
 
 #[effect_rust::export(name = "roundTripFloat")]
-pub fn round_trip_float(input: contract::FloatSample) -> contract::FloatSample { input }
+pub fn round_trip_float(env: contract::FloatSample) -> contract::FloatSample { env }
 
 #[effect_rust::export(name = "roundTripWide")]
 pub fn round_trip_wide(input: contract::WideSample) -> contract::WideSample { input }
+
+#[effect_rust::export(name = "roundTripRecord")]
+pub fn round_trip_record(input: std::collections::BTreeMap<String, u32>) -> std::collections::BTreeMap<String, u32> { input }
 
 #[effect_rust::export(name = "wideFailure", error_tag = "reason")]
 pub fn wide_failure(unsigned: u64, signed: i64) -> Result<(), ArithmeticError> {

@@ -370,11 +370,11 @@ impl<'de> serde::de::Visitor<'de> for StrictSeed {
     fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<(), E> { Ok(()) }
     fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<(), E> { Ok(()) }
     fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<(), E> {
-        if !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value) { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }
+        ${features.f32 === true ? 'let _ = value; // Typed integer fields enforce their own safe bounds; f32 admits numeric rounding.' : 'if !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value) { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }'}
         Ok(())
     }
     fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<(), E> {
-        if value > 9_007_199_254_740_991 { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }
+        ${features.f32 === true ? 'let _ = value; // Typed integer fields enforce their own safe bounds; f32 admits numeric rounding.' : 'if value > 9_007_199_254_740_991 { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }'}
         Ok(())
     }
     fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<(), E> {

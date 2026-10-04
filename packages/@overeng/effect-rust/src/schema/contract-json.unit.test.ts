@@ -5,6 +5,7 @@ import { expect, expectTypeOf } from 'vitest'
 import * as Borsh from './borsh.ts'
 import * as Columns from './columns.ts'
 import * as ContractJson from './contract-json.ts'
+import * as Direct from './direct.ts'
 import * as EffectRust from './effect-rust.ts'
 
 const unsigned64 = Schema.BigInt.check(
@@ -47,6 +48,30 @@ describe('ContractJson control plane', () => {
       expect(Schema.encodeSync(codec)(value)).toBe(text)
     }
     expect(() => Schema.encodeUnknownSync(codec)({ field: undefined })).toThrow()
+  })
+  it('prepares nullable numeric tokens without weakening integer spelling', () => {
+    const schema = Schema.Struct({
+      integer: Schema.optionalKey(Schema.NullOr(unsigned8)),
+      float: Schema.optionalKey(Schema.NullOr(EffectRust.F32)),
+    })
+    const decode = ContractJson.decode(schema)
+    expect(decode('{"integer":1,"float":0.1}')).toEqual({
+      integer: 1,
+      float: Math.fround(0.1),
+    })
+    expect(decode('{"integer":null,"float":null}')).toEqual({ integer: null, float: null })
+    expect(decode('{}')).toEqual({})
+    for (const token of ['1.0', '1e0', '256']) {
+      expect(() => decode(`{"integer":${token}}`)).toThrow()
+    }
+    const nullableFloat = Schema.NullOr(EffectRust.F32)
+    for (const token of ['0.1', '1e-45', '9007199254740992', '3.4028235e38']) {
+      expect(ContractJson.decode(nullableFloat)(token)).toBe(
+        Direct.decode(nullableFloat)(Number(token)),
+      )
+    }
+    expect(() => ContractJson.decode(nullableFloat)('3.4028236e38')).toThrow()
+    expect(() => Direct.decode(nullableFloat)(Number.POSITIVE_INFINITY)).toThrow()
   })
   it('applies explicit nested excess-ignore without weakening strict siblings', () => {
     const ignored = Schema.Struct({ n: unsigned8 }).annotate({ [EffectRust.excess]: 'ignore' })
@@ -172,6 +197,29 @@ describe('Borsh frames and Columns', () => {
       new Uint8Array([...codec.encode({ n: 1, text: '', counter: 0n }), 0]),
     ])
       expect(() => codec.decode(bytes)).toThrow()
+  })
+  it('keeps binary32 rounding and non-finite rejection across frames and columns', () => {
+    const framed = Borsh.frame(EffectRust.F32, { contractId: 7, version: 1 })
+    for (const value of [0.1, 1e-45, 3.4028235e38, -0]) {
+      const bytes = framed.encode(value)
+      expect(framed.decode(bytes)).toBe(Math.fround(value))
+      expect(framed.trusted.decode(bytes)).toBe(Math.fround(value))
+    }
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 3.4028236e38]) {
+      expect(() => framed.encode(value)).toThrow()
+      expect(() => framed.trusted.encode(value)).toThrow()
+    }
+    for (const bits of [0x7f800000, 0xff800000, 0x7fc00000]) {
+      const bytes = framed.encode(0)
+      new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(6, bits, true)
+      expect(() => framed.decode(bytes)).toThrow()
+      expect(() => framed.trusted.decode(bytes)).toThrow()
+    }
+    const columns = Columns.make(Schema.Struct({ value: EffectRust.F32 }))
+    columns.validate({ value: new Float32Array([0.1, 1e-45, -0]) })
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => columns.validate({ value: new Float32Array([value]) })).toThrow()
+    }
   })
   it('infers smallest signed widths and honors a wider layout pin', () => {
     const small = Schema.Int.check(Schema.isBetween({ minimum: -12, maximum: 12 }))

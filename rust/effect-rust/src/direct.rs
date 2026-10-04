@@ -160,7 +160,12 @@ impl<'de, B: Reader> de::Deserializer<'de> for Decoder<'_, B> {
         if self.depth >= 128 { return Err(Error("structured value exceeds depth 128".into())); }
         if self.backend.kind(&self.value)? != Kind::Array { return Err(Error("expected an array".into())); }
         let length = self.backend.length(&self.value)?;
-        visitor.visit_seq(Sequence { decoder: self, index: 0, length })
+        let mut sequence = Sequence { decoder: self, index: 0, length };
+        let value = visitor.visit_seq(&mut sequence)?;
+        if sequence.index != sequence.length {
+            return Err(Error("unexpected trailing array elements".into()));
+        }
+        Ok(value)
     }
     fn deserialize_tuple<V: de::Visitor<'de>>(self, _: usize, visitor: V) -> Result<V::Value, Error> { self.deserialize_seq(visitor) }
     fn deserialize_tuple_struct<V: de::Visitor<'de>>(self, _: &'static str, _: usize, visitor: V) -> Result<V::Value, Error> { self.deserialize_seq(visitor) }

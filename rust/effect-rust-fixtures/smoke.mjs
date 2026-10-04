@@ -60,8 +60,8 @@ const checkArithmetic = (api) => {
   }
   assert.deepEqual(result, { sum: 42, upperBoundary: 2147483647, lowerBoundary: -2147483648 })
   const operands = { unsigned: 4294967295, signed: -2147483648, bounded: Number.MAX_SAFE_INTEGER }
-  assert.equal(api.sumJsonIntegers(operands), String(4294967295n - 2147483648n + 9007199254740991n))
-  assert.equal(api.sumJsonIntegers({ unsigned: 0, signed: -1, bounded: 0 }), '-1')
+  assert.equal(api.sumJsonIntegers(operands), 4294967295n - 2147483648n + 9007199254740991n)
+  assert.equal(api.sumJsonIntegers({ unsigned: 0, signed: -1, bounded: 0 }), -1n)
   for (const input of [
     { ...operands, unsigned: 4294967296 },
     { ...operands, signed: -2147483649 },
@@ -294,6 +294,13 @@ const checkMathModes = (api) => {
   for (const unsigned of ['1', 1, -1n, 18446744073709551616n]) {
     assert.throws(() => api.roundTripWide({ unsigned, signed: 0n }), /RUST_INPUT:/)
   }
+  for (const signed of [-9223372036854775809n, 9223372036854775808n]) {
+    assert.throws(() => api.roundTripWide({ unsigned: 0n, signed }), /RUST_INPUT:/)
+  }
+  const record = Object.fromEntries([['a\u0000b', 1], ['__proto__', 2], ['constructor', 3]])
+  const returned = api.roundTripRecord(record)
+  assert.deepEqual(returned, record)
+  assert.equal(Object.getPrototypeOf(returned), Object.prototype)
   assert.throws(() => api.quoteOrder({ ...order, placedAt: order.placedAt + 0.5 }, { kind: 'none' }), /RUST_INPUT:/)
   assert.throws(() => api.wideFailure(18446744073709551615n, -9223372036854775808n), (error) => {
     assert.deepEqual(error.rustError, { reason: 'WideBounds', unsigned: 18446744073709551615n, signed: -9223372036854775808n })
