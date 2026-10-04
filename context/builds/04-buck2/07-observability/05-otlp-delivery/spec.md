@@ -57,9 +57,9 @@ changing the Buck result. Retries resend the same bytes, preserving trace
 and span IDs rather than minting new identity. Already accepted spans (or
 metric points) may be duplicated after a partial acceptance or ambiguous
 acknowledgement: deterministic IDs keep span identity stable but do not
-guarantee Tempo deduplication. Local spool lifetime bounds recovery. No
+guarantee backend deduplication. Local spool lifetime bounds recovery. No
 server-side queue, readback repair, reconciliation sweep, or status backed
-by Tempo queries exists.
+by backend queries exists.
 
 ## Identity, Attributes, and Retention (BUILD.BUCK.OBS.ING-R02/R04/R05/R06/R10)
 
@@ -101,7 +101,7 @@ are bounded trace/span facts (provider may also describe a resource), never
 metric labels. No legacy aliases or dual emission are supported. Attribute
 renames do not alter deterministic run/trace IDs or historical retained spans.
 
-The consumer selects backend trace and bounded trend-metric retention policy. There is no one-year native-log archive. When the producer's local spool is gone, this specification promises neither trace replay nor reconstruction from another host. Tempo search lag is a UI/search property, not an exporter acceptance gate; by-ID visibility also cannot be inferred from an HTTP success.
+The consumer selects backend trace and bounded trend-metric retention policy. There is no one-year native-log archive. When the producer's local spool is gone, this specification promises neither trace replay nor reconstruction from another host. Backend search lag is a UI/search property, not an exporter acceptance gate; by-ID visibility also cannot be inferred from an HTTP success.
 
 ## Ownership and Conformance
 
@@ -109,7 +109,7 @@ The consumer selects backend trace and bounded trend-metric retention policy. Th
 | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | effect-utils | Buck capture, adapter, views, batch encoder, local pending spool, and direct OTLP retry                                 |
 | consumer     | Configured collector endpoint, network access/routing, backend routing and retention                                                               |
-| CI adapter   | Job-end late join and one export phase; always-run attempt-close trace; no fleet read permission for comment generation |
+| CI adapter   | Job-end late join and one export phase; always-run attempt-close trace; no backend read permission for comment generation |
 
 - An admitted PR job that completes Buck then establishes collector connectivity sends its single job trace (with nested task and command spans) plus linked full views in one bounded burst; a fork sends none and leaves pending bytes locally.
 - A 2xx response with `partial_success.rejected_spans > 0` (or

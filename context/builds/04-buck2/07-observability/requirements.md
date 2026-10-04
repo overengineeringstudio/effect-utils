@@ -32,23 +32,23 @@ It refines BUILD.BUCK-R13 (and BUILD.AUTH-R12 advisory, BUILD.AUTH-R14 hygiene) 
   (BUILD.BUCK-A01, BUILD.BUCK-R13).
 - **BUILD.BUCK.OBS-A02 Semconv availability:** OTel CICD (`cicd.pipeline.*`,
   `cicd.worker.*`), `vcs.*`, and `process.*` attributes are usable at Release
-  Candidate quality; the fleet observability conventions govern naming and
+  Candidate quality; the shared OTel conventions govern naming and
   cardinality.
-- **BUILD.BUCK.OBS-A03 Fleet stack:** Tempo, Mimir, and the collector are deployed
-  and owned by the dotfiles fleet config; this subsystem specifies contracts,
-  not deployment
+- **BUILD.BUCK.OBS-A03 Consumer backend:** Consumers select the collector endpoint,
+  export admission and backend retention policy and own collector/backend
+  deployment; this subsystem specifies portable producer contracts, not deployment
   ([decision 0001](.decisions/0001-composite-node-and-lane-ownership.md)).
-- **BUILD.BUCK.OBS-A04 Run volume:** roughly 90 pipeline runs per day across the
-  fleet's repositories is the planning volume for retention sizing.
+- **BUILD.BUCK.OBS-A04 Run volume:** Consumers supply observed or explicitly
+  labeled planning run volume for backend and retention sizing.
 
 ## Acceptable Tradeoffs
 
 - **BUILD.BUCK.OBS-T01 Version-bound adapter:** the event-log adapter pins a vendored
-  protobuf schema to the newest fleet producer and re-pins on every Buck bump
+  protobuf schema to the newest admitted producer and re-pins on every Buck bump
   (inherits BUILD.BUCK-T02; mechanism:
   [03-event-log-adapter](./03-event-log-adapter/requirements.md)).
 - **BUILD.BUCK.OBS-T02 Both views until measured:** ingesting the full trace view
-  alongside the critical view everywhere is accepted before Tempo volume is
+  alongside the critical view everywhere is accepted before backend volume is
   measured, with an explicit dial-in trigger
   ([open question OQ1](./open-questions.md); decision q24, 2026-09-25).
 
@@ -77,11 +77,12 @@ It refines BUILD.BUCK-R13 (and BUILD.AUTH-R12 advisory, BUILD.AUTH-R14 hygiene) 
   the Jobs API but does not affect capture or delivery
   (decision q15, 2026-09-25; audit follow-up tracked in
   [open-questions.md](./open-questions.md)).
-- **BUILD.BUCK.OBS-R04 OTLP delivery with local retry:** Delivery exports OTLP to the
-  collector; a local spool retains undelivered telemetry for retry. Same-repo
-  PR jobs and main pushes export, as do local runs with tailnet access; fork
-  jobs spool without exporting. No CI-provider artifact API is a delivery
-  dependency.
+- **BUILD.BUCK.OBS-R04 OTLP delivery with local retry:** Delivery exports OTLP to a
+  consumer-configured collector under the consumer's export admission policy;
+  a local spool retains undelivered telemetry for retry. Consumer-admitted
+  same-repo PR jobs, main pushes and local runs export; fork jobs and runs
+  without collector access or admission spool without exporting. No CI-provider
+  artifact API is a delivery dependency.
 
 ### Must bound volume and cardinality
 
@@ -94,8 +95,8 @@ It refines BUILD.BUCK-R13 (and BUILD.AUTH-R12 advisory, BUILD.AUTH-R14 hygiene) 
   `vcs.ref.base.revision`, `buck2.vcs.merge.revision`,
   `vcs.repository.url.full`, `vcs.change.id`, `vcs.provider.name`, `buck2.vcs.change.is_fork`,
   and the Buck trace id. None of these ever becomes a metric label.
-- **BUILD.BUCK.OBS-R06 Retention corridor:** Tempo retains traces for 30 days;
-  long-term trends use bounded metrics. There is no raw evidence archive or
+- **BUILD.BUCK.OBS-R06 Retention corridor:** Consumers own backend trace and
+  bounded trend-metric retention policy. There is no raw evidence archive or
   guaranteed regeneration after the local spool is removed. Widening
   retention requires a measured volume decision.
 

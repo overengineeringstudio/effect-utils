@@ -120,7 +120,7 @@ the same name mapping used by the reporter (failed and cancelled jobs that
 started are included; skipped and unstarted jobs are not). It derives their
 job root trace/span IDs and writes one pipeline root with links marked
 `buck2.job_trace.link_state=unverified`: the API proves that a job started,
-not that its root was sent, accepted, or retained by Tempo. A link to an
+not that its root was sent, accepted, or retained by the backend. A link to an
 absent root is therefore possible and is never shown as proof of delivery.
 Its bounds describe the attempt; it does not reparent job traces, synthesize
 absent jobs, or await late span persistence.
@@ -154,7 +154,7 @@ not an attempt finalizer: cancellation may skip it.
 CI jobs join task spans into their job trace after the build and before
 job-end export (#1477). The join must finish before the completed job trace
 is sent; the attempt-close pipeline link trace can be sent independently of
-Tempo search lag. There is no whole-run shared trace or size-triggered
+backend search lag. There is no whole-run shared trace or size-triggered
 switch to per-job traces.
 
 ## Mechanism
@@ -237,7 +237,7 @@ concurrent, and cross-daemon pairs all otherwise collide at least on id 0.
   jobs, links each at its execution attempt, and drops unstarted/skipped
   rows and rows listed only under earlier attempts. Links carry
   `buck2.job_trace.link_state=unverified`, even if the root never arrived
-  in Tempo. Export failure retains the local retry spool; no server
+  in the backend. Export failure retains the local retry spool; no server
   synthesizes missing jobs. A new trace links back to an outer caller;
   only a participating owner writes a forward link before its span ends.
   Stale task context cannot override either seed.

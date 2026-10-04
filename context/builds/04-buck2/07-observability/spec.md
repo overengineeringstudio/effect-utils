@@ -13,7 +13,7 @@ Draft.
 **Defines:** pipeline/job trace identity, local evidence conversion, OTLP
 delivery, and job-level PR reporting; the child specs own each mechanism.
 
-**Does not define:** collector/Tempo deployment (dotfiles), workflow
+**Does not define:** collector/backend deployment (consumer-owned), workflow
 generation (genie ci-workflow), or the build-speed work measured by this lane.
 
 ## Data Flow
@@ -33,12 +33,13 @@ GitHub Jobs API -> current/main job timings ───────────┴
                              gantt, p50(main × 7) [06], Grafana trace links
 ```
 
-The same conversion and export path runs on a laptop and in CI. A same-repo PR
-job or main push exports when `CI_EVIDENCE_MODE=upload`; a local run exports
-over the tailnet. Fork jobs leave the local spool unexported. Export waits
-until build work ends, then joins the tailnet immediately before delivery
-(#1477). The collector is accessed over the tailnet ACL; no OTLP auth header,
-evidence upload service, archive, index, or reconciliation worker is required.
+The same conversion and export path runs on a laptop and in CI. A consumer-admitted
+same-repo PR job or main push exports when `CI_EVIDENCE_MODE=upload`; a local run
+exports only with consumer admission and access to the configured collector.
+Fork jobs leave the local spool unexported. Export waits until build work ends,
+then establishes any required collector connectivity immediately before delivery
+(#1477). The consumer owns network/access policy; no evidence upload service,
+archive, index, or reconciliation worker is required.
 A failed decode or export never changes the Buck result (BUILD.BUCK.OBS-R01–R04).
 
 ## Children
@@ -62,9 +63,9 @@ for links, without reading Tempo from CI.
 - **otel-scrape:** this lane owns direct event-log decoding under
   [decision 0001](.decisions/0001-composite-node-and-lane-ownership.md);
   otel-scrape keeps the wrapped-tool adapter contract.
-- **dotfiles fleet config:** Alloy's OTLP endpoint, the tailnet ACL grant,
-  Tempo's 30-day retention, Mimir, and Grafana live there. This tree specifies
-  the producer contract ([05](./05-otlp-delivery/spec.md)).
+- **Consumer profile:** endpoint selection, export admission, collector/backend
+  deployment, routing and retention belong to the consumer. This tree specifies
+  the portable producer contract ([05](./05-otlp-delivery/spec.md)).
 - **Sibling buck2 subsystems:** serial `tsgo_emit`, slot contention, editor
   bootstrap, cache latency and daemon wait belong to their respective
   subsystem owners; this lane measures them.
@@ -75,8 +76,8 @@ for links, without reading Tempo from CI.
 
 ## Open Design Questions
 
-Unresolved Tempo volume (OQ1), upstream daemon-wait attribution (OQ2), and
+Unresolved backend volume (OQ1), upstream daemon-wait attribution (OQ2), and
 OTel CICD naming migration (OQ4) live in [open-questions.md](./open-questions.md).
-Task-level PR reporting requires an isolated Tempo buck2 tenant and an
+Task-level PR reporting requires an isolated build-telemetry read scope and an
 authenticated, restricted read proxy
-([roadmap.md](./roadmap.md)); CI does not read the fleet-wide Tempo API.
+([roadmap.md](./roadmap.md)); CI does not receive unrestricted consumer-backend read authority.

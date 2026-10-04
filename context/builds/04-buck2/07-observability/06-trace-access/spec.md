@@ -1,6 +1,6 @@
 # Trace Access Spec
 
-This document specifies the PR jobs-and-steps waterfall, compact job report, and deterministic Grafana trace links. It builds on [requirements.md](./requirements.md); [01](../01-run-identity/spec.md) owns trace identities and [05](../05-otlp-delivery/spec.md) owns delivery to Tempo.
+This document specifies the PR jobs-and-steps waterfall, compact job report, and deterministic Grafana trace links. It builds on [requirements.md](./requirements.md); [01](../01-run-identity/spec.md) owns trace identities and [05](../05-otlp-delivery/spec.md) owns delivery to the configured collector.
 
 ## Status
 
@@ -209,7 +209,7 @@ For each executed job with a 01 job trace ID, construct:
       "range":{"from":"<started_at-15m epoch ms>","to":"<completed_at+60m epoch ms>"}}}
 ```
 
-`GRAFANA_BASE_URL` is configured without a trailing slash, never inferred from runner hostnames. The trace ID must be exactly 32 lowercase hexadecimal characters; malformed or missing identity means no link. JSON is serialized with the key order above and percent-encoded as a URI component. For an unfinished job, use the report time as `completed_at`. The link is stable for fixed job facts. It may open empty if delivery failed, Tempo has not indexed the trace yet, the viewer lacks tailnet access, or retention expired; the comment wording does not claim trace completeness. The pipeline-run link trace from 01 can be listed with the attempt-level window, but it is not required for per-job rows.
+`GRAFANA_BASE_URL` is configured without a trailing slash, never inferred from runner hostnames. The trace ID must be exactly 32 lowercase hexadecimal characters; malformed or missing identity means no link. JSON is serialized with the key order above and percent-encoded as a URI component. For an unfinished job, use the report time as `completed_at`. The link is stable for fixed job facts. It may open empty if delivery failed, Tempo has not indexed the trace yet, the viewer lacks consumer-selected backend access, or retention expired; the comment wording does not claim trace completeness. The pipeline-run link trace from 01 can be listed with the attempt-level window, but it is not required for per-job rows.
 
 ## Comment Contract
 

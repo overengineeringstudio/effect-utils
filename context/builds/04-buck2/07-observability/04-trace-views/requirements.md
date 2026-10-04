@@ -15,7 +15,7 @@ and exact command summaries. It refines BUILD.BUCK.OBS-R05 of the
 ## Acceptable Tradeoffs
 
 - **BUILD.BUCK.OBS.VIEW-T01 Both views until measured:** exporting the full view
-  everywhere raises Tempo storage volume ~11× versus critical-only; accepted
+  everywhere raises measured backend storage volume ~11× versus critical-only; accepted
   by q24 pending measured volume evidence.
 
 ## Requirements
@@ -39,7 +39,7 @@ and exact command summaries. It refines BUILD.BUCK.OBS-R05 of the
   trace; no per-consumer projection at read time (consumers would disagree
   and unstored spans are unqueryable).
 - **BUILD.BUCK.OBS.VIEW-R04 Local regenerability:** While its local native event
-  log is retained, a command's full view can be regenerated locally. Tempo
+  log is retained, a command's full view can be regenerated locally. Backend
   retention or spool loss is not repaired by a remote archive.
 - **BUILD.BUCK.OBS.VIEW-R05 Command summaries are exact:** both views carry the
   command's exact aggregate counts (actions, cache hits, critical-path
@@ -51,7 +51,7 @@ and exact command summaries. It refines BUILD.BUCK.OBS-R05 of the
   `buck2.action.queue.duration` (s). Labels are closed enums:
   `subcommand`, `category`, `execution_kind`, and `cache_hit`.
   No target, identifier, digest, run id, trace id, or host label appears.
-  Local conversion emits these bounded metrics for long-term Mimir trends;
+  Local conversion emits these bounded metrics for long-term trends in the consumer-selected metric backend;
   the Prometheus translation is defined once in the [spec](./spec.md).
 - **BUILD.BUCK.OBS.VIEW-R07 Dropped children are visible:** retained parents carry
   a dropped-children count; the view never pretends omitted spans are

@@ -122,7 +122,7 @@ in the same daemon owns. **Inferred Daemon Wait** is a join-derived span
 marked with a confidence tier and producer links; a `DiceBlockConcurrentCommand`
 event read directly is exact attribution.
 
-**Bounded Metrics** are the five closed-enum Mimir metrics
+**Bounded Metrics** are the five closed-enum OTLP metrics
 (`buck2.command.duration`, `buck2.critical_path.duration`,
 `buck2.action.count`, `buck2.action.execution.duration`,
 `buck2.action.queue.duration`); their label sets never include unbounded
@@ -160,7 +160,7 @@ wait:            peer commands on one daemon -> daemon wait (exact | inferred)
 - **Materialization:** the root triple homograph plus upstream final/input
   materialization — always qualified.
 - **Trust:** otel-scrape trusted sink (privacy) and cache trust tiers (0033)
-  are separate from this lane's tailnet collector write ACL.
+  are separate from this lane's consumer-selected collector export admission.
 - **Adapter:** otel-scrape Adapter (per-tool structured output) vs. this
   lane's event-log adapter (0011's versioned adapter) vs. ci measurement
   producer adapters. The qualified forms are load-bearing.

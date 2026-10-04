@@ -46,7 +46,7 @@ Fork provenance follows [05's semantic attribute contract](../05-otlp-delivery/s
 
 ```text
 build -> finish command spans / decode evidence -> join task/command spans into the job trace (#1477)
-      -> tailnet admission after build (trusted CI only) -> one OTLP export burst (05)
+      -> collector admission after build (consumer-admitted CI only) -> one OTLP export burst (05)
 attempt closes -> CI finalizer emits a pipeline-run link trace (01)
 ```
 
@@ -56,7 +56,7 @@ root IDs by [01's canonical key](../01-run-identity/spec.md). It neither
 loads other jobs' native evidence nor uploads an attempt-close roster. A
 started job that never emitted telemetry can have a link to an absent root;
 the link is marked unverified, not replaced by a synthetic error span.
-Forks do not join the tailnet and keep telemetry locally. Delivery failure
+Forks receive no collector-network admission and keep telemetry locally. Delivery failure
 leaves local bytes for retry and does not alter the child exit status.
 An offline local invocation likewise spools only.
 

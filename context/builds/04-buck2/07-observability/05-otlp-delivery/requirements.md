@@ -9,7 +9,7 @@ This subsystem owns direct OTLP export of [03](../03-event-log-adapter/spec.md) 
 
 ## Acceptable Tradeoffs
 
-- **BUILD.BUCK.OBS.ING-T01 Best-effort backend completeness:** Tempo acceptance and search visibility can lag or be incomplete. The local retry spool protects unacknowledged sends; no server-side archive, by-ID readback, or reconciliation service guarantees trace completeness.
+- **BUILD.BUCK.OBS.ING-T01 Best-effort backend completeness:** Backend acceptance and search visibility can lag or be incomplete. The local retry spool protects unacknowledged sends; no server-side archive, by-ID readback, or reconciliation service guarantees trace completeness.
 
 ## Requirements
 
@@ -25,14 +25,14 @@ This subsystem owns direct OTLP export of [03](../03-event-log-adapter/spec.md) 
 - **BUILD.BUCK.OBS.ING-R03 Local retry (refines BUILD.BUCK.OBS-R04):** Write exportable batches to a local retry spool before sending, retain unacknowledged batches across exporter failure, and retry them without changing the build's result. Acknowledged batches may leave the spool; there is no remote raw-evidence archive or cross-host recovery promise.
 - **BUILD.BUCK.OBS.ING-R04 Retention (refines BUILD.BUCK.OBS-R06):** The consumer owns backend trace and bounded trend-metric retention policy. Native evidence survives only according to the producing host's spool lifecycle.
 - **BUILD.BUCK.OBS.ING-R05 Provider-neutral tagging (refines BUILD.BUCK.OBS-R08):** Trace/resource attributes include available `cicd.*`, `vcs.*`, `buck2.vcs.merge.revision`, `vcs.provider.name`, and `buck2.vcs.change.is_fork` facts; run IDs and attempts are string-valued. High-cardinality identifiers never become metric labels.
-- **BUILD.BUCK.OBS.ING-R06 Search-independent links:** The producer can calculate deterministic job/trace identifiers and Grafana Explore links before export. Delayed Tempo indexing cannot delay publication or cause guessed trace IDs.
+- **BUILD.BUCK.OBS.ING-R06 Search-independent links:** The producer can calculate deterministic job/trace identifiers and Grafana Explore links before export. Delayed backend indexing cannot delay publication or cause guessed trace IDs.
 - **BUILD.BUCK.OBS.ING-R07 Deployment boundary:** effect-utils owns capture, local spool, conversion and the configurable OTLP exporter. The consumer owns endpoint selection, collector deployment, network routing/access control, backend routing and retention. No `buck2-evidence` upload/serve service, two-socket admission pair, SQLite index, or resolver participates.
 - **BUILD.BUCK.OBS.ING-R08 Job-end burst:** On consumer-admitted same-repository PRs, main pushes and local runs, the completed job's task and command spans join its single job trace after build and before one direct OTLP burst. CI establishes any required collector connectivity only after build work. Forks and offline local runs spool without export; retries happen from the local spool.
 - **BUILD.BUCK.OBS.ING-R09 Failure visibility:** An OTLP 2xx response with nonzero
   partial-success rejected spans or data points does not acknowledge the
   chunk; the whole chunk remains retryable and the rejected count is
   reported. Resends preserve deterministic span IDs but may duplicate
-  already accepted data. OTLP success is not proof of Tempo persistence;
+  already accepted data. OTLP success is not proof of backend persistence;
   no by-ID repair or `missing_spans` state is required.
 - **BUILD.BUCK.OBS.ING-R10 Attempt closure:** The CI finalizer sends one pipeline
   link trace at attempt close, linking uniquely identified jobs that started

@@ -4,16 +4,16 @@ These are the lane's open design questions. Each links to the spec section or
 child that owns it. Questions exit this file into the specs (as decisions) or
 experiments (as tested hypotheses).
 
-## OQ1: What does delivering both views cost in Tempo? — open
+## OQ1: What does delivering both views cost in the selected backend? — open
 
 - Blocks: production volume tuning of [05 OTLP delivery](./05-otlp-delivery/spec.md);
   the BUILD.BUCK.OBS-T02 tradeoff.
 - Both critical and full views are exported as separately identified traces
-  (q24). A full CI run is ~67 k spans / ~61 MB OTLP JSON at the planning
-  volume of ~90 runs/day; the critical view is ~6 k spans/run.
-- Measure collector traffic, Tempo block growth, compaction, trace fetch,
-  TraceQL latency and querier stability on representative cold, warm, and
-  fork-shaped runs. If both views strain the 30-day corridor, compare critical
+  (q24). A measured full CI run is ~67 k spans / ~61 MB OTLP JSON;
+  the critical view is ~6 k spans/run. Consumers supply sizing run volume.
+- Measure collector traffic, selected-backend storage growth, compaction, trace
+  fetch/query latency and stability on representative cold, warm, and
+  fork-shaped runs. If both views strain consumer-selected retention, compare critical
   view only or a lower full-view cadence. On-demand re-derivation is possible
   only while a local spool remains.
 
@@ -22,7 +22,7 @@ experiments (as tested hypotheses).
 - The upstream dice-hook track (issue + ~200–350-line PR injecting an event
   hook at the shared-task await) is filed in parallel
   ([03-event-log-adapter decision 0003](./03-event-log-adapter/.decisions/0003-daemon-wait-at-ingest.md)).
-  Acceptance odds are low-to-moderate with months of lag; the fleet design
+  Acceptance odds are low-to-moderate with months of lag; the producer design
   works without it. The busy-waiter blind spot (lane starvation on a busy
   command leaves no silent gap) is fixed only upstream. Revisit if upstream
   merges or if >10% of true waits sit on busy waiters.
@@ -30,7 +30,7 @@ experiments (as tested hypotheses).
 ## OQ3: How long must a local retry spool persist? — open, not gating
 
 - [05 OTLP delivery](./05-otlp-delivery/spec.md) owns bounded retry after
-  collector or tailnet failure. The retention/cleanup policy must be measured
+  collector or export-admission failure. The retention/cleanup policy must be measured
   against outages: deleting the spool permanently removes the ability to
   regenerate or resend derived traces. It does not imply a raw archive.
 
@@ -48,11 +48,11 @@ experiments (as tested hypotheses).
 
 ## OQ5: Collector access — resolved
 
-- Same-repo PR jobs and main pushes export OTLP directly to dev3 Alloy on
-  port 4318 after build work ends; local runs use the same path. The CI
-  runner joins the tailnet immediately before export (#1477), with access
-  controlled by a tailnet ACL grant. Fork jobs do not export; they leave a
-  local spool. Dotfiles owns the collector grant and Tempo retention.
+- Consumer-admitted same-repo PR jobs, main pushes and local runs export OTLP
+  to the configured collector after build work ends. CI establishes any needed
+  collector connectivity immediately before export (#1477). Forks and runs
+  without collector access or admission retain a local spool without export.
+  Consumer profiles own collector deployment, export admission and retention.
 
 ## OQ6: Adjacent work tracked elsewhere — not this lane's scope
 
@@ -80,7 +80,7 @@ experiments (as tested hypotheses).
 
 - Blocks: task duration, action critical path, and per-task seven-run baselines
   in [06 trace access](./06-trace-access/spec.md). The
-  [roadmap](./roadmap.md) already records the separate Tempo buck2 tenant and
+  [roadmap](./roadmap.md) already records an isolated build-telemetry read scope and
   authenticated read proxy. Resolve the writer/Grafana cutover and proxy
   policy that binds CI identity to this repository's run/attempt and
   allowlisted aggregates, forbids arbitrary TraceQL and caller-supplied
@@ -102,7 +102,8 @@ experiments (as tested hypotheses).
   this lane. Tempo 3.0.3 can hang on SIGTERM after roughly an hour when
   live-store complete queues stop, causing a switch to fail and roll back.
   [grafana/tempo#7983](https://github.com/grafana/tempo/issues/7983) is
-  closed with a fix in v3.1.0-rc.1; upgrade to 3.1 and re-measure shutdown
+  closed with a fix in v3.1.0-rc.1; consumers selecting Tempo own the
+  upgrade evaluation and re-measurement of shutdown
   and switch behavior after comparable uptime.
 
 ## OQ10: What policy admits labeled forks to export? — open

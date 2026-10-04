@@ -79,7 +79,7 @@ It refines BUILD.BUCK.OBS-R03 and BUILD.BUCK.OBS-R07 of the
   nesting across trace boundaries. A forward link requires an outer-span
   owner able to record it before completion.
 - **BUILD.BUCK.OBS.ID-R12 Stable job lookup:** Every job root carries
-  `cicd.pipeline.run.id`, so a run can be found from Tempo without a run
+  `cicd.pipeline.run.id`, so a run can be found in the configured trace backend without a run
   index or resolver; a pipeline link trace identifies the job traces at
   attempt close.
 - **BUILD.BUCK.OBS.ID-R13 Consistent W3C validation:** The seeded entrypoint,

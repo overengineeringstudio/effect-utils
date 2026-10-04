@@ -11,14 +11,14 @@ BUILD.BUCK.OBS-R01 and BUILD.BUCK.OBS-R02 of the
 - **BUILD.BUCK.OBS.ADP-A01 Unstable upstream schema:** Buck upstream explicitly
   promises no event-log schema stability; the format is protobuf with normal
   field-number evolution plus occasional same-number type changes.
-- **BUILD.BUCK.OBS.ADP-A02 Fleet producer set:** the vendored schema pins the
-  newest Buck binary actually producing logs in the fleet; older writers'
+- **BUILD.BUCK.OBS.ADP-A02 Admitted producer set:** the vendored schema pins the
+  newest Buck binary actually producing admitted logs; older writers'
   logs remain readable because evolution has been field-number-additive.
 
 ## Acceptable Tradeoffs
 
 - **BUILD.BUCK.OBS.ADP-T01 One schema pin:** all producers share one vendored
-  proto; per-writer schemas are not maintained (a diverging fleet would force
+  proto; per-writer schemas are not maintained (a diverging producer set would force
   them).
 - **BUILD.BUCK.OBS.ADP-T02 Inferred waits in traces:** daemon-wait spans are marked
   derived evidence (confidence tiers); exact attribution is used whenever the
@@ -32,7 +32,7 @@ BUILD.BUCK.OBS-R01 and BUILD.BUCK.OBS-R02 of the
   `CommandProgress`) — streaming, without spawning any Buck binary, with the
   critical path arriving in-band.
 - **BUILD.BUCK.OBS.ADP-R02 Vendored pinned schema:** `data.proto` (and its
-  dependencies) are vendored pinned to the newest fleet producer; decoding
+  dependencies) are vendored pinned to the newest admitted producer; decoding
   tolerates truncation exactly as upstream does (stop at the last complete
   record, mark truncated).
 - **BUILD.BUCK.OBS.ADP-R03 Bump policy:** Every Buck version bump regenerates the

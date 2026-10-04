@@ -90,11 +90,11 @@ resolver; neither a link nor a Tempo query proves that export succeeded.
 ## Metrics
 
 Local conversion emits metrics alongside the completed traces. Canonical
-names are OTel dotted names; Prometheus/Mimir translation adds `_seconds`
+names are OTel dotted names; Prometheus-compatible translation adds `_seconds`
 to seconds-valued histograms, `_total` to counters, and replaces dots with
 underscores:
 
-| Canonical (OTel)                      | Mimir / Prometheus                        | Type      | Labels (closed enums)               |
+| Canonical (OTel)                      | Prometheus-compatible                        | Type      | Labels (closed enums)               |
 | ------------------------------------- | ----------------------------------------- | --------- | ----------------------------------- |
 | `buck2.command.duration` (s)          | `buck2_command_duration_seconds`          | histogram | subcommand                          |
 | `buck2.critical_path.duration` (s)    | `buck2_critical_path_duration_seconds`    | histogram | subcommand                          |
@@ -102,8 +102,8 @@ underscores:
 | `buck2.action.execution.duration` (s) | `buck2_action_execution_duration_seconds` | histogram | category                            |
 | `buck2.action.queue.duration` (s)     | `buck2_action_queue_duration_seconds`     | histogram | category                            |
 
-These bounded dimensions support long-term trends independently of Tempo's
-30-day trace retention. No target, digest, run id, trace id, or host label
+These bounded dimensions support long-term trends independently of consumer-selected
+trace retention. No target, digest, run id, trace id, or host label
 enters a metric series.
 
 ## Conformance
