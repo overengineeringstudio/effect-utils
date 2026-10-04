@@ -43,26 +43,30 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   const embedded = parseCliBuildStamp(buildStamp)
   /** @type {Array<() => void>} */
   const cleanup = []
-  const resolveIdentity = () => {
-    browserOptions = {
+  const resolveIdentity = (preserveSnapshot = false) => {
+    const options = {
       baseVersion,
       buildStamp,
       env: embedded?.type === 'nix' ? {} : { CLI_BUILD_STAMP: JSON.stringify(localStamp(root)) },
     }
-    identity = resolveCliBuildIdentity({
-      ...browserOptions,
+    const nextIdentity = resolveCliBuildIdentity({
+      ...options,
       // Only metadata is frozen to source time; the browser renders relative time at runtime.
       ...(embedded?.type === 'nix' ? { now: embedded.buildTs ?? embedded.commitTs } : {}),
     })
     if (
-      identity.rev === undefined ||
-      identity.rev === '' ||
-      (identity.commitTs ?? identity.buildTs ?? 0) <= 0
+      nextIdentity.rev === undefined ||
+      nextIdentity.rev === '' ||
+      (nextIdentity.commitTs ?? nextIdentity.buildTs ?? 0) <= 0
     ) {
       throw new Error(
         'Browser builds require a real revision and timestamp in the shared build stamp',
       )
     }
+    if (preserveSnapshot && identity.machineVersion === nextIdentity.machineVersion) return false
+    browserOptions = options
+    identity = nextIdentity
+    return true
   }
   return {
     name: 'overeng:build-identity',
@@ -95,9 +99,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       })
       if (embedded?.type === 'nix') return
       const refresh = () => {
-        const previous = identity.machineVersion
-        resolveIdentity()
-        if (previous === identity.machineVersion) return
+        if (!resolveIdentity(true)) return
         const module = server.moduleGraph.getModuleById(resolvedId)
         if (module === undefined) return
         server.moduleGraph.invalidateModule(module)
@@ -149,9 +151,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
     },
     handleHotUpdate(context) {
       if (embedded?.type === 'nix') return
-      const previous = identity.machineVersion
-      resolveIdentity()
-      if (previous === identity.machineVersion) return
+      if (!resolveIdentity(true)) return
       const module = context.server.moduleGraph.getModuleById(resolvedId)
       if (module === undefined) return
       context.server.moduleGraph.invalidateModule(module)

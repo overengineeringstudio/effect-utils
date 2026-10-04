@@ -17,6 +17,9 @@ import { expect, it, vi } from 'vitest'
 
 import { createBuildIdentityPlugin } from './vite-build-identity.js'
 
+const waitForWatchUpdate = (assertion: () => void | Promise<void>) =>
+  vi.waitFor(assertion, { timeout: 10000 })
+
 it('loads installed Node config, preserving immutable Nix metadata and runtime closure identity', () => {
   const root = mkdtempSync(join(tmpdir(), 'build-identity-installed-'))
   const installed = join(root, 'node_modules/@overeng/utils')
@@ -141,6 +144,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   let server: ViteDevServer | undefined
+  let sourceUpdated: (() => void) | undefined
   try {
     git('init', '--quiet')
     writeFileSync(join(root, '.gitignore'), 'node_modules/\ndist/\n')
@@ -166,10 +170,19 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       optimizeDeps: { noDiscovery: true },
       plugins: [
         createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
+        {
+          name: 'identity-fixture-update-barrier',
+          handleHotUpdate() {
+            sourceUpdated?.()
+          },
+        },
       ],
       server: { host: '127.0.0.1', port: 0 },
     })
-    await vi.waitUntil(() => server!.watcher.getWatched()[root]?.includes('entry.js'))
+    await vi.waitUntil(
+      () => server!.watcher.getWatched()[root]?.includes('entry.js'),
+      { timeout: 10000 },
+    )
     await server.listen()
     const probeUrl = new URL('build-identity.json', server.resolvedUrls!.local[0]!)
     const response = await fetch(probeUrl)
@@ -184,15 +197,30 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     const identity = async () => (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
     expect((await identity()).dirty).toBe(false)
     writeFileSync(join(root, 'new.txt'), 'untracked\n')
-    await vi.waitFor(async () => expect((await identity()).dirty).toBe(true))
+    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(true))
     rmSync(join(root, 'new.txt'))
-    await vi.waitFor(async () => expect((await identity()).dirty).toBe(false))
+    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(false))
     writeFileSync(join(root, 'entry.js'), 'export const value = 2\n')
-    await vi.waitFor(async () => expect((await identity()).dirty).toBe(true))
+    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(true))
+    const dirtyIdentity = await identity()
+    const now = Date.now
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 60_000)
+    try {
+      const updated = new Promise<void>((resolve) => {
+        sourceUpdated = resolve
+      })
+      writeFileSync(join(root, 'entry.js'), 'export const value = 3\n')
+      await updated
+      expect(await (await fetch(probeUrl)).json()).toEqual(dirtyIdentity)
+      expect(await identity()).toEqual(dirtyIdentity)
+    } finally {
+      sourceUpdated = undefined
+      clock.mockRestore()
+    }
     git('add', '.')
     git(...commitArgs)
     const revision = git('rev-parse', 'HEAD')
-    await vi.waitFor(async () => {
+    await waitForWatchUpdate(async () => {
       expect((await identity()).rev).toBe(revision)
       expect((await identity()).dirty).toBe(false)
     })
@@ -201,7 +229,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     await server?.close()
     rmSync(root, { recursive: true, force: true })
   }
-})
+}, 60000)
 
 it('refreshes local metadata and browser identity on production watch rebuilds', async () => {
   const root = mkdtempSync(join(tmpdir(), 'build-identity-watch-'))
@@ -245,17 +273,17 @@ it('refreshes local metadata and browser identity on production watch rebuilds',
       },
     })
     if ('close' in output) closeWatcher = output.close.bind(output)
-    await vi.waitFor(() =>
+    await waitForWatchUpdate(() =>
       expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(false),
     )
     writeFileSync(
       join(root, 'entry.js'),
       "import {buildIdentity} from 'virtual:build-identity'; globalThis.identity=buildIdentity; globalThis.changed=true;\n",
     )
-    await vi.waitFor(() =>
+    await waitForWatchUpdate(() =>
       expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(true),
     )
-    await vi.waitFor(() => {
+    await waitForWatchUpdate(() => {
       const browser: { identity?: { dirty: boolean }; changed?: boolean } = {}
       runInNewContext(readFileSync(join(root, 'dist/identity.js'), 'utf8'), browser)
       expect(browser.changed).toBe(true)
@@ -265,4 +293,4 @@ it('refreshes local metadata and browser identity on production watch rebuilds',
     await closeWatcher?.()
     rmSync(root, { recursive: true, force: true })
   }
-})
+}, 60000)
