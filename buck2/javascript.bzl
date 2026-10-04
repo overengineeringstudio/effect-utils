@@ -4,17 +4,16 @@ The package tree and its normalized read roots are the complete declared JavaScr
 input. The runner hashes all declared inputs before and after execution.
 """
 
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
-load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 
 JavaScriptExecutableInfo = provider(fields = {
     "package_tree": Artifact,
     "toolchain_identity": str,
 })
-
 
 def _require_relative_path(value, field):
     if not value or value.startswith("/"):
@@ -23,13 +22,11 @@ def _require_relative_path(value, field):
         if component == "" or component == "." or component == "..":
             fail("{} must be normalized: {}".format(field, value))
 
-
 def _tool_args(ctx, args):
     for name in sorted(ctx.attrs.tools.keys()):
         tool = ctx.attrs.tools[name][BuckSupportToolInfo]
         args.add("--external-path", name, tool.store_path)
         args.add(cmd_args(hidden = [tool.executable, tool.manifest]))
-
 
 def _configured_args(ctx, command, positional):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
@@ -73,7 +70,6 @@ def _configured_args(ctx, command, positional):
     args.add(cmd_args(hidden = ctx.attrs.external_inputs.values()))
     return args, package_tree, toolchain
 
-
 def _bun_executable_impl(ctx):
     _require_relative_path(ctx.attrs.entrypoint, "entrypoint")
     args, package_tree, toolchain = _configured_args(
@@ -91,8 +87,7 @@ def _bun_executable_impl(ctx):
         ),
     ]
 
-
-bun_executable = rule(
+bun_executable = cache_guarded_rule(
     impl = _bun_executable_impl,
     attrs = {
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
@@ -125,7 +120,6 @@ bun_executable = rule(
     },
 )
 
-
 def _test_info(ctx, command, positional):
     args, _, _ = _configured_args(ctx, command, positional)
     if ctx.attrs.inherited_env and ctx.attrs.cacheable:
@@ -153,7 +147,6 @@ def _test_info(ctx, command, positional):
         ),
     ]
 
-
 def _vitest_test_impl(ctx):
     _require_relative_path(ctx.attrs.config, "config")
     if ctx.attrs.vitest_runtime == "node" and "NODE_BIN" not in ctx.attrs.tools:
@@ -163,7 +156,6 @@ def _vitest_test_impl(ctx):
         str(ctx.attrs.timeout_ms),
         str(ctx.attrs.hook_timeout_ms),
     ])
-
 
 _TEST_ATTRS = {
     "package_tree": attrs.dep(providers = [PackageTreeInfo]),
@@ -204,11 +196,10 @@ _VITEST_TEST_ATTRS.update({
     "vitest_runtime": attrs.enum(["bun", "node"], default = "bun"),
 })
 
-vitest_test = rule(
+vitest_test = cache_guarded_rule(
     impl = _vitest_test_impl,
     attrs = _VITEST_TEST_ATTRS,
 )
-
 
 def _vitest_collect_impl(ctx):
     """Produces one declared collection artifact for a Vitest lane."""
@@ -231,7 +222,8 @@ def _vitest_collect_impl(ctx):
         args.add("--static-parse", "true")
     args.add("--collect-output", collection.as_output())
 
-    hermetic_action(ctx,
+    hermetic_action(
+        ctx,
         args,
         cacheable = ctx.attrs.cacheable,
         category = "vitest_collect",
@@ -240,7 +232,6 @@ def _vitest_collect_impl(ctx):
     )
     return [DefaultInfo(default_output = collection)]
 
-
 _VITEST_COLLECT_ATTRS = dict(_TEST_ATTRS, **hermetic_attrs())
 _VITEST_COLLECT_ATTRS.update({
     "config": attrs.string(default = "vitest.config.ts"),
@@ -248,50 +239,44 @@ _VITEST_COLLECT_ATTRS.update({
     "vitest_runtime": attrs.enum(["bun", "node"], default = "bun"),
 })
 
-_vitest_collect = rule(
+_vitest_collect = cache_guarded_rule(
+    cache_eligible = lambda ctx: ctx.attrs.cacheable,
     impl = _vitest_collect_impl,
     attrs = _VITEST_COLLECT_ATTRS,
 )
-
 
 def vitest_collect(name, **kwargs):
     constraints = kwargs.pop("exec_compatible_with", [])
     if kwargs.get("cacheable", True):
         constraints = hermetic_execution_constraints(constraints)
-    elif "@rules//buck2/platforms:cache_hermetic" in constraints:
-        fail("an uncacheable collection cannot request the cache-admitted platform")
     _vitest_collect(
         name = name,
         exec_compatible_with = constraints,
         **kwargs
     )
 
-
 def _bun_test_impl(ctx):
     return _test_info(ctx, "bun-test", [str(ctx.attrs.timeout_ms)])
-
 
 _BUN_TEST_ATTRS = dict(_TEST_ATTRS)
 _BUN_TEST_ATTRS.update({
     "timeout_ms": attrs.int(default = 30000),
 })
 
-bun_test = rule(
+bun_test = cache_guarded_rule(
     impl = _bun_test_impl,
     attrs = _BUN_TEST_ATTRS,
 )
 
-
 def _shell_tests_impl(ctx):
     return _test_info(ctx, "shell-tests", [str(ctx.attrs.timeout_ms)])
-
 
 _SHELL_TEST_ATTRS = dict(_TEST_ATTRS)
 _SHELL_TEST_ATTRS.update({
     "timeout_ms": attrs.int(default = 300000),
 })
 
-shell_tests = rule(
+shell_tests = cache_guarded_rule(
     impl = _shell_tests_impl,
     attrs = _SHELL_TEST_ATTRS,
 )

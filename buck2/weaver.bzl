@@ -1,9 +1,9 @@
 """Bounded Weaver registry checks over declared sources and Nix capabilities."""
 
 load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
-
 
 def _run_weaver(ctx, mode, inputs):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
@@ -25,7 +25,8 @@ def _run_weaver(ctx, mode, inputs):
     for flag, source in inputs:
         args.add(flag, source)
     args.add(cmd_args(hidden = [weaver.manifest, semconv_model.manifest]))
-    hermetic_action(ctx,
+    hermetic_action(
+        ctx,
         args,
         category = "weaver_{}".format(mode.replace("-", "_")),
         identifier = ctx.attrs.name,
@@ -33,18 +34,15 @@ def _run_weaver(ctx, mode, inputs):
     )
     return [DefaultInfo(default_output = result)]
 
-
 def _weaver_check_impl(ctx):
     registry = ctx.actions.copied_dir("registry", ctx.attrs.registry)
     return _run_weaver(ctx, "check", [("--registry", registry)])
-
 
 def _weaver_version_smoke_impl(ctx):
     return _run_weaver(ctx, "version-smoke", [
         ("--flake-nix", ctx.attrs.flake_nix),
         ("--registry-source", ctx.attrs.registry_source),
     ])
-
 
 _common_attrs = dict(hermetic_attrs(), **{
     "_javascript": attrs.default_only(attrs.exec_dep(
@@ -64,12 +62,14 @@ _common_attrs = dict(hermetic_attrs(), **{
     )),
 })
 
-_weaver_check = rule(
+_weaver_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _weaver_check_impl,
     attrs = dict(_common_attrs, registry = attrs.dict(key = attrs.string(), value = attrs.source())),
 )
 
-_weaver_version_smoke = rule(
+_weaver_version_smoke = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _weaver_version_smoke_impl,
     attrs = dict(
         _common_attrs,
@@ -77,7 +77,6 @@ _weaver_version_smoke = rule(
         registry_source = attrs.source(),
     ),
 )
-
 
 def weaver_checks(name, registry, flake_nix, registry_source, **kwargs):
     """Declares registry conformance and version-pin checks."""

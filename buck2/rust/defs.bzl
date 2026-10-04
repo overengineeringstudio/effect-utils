@@ -1,17 +1,15 @@
 """Thin Prelude rust_binary to ProductExecutableInfo adapter."""
 
-load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "product_platform_constraints")
+load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "product_platform_constraints")
 load("//buck2/provenance:defs.bzl", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo")
-
 
 def _single_binary_output(dep):
     outputs = dep[DefaultInfo].default_outputs
     if len(outputs) != 1:
         fail("rust_product_executable requires exactly one rust_binary default output")
     return outputs[0]
-
 
 def _rust_product_executable_impl(ctx):
     platform = ctx.attrs.target_platform[ProductPlatformInfo]
@@ -46,8 +44,7 @@ def _rust_product_executable_impl(ctx):
         ),
     ]
 
-
-_rust_product_executable = rule(
+_rust_product_executable = cache_guarded_rule(
     impl = _rust_product_executable_impl,
     attrs = {
         "binary": attrs.dep(providers = [DefaultInfo]),
@@ -59,7 +56,6 @@ _rust_product_executable = rule(
         )),
     },
 )
-
 
 def rust_product_executable(name, binary, recipe, target_platform, **kwargs):
     """Adapts one Prelude rust_binary for buck2/products:build_product."""
@@ -73,7 +69,6 @@ def rust_product_executable(name, binary, recipe, target_platform, **kwargs):
         target_compatible_with = product_platform_constraints(target_platform),
         **kwargs
     )
-
 
 def _cargo_build_script_impl(ctx):
     build_script = ctx.attrs.build_script[DefaultInfo].default_outputs
@@ -126,8 +121,7 @@ def _cargo_build_script_impl(ctx):
         ])),
     ]
 
-
-cargo_build_script = rule(
+cargo_build_script = cache_guarded_rule(
     impl = _cargo_build_script_impl,
     attrs = {
         "build_script": attrs.exec_dep(providers = [RunInfo]),

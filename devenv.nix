@@ -1332,6 +1332,15 @@ in
     '';
   };
 
+  tasks."buck2:cache-admission:check" = {
+    description = "Reject unadmitted cache execution constraints using real Buck analysis";
+    exec = trace.exec "buck2:cache-admission:check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-cache-admission-check.sh" "$root"
+    '';
+  };
+
   # The provider audit remains separate because it validates the
   # capability/toolchain boundary rather than producing an admitted artifact.
   tasks."buck2:providers:check" = {
@@ -1343,6 +1352,7 @@ in
       "genie:check"
       "buck2:task-guards:check"
       "buck2:rust-deps:check"
+      "buck2:cache-admission:check"
     ];
     exec = trace.exec "buck2:providers:check" ''
       set -euo pipefail

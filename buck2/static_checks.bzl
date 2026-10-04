@@ -1,10 +1,10 @@
 """Repository-wide static checks over exact package-local source manifests."""
 
-load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 
 STATIC_SOURCE_GLOBS = [
     "**/*.cjs",
@@ -48,7 +48,6 @@ StaticSourceSetInfo = provider(fields = {
     "prefix": str,
 })
 
-
 def _static_source_set_impl(ctx):
     node_modules = [] if ctx.attrs.node_modules == None else ctx.attrs.node_modules[DefaultInfo].default_outputs
     if len(node_modules) > 1:
@@ -58,8 +57,7 @@ def _static_source_set_impl(ctx):
         StaticSourceSetInfo(files = ctx.attrs.srcs, node_modules = node_modules, prefix = ctx.attrs.prefix),
     ]
 
-
-_static_source_set = rule(
+_static_source_set = cache_guarded_rule(
     impl = _static_source_set_impl,
     attrs = {
         "prefix": attrs.string(),
@@ -67,7 +65,6 @@ _static_source_set = rule(
         "srcs": attrs.list(attrs.source()),
     },
 )
-
 
 def static_source_set(name, prefix, srcs, node_modules = None, **kwargs):
     """Declares one package boundary's governed static source files and dependency view."""
@@ -90,7 +87,6 @@ def _collect_static_sources(ctx, output, include_node_modules):
                 sources[destination] = node_modules
     return sources, ctx.actions.copied_dir(output, sources)
 
-
 def _repository_static_check_impl(ctx):
     tool = ctx.attrs.tool[BuckSupportToolInfo]
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
@@ -111,7 +107,8 @@ def _repository_static_check_impl(ctx):
     for source_path in sorted(sources.keys()):
         args.add("--path", source_path)
     args.add(cmd_args(hidden = [source_tree, tool.manifest]))
-    hermetic_action(ctx,
+    hermetic_action(
+        ctx,
         args,
         category = "{}_check".format(ctx.attrs.kind),
         identifier = ctx.attrs.name,
@@ -119,8 +116,8 @@ def _repository_static_check_impl(ctx):
     )
     return [DefaultInfo(default_output = result)]
 
-
-_repository_static_check = rule(
+_repository_static_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _repository_static_check_impl,
     attrs = dict(hermetic_attrs(), **{
         "kind": attrs.enum(["format", "lint"]),
@@ -136,7 +133,6 @@ _repository_static_check = rule(
     }),
 )
 
-
 def _repository_policy_check_impl(ctx):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
     sources, source_tree = _collect_static_sources(ctx, "policy_source", False)
@@ -146,7 +142,8 @@ def _repository_policy_check_impl(ctx):
         "sourcePaths": sorted(sources.keys()),
     })
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
-    hermetic_action(ctx,
+    hermetic_action(
+        ctx,
         cmd_args([
             hermetic_bun_command(ctx, toolchain.bun),
             ctx.attrs._runner,
@@ -163,8 +160,8 @@ def _repository_policy_check_impl(ctx):
     )
     return [DefaultInfo(default_output = result)]
 
-
-_repository_policy_check = rule(
+_repository_policy_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _repository_policy_check_impl,
     attrs = dict(hermetic_attrs(), **{
         "declared_packages": attrs.list(attrs.string()),
@@ -205,7 +202,6 @@ def _stage_product_executable(ctx, target):
         allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return cmd_args(staged, format = "{}/bin/typescript-api-server"), staged
-
 
 def _repository_validation_check_impl(ctx):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
@@ -270,7 +266,8 @@ def _repository_validation_check_impl(ctx):
             args.add("--manifest", manifest)
     args.add(cmd_args(hidden = hidden))
     if audited:
-        hermetic_action(ctx,
+        hermetic_action(
+            ctx,
             args,
             category = "repository_validation",
             identifier = ctx.attrs.name,
@@ -286,8 +283,8 @@ def _repository_validation_check_impl(ctx):
         )
     return [DefaultInfo(default_output = result)]
 
-
-_repository_validation_check = rule(
+_repository_validation_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: ctx.attrs.mode in ["nix-source", "devenv-trace-audit"],
     impl = _repository_validation_check_impl,
     attrs = dict(hermetic_attrs(), **{
         "checker": attrs.option(attrs.dep(), default = None),
@@ -315,7 +312,6 @@ _repository_validation_check = rule(
         )),
     }),
 )
-
 
 def repository_static_checks(
         name,

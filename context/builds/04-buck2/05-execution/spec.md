@@ -206,8 +206,13 @@ Admission is the execution constraint `@rules//buck2/platforms:cache_hermetic`,
 not `local_only` or an upload bit. The default native platform denies both
 remote-cache reads and writes. Its paired hermetic platform enables only the
 root-authorized cache policy; remote execution remains disabled. Macros add the
-constraint only for their audited action set. Every admitted run starts the
-projected native GNU `env -i` before Bun, a shell or another interpreter; only
+constraint only for their audited action set. Action rules use
+`cache_guarded_rule`: its rule-definition-owned eligibility predicate defaults
+to denial, and analysis compares Buck's resolved execution constraints with the
+canonical label of a default-only admission attribute before registering actions.
+Relative labels and cell aliases therefore cannot admit an unaudited rule or a
+`cacheable = False` collection through raw `exec_compatible_with`.
+Every admitted run starts the projected native GNU `env -i` before Bun, a shell or another interpreter; only
 literal declared environment, `LC_ALL=C`, `TZ=UTC`, and Buck-owned
 `BUCK_SCRATCH_PATH`/`TMPDIR` survive. The env executable and manifest are inputs.
 The substituted multicall binary is selected with `--coreutils-prog=env`;

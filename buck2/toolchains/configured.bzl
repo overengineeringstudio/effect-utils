@@ -1,8 +1,8 @@
 """Attested executor capabilities provisioned by the activated Nix profile."""
 
-load("//buck2/platforms:defs.bzl", "host_execution_constraints")
-load("//buck2/toolchains:defs.bzl", "host_capability_platform")
 load("@capabilities//:defs.bzl", "CAPABILITIES")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints")
+load("//buck2/toolchains:defs.bzl", "host_capability_platform")
 
 BuckSupportToolInfo = provider(fields = {
     "content_digest": str,
@@ -24,7 +24,8 @@ def _support_tool_impl(ctx):
         DefaultInfo(other_outputs = [executable, manifest]),
         RunInfo(args = cmd_args([
             executable,
-            "--capability-manifest", manifest,
+            "--capability-manifest",
+            manifest,
         ])),
         BuckSupportToolInfo(
             content_digest = ctx.attrs.content_digest,
@@ -39,7 +40,7 @@ def _support_tool_impl(ctx):
         ),
     ]
 
-_support_tool = rule(
+_support_tool = cache_guarded_rule(
     impl = _support_tool_impl,
     attrs = {
         "content_digest": attrs.string(),
@@ -95,7 +96,7 @@ def _store_directory_impl(ctx):
         ),
     ]
 
-_store_directory = rule(
+_store_directory = cache_guarded_rule(
     impl = _store_directory_impl,
     attrs = {
         "closure_identity": attrs.string(),

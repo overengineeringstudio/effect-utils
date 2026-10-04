@@ -1,15 +1,14 @@
 """Generic TypeScript package-tree assembly from declared Buck artifacts."""
 
-load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
-load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
-
+load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
+load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
 PackageTreeInfo = provider(fields = {
     "read_roots": provider_field(list[Artifact]),
     "tree": Artifact,
 })
-
 
 def _unique_artifacts(artifacts):
     seen = {}
@@ -20,7 +19,6 @@ def _unique_artifacts(artifacts):
             roots.append(artifact)
     return roots
 
-
 def _require_relative_path(value, field):
     if not value:
         fail("{} must not be empty".format(field))
@@ -29,7 +27,6 @@ def _require_relative_path(value, field):
     for component in value.split("/"):
         if component == "" or component == "." or component == "..":
             fail("{} must be normalized: {}".format(field, value))
-
 
 def _add_mapped_sources(args, flag, sources):
     for destination in sorted(sources.keys()):
@@ -81,7 +78,8 @@ def _package_tree_impl(ctx):
         _require_relative_path(link_path, "workspace link")
         _require_relative_path(target_path, "workspace link target")
         args.add("--workspace-link", link_path, target_path)
-    hermetic_action(ctx,
+    hermetic_action(
+        ctx,
         args,
         category = "package_tree",
         identifier = ctx.attrs.name,
@@ -101,8 +99,8 @@ def _package_tree_impl(ctx):
         ))
     return providers
 
-
-_package_tree = rule(
+_package_tree = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _package_tree_impl,
     attrs = dict(hermetic_attrs(), **{
         "node_modules": attrs.option(attrs.source(), default = None),
@@ -137,7 +135,6 @@ _package_tree = rule(
     }),
 )
 
-
 def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_siblings = {}, workspace_dependency_views = {}, workspace_dist = {}, **kwargs):
     """Assembles one package tree; sibling specs carry files plus node_modules-relative links."""
     workspace_files = {}
@@ -170,7 +167,6 @@ def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_si
         **kwargs
     )
 
-
 def package_view(name, dependency_view, files, runtime, runtime_entry, workspace_dependency_views = {}, workspace_dist = {}, **kwargs):
     """Assembles one bounded package view over a normalized dependency view."""
     workspace_files = {}
@@ -190,7 +186,6 @@ def package_view(name, dependency_view, files, runtime, runtime_entry, workspace
         **kwargs
     )
 
-
 def empty_package_view(name, files, runtime, runtime_entry, **kwargs):
     """Assembles a bounded package view for code with no package dependencies."""
     _package_tree(
@@ -205,7 +200,6 @@ def empty_package_view(name, files, runtime, runtime_entry, **kwargs):
         exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
         **kwargs
     )
-
 
 def export_materialization_inputs(inputs):
     """Exports explicit root inputs for package-local rules."""

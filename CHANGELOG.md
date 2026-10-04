@@ -26,6 +26,9 @@
 - The Buck Git-archive hardlink regression constructs its physical fixture in the
   test sandbox, so source substitution and store optimization cannot invalidate
   its inode precondition.
+- Buck action rules reject unaudited cache-platform requests using resolved
+  constraint identities; relative labels and cell aliases cannot bypass
+  `cacheable = False` or rule-owned cache eligibility.
 
 ### Changed
 

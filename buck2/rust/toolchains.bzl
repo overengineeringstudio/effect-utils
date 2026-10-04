@@ -1,20 +1,6 @@
 """Exact Nix-capability-backed Prelude native and wasm Rust toolchains."""
 
 load(
-    "//buck2/platforms:defs.bzl",
-    "ProductPlatformInfo",
-    "admitted_rust_target_triple",
-    "native_execution_constraints",
-    "product_platform_constraints",
-)
-load(
-    "//buck2/toolchains:defs.bzl",
-    "ConfiguredRustToolchainInfo",
-    "host_capability_platform",
-    "host_rust_target_triple",
-    "require_capability",
-)
-load(
     "@prelude//cxx:cxx_toolchain_types.bzl",
     "BinaryUtilitiesInfo",
     "CCompilerInfo",
@@ -31,6 +17,21 @@ load("@prelude//cxx:headers.bzl", "HeaderMode")
 load("@prelude//linking:link_info.bzl", "LinkStyle")
 load("@prelude//linking:lto.bzl", "LtoMode")
 load("@prelude//rust:rust_toolchain.bzl", "PanicRuntime", "RustToolchainInfo")
+load(
+    "//buck2/platforms:defs.bzl",
+    "ProductPlatformInfo",
+    "admitted_rust_target_triple",
+    "cache_guarded_rule",
+    "native_execution_constraints",
+    "product_platform_constraints",
+)
+load(
+    "//buck2/toolchains:defs.bzl",
+    "ConfiguredRustToolchainInfo",
+    "host_capability_platform",
+    "host_rust_target_triple",
+    "require_capability",
+)
 
 _TOOL_IDS = [
     "rust-archiver",
@@ -49,6 +50,7 @@ _TOOL_IDS = [
     "rust-shell",
 ]
 
+<<<<<<< HEAD
 _WASM_TOOL_IDS = ["rust-wasm-compiler", "rust-wasm-rustdoc", "rust-wasm-linker"]
 
 WASM_BINDGEN_VERSION = "0.2.127"
@@ -63,6 +65,8 @@ WASM_OPT_FLAGS = [
 ]
 
 
+=======
+>>>>>>> 711556bf2 (fix(cache): enforce resolved rule-owned execution admission)
 def _toolchain_identity(platform, target_platform, target_triple, metadata):
     fields = [
         "contract=effect-utils/buck2-rust-toolchain/v1",
@@ -74,7 +78,6 @@ def _toolchain_identity(platform, target_platform, target_triple, metadata):
         tool = metadata[tool_id]
         fields.append("{}={}:{}".format(tool_id, tool["closureIdentity"], tool["contentDigest"]))
     return ";".join(fields)
-
 
 def _checked_platform(ctx):
     platform = ctx.attrs.target_platform[ProductPlatformInfo]
@@ -91,7 +94,6 @@ def _checked_platform(ctx):
     if ctx.attrs.target_triple != platform.rust_target_triple:
         fail("Rust toolchain target triple does not match ProductPlatformInfo")
     return platform
-
 
 def _release_flags():
     settings = {
@@ -128,8 +130,12 @@ def _release_flags():
         "-Coverflow-checks=" + settings["overflow_checks"],
     ]
 
+<<<<<<< HEAD
 
 def _rust_toolchain_impl(ctx):
+=======
+def _native_rust_toolchain_impl(ctx):
+>>>>>>> 711556bf2 (fix(cache): enforce resolved rule-owned execution admission)
     platform = _checked_platform(ctx)
     if not ctx.attrs.identity:
         fail("Rust toolchain identity must not be empty")
@@ -165,8 +171,7 @@ def _rust_toolchain_impl(ctx):
     ))
     return providers
 
-
-_rust_toolchain = rule(
+_rust_toolchain = cache_guarded_rule(
     impl = _rust_toolchain_impl,
     attrs = {
         "archiver": attrs.string(),
@@ -187,7 +192,6 @@ _rust_toolchain = rule(
     is_toolchain_rule = True,
 )
 
-
 def _compiler_info(provider, compiler, compiler_type):
     return provider(
         compiler = RunInfo(args = [compiler]),
@@ -197,7 +201,6 @@ def _compiler_info(provider, compiler, compiler_type):
         supports_content_based_paths = False,
         supports_two_phase_compilation = False,
     )
-
 
 def _native_cxx_toolchain_impl(ctx):
     platform = _checked_platform(ctx)
@@ -251,8 +254,7 @@ def _native_cxx_toolchain_impl(ctx):
         use_dep_files = True,
     )
 
-
-_native_cxx_toolchain = rule(
+_native_cxx_toolchain = cache_guarded_rule(
     impl = _native_cxx_toolchain_impl,
     attrs = {
         "archiver": attrs.string(),
@@ -276,7 +278,6 @@ _native_cxx_toolchain = rule(
     },
     is_toolchain_rule = True,
 )
-
 
 def _portable_link_env(target_triple):
     if target_triple == "x86_64-unknown-linux-gnu":
@@ -303,8 +304,6 @@ def _compile_env(metadata, target_triple):
     }
     result.update(_portable_link_env(target_triple))
     return result
-
-
 
 def native_rust_toolchains(capabilities, generation, target_platform):
     """Declares host-native C/C++ and a product-selectable native/wasm Rust pair."""

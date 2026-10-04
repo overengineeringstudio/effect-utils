@@ -5,10 +5,11 @@ complete declared action input. The pinned runner hashes every declared input
 before and after execution so TypeScript actions remain write-free.
 """
 
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 
 TsgoTypecheckInfo = provider(fields = {
     "toolchain_identity": str,
@@ -20,7 +21,6 @@ TsgoEmitInfo = provider(fields = {
     "toolchain_identity": str,
 })
 
-
 def _require_relative_path(value, field):
     if not value:
         fail("{} must not be empty".format(field))
@@ -29,7 +29,6 @@ def _require_relative_path(value, field):
     for component in value.split("/"):
         if component == "" or component == "." or component == "..":
             fail("{} must be normalized: {}".format(field, value))
-
 
 def _tsgo_typecheck_impl(ctx):
     _require_relative_path(ctx.attrs.project, "project")
@@ -51,7 +50,8 @@ def _tsgo_typecheck_impl(ctx):
     args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
-    hermetic_action(ctx,
+    hermetic_action(
+        ctx,
         args,
         category = "tsgo_typecheck",
         identifier = ctx.attrs.name,
@@ -65,8 +65,8 @@ def _tsgo_typecheck_impl(ctx):
         ),
     ]
 
-
-_tsgo_typecheck = rule(
+_tsgo_typecheck = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _tsgo_typecheck_impl,
     attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
@@ -88,7 +88,6 @@ def tsgo_typecheck(name, **kwargs):
         exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
         **kwargs
     )
-
 
 def _tsgo_emit_impl(ctx):
     _require_relative_path(ctx.attrs.project, "project")
@@ -119,7 +118,8 @@ def _tsgo_emit_impl(ctx):
         _require_relative_path(declaration_path, "declaration source")
         args.add("--copy-declaration", declaration_path)
     args.add(cmd_args(hidden = ctx.attrs.declaration_sources.values()))
-    hermetic_action(ctx,
+    hermetic_action(
+        ctx,
         args,
         category = "tsgo_emit",
         identifier = ctx.attrs.name,
@@ -133,8 +133,8 @@ def _tsgo_emit_impl(ctx):
         ),
     ]
 
-
-_tsgo_emit = rule(
+_tsgo_emit = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _tsgo_emit_impl,
     attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
