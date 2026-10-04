@@ -61,6 +61,8 @@
   aggregate manifest alignment passthrough.
 - Removed the obsolete prepared-install regression lane and builder-contract
   guard. Shared native dependency policy auditing remains a required CI lane.
+- Removed the Buck test-lane declaration snapshot that compared authored exclusions
+  with normalized ordering; lane partition and collection invariants remain covered.
 
 Buck product imports, CLI wrappers, immutable dependency archives, shared build
 identity, and live pnpm install policy and source-input algebra remain supported.
