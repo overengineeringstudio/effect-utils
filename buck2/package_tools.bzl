@@ -106,11 +106,11 @@ def _package_check_impl(ctx):
     verdict = ctx.actions.declare_output("check.ok")
     descriptor = ctx.actions.declare_output("check.json")
     args = _runner_args(ctx, "check", verdict)
-    ctx.actions.run(
+    hermetic_action(ctx,
         args,
         category = "package_bin_check",
         local_only = True,
-        allow_cache_upload = False,
+        cacheable = False,
     )
     ctx.actions.write_json(descriptor, {
         "schema": "effect-utils/package-check/v1",
@@ -128,7 +128,7 @@ def _package_check_impl(ctx):
 
 package_bin_check = rule(
     impl = _package_check_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "entrypoint": attrs.string(),
         "args": attrs.list(attrs.string(), default = []),
@@ -145,7 +145,7 @@ package_bin_check = rule(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
         )),
-    },
+    }),
 )
 
 
@@ -153,18 +153,18 @@ def _package_build_impl(ctx):
     _relative(ctx.attrs.entrypoint, "entrypoint")
     output = ctx.actions.declare_output(ctx.attrs.output, dir = True)
     args = _runner_args(ctx, "build-dir", output)
-    ctx.actions.run(
+    hermetic_action(ctx,
         args,
         category = "package_bin_build",
         local_only = True,
-        allow_cache_upload = False,
+        cacheable = False,
     )
     return [DefaultInfo(default_output = output)]
 
 
 package_bin_build = rule(
     impl = _package_build_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "entrypoint": attrs.string(),
         "args": attrs.list(attrs.string()),
@@ -182,7 +182,7 @@ package_bin_build = rule(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
         )),
-    },
+    }),
 )
 
 

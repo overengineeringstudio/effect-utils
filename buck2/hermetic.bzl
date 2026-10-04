@@ -22,7 +22,7 @@ def hermetic_execution_constraints(constraints = []):
     return constraints + ["@rules//buck2/platforms:cache_hermetic"]
 
 
-def hermetic_action(ctx, arguments, env = {}, **kwargs):
+def hermetic_action(ctx, arguments, env = {}, cacheable = True, **kwargs):
     tool = ctx.attrs._action_env[BuckSupportToolInfo]
     # GNU env expands only these executor-owned variables before -i. No shell
     # runs first (BASH_ENV/NODE_OPTIONS/etc must not affect the launcher).
@@ -38,6 +38,6 @@ def hermetic_action(ctx, arguments, env = {}, **kwargs):
     args.add(arguments)
     ctx.actions.run(
         args,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+        allow_cache_upload = cacheable and root_remote_cache_enabled() and root_allow_cache_uploads(),
         **kwargs
     )

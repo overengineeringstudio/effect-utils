@@ -8,6 +8,7 @@ load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
 
 JavaScriptExecutableInfo = provider(fields = {
     "package_tree": Artifact,
@@ -215,14 +216,10 @@ def _vitest_collect_impl(ctx):
     if ctx.attrs.vitest_runtime == "node" and "NODE_BIN" not in ctx.attrs.tools:
         fail("vitest_runtime = \"node\" requires a declared NODE_BIN tool")
 
-    # Collection actions have no per-action remote-cache read switch. Their
-    # identity must therefore contain every input, and they must stay cacheable;
-    # otherwise an older cacheable declaration could serve a value after the
-    # lane was marked uncacheable.
+    # Collection executes the declared config/test modules unless static parsing
+    # is requested. Only explicitly audited deterministic lanes may be admitted.
     if ctx.attrs.inherited_env:
-        fail("a collection cannot inherit the environment because its live values are outside the action identity")
-    if not ctx.attrs.cacheable:
-        fail("an uncacheable lane cannot declare a collection because ctx.actions.run has no cache-read switch")
+        fail("a collection cannot inherit environment outside its action identity")
 
     # The runner rejects a missing, unparseable or contract-violating Vitest
     # report instead of writing this output, and Buck fails the action when a
@@ -234,31 +231,40 @@ def _vitest_collect_impl(ctx):
         args.add("--static-parse", "true")
     args.add("--collect-output", collection.as_output())
 
-    # Same policy as `_test_info`: uploading is only meaningful when the root
-    # buckconfig has the remote cache on, so gate on both rather than letting a
-    # collection push to an unconfigured engine. Cache READS follow the
-    # execution platform's executor config, which reads the same root config.
-    ctx.actions.run(
+    hermetic_action(ctx,
         args,
+        cacheable = ctx.attrs.cacheable,
         category = "vitest_collect",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [DefaultInfo(default_output = collection)]
 
 
-_VITEST_COLLECT_ATTRS = dict(_TEST_ATTRS)
+_VITEST_COLLECT_ATTRS = dict(_TEST_ATTRS, **hermetic_attrs())
 _VITEST_COLLECT_ATTRS.update({
     "config": attrs.string(default = "vitest.config.ts"),
     "static_parse": attrs.bool(default = False),
     "vitest_runtime": attrs.enum(["bun", "node"], default = "bun"),
 })
 
-vitest_collect = rule(
+_vitest_collect = rule(
     impl = _vitest_collect_impl,
     attrs = _VITEST_COLLECT_ATTRS,
 )
+
+
+def vitest_collect(name, **kwargs):
+    constraints = kwargs.pop("exec_compatible_with", [])
+    if kwargs.get("cacheable", True):
+        constraints = hermetic_execution_constraints(constraints)
+    elif "@rules//buck2/platforms:cache_hermetic" in constraints:
+        fail("an uncacheable collection cannot request the cache-admitted platform")
+    _vitest_collect(
+        name = name,
+        exec_compatible_with = constraints,
+        **kwargs
+    )
 
 
 def _bun_test_impl(ctx):
