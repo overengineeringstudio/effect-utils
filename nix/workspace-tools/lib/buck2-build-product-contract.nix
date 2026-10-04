@@ -165,6 +165,51 @@ let
           (ensure (nonEmptyString value.rpathPolicy) "descriptor.runtime.rpathPolicy must be a non-empty string")
           (ensure (nonEmptyString value.signingPolicy) "descriptor.runtime.signingPolicy must be a non-empty string")
         ] value
+      else if kind == "mach-o-app-bundle" then
+        let
+          value = exactAttrs "descriptor.runtime" [
+            "bundleRoot"
+            "executables"
+            "inspectionContract"
+            "installNamePolicy"
+            "kind"
+            "mainExecutable"
+            "rpathPolicy"
+          ] runtime;
+          bundleRootPrefix = value.bundleRoot + "/";
+          insideBundleRoot =
+            path:
+            builtins.substring 0 (builtins.stringLength bundleRootPrefix) path == bundleRootPrefix;
+        in
+        force [
+          (ensure (
+            value.inspectionContract == "mach-o-app-bundle/v1"
+          ) "descriptor.runtime.inspectionContract must be mach-o-app-bundle/v1")
+          (ensure (safePath value.bundleRoot) "descriptor.runtime.bundleRoot must be a safe relative path")
+          (ensure (builtins.isList value.executables) "descriptor.runtime.executables must be a list")
+          (ensure (value.executables != [ ]) "descriptor.runtime.executables must not be empty")
+          (ensure (builtins.all safePath value.executables) "descriptor.runtime.executables must be safe relative paths")
+          (ensure (unique value.executables) "descriptor.runtime.executables must be unique")
+          (ensure (
+            value.executables == builtins.sort builtins.lessThan value.executables
+          ) "descriptor.runtime.executables must be sorted")
+          (ensure (
+            builtins.all (
+              path: builtins.match ".*[[:cntrl:]].*" path == null
+            ) value.executables
+          ) "descriptor.runtime.executables must not contain control characters")
+          (ensure (
+            builtins.all insideBundleRoot value.executables
+          ) "descriptor.runtime.executables must live inside the bundle root")
+          (ensure (safePath value.mainExecutable) "descriptor.runtime.mainExecutable must be a safe relative path")
+          (ensure (
+            builtins.elem value.mainExecutable value.executables
+          ) "descriptor.runtime.mainExecutable must name a declared bundle executable")
+          (ensure (
+            value.installNamePolicy == "system-only/v1"
+          ) "descriptor.runtime.installNamePolicy must be system-only/v1")
+          (ensure (value.rpathPolicy == "empty/v1") "descriptor.runtime.rpathPolicy must be empty/v1")
+        ] value
       else if kind == "self-contained" then
         let
           value = exactAttrs "descriptor.runtime" [
@@ -290,6 +335,22 @@ let
             (ensure (builtins.all (
               dylib: builtins.match "(/usr/lib|/System/Library)/.*" dylib != null
             ) runtime.dylibs) "descriptor.runtime.dylibs must use system install names")
+          ]
+        else if runtime.kind == "mach-o-app-bundle" then
+          [
+            (ensure (
+              platform.os == "darwin"
+            ) "descriptor.runtime mach-o-app-bundle requires descriptor.platform.os = darwin")
+            (ensure (
+              platform.abi == "darwin"
+            ) "descriptor.runtime mach-o-app-bundle/v1 requires descriptor.platform.abi = darwin")
+            (ensure (builtins.elem platform.architecture [
+              "x86_64"
+              "aarch64"
+            ]) "descriptor.runtime mach-o-app-bundle architecture is unsupported")
+            (ensure (
+              value.entrypoints == runtime.executables
+            ) "descriptor.entrypoints must be exactly the runtime bundle executables")
           ]
         else
           [ ];

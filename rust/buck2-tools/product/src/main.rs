@@ -27,6 +27,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Package(Box<PackageArgs>),
+    PackageAppBundle(Box<PackageAppBundleArgs>),
     NpmPackage(NpmPackageArgs),
 }
 
@@ -59,16 +60,33 @@ struct PackageArgs {
 }
 
 #[derive(Args)]
-struct NpmPackageArgs {
+struct PackageAppBundleArgs {
     #[arg(long)]
-    package_tree: PathBuf,
-    #[arg(long)]
-    dist: PathBuf,
+    bundle: PathBuf,
+    #[arg(long = "bundle-root")]
+    bundle_root: String,
+    #[arg(long, value_delimiter = ',')]
+    executables: Vec<String>,
+    #[arg(long = "main-executable")]
+    main_executable: String,
     #[arg(long)]
     artifact: PathBuf,
     #[arg(long)]
-    workspace_manifest: Vec<PathBuf>,
+    name: String,
+    #[arg(long)]
+    target: String,
+    #[arg(long = "platform-os")]
+    platform_os: String,
+    #[arg(long = "platform-architecture")]
+    platform_architecture: String,
+    #[arg(long = "platform-abi")]
+    platform_abi: String,
+    #[arg(long)]
+    provenance: PathBuf,
+    #[arg(long)]
+    descriptor: PathBuf,
 }
+
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -709,14 +727,18 @@ fn archive(
         }
         collect_support_files(root, root, &mut files)?;
     }
-    if files
-        .insert(entrypoint.to_owned(), executable.to_vec())
-        .is_some()
-    {
-        return Err(fail(
-            "BUCK2_PRODUCT_INPUT",
-            "support tree collides with the executable entrypoint",
-        ));
+    archive_tree(files, &[entrypoint.to_owned()])
+}
+
+/// Archives exactly the given files, marking only the named executables 0555.
+fn archive_tree(files: BTreeMap<String, Vec<u8>>, executables: &[String]) -> ToolResult<Vec<u8>> {
+    for executable in executables {
+        if !files.contains_key(executable) {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("declared executable is missing from the archived tree: {executable}"),
+            ));
+        }
     }
 
     let mut directories = BTreeSet::new();
@@ -737,7 +759,7 @@ fn archive(
                 .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
         }
         for (path, contents) in files {
-            let mode = if path == entrypoint { 0o555 } else { 0o444 };
+            let mode = if executables.contains(&path) { 0o555 } else { 0o444 };
             let header = tar_header(
                 &path,
                 u64::try_from(contents.len())
@@ -1105,6 +1127,169 @@ fn package(args: PackageArgs) -> ToolResult<()> {
     })
 }
 
+fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
+    validate_name(&args.name)?;
+    safe_text(&args.target, "target")?;
+    safe_text(&args.platform_os, "platform OS")?;
+    safe_text(&args.platform_architecture, "platform architecture")?;
+    safe_text(&args.platform_abi, "platform ABI")?;
+    if args.platform_os != "darwin" || args.platform_abi != "darwin" {
+        return Err(fail(
+            "BUCK2_PRODUCT_PLATFORM",
+            "mach-o-app-bundle/v1 requires darwin/darwin",
+        ));
+    }
+    let bundle_root = normalized_relative(&args.bundle_root, "bundle root")?.to_owned();
+    if args.executables.is_empty() {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "an app bundle must declare at least one executable",
+        ));
+    }
+    let mut executables = BTreeSet::new();
+    for executable in &args.executables {
+        let relative = normalized_relative(executable, "bundle executable")?;
+        if !relative.starts_with(&format!("{bundle_root}/")) {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("bundle executable is outside the bundle root: {executable}"),
+            ));
+        }
+        executables.insert(relative.to_owned());
+    }
+    let main_executable = normalized_relative(&args.main_executable, "main executable")?.to_owned();
+    if !executables.contains(&main_executable) {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "the main executable must be one of the bundle executables",
+        ));
+    }
+    let bundle = fs::symlink_metadata(&args.bundle).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_INPUT",
+            format!("bundle is unavailable: {error}"),
+        )
+    })?;
+    if !bundle.is_dir() || bundle.file_type().is_symlink() {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "bundle must be a regular non-symlink directory",
+        ));
+    }
+    let mut files = BTreeMap::new();
+    collect_support_files(&args.bundle, &args.bundle, &mut files)?;
+    let mut observed_executables = BTreeMap::new();
+    let mut runtime_executables = Vec::new();
+    for executable in &executables {
+        let within_bundle = executable
+            .strip_prefix(&bundle_root)
+            .map_err(|_| fail("BUCK2_PRODUCT_INPUT", "bundle executable escapes the root"))?;
+        let observed = files.remove(within_bundle).ok_or_else(|| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("bundle does not contain executable: {executable}"),
+            )
+        })?;
+        let metadata = fs::symlink_metadata(args.bundle.join(within_bundle)).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not inspect bundle executable: {error}"),
+            )
+        })?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                "bundle executable must be a regular non-symlink file",
+            ));
+        }
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                "bundle executable is not executable",
+            ));
+        }
+        let runtime = mach_o_runtime(&observed, &args.platform_architecture)?;
+        observed_executables.insert(executable.clone(), observed);
+        runtime_executables.push(json!({
+            "dylibs": runtime["dylibs"].clone(),
+            "minimumOs": runtime["minimumOs"].clone(),
+            "path": executable,
+            "signingPolicy": runtime["signingPolicy"].clone(),
+        }));
+    }
+    let mut archived = BTreeMap::new();
+    for (path, contents) in files {
+        archived.insert(format!("{bundle_root}/{path}"), contents);
+    }
+    for (path, contents) in observed_executables {
+        archived.insert(path, contents);
+    }
+    let artifact = archive_tree(archived, &executables.iter().cloned().collect::<Vec<_>>())?;
+    let provenance_bytes = fs::read(&args.provenance).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_PROVENANCE",
+            format!("could not read provenance: {error}"),
+        )
+    })?;
+    let provenance: Provenance = serde_json::from_slice(&provenance_bytes).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_PROVENANCE",
+            format!("invalid provenance: {error}"),
+        )
+    })?;
+    if provenance.schema != "buck-build-provenance/v1" {
+        return Err(fail(
+            "BUCK2_PRODUCT_PROVENANCE",
+            "unsupported provenance schema",
+        ));
+    }
+    safe_text(&provenance.recipe, "provenance recipe")?;
+    safe_text(&provenance.toolchain, "provenance toolchain")?;
+    let digest = sha256_sri(&sha256_bytes(&artifact))?;
+    let descriptor = json!({
+        "entrypoints": executables.iter().cloned().collect::<Vec<_>>(),
+        "name": args.name,
+        "payload": {
+            "digest": {"algorithm": "sha256", "sri": digest},
+            "file": "artifact.tar",
+            "format": "tar",
+            "sizeBytes": artifact.len(),
+        },
+        "platform": {
+            "abi": args.platform_abi,
+            "architecture": args.platform_architecture,
+            "os": args.platform_os,
+        },
+        "runtime": {
+            "bundleRoot": bundle_root,
+            "executables": runtime_executables,
+            "inspectionContract": "mach-o-app-bundle/v1",
+            "installNamePolicy": "system-only/v1",
+            "kind": "mach-o-app-bundle",
+            "mainExecutable": main_executable,
+            "rpathPolicy": "empty/v1",
+        },
+        "schema": "buck-build-product/v1",
+        "semanticProvenance": {
+            "recipe": provenance.recipe,
+            "target": args.target,
+            "toolchain": provenance.toolchain,
+        },
+    });
+    fs::write(&args.artifact, artifact).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_OUTPUT",
+            format!("could not write artifact: {error}"),
+        )
+    })?;
+    fs::write(&args.descriptor, canonical_json(&descriptor)?).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_OUTPUT",
+            format!("could not write descriptor: {error}"),
+        )
+    })
+}
+
 fn main() {
     let cli = Cli::parse();
     let result = verify_execution_capability(
@@ -1115,6 +1300,7 @@ fn main() {
     )
     .and_then(|()| match cli.command {
         Command::Package(args) => package(*args),
+        Command::PackageAppBundle(args) => package_app_bundle(*args),
         Command::NpmPackage(args) => npm_package(args),
     });
     if let Err(error) = result {
@@ -1259,6 +1445,70 @@ mod tests {
         assert_eq!(descriptor["runtime"]["kind"], "elf-static");
         assert_eq!(descriptor["runtime"]["inspectionContract"], "elf-static/v1");
         assert_eq!(descriptor["runtime"]["machine"], std::env::consts::ARCH);
+    }
+
+    #[test]
+    fn archive_tree_marks_only_declared_executables() {
+        let mut files = BTreeMap::new();
+        files.insert(
+            "Applications/Demo.app/Contents/MacOS/demo".to_owned(),
+            b"demo".to_vec(),
+        );
+        files.insert(
+            "Applications/Demo.app/Contents/Resources/icon.icns".to_owned(),
+            b"icon".to_vec(),
+        );
+        let executables = vec!["Applications/Demo.app/Contents/MacOS/demo".to_owned()];
+        let bytes = archive_tree(files, &executables).unwrap();
+        let mut archive = tar::Archive::new(bytes.as_slice());
+        let mut modes = std::collections::BTreeMap::new();
+        for entry in archive.entries().unwrap() {
+            let entry = entry.unwrap();
+            modes.insert(
+                entry.path().unwrap().to_string_lossy().to_string(),
+                entry.header().mode().unwrap(),
+            );
+        }
+        assert_eq!(
+            modes["Applications/Demo.app/Contents/MacOS/demo"],
+            0o555,
+            "the declared executable keeps its executable bit"
+        );
+        assert_eq!(
+            modes["Applications/Demo.app/Contents/Resources/icon.icns"],
+            0o444,
+            "resources stay read-only"
+        );
+    }
+
+    #[test]
+    fn archive_tree_rejects_a_missing_declared_executable() {
+        let mut files = BTreeMap::new();
+        files.insert("Applications/Demo.app/Contents/Info.plist".to_owned(), b"{}".to_vec());
+        let error = archive_tree(files, &["Applications/Demo.app/Contents/MacOS/demo".to_owned()])
+            .unwrap_err();
+        assert!(error.to_string().contains("declared executable is missing"));
+    }
+
+    #[test]
+    fn package_app_bundle_rejects_a_non_darwin_platform() {
+        let temporary = tempdir().unwrap();
+        let arguments = PackageAppBundleArgs {
+            bundle: temporary.path().join("Demo.app"),
+            bundle_root: "Applications/Demo.app".into(),
+            executables: vec!["Applications/Demo.app/Contents/MacOS/demo".into()],
+            main_executable: "Applications/Demo.app/Contents/MacOS/demo".into(),
+            artifact: temporary.path().join("artifact.tar"),
+            name: "demo".into(),
+            target: "//pkg:app".into(),
+            platform_os: "linux".into(),
+            platform_architecture: std::env::consts::ARCH.into(),
+            platform_abi: "glibc".into(),
+            provenance: temporary.path().join("provenance.json"),
+            descriptor: temporary.path().join("descriptor.json"),
+        };
+        let error = package_app_bundle(arguments).unwrap_err();
+        assert!(error.to_string().contains("mach-o-app-bundle/v1 requires darwin/darwin"));
     }
 
     fn signature_with_cms(code_directory_flags: u32, cms_size: u32) -> Vec<u8> {

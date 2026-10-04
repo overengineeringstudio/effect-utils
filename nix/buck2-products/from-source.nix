@@ -86,11 +86,13 @@ let
   productName = product.name;
   outputName = product.outputName;
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
-  # `build_product` kinds: a Rust `native` executable or a Bun
-  # `compiled-executable` (`bun build --compile` of a CLI module).
+  # `build_product` kinds: a Rust `native` executable, a Bun
+  # `compiled-executable` (`bun build --compile` of a CLI module), or a
+  # `swift-app-bundle` Darwin app bundle.
   isBuildProduct = builtins.elem product.kind [
     "native"
     "compiled-executable"
+    "swift-app-bundle"
   ];
   # Descriptor-bearing products: JavaScript product-v2 and build_product.
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
@@ -147,7 +149,7 @@ assert lib.assertMsg (
 ) "buck2-products: cargoWorkspaceRoot must be a safe relative path on a native product";
 assert lib.assertMsg (
   !importNative || isBuildProduct
-) "buck2-products: importNative requires a native or compiled-executable product";
+) "buck2-products: importNative requires a native, compiled-executable, or swift-app-bundle product";
 assert lib.assertMsg (
   cliBuildStamp == null
   || (

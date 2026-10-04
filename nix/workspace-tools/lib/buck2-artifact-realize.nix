@@ -21,6 +21,14 @@
       }
     else
       null,
+  inspectMachOAppBundle ?
+    if pkgs.stdenv.hostPlatform.isDarwin then
+      import ./buck2-runtime-inspect-mach-o-app-bundle.nix {
+        inherit pkgs;
+        inspectionTools = import ./buck2-darwin-inspection-tools.nix { inherit pkgs; };
+      }
+    else
+      null,
 }:
 
 let
@@ -31,6 +39,7 @@ let
     "elf-dynamic"
     "elf-static"
     "mach-o-dynamic"
+    "mach-o-app-bundle"
   ];
   # The contract is pure Nix; a store-less, read-only evaluator applies it to a
   # descriptor that only exists inside this build.
@@ -84,8 +93,10 @@ let
       inspectElfDynamic
     else if runtimeKind == "elf-static" then
       inspectElfStatic
+    else if runtimeKind == "mach-o-dynamic" then
+      inspectMachODynamic
     else
-      inspectMachODynamic;
+      inspectMachOAppBundle;
   declared = builtins.toJSON {
     inherit name runtimeKind;
     platform = expectedPlatform;
@@ -98,6 +109,9 @@ assert lib.assertMsg (builtins.elem runtimeKind runtimeKinds)
 assert lib.assertMsg (
   runtimeKind != "mach-o-dynamic" || inspectMachODynamic != null
 ) "buck2-artifact-realize: mach-o-dynamic inspection requires a Darwin Nix tool realization";
+assert lib.assertMsg (
+  runtimeKind != "mach-o-app-bundle" || inspectMachOAppBundle != null
+) "buck2-artifact-realize: mach-o-app-bundle inspection requires a Darwin Nix tool realization";
 assert lib.assertMsg (builtins.isAttrs expectedPlatform)
   "buck2-artifact-realize: expectedPlatform must be an exact platform attribute set";
 assert lib.assertMsg (
