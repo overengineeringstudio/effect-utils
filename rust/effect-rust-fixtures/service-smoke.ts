@@ -38,7 +38,13 @@ const canonical = (value: unknown): string => {
   )
   return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(',')}}`
 }
-const codecs = { Discount: Contracts.Discount, Order: Contracts.Order, Quote: Contracts.Quote, FloatSample: Contracts.FloatSample, WideSample: Contracts.WideSample }
+const codecs = {
+  Discount: Contracts.Discount,
+  Order: Contracts.Order,
+  Quote: Contracts.Quote,
+  FloatSample: Contracts.FloatSample,
+  WideSample: Contracts.WideSample,
+}
 const Vectors = Schema.Array(
   Schema.Struct({
     contract: Schema.Literals(['Discount', 'Order', 'Quote', 'FloatSample', 'WideSample']),
@@ -87,243 +93,290 @@ const scalarCases = [
   ['echoI32', -2147483648, 2147483647],
   ['echoU32', 0, 4294967295],
 ] as const
-const program = (transport: 'wasm' | 'native') => Effect.scoped(
-  Effect.gen(function* () {
-    const fixture = yield* EffectRustFixture
-    for (const [operation, minimum, maximum] of scalarCases) {
-      for (const value of [minimum, maximum, 0]) {
-        assert.equal(yield* fixture[operation](value), value, `${operation} accepts ${value}`)
+const program = (transport: 'wasm' | 'native') =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* EffectRustFixture
+      for (const [operation, minimum, maximum] of scalarCases) {
+        for (const value of [minimum, maximum, 0]) {
+          assert.equal(yield* fixture[operation](value), value, `${operation} accepts ${value}`)
+        }
+        for (const value of [minimum - 1, maximum + 1, 4294967297, 1.5, -0.5, NaN, Infinity, -Infinity, -0]) {
+          const error = yield* fixture[operation](value).pipe(Effect.flip)
+          assert.ok(error instanceof Interop.Input, `${operation} rejects ${value} as Input`)
+          assert.equal(error.operation, operation)
+        }
       }
-      for (const value of [minimum - 1, maximum + 1, 4294967297, 1.5, -0.5, NaN, Infinity, -Infinity, -0]) {
-        const error = yield* fixture[operation](value).pipe(Effect.flip)
-        assert.ok(error instanceof Interop.Input, `${operation} rejects ${value} as Input`)
-        assert.equal(error.operation, operation)
+      for (const request of [fixture.checkedDivide(10, 4294967297), fixture.add(1.5, 0)]) {
+        assert.ok((yield* request.pipe(Effect.flip)) instanceof Interop.Input)
       }
-    }
-    for (const request of [fixture.checkedDivide(10, 4294967297), fixture.add(1.5, 0)]) {
-      assert.ok((yield* request.pipe(Effect.flip)) instanceof Interop.Input)
-    }
-    assert.equal(yield* fixture.checkedDivide(10, 2), 5)
-    assert.equal(yield* fixture.add(1, 2), 3)
-    assert.equal(yield* fixture.echoF32(1.1), Math.fround(1.1))
-    assert.equal(
-      Effect.runSync(
-        fixture.sumJsonIntegers({
-          unsigned: 4294967295,
-          signed: -2147483648,
-          bounded: Number.MAX_SAFE_INTEGER,
+      assert.equal(yield* fixture.checkedDivide(10, 2), 5)
+      assert.equal(yield* fixture.add(1, 2), 3)
+      assert.equal(yield* fixture.echoF32(1.1), Math.fround(1.1))
+      assert.equal(
+        Effect.runSync(
+          fixture.sumJsonIntegers({
+            unsigned: 4294967295,
+            signed: -2147483648,
+            bounded: Number.MAX_SAFE_INTEGER,
+          }),
+        ),
+        4294967295n - 2147483648n + 9007199254740991n,
+      )
+      for (const value of [0.1, 1e-45, 3.4028235e38, -0, 1]) {
+        assert.ok(Object.is((yield* fixture.roundTripFloat({ value })).value, Math.fround(value)))
+      }
+      for (const unsigned of [
+        9007199254740991n,
+        9007199254740992n,
+        9007199254740993n,
+        18446744073709551615n,
+      ]) {
+        assert.deepEqual(
+          yield* fixture.roundTripWide({ unsigned, signed: -9223372036854775808n }),
+          { unsigned, signed: -9223372036854775808n },
+        )
+      }
+      const record = Object.fromEntries([
+        ['a\u0000b', 1],
+        ['__proto__', 2],
+        ['constructor', 3],
+      ])
+      assert.deepEqual(yield* fixture.roundTripRecord(record), record)
+      const wideError = yield* fixture
+        .wideFailure(18446744073709551615n, -9223372036854775808n)
+        .pipe(Effect.flip)
+      assert.ok(wideError instanceof ArithmeticError)
+      assert.deepEqual(wideError.reason, {
+        _tag: 'WideBounds',
+        unsigned: 18446744073709551615n,
+        signed: -9223372036854775808n,
+      })
+      const dropsBeforeScope = yield* fixture.counterDrops()
+      const escapedCounter = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const counter = yield* fixture.counter(0)
+          assert.deepEqual(
+            yield* Effect.all([counter.append(1), counter.append(2), counter.append(3)], {
+              concurrency: 'unbounded',
+            }),
+            [1, 12, 123],
+            'concurrent methods on one mutable resource are serialized in submission order',
+          )
+          const expected = yield* counter.divide(0).pipe(Effect.flip)
+          assert.ok(expected instanceof ArithmeticError)
+          assert.deepEqual(expected.reason, { _tag: 'DivideByZero', dividend: 123 })
+          assert.equal(yield* counter.value(), 123, 'expected errors leave the resource usable')
+          return counter
         }),
-      ),
-      4294967295n - 2147483648n + 9007199254740991n,
-    )
-    for (const value of [0.1, 1e-45, 3.4028235e38, -0, 1]) {
-      assert.ok(Object.is((yield* fixture.roundTripFloat({ value })).value, Math.fround(value)))
-    }
-    for (const unsigned of [9007199254740991n, 9007199254740992n, 9007199254740993n, 18446744073709551615n]) {
-      assert.deepEqual(yield* fixture.roundTripWide({ unsigned, signed: -9223372036854775808n }), { unsigned, signed: -9223372036854775808n })
-    }
-    const record = Object.fromEntries([['a\u0000b', 1], ['__proto__', 2], ['constructor', 3]])
-    assert.deepEqual(yield* fixture.roundTripRecord(record), record)
-    const wideError = yield* fixture.wideFailure(18446744073709551615n, -9223372036854775808n).pipe(Effect.flip)
-    assert.ok(wideError instanceof ArithmeticError)
-    assert.deepEqual(wideError.reason, { _tag: 'WideBounds', unsigned: 18446744073709551615n, signed: -9223372036854775808n })
-    const dropsBeforeScope = yield* fixture.counterDrops()
-    const escapedCounter = yield* Effect.scoped(Effect.gen(function* () {
-      const counter = yield* fixture.counter(0)
-      assert.deepEqual(
-        yield* Effect.all([counter.append(1), counter.append(2), counter.append(3)], { concurrency: 'unbounded' }),
-        [1, 12, 123],
-        'concurrent methods on one mutable resource are serialized in submission order',
       )
-      const expected = yield* counter.divide(0).pipe(Effect.flip)
-      assert.ok(expected instanceof ArithmeticError)
-      assert.deepEqual(expected.reason, { _tag: 'DivideByZero', dividend: 123 })
-      assert.equal(yield* counter.value(), 123, 'expected errors leave the resource usable')
-      return counter
-    }))
-    assert.equal(yield* fixture.counterDrops(), dropsBeforeScope + 1, 'scope close runs Rust Drop exactly once')
-    yield* escapedCounter.close
-    assert.equal(yield* fixture.counterDrops(), dropsBeforeScope + 1, 'explicit close after scope is idempotent')
-    const closedCounter = yield* Effect.exit(escapedCounter.value())
-    assert.ok(Exit.isFailure(closedCounter) && String(closedCounter.cause).includes('closed'))
-    const dropsBeforeStress = yield* fixture.counterDrops()
-    for (let index = 0; index < 1000; index++) {
-      yield* Effect.scoped(Effect.gen(function* () {
-        const counter = yield* fixture.counter(index)
-        assert.equal(yield* counter.value(), index)
-      }))
-    }
-    assert.equal(yield* fixture.counterDrops(), dropsBeforeStress + 1000, '1k scoped resources each run Rust Drop')
-    const quote = yield* fixture.quoteOrder(order, { kind: 'percent', percent: 10 })
-    assert.equal(quote.kind, 'priced')
-    assert.equal(quote.note, 'gift')
-    assert.equal(quote.receipt.orderId, 9007199254740993n)
-    assert.equal(quote.receipt.totalCents, 675n)
-    assert.equal(DateTime.formatIso(quote.receipt.placedAt), '2026-10-02T12:00:00.500Z')
-    const free = yield* fixture.quoteOrder(
-      { ...order, note: null },
-      { kind: 'fixed', amountCents: 18446744073709551615n },
-    )
-    assert.deepEqual(free, { kind: 'free', orderId: 9007199254740993n })
-    // Contract encoding rejects the brand before Rust is called.
-    const invalid = yield* Effect.exit(
-      fixture.quoteOrder({ ...order, sku: 'abc' }, { kind: 'none' }),
-    )
-    assert.ok(
-      Exit.isFailure(invalid) && String(invalid.cause).includes('Input'),
-      'invalid brand fails with Interop.Input',
-    )
-    const overflow = yield* fixture
-      .quoteOrder(
-        { ...order, quantity: 4294967295, unitPriceCents: 18446744073709551615n },
-        { kind: 'none' },
+      assert.equal(
+        yield* fixture.counterDrops(),
+        dropsBeforeScope + 1,
+        'scope close runs Rust Drop exactly once',
       )
-      .pipe(Effect.flip)
-    assert.ok(overflow instanceof ArithmeticError)
-    assert.deepEqual(overflow.reason, { _tag: 'PriceOverflow', quantity: 4294967295 })
-    assert.equal(
-      Effect.runSync(fixture.sha256Hex(new TextEncoder().encode('abc'))),
-      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-    )
-    const bytes = new TextEncoder().encode('abc')
-    const digest = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
-    assert.equal(
-      yield* Stream.run(
-        Stream.fromArray([bytes.subarray(0, 1), bytes.subarray(1)]),
-        fixture.hasher(),
-      ),
-      digest,
-    )
-    const source = yield* Interop.hostSource('abortable', {
-      read: () => Effect.succeed(bytes),
-      readRange: (_path, offset, maxBytes) =>
-        Effect.succeed(bytes.subarray(Number(offset), Number(offset) + maxBytes)),
-    })
-    assert.equal(yield* fixture.hashAll(source, ['/host/file']), digest)
-    const rangeBytes = new TextEncoder().encode('abcdef')
-    const calls: Array<readonly [string, bigint, number]> = []
-    let rangeFinalizers = 0
-    const ranged = yield* Interop.hostSource('abortable', {
-      read: () => Effect.succeed(rangeBytes),
-      readRange: (path, offset, maxBytes) =>
-        Effect.acquireRelease(
-          Effect.sync(() => {
-            calls.push([path, offset, maxBytes])
-            if (path === '/wide') return new Uint8Array([9])
-            // A deliberately short host read, including before EOF.
-            const start = offset >= BigInt(rangeBytes.length) ? rangeBytes.length : Number(offset)
-            return rangeBytes.subarray(
-              start,
-              start + Math.min(maxBytes, path === '/short' ? 1 : maxBytes),
-            )
+      yield* escapedCounter.close
+      assert.equal(
+        yield* fixture.counterDrops(),
+        dropsBeforeScope + 1,
+        'explicit close after scope is idempotent',
+      )
+      const closedCounter = yield* Effect.exit(escapedCounter.value())
+      assert.ok(Exit.isFailure(closedCounter) && String(closedCounter.cause).includes('closed'))
+      const dropsBeforeStress = yield* fixture.counterDrops()
+      for (let index = 0; index < 1000; index++) {
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const counter = yield* fixture.counter(index)
+            assert.equal(yield* counter.value(), index)
           }),
-          () =>
+        )
+      }
+      assert.equal(
+        yield* fixture.counterDrops(),
+        dropsBeforeStress + 1000,
+        '1k scoped resources each run Rust Drop',
+      )
+      const quote = yield* fixture.quoteOrder(order, { kind: 'percent', percent: 10 })
+      assert.equal(quote.kind, 'priced')
+      assert.equal(quote.note, 'gift')
+      assert.equal(quote.receipt.orderId, 9007199254740993n)
+      assert.equal(quote.receipt.totalCents, 675n)
+      assert.equal(DateTime.formatIso(quote.receipt.placedAt), '2026-10-02T12:00:00.500Z')
+      const free = yield* fixture.quoteOrder(
+        { ...order, note: null },
+        { kind: 'fixed', amountCents: 18446744073709551615n },
+      )
+      assert.deepEqual(free, { kind: 'free', orderId: 9007199254740993n })
+      // Contract encoding rejects the brand before Rust is called.
+      const invalid = yield* Effect.exit(
+        fixture.quoteOrder({ ...order, sku: 'abc' }, { kind: 'none' }),
+      )
+      assert.ok(
+        Exit.isFailure(invalid) && String(invalid.cause).includes('Input'),
+        'invalid brand fails with Interop.Input',
+      )
+      const overflow = yield* fixture
+        .quoteOrder(
+          { ...order, quantity: 4294967295, unitPriceCents: 18446744073709551615n },
+          { kind: 'none' },
+        )
+        .pipe(Effect.flip)
+      assert.ok(overflow instanceof ArithmeticError)
+      assert.deepEqual(overflow.reason, { _tag: 'PriceOverflow', quantity: 4294967295 })
+      assert.equal(
+        Effect.runSync(fixture.sha256Hex(new TextEncoder().encode('abc'))),
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+      )
+      const bytes = new TextEncoder().encode('abc')
+      const digest = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+      assert.equal(
+        yield* Stream.run(
+          Stream.fromArray([bytes.subarray(0, 1), bytes.subarray(1)]),
+          fixture.hasher(),
+        ),
+        digest,
+      )
+      const source = yield* Interop.hostSource('abortable', {
+        read: () => Effect.succeed(bytes),
+        readRange: (_path, offset, maxBytes) =>
+          Effect.succeed(bytes.subarray(Number(offset), Number(offset) + maxBytes)),
+      })
+      assert.equal(yield* fixture.hashAll(source, ['/host/file']), digest)
+      const rangeBytes = new TextEncoder().encode('abcdef')
+      const calls: Array<readonly [string, bigint, number]> = []
+      let rangeFinalizers = 0
+      const ranged = yield* Interop.hostSource('abortable', {
+        read: () => Effect.succeed(rangeBytes),
+        readRange: (path, offset, maxBytes) =>
+          Effect.acquireRelease(
             Effect.sync(() => {
-              rangeFinalizers++
+              calls.push([path, offset, maxBytes])
+              if (path === '/wide') return new Uint8Array([9])
+              // A deliberately short host read, including before EOF.
+              const start = offset >= BigInt(rangeBytes.length) ? rangeBytes.length : Number(offset)
+              return rangeBytes.subarray(
+                start,
+                start + Math.min(maxBytes, path === '/short' ? 1 : maxBytes),
+              )
             }),
-        ),
-    })
-    assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 2n, 3))], [99, 100, 101])
-    assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 4n, 9))], [101, 102])
-    assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 6n, 3))], [])
-    assert.deepEqual([...(yield* fixture.readRange(ranged, '/wide', 9007199254740993n, 1))], [9])
-    assert.deepEqual(
-      [...(yield* fixture.readRange(ranged, '/range', 18446744073709551615n, 1))],
-      [],
-    )
-    assert.deepEqual(calls, [
-      ['/range', 2n, 3],
-      ['/range', 4n, 9],
-      ['/range', 6n, 3],
-      ['/wide', 9007199254740993n, 1],
-      ['/range', 18446744073709551615n, 1],
-    ])
-    assert.equal(rangeFinalizers, 5, 'read scopes close before their bytes reach Rust')
-    assert.equal(
-      yield* fixture.hashRanges(ranged, '/short', 4),
-      yield* fixture.sha256Hex(rangeBytes),
-    )
-    assert.deepEqual(
-      calls.slice(5).map(([, offset]) => offset),
-      [0n, 1n, 2n, 3n, 4n, 5n, 6n],
-    )
-    assert.equal(rangeFinalizers, 12, 'short-read continuation and EOF both finalize')
-    const oversized = yield* Interop.hostSource('abortable', {
-      read: () => Effect.succeed(bytes),
-      readRange: () => Effect.succeed(bytes),
-    })
-    const tooLarge = yield* fixture.readRange(oversized, '/range', 0n, 1).pipe(Effect.flip)
-    assert.ok(tooLarge instanceof SourceError)
-    assert.match(tooLarge.reason.message, /maxBytes/)
-    const zeroBound = yield* fixture.readRange(ranged, '/range', 0n, 0).pipe(Effect.flip)
-    assert.ok(zeroBound instanceof SourceError)
-    assert.match(zeroBound.reason.message, /positive/)
-    assert.equal(calls.length, 12, 'zero bounds do not dispatch a host read')
+            () =>
+              Effect.sync(() => {
+                rangeFinalizers++
+              }),
+          ),
+      })
+      assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 2n, 3))], [99, 100, 101])
+      assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 4n, 9))], [101, 102])
+      assert.deepEqual([...(yield* fixture.readRange(ranged, '/range', 6n, 3))], [])
+      assert.deepEqual([...(yield* fixture.readRange(ranged, '/wide', 9007199254740993n, 1))], [9])
+      assert.deepEqual(
+        [...(yield* fixture.readRange(ranged, '/range', 18446744073709551615n, 1))],
+        [],
+      )
+      assert.deepEqual(calls, [
+        ['/range', 2n, 3],
+        ['/range', 4n, 9],
+        ['/range', 6n, 3],
+        ['/wide', 9007199254740993n, 1],
+        ['/range', 18446744073709551615n, 1],
+      ])
+      assert.equal(rangeFinalizers, 5, 'read scopes close before their bytes reach Rust')
+      assert.equal(
+        yield* fixture.hashRanges(ranged, '/short', 4),
+        yield* fixture.sha256Hex(rangeBytes),
+      )
+      assert.deepEqual(
+        calls.slice(5).map(([, offset]) => offset),
+        [0n, 1n, 2n, 3n, 4n, 5n, 6n],
+      )
+      assert.equal(rangeFinalizers, 12, 'short-read continuation and EOF both finalize')
+      const oversized = yield* Interop.hostSource('abortable', {
+        read: () => Effect.succeed(bytes),
+        readRange: () => Effect.succeed(bytes),
+      })
+      const tooLarge = yield* fixture.readRange(oversized, '/range', 0n, 1).pipe(Effect.flip)
+      assert.ok(tooLarge instanceof SourceError)
+      assert.match(tooLarge.reason.message, /maxBytes/)
+      const zeroBound = yield* fixture.readRange(ranged, '/range', 0n, 0).pipe(Effect.flip)
+      assert.ok(zeroBound instanceof SourceError)
+      assert.match(zeroBound.reason.message, /positive/)
+      assert.equal(calls.length, 12, 'zero bounds do not dispatch a host read')
 
-    // Only a real event-loop yield lets this timer deliver cancellation between
-    // CPU chunks. A token check or a chain of microtasks would hash through EOF.
-    const cancelAtTask = yield* Deferred.make<void>()
-    let cancellationReads = 0
-    let cancellationFinalizers = 0
-    let clearCancelTask: (() => void) | undefined
-    yield* Effect.addFinalizer(() => Effect.sync(() => clearCancelTask?.()))
-    const cancellable = yield* Interop.hostSource('abortable', {
-      read: () => Effect.succeed(bytes),
-      readRange: (_path, offset) =>
-        Effect.acquireRelease(
-          Effect.sync(() => {
-            cancellationReads++
-            if (cancellationReads === 1) {
-              const task = setTimeout(() => Deferred.doneUnsafe(cancelAtTask, Effect.void), 0)
-              clearCancelTask = () => clearTimeout(task)
-            }
-            return bytes.subarray(Number(offset), Number(offset) + 1)
-          }),
-          () =>
-            Effect.promise(async () => {
-              await Promise.resolve()
-              cancellationFinalizers++
+      // Only a real event-loop yield lets this timer deliver cancellation between
+      // CPU chunks. A token check or a chain of microtasks would hash through EOF.
+      const cancelAtTask = yield* Deferred.make<void>()
+      let cancellationReads = 0
+      let cancellationFinalizers = 0
+      let clearCancelTask: (() => void) | undefined
+      yield* Effect.addFinalizer(() => Effect.sync(() => clearCancelTask?.()))
+      const cancellable = yield* Interop.hostSource('abortable', {
+        read: () => Effect.succeed(bytes),
+        readRange: (_path, offset) =>
+          Effect.acquireRelease(
+            Effect.sync(() => {
+              cancellationReads++
+              if (cancellationReads === 1) {
+                const task = setTimeout(() => Deferred.doneUnsafe(cancelAtTask, Effect.void), 0)
+                clearCancelTask = () => clearTimeout(task)
+              }
+              return bytes.subarray(Number(offset), Number(offset) + 1)
             }),
-        ),
-    })
-    const hashing = yield* fixture.hashRanges(cancellable, '/cancel', 2).pipe(Effect.forkChild)
-    yield* Deferred.await(cancelAtTask)
-    yield* Fiber.interrupt(hashing)
-    const cancelled = yield* Fiber.await(hashing)
-    assert.ok(Exit.isFailure(cancelled), 'timer cancellation reaches the still-running Rust job')
-    assert.equal(cancellationReads, 1, 'cancellation after the yield prevents the next CPU chunk')
-    assert.equal(
-      cancellationFinalizers,
-      1,
-      'cancel acknowledgement includes host Effect finalizers',
-    )
-    yield* cancellable.quiesce
-    assert.equal(
-      yield* cancellable.live,
-      0,
-      'yield and read callbacks are quiescent before release',
-    )
-    const beforePanic = yield* fixture.counterDrops()
-    const panicking = yield* fixture.counter(7)
-    const sibling = yield* fixture.counter(8)
-    const panicExit = yield* Effect.exit(panicking.panic())
-    assert.ok(Exit.isFailure(panicExit) && Cause.hasDies(panicExit.cause), 'resource panic is a defect')
-    const staleExit = yield* Effect.exit(sibling.value())
-    assert.ok(Exit.isFailure(staleExit) && String(staleExit.cause).includes('retired'), 'one panic rejects sibling resources')
-    yield* panicking.close
-    yield* sibling.close
-    assert.equal(yield* fixture.add(2, 3), 5, 'ordinary exports use the rebuilt generation')
-    // Native unwinding permits Drop of both resources at retirement. Wasm
-    // retirement discards the whole poisoned instance, not Rust destructors.
-    const afterPanic = yield* fixture.counterDrops()
-    assert.equal(afterPanic, transport === 'wasm' ? 0 : beforePanic + 2, 'retirement has truthful wasm/native Drop semantics')
-    const fresh = yield* fixture.counter(9)
-    assert.equal(yield* fresh.value(), 9)
-    yield* fresh.close
-    assert.equal(yield* fixture.counterDrops(), afterPanic + 1)
-    return quote.receipt.totalCents
-  }),
-)
+            () =>
+              Effect.promise(async () => {
+                await Promise.resolve()
+                cancellationFinalizers++
+              }),
+          ),
+      })
+      const hashing = yield* fixture.hashRanges(cancellable, '/cancel', 2).pipe(Effect.forkChild)
+      yield* Deferred.await(cancelAtTask)
+      yield* Fiber.interrupt(hashing)
+      const cancelled = yield* Fiber.await(hashing)
+      assert.ok(Exit.isFailure(cancelled), 'timer cancellation reaches the still-running Rust job')
+      assert.equal(cancellationReads, 1, 'cancellation after the yield prevents the next CPU chunk')
+      assert.equal(
+        cancellationFinalizers,
+        1,
+        'cancel acknowledgement includes host Effect finalizers',
+      )
+      yield* cancellable.quiesce
+      assert.equal(
+        yield* cancellable.live,
+        0,
+        'yield and read callbacks are quiescent before release',
+      )
+      const beforePanic = yield* fixture.counterDrops()
+      const panicking = yield* fixture.counter(7)
+      const sibling = yield* fixture.counter(8)
+      const panicExit = yield* Effect.exit(panicking.panic())
+      assert.ok(
+        Exit.isFailure(panicExit) && Cause.hasDies(panicExit.cause),
+        'resource panic is a defect',
+      )
+      const staleExit = yield* Effect.exit(sibling.value())
+      assert.ok(
+        Exit.isFailure(staleExit) && String(staleExit.cause).includes('retired'),
+        'one panic rejects sibling resources',
+      )
+      yield* panicking.close
+      yield* sibling.close
+      assert.equal(yield* fixture.add(2, 3), 5, 'ordinary exports use the rebuilt generation')
+      // Native unwinding permits Drop of both resources at retirement. Wasm
+      // retirement discards the whole poisoned instance, not Rust destructors.
+      const afterPanic = yield* fixture.counterDrops()
+      assert.equal(
+        afterPanic,
+        transport === 'wasm' ? 0 : beforePanic + 2,
+        'retirement has truthful wasm/native Drop semantics',
+      )
+      const fresh = yield* fixture.counter(9)
+      assert.equal(yield* fresh.value(), 9)
+      yield* fresh.close
+      assert.equal(yield* fixture.counterDrops(), afterPanic + 1)
+      return quote.receipt.totalCents
+    }),
+  )
 const runtime = process.versions.bun === undefined ? 'node' : 'bun'
 const collectors = globalThis as typeof globalThis & {
   readonly Bun?: { readonly gc: (full: boolean) => void }
@@ -332,7 +385,11 @@ const collectors = globalThis as typeof globalThis & {
 const collect = runtime === 'bun' ? () => collectors.Bun!.gc(true) : collectors.gc
 assert.equal(typeof collect, 'function', 'Run Node with --expose-gc for the retirement regression')
 for (const [transport, name, layer] of [
-  ['wasm', `layerWasm.${runtime}`, EffectRustFixture.layerWasm[runtime]({ panicPolicy: 'rebuild' })],
+  [
+    'wasm',
+    `layerWasm.${runtime}`,
+    EffectRustFixture.layerWasm[runtime]({ panicPolicy: 'rebuild' }),
+  ],
   ['native', `layerNative.${runtime}`, EffectRustFixture.layerNative[runtime]()],
 ] as const) {
   // eslint-disable-next-line no-await-in-loop -- Verify and release the wasm runtime before starting native verification, preserving ordered fail-fast execution.

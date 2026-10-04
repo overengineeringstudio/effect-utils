@@ -206,7 +206,11 @@ export const makeIRCodec = (
           string(value)
           break
         case 'f32': {
-          if (typeof value !== 'number' || Number.isFinite(value) === false || Object.is(Math.fround(value), value) === false)
+          if (
+            typeof value !== 'number' ||
+            Number.isFinite(value) === false ||
+            Object.is(Math.fround(value), value) === false
+          )
             throw new FrameError(size, 'Expected finite binary32')
           const bytes = new Uint8Array(4)
           new DataView(bytes.buffer).setFloat32(0, value, true)
@@ -358,7 +362,8 @@ export const makeIRCodec = (
           if (cursor + 4 > bytes.length) throw new FrameError(cursor, 'Truncated binary32')
           const value = new DataView(bytes.buffer, bytes.byteOffset + cursor, 4).getFloat32(0, true)
           cursor += 4
-          if (Number.isFinite(value) === false) throw new FrameError(cursor - 4, 'Non-finite binary32')
+          if (Number.isFinite(value) === false)
+            throw new FrameError(cursor - 4, 'Non-finite binary32')
           return value
         }
         case 'int': {

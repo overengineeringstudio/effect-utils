@@ -32,7 +32,9 @@ const load = async (absolute) => {
 
 const withoutFetch = async (run) => {
   const nativeFetch = globalThis.fetch
-  globalThis.fetch = () => { throw new Error(`${runtime} package initialization must not fetch wasm`) }
+  globalThis.fetch = () => {
+    throw new Error(`${runtime} package initialization must not fetch wasm`)
+  }
   try {
     return await run()
   } finally {
@@ -169,7 +171,9 @@ const checkHashModes = async (api) => {
   )
   assert.deepEqual([...(await eof.result)], [])
   const oversized = api.readRange(async () => Buffer.from('ab'), '/bad', 0n, 1)
-  await assert.rejects(oversized.result, (error) => /response exceeds maxBytes/.test(error.rustError?.message))
+  await assert.rejects(oversized.result, (error) =>
+    /response exceeds maxBytes/.test(error.rustError?.message),
+  )
   let invalidCalls = 0
   const invalidBound = api.readRange(
     async () => {
@@ -180,7 +184,9 @@ const checkHashModes = async (api) => {
     0n,
     0,
   )
-  await assert.rejects(invalidBound.result, (error) => /maxBytes must be positive/.test(error.rustError?.message))
+  await assert.rejects(invalidBound.result, (error) =>
+    /maxBytes must be positive/.test(error.rustError?.message),
+  )
   assert.equal(invalidCalls, 0)
   const chunkOffsets = []
   const chunked = api.hashRanges(
@@ -205,7 +211,9 @@ const checkHashModes = async (api) => {
     '/bad-yield',
     1,
   )
-  await assert.rejects(invalidYield.result, (error) => /yield must return an empty acknowledgement/.test(error.rustError?.message))
+  await assert.rejects(invalidYield.result, (error) =>
+    /yield must return an empty acknowledgement/.test(error.rustError?.message),
+  )
 }
 
 const checkMathModes = (api) => {
@@ -228,7 +236,10 @@ const checkMathModes = (api) => {
   assert.deepEqual([...chunks.next(3)], [7, 8, 9])
   assert.equal(chunks.next(3), undefined)
   chunks.close()
-  assert.throws(() => api.chunks(10, 0), (error) => error.rustError?.reason === 'InvalidChunkSize')
+  assert.throws(
+    () => api.chunks(10, 0),
+    (error) => error.rustError?.reason === 'InvalidChunkSize',
+  )
   const frame = Buffer.alloc(18)
   frame.writeUInt32LE(4026459905, 0)
   frame.writeUInt16LE(1, 4)
@@ -258,10 +269,7 @@ const checkMathModes = (api) => {
     },
   })
   assert.deepEqual(
-    api.quoteOrder(
-      { ...order, note: null },
-      { kind: 'fixed', amountCents: 18446744073709551615n },
-    ),
+    api.quoteOrder({ ...order, note: null }, { kind: 'fixed', amountCents: 18446744073709551615n }),
     { kind: 'free', orderId: 9007199254740993n },
   )
   assert.throws(() => api.quoteOrder({ ...order, sku: 'abc' }, { kind: 'none' }), /RUST_INPUT:/)
@@ -288,8 +296,16 @@ const checkMathModes = (api) => {
   for (const value of [NaN, Infinity, -Infinity, 3.5e38]) {
     assert.throws(() => api.roundTripFloat({ value }), /RUST_INPUT:/)
   }
-  for (const unsigned of [9007199254740991n, 9007199254740992n, 9007199254740993n, 18446744073709551615n]) {
-    assert.deepEqual(api.roundTripWide({ unsigned, signed: -9223372036854775808n }), { unsigned, signed: -9223372036854775808n })
+  for (const unsigned of [
+    9007199254740991n,
+    9007199254740992n,
+    9007199254740993n,
+    18446744073709551615n,
+  ]) {
+    assert.deepEqual(api.roundTripWide({ unsigned, signed: -9223372036854775808n }), {
+      unsigned,
+      signed: -9223372036854775808n,
+    })
   }
   for (const unsigned of ['1', 1, -1n, 18446744073709551616n]) {
     assert.throws(() => api.roundTripWide({ unsigned, signed: 0n }), /RUST_INPUT:/)
@@ -297,15 +313,29 @@ const checkMathModes = (api) => {
   for (const signed of [-9223372036854775809n, 9223372036854775808n]) {
     assert.throws(() => api.roundTripWide({ unsigned: 0n, signed }), /RUST_INPUT:/)
   }
-  const record = Object.fromEntries([['a\u0000b', 1], ['__proto__', 2], ['constructor', 3]])
+  const record = Object.fromEntries([
+    ['a\u0000b', 1],
+    ['__proto__', 2],
+    ['constructor', 3],
+  ])
   const returned = api.roundTripRecord(record)
   assert.deepEqual(returned, record)
   assert.equal(Object.getPrototypeOf(returned), Object.prototype)
-  assert.throws(() => api.quoteOrder({ ...order, placedAt: order.placedAt + 0.5 }, { kind: 'none' }), /RUST_INPUT:/)
-  assert.throws(() => api.wideFailure(18446744073709551615n, -9223372036854775808n), (error) => {
-    assert.deepEqual(error.rustError, { reason: 'WideBounds', unsigned: 18446744073709551615n, signed: -9223372036854775808n })
-    return true
-  })
+  assert.throws(
+    () => api.quoteOrder({ ...order, placedAt: order.placedAt + 0.5 }, { kind: 'none' }),
+    /RUST_INPUT:/,
+  )
+  assert.throws(
+    () => api.wideFailure(18446744073709551615n, -9223372036854775808n),
+    (error) => {
+      assert.deepEqual(error.rustError, {
+        reason: 'WideBounds',
+        unsigned: 18446744073709551615n,
+        signed: -9223372036854775808n,
+      })
+      return true
+    },
+  )
 }
 
 const checkManifest = ({ directory }) => {

@@ -561,9 +561,21 @@ export const importRustSchema = (
         allowed({ node, keys: ['type'], path })
         return { kind: 'bool' }
       case 'number':
-        allowed({ node, keys: ['type', 'format', 'x-effect-rust-width', 'x-effect-rust-nonfinite'], path })
-        if (node.format !== 'float' || node['x-effect-rust-width'] !== 'f32' || node['x-effect-rust-nonfinite'] !== 'reject')
-          return reject(path, 'Unregistered floating-point policy', 'Use explicit finite binary32 width and non-finite rejection')
+        allowed({
+          node,
+          keys: ['type', 'format', 'x-effect-rust-width', 'x-effect-rust-nonfinite'],
+          path,
+        })
+        if (
+          node.format !== 'float' ||
+          node['x-effect-rust-width'] !== 'f32' ||
+          node['x-effect-rust-nonfinite'] !== 'reject'
+        )
+          return reject(
+            path,
+            'Unregistered floating-point policy',
+            'Use explicit finite binary32 width and non-finite rejection',
+          )
         return { kind: 'f32' }
       case 'integer': {
         allowed({

@@ -13,7 +13,6 @@ export const valueCodec = <TSchema extends Schema.ConstraintCodec<unknown>>(
 export { canonicalJson, parseJson, JsonError } from './json.ts'
 export { tagKeys } from './discriminator.ts'
 
-
 const jsonEffect = <TValue>(run: () => TValue): Effect.Effect<TValue, SchemaIssue.Issue> =>
   Effect.try({
     try: run,
@@ -45,10 +44,7 @@ export const codec = <TSchema extends Schema.ConstraintCodec<unknown>>(
         encode: (value) =>
           Effect.flatMap(
             encodeValue(prepare({ ast: SchemaAST.toType(values.ast), input: value })),
-            (encoded) =>
-              jsonEffect(() =>
-                canonicalJson(omitOptional(encoded), keys, true),
-              ),
+            (encoded) => jsonEffect(() => canonicalJson(omitOptional(encoded), keys, true)),
           ),
       }),
     ),

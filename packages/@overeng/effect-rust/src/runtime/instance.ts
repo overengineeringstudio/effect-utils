@@ -526,9 +526,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       }
     }
     return Effect.suspend(() =>
-      current === undefined
-        ? Effect.flatMap(generationEffect, invoke)
-        : invoke(current),
+      current === undefined ? Effect.flatMap(generationEffect, invoke) : invoke(current),
     )
   }
 

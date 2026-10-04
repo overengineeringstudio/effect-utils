@@ -437,10 +437,14 @@ impl Serialize for Canonical<'_> {
                 for value in array { seq.serialize_element(&Canonical(value))?; }
                 seq.end()
             }
-            ${features.f32 === true ? String.raw`serde_json::Value::Number(number) if number.is_f64() => {
+            ${
+              features.f32 === true
+                ? String.raw`serde_json::Value::Number(number) if number.is_f64() => {
                 let text = ryu_js::Buffer::new().format_finite(number.as_f64().expect("finite number")).to_owned();
                 serde_json::value::RawValue::from_string(text).map_err(serde::ser::Error::custom)?.serialize(serializer)
-            }` : ''}
+            }`
+                : ''
+            }
             other => other.serialize(serializer),
         }
     }

@@ -89,9 +89,13 @@ if (manifests.some((other) => isDeepStrictEqual(other, manifest) === false) === 
   )
 const { exports: exportEntries, errors } = manifest
 const constructors = exportEntries.filter((entry) => entry.resource?.role === 'constructor')
-const topLevelEntries = exportEntries.filter((entry) => entry.resource === undefined || entry.resource.role === 'constructor')
+const topLevelEntries = exportEntries.filter(
+  (entry) => entry.resource === undefined || entry.resource.role === 'constructor',
+)
 const resourceMethods = (entry: Export): readonly Export[] =>
-  exportEntries.filter((method) => method.resource?.role === 'method' && method.resource.name === entry.resource?.name)
+  exportEntries.filter(
+    (method) => method.resource?.role === 'method' && method.resource.name === entry.resource?.name,
+  )
 
 // Schema records are produced by schemars inside the built product. Prefer the
 // sandboxed wasm instance; the native addon is used when no wasm product exists.
@@ -274,10 +278,22 @@ const decoders = new Set(
 const syncEntry = (entry: Export): boolean =>
   (entry.mode === 'sync' || entry.mode === 'borrowed' || entry.mode === 'frame') &&
   entry.resource === undefined
-const syncEncodes = exportEntries.some((entry) => syncEntry(entry) && entry.args.some((arg) => codec({ entry, position: arg.name }) !== undefined))
-const asyncEncodes = exportEntries.some((entry) => !syncEntry(entry) && entry.args.some((arg) => codec({ entry, position: arg.name }) !== undefined))
-const syncDecodes = exportEntries.some((entry) => syncEntry(entry) && codec({ entry, position: '$returns' }) !== undefined)
-const asyncDecodes = exportEntries.some((entry) => !syncEntry(entry) && codec({ entry, position: '$returns' }) !== undefined)
+const syncEncodes = exportEntries.some(
+  (entry) =>
+    syncEntry(entry) &&
+    entry.args.some((arg) => codec({ entry, position: arg.name }) !== undefined),
+)
+const asyncEncodes = exportEntries.some(
+  (entry) =>
+    !syncEntry(entry) &&
+    entry.args.some((arg) => codec({ entry, position: arg.name }) !== undefined),
+)
+const syncDecodes = exportEntries.some(
+  (entry) => syncEntry(entry) && codec({ entry, position: '$returns' }) !== undefined,
+)
+const asyncDecodes = exportEntries.some(
+  (entry) => !syncEntry(entry) && codec({ entry, position: '$returns' }) !== undefined,
+)
 const sinkDecodes = exportEntries.some(
   (entry) => entry.mode === 'input_stream' && codec({ entry, position: '$returns' }) !== undefined,
 )
@@ -315,14 +331,30 @@ if (codecs.size > 0) {
     ...(encoders.size === 0
       ? []
       : [
-          ...(asyncEncodes ? ['const encodeInput = <A>(operation: string, encode: () => A) => Effect.try({ try: encode, catch: (cause) => new Interop.Input({ operation, message: message(cause), cause }) })'] : []),
-          ...(syncEncodes ? ['const encodeInputSync = <A>(operation: string, encode: () => A): A => { try { return encode() } catch (cause) { throw new Interop.Input({ operation, message: message(cause), cause }) } }'] : []),
+          ...(asyncEncodes
+            ? [
+                'const encodeInput = <A>(operation: string, encode: () => A) => Effect.try({ try: encode, catch: (cause) => new Interop.Input({ operation, message: message(cause), cause }) })',
+              ]
+            : []),
+          ...(syncEncodes
+            ? [
+                'const encodeInputSync = <A>(operation: string, encode: () => A): A => { try { return encode() } catch (cause) { throw new Interop.Input({ operation, message: message(cause), cause }) } }',
+              ]
+            : []),
         ]),
     ...(decoders.size === 0
       ? []
       : [
-          ...(asyncDecodes ? ['const decodeOutput = <A>(operation: string, decode: () => A) => Effect.try({ try: decode, catch: (cause) => new Interop.Transport({ operation, message: message(cause), cause }) })'] : []),
-          ...(syncDecodes ? ['const decodeOutputSync = <A>(operation: string, decode: () => A): A => { try { return decode() } catch (cause) { throw new Interop.Transport({ operation, message: message(cause), cause }) } }'] : []),
+          ...(asyncDecodes
+            ? [
+                'const decodeOutput = <A>(operation: string, decode: () => A) => Effect.try({ try: decode, catch: (cause) => new Interop.Transport({ operation, message: message(cause), cause }) })',
+              ]
+            : []),
+          ...(syncDecodes
+            ? [
+                'const decodeOutputSync = <A>(operation: string, decode: () => A): A => { try { return decode() } catch (cause) { throw new Interop.Transport({ operation, message: message(cause), cause }) } }',
+              ]
+            : []),
         ]),
   )
   preparations.push(
@@ -373,14 +405,24 @@ for (const constructor of constructors) {
   const type = constructor.resource!.type
   source.push(`export interface ${type}Api extends Interop.ResourceHandle {`)
   for (const entry of resourceMethods(constructor)) {
-    const args = entry.args.map((arg) => `${arg.name}: ${apiType({ entry, position: arg.name, wire: arg.type })}`).join(', ')
-    source.push(`  readonly ${entry.resource!.method}: (${args}) => ${apiType({ entry, position: '$returns', wire: entry.returns })}`)
+    const args = entry.args
+      .map((arg) => `${arg.name}: ${apiType({ entry, position: arg.name, wire: arg.type })}`)
+      .join(', ')
+    source.push(
+      `  readonly ${entry.resource!.method}: (${args}) => ${apiType({ entry, position: '$returns', wire: entry.returns })}`,
+    )
   }
   source.push('}', `export interface ${type} {`, '  readonly close: Effect.Effect<void>')
   for (const entry of resourceMethods(constructor)) {
-    const args = entry.args.map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`).join(', ')
-    const error = [entry.error?.name, 'Interop.Input', 'Interop.Transport'].filter((value) => value !== undefined).join(' | ')
-    source.push(`  readonly ${entry.resource!.method}: (${args}) => Effect.Effect<${serviceType({ entry, position: '$returns', wire: entry.returns })}, ${error}>`)
+    const args = entry.args
+      .map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`)
+      .join(', ')
+    const error = [entry.error?.name, 'Interop.Input', 'Interop.Transport']
+      .filter((value) => value !== undefined)
+      .join(' | ')
+    source.push(
+      `  readonly ${entry.resource!.method}: (${args}) => Effect.Effect<${serviceType({ entry, position: '$returns', wire: entry.returns })}, ${error}>`,
+    )
   }
   source.push('}', '')
 }
@@ -392,7 +434,10 @@ for (const entry of topLevelEntries) {
   const args = entry.args
     .map((arg) => `${arg.name}: ${apiType({ entry, position: arg.name, wire: arg.type })}`)
     .join(', ')
-  const result = entry.resource?.role === 'constructor' ? `${entry.resource.type}Api` : apiType({ entry, position: '$returns', wire: entry.returns })
+  const result =
+    entry.resource?.role === 'constructor'
+      ? `${entry.resource.type}Api`
+      : apiType({ entry, position: '$returns', wire: entry.returns })
   const returns =
     entry.mode === 'input_stream'
       ? `Interop.InputHandle<${result}>`
@@ -408,7 +453,10 @@ for (const entry of topLevelEntries) {
   const args = entry.args
     .map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`)
     .join(', ')
-  const result = entry.resource?.role === 'constructor' ? entry.resource.type : serviceType({ entry, position: '$returns', wire: entry.returns })
+  const result =
+    entry.resource?.role === 'constructor'
+      ? entry.resource.type
+      : serviceType({ entry, position: '$returns', wire: entry.returns })
   const error = [entry.error?.name, 'Interop.Input', 'Interop.Transport']
     .filter((type) => type !== undefined)
     .join(' | ')
@@ -416,10 +464,10 @@ for (const entry of topLevelEntries) {
     entry.resource?.role === 'constructor'
       ? `Effect.Effect<${result}, never, Scope.Scope>`
       : entry.mode === 'input_stream'
-      ? `Sink.Sink<${result}, Uint8Array, never, ${error}>`
-      : entry.mode === 'output_stream'
-        ? `Stream.Stream<Uint8Array, ${error}>`
-        : `Effect.Effect<${result}, ${error}>`
+        ? `Sink.Sink<${result}, Uint8Array, never, ${error}>`
+        : entry.mode === 'output_stream'
+          ? `Stream.Stream<Uint8Array, ${error}>`
+          : `Effect.Effect<${result}, ${error}>`
   source.push(`  readonly ${entry.name}: (${args}) => ${returns}`)
 }
 source.push('}', '')
@@ -444,7 +492,9 @@ for (const entry of exportEntries) {
     )
     .join(', ')
   const callOptions = `options_${entry.name}`
-  preparations.push(`  const ${callOptions} = { decodeError: ${entry.error === null ? `(cause: unknown) => decodeBoundary(${operation}, cause)` : `decode${entry.error.name}`} }`)
+  preparations.push(
+    `  const ${callOptions} = { decodeError: ${entry.error === null ? `(cause: unknown) => decodeBoundary(${operation}, cause)` : `decode${entry.error.name}`} }`,
+  )
   const method =
     entry.mode === 'input_stream'
       ? 'inputSink'
@@ -506,15 +556,22 @@ for (const entry of exportEntries) {
   if (sync) {
     methodSource.push(
       `  ${entry.name}: (${args}) => runtime.callSync((api) => {`,
-      ...encoded.map((arg) => `    const ${arg.name}Wire = encodeInputSync(${operation}, () => encode${codec({ entry, position: arg.name })}(${arg.name}))`),
+      ...encoded.map(
+        (arg) =>
+          `    const ${arg.name}Wire = encodeInputSync(${operation}, () => encode${codec({ entry, position: arg.name })}(${arg.name}))`,
+      ),
       resultCodec === undefined
         ? `    return api.${entry.name}(${values})`
         : `    const result = api.${entry.name}(${values})`,
-      ...(resultCodec === undefined ? [] : [`    return decodeOutputSync(${operation}, () => decode${resultCodec}(result))`]),
+      ...(resultCodec === undefined
+        ? []
+        : [`    return decodeOutputSync(${operation}, () => decode${resultCodec}(result))`]),
       `  }, ${callOptions}),`,
     )
   } else if (encoded.length === 0) {
-    methodSource.push(`  ${entry.resource?.method ?? entry.name}: (${args}) => ${start.join('\n')}${decode},`)
+    methodSource.push(
+      `  ${entry.resource?.method ?? entry.name}: (${args}) => ${start.join('\n')}${decode},`,
+    )
   } else if (method === 'call') {
     methodSource.push(
       `  ${entry.resource?.method ?? entry.name}: (${args}) => Effect.gen(function* () {`,
@@ -532,18 +589,30 @@ for (const entry of exportEntries) {
   }
   implementations.set(entry.name, methodSource)
 }
-source.push(`export const make${service} = (runtime: Interop.Runtime<${service}Api>): ${service}Service => {`, '  Interop.assertEffectCohort(Effect)', ...preparations, '  return {')
+source.push(
+  `export const make${service} = (runtime: Interop.Runtime<${service}Api>): ${service}Service => {`,
+  '  Interop.assertEffectCohort(Effect)',
+  ...preparations,
+  '  return {',
+)
 for (const entry of topLevelEntries) {
   if (entry.resource?.role !== 'constructor') {
     source.push(...implementations.get(entry.name)!)
     continue
   }
-  const args = entry.args.map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`).join(', ')
+  const args = entry.args
+    .map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`)
+    .join(', ')
   const encoded = entry.args.filter((arg) => codec({ entry, position: arg.name }) !== undefined)
-  const values = entry.args.map((arg) => encoded.includes(arg) ? `${arg.name}Wire` : arg.name).join(', ')
+  const values = entry.args
+    .map((arg) => (encoded.includes(arg) ? `${arg.name}Wire` : arg.name))
+    .join(', ')
   source.push(
     `  ${entry.name}: (${args}) => Effect.gen(function* () {`,
-    ...encoded.map((arg) => `    const ${arg.name}Wire = yield* encodeInput(${JSON.stringify(entry.name)}, () => encode${codec({ entry, position: arg.name })}(${arg.name})).pipe(Effect.orDie)`),
+    ...encoded.map(
+      (arg) =>
+        `    const ${arg.name}Wire = yield* encodeInput(${JSON.stringify(entry.name)}, () => encode${codec({ entry, position: arg.name })}(${arg.name})).pipe(Effect.orDie)`,
+    ),
     `    const resource = yield* runtime.resource(({ api }) => api.${entry.name}(${values}))`,
     '    return {',
     '      close: resource.close,',

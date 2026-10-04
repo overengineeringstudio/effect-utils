@@ -62,9 +62,16 @@ export const prepare = ({
   }
   if (input instanceof JsonNumber) {
     if (ast._tag !== 'Number') return input
-    if (Schema.resolveAnnotations(Schema.make(ast))?.[width] !== 'f32' &&
-      (Number.isSafeInteger(input.value) === false || /^(0|-?[1-9][0-9]*)$/.test(input.token) === false))
-      throw new JsonError(input.offset, input.path, 'Integer field requires a safe canonical integer token')
+    if (
+      Schema.resolveAnnotations(Schema.make(ast))?.[width] !== 'f32' &&
+      (Number.isSafeInteger(input.value) === false ||
+        /^(0|-?[1-9][0-9]*)$/.test(input.token) === false)
+    )
+      throw new JsonError(
+        input.offset,
+        input.path,
+        'Integer field requires a safe canonical integer token',
+      )
     return input.value
   }
   if (

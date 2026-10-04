@@ -15,16 +15,18 @@ export const F32 = Schema.Finite.check(
   Schema.makeFilter<number>((value) => Number.isFinite(Math.fround(value)), {
     expected: 'finite binary32 input',
   }),
-).annotate({ [width]: 'f32' }).pipe(
-  Schema.decodeTo(
-    Schema.Finite.check(
-      Schema.makeFilter<number>((value) => Number.isFinite(Math.fround(value)), {
-        expected: 'finite binary32 value',
-      }),
-    ),
-    SchemaTransformation.transform({ decode: Math.fround, encode: Math.fround }),
-  ),
 )
+  .annotate({ [width]: 'f32' })
+  .pipe(
+    Schema.decodeTo(
+      Schema.Finite.check(
+        Schema.makeFilter<number>((value) => Number.isFinite(Math.fround(value)), {
+          expected: 'finite binary32 value',
+        }),
+      ),
+      SchemaTransformation.transform({ decode: Math.fround, encode: Math.fround }),
+    ),
+  )
 
 /** Recognition uses the registered transformation, never width metadata alone. */
 export const isF32AST = (ast: SchemaAST.AST): boolean =>

@@ -46,7 +46,9 @@ export {
 /** Generated services and the runtime must share one physical Effect cohort. */
 export const assertEffectCohort = (candidate: typeof Effect): void => {
   if (candidate.succeed !== Effect.succeed || candidate.runSync !== Effect.runSync)
-    throw new Error('effect-rust requires one physical copy of effect; deduplicate generated service and runtime dependencies')
+    throw new Error(
+      'effect-rust requires one physical copy of effect; deduplicate generated service and runtime dependencies',
+    )
 }
 
 /** Instance lifetime policy and constructor for the generated Effect service. */

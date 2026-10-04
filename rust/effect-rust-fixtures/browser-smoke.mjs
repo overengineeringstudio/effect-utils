@@ -7,7 +7,9 @@ const equal = (actual, expected, message) => {
 }
 
 const checkDelivery = async (packageUrl, worker) => {
-  const manifest = await fetch(new URL('package.json', packageUrl)).then((response) => response.json())
+  const manifest = await fetch(new URL('package.json', packageUrl)).then((response) =>
+    response.json(),
+  )
   const entry = (path) => new URL(path, packageUrl).href
   const nativeFetch = globalThis.fetch
   const nativeStreaming = WebAssembly.instantiateStreaming
@@ -61,16 +63,31 @@ const checkDelivery = async (packageUrl, worker) => {
     const second = await loader.load()
     equal(first.api.add(20, 22), 42, 'first fresh external API')
     equal(second.api.add(21, 21), 42, 'second fresh external API')
-    const wide = second.api.roundTripWide({ unsigned: 18446744073709551615n, signed: -9223372036854775808n })
+    const wide = second.api.roundTripWide({
+      unsigned: 18446744073709551615n,
+      signed: -9223372036854775808n,
+    })
     equal(wide.unsigned, 18446744073709551615n, 'direct u64 boundary')
     equal(wide.signed, -9223372036854775808n, 'direct i64 boundary')
-    equal(second.api.roundTripFloat({ value: 0.1 }).value, Math.fround(0.1), 'direct binary32 rounding')
+    equal(
+      second.api.roundTripFloat({ value: 0.1 }).value,
+      Math.fround(0.1),
+      'direct binary32 rounding',
+    )
     let expectedError
-    try { second.api.wideFailure(wide.unsigned, wide.signed) } catch (cause) { expectedError = cause.rustError }
+    try {
+      second.api.wideFailure(wide.unsigned, wide.signed)
+    } catch (cause) {
+      expectedError = cause.rustError
+    }
     equal(expectedError?.unsigned, wide.unsigned, 'structured expected u64 error')
     equal(expectedError?.signed, wide.signed, 'structured expected i64 error')
     let trapped = false
-    try { first.api.panicTest() } catch (cause) { trapped = cause instanceof WebAssembly.RuntimeError }
+    try {
+      first.api.panicTest()
+    } catch (cause) {
+      trapped = cause instanceof WebAssembly.RuntimeError
+    }
     equal(trapped, true, 'first lexical instance traps')
     equal(second.api.add(20, 22), 42, 'trap does not poison another lexical instance')
     first.release()
@@ -93,7 +110,8 @@ export const runBrowserSmoke = async (packageUrl) => {
   const worker = new Worker(import.meta.url, { type: 'module' })
   try {
     const browserWorker = await new Promise((resolve, reject) => {
-      worker.onmessage = ({ data }) => data.error === undefined ? resolve(data.result) : reject(new Error(data.error))
+      worker.onmessage = ({ data }) =>
+        data.error === undefined ? resolve(data.result) : reject(new Error(data.error))
       worker.onerror = (event) => reject(new Error(event.message))
       worker.postMessage(new URL(packageUrl).href)
     })
@@ -105,7 +123,10 @@ export const runBrowserSmoke = async (packageUrl) => {
 
 if (typeof document === 'undefined') {
   self.onmessage = async ({ data }) => {
-    try { self.postMessage({ result: await checkDelivery(new URL(data), true) }) }
-    catch (cause) { self.postMessage({ error: String(cause?.stack ?? cause) }) }
+    try {
+      self.postMessage({ result: await checkDelivery(new URL(data), true) })
+    } catch (cause) {
+      self.postMessage({ error: String(cause?.stack ?? cause) })
+    }
   }
 }

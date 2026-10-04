@@ -84,7 +84,8 @@ export const make = <const TFields extends Schema.Struct.Fields>(
           const domain = numeric === true && typeof value === 'bigint' ? Number(value) : value
           if (
             (numeric === true &&
-              (typeof domain !== 'number' || (width !== 'f32' && Number.isSafeInteger(domain) === false))) ||
+              (typeof domain !== 'number' ||
+                (width !== 'f32' && Number.isSafeInteger(domain) === false))) ||
             is(domain) === false
           )
             throw new FrameError(0, `Value violates column ${key} schema`)

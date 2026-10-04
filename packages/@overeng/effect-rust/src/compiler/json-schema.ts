@@ -40,7 +40,12 @@ export const emitJsonSchema = (ir: ContractIR, root: string): JsonSchemaObject =
       case 'null':
         return { type: 'null' }
       case 'f32':
-        return { type: 'number', format: 'float', 'x-effect-rust-width': 'f32', 'x-effect-rust-nonfinite': 'reject' }
+        return {
+          type: 'number',
+          format: 'float',
+          'x-effect-rust-width': 'f32',
+          'x-effect-rust-nonfinite': 'reject',
+        }
       case 'int': {
         const [minimum, maximum] = integerRanges[value.width]
         return {

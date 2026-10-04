@@ -173,7 +173,14 @@ export const emitRust = (ir: ContractIR, options: RustOptions = {}): RustOutput 
   )
   // Every named definition is emitted as a public contract, including vector-only contracts.
   // Walk nested containers without following refs: their targets are scanned exactly once below.
-  const features = { u64: false, i64: false, f32: false, timestamp: false, patch: false, regex: false }
+  const features = {
+    u64: false,
+    i64: false,
+    f32: false,
+    timestamp: false,
+    patch: false,
+    regex: false,
+  }
   const bounded = new Set<Width | 'number-u64' | 'number-i64'>()
   const collectFeatures = (type: Type): void => {
     if (type.kind === 'int' && (type.width === 'u64' || type.width === 'i64')) {

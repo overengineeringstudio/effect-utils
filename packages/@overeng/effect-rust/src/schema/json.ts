@@ -155,7 +155,11 @@ export const parseJson = (text: string, preserveNumberLexemes = false): unknown 
  * discriminator set, matching the generated Rust `TAG_FIELDS`. Decoders accept any key order.
  */
 // eslint-disable-next-line overeng/named-args -- Preserve the public canonicalJson positional SDK signature.
-export const canonicalJson = (input: unknown, tagKeys: readonly string[] = ['_tag'], numericFloats = false): string => {
+export const canonicalJson = (
+  input: unknown,
+  tagKeys: readonly string[] = ['_tag'],
+  numericFloats = false,
+): string => {
   const seen = new Set<object>()
   const encode = ({
     value,
@@ -179,7 +183,9 @@ export const canonicalJson = (input: unknown, tagKeys: readonly string[] = ['_ta
       if (
         Number.isFinite(value) === false ||
         (numericFloats === false && Object.is(value, -0) === true) ||
-        (numericFloats === false && Number.isInteger(value) === true && Number.isSafeInteger(value) === false)
+        (numericFloats === false &&
+          Number.isInteger(value) === true &&
+          Number.isSafeInteger(value) === false)
       )
         fail('Non-I-JSON number')
       return JSON.stringify(value)

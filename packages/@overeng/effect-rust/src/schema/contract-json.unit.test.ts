@@ -205,7 +205,12 @@ describe('Borsh frames and Columns', () => {
       expect(framed.decode(bytes)).toBe(Math.fround(value))
       expect(framed.trusted.decode(bytes)).toBe(Math.fround(value))
     }
-    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 3.4028236e38]) {
+    for (const value of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      3.4028236e38,
+    ]) {
       expect(() => framed.encode(value)).toThrow()
       expect(() => framed.trusted.encode(value)).toThrow()
     }

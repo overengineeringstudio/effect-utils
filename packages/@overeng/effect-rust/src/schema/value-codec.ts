@@ -1,8 +1,8 @@
 import { Schema, SchemaAST } from 'effect'
 
 import { lower } from '../compiler/lower.ts'
-import { isTimestampAST, validTimestampMillis } from './timestamp.ts'
 import { scalarString } from './json.ts'
+import { isTimestampAST, validTimestampMillis } from './timestamp.ts'
 
 /** Derives only admitted leaves; metadata never makes an arbitrary transformation portable. */
 export const makeValueCodec = <TSchema extends Schema.ConstraintCodec<unknown>>({
@@ -34,25 +34,28 @@ export const makeValueCodec = <TSchema extends Schema.ConstraintCodec<unknown>>(
         }),
       ).pipe(Schema.decodeTo(Schema.BigIntFromString), Schema.decodeTo(Schema.make(ast))).ast
     } else if (isTimestampAST(ast) === true) {
-      output = transport === 'json'
-        ? Schema.make<Schema.Codec<string>>(
-            withKeyContext({
-              ast: Schema.String.check(
-                Schema.makeFilter(validTimestampMillis, {
-                  expected: 'RFC3339 with explicit offset and exact millisecond precision',
-                }),
-              ).ast,
-              context: ast.context,
-            }),
-          ).pipe(Schema.decodeTo(Schema.DateTimeUtcFromString), Schema.decodeTo(Schema.make(ast))).ast
-        : Schema.make<Schema.Codec<number>>(
-            withKeyContext({
-              ast: Schema.Int.check(
-                Schema.isBetween({ minimum: -62167219200000, maximum: 253402300799999 }),
-              ).ast,
-              context: ast.context,
-            }),
-          ).pipe(Schema.decodeTo(Schema.DateTimeUtcFromMillis), Schema.decodeTo(Schema.make(ast))).ast
+      output =
+        transport === 'json'
+          ? Schema.make<Schema.Codec<string>>(
+              withKeyContext({
+                ast: Schema.String.check(
+                  Schema.makeFilter(validTimestampMillis, {
+                    expected: 'RFC3339 with explicit offset and exact millisecond precision',
+                  }),
+                ).ast,
+                context: ast.context,
+              }),
+            ).pipe(Schema.decodeTo(Schema.DateTimeUtcFromString), Schema.decodeTo(Schema.make(ast)))
+              .ast
+          : Schema.make<Schema.Codec<number>>(
+              withKeyContext({
+                ast: Schema.Int.check(
+                  Schema.isBetween({ minimum: -62167219200000, maximum: 253402300799999 }),
+                ).ast,
+                context: ast.context,
+              }),
+            ).pipe(Schema.decodeTo(Schema.DateTimeUtcFromMillis), Schema.decodeTo(Schema.make(ast)))
+              .ast
     } else if (ast._tag === 'Suspend') {
       // Keep suspension lazy so recursive ASTs do not expand during derivation.
       output = new SchemaAST.Suspend(
@@ -137,22 +140,28 @@ export const makeOptionalOmitter = (root: SchemaAST.AST): ((value: unknown) => u
       let inner: ((value: unknown) => unknown) | undefined
       implementation = (value) => (inner ??= compile(ast.thunk()))(value)
     } else if (ast._tag === 'Union') {
-      const members = ast.types.map((type) => ({ is: Schema.is(Schema.make(type)), omit: compile(type) }))
+      const members = ast.types.map((type) => ({
+        is: Schema.is(Schema.make(type)),
+        omit: compile(type),
+      }))
       implementation = (value) => members.find((member) => member.is(value))?.omit(value) ?? value
     } else if (ast._tag === 'Arrays' && ast.elements.length === 0 && ast.rest.length === 1) {
       const omit = compile(ast.rest[0]!)
-      implementation = (value) => Array.isArray(value) === true ? value.map(omit) : value
+      implementation = (value) => (Array.isArray(value) === true ? value.map(omit) : value)
     } else if (ast._tag === 'Objects') {
-      const fields = new Map(ast.propertySignatures.map((field) => [
-        String(field.name),
-        { optional: SchemaAST.isOptional(field.type), omit: compile(field.type) },
-      ]))
+      const fields = new Map(
+        ast.propertySignatures.map((field) => [
+          String(field.name),
+          { optional: SchemaAST.isOptional(field.type), omit: compile(field.type) },
+        ]),
+      )
       const indexes = ast.indexSignatures.map((signature) => ({
         is: Schema.is(Schema.make(signature.parameter)),
         omit: compile(signature.type),
       }))
       implementation = (value) => {
-        if (typeof value !== 'object' || value === null || Array.isArray(value) === true) return value
+        if (typeof value !== 'object' || value === null || Array.isArray(value) === true)
+          return value
         const output: Record<string, unknown> = {}
         for (const [key, item] of Object.entries(value)) {
           const field = fields.get(key)
