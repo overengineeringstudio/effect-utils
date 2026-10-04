@@ -21,6 +21,63 @@ const fingerprintTool = ((): string => {
 })()
 
 describe('JavaScript runner', () => {
+  it('ignores ambient environment, dotenv discovery and package Bun preloads', async () => {
+    const root = await mkdtemp(join(realpathSync(tmpdir()), 'javascript-runner-startup-'))
+    const packageTree = join(root, 'package-tree')
+    try {
+      await mkdir(packageTree)
+      await Promise.all([
+        writeFile(join(packageTree, '.env'), 'Q17_DOTENV=leaked\n'),
+        writeFile(join(packageTree, 'bunfig.toml'), 'preload = ["./preload.ts"]\n'),
+        writeFile(join(packageTree, 'preload.ts'), 'process.env.Q17_PRELOAD = "leaked"\n'),
+        writeFile(
+          join(packageTree, 'probe.ts'),
+          `console.log(JSON.stringify({
+ambient: process.env.Q17_AMBIENT ?? null,
+dotenv: process.env.Q17_DOTENV ?? null,
+preload: process.env.Q17_PRELOAD ?? null,
+declared: process.env.DECLARED,
+}))`,
+        ),
+      ])
+      const child = Bun.spawn(
+        [
+          bun,
+          runner,
+          'exec',
+          bun,
+          packageTree,
+          'probe.ts',
+          '--fingerprint-tool',
+          fingerprintTool,
+          '--env',
+          'DECLARED',
+          'literal',
+        ],
+        {
+          env: { ...process.env, BUCK_SCRATCH_PATH: join(root, 'scratch'), Q17_AMBIENT: 'leaked' },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [stdout, stderr, status] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(status, stderr).toBe(0)
+      expect(JSON.parse(stdout)).toEqual({
+        ambient: null,
+        dotenv: null,
+        preload: null,
+        declared: 'literal',
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('creates a declared nested writable directory before launching the command', async () => {
     const root = await mkdtemp(
       join(realpathSync(tmpdir()), 'javascript-runner-writable-directory-'),
