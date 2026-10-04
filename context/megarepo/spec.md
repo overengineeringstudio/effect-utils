@@ -22,8 +22,8 @@ hierarchy.
 
 **Does not define:** the buck2-facing composition contract — the standalone
 root shape, cell identity, action-identity hygiene, and the rule that source
-mounts are never cells (`COMP-R*`) live in
-[../buck2/05-composition/](../buck2/05-composition/requirements.md) and are
+mounts are never cells (`BUILD.BUCK.ROOT-R*`) live in
+[../buck2/05-composition/](../builds/04-buck2/03-consumer-roots/requirements.md) and are
 referenced here, never restated. Nor does it define buck2 execution,
 materialization, or cache wiring (`../buck2/02-*` … `../buck2/04-*`).
 
@@ -126,8 +126,8 @@ resolve to _keep_.
 `repos/<name>` becomes a symlink to the store worktree that satisfies its lock
 entry, and each local-path member's to its path. A mount is a source checkout
 for reading, editing, and running the member's own tooling; it is never a Buck
-cell (COMP-R02 in
-[../buck2/05-composition/](../buck2/05-composition/requirements.md)).
+cell (BUILD.BUCK.ROOT-R02 in
+[../buck2/05-composition/](../builds/04-buck2/03-consumer-roots/requirements.md)).
 
 A branch worktree resolves to its canonical store path `P` only when Git's
 registration agrees: the branch is registered exactly at `P`, or nowhere while

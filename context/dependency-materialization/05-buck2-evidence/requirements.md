@@ -4,7 +4,7 @@
 
 This subsystem refines the dependency-materialization contract for dependency
 facts consumed by Buck targets. The canonical repository-build architecture now
-lives at [`context/buck2`](../../buck2/).
+lives at [`context/builds`](../../builds/).
 
 This node owns only the join between Dependency Materialization identities and
 Buck's semantic graph. It does not own general Buck authority, language
@@ -18,7 +18,7 @@ actions, toolchains, artifacts, Nix import, observability, or admission.
   and task closures use the identities defined by the parent dependency-
   materialization requirements.
 - **A02 Semantic graph:** Buck target and operation identity follow
-  [`BUCK.GRAPH`](../../buck2/01-semantic-graph/requirements.md).
+  [`BUCK.GRAPH`](../../builds/04-buck2/01-semantic-graph/requirements.md).
 - **A03 No live repair:** An authoritative Buck action consumes immutable
   dependency projections and never owns live package-manager repair or GC.
 

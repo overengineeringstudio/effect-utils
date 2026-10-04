@@ -42,7 +42,7 @@ cache warm, and the fail-closed primitive makes never-zero / never-many a
 build-time property rather than a review check. The rollout order follows disk
 risk: the highest-writer-count consumer first.
 
-## VRS Impact
+## Intent Impact
 
 Supports `DMP.CICACHE-R03`/`R04` (single writer, fail-closed primitive) and the
 `0001` decision that single-writer is a callable primitive, not an inherited

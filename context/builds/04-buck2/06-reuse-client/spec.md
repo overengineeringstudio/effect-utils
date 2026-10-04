@@ -1,0 +1,108 @@
+# Reuse Spec
+
+This document specifies the client contract for the shared cache and the
+verification of reuse claims. It builds on [requirements.md](./requirements.md).
+
+## Status
+
+Draft.
+
+## Scope
+
+**Defines:** client wiring, executor configuration, and reuse verification.
+
+**Does not define:** service deployment (dotfiles#2009), consumer admission
+sequencing (effect-utils#1054), or remote execution (deferred; see roadmap).
+
+## Client Contract
+
+Protocol initialization follows [the cache contract](../../02-cache-contract/spec.md#re-client-initialization).
+All client configuration, including the overlay below, must exist in
+`.buckconfig.local` **before daemon startup**. `--config-file` and `--config`
+do not configure the RE client. Change posture by stopping the daemon and
+starting with the new file and environment ([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)).
+
+```ini
+# tracked buckconfig: the repository's trust tier, read-only (decision 0033);
+# -c CLI overrides do not reach the RE client
+[buck2]
+digest_algorithms = SHA256
+allow_cache_uploads = false
+[buck2_re_client]
+engine_address = grpc://<tier-host>:<port>
+action_cache_address = grpc://<tier-host>:<port>
+cas_address = grpc://<tier-host>:<port>
+instance_name = <repo-name>
+tls = <true for the public tier>
+```
+
+`mkConsumerBuckRoot` renders all three client addresses whenever remote client
+configuration is supplied, including when `remoteCacheEnabled = false`. Its
+optional `engineAddress` parameter defaults to `null`; a null value resolves to
+`actionCacheAddress`, matching this contract's shared tier endpoint. Consumers
+with a distinct engine endpoint set `engineAddress` explicitly. The action
+cache address, CAS address, instance name, and TLS flag must be supplied
+together; the resolved engine address must be a string. Buck requires the engine
+address to initialize its RE client even for cache-only local execution.
+
+Public effect-utils uses the public tier. An authorized tailnet writer or protected public publisher holding
+`BUCK2_CACHE_WRITE_BASIC_AUTH` gets an untracked `.buckconfig.local` overlay
+(`scripts/buck2-cache-posture.ts`) that sets `allow_cache_uploads = true`,
+`default_allow_cache_upload = true`, and
+`http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH`. Buck
+expands the variable in the daemon, so no credential value is written to a file.
+
+Executor platforms set `remote_enabled = False` and read `remote_cache_enabled`
+and `allow_cache_uploads` from the root config (cache-only: local execution,
+remote reuse). `BUCK2_NO_REMOTE_CACHE=1` selects a local overlay that sets
+`remote_cache_enabled = false` and disables uploads independently of the
+public read-only and protected publisher postures (BUILD.BUCK.REUSE-R04).
+
+## Reuse Verification
+
+Reuse claims are verified from Buck-native evidence (cache-hit classes in the
+build report and event log), not from wall-clock inference:
+
+1. Populate: build an admitted target in context A.
+2. Wipe: `buck2 kill` and remove `buck-out` in context B (second worktree or
+   second machine, same platform, same revision).
+3. Rebuild in B: assert zero locally executed actions for unchanged targets
+   (BUILD.BUCK.REUSE-R02); investigate any miss as a key regression using action-digest
+   comparison from the event log.
+
+Budget measurements (BUILD.BUCK.REUSE-R03)
+run on a quiet host or record load context; contention-dominated numbers are
+not regressions.
+
+### Action reuse versus verdict reuse
+
+| Claim                   | Required native evidence                                                                           | Insufficient evidence                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Compile/action reuse    | Action-cache hits, zero unchanged command executions and matching configured keys                  | Fast wall-clock alone                            |
+| Unit-test verdict reuse | Cache hits for verdict-producing build actions and equal pass/fail reports without suite execution | Compile hits or local test orchestration success |
+
+Populate and replay deterministic passing and failing suites from
+[execution's verdict actions](../05-execution/spec.md#cacheable-unit-test-verdict-actions).
+A cached failure must still fail the caller's gate; relevant source/runner/policy
+mutations invalidate it, and irrelevant mutations do not. Flaky tests and
+host-dependent lanes are uncached; they are not deterministic admitted targets.
+[#1601](https://github.com/overengineeringstudio/effect-utils/pull/1601) fixes proof
+index/enum handling; the test-verdict half waits on
+[#1600](https://github.com/overengineeringstudio/effect-utils/issues/1600).
+
+### Lane budget measurements
+
+Record edit-run, quick check, full tests and platform/host proof separately. For
+each lane record platform, revision, target closure, cache posture, warm no-op,
+fresh-context warm-cache time and host load. No 5-second/3-minute universal budget
+is substituted for a measured lane budget (axe record `uttvbj`).
+
+## Open Design Questions
+
+- **BUILD.BUCK.REUSE-DQ01 Lane budget values:** Blocked on the first honest
+  measurement pass across all four lanes. Resolve with published measurements
+  and accepted per-lane limits; values are intentionally unset.
+- **BUILD.BUCK.REUSE-DQ02 Writer attribution and purge integration:** Blocked on
+  consumer/service designs for revocable per-host credentials, authenticated
+  action-key logging and targeted AC purge. A worker-name field or IP log is
+  insufficient attribution; instance names alone do not isolate keys.

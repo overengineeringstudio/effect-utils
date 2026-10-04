@@ -21,7 +21,7 @@ The Store Cache alone was not the complete hot-state boundary in that historical
 realization. Current CI remains job-local, and any future reusable artifact must
 derive its boundary from declared identity rather than ambient pnpm home state.
 
-## VRS Impact
+## Intent Impact
 
 Supports DMP.LIVE-R10's job-local CI boundary and DMP-R24's requirement for a
 declared Hermetic Dependency Artifact identity.

@@ -38,7 +38,7 @@ follow `effect-utils/nixpkgs` and `effect-utils/flake-utils` to share the canoni
 build graph.
 
 The Buck-to-Nix product contract is specified in
-[`context/buck2/06-nix-bridge`](../../context/buck2/06-nix-bridge/spec.md).
+[`context/builds/05-product-distribution/02-nix-bridge`](../../context/builds/05-product-distribution/02-nix-bridge/spec.md).
 `nix/buck2-products/pnpm-archives.nix` acquires immutable per-package archives;
 it does not install a workspace dependency tree. Shared native dependency
 classification and audits remain live independently of CLI packaging.

@@ -27,7 +27,7 @@ GC authority or must remain append-only/fail closed. The finding falsifies the
 historical split-`v11/files` implementation; it does not make a shared mutable
 whole-store index satisfy the pure reuse boundary.
 
-## VRS Impact
+## Intent Impact
 
 - Rejects a direct return to split `v11/files` under DMP.STORE-R03 and
   DMP.STORE-R15.

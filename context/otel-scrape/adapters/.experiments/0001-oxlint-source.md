@@ -1,10 +1,16 @@
 # Experiment 0001 — oxlint --format=json source (reference)
 
-**Method:** oxlint 1.39.0 on a throwaway `.ts` with a `debugger` statement and an
+## Question
+
+What structured telemetry or fidelity evidence does the Experiment 0001 — oxlint --format=json source (reference) probe provide?
+
+## Method
+
+oxlint 1.39.0 on a throwaway `.ts` with a `debugger` statement and an
 unused function. Formats offered: checkstyle, default, github, gitlab, json,
 junit, stylish, unix — **no SARIF**.
 
-**Result (sanitized):**
+## Result
 
 ```json
 {
@@ -31,8 +37,15 @@ junit, stylish, unix — **no SARIF**.
 }
 ```
 
-**Conclusion:** declared, stable, needs-render (replaces human stdout). Both
+## Conclusion
+
+declared, stable, needs-render (replaces human stdout). Both
 `severity` values confirmed. No `fixable`/`fix` field. Maps to two events
 `{severity, filename_hash, rule, line}` + count `oxlint.diagnostics`.
 `message`/`filename`/`help`/`url` dropped from all sinks. gitlab's per-diagnostic
 `fingerprint` is the only cross-run-identity signal any format adds (unused now).
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

@@ -164,7 +164,7 @@ rejected hash crawler cost roughly 27 ms more than Watchman on a warm no-op for
 these repository snapshots. Cross-platform Watchman admission and remote
 configured platforms remain follow-up experiments.
 
-## VRS Impact
+## Intent Impact
 
 - Requires Watchman for the current local pnpm workspace; notify and the hash
   crawler retain their RED evidence.

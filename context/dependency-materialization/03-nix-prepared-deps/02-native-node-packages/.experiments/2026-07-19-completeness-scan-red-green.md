@@ -41,7 +41,7 @@ The assertion is non-vacuous and discriminating, and auto-derive reaches every
 family in a real closure. Detecting a real multi-family gap that a hand-written
 list would have under-counted is direct evidence for auto-derive.
 
-## VRS Impact
+## Intent Impact
 
 Supports `DMP.NIX.NATIVE-R08` and `DMP.NIX.NATIVE-R10` (non-vacuous,
 discriminating assertion) and `DMP.NIX.NATIVE-R09` with decision `0007`

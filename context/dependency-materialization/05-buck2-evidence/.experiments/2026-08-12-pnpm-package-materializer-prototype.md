@@ -39,7 +39,7 @@ package or task-closure identities. A future materializer must be introduced
 through a real, bounded Buck action and tested against pnpm reference behavior
 before admission; this experiment does not select its implementation language.
 
-## VRS Impact
+## Intent Impact
 
 The dependency-closure spec now states the implemented boundary explicitly.
 The normative materialization and admission requirements remain unchanged.

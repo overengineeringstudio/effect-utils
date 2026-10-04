@@ -63,9 +63,9 @@ execution disabled.
 ## Amendment 1: Local Execution with Shared-Cache Reuse
 
 Buck decisions
-[0013](../../../buck2/.decisions/0013-shared-cache-foundation.md),
-[0014](../../../buck2/.decisions/0014-megarepo-cell-composition.md), and
-[0015 Amendment 2](../../../buck2/.decisions/0015-buck-owned-dependency-surface.md)
+[0013](../../../builds/.decisions/0013-shared-cache-foundation.md),
+[0014](../../../builds/.decisions/0014-megarepo-cell-composition.md), and
+[0015 Amendment 2](../../../builds/.decisions/0015-buck-owned-dependency-surface.md)
 narrow the blanket cache restriction above for admitted, local-execution
 actions. Decision 0013 requires admitted actions to read and write the shared
 cache; decision 0014 selects canonical `/nix/store` tool paths as part of

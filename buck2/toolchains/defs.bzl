@@ -205,7 +205,7 @@ def nix_python_bootstrap_toolchain(name, capabilities, generation, **kwargs):
     carry, so the interpreter comes from the same projected capability set as every other
     tool.
 
-    [Decision 0028](../../context/buck2/.decisions/0028-hermetic-python-bootstrap-for-consumer-cells.md)
+    [Decision 0028](../../context/builds/.decisions/0028-hermetic-python-bootstrap-for-consumer-cells.md)
     admits exactly this realization; `buck2-no-python-actions.test.sh` holds the boundary.
     """
     if "exec_compatible_with" in kwargs:
