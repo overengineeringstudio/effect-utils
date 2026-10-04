@@ -27,6 +27,10 @@ export default createGenieOutput({
       '',
       'export_file(name = "service-smoke", src = "service-smoke.ts", visibility = ["PUBLIC"])',
       'export_file(name = "wasm-scheduler-smoke", src = "wasm-scheduler-smoke.ts", visibility = ["PUBLIC"])',
+      'export_file(name = "browser-smoke", src = "browser-smoke.mjs", visibility = ["PUBLIC"])',
+      'export_file(name = "browser-smoke-server", src = "browser-smoke-server.mjs", visibility = ["PUBLIC"])',
+      'export_file(name = "workerd-smoke", src = "workerd-smoke.mjs", visibility = ["PUBLIC"])',
+      'export_file(name = "workerd-smoke-config", src = "workerd-smoke-config.mjs", visibility = ["PUBLIC"])',
       '',
     ].join('\n'),
 })

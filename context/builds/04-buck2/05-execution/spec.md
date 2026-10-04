@@ -87,9 +87,13 @@ the root Cargo workspace and the strict Reindeer graph; a Cargo library declares
   (matching the crate pin) for `nodejs` and `web`, then `wasm-opt` with
   `WASM_OPT_FLAGS` (explicit features, never `--all-features`). The package
   uses conditional exports: `workerd` → precompiled `Module`, `node` → CJS
-  glue, `bun`/`browser`/`default` → inline bytes, and `./url` → explicit URL.
-  The unused default-URL path is removed from the web glue, and the action
-  fails if the pinned generator's glue shape changes.
+  glue, `bun` → inline bytes, and `browser`/`default` → emitted external wasm
+  fetched and streamed through pinned bindgen glue. Explicit `./inline`,
+  `./browser-worker`, `./workerd`, and corresponding `/load` entries separate
+  embedded bytes, browser Worker asset delivery, and workerd precompiled Modules;
+  `./url` accepts a consumer source. Fresh `./load` uses inline bytes on Node/Bun
+  and external assets on browser/default. Only inline/workerd glue removes the
+  unused default asset URL; the action fails on pinned glue-shape drift.
 - `rust_napi_library` packages the native cdylib as `<name>.node` and rejects
   wasm or `panic=abort` toolchains. It builds only on the matching native
   executor; there are no cross builds.
