@@ -31,6 +31,7 @@ import { buck2TypeScriptAdmission as notionMdAdmission } from '../../packages/@o
 import { buck2TypeScriptAdmission as notionPropertyWriteAdmission } from '../../packages/@overeng/notion-property-write/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as notionReactAdmission } from '../../packages/@overeng/notion-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as npmReleaseAdmission } from '../../packages/@overeng/npm-release/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as outlineAdmission } from '../../packages/@overeng/outline/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as otelBrowserAdmission } from '../../packages/@overeng/otel-browser/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as otelContractAdmission } from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as oxcConfigAdmission } from '../../packages/@overeng/oxc-config/BUCK.genie.ts'
@@ -111,6 +112,7 @@ export const buck2TypeScriptAdmissions = {
   notionPropertyWrite: notionPropertyWriteAdmission,
   notionReact: notionReactAdmission,
   npmRelease: npmReleaseAdmission,
+  outline: outlineAdmission,
   otelBrowser: otelBrowserAdmission,
   otelContract: otelContractAdmission,
   oxcConfig: oxcConfigAdmission,

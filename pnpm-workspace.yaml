@@ -37,6 +37,7 @@ packages:
   - packages/@overeng/npm-release
   - packages/@overeng/otel-browser
   - packages/@overeng/otel-contract
+  - packages/@overeng/outline
   - packages/@overeng/oxc-config
   - packages/@overeng/pty-effect
   - packages/@overeng/react-inspector
