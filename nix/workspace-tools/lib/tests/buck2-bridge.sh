@@ -148,6 +148,51 @@ magic="$(od -An -tx1 -N4 "$wasm_guest_import/lib/guest.wasm" | tr -d ' ')"
   exit 1
 }
 
+node_out="$(build_expr "let $common_let in pkgs.nodejs")"
+"$node_out/bin/node" - "$wasm_guest_import/lib/guest.wasm" <<'JS'
+const fs = require('node:fs')
+const guest = new WebAssembly.Instance(new WebAssembly.Module(fs.readFileSync(process.argv[2])))
+if (guest.exports.answer() !== 42) throw new Error('imported wasm guest returned the wrong answer')
+JS
+
+wasm_guest_product="$(build_expr "($base_expr).wasmGuestProduct")"
+export BUCK2_BRIDGE_WASM_PRODUCT="$wasm_guest_product"
+wasm_product_let='exported = builtins.storePath (builtins.getEnv "BUCK2_BRIDGE_WASM_PRODUCT");
+  original = builtins.fromJSON (builtins.readFile (exported + "/descriptor.json"));'
+missing_wasm_export_expr="let
+  $common_let
+  $wasm_product_let
+  descriptor = original // {
+    runtime = original.runtime // {
+      exports = original.runtime.exports ++ [ { name = \"missing\"; kind = \"function\"; } ];
+    };
+  };
+in test.mkImport {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = exported + \"/artifact.tar\";
+}"
+expect_build_failure \
+  "wasm guest missing declared export" \
+  'wasm guest export mismatch: expected [{"name":"answer","kind":"function"},{"name":"missing","kind":"function"}], observed [{"name":"answer","kind":"function"}]' \
+  "$missing_wasm_export_expr"
+
+wasm_inspector_out="$(build_expr "let $common_let in
+  import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-wasm-guest.nix\") { inherit pkgs; }")"
+wasm_descriptor="$(mktemp)"
+jq '.runtime.exports = []' "$wasm_guest_product/descriptor.json" >"$wasm_descriptor"
+expect_command_failure \
+  "wasm guest undeclared actual export" \
+  'wasm guest export mismatch: expected [], observed [{"name":"answer","kind":"function"}]' \
+  "$wasm_inspector_out" "$wasm_descriptor" "$wasm_guest_import"
+jq '.runtime.exports[0].kind = "global"' "$wasm_guest_product/descriptor.json" >"$wasm_descriptor"
+expect_command_failure \
+  "wasm guest export kind mismatch" \
+  'wasm guest export mismatch: expected [{"name":"answer","kind":"global"}], observed [{"name":"answer","kind":"function"}]' \
+  "$wasm_inspector_out" "$wasm_descriptor" "$wasm_guest_import"
+rm -f "$wasm_descriptor"
+
 dynamic_export="$(build_expr "($base_expr).dynamicExport")"
 export BUCK2_BRIDGE_DYNAMIC_EXPORT="$dynamic_export"
 jq -e '

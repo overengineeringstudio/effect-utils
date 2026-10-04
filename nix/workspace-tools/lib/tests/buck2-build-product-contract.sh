@@ -61,6 +61,18 @@ contract_expr='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
       executables = [ bundleExecutable ];
       inherit (validMachO.runtime) installNamePolicy rpathPolicy;
     };
+  };
+  validWasm = valid // {
+    entrypoints = [ "lib/guest.wasm" ];
+    platform = { os = "wasm"; architecture = "wasm32"; abi = "unknown"; };
+    runtime = {
+      exports = [ { name = "answer"; kind = "function"; } ];
+      harness = "fixture-harness/v1";
+      imports = [ ];
+      inspectionContract = "wasm32-unknown-unknown/v1";
+      kind = "wasm-guest";
+      targetTriple = "wasm32-unknown-unknown";
+    };
   };'
 
 eval_raw() {
@@ -210,6 +222,98 @@ expect_eval_failure \
   "descriptor.runtime has unknown fields: assumedPortable" \
   'contract.canonicalDescriptorJson (valid // {
     runtime = valid.runtime // { assumedPortable = true; };
+  })'
+
+wasm_digest="$(eval_raw 'contract.descriptorDigest validWasm')"
+changed_wasm_digest="$(eval_raw 'contract.descriptorDigest (validWasm // {
+  runtime = validWasm.runtime // { exports = [ { name = "answer"; kind = "global"; } ]; };
+})')"
+[ "$wasm_digest" != "$changed_wasm_digest" ] || {
+  echo "buck2-build-product-contract-test: wasm export kind did not change descriptor identity" >&2
+  exit 1
+}
+
+expect_eval_failure \
+  "missing wasm exports" \
+  "descriptor.runtime is missing fields: exports" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = builtins.removeAttrs validWasm.runtime [ "exports" ];
+  })'
+
+expect_eval_failure \
+  "non-list wasm exports" \
+  "descriptor.runtime.exports must be a list" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // { exports = {}; };
+  })'
+
+expect_eval_failure \
+  "non-object wasm export" \
+  "descriptor.runtime.exports entry must be an attribute set" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // { exports = [ "answer" ]; };
+  })'
+
+expect_eval_failure \
+  "missing wasm export kind" \
+  "descriptor.runtime.exports entry is missing fields: kind" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // { exports = [ { name = "answer"; } ]; };
+  })'
+
+expect_eval_failure \
+  "missing wasm export name" \
+  "descriptor.runtime.exports entry is missing fields: name" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // { exports = [ { kind = "function"; } ]; };
+  })'
+
+expect_eval_failure \
+  "unknown wasm export field" \
+  "descriptor.runtime.exports entry has unknown fields: signature" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // {
+      exports = [ { name = "answer"; kind = "function"; signature = "() -> i32"; } ];
+    };
+  })'
+
+expect_eval_failure \
+  "non-string wasm export name" \
+  "descriptor.runtime.exports entry.name must be a string" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // { exports = [ { name = 42; kind = "function"; } ]; };
+  })'
+
+expect_eval_failure \
+  "unsupported wasm export kind" \
+  "descriptor.runtime.exports entry.kind must be function, table, memory, global, or tag" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // { exports = [ { name = "answer"; kind = "func"; } ]; };
+  })'
+
+expect_eval_failure \
+  "non-string wasm export kind" \
+  "descriptor.runtime.exports entry.kind must be function, table, memory, global, or tag" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // { exports = [ { name = "answer"; kind = 0; } ]; };
+  })'
+
+expect_eval_failure \
+  "duplicate wasm export names" \
+  "descriptor.runtime.exports names must be unique" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // {
+      exports = [ { name = "answer"; kind = "function"; } { name = "answer"; kind = "global"; } ];
+    };
+  })'
+
+expect_eval_failure \
+  "unsorted wasm exports" \
+  "descriptor.runtime.exports must be sorted by name" \
+  'contract.canonicalDescriptorJson (validWasm // {
+    runtime = validWasm.runtime // {
+      exports = [ { name = "z"; kind = "function"; } { name = "a"; kind = "function"; } ];
+    };
   })'
 
 expect_eval_failure \

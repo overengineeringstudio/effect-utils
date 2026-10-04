@@ -35,6 +35,13 @@ pkgs.writeShellScript "buck2-runtime-inspect-wasm-guest" ''
   if (JSON.stringify(imports) !== JSON.stringify(descriptor.runtime.imports)) {
     throw new Error('wasm guest imports differ from the descriptor')
   }
+  const observedExports = WebAssembly.Module.exports(guestModule).sort((left, right) =>
+    Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)))
+  const expectedExports = descriptor.runtime.exports.map(({ name, kind }) => ({ name, kind }))
+  if (JSON.stringify(observedExports) !== JSON.stringify(expectedExports)) {
+    throw new Error('wasm guest export mismatch: expected ' +
+      JSON.stringify(expectedExports) + ', observed ' + JSON.stringify(observedExports))
+  }
   JS
   }
 

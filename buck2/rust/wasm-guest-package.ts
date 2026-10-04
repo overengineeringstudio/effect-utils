@@ -28,13 +28,38 @@ if (
 const version = moduleBytes.readUInt32LE(4)
 if (version !== 1) throw new Error(`unsupported wasm version: ${version}`)
 
-const imports = WebAssembly.Module.imports(new WebAssembly.Module(moduleBytes))
+const guestModule = new WebAssembly.Module(moduleBytes)
+const imports = WebAssembly.Module.imports(guestModule)
   .map(({ module, name }) => `${module}.${name}`)
   .sort()
+const exports = WebAssembly.Module.exports(guestModule).sort((left, right) =>
+  Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)),
+)
 
 const entrypoint = required('entrypoint')
+let archiveName = entrypoint
+let archivePrefix = ''
+if (Buffer.byteLength(archiveName, 'utf8') > 100) {
+  let separator = entrypoint.lastIndexOf('/')
+  while (separator > 0) {
+    const prefix = entrypoint.slice(0, separator)
+    const name = entrypoint.slice(separator + 1)
+    if (Buffer.byteLength(prefix, 'utf8') <= 155 && Buffer.byteLength(name, 'utf8') <= 100) {
+      archivePrefix = prefix
+      archiveName = name
+      break
+    }
+    separator = entrypoint.lastIndexOf('/', separator - 1)
+  }
+  if (archivePrefix === '') {
+    throw new Error(
+      `wasm guest entrypoint cannot be represented in USTAR (name limit 100 bytes, prefix limit 155 bytes): ${entrypoint}`,
+    )
+  }
+}
 const header = Buffer.alloc(512, 0)
-header.write(entrypoint, 0, 'utf8')
+header.write(archiveName, 0, 100, 'utf8')
+header.write(archivePrefix, 345, 155, 'utf8')
 header.write('0000755\0', 100, 'ascii')
 header.write('0000000\0', 108, 'ascii')
 header.write('0000000\0', 116, 'ascii')
@@ -69,6 +94,7 @@ const descriptor = {
   },
   platform: { abi: 'unknown', architecture: 'wasm32', os: 'wasm' },
   runtime: {
+    exports,
     harness: required('harness'),
     imports,
     inspectionContract: 'wasm32-unknown-unknown/v1',

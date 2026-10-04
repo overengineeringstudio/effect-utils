@@ -1,6 +1,3 @@
-# Generated file - DO NOT EDIT
-# Source: BUCK.genie.ts
-
 # Projection source: rust/effect-rust-fixtures/napi-adapter/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
@@ -67,7 +64,7 @@ native.rust_library(
         "CARGO_CRATE_NAME": "effect_rust_fixture_napi",
         "CARGO_MANIFEST_DIR": "rust/effect-rust-fixtures/napi-adapter",
     },
-    rustc_flags = select({"prelude//os/constraints:macos": ["-Clink-arg=-Wl,-undefined,dynamic_lookup"], "DEFAULT": []}),
+    rustc_flags = select({"//buck2/rust:wasm32_config": [], "DEFAULT": select({"prelude//os/constraints:macos": ["-Clink-arg=-Wl,-undefined,dynamic_lookup"], "DEFAULT": []})}),
     visibility = [
         "PUBLIC",
     ],

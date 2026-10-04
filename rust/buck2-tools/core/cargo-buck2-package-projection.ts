@@ -881,9 +881,10 @@ const cargoBuck2PackageProjectionFor = ({
         : [`[${starlarkString(`@$(location :${buildScriptRun}[rustc_flags])`)}]`]),
       // Node-API symbols resolve from the loading node/bun process. Mach-O ld rejects undefined
       // dylib symbols unless told to defer them, as napi-build's setup() does for Cargo.
+      // Wasm transitions retain the host OS constraint, but never use Mach-O link flags.
       ...(rule === 'rust_library' && napi !== undefined
         ? [
-            'select({"prelude//os/constraints:macos": ["-Clink-arg=-Wl,-undefined,dynamic_lookup"], "DEFAULT": []})',
+            `select({${starlarkString(`${buck2LoadLabelPrefix}/rust:wasm32_config`)}: [], "DEFAULT": select({"prelude//os/constraints:macos": ["-Clink-arg=-Wl,-undefined,dynamic_lookup"], "DEFAULT": []})})`,
           ]
         : []),
     ]),
@@ -1022,7 +1023,9 @@ const cargoBuck2PackageProjectionFor = ({
                 ['strip', wasmBindgen.profile.strip],
               ] as const
             )
-              .flatMap(([key, value]) => (value === undefined ? [] : [`${starlarkString(key)}: ${starlarkString(value)}`]))
+              .flatMap(([key, value]) =>
+                value === undefined ? [] : [`${starlarkString(key)}: ${starlarkString(value)}`],
+              )
               .join(', ')}},`,
           ]),
       ')',
@@ -1856,7 +1859,8 @@ const discoverCargoTargets = ({
   const crateTypes = explicitLibrary?.['crate-type']
   if (
     crateTypes !== undefined &&
-    (crateTypes.length === 0 || crateTypes.some((type) => !['lib', 'rlib', 'cdylib'].includes(type)))
+    (crateTypes.length === 0 ||
+      crateTypes.some((type) => !['lib', 'rlib', 'cdylib'].includes(type)))
   ) {
     throw new Error(`Unsupported Cargo library crate-type in ${member.manifestPath}`)
   }
