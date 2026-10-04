@@ -41,6 +41,9 @@
 - Tailnet host writers use per-host private-tier credentials and an explicit
   private endpoint; public read-only posture wins over credentials and selected
   writer outages fail closed.
+- Browser Vite consumers reuse the canonical CLI build-identity formatter through
+  `createBuildIdentityPlugin`, including immutable Nix metadata, worktree/HMR
+  revisions, and runtime deployment identity injection.
 - Consumer Buck roots can map nested checkout patch paths to their exporting
   cells; the published rules cell exports the shared pnpm patches without loading
   standalone package declarations.
