@@ -79,12 +79,13 @@ def _swift_app_bundle_impl(ctx):
         )
         executable = ctx.actions.declare_output(name)
         compile_args = cmd_args([
-            ctx.attrs.swiftc[RunInfo],
+            swiftc.store_path,
             "-O",
             "-target", triple,
             "-o", executable.as_output(),
             combined,
         ])
+        compile_args.add(cmd_args(hidden = [swiftc.executable, swiftc.manifest]))
         for framework in ctx.attrs.frameworks.get(name, []):
             compile_args.add(["-framework", framework])
         for library in ctx.attrs.libraries.get(name, []):
@@ -215,7 +216,7 @@ _swift_app_bundle = rule(
         "product_name": attrs.string(),
         "resources": attrs.dict(key = attrs.string(), value = attrs.source(), default = {}),
         "sources": attrs.dict(key = attrs.string(), value = attrs.list(attrs.source())),
-        "swiftc": attrs.exec_dep(providers = [BuckSupportToolInfo, RunInfo]),
+        "swiftc": attrs.exec_dep(providers = [BuckSupportToolInfo]),
         "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
         "version": attrs.string(),
         "_bun": attrs.default_only(attrs.exec_dep(
