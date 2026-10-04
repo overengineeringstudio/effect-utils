@@ -50,7 +50,6 @@ _TOOL_IDS = [
     "rust-shell",
 ]
 
-<<<<<<< HEAD
 _WASM_TOOL_IDS = ["rust-wasm-compiler", "rust-wasm-rustdoc", "rust-wasm-linker"]
 
 WASM_BINDGEN_VERSION = "0.2.127"
@@ -64,9 +63,6 @@ WASM_OPT_FLAGS = [
     "--enable-mutable-globals",
 ]
 
-
-=======
->>>>>>> 711556bf2 (fix(cache): enforce resolved rule-owned execution admission)
 def _toolchain_identity(platform, target_platform, target_triple, metadata):
     fields = [
         "contract=effect-utils/buck2-rust-toolchain/v1",
@@ -130,12 +126,7 @@ def _release_flags():
         "-Coverflow-checks=" + settings["overflow_checks"],
     ]
 
-<<<<<<< HEAD
-
 def _rust_toolchain_impl(ctx):
-=======
-def _native_rust_toolchain_impl(ctx):
->>>>>>> 711556bf2 (fix(cache): enforce resolved rule-owned execution admission)
     platform = _checked_platform(ctx)
     if not ctx.attrs.identity:
         fail("Rust toolchain identity must not be empty")
@@ -205,6 +196,7 @@ def _compiler_info(provider, compiler, compiler_type):
 def _native_cxx_toolchain_impl(ctx):
     platform = _checked_platform(ctx)
     is_darwin = platform.os == "darwin"
+
     # A wasm32 product keeps the native executor; only the final cdylib link
     # switches to the attested wasm-ld with Prelude's wasm linker semantics.
     is_wasm = ctx.attrs.wasm_target
@@ -364,7 +356,7 @@ def native_rust_toolchains(capabilities, generation, target_platform):
     lto = read_config("rust_profile", "lto", "local")
     wasm_identity = ";".join(
         ["contract=effect-utils/buck2-rust-wasm-toolchain/v1", "execution_platform=" + capability_platform, "target_triple=wasm32-unknown-unknown"] +
-        ["{}={}:{}".format(tool_id, wasm_metadata[tool_id]["closureIdentity"], wasm_metadata[tool_id]["contentDigest"]) for tool_id in _WASM_TOOL_IDS]
+        ["{}={}:{}".format(tool_id, wasm_metadata[tool_id]["closureIdentity"], wasm_metadata[tool_id]["contentDigest"]) for tool_id in _WASM_TOOL_IDS],
     )
     opt_choices = {"DEFAULT": ["-Copt-level=s"]}
     for value in ["0", "1", "2", "3", "s", "z"]:

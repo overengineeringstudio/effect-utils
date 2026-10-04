@@ -50,6 +50,7 @@ load("//buck2/javascript.bzl", "vitest_collect")
 load("//buck2/package_tools.bzl", "PackageCommandRuntimeInfo", "package_bin_check")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
+load("//buck2/rust:interop.bzl", "RustInteropProductInfo", "rust_interop_smoke")
 
 def _dependency_impl(ctx):
     artifact = ctx.attrs.src
@@ -57,6 +58,7 @@ def _dependency_impl(ctx):
         DefaultInfo(default_output = artifact),
         PackageTreeInfo(tree = artifact, read_roots = []),
         PackageCommandRuntimeInfo(runtime = artifact, read_roots = []),
+        RustInteropProductInfo(package = artifact, kind = "wasm"),
         BunToolchainInfo(executable = "/analysis-only/bin/bun", identity = "analysis-only"),
         EffectTsgoToolchainInfo(
             bun = "/analysis-only/bin/bun",
@@ -95,6 +97,12 @@ def fixture_negative_cases(suffix, constraint):
         entrypoint = "check.ts",
         exec_compatible_with = [constraint],
     )
+    rust_interop_smoke(
+        name = "unadmitted_interop_" + suffix,
+        product = "//:package_tree",
+        script = "//:fixture-dependency.txt",
+        exec_compatible_with = [constraint],
+    )
 BZL
 cat > "$work/buck2/toolchains/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency")
@@ -103,6 +111,7 @@ fixture_dependency(name = "bun", visibility = ["PUBLIC"])
 fixture_dependency(name = "effect_tsgo", visibility = ["PUBLIC"])
 fixture_dependency(name = "fingerprint_tool", visibility = ["PUBLIC"])
 fixture_dependency(name = "tool_action_env", visibility = ["PUBLIC"])
+fixture_dependency(name = "tool_node", visibility = ["PUBLIC"])
 BUCK
 cat > "$work/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency")
@@ -175,7 +184,7 @@ for target in admitted_collect default_uncacheable_collect default_unadmitted_ch
   printf 'PASS analysis: %s\n' "$target"
 done
 
-for family in uncacheable_collect unadmitted_check; do
+for family in uncacheable_collect unadmitted_check unadmitted_interop; do
   for spelling in canonical relative alias alias_at; do
     target="${family}_${spelling}"
     if "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//$spelling:$target" > "$work/$target.log" 2>&1; then
