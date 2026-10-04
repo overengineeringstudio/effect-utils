@@ -46,7 +46,7 @@ describe('PtyClient client wrapper', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
-    vi.unmock('@myobie/pty/client')
+    vi.doUnmock('@myobie/pty/client')
   })
 
   it('passes env overrides through upstream spawnDaemon and restores process.env on success', async () => {
