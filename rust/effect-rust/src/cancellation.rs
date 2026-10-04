@@ -63,7 +63,6 @@ impl CancellationToken {
     }
 
     /// Waits for cancellation without holding a lock across a poll or await.
-    #[must_use]
     pub fn cancelled(&self) -> Cancelled<'_> {
         Cancelled { token: self, slot: None }
     }
