@@ -41,6 +41,32 @@ Runtime is a tagged union whose fields and inspection contract depend on
 `kind`; acceptance of a descriptor kind does not imply an importer exists for
 it.
 
+### Darwin App Bundles
+
+```text
+Swift sources + declared compiler/SDK
+  -> Mach-O executables + bundle resources
+  -> artifact.tar + buck-build-product/v1 descriptor
+  -> independent per-executable Mach-O inspection
+```
+
+`mach-o-app-bundle` selects `mach-o-app-bundle/v1` on Darwin. Its exact
+runtime fields are `kind`, `inspectionContract`, `bundleRoot`, `mainExecutable`,
+`executables`, `installNamePolicy`, and `rpathPolicy`. `executables` is sorted
+by unique safe `path`; each entry carries exactly `path`, `architecture`,
+`dylibs`, `minimumOs`, and `signingPolicy`, observed from the executable.
+Entry points equal those paths; every path is inside `bundleRoot`, and
+`mainExecutable` names one of them. Architecture agrees with the product
+platform. `system-only/v1` install names and `empty/v1` RPATH policy reuse
+the native Mach-O contract.
+
+The deterministic tar preserves executable modes and includes
+`Contents/Info.plist`, declared resources, and the optional build stamp at
+`Contents/Resources/nix-build-stamp.json` beneath the bundle root. Import
+checks each executable through the canonical Mach-O inspector without
+rewriting the payload. Mutable application installation or signing is not
+part of the product.
+
 ## Namespace and Compatibility
 
 `buck-build-product/v1` is the existing repository-owned schema identifier,

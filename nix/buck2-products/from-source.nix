@@ -86,11 +86,13 @@ let
   productName = product.name;
   outputName = product.outputName;
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
-  # `build_product` kinds: a Rust `native` executable or a Bun
-  # `compiled-executable` (`bun build --compile` of a CLI module).
+  # `build_product` kinds: a Rust `native` executable, a Bun
+  # `compiled-executable` (`bun build --compile` of a CLI module), or a
+  # `swift-app-bundle` Darwin app bundle.
   isBuildProduct = builtins.elem product.kind [
     "native"
     "compiled-executable"
+    "swift-app-bundle"
   ];
   # Descriptor-bearing products: JavaScript product-v2 and build_product.
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
@@ -145,9 +147,8 @@ assert lib.assertMsg (
     && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" cargoWorkspaceRoot)
   )
 ) "buck2-products: cargoWorkspaceRoot must be a safe relative path on a native product";
-assert lib.assertMsg (
-  !importNative || isBuildProduct
-) "buck2-products: importNative requires a native or compiled-executable product";
+assert lib.assertMsg (!importNative || isBuildProduct)
+  "buck2-products: importNative requires a native, compiled-executable, or swift-app-bundle product";
 assert lib.assertMsg (
   cliBuildStamp == null
   || (
@@ -304,10 +305,14 @@ if importNative then
       else
         expectedPlatform;
     runtimeKind =
-      if runtimeKind == null then
-        (if pkgs.stdenv.hostPlatform.isDarwin then "mach-o-dynamic" else "elf-dynamic")
+      if runtimeKind != null then
+        runtimeKind
+      else if product.kind == "swift-app-bundle" then
+        "mach-o-app-bundle"
+      else if pkgs.stdenv.hostPlatform.isDarwin then
+        "mach-o-dynamic"
       else
-        runtimeKind;
+        "elf-dynamic";
     descriptorPath = lib.escapeShellArg "${sourceProduct}/descriptor.json";
     archivePath = lib.escapeShellArg "${sourceProduct}/${outputName}";
     passthru.buck2Product = sourceProduct;

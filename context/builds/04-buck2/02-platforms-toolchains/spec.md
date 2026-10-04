@@ -90,3 +90,18 @@ compiler, but the wrapper and SDK must be exact projected capabilities. It
 must not discover Xcode or `xcrun` from the host. This supplies the Darwin
 capability contract without placing a consumer/vendor selection in shared rules
 (BUILD.BUCK.PLAT-R05).
+
+`swift_app_bundle` admits `macos_aarch64`. Each named binary compiles its
+ordered Swift source list through one declared `BuckSupportToolInfo` compiler
+capability, with explicit deployment target, frameworks, and libraries.
+The Nix wrapper supplies the exact SDK, compiler, and linker; the action sets
+invalid host `DEVELOPER_DIR` and `SDKROOT` values so ambient Xcode discovery
+cannot replace the capability. Packaging uses the product tool and the
+[app-bundle contract](../../05-product-distribution/01-product-contract/spec.md#darwin-app-bundles).
+
+The compiler runs at its immutable `BuckSupportToolInfo.store_path`; its
+executable and capability manifest remain action inputs. Generic support-tool
+`RunInfo` flags are not compiler arguments. The shared Swift runner sets
+`-module-cache-path`, `CLANG_MODULE_CACHE_PATH`, and `SWIFT_MODULECACHE_PATH`
+to `BUCK_SCRATCH_PATH/modules`; missing scratch or a consumer override fails
+closed. Neither Swift nor Clang may reuse ambient host module caches.

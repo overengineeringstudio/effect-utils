@@ -1054,13 +1054,14 @@ in
   };
 
   tasks."cargo:test:buck2-foundation" = {
-    description = "Run the Rust tests for the Buck2 foundation tools";
+    description = "Run the Buck2 foundation tools and Swift action contract tests";
     exec = trace.exec "cargo:test:buck2-foundation" ''
       set -euo pipefail
       (
         cd rust
         cargo test --locked --package 'buck2-*'
       )
+      ${pkgs.bun}/bin/bun test buck2/swift/compile.unit.test.ts
     '';
   };
 
