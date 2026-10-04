@@ -141,6 +141,17 @@ stamps; reading `option_env!` inside the helper crate loses the Nix revision.
 - Structured logs should include `machineVersion`
 - Error suffixes should be derived from the same version source as `--version`
 
+## Migration Targets
+
+Move touched code toward these standards:
+
+1. Replace `__CLI_VERSION__` with `__CLI_BUILD_STAMP__`
+2. Replace `NIX_CLI_BUILD_STAMP` with `CLI_BUILD_STAMP`
+3. Replace hardcoded version strings with shared helpers where possible
+4. Replace separate CLI/UI/telemetry version literals with one shared source
+5. Prefer shared library changes over one-off fixes when multiple systems need the same behavior
+6. Introduce one reusable helper crate/module/library before adding the second bespoke implementation in a language/runtime
+
 ## Cross-Language Constraints
 
 Not every language or system can reuse the TypeScript helper directly. In those cases:
