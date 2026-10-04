@@ -16,6 +16,7 @@ export const CasUri = Schema.String.pipe(
 )
 export type CasUri = typeof CasUri.Type
 
+/** Non-negative integer bounded by JavaScript's lossless integer range. */
 export const NonNegativeInt = Schema.Int.pipe(
   Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
   Schema.annotate({ identifier: 'ContentAddress.NonNegativeInt' }),

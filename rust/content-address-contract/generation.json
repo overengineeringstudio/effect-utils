@@ -13,7 +13,7 @@
     },
     {
       "path": "packages/@overeng/content-address/src/schema.ts",
-      "sha256": "e529902f0f2e0d51b8fa6a81b2f105a05a8c53dc404d4f5523b7f118cb072d44"
+      "sha256": "2b5efd9f3abd28e4cf0bebbef308f802161386fbe102a6ddf41725a572febf1b"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/fixtures/bounded-contracts.ts",

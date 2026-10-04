@@ -160,11 +160,9 @@ NodeRuntime.runMain(
         },
       },
     )
-    const files: Record<string, string> = {
-      ...Object.fromEntries(
-        Object.entries(generated.files).filter(([path]) => path.startsWith('effect/') === false),
-      ),
-    }
+    const files: Record<string, string> = Object.fromEntries(
+      Object.entries(generated.files).filter(([path]) => path.startsWith('effect/') === false),
+    )
     // JSON Schema cannot carry comments: generation.json owns its provenance.
     // Rust/TOML use native comments in addition to the enclosing manifest.
     for (const path of Object.keys(files)) {
