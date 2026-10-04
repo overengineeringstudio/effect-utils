@@ -106,7 +106,7 @@ describe('Smalltalk declarations', () => {
 const stBin = process.env.ST_BIN
 const testWithSt = stBin !== undefined && stBin !== '' ? it : it.skip
 testWithSt(
-  'round-trips canonical mission through isolated st daemon',
+  'round-trips canonical mission and strict agent fields through isolated st daemon',
   async () => {
     const dir = mkdtempSync(join(tmpdir(), 'genie-st-'))
     const socket = join(dir, 'daemon.sock')
@@ -223,6 +223,17 @@ testWithSt(
         const invalid = applySeat(seat.replace('handles-faults', field))
         expect(invalid.status, field).not.toBe(0)
       }
+      const automatic = applySeat(emit([agent({ id: 'garden/orchard' })]))
+      expect(automatic.status, automatic.stderr).toBe(0)
+      expect(JSON.parse(automatic.stdout)).toMatchObject({ changed: true })
+      const automaticShown = spawnSync(
+        stBin!,
+        ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/orchard', '--kdl'],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(automaticShown.status, automaticShown.stderr).toBe(0)
+      expect(automaticShown.stdout).not.toContain('rollout')
+      expect(automaticShown.stdout).not.toContain('handles-faults')
     } finally {
       if (daemon.exitCode === null && daemon.signalCode === null) {
         const { promise, resolve } = Promise.withResolvers<void>()
