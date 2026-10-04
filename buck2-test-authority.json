@@ -104,9 +104,7 @@
       "packageName": "ci-tools",
       "packagePath": "packages/@overeng/ci-tools",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/pipeline-report.integration.test.ts"
-      ],
+      "selectedTestFiles": ["src/pipeline-report.integration.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
       "taskName": "test:ci-tools:test_pipeline_report_local_api",
@@ -150,15 +148,11 @@
       "packageName": "content-address",
       "packagePath": "packages/@overeng/content-address",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/mod.unit.test.ts"
-      ],
+      "selectedTestFiles": ["src/mod.unit.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/content-address:test",
       "taskName": "test:content-address",
-      "testFiles": [
-        "src/mod.unit.test.ts"
-      ],
+      "testFiles": ["src/mod.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -168,17 +162,11 @@
       "packageName": "devbar",
       "packagePath": "packages/@overeng/devbar",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/Devbar.unit.test.tsx",
-        "src/fps-meter.unit.test.ts"
-      ],
+      "selectedTestFiles": ["src/Devbar.unit.test.tsx", "src/fps-meter.unit.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/devbar:test",
       "taskName": "test:devbar",
-      "testFiles": [
-        "src/Devbar.unit.test.tsx",
-        "src/fps-meter.unit.test.ts"
-      ],
+      "testFiles": ["src/Devbar.unit.test.tsx", "src/fps-meter.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -188,15 +176,11 @@
       "packageName": "effect-ai-claude-cli",
       "packagePath": "packages/@overeng/effect-ai-claude-cli",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/claude-cli.unit.test.ts"
-      ],
+      "selectedTestFiles": ["src/claude-cli.unit.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-ai-claude-cli:test",
       "taskName": "test:effect-ai-claude-cli",
-      "testFiles": [
-        "src/claude-cli.unit.test.ts"
-      ],
+      "testFiles": ["src/claude-cli.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -206,15 +190,11 @@
       "packageName": "effect-ai-gateway",
       "packagePath": "packages/@overeng/effect-ai-gateway",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/ai-gateway.unit.test.ts"
-      ],
+      "selectedTestFiles": ["src/ai-gateway.unit.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-ai-gateway:test",
       "taskName": "test:effect-ai-gateway",
-      "testFiles": [
-        "src/ai-gateway.unit.test.ts"
-      ],
+      "testFiles": ["src/ai-gateway.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -224,15 +204,11 @@
       "packageName": "effect-distributed-lock",
       "packagePath": "packages/@overeng/effect-distributed-lock",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/distributed-semaphore.test.ts"
-      ],
+      "selectedTestFiles": ["src/distributed-semaphore.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-distributed-lock:test",
       "taskName": "test:effect-distributed-lock",
-      "testFiles": [
-        "src/distributed-semaphore.test.ts"
-      ],
+      "testFiles": ["src/distributed-semaphore.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -242,17 +218,11 @@
       "packageName": "effect-path",
       "packagePath": "packages/@overeng/effect-path",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/baseline.unit.test.ts",
-        "src/mod.unit.test.ts"
-      ],
+      "selectedTestFiles": ["src/baseline.unit.test.ts", "src/mod.unit.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-path:test",
       "taskName": "test:effect-path",
-      "testFiles": [
-        "src/baseline.unit.test.ts",
-        "src/mod.unit.test.ts"
-      ],
+      "testFiles": ["src/baseline.unit.test.ts", "src/mod.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -262,17 +232,11 @@
       "packageName": "effect-react",
       "packagePath": "packages/@overeng/effect-react",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "test/external-store.test.tsx",
-        "test/runtime-baseline.test.tsx"
-      ],
+      "selectedTestFiles": ["test/external-store.test.tsx", "test/runtime-baseline.test.tsx"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-react:test",
       "taskName": "test:effect-react",
-      "testFiles": [
-        "test/external-store.test.tsx",
-        "test/runtime-baseline.test.tsx"
-      ],
+      "testFiles": ["test/external-store.test.tsx", "test/runtime-baseline.test.tsx"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -360,15 +324,11 @@
       "packageName": "effect-schema-form-aria",
       "packagePath": "packages/@overeng/effect-schema-form-aria",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/mod.unit.test.tsx"
-      ],
+      "selectedTestFiles": ["src/mod.unit.test.tsx"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-schema-form-aria:test",
       "taskName": "test:effect-schema-form-aria",
-      "testFiles": [
-        "src/mod.unit.test.tsx"
-      ],
+      "testFiles": ["src/mod.unit.test.tsx"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -378,15 +338,11 @@
       "packageName": "effect-schema-form",
       "packagePath": "packages/@overeng/effect-schema-form",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/mod.unit.test.tsx"
-      ],
+      "selectedTestFiles": ["src/mod.unit.test.tsx"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-schema-form:test",
       "taskName": "test:effect-schema-form",
-      "testFiles": [
-        "src/mod.unit.test.tsx"
-      ],
+      "testFiles": ["src/mod.unit.test.tsx"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -396,15 +352,11 @@
       "packageName": "genie-smalltalk",
       "packagePath": "packages/@overeng/genie-smalltalk",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/mod.unit.test.ts"
-      ],
+      "selectedTestFiles": ["src/mod.unit.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/genie-smalltalk:test",
       "taskName": "test:genie-smalltalk",
-      "testFiles": [
-        "src/mod.unit.test.ts"
-      ],
+      "testFiles": ["src/mod.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -577,15 +529,11 @@
       "packageName": "kdl-effect",
       "packagePath": "packages/@overeng/kdl-effect",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/parse.test.ts"
-      ],
+      "selectedTestFiles": ["src/parse.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/kdl-effect:test",
       "taskName": "test:kdl-effect",
-      "testFiles": [
-        "src/parse.test.ts"
-      ],
+      "testFiles": ["src/parse.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -595,17 +543,11 @@
       "packageName": "kdl",
       "packagePath": "packages/@overeng/kdl",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/mod.unit.test.ts",
-        "src/upstream.test.ts"
-      ],
+      "selectedTestFiles": ["src/mod.unit.test.ts", "src/upstream.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/kdl:test",
       "taskName": "test:kdl",
-      "testFiles": [
-        "src/mod.unit.test.ts",
-        "src/upstream.test.ts"
-      ],
+      "testFiles": ["src/mod.unit.test.ts", "src/upstream.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -765,10 +707,7 @@
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/notion-cli:test_collect",
-      "excludes": [
-        "src/cli.contract.test.ts",
-        "src/integration.integration.test.ts"
-      ],
+      "excludes": ["src/cli.contract.test.ts", "src/integration.integration.test.ts"],
       "packageName": "notion-cli",
       "packagePath": "packages/@overeng/notion-cli",
       "runner": "vitest",
@@ -800,9 +739,7 @@
         "src/output.unit.test.ts"
       ],
       "unboundedAfter": [],
-      "unboundedFiles": [
-        "src/cli.contract.test.ts"
-      ],
+      "unboundedFiles": ["src/cli.contract.test.ts"],
       "unboundedTaskName": "test:notion-cli:unbounded"
     },
     {
@@ -1194,11 +1131,7 @@
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/notion-property-write:test",
       "taskName": "test:notion-property-write",
-      "testFiles": [
-        "src/core.unit.test.ts",
-        "src/guards.unit.test.ts",
-        "src/proof.unit.test.ts"
-      ],
+      "testFiles": ["src/core.unit.test.ts", "src/guards.unit.test.ts", "src/proof.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -1307,9 +1240,7 @@
         "src/web/toggle.unit.test.tsx"
       ],
       "unboundedAfter": [],
-      "unboundedFiles": [
-        "src/test/regression/sync-perf.regression.unit.test.tsx"
-      ],
+      "unboundedFiles": ["src/test/regression/sync-perf.regression.unit.test.tsx"],
       "unboundedTaskName": "test:notion-react:unbounded"
     },
     {
@@ -1318,17 +1249,11 @@
       "packageName": "npm-release",
       "packagePath": "packages/@overeng/npm-release",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/cli.contract.test.ts",
-        "src/mod.test.ts"
-      ],
+      "selectedTestFiles": ["src/cli.contract.test.ts", "src/mod.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/npm-release:test",
       "taskName": "test:npm-release",
-      "testFiles": [
-        "src/cli.contract.test.ts",
-        "src/mod.test.ts"
-      ],
+      "testFiles": ["src/cli.contract.test.ts", "src/mod.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -1461,9 +1386,7 @@
       "packageName": "pty-effect",
       "packagePath": "packages/@overeng/pty-effect",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "src/bundle-smoke.unit.test.ts"
-      ],
+      "selectedTestFiles": ["src/bundle-smoke.unit.test.ts"],
       "sourceOwners": {
         "src/client.test.ts": "test:pty-effect:unbounded",
         "src/client.unit.test.ts": "test:pty-effect",
@@ -1482,11 +1405,7 @@
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/pty-effect:test_collect",
-      "excludes": [
-        "src/PtySession.test.ts",
-        "src/bundle-smoke.unit.test.ts",
-        "src/client.test.ts"
-      ],
+      "excludes": ["src/PtySession.test.ts", "src/bundle-smoke.unit.test.ts", "src/client.test.ts"],
       "packageName": "pty-effect",
       "packagePath": "packages/@overeng/pty-effect",
       "runner": "vitest",
@@ -1508,10 +1427,7 @@
         "src/client.unit.test.ts"
       ],
       "unboundedAfter": [],
-      "unboundedFiles": [
-        "src/PtySession.test.ts",
-        "src/client.test.ts"
-      ],
+      "unboundedFiles": ["src/PtySession.test.ts", "src/client.test.ts"],
       "unboundedTaskName": "test:pty-effect:unbounded"
     },
     {
@@ -1683,26 +1599,17 @@
       "packageName": "tui-core",
       "packagePath": "packages/@overeng/tui-core",
       "runner": "vitest",
-      "selectedTestFiles": [
-        "test/ansi.test.ts",
-        "test/renderer.test.ts"
-      ],
+      "selectedTestFiles": ["test/ansi.test.ts", "test/renderer.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/tui-core:test",
       "taskName": "test:tui-core",
-      "testFiles": [
-        "test/ansi.test.ts",
-        "test/renderer.test.ts"
-      ],
+      "testFiles": ["test/ansi.test.ts", "test/renderer.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/tui-react:test_collect",
-      "excludes": [
-        "e2e/resize-truncation.pw.test.ts",
-        "e2e/tui-story-preview.pw.test.ts"
-      ],
+      "excludes": ["e2e/resize-truncation.pw.test.ts", "e2e/tui-story-preview.pw.test.ts"],
       "packageName": "tui-react",
       "packagePath": "packages/@overeng/tui-react",
       "runner": "vitest",

@@ -129,9 +129,4 @@ export {
   resolveCliMachineVersion,
   resolveCliVersion,
 } from './cli-build-identity.js'
-export type {
-  LocalStamp,
-  NixStamp,
-  CliStamp,
-  CliBuildIdentity,
-} from './cli-build-identity.js'
+export type { LocalStamp, NixStamp, CliStamp, CliBuildIdentity } from './cli-build-identity.js'

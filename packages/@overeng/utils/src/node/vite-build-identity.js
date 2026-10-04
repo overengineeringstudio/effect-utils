@@ -10,7 +10,10 @@ const resolvedId = `\0${virtualId}`
 /** @param {string} root @returns {import('./cli-build-identity.js').LocalStamp} */
 const localStamp = (root) => {
   const git = (/** @type {string[]} */ args) =>
-    execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+    execFileSync('git', ['-C', root, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
   return {
     type: 'local',
     rev: git(['rev-parse', '--short', 'HEAD']),
@@ -45,8 +48,14 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       // Only metadata is frozen to source time; the browser renders relative time at runtime.
       ...(embedded?.type === 'nix' ? { now: embedded.buildTs ?? embedded.commitTs } : {}),
     })
-    if (identity.rev === undefined || identity.rev === '' || (identity.commitTs ?? identity.buildTs ?? 0) <= 0) {
-      throw new Error('Browser builds require a real revision and timestamp in the shared build stamp')
+    if (
+      identity.rev === undefined ||
+      identity.rev === '' ||
+      (identity.commitTs ?? identity.buildTs ?? 0) <= 0
+    ) {
+      throw new Error(
+        'Browser builds require a real revision and timestamp in the shared build stamp',
+      )
     }
   }
   return {
@@ -65,7 +74,11 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       return `import { resolveCliBuildIdentity } from ${JSON.stringify(formatterPath)};\nexport const buildIdentity = resolveCliBuildIdentity(${JSON.stringify(browserOptions)});\nexport const deploymentId = ${serving ? JSON.stringify('dev (HMR)') : 'globalThis.__BUILD_DEPLOYMENT_ID__'};\n`
     },
     generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'build-identity.json', source: `${JSON.stringify(identity, null, 2)}\n` })
+      this.emitFile({
+        type: 'asset',
+        fileName: 'build-identity.json',
+        source: `${JSON.stringify(identity, null, 2)}\n`,
+      })
     },
     handleHotUpdate(context) {
       if (embedded?.type === 'nix') return

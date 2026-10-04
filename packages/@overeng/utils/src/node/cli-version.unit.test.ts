@@ -179,7 +179,6 @@ Vitest.describe('resolveCliBuildIdentity', () => {
       buildTs: fiveMinutesAgo,
     })
   })
-
 })
 
 Vitest.describe('argvRequestsJsonStdout', () => {

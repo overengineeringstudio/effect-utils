@@ -38,15 +38,28 @@ export const parseCliBuildStamp = (stamp) => {
     const parsed = JSON.parse(stamp)
     if (typeof parsed !== 'object' || parsed === null) return undefined
     if (parsed.type === 'local') {
-      if (typeof parsed.rev === 'string' && typeof parsed.ts === 'number' && typeof parsed.dirty === 'boolean') {
+      if (
+        typeof parsed.rev === 'string' &&
+        typeof parsed.ts === 'number' &&
+        typeof parsed.dirty === 'boolean'
+      ) {
         return { type: 'local', rev: parsed.rev, ts: parsed.ts, dirty: parsed.dirty }
       }
     } else if (parsed.type === 'nix') {
-      if (typeof parsed.version === 'string' && typeof parsed.rev === 'string' && typeof parsed.commitTs === 'number' && typeof parsed.dirty === 'boolean') {
+      if (
+        typeof parsed.version === 'string' &&
+        typeof parsed.rev === 'string' &&
+        typeof parsed.commitTs === 'number' &&
+        typeof parsed.dirty === 'boolean'
+      ) {
         const buildTs = typeof parsed.buildTs === 'number' ? parsed.buildTs : undefined
         return {
-          type: 'nix', version: parsed.version, rev: parsed.rev, commitTs: parsed.commitTs,
-          ...(buildTs === undefined ? {} : { buildTs }), dirty: parsed.dirty,
+          type: 'nix',
+          version: parsed.version,
+          rev: parsed.rev,
+          commitTs: parsed.commitTs,
+          ...(buildTs === undefined ? {} : { buildTs }),
+          dirty: parsed.dirty,
         }
       }
     }
@@ -89,7 +102,10 @@ const nixBuildIdentity = ({ stamp, now }) => ({
   baseVersion: stamp.version,
   displayVersion: renderNixVersion({ stamp, now }),
   machineVersion: nixMachineVersion(stamp),
-  sourceKind: 'nix', rev: stamp.rev, dirty: stamp.dirty, commitTs: stamp.commitTs,
+  sourceKind: 'nix',
+  rev: stamp.rev,
+  dirty: stamp.dirty,
+  commitTs: stamp.commitTs,
   ...(stamp.buildTs === undefined ? {} : { buildTs: stamp.buildTs }),
 })
 
@@ -99,20 +115,39 @@ const nixBuildIdentity = ({ stamp, now }) => ({
  * @returns {CliBuildIdentity}
  */
 export const resolveCliBuildIdentity = (options) => {
-  const { baseVersion, buildStamp, env = process.env, now = Math.floor(Date.now() / 1000), runtimeStampEnvVar = 'CLI_BUILD_STAMP' } = options
+  const {
+    baseVersion,
+    buildStamp,
+    env = process.env,
+    now = Math.floor(Date.now() / 1000),
+    runtimeStampEnvVar = 'CLI_BUILD_STAMP',
+  } = options
   const buildTimeStamp = parseCliBuildStamp(buildStamp)
   if (buildTimeStamp?.type === 'nix') return nixBuildIdentity({ stamp: buildTimeStamp, now })
   const runtimeStampRaw = env[runtimeStampEnvVar]?.trim()
-  const runtimeStamp = runtimeStampRaw === undefined || runtimeStampRaw.length === 0 ? undefined : parseCliBuildStamp(runtimeStampRaw)
+  const runtimeStamp =
+    runtimeStampRaw === undefined || runtimeStampRaw.length === 0
+      ? undefined
+      : parseCliBuildStamp(runtimeStampRaw)
   if (runtimeStamp?.type === 'local') {
     return {
-      baseVersion, displayVersion: renderLocalVersion({ baseVersion, stamp: runtimeStamp, now }),
+      baseVersion,
+      displayVersion: renderLocalVersion({ baseVersion, stamp: runtimeStamp, now }),
       machineVersion: localMachineVersion({ baseVersion, stamp: runtimeStamp }),
-      sourceKind: 'local', rev: runtimeStamp.rev, dirty: runtimeStamp.dirty, buildTs: runtimeStamp.ts,
+      sourceKind: 'local',
+      rev: runtimeStamp.rev,
+      dirty: runtimeStamp.dirty,
+      buildTs: runtimeStamp.ts,
     }
   }
   if (runtimeStamp?.type === 'nix') return nixBuildIdentity({ stamp: runtimeStamp, now })
-  return { baseVersion, displayVersion: baseVersion, machineVersion: baseVersion, sourceKind: 'package', dirty: false }
+  return {
+    baseVersion,
+    displayVersion: baseVersion,
+    machineVersion: baseVersion,
+    sourceKind: 'package',
+    dirty: false,
+  }
 }
 
 /** @param {ResolveBuildIdentityOptions} options @returns {string} */
