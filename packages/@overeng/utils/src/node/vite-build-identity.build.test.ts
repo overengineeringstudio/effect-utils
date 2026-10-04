@@ -4,7 +4,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -170,7 +169,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       ],
       server: { middlewareMode: true },
     })
-    await new Promise<void>((resolve) => server!.watcher.once('ready', resolve))
+    await vi.waitUntil(() => server!.watcher.getWatched()[root]?.includes('entry.js'))
     const identity = async () => (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
     expect((await identity()).dirty).toBe(false)
     writeFileSync(join(root, 'new.txt'), 'untracked\n')
@@ -224,7 +223,14 @@ it('refreshes local metadata and browser identity on production watch rebuilds',
       plugins: [
         createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
       ],
-      build: { watch: {}, minify: false, rollupOptions: { input: join(root, 'entry.js') } },
+      build: {
+        watch: {},
+        minify: false,
+        rollupOptions: {
+          input: join(root, 'entry.js'),
+          output: { entryFileNames: 'identity.js' },
+        },
+      },
     })
     if ('close' in output) closeWatcher = output.close.bind(output)
     await vi.waitFor(() =>
@@ -238,10 +244,8 @@ it('refreshes local metadata and browser identity on production watch rebuilds',
       expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(true),
     )
     await vi.waitFor(() => {
-      const assets = join(root, 'dist/assets')
-      const entry = readdirSync(assets).find((name) => name.endsWith('.js'))!
       const browser: { identity?: { dirty: boolean }; changed?: boolean } = {}
-      runInNewContext(readFileSync(join(assets, entry), 'utf8'), browser)
+      runInNewContext(readFileSync(join(root, 'dist/identity.js'), 'utf8'), browser)
       expect(browser.changed).toBe(true)
       expect(browser.identity?.dirty).toBe(true)
     })
