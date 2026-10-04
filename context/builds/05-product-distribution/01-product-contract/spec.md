@@ -67,7 +67,6 @@ checks each executable through the canonical Mach-O inspector without
 rewriting the payload. Mutable application installation or signing is not
 part of the product.
 
-
 ## Namespace and Compatibility
 
 `buck-build-product/v1` is the existing repository-owned schema identifier,
