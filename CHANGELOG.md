@@ -77,6 +77,11 @@
 - Effect/Rust object transports normalize safe integral JavaScript doubles before
   decoding integer contracts, including bounded numbers. JSON-text admission
   still rejects noncanonical integer spellings such as `1.0`.
+- Effect/Rust fixture test executables resolve Node-API symbols dynamically;
+  native addon products retain real host-symbol lookup.
+- Effect/Rust workspace packages participate in the root TypeScript project
+  registry, and the distributed Buck rules include the service-packaging tool.
+- PTY client tests pair runtime module mocks with runtime cleanup on Vitest 5.
 
 ### Changed
 
