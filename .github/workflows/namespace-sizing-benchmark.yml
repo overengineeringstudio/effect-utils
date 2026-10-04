@@ -1,0 +1,2486 @@
+# Generated file - DO NOT EDIT
+# Source: namespace-sizing-benchmark.yml.genie.ts
+
+name: Namespace sizing benchmark
+
+run-name: 'Namespace sizing: ${{ inputs.lane }} / ${{ inputs.profile }} / ${{ inputs.pair_id }}'
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_commit:
+        description: Exact supported benchmark subject SHA
+        type: string
+        required: true
+        default: edba8e895e87f5ec0a96cb8ed09cd9cfc35188cb
+      lane:
+        description: Run exactly one existing Linux CI lane; weaver requires a pinned comparison base
+        type: choice
+        required: true
+        options:
+          - typecheck
+          - lint
+          - native-dependency-policy
+          - default-ref-policy
+          - source-shape
+          - nix-closure-sizes
+        default: source-shape
+      profile:
+        description: Namespace baseline or dedicated candidate profile
+        type: choice
+        required: true
+        options: [baseline, candidate]
+        default: baseline
+      pair_id:
+        description: Matched baseline/candidate pair identifier
+        type: string
+        required: true
+      cache_state:
+        description: Operator-recorded condition; this input does not warm or clear caches
+        type: choice
+        required: true
+        options: [warm, cold]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  typecheck:
+    if: ${{ inputs.lane == 'typecheck' }}
+    runs-on:
+      [
+        "${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}",
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate pinned benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+          PAIR_ID: ${{ inputs.pair_id }}
+          CACHE_STATE: ${{ inputs.cache_state }}
+          PROFILE_KIND: ${{ inputs.profile }}
+          PROFILE_LABEL: ${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}
+          BENCHMARK_LANE: typecheck
+        run: |
+          set -euo pipefail
+          [[ "$BENCHMARK_COMMIT" == 'edba8e895e87f5ec0a96cb8ed09cd9cfc35188cb' ]] || { echo 'Unsupported subject: regenerate this workflow from the intended pinned source revision'; exit 1; }
+          [[ "$PAIR_ID" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]] || { echo 'Pair ID must be 1-80 ASCII letters, digits, dots, underscores or hyphens and start with a letter or digit'; exit 1; }
+          [[ "$CACHE_STATE" == warm || "$CACHE_STATE" == cold ]]
+          [[ "$PROFILE_KIND" == baseline || "$PROFILE_KIND" == candidate ]]
+          python3 - <<'PY'
+          import json, os
+          record = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'lane': os.environ['BENCHMARK_LANE'],
+              'commit': os.environ['BENCHMARK_COMMIT'],
+              'pair_id': os.environ['PAIR_ID'],
+              'profile': os.environ['PROFILE_LABEL'],
+              'profile_kind': os.environ['PROFILE_KIND'],
+              'cache_state_declared': os.environ['CACHE_STATE'],
+              'cache_state_verified': False,
+              'github_run_id': os.environ['GITHUB_RUN_ID'],
+              'github_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          }
+          with open(os.path.join(os.environ['RUNNER_TEMP'], 'namespace-sizing-run-manifest.json'), 'w') as handle:
+              json.dump(record, handle, indent=2)
+          PY
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Checkout CI measurement baseline ref
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Prepare pipeline job identity
+        shell: bash
+        env:
+          JOB_KEY: typecheck
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+        shell: bash
+      - name: Force diagnostics failure (debug)
+        if: ${{ github.event_name == 'workflow_dispatch' && (false == true || false == 'true') }}
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
+      - name: Verify mutation-free shell entry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
+          command -v script >/dev/null 2>&1
+          tmp_log="$(mktemp)"
+          before="$(git status --porcelain=v1)"
+          printf 'command -v buck2
+          exit
+          ' | script -qefc '"${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload' "$tmp_log"
+          grep -q '/bin/buck2' "$tmp_log"
+          ! grep -q '\[otel\] Using' "$tmp_log"
+          test "$(git status --porcelain=v1)" = "$before"
+          rm -f "$tmp_log"
+      - name: Type check (Buck)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:quick' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:quick'
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              head -n 120 "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
+      - name: Export completed job trace
+        if: ${{ always() }}
+        shell: bash
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+      - name: Retain Namespace benchmark run manifest
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'namespace-sizing-run-manifest-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: '${{ runner.temp }}/namespace-sizing-run-manifest.json'
+          if-no-files-found: error
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.pair_id }}
+    concurrency:
+      group: 'namespace-sizing-${{ github.run_id }}-${{ github.run_attempt }}'
+      cancel-in-progress: false
+  lint:
+    if: ${{ inputs.lane == 'lint' }}
+    runs-on:
+      [
+        "${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}",
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate pinned benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+          PAIR_ID: ${{ inputs.pair_id }}
+          CACHE_STATE: ${{ inputs.cache_state }}
+          PROFILE_KIND: ${{ inputs.profile }}
+          PROFILE_LABEL: ${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}
+          BENCHMARK_LANE: lint
+        run: |
+          set -euo pipefail
+          [[ "$BENCHMARK_COMMIT" == 'edba8e895e87f5ec0a96cb8ed09cd9cfc35188cb' ]] || { echo 'Unsupported subject: regenerate this workflow from the intended pinned source revision'; exit 1; }
+          [[ "$PAIR_ID" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]] || { echo 'Pair ID must be 1-80 ASCII letters, digits, dots, underscores or hyphens and start with a letter or digit'; exit 1; }
+          [[ "$CACHE_STATE" == warm || "$CACHE_STATE" == cold ]]
+          [[ "$PROFILE_KIND" == baseline || "$PROFILE_KIND" == candidate ]]
+          python3 - <<'PY'
+          import json, os
+          record = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'lane': os.environ['BENCHMARK_LANE'],
+              'commit': os.environ['BENCHMARK_COMMIT'],
+              'pair_id': os.environ['PAIR_ID'],
+              'profile': os.environ['PROFILE_LABEL'],
+              'profile_kind': os.environ['PROFILE_KIND'],
+              'cache_state_declared': os.environ['CACHE_STATE'],
+              'cache_state_verified': False,
+              'github_run_id': os.environ['GITHUB_RUN_ID'],
+              'github_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          }
+          with open(os.path.join(os.environ['RUNNER_TEMP'], 'namespace-sizing-run-manifest.json'), 'w') as handle:
+              json.dump(record, handle, indent=2)
+          PY
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Checkout CI measurement baseline ref
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Prepare pipeline job identity
+        shell: bash
+        env:
+          JOB_KEY: lint
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+        shell: bash
+      - name: Force diagnostics failure (debug)
+        if: ${{ github.event_name == 'workflow_dispatch' && (false == true || false == 'true') }}
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
+      - name: Check pnpm lockfile matches package specifiers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEVENV_TASK_PASSTHROUGH: '1'
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- pnpm install --frozen-lockfile --lockfile-only --offline --ignore-scripts --config.minimum-release-age=0'
+      - name: Format + lint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              head -n 120 "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
+      - name: Export completed job trace
+        if: ${{ always() }}
+        shell: bash
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+      - name: Retain Namespace benchmark run manifest
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'namespace-sizing-run-manifest-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: '${{ runner.temp }}/namespace-sizing-run-manifest.json'
+          if-no-files-found: error
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.pair_id }}
+    concurrency:
+      group: 'namespace-sizing-${{ github.run_id }}-${{ github.run_attempt }}'
+      cancel-in-progress: false
+  native-dependency-policy:
+    if: ${{ inputs.lane == 'native-dependency-policy' }}
+    runs-on:
+      [
+        "${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}",
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate pinned benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+          PAIR_ID: ${{ inputs.pair_id }}
+          CACHE_STATE: ${{ inputs.cache_state }}
+          PROFILE_KIND: ${{ inputs.profile }}
+          PROFILE_LABEL: ${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}
+          BENCHMARK_LANE: native-dependency-policy
+        run: |
+          set -euo pipefail
+          [[ "$BENCHMARK_COMMIT" == 'edba8e895e87f5ec0a96cb8ed09cd9cfc35188cb' ]] || { echo 'Unsupported subject: regenerate this workflow from the intended pinned source revision'; exit 1; }
+          [[ "$PAIR_ID" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]] || { echo 'Pair ID must be 1-80 ASCII letters, digits, dots, underscores or hyphens and start with a letter or digit'; exit 1; }
+          [[ "$CACHE_STATE" == warm || "$CACHE_STATE" == cold ]]
+          [[ "$PROFILE_KIND" == baseline || "$PROFILE_KIND" == candidate ]]
+          python3 - <<'PY'
+          import json, os
+          record = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'lane': os.environ['BENCHMARK_LANE'],
+              'commit': os.environ['BENCHMARK_COMMIT'],
+              'pair_id': os.environ['PAIR_ID'],
+              'profile': os.environ['PROFILE_LABEL'],
+              'profile_kind': os.environ['PROFILE_KIND'],
+              'cache_state_declared': os.environ['CACHE_STATE'],
+              'cache_state_verified': False,
+              'github_run_id': os.environ['GITHUB_RUN_ID'],
+              'github_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          }
+          with open(os.path.join(os.environ['RUNNER_TEMP'], 'namespace-sizing-run-manifest.json'), 'w') as handle:
+              json.dump(record, handle, indent=2)
+          PY
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Checkout CI measurement baseline ref
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Prepare pipeline job identity
+        shell: bash
+        env:
+          JOB_KEY: native-dependency-policy
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+        shell: bash
+      - name: Force diagnostics failure (debug)
+        if: ${{ github.event_name == 'workflow_dispatch' && (false == true || false == 'true') }}
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
+      - name: CI runtime and native dependency policy regression checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/nix-gc-race-retry.test.sh
+          bash genie/ci-scripts/ci-measurement-comparison.test.sh
+          bash genie/ci-scripts/native-dep-policy-audit.test.sh
+      - name: Downstream flake-input regression
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"'
+      - name: Audit native dependency policy
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          audit=genie/ci-scripts/native-dep-policy-audit.ts
+          if command -v bun >/dev/null 2>&1; then
+            bun "$audit"
+          else
+            nix run nixpkgs#bun -- "$audit"
+          fi
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              head -n 120 "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
+      - name: Export completed job trace
+        if: ${{ always() }}
+        shell: bash
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+      - name: Retain Namespace benchmark run manifest
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'namespace-sizing-run-manifest-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: '${{ runner.temp }}/namespace-sizing-run-manifest.json'
+          if-no-files-found: error
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.pair_id }}
+    concurrency:
+      group: 'namespace-sizing-${{ github.run_id }}-${{ github.run_attempt }}'
+      cancel-in-progress: false
+  default-ref-policy:
+    if: ${{ inputs.lane == 'default-ref-policy' }}
+    runs-on:
+      [
+        "${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}",
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ]
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate pinned benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+          PAIR_ID: ${{ inputs.pair_id }}
+          CACHE_STATE: ${{ inputs.cache_state }}
+          PROFILE_KIND: ${{ inputs.profile }}
+          PROFILE_LABEL: ${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}
+          BENCHMARK_LANE: default-ref-policy
+        run: |
+          set -euo pipefail
+          [[ "$BENCHMARK_COMMIT" == 'edba8e895e87f5ec0a96cb8ed09cd9cfc35188cb' ]] || { echo 'Unsupported subject: regenerate this workflow from the intended pinned source revision'; exit 1; }
+          [[ "$PAIR_ID" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]] || { echo 'Pair ID must be 1-80 ASCII letters, digits, dots, underscores or hyphens and start with a letter or digit'; exit 1; }
+          [[ "$CACHE_STATE" == warm || "$CACHE_STATE" == cold ]]
+          [[ "$PROFILE_KIND" == baseline || "$PROFILE_KIND" == candidate ]]
+          python3 - <<'PY'
+          import json, os
+          record = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'lane': os.environ['BENCHMARK_LANE'],
+              'commit': os.environ['BENCHMARK_COMMIT'],
+              'pair_id': os.environ['PAIR_ID'],
+              'profile': os.environ['PROFILE_LABEL'],
+              'profile_kind': os.environ['PROFILE_KIND'],
+              'cache_state_declared': os.environ['CACHE_STATE'],
+              'cache_state_verified': False,
+              'github_run_id': os.environ['GITHUB_RUN_ID'],
+              'github_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          }
+          with open(os.path.join(os.environ['RUNNER_TEMP'], 'namespace-sizing-run-manifest.json'), 'w') as handle:
+              json.dump(record, handle, indent=2)
+          PY
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Prepare pipeline job identity
+        shell: bash
+        env:
+          JOB_KEY: default-ref-policy
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters =
+            extra-trusted-public-keys =
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Check first-party default refs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FIRST_PARTY_OWNERS_JSON: '["schickling","overengineeringstudio"]'
+          DEFAULT_REF: main
+          DEFAULT_REFS_JSON: '{"livestorejs/livestore":"dev"}'
+          VERIFY_REACHABLE: '0'
+          NORMALIZE_GIT_BRANCH_REFS: '0'
+          ALLOW_LEGACY_MEMBER_COMMIT_REFS: '0'
+        run: |
+          nix shell nixpkgs#nodejs_24 -c node <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const os = require('node:os')
+          const cp = require('node:child_process')
+
+          const cwd = process.cwd()
+          const firstPartyOwners = new Set(JSON.parse(process.env.FIRST_PARTY_OWNERS_JSON).map((owner) => owner.toLowerCase()))
+          const defaultRef = process.env.DEFAULT_REF || 'main'
+          const defaultRefs = new Map(Object.entries(JSON.parse(process.env.DEFAULT_REFS_JSON || '{}')).map(([repo, ref]) => [repo.toLowerCase(), ref]))
+          const verifyReachable = process.env.VERIFY_REACHABLE === '1'
+          const allowLegacyMemberCommitRefs = process.env.ALLOW_LEGACY_MEMBER_COMMIT_REFS === '1'
+          const violations = []
+
+          const repoKey = (repo) => repo.owner.toLowerCase() + '/' + repo.repo.toLowerCase()
+          const isFirstParty = (repo) => firstPartyOwners.has(repo.owner.toLowerCase())
+          const normalizeGitBranchRefs = process.env.NORMALIZE_GIT_BRANCH_REFS === '1'
+          const normalizeRef = (ref) => normalizeGitBranchRefs && ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref
+          const expectedRefFor = (repo) => normalizeRef(defaultRefs.get(repoKey(repo)) || defaultRef)
+          const immutableCommitRef = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i
+          const isAllowedLegacyMemberRef = ({ memberName, ref }) =>
+            allowLegacyMemberCommitRefs &&
+            typeof memberName === 'string' &&
+            memberName.endsWith('-legacy') &&
+            immutableCommitRef.test(ref)
+
+          const githubRepoFromUrl = (url) => {
+            const match = url.match(/github\.com[/:]([^/]+)\/([^/#?]+?)(?:\.git)?(?:[#?].*)?$/)
+            return match ? { owner: match[1], repo: match[2] } : undefined
+          }
+
+          const parseGithubLikeRef = (value) => {
+            const hashIndex = value.indexOf('#')
+            const baseWithQuery = hashIndex >= 0 ? value.slice(0, hashIndex) : value
+            const hashRef = hashIndex >= 0 ? value.slice(hashIndex + 1) : undefined
+            const queryIndex = baseWithQuery.indexOf('?')
+            const base = queryIndex >= 0 ? baseWithQuery.slice(0, queryIndex) : baseWithQuery
+            const params = new URLSearchParams(queryIndex >= 0 ? baseWithQuery.slice(queryIndex + 1) : '')
+            const queryRef = params.get('ref') || undefined
+
+            if (base.startsWith('github:')) {
+              const parts = base.slice('github:'.length).split('/')
+              if (parts.length < 2) return undefined
+              return {
+                repo: { owner: parts[0], repo: parts[1] },
+                ref: hashRef || queryRef || (parts.length > 2 ? parts.slice(2).join('/') : undefined),
+              }
+            }
+
+            if (base.startsWith('git+https://github.com/')) {
+              const repo = githubRepoFromUrl(base.slice('git+'.length))
+              return repo ? { repo, ref: hashRef || queryRef } : undefined
+            }
+
+            if (base.startsWith('git+ssh://git@github.com/')) {
+              const pathParts = base.slice('git+ssh://git@github.com/'.length).replace(/\.git$/, '').split('/')
+              return pathParts.length >= 2
+                ? { repo: { owner: pathParts[0], repo: pathParts[1] }, ref: hashRef || queryRef }
+                : undefined
+            }
+
+            const urlRepo = githubRepoFromUrl(base)
+            if (urlRepo) return { repo: urlRepo, ref: hashRef || queryRef }
+
+            if (!value.includes('://') && !value.startsWith('./') && !value.startsWith('../') && !value.startsWith('/')) {
+              const parts = base.split('/')
+              if (parts.length === 2 && parts[0] && parts[1]) {
+                return { repo: { owner: parts[0], repo: parts[1] }, ref: hashRef }
+              }
+            }
+
+            return undefined
+          }
+
+          const addRefViolation = ({ file, repo, ref, field, inputName, memberName }) => {
+            if (!repo || !ref || !isFirstParty(repo)) return
+            const expectedRef = expectedRefFor(repo)
+            const normalizedRef = normalizeRef(ref)
+            if (normalizedRef === expectedRef) return
+            if (isAllowedLegacyMemberRef({ memberName, ref: normalizedRef })) return
+            violations.push({
+              type: 'ref',
+              file,
+              repo: repoKey(repo),
+              ref: normalizedRef,
+              expectedRef,
+              field,
+              inputName,
+              memberName,
+            })
+          }
+
+          const readJson = (file) => {
+            try {
+              return JSON.parse(fs.readFileSync(file, 'utf8'))
+            } catch {
+              return undefined
+            }
+          }
+
+          const displayPath = (file) => path.relative(cwd, file) || path.basename(file)
+          const authorityNames = new Set(['megarepo.kdl', 'megarepo.json', 'megarepo.lock', 'flake.nix', 'flake.lock', 'devenv.yaml', 'devenv.lock'])
+          const ignoredDirs = new Set(['.git', 'node_modules', 'dist', 'result', '.devenv', '.direnv', '.next', '.storybook-static'])
+
+          const collectAuthorityFiles = (root) => {
+            const files = []
+            const walk = (dir) => {
+              let entries = []
+              try {
+                entries = fs.readdirSync(dir)
+              } catch {
+                return
+              }
+              for (const entry of entries) {
+                const full = path.join(dir, entry)
+                let stat
+                try {
+                  stat = fs.statSync(full)
+                } catch {
+                  continue
+                }
+                if (stat.isDirectory()) {
+                  if (ignoredDirs.has(entry)) continue
+                  if (dir === root && entry === 'repos') continue
+                  walk(full)
+                } else if (stat.isFile() && authorityNames.has(entry)) {
+                  files.push(full)
+                }
+              }
+            }
+            walk(root)
+            return files
+          }
+
+          const extractFlakeNixInputs = (content) => {
+            const inputs = []
+            const directPattern = /(?:inputs\.)?([a-zA-Z0-9_-]+)\.url\s*=\s*"([^"]+)"/g
+            let match
+            while ((match = directPattern.exec(content)) !== null) {
+              inputs.push({ inputName: match[1], url: match[2] })
+            }
+
+            const lines = content.split('\n')
+            let inInputs = false
+            let inputsIndent = -1
+            let currentInputName
+            let currentInputIndent = -1
+            for (const line of lines) {
+              const trimmed = line.trimStart()
+              const indent = line.length - trimmed.length
+              if (trimmed.startsWith('inputs = {')) {
+                inInputs = true
+                inputsIndent = indent
+                currentInputName = undefined
+                currentInputIndent = -1
+                continue
+              }
+              if (!inInputs) continue
+              if (trimmed && indent <= inputsIndent && trimmed.startsWith('};')) {
+                inInputs = false
+                currentInputName = undefined
+                continue
+              }
+              if (currentInputName && trimmed === '};' && indent <= currentInputIndent) {
+                currentInputName = undefined
+                continue
+              }
+              const inputStart = trimmed.match(/^(?:inputs\.)?([a-zA-Z0-9_-]+)\s*=\s*\{\s*$/)
+              if (inputStart && indent > inputsIndent) {
+                currentInputName = inputStart[1]
+                currentInputIndent = indent
+                continue
+              }
+              const urlMatch = trimmed.match(/^url\s*=\s*"([^"]+)"/)
+              if (currentInputName && urlMatch) inputs.push({ inputName: currentInputName, url: urlMatch[1] })
+            }
+            return inputs
+          }
+
+          const extractDevenvYamlInputs = (content) => {
+            const inputs = []
+            const lines = content.split('\n')
+            let inInputs = false
+            let inputsIndent = -1
+            let currentInputName
+            for (const line of lines) {
+              const trimmed = line.trimStart()
+              const indent = line.length - trimmed.length
+              if (trimmed === 'inputs:' && !inInputs) {
+                inInputs = true
+                inputsIndent = indent
+                currentInputName = undefined
+                continue
+              }
+              if (!inInputs) continue
+              if (trimmed && indent <= inputsIndent && !trimmed.startsWith('#')) {
+                inInputs = false
+                currentInputName = undefined
+                continue
+              }
+              const inputNameMatch = trimmed.match(/^([a-zA-Z0-9_-]+):$/)
+              if (inputNameMatch && indent > inputsIndent) {
+                currentInputName = inputNameMatch[1]
+                continue
+              }
+              const urlMatch = trimmed.match(/^url:\s*(.+)$/)
+              if (currentInputName && urlMatch) {
+                const raw = urlMatch[1].trim()
+                const url = (raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))
+                  ? raw.slice(1, -1)
+                  : raw
+                inputs.push({ inputName: currentInputName, url })
+              }
+            }
+            return inputs
+          }
+
+          const lockInputs = (content) => {
+            const parsed = readJsonContent(content)
+            const rootName = parsed && (parsed.root || 'root')
+            const root = parsed && parsed.nodes && parsed.nodes[rootName]
+            if (!root || !root.inputs || !parsed.nodes) return []
+            return Object.entries(root.inputs).flatMap(([inputName, nodeName]) => {
+              const node = parsed.nodes[nodeName]
+              return node ? [{ inputName, original: node.original, locked: node.locked }] : []
+            })
+          }
+
+          const readJsonContent = (content) => {
+            try {
+              return JSON.parse(content)
+            } catch {
+              return undefined
+            }
+          }
+
+          const repoFromLockSection = (section) => {
+            if (!section || typeof section !== 'object') return undefined
+            if (section.type === 'github' && typeof section.owner === 'string' && typeof section.repo === 'string') {
+              return { owner: section.owner, repo: section.repo }
+            }
+            if (section.type === 'git' && typeof section.url === 'string') return githubRepoFromUrl(section.url)
+            if (typeof section.url === 'string') return parseGithubLikeRef(section.url)?.repo || githubRepoFromUrl(section.url)
+            return undefined
+          }
+
+          const refFromLockSection = (section) => {
+            if (!section || typeof section !== 'object') return undefined
+            if (typeof section.ref === 'string') return section.ref
+            if (typeof section.url === 'string') return parseGithubLikeRef(section.url)?.ref
+            return undefined
+          }
+
+          const roots = [cwd]
+          const reposRoot = path.join(cwd, 'repos')
+          if (fs.existsSync(reposRoot)) {
+            for (const entry of fs.readdirSync(reposRoot)) {
+              roots.push(path.join(reposRoot, entry))
+            }
+          }
+
+          for (const root of roots) {
+            for (const file of collectAuthorityFiles(root)) {
+              const base = path.basename(file)
+              const rel = displayPath(file)
+              const content = fs.readFileSync(file, 'utf8')
+
+              if (base === 'megarepo.kdl') {
+                for (const line of content.split('\n')) {
+                  const match = line.trim().match(/^([A-Za-z0-9_.-]+)\s+"([^"]+)"/)
+                  if (!match) continue
+                  const parsed = parseGithubLikeRef(match[2])
+                  addRefViolation({ file: rel, repo: parsed && parsed.repo, ref: parsed && parsed.ref, field: 'members.source', memberName: match[1] })
+                }
+              } else if (base === 'megarepo.lock') {
+                const parsed = readJson(file)
+                for (const [memberName, member] of Object.entries((parsed && parsed.members) || {})) {
+                  const repo = typeof member.url === 'string' ? githubRepoFromUrl(member.url) : undefined
+                  addRefViolation({ file: rel, repo, ref: member.ref, field: 'members.ref', memberName })
+                }
+              } else if (base === 'flake.nix') {
+                for (const input of extractFlakeNixInputs(content)) {
+                  const parsed = parseGithubLikeRef(input.url)
+                  addRefViolation({ file: rel, repo: parsed && parsed.repo, ref: parsed && parsed.ref, field: 'url.ref', inputName: input.inputName })
+                }
+              } else if (base === 'devenv.yaml') {
+                for (const input of extractDevenvYamlInputs(content)) {
+                  const parsed = parseGithubLikeRef(input.url)
+                  addRefViolation({ file: rel, repo: parsed && parsed.repo, ref: parsed && parsed.ref, field: 'url.ref', inputName: input.inputName })
+                }
+              } else if (base === 'flake.lock' || base === 'devenv.lock') {
+                for (const input of lockInputs(content)) {
+                  for (const [field, section] of [['original', input.original], ['locked', input.locked]]) {
+                    addRefViolation({ file: rel, repo: repoFromLockSection(section), ref: refFromLockSection(section), field: field + '.ref', inputName: input.inputName })
+                  }
+                }
+              }
+            }
+          }
+
+          if (verifyReachable) {
+            const lock = readJson(path.join(cwd, 'megarepo.lock'))
+            for (const [memberName, member] of Object.entries((lock && lock.members) || {})) {
+              const repo = typeof member.url === 'string' ? githubRepoFromUrl(member.url) : undefined
+              if (!repo || !isFirstParty(repo)) continue
+              if (
+                typeof member.ref === 'string' &&
+                isAllowedLegacyMemberRef({ memberName, ref: normalizeRef(member.ref) })
+              ) {
+                continue
+              }
+              const expectedRef = expectedRefFor(repo)
+              const remote = 'https://github.com/' + repo.owner + '/' + repo.repo + '.git'
+              const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'default-ref-policy-'))
+              let ok = false
+              try {
+                cp.execFileSync('git', ['-C', tmp, 'init', '-q'], { stdio: 'ignore' })
+                cp.execFileSync('git', ['-C', tmp, 'remote', 'add', 'origin', remote], { stdio: 'ignore' })
+                cp.execFileSync('git', ['-C', tmp, 'fetch', '-q', '--filter=blob:none', 'origin', 'refs/heads/' + expectedRef + ':refs/remotes/origin/' + expectedRef], { stdio: 'ignore' })
+                cp.execFileSync('git', ['-C', tmp, 'cat-file', '-e', member.commit + '^{commit}'], { stdio: 'ignore' })
+                cp.execFileSync('git', ['-C', tmp, 'merge-base', '--is-ancestor', member.commit, 'refs/remotes/origin/' + expectedRef], { stdio: 'ignore' })
+                ok = true
+              } catch {
+                ok = false
+              } finally {
+                fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+              }
+              if (!ok) {
+                violations.push({ type: 'reachability', file: 'megarepo.lock', repo: repoKey(repo), rev: member.commit, expectedRef, memberName })
+              }
+            }
+          }
+
+          if (violations.length === 0) {
+            console.log('Default ref policy OK')
+            process.exit(0)
+          }
+
+          console.error('Default ref policy failed:')
+          for (const violation of violations) {
+            if (violation.type === 'reachability') {
+              console.error('  - ' + violation.file + ': member ' + violation.memberName + ' ' + violation.repo + ' locks ' + violation.rev.slice(0, 12) + " outside '" + violation.expectedRef + "'")
+            } else {
+              const name = violation.memberName ? ' member ' + violation.memberName : violation.inputName ? ' input ' + violation.inputName : ''
+              console.error('  - ' + violation.file + ':' + name + ' ' + violation.repo + " uses ref '" + violation.ref + "' in " + violation.field + "; expected '" + violation.expectedRef + "'")
+            }
+          }
+          console.error('')
+          console.error('Fix: merge upstream PRs first, retarget first-party inputs back to their default refs, then refresh locks.')
+          process.exit(1)
+          NODE
+        shell: bash
+      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
+      - name: Export completed job trace
+        if: ${{ always() }}
+        shell: bash
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+      - name: Retain Namespace benchmark run manifest
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'namespace-sizing-run-manifest-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: '${{ runner.temp }}/namespace-sizing-run-manifest.json'
+          if-no-files-found: error
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.pair_id }}
+    concurrency:
+      group: 'namespace-sizing-${{ github.run_id }}-${{ github.run_attempt }}'
+      cancel-in-progress: false
+  source-shape:
+    runs-on:
+      [
+        "${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}",
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.pair_id }}
+      CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && '' != '' && '1' || '' }}
+      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+    steps:
+      - name: Validate pinned benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+          PAIR_ID: ${{ inputs.pair_id }}
+          CACHE_STATE: ${{ inputs.cache_state }}
+          PROFILE_KIND: ${{ inputs.profile }}
+          PROFILE_LABEL: ${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}
+          BENCHMARK_LANE: source-shape
+        run: |
+          set -euo pipefail
+          [[ "$BENCHMARK_COMMIT" == 'edba8e895e87f5ec0a96cb8ed09cd9cfc35188cb' ]] || { echo 'Unsupported subject: regenerate this workflow from the intended pinned source revision'; exit 1; }
+          [[ "$PAIR_ID" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]] || { echo 'Pair ID must be 1-80 ASCII letters, digits, dots, underscores or hyphens and start with a letter or digit'; exit 1; }
+          [[ "$CACHE_STATE" == warm || "$CACHE_STATE" == cold ]]
+          [[ "$PROFILE_KIND" == baseline || "$PROFILE_KIND" == candidate ]]
+          python3 - <<'PY'
+          import json, os
+          record = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'lane': os.environ['BENCHMARK_LANE'],
+              'commit': os.environ['BENCHMARK_COMMIT'],
+              'pair_id': os.environ['PAIR_ID'],
+              'profile': os.environ['PROFILE_LABEL'],
+              'profile_kind': os.environ['PROFILE_KIND'],
+              'cache_state_declared': os.environ['CACHE_STATE'],
+              'cache_state_verified': False,
+              'github_run_id': os.environ['GITHUB_RUN_ID'],
+              'github_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          }
+          with open(os.path.join(os.environ['RUNNER_TEMP'], 'namespace-sizing-run-manifest.json'), 'w') as handle:
+              json.dump(record, handle, indent=2)
+          PY
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Checkout CI measurement baseline ref
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Prepare pipeline job identity
+        shell: bash
+        env:
+          JOB_KEY: source-shape
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: 'Measure source shape: effect-utils'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ARTIFACT_DIR: tmp/source-shape-ci/current/effect-utils
+          RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
+        run: |
+          set -euo pipefail
+
+          ensure_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if command -v "$tool_name" >/dev/null 2>&1; then
+              return 0
+            fi
+            if ! command -v nix >/dev/null 2>&1; then
+              return 1
+            fi
+            if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+              while IFS= read -r tool_path; do
+                [ -n "$tool_path" ] || continue
+                [ -d "$tool_path/bin" ] || continue
+                export PATH="$tool_path/bin:$PATH"
+                if command -v "$tool_name" >/dev/null 2>&1; then
+                  return 0
+                fi
+              done <<EOF
+          $tool_out
+          EOF
+            fi
+            command -v "$tool_name" >/dev/null 2>&1
+          }
+
+          require_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if ensure_ci_measurement_tool "$tool_name" "$nix_attr"; then
+              return 0
+            fi
+            echo "::error::$tool_name is not available; unable to produce CI measurement artifact"
+            exit 1
+          }
+
+          require_ci_measurement_tool node nodejs
+
+          mkdir -p "$ARTIFACT_DIR"
+          target_id='effect_utils'
+          target_name='effect-utils'
+          target_label='effect-utils repository'
+          target_group='source'
+          artifact_file="$ARTIFACT_DIR/measurements.json"
+          target_system="${DEVENV_SYSTEM:-${RUNNER_OS:-unknown}}"
+
+          SCOPES_JSON='[{"id":"genie_ci_workflow","label":"Genie CI workflow helpers","group":"source / ci","path":["source","effect-utils","genie","ci-workflow"],"includePaths":["genie/ci-workflow",".github/workflows/ci.yml.genie.ts"],"includeExtensions":[".ts"]},{"id":"genie_runtime","label":"Genie runtime","group":"source / genie","path":["source","effect-utils","packages","genie"],"includePaths":["packages/@overeng/genie/src"],"includeExtensions":[".ts",".tsx"]},{"id":"nix_workspace_tools","label":"Nix workspace tools","group":"source / nix","path":["source","effect-utils","nix","workspace-tools"],"includePaths":["nix/workspace-tools"],"includeExtensions":[".nix"]}]' \
+          TARGET_PATH_JSON='["source","effect-utils"]' \
+          TARGET_ID="$target_id" \
+          TARGET_NAME="$target_name" \
+          TARGET_LABEL="$target_label" \
+          TARGET_GROUP="$target_group" \
+          TARGET_SYSTEM="$target_system" \
+          node <<'NODE' >"$artifact_file"
+          const cp = require('node:child_process')
+          const fs = require('node:fs')
+          const path = require('node:path')
+
+          const normalize = (value) => {
+            const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+            return normalized === '.' ? '' : normalized
+          }
+          const scopes = JSON.parse(process.env.SCOPES_JSON || '[]')
+          const targetPath = JSON.parse(process.env.TARGET_PATH_JSON || '["source"]')
+          const gitFiles = cp
+            .execFileSync('git', ['ls-files', '-z'], { encoding: 'buffer' })
+            .toString('utf8')
+            .split('\0')
+            .filter(Boolean)
+            .map(normalize)
+
+          const includesPath = (file, candidates) => {
+            if (!Array.isArray(candidates) || candidates.length === 0) return true
+            return candidates.map(normalize).some((candidate) => candidate === '' || file === candidate || file.startsWith(candidate + '/'))
+          }
+
+          const excludesPath = (file, candidates) =>
+            Array.isArray(candidates) &&
+            candidates.map(normalize).some((candidate) => candidate !== '' && (file === candidate || file.startsWith(candidate + '/')))
+
+          const matchesExtension = (file, extensions) => {
+            if (!Array.isArray(extensions) || extensions.length === 0) return true
+            const ext = path.extname(file).toLowerCase()
+            return extensions.map((extension) => extension.toLowerCase()).some((extension) => ext === extension)
+          }
+
+          const countLines = (file) => {
+            const buffer = fs.readFileSync(file)
+            if (buffer.includes(0)) return undefined
+            if (buffer.length === 0) return 0
+            let lines = 0
+            for (const byte of buffer) {
+              if (byte === 10) lines += 1
+            }
+            return buffer[buffer.length - 1] === 10 ? lines : lines + 1
+          }
+
+          const observations = []
+          const scopeSummaries = []
+
+          for (const scope of scopes) {
+            const root = normalize(scope.root || '.')
+            const includePaths = Array.isArray(scope.includePaths) && scope.includePaths.length > 0 ? scope.includePaths : [root]
+            const files = gitFiles
+              .filter((file) => includesPath(file, includePaths))
+              .filter((file) => !excludesPath(file, scope.excludePaths))
+              .filter((file) => matchesExtension(file, scope.includeExtensions))
+
+            let lineCount = 0
+            let measuredFileCount = 0
+            for (const file of files) {
+              const lines = countLines(file)
+              if (lines === undefined) continue
+              lineCount += lines
+              measuredFileCount += 1
+            }
+
+            const group = scope.group || 'source shape'
+            const scopePath = Array.isArray(scope.path) ? scope.path : ['source', scope.id]
+            const policy = scope.gate || { enabled: false, minBaselineSources: 3, minCurrentSamples: 1 }
+            observations.push(
+              {
+                id: 'source.lines',
+                label: scope.label + ' lines',
+                group,
+                path: scopePath,
+                description: 'Tracked non-binary source lines in the configured scope.',
+                measurementKind: 'deterministic',
+                name: 'source.lines',
+                unit: 'lines',
+                value: lineCount,
+                dimensions: { scope: scope.id },
+                policy,
+                statistics: { sampleCount: 1, measuredSampleCount: measuredFileCount },
+              },
+              {
+                id: 'source.files',
+                label: scope.label + ' files',
+                group,
+                path: scopePath,
+                description: 'Tracked non-binary source files in the configured scope.',
+                measurementKind: 'deterministic',
+                name: 'source.files',
+                unit: 'count',
+                value: measuredFileCount,
+                dimensions: { scope: scope.id },
+                policy,
+                statistics: { sampleCount: 1, measuredSampleCount: measuredFileCount },
+              },
+            )
+            scopeSummaries.push({
+              id: scope.id,
+              label: scope.label,
+              root,
+              includePaths,
+              excludePaths: scope.excludePaths || [],
+              includeExtensions: scope.includeExtensions || [],
+              fileCount: measuredFileCount,
+              lineCount,
+            })
+          }
+
+          const artifact = {
+            schemaVersion: 1,
+            generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+            producer: {
+              name: 'effect-utils-ci-measurement',
+              version: 1,
+              measurementProtocol: 'source-shape-v1',
+            },
+            subject: {
+              repo: process.env.GITHUB_REPOSITORY || 'unknown',
+              branchKind: process.env.GITHUB_EVENT_NAME || 'unknown',
+              ref: process.env.CI_MEASUREMENT_SUBJECT_REF || process.env.GITHUB_REF || 'unknown',
+              headSha: process.env.CI_MEASUREMENT_SUBJECT_SHA || process.env.GITHUB_SHA || 'unknown',
+              baseSha: process.env.GITHUB_BASE_SHA || '',
+            },
+            execution: {
+              provider: process.env.GITHUB_RUN_ID && process.env.GITHUB_RUN_ID !== 'unknown' ? 'github-actions' : 'local',
+              workflow: 'CI',
+              job: process.env.GITHUB_JOB || 'unknown',
+              runId: process.env.GITHUB_RUN_ID || 'unknown',
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT || 'unknown',
+              taskId: process.env.CROSSTASK_TASK_ID || '',
+              attemptId: process.env.CROSSTASK_ATTEMPT_ID || '',
+              traceId: process.env.TRACE_ID || '',
+              runner: {
+                name: process.env.RUNNER_NAME || 'unknown',
+                os: process.env.RUNNER_OS || 'unknown',
+                arch: process.env.RUNNER_ARCH || 'unknown',
+                class: process.env.RUNNER_CLASS || 'unknown',
+              },
+            },
+            target: {
+              kind: 'source-shape',
+              id: process.env.TARGET_ID,
+              name: process.env.TARGET_NAME,
+              label: process.env.TARGET_LABEL,
+              group: process.env.TARGET_GROUP,
+              path: targetPath,
+              system: process.env.TARGET_SYSTEM,
+            },
+            observations,
+            details: { scopes: scopeSummaries },
+          }
+
+          process.stdout.write(JSON.stringify(artifact, null, 2) + '\n')
+          NODE
+
+          cat "$artifact_file"
+
+      - name: 'Upload CI measurements: source-shape'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-shape
+          path: |
+            tmp/source-shape-ci
+            !tmp/source-shape-ci/baseline/**
+          if-no-files-found: error
+          retention-days: 14
+      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
+      - name: Export completed job trace
+        if: ${{ always() }}
+        shell: bash
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+      - name: Retain Namespace benchmark run manifest
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'namespace-sizing-run-manifest-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: '${{ runner.temp }}/namespace-sizing-run-manifest.json'
+          if-no-files-found: error
+    concurrency:
+      group: 'namespace-sizing-${{ github.run_id }}-${{ github.run_attempt }}'
+      cancel-in-progress: false
+    if: ${{ inputs.lane == 'source-shape' }}
+  nix-closure-sizes:
+    if: ${{ inputs.lane == 'nix-closure-sizes' }}
+    runs-on:
+      [
+        "${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}",
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.benchmark_commit }}
+      CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.pair_id }}
+      CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && '' != '' && '1' || '' }}
+      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+    steps:
+      - name: Validate pinned benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+          PAIR_ID: ${{ inputs.pair_id }}
+          CACHE_STATE: ${{ inputs.cache_state }}
+          PROFILE_KIND: ${{ inputs.profile }}
+          PROFILE_LABEL: ${{ inputs.profile == 'candidate' && 'namespace-profile-effect-utils-benchmark-linux-candidate' || 'namespace-profile-effect-utils-benchmark-linux-baseline' }}
+          BENCHMARK_LANE: nix-closure-sizes
+        run: |
+          set -euo pipefail
+          [[ "$BENCHMARK_COMMIT" == 'edba8e895e87f5ec0a96cb8ed09cd9cfc35188cb' ]] || { echo 'Unsupported subject: regenerate this workflow from the intended pinned source revision'; exit 1; }
+          [[ "$PAIR_ID" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]] || { echo 'Pair ID must be 1-80 ASCII letters, digits, dots, underscores or hyphens and start with a letter or digit'; exit 1; }
+          [[ "$CACHE_STATE" == warm || "$CACHE_STATE" == cold ]]
+          [[ "$PROFILE_KIND" == baseline || "$PROFILE_KIND" == candidate ]]
+          python3 - <<'PY'
+          import json, os
+          record = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'lane': os.environ['BENCHMARK_LANE'],
+              'commit': os.environ['BENCHMARK_COMMIT'],
+              'pair_id': os.environ['PAIR_ID'],
+              'profile': os.environ['PROFILE_LABEL'],
+              'profile_kind': os.environ['PROFILE_KIND'],
+              'cache_state_declared': os.environ['CACHE_STATE'],
+              'cache_state_verified': False,
+              'github_run_id': os.environ['GITHUB_RUN_ID'],
+              'github_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          }
+          with open(os.path.join(os.environ['RUNNER_TEMP'], 'namespace-sizing-run-manifest.json'), 'w') as handle:
+              json.dump(record, handle, indent=2)
+          PY
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Checkout CI measurement baseline ref
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.benchmark_commit }}
+      - name: Verify checked-out benchmark subject
+        if: ${{ github.event_name == 'workflow_dispatch' && '' != '' }}
+        shell: bash
+        env:
+          BENCHMARK_COMMIT: ${{ inputs.benchmark_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$BENCHMARK_COMMIT" ]]
+      - name: Prepare pipeline job identity
+        shell: bash
+        env:
+          JOB_KEY: nix-closure-sizes
+          MATRIX_VALUE: ''
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+        shell: bash
+      - name: Force diagnostics failure (debug)
+        if: ${{ github.event_name == 'workflow_dispatch' && (false == true || false == 'true') }}
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
+      - name: 'Measure Nix closure: genie'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ARTIFACT_DIR: '${{ github.workspace }}/tmp/nix-closure-ci/current/genie_package'
+          RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+
+          mkdir -p "$ARTIFACT_DIR"
+          installable='.#genie'
+          target_id='genie_package'
+          target_name='genie'
+          target_label='Genie package'
+          target_group='packages'
+          target_description='the Genie CLI closure wrapped from the immutable Buck product manifest'
+          artifact_file="$ARTIFACT_DIR/measurements.json"
+          target_system='x86_64-linux'
+
+          out_path="$(nix build --no-update-lock-file --no-link --print-out-paths "$installable")"
+          path_info="$ARTIFACT_DIR/nix-closure-path-info.json"
+          paths_file="$ARTIFACT_DIR/nix-closure-paths.json"
+
+          nix path-info --recursive --closure-size --json "$out_path" >"$path_info"
+          jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0), closureSize: (.value.closureSize // 0) })' "$path_info" >"$paths_file"
+
+          jq -n \
+            --slurpfile paths "$paths_file" \
+            --argjson schemaVersion 1 \
+            --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg repository "${GITHUB_REPOSITORY:-unknown}" \
+            --arg branchKind "${GITHUB_EVENT_NAME:-unknown}" \
+            --arg ref "${CI_MEASUREMENT_SUBJECT_REF:-${GITHUB_REF:-unknown}}" \
+            --arg headSha "${CI_MEASUREMENT_SUBJECT_SHA:-${GITHUB_SHA:-unknown}}" \
+            --arg baseSha "${GITHUB_BASE_SHA:-}" \
+            --arg runnerName "${RUNNER_NAME:-unknown}" \
+            --arg runnerOs "${RUNNER_OS:-unknown}" \
+            --arg runnerArch "${RUNNER_ARCH:-unknown}" \
+            --arg runnerClass "${RUNNER_CLASS:-unknown}" \
+            --arg githubRunId "${GITHUB_RUN_ID:-unknown}" \
+            --arg githubRunAttempt "${GITHUB_RUN_ATTEMPT:-unknown}" \
+            --arg githubJob "${GITHUB_JOB:-unknown}" \
+            --arg taskId "${CROSSTASK_TASK_ID:-}" \
+            --arg taskAttemptId "${CROSSTASK_ATTEMPT_ID:-}" \
+            --arg traceId "${TRACE_ID:-}" \
+            --arg targetName "$target_name" \
+            --arg targetId "$target_id" \
+            --arg targetLabel "$target_label" \
+            --arg targetGroup "$target_group" \
+            --arg targetDescription "$target_description" \
+            --arg targetSystem "$target_system" \
+            --arg outPath "$out_path" \
+            --argjson buckets '[{"name":"node","label":"Node / pnpm","pathRegex":"node_modules|npm-deps|pnpm"},{"name":"nix-sources","label":"Nix sources","pathRegex":"-source$"},{"name":"rust","label":"Rust","pathRegex":"cargo|rust|rustc"}]' \
+            --argjson targetPath '["nix","closures","packages","genie"]' \
+            --argjson gatePolicy '{}' \
+            '
+              ($paths[0] // []) as $closurePaths
+              | ($closurePaths | map(select(.path == $outPath) | .closureSize) | first // ($closurePaths | map(.narSize) | add // 0)) as $totalClosureSize
+              | ($closurePaths | map(.narSize) | add // 0) as $totalNarSize
+              | ($closurePaths | length) as $pathCount
+              | ($buckets | map(
+                  . as $bucket
+                  | {
+                      name: "nix.closure.bucket.nar_size",
+                      id: "nix.closure.bucket.nar_size",
+                      label: (($bucket.label // $bucket.name) + " closure size"),
+                      group: "nix closure buckets",
+                      path: ($targetPath + ["buckets", $bucket.name]),
+                      description: ("Store size contributed by closure paths matching " + $bucket.pathRegex),
+                      measurementKind: "deterministic",
+                      unit: "bytes",
+                      value: (
+                        $closurePaths
+                        | map(select(.path | test($bucket.pathRegex)) | .narSize)
+                        | add // 0
+                      ),
+                      policy: $gatePolicy,
+                      dimensions: { bucket: $bucket.name }
+                    }
+                )) as $bucketObservations
+              | {
+                  schemaVersion: $schemaVersion,
+                  generatedAt: $generatedAt,
+                  producer: { name: "effect-utils-ci-measurement", version: 1 },
+                  subject: {
+                    repo: $repository,
+                    branchKind: (if $branchKind == "" then "unknown" else $branchKind end),
+                    ref: $ref,
+                    headSha: $headSha,
+                    baseSha: $baseSha
+                  },
+                  execution: {
+                    provider: (if ($githubRunId != "" and $githubRunId != "unknown") then "github-actions" else "local" end),
+                    workflow: "CI",
+                    job: $githubJob,
+                    runId: $githubRunId,
+                    runAttempt: $githubRunAttempt,
+                    taskId: $taskId,
+                    attemptId: $taskAttemptId,
+                    traceId: $traceId,
+                    runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch, class: $runnerClass }
+                  },
+                  target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem },
+                  observations: ([
+                    {
+                      id: "nix.closure.nar_size",
+                      label: "Total closure size",
+                      group: "nix closure",
+                      path: ($targetPath + ["total", "closure-size"]),
+                      description: ("Total recursive store closure size for " + $targetDescription),
+                      name: "nix.closure.nar_size",
+                      measurementKind: "deterministic",
+                      unit: "bytes",
+                      value: $totalClosureSize,
+                      policy: $gatePolicy,
+                      dimensions: { bucket: "total" }
+                    },
+                    {
+                      id: "nix.closure.serialized_nar_size",
+                      label: "Total serialized NAR size",
+                      group: "nix closure diagnostics",
+                      path: ($targetPath + ["total", "serialized-nar-size"]),
+                      description: ("Diagnostic sum of serialized NAR sizes for all paths in " + $targetDescription),
+                      name: "nix.closure.serialized_nar_size",
+                      measurementKind: "diagnostic",
+                      unit: "bytes",
+                      value: $totalNarSize,
+                      policy: { comparisonMode: "diagnostic", gate: "off" },
+                      dimensions: { bucket: "total", sizeKind: "nar" }
+                    },
+                    {
+                      id: "nix.closure.path_count",
+                      label: "Total closure path count",
+                      group: "nix closure",
+                      path: ($targetPath + ["total", "path-count"]),
+                      description: ("Number of store paths in " + $targetDescription),
+                      name: "nix.closure.path_count",
+                      measurementKind: "deterministic",
+                      unit: "count",
+                      value: $pathCount,
+                      policy: $gatePolicy,
+                      dimensions: { bucket: "total" }
+                    }
+                  ] + $bucketObservations),
+                  artifacts: [
+                    { name: "nix-closure-path-info", path: "nix-closure-path-info.json", contentType: "application/json" },
+                    { name: "nix-closure-paths", path: "nix-closure-paths.json", contentType: "application/json" }
+                  ],
+                  details: {
+                    outPath: $outPath,
+                    topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])
+                  }
+                }
+            ' >"$artifact_file"
+
+          cat "$artifact_file"
+
+      - name: 'Measure Nix closure: megarepo'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ARTIFACT_DIR: '${{ github.workspace }}/tmp/nix-closure-ci/current/megarepo_package'
+          RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+
+          mkdir -p "$ARTIFACT_DIR"
+          installable='.#megarepo'
+          target_id='megarepo_package'
+          target_name='megarepo'
+          target_label='Megarepo package'
+          target_group='packages'
+          target_description='the megarepo CLI closure wrapped from the immutable Buck product manifest'
+          artifact_file="$ARTIFACT_DIR/measurements.json"
+          target_system='x86_64-linux'
+
+          out_path="$(nix build --no-update-lock-file --no-link --print-out-paths "$installable")"
+          path_info="$ARTIFACT_DIR/nix-closure-path-info.json"
+          paths_file="$ARTIFACT_DIR/nix-closure-paths.json"
+
+          nix path-info --recursive --closure-size --json "$out_path" >"$path_info"
+          jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0), closureSize: (.value.closureSize // 0) })' "$path_info" >"$paths_file"
+
+          jq -n \
+            --slurpfile paths "$paths_file" \
+            --argjson schemaVersion 1 \
+            --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg repository "${GITHUB_REPOSITORY:-unknown}" \
+            --arg branchKind "${GITHUB_EVENT_NAME:-unknown}" \
+            --arg ref "${CI_MEASUREMENT_SUBJECT_REF:-${GITHUB_REF:-unknown}}" \
+            --arg headSha "${CI_MEASUREMENT_SUBJECT_SHA:-${GITHUB_SHA:-unknown}}" \
+            --arg baseSha "${GITHUB_BASE_SHA:-}" \
+            --arg runnerName "${RUNNER_NAME:-unknown}" \
+            --arg runnerOs "${RUNNER_OS:-unknown}" \
+            --arg runnerArch "${RUNNER_ARCH:-unknown}" \
+            --arg runnerClass "${RUNNER_CLASS:-unknown}" \
+            --arg githubRunId "${GITHUB_RUN_ID:-unknown}" \
+            --arg githubRunAttempt "${GITHUB_RUN_ATTEMPT:-unknown}" \
+            --arg githubJob "${GITHUB_JOB:-unknown}" \
+            --arg taskId "${CROSSTASK_TASK_ID:-}" \
+            --arg taskAttemptId "${CROSSTASK_ATTEMPT_ID:-}" \
+            --arg traceId "${TRACE_ID:-}" \
+            --arg targetName "$target_name" \
+            --arg targetId "$target_id" \
+            --arg targetLabel "$target_label" \
+            --arg targetGroup "$target_group" \
+            --arg targetDescription "$target_description" \
+            --arg targetSystem "$target_system" \
+            --arg outPath "$out_path" \
+            --argjson buckets '[{"name":"node","label":"Node / pnpm","pathRegex":"node_modules|npm-deps|pnpm"},{"name":"nix-sources","label":"Nix sources","pathRegex":"-source$"},{"name":"rust","label":"Rust","pathRegex":"cargo|rust|rustc"}]' \
+            --argjson targetPath '["nix","closures","packages","megarepo"]' \
+            --argjson gatePolicy '{}' \
+            '
+              ($paths[0] // []) as $closurePaths
+              | ($closurePaths | map(select(.path == $outPath) | .closureSize) | first // ($closurePaths | map(.narSize) | add // 0)) as $totalClosureSize
+              | ($closurePaths | map(.narSize) | add // 0) as $totalNarSize
+              | ($closurePaths | length) as $pathCount
+              | ($buckets | map(
+                  . as $bucket
+                  | {
+                      name: "nix.closure.bucket.nar_size",
+                      id: "nix.closure.bucket.nar_size",
+                      label: (($bucket.label // $bucket.name) + " closure size"),
+                      group: "nix closure buckets",
+                      path: ($targetPath + ["buckets", $bucket.name]),
+                      description: ("Store size contributed by closure paths matching " + $bucket.pathRegex),
+                      measurementKind: "deterministic",
+                      unit: "bytes",
+                      value: (
+                        $closurePaths
+                        | map(select(.path | test($bucket.pathRegex)) | .narSize)
+                        | add // 0
+                      ),
+                      policy: $gatePolicy,
+                      dimensions: { bucket: $bucket.name }
+                    }
+                )) as $bucketObservations
+              | {
+                  schemaVersion: $schemaVersion,
+                  generatedAt: $generatedAt,
+                  producer: { name: "effect-utils-ci-measurement", version: 1 },
+                  subject: {
+                    repo: $repository,
+                    branchKind: (if $branchKind == "" then "unknown" else $branchKind end),
+                    ref: $ref,
+                    headSha: $headSha,
+                    baseSha: $baseSha
+                  },
+                  execution: {
+                    provider: (if ($githubRunId != "" and $githubRunId != "unknown") then "github-actions" else "local" end),
+                    workflow: "CI",
+                    job: $githubJob,
+                    runId: $githubRunId,
+                    runAttempt: $githubRunAttempt,
+                    taskId: $taskId,
+                    attemptId: $taskAttemptId,
+                    traceId: $traceId,
+                    runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch, class: $runnerClass }
+                  },
+                  target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem },
+                  observations: ([
+                    {
+                      id: "nix.closure.nar_size",
+                      label: "Total closure size",
+                      group: "nix closure",
+                      path: ($targetPath + ["total", "closure-size"]),
+                      description: ("Total recursive store closure size for " + $targetDescription),
+                      name: "nix.closure.nar_size",
+                      measurementKind: "deterministic",
+                      unit: "bytes",
+                      value: $totalClosureSize,
+                      policy: $gatePolicy,
+                      dimensions: { bucket: "total" }
+                    },
+                    {
+                      id: "nix.closure.serialized_nar_size",
+                      label: "Total serialized NAR size",
+                      group: "nix closure diagnostics",
+                      path: ($targetPath + ["total", "serialized-nar-size"]),
+                      description: ("Diagnostic sum of serialized NAR sizes for all paths in " + $targetDescription),
+                      name: "nix.closure.serialized_nar_size",
+                      measurementKind: "diagnostic",
+                      unit: "bytes",
+                      value: $totalNarSize,
+                      policy: { comparisonMode: "diagnostic", gate: "off" },
+                      dimensions: { bucket: "total", sizeKind: "nar" }
+                    },
+                    {
+                      id: "nix.closure.path_count",
+                      label: "Total closure path count",
+                      group: "nix closure",
+                      path: ($targetPath + ["total", "path-count"]),
+                      description: ("Number of store paths in " + $targetDescription),
+                      name: "nix.closure.path_count",
+                      measurementKind: "deterministic",
+                      unit: "count",
+                      value: $pathCount,
+                      policy: $gatePolicy,
+                      dimensions: { bucket: "total" }
+                    }
+                  ] + $bucketObservations),
+                  artifacts: [
+                    { name: "nix-closure-path-info", path: "nix-closure-path-info.json", contentType: "application/json" },
+                    { name: "nix-closure-paths", path: "nix-closure-paths.json", contentType: "application/json" }
+                  ],
+                  details: {
+                    outPath: $outPath,
+                    topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])
+                  }
+                }
+            ' >"$artifact_file"
+
+          cat "$artifact_file"
+
+      - name: 'Measure Nix closure: oxlint-npm'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ARTIFACT_DIR: '${{ github.workspace }}/tmp/nix-closure-ci/current/oxlint_npm_package'
+          RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+
+          mkdir -p "$ARTIFACT_DIR"
+          installable='.#oxlint-npm'
+          target_id='oxlint_npm_package'
+          target_name='oxlint-npm'
+          target_label='oxlint npm package'
+          target_group='packages'
+          target_description='the packaged oxlint npm compatibility wrapper closure'
+          artifact_file="$ARTIFACT_DIR/measurements.json"
+          target_system='x86_64-linux'
+
+          out_path="$(nix build --no-update-lock-file --no-link --print-out-paths "$installable")"
+          path_info="$ARTIFACT_DIR/nix-closure-path-info.json"
+          paths_file="$ARTIFACT_DIR/nix-closure-paths.json"
+
+          nix path-info --recursive --closure-size --json "$out_path" >"$path_info"
+          jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0), closureSize: (.value.closureSize // 0) })' "$path_info" >"$paths_file"
+
+          jq -n \
+            --slurpfile paths "$paths_file" \
+            --argjson schemaVersion 1 \
+            --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg repository "${GITHUB_REPOSITORY:-unknown}" \
+            --arg branchKind "${GITHUB_EVENT_NAME:-unknown}" \
+            --arg ref "${CI_MEASUREMENT_SUBJECT_REF:-${GITHUB_REF:-unknown}}" \
+            --arg headSha "${CI_MEASUREMENT_SUBJECT_SHA:-${GITHUB_SHA:-unknown}}" \
+            --arg baseSha "${GITHUB_BASE_SHA:-}" \
+            --arg runnerName "${RUNNER_NAME:-unknown}" \
+            --arg runnerOs "${RUNNER_OS:-unknown}" \
+            --arg runnerArch "${RUNNER_ARCH:-unknown}" \
+            --arg runnerClass "${RUNNER_CLASS:-unknown}" \
+            --arg githubRunId "${GITHUB_RUN_ID:-unknown}" \
+            --arg githubRunAttempt "${GITHUB_RUN_ATTEMPT:-unknown}" \
+            --arg githubJob "${GITHUB_JOB:-unknown}" \
+            --arg taskId "${CROSSTASK_TASK_ID:-}" \
+            --arg taskAttemptId "${CROSSTASK_ATTEMPT_ID:-}" \
+            --arg traceId "${TRACE_ID:-}" \
+            --arg targetName "$target_name" \
+            --arg targetId "$target_id" \
+            --arg targetLabel "$target_label" \
+            --arg targetGroup "$target_group" \
+            --arg targetDescription "$target_description" \
+            --arg targetSystem "$target_system" \
+            --arg outPath "$out_path" \
+            --argjson buckets '[{"name":"node","label":"Node / pnpm","pathRegex":"node_modules|npm-deps|pnpm"},{"name":"nix-sources","label":"Nix sources","pathRegex":"-source$"},{"name":"rust","label":"Rust","pathRegex":"cargo|rust|rustc"}]' \
+            --argjson targetPath '["nix","closures","packages","oxlint-npm"]' \
+            --argjson gatePolicy '{}' \
+            '
+              ($paths[0] // []) as $closurePaths
+              | ($closurePaths | map(select(.path == $outPath) | .closureSize) | first // ($closurePaths | map(.narSize) | add // 0)) as $totalClosureSize
+              | ($closurePaths | map(.narSize) | add // 0) as $totalNarSize
+              | ($closurePaths | length) as $pathCount
+              | ($buckets | map(
+                  . as $bucket
+                  | {
+                      name: "nix.closure.bucket.nar_size",
+                      id: "nix.closure.bucket.nar_size",
+                      label: (($bucket.label // $bucket.name) + " closure size"),
+                      group: "nix closure buckets",
+                      path: ($targetPath + ["buckets", $bucket.name]),
+                      description: ("Store size contributed by closure paths matching " + $bucket.pathRegex),
+                      measurementKind: "deterministic",
+                      unit: "bytes",
+                      value: (
+                        $closurePaths
+                        | map(select(.path | test($bucket.pathRegex)) | .narSize)
+                        | add // 0
+                      ),
+                      policy: $gatePolicy,
+                      dimensions: { bucket: $bucket.name }
+                    }
+                )) as $bucketObservations
+              | {
+                  schemaVersion: $schemaVersion,
+                  generatedAt: $generatedAt,
+                  producer: { name: "effect-utils-ci-measurement", version: 1 },
+                  subject: {
+                    repo: $repository,
+                    branchKind: (if $branchKind == "" then "unknown" else $branchKind end),
+                    ref: $ref,
+                    headSha: $headSha,
+                    baseSha: $baseSha
+                  },
+                  execution: {
+                    provider: (if ($githubRunId != "" and $githubRunId != "unknown") then "github-actions" else "local" end),
+                    workflow: "CI",
+                    job: $githubJob,
+                    runId: $githubRunId,
+                    runAttempt: $githubRunAttempt,
+                    taskId: $taskId,
+                    attemptId: $taskAttemptId,
+                    traceId: $traceId,
+                    runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch, class: $runnerClass }
+                  },
+                  target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem },
+                  observations: ([
+                    {
+                      id: "nix.closure.nar_size",
+                      label: "Total closure size",
+                      group: "nix closure",
+                      path: ($targetPath + ["total", "closure-size"]),
+                      description: ("Total recursive store closure size for " + $targetDescription),
+                      name: "nix.closure.nar_size",
+                      measurementKind: "deterministic",
+                      unit: "bytes",
+                      value: $totalClosureSize,
+                      policy: $gatePolicy,
+                      dimensions: { bucket: "total" }
+                    },
+                    {
+                      id: "nix.closure.serialized_nar_size",
+                      label: "Total serialized NAR size",
+                      group: "nix closure diagnostics",
+                      path: ($targetPath + ["total", "serialized-nar-size"]),
+                      description: ("Diagnostic sum of serialized NAR sizes for all paths in " + $targetDescription),
+                      name: "nix.closure.serialized_nar_size",
+                      measurementKind: "diagnostic",
+                      unit: "bytes",
+                      value: $totalNarSize,
+                      policy: { comparisonMode: "diagnostic", gate: "off" },
+                      dimensions: { bucket: "total", sizeKind: "nar" }
+                    },
+                    {
+                      id: "nix.closure.path_count",
+                      label: "Total closure path count",
+                      group: "nix closure",
+                      path: ($targetPath + ["total", "path-count"]),
+                      description: ("Number of store paths in " + $targetDescription),
+                      name: "nix.closure.path_count",
+                      measurementKind: "deterministic",
+                      unit: "count",
+                      value: $pathCount,
+                      policy: $gatePolicy,
+                      dimensions: { bucket: "total" }
+                    }
+                  ] + $bucketObservations),
+                  artifacts: [
+                    { name: "nix-closure-path-info", path: "nix-closure-path-info.json", contentType: "application/json" },
+                    { name: "nix-closure-paths", path: "nix-closure-paths.json", contentType: "application/json" }
+                  ],
+                  details: {
+                    outPath: $outPath,
+                    topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])
+                  }
+                }
+            ' >"$artifact_file"
+
+          cat "$artifact_file"
+
+      - name: 'Upload CI measurements: nix-closure-measurements'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nix-closure-measurements
+          path: |
+            ${{ github.workspace }}/tmp/nix-closure-ci
+            !${{ github.workspace }}/tmp/nix-closure-ci/baseline/**
+          if-no-files-found: error
+          retention-days: 14
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              head -n 120 "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
+      - name: Export completed job trace
+        if: ${{ always() }}
+        shell: bash
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+      - name: Retain Namespace benchmark run manifest
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'namespace-sizing-run-manifest-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: '${{ runner.temp }}/namespace-sizing-run-manifest.json'
+          if-no-files-found: error
+    concurrency:
+      group: 'namespace-sizing-${{ github.run_id }}-${{ github.run_attempt }}'
+      cancel-in-progress: false
