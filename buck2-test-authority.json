@@ -1329,6 +1329,20 @@
       "unboundedTaskName": "test:otel-contract:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/outline:test_collect",
+      "excludes": [],
+      "packageName": "outline",
+      "packagePath": "packages/@overeng/outline",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/model.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/outline:test",
+      "taskName": "test:outline",
+      "testFiles": ["src/model.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/oxc-config:test_collect",
       "excludes": [],
       "packageName": "oxc-config",

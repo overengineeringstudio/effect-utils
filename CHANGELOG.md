@@ -7,6 +7,11 @@
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
+- `@overeng/outline` provides theme-free outline hierarchy, measured reading-edge
+  selection, fixed-pitch tick geometry, and React Aria navigation. Callers retain
+  document discovery, scroll coordinates, and adapter subscription lifetimes.
+  The nonmodal rail disclosure retains hover and focus, supports Escape with
+  deliberate re-entry, and preserves native alternate anchor activation.
 - Declared Darwin Swift app-bundle Buck products with deterministic bundle
   packaging and independent per-executable Mach-O inspection during Nix import.
 - `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
