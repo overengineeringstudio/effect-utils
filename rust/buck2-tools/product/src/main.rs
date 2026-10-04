@@ -1223,7 +1223,6 @@ fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
         ));
     }
     let mut files = BTreeMap::new();
-    let mut observed_executables = BTreeMap::new();
     let mut runtime_executables = Vec::new();
     for (relative, source) in &executables {
         let observed = fs::read(source).map_err(|error| {
@@ -1233,7 +1232,7 @@ fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
             )
         })?;
         let runtime = mach_o_runtime(&observed, &args.platform_architecture)?;
-        observed_executables.insert(relative.clone(), observed);
+        files.insert(relative.clone(), observed);
         runtime_executables.push(json!({
             "architecture": runtime["architecture"].clone(),
             "dylibs": runtime["dylibs"].clone(),
@@ -1268,9 +1267,6 @@ fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
             )
         })?;
         files.insert(format!("{bundle_root}/Contents/Resources/nix-build-stamp.json"), contents);
-    }
-    for (path, contents) in observed_executables {
-        files.insert(path, contents);
     }
     let artifact = archive_tree(files, &executables.keys().cloned().collect::<Vec<_>>())?;
     let provenance_bytes = fs::read(&args.provenance).map_err(|error| {

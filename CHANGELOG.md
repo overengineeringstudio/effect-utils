@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Declared Darwin Swift app-bundle Buck products with deterministic bundle
+  packaging and independent per-executable Mach-O inspection during Nix import.
+
 ### Fixed
 
 - TypeScript Buck projections resolve source labels through the nearest declared

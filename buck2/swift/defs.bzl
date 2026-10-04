@@ -34,6 +34,9 @@ def _swift_app_bundle_impl(ctx):
     if platform.architecture != "aarch64":
         fail("swift_app_bundle currently admits only aarch64 Darwin hosts")
     _validate_bundle_component(ctx.attrs.bundle_name, "swift_app_bundle bundle_name")
+    _validate_bundle_component(ctx.attrs.bundle_id, "swift_app_bundle bundle_id")
+    if ctx.attrs.icon_basename != "":
+        _validate_bundle_component(ctx.attrs.icon_basename, "swift_app_bundle icon_basename")
     _validate_bundle_component(ctx.attrs.main_executable, "swift_app_bundle main_executable")
     _validate_bundle_component(ctx.attrs.version, "swift_app_bundle version")
     if not ctx.attrs.binaries:
@@ -73,6 +76,7 @@ def _swift_app_bundle_impl(ctx):
         ctx.actions.run(
             concat_args,
             category = "swift_app_bundle_sources",
+            identifier = name,
             local_only = True,
             allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
         )
@@ -93,6 +97,7 @@ def _swift_app_bundle_impl(ctx):
         ctx.actions.run(
             compile_args,
             category = "swift_app_bundle_compile",
+            identifier = name,
             env = {
                 "DEVELOPER_DIR": "/var/empty",
                 "SDKROOT": "/var/empty",

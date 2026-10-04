@@ -46,6 +46,21 @@ contract_expr='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
       rpathPolicy = "empty/v1";
       signingPolicy = "adhoc/v1";
     };
+  };
+  bundleExecutable = {
+    path = "Applications/Fixture.app/Contents/MacOS/fixture";
+    inherit (validMachO.runtime) architecture dylibs minimumOs signingPolicy;
+  };
+  validBundle = validMachO // {
+    entrypoints = [ bundleExecutable.path ];
+    runtime = {
+      kind = "mach-o-app-bundle";
+      inspectionContract = "mach-o-app-bundle/v1";
+      bundleRoot = "Applications/Fixture.app";
+      mainExecutable = bundleExecutable.path;
+      executables = [ bundleExecutable ];
+      inherit (validMachO.runtime) installNamePolicy rpathPolicy;
+    };
   };'
 
 eval_raw() {
@@ -92,6 +107,38 @@ verified="$(eval_raw 'contract.canonicalDescriptorJson (contract.verifyDescripto
   expectedDescriptorDigest = contract.descriptorDigest valid;
 })')"
 [ "$verified" = "$canonical" ]
+
+eval_raw 'builtins.deepSeq (contract.validateDescriptor validBundle) "accepted bundle"' >/dev/null
+expect_eval_failure \
+  "bundle executable outside bundle" \
+  "executables must live inside the bundle root" \
+  'contract.canonicalDescriptorJson (validBundle // { runtime = validBundle.runtime // {
+    executables = [ (bundleExecutable // { path = "Applications/Other.app/tool"; }) ];
+  }; })'
+expect_eval_failure \
+  "bundle runtime architecture mismatch" \
+  "bundle executable architecture must match" \
+  'contract.canonicalDescriptorJson (validBundle // { runtime = validBundle.runtime // {
+    executables = [ (bundleExecutable // { architecture = "x86_64"; }) ];
+  }; })'
+expect_eval_failure \
+  "bundle install name outside system" \
+  "bundle executable dylibs must use system install names" \
+  'contract.canonicalDescriptorJson (validBundle // { runtime = validBundle.runtime // {
+    executables = [ (bundleExecutable // { dylibs = [ "/nix/store/foreign/lib.dylib" ]; }) ];
+  }; })'
+expect_eval_failure \
+  "bundle duplicate executable" \
+  "executables paths must be unique" \
+  'contract.canonicalDescriptorJson (validBundle // { runtime = validBundle.runtime // {
+    executables = [ bundleExecutable bundleExecutable ];
+  }; })'
+expect_eval_failure \
+  "bundle undeclared main executable" \
+  "mainExecutable must name a declared bundle executable" \
+  'contract.canonicalDescriptorJson (validBundle // { runtime = validBundle.runtime // {
+    mainExecutable = "Applications/Fixture.app/Contents/MacOS/absent";
+  }; })'
 
 expect_eval_failure \
   "missing independent descriptor digest" \
