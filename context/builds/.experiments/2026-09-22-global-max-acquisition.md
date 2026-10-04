@@ -46,17 +46,17 @@ wrapped probe. No service configuration changed.
 
 ## Result
 
-| Probe | Result |
-| --- | --- |
-| CAS PUT of real pnpm archive | HTTP 200; server accepted the digest key |
-| Buck `pnpm_package` fetch target | pass; output SHA-256 exactly matched the sidecar |
-| Nix FOD from the same archive URL | pass with substituters disabled; exact SHA-256 |
-| Archive publisher seed | 670 missing blobs, 645,360,942 bytes, 38.815 s; one blob already present |
-| Fresh CAS-backed `genie` | pass; 587 local commands, 0 cached/remote, 50 MiB HTTP, 583.24 s under host pressure |
-| `genie.js` parity | SHA-256 `4e5febf7ce9948a6e4e8d4d8e1cad111f2fecffd542182caf3111a93744678fe`, equal to prior sandbox and standalone results |
-| Two-package digest mutation | one local command; unrelated package ran zero commands; 0 network bytes reported |
-| Warm `genie` digest mutation | one local command; success in 2.00 s; final product digest unchanged |
-| `genie.js` as Nix FOD | pass with substituters disabled; exact 6,320,572-byte payload digest |
+| Probe                             | Result                                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| CAS PUT of real pnpm archive      | HTTP 200; server accepted the digest key                                                                                  |
+| Buck `pnpm_package` fetch target  | pass; output SHA-256 exactly matched the sidecar                                                                          |
+| Nix FOD from the same archive URL | pass with substituters disabled; exact SHA-256                                                                            |
+| Archive publisher seed            | 670 missing blobs, 645,360,942 bytes, 38.815 s; one blob already present                                                  |
+| Fresh CAS-backed `genie`          | pass; 587 local commands, 0 cached/remote, 50 MiB HTTP, 583.24 s under host pressure                                      |
+| `genie.js` parity                 | SHA-256 `4e5febf7ce9948a6e4e8d4d8e1cad111f2fecffd542182caf3111a93744678fe`, equal to prior sandbox and standalone results |
+| Two-package digest mutation       | one local command; unrelated package ran zero commands; 0 network bytes reported                                          |
+| Warm `genie` digest mutation      | one local command; success in 2.00 s; final product digest unchanged                                                      |
+| `genie.js` as Nix FOD             | pass with substituters disabled; exact 6,320,572-byte payload digest                                                      |
 
 The altered archive has the same gzip/tar payload plus one trailing byte. It is
 not a claim that a semantic package change leaves the product unchanged. It is
