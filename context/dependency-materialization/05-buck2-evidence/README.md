@@ -8,12 +8,12 @@ historical pnpm closure experiments. It does not own Buck's general authority,
 toolchain, language-action, artifact, Nix integration, observability, or
 admission contracts.
 
-| Document                             | Role                                                                       |
-| ------------------------------------ | -------------------------------------------------------------------------- |
-| [requirements.md](./requirements.md) | Stable DMP-to-Buck dependency constraints                                  |
-| [spec.md](./spec.md)                 | Closure identity, resolver projection, and consumer join                   |
+| Document                             | Role                                                                        |
+| ------------------------------------ | --------------------------------------------------------------------------- |
+| [requirements.md](./requirements.md) | Stable DMP-to-Buck dependency constraints                                   |
+| [spec.md](./spec.md)                 | Closure identity, resolver projection, and consumer join                    |
 | [`.decisions/`](./.decisions/)       | Historical accepted decisions; broader ownership points to `context/builds` |
-| [`.experiments/`](./.experiments/)   | Resolver, invalidation, and benchmark evidence                             |
+| [`.experiments/`](./.experiments/)   | Resolver, invalidation, and benchmark evidence                              |
 
 Current implementation and migration status belong to the Buck roadmap and
 GitHub refactor epic rather than this timeless dependency contract.

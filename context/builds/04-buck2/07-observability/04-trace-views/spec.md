@@ -94,7 +94,7 @@ names are OTel dotted names; Prometheus-compatible translation adds `_seconds`
 to seconds-valued histograms, `_total` to counters, and replaces dots with
 underscores:
 
-| Canonical (OTel)                      | Prometheus-compatible                        | Type      | Labels (closed enums)               |
+| Canonical (OTel)                      | Prometheus-compatible                     | Type      | Labels (closed enums)               |
 | ------------------------------------- | ----------------------------------------- | --------- | ----------------------------------- |
 | `buck2.command.duration` (s)          | `buck2_command_duration_seconds`          | histogram | subcommand                          |
 | `buck2.critical_path.duration` (s)    | `buck2_critical_path_duration_seconds`    | histogram | subcommand                          |

@@ -123,11 +123,11 @@ It refines BUILD.BUCK-R13 (and BUILD.AUTH-R12 advisory, BUILD.AUTH-R14 hygiene) 
 
 ## Requirement Trace
 
-| Requirements                                           | Refinement                      |
-| ------------------------------------------------------ | ------------------------------- |
-| BUILD.BUCK.OBS-R01, BUILD.BUCK.OBS-R02                             | 03 Event-log Adapter            |
-| BUILD.BUCK.OBS-R03, BUILD.BUCK.OBS-R04, BUILD.BUCK.OBS-R07               | 01 Run Identity, 02 Local Spool |
-| BUILD.BUCK.OBS-R05, BUILD.BUCK.OBS-T02                             | 04 Trace Views                  |
+| Requirements                                                                   | Refinement                      |
+| ------------------------------------------------------------------------------ | ------------------------------- |
+| BUILD.BUCK.OBS-R01, BUILD.BUCK.OBS-R02                                         | 03 Event-log Adapter            |
+| BUILD.BUCK.OBS-R03, BUILD.BUCK.OBS-R04, BUILD.BUCK.OBS-R07                     | 01 Run Identity, 02 Local Spool |
+| BUILD.BUCK.OBS-R05, BUILD.BUCK.OBS-T02                                         | 04 Trace Views                  |
 | BUILD.BUCK.OBS-R03, BUILD.BUCK.OBS-R04, BUILD.BUCK.OBS-R06, BUILD.BUCK.OBS-R08 | 05 OTLP Delivery                |
-| BUILD.BUCK.OBS-R03, BUILD.BUCK.OBS-R04, BUILD.BUCK.OBS-R08               | 06 Trace Access                 |
-| BUILD.BUCK.OBS-R09                                           | Root + all children             |
+| BUILD.BUCK.OBS-R03, BUILD.BUCK.OBS-R04, BUILD.BUCK.OBS-R08                     | 06 Trace Access                 |
+| BUILD.BUCK.OBS-R09                                                             | Root + all children             |

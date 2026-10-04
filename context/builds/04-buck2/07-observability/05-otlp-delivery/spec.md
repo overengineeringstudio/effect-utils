@@ -105,10 +105,10 @@ The consumer selects backend trace and bounded trend-metric retention policy. Th
 
 ## Ownership and Conformance
 
-| Owner        | Contract                                                                                                                |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| effect-utils | Buck capture, adapter, views, batch encoder, local pending spool, and direct OTLP retry                                 |
-| consumer     | Configured collector endpoint, network access/routing, backend routing and retention                                                               |
+| Owner        | Contract                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| effect-utils | Buck capture, adapter, views, batch encoder, local pending spool, and direct OTLP retry                                   |
+| consumer     | Configured collector endpoint, network access/routing, backend routing and retention                                      |
 | CI adapter   | Job-end late join and one export phase; always-run attempt-close trace; no backend read permission for comment generation |
 
 - An admitted PR job that completes Buck then establishes collector connectivity sends its single job trace (with nested task and command spans) plus linked full views in one bounded burst; a fork sends none and leaves pending bytes locally.

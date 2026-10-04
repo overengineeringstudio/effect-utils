@@ -101,7 +101,6 @@ invariants named in its own document:
 
 ### Must dissolve superseded systems
 
-
 - **BUILD.BUCK-R10 FOD dissolution:** Admitted repository-local tools reach Nix
   consumers only through product import; their dependency closures cause zero
   fixed-output hash maintenance.
@@ -115,14 +114,11 @@ invariants named in its own document:
 
 ### Must be observable and provable at the right moments
 
-
 - **BUILD.BUCK-R13 Native evidence and telemetry independence:** Buck-native evidence
   remains execution truth. Telemetry links to it without replacing it; export
   failure never changes Buck's result; metrics carry only bounded attributes.
 
 ### Must reduce global complexity measurably
-
-
 
 - **BUILD.BUCK-R17 Remote command execution:** Every admitted result-producing command
   action can execute through REAPI on a compatible fleet worker whose execution

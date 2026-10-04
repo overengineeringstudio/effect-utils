@@ -37,7 +37,6 @@ BUILD-R02 and supplies the contract consumed by Buck and private consumer profil
   second consumer can extract them without rework. Extraction mechanics are
   decided when that consumer adopts, not before.
 
-
 - **BUILD.AUTH-R15 Net complexity gate:** The adoption reduces global build
   complexity; growth in one place is justified only by larger deletion
   elsewhere. The ledger (BUILD.AUTH-R09) carries, per row, build-machinery lines added

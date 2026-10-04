@@ -77,4 +77,3 @@ Semantics the check enforces:
   view; the view carries no fact absent from the instance.
 - The instance carries no secrets and no fleet endpoints; those stay in the
   member configuration it references.
-

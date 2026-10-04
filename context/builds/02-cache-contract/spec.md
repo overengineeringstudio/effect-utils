@@ -44,13 +44,13 @@ registry. Different descriptors claiming one name or two names claiming one URI
 fail composition. Existing keys are never silently replaced. HTTPS and gRPC
 retain their protocol owners; this schema registers no new URI scheme.
 
-| Example | Result |
-| --- | --- |
-| nix-binary + HTTPS uri + publicKey + public visibility | Valid standard protocol shape |
-| reapi + grpc uri + SHA256 + cacheOnly true + instanceName | Valid REAPI shape |
-| Same REAPI fields + private visibility | Valid private descriptor, not authorization |
-| reapi + publicKey | Invalid protocol fields |
-| unknown kind/version, credential field, duplicate name | Rejected |
+| Example                                                   | Result                                      |
+| --------------------------------------------------------- | ------------------------------------------- |
+| nix-binary + HTTPS uri + publicKey + public visibility    | Valid standard protocol shape               |
+| reapi + grpc uri + SHA256 + cacheOnly true + instanceName | Valid REAPI shape                           |
+| Same REAPI fields + private visibility                    | Valid private descriptor, not authorization |
+| reapi + publicKey                                         | Invalid protocol fields                     |
+| unknown kind/version, credential field, duplicate name    | Rejected                                    |
 
 ## RE Client Initialization
 

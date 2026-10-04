@@ -48,18 +48,18 @@ configured Buck graph
 
 ## Authority Matrix
 
-| Concern                                    | Authority             | Boundary                                        |
-| ------------------------------------------ | --------------------- | ----------------------------------------------- |
-| Semantic intent, package and target facts  | Genie-composed models | Projected BUCK files, freshness-gated           |
-| Dependency requests                        | Manifests + lockfile  | Only hand-authored dependency input             |
-| Dependency materialization (build, editor) | Buck actions          | `pnpm deploy` from manifests, atomic view flips |
-| Repository-local deterministic work        | Buck                  | Providers, configured platforms, action keys    |
-| Tools and system inputs                    | Nix                   | Immutable `/nix/store` providers                |
-| Cross-repository dependencies              | Published artifacts   | Nix substitution (decision 0037)                |
-| Shared reuse                               | Policy-selected remote AC/CAS  | REAPI cache-only, tailnet trust                 |
-| Portable artifact                          | Buck                  | `buck-build-product/v1` descriptor and payload  |
-| Product validation and store import        | Nix                   | Exact descriptor and payload checks             |
-| Deployment and all live effects            | Consumer              | Outside the Buck contract                       |
+| Concern                                    | Authority                     | Boundary                                        |
+| ------------------------------------------ | ----------------------------- | ----------------------------------------------- |
+| Semantic intent, package and target facts  | Genie-composed models         | Projected BUCK files, freshness-gated           |
+| Dependency requests                        | Manifests + lockfile          | Only hand-authored dependency input             |
+| Dependency materialization (build, editor) | Buck actions                  | `pnpm deploy` from manifests, atomic view flips |
+| Repository-local deterministic work        | Buck                          | Providers, configured platforms, action keys    |
+| Tools and system inputs                    | Nix                           | Immutable `/nix/store` providers                |
+| Cross-repository dependencies              | Published artifacts           | Nix substitution (decision 0037)                |
+| Shared reuse                               | Policy-selected remote AC/CAS | REAPI cache-only, tailnet trust                 |
+| Portable artifact                          | Buck                          | `buck-build-product/v1` descriptor and payload  |
+| Product validation and store import        | Nix                           | Exact descriptor and payload checks             |
+| Deployment and all live effects            | Consumer                      | Outside the Buck contract                       |
 
 ## Composition Shape
 
@@ -103,17 +103,17 @@ specified in [07-observability](./07-observability/spec.md).
 
 ## Requirement Trace
 
-| Requirements                 | Refinement             |
-| ---------------------------- | ---------------------- |
-| BUILD.BUCK-R01, BUILD.BUCK-R05           | 01 Semantic Graph      |
-| BUILD.BUCK-R02, BUILD.BUCK-R04           | 05 Execution           |
-| BUILD.BUCK-R08, BUILD.BUCK-R11           | 04 Materialization     |
-| BUILD.BUCK-R06, BUILD.BUCK-R07           | 06 Reuse               |
-| BUILD.BUCK-R05, BUILD.AUTH-R14           | 03 Consumer Roots         |
-| BUILD.BUCK-R03, BUILD.BUCK-R10           | Product Distribution / Nix Bridge          |
-| BUILD.AUTH-R09, BUILD.AUTH-R15, BUILD.AUTH-R16 | 03 Authority: Ledger |
-| BUILD.BUCK-R13 (telemetry lane)    | 07 Observability       |
-| BUILD.AUTH-R12, BUILD.BUCK-R13           | Root + all subsystems  |
+| Requirements                                   | Refinement                        |
+| ---------------------------------------------- | --------------------------------- |
+| BUILD.BUCK-R01, BUILD.BUCK-R05                 | 01 Semantic Graph                 |
+| BUILD.BUCK-R02, BUILD.BUCK-R04                 | 05 Execution                      |
+| BUILD.BUCK-R08, BUILD.BUCK-R11                 | 04 Materialization                |
+| BUILD.BUCK-R06, BUILD.BUCK-R07                 | 06 Reuse                          |
+| BUILD.BUCK-R05, BUILD.AUTH-R14                 | 03 Consumer Roots                 |
+| BUILD.BUCK-R03, BUILD.BUCK-R10                 | Product Distribution / Nix Bridge |
+| BUILD.AUTH-R09, BUILD.AUTH-R15, BUILD.AUTH-R16 | 03 Authority: Ledger              |
+| BUILD.BUCK-R13 (telemetry lane)                | 07 Observability                  |
+| BUILD.AUTH-R12, BUILD.BUCK-R13                 | Root + all subsystems             |
 
 ## Shared Foundations
 

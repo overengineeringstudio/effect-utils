@@ -22,7 +22,6 @@ All client configuration, including the overlay below, must exist in
 do not configure the RE client. Change posture by stopping the daemon and
 starting with the new file and environment ([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)).
 
-
 ```ini
 # tracked buckconfig: the repository's trust tier, read-only (decision 0033);
 # -c CLI overrides do not reach the RE client
@@ -77,9 +76,9 @@ not regressions.
 
 ### Action reuse versus verdict reuse
 
-| Claim | Required native evidence | Insufficient evidence |
-| --- | --- | --- |
-| Compile/action reuse | Action-cache hits, zero unchanged command executions and matching configured keys | Fast wall-clock alone |
+| Claim                   | Required native evidence                                                                           | Insufficient evidence                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Compile/action reuse    | Action-cache hits, zero unchanged command executions and matching configured keys                  | Fast wall-clock alone                            |
 | Unit-test verdict reuse | Cache hits for verdict-producing build actions and equal pass/fail reports without suite execution | Compile hits or local test orchestration success |
 
 Populate and replay deterministic passing and failing suites from

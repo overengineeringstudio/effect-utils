@@ -9,6 +9,7 @@ It refines BUILD.BUCK-R04 and BUILD.BUCK-R05.
   data used by Buck; Nix may independently verify and consume the same bytes.
 - **BUILD.BUCK.PLAT-A02 Distinct platforms:** Target and execution platforms are
   independent compatibility dimensions.
+
 ## Acceptable Tradeoffs
 
 - **BUILD.BUCK.PLAT-T01 Finite stage zero:** A minimal support tool may begin as an exact
@@ -16,6 +17,7 @@ It refines BUILD.BUCK-R04 and BUILD.BUCK-R05.
   contract, consumers move to the graph-built provider and the bootstrap
   provider is removed
   ([decision 0010](../../.decisions/0010-admit-rust-stage-zero-support-tools.md)).
+
 ## Requirements
 
 ### Platforms and tools
@@ -42,4 +44,3 @@ It refines BUILD.BUCK-R04 and BUILD.BUCK-R05.
   signing, and inspection use exact Nix-provided Rust, LLVM, cctools, Apple
   SDK, and sigtool identities; actions must not discover Xcode, `xcrun`, or
   `/usr/bin` tools.
-

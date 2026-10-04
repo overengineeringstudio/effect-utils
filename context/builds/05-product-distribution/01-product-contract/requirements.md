@@ -27,4 +27,3 @@ and BUILD.BUCK-R05.
 - **BUILD.DIST.PRODUCT-R04 No live state:** The descriptor contains no registry,
   deployment, activation, rollback, health, fleet, or secret state
   ([decision 0008](../../.decisions/0008-untrusted-oci-and-offline-nix-authority.md)).
-

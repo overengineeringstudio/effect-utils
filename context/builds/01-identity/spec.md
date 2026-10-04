@@ -38,7 +38,7 @@ Every implementation should model the same underlying fields, even if the transp
 | Field         | Meaning                                                                                      |
 | ------------- | -------------------------------------------------------------------------------------------- |
 | `baseVersion` | Product/package version, usually from `package.json`, Cargo metadata, or equivalent manifest |
-| `rev`         | Short VCS revision identifying the selected source closure; the policy below defines C      |
+| `rev`         | Short VCS revision identifying the selected source closure; the policy below defines C       |
 | `dirty`       | Whether uncommitted changes were present in the built or running source                      |
 | `sourceKind`  | How the process is running, currently `local` or `nix`                                       |
 | `commitTs`    | Commit timestamp for reproducible builds                                                     |
@@ -172,14 +172,14 @@ Not every language or system can reuse the TypeScript helper directly. In those 
 
 ## Independent Identities (BUILD.ID-R04)
 
-| Identity | Meaning | Must not substitute for |
-| --- | --- | --- |
-| Component source revision | Git provenance of a product source closure | Action key or payload digest |
-| Action key | All result-affecting configured inputs | Deployment identity |
-| Payload digest | Exact portable bytes | Source revision |
-| Nix closure identity | Exact store path / NAR hash | Human version |
-| Deployment identity | Consumer-owned realized bill of materials | Product stamp or action salt |
-| Invocation / trace identity | One observed execution | Build/product identity |
+| Identity                    | Meaning                                    | Must not substitute for      |
+| --------------------------- | ------------------------------------------ | ---------------------------- |
+| Component source revision   | Git provenance of a product source closure | Action key or payload digest |
+| Action key                  | All result-affecting configured inputs     | Deployment identity          |
+| Payload digest              | Exact portable bytes                       | Source revision              |
+| Nix closure identity        | Exact store path / NAR hash                | Human version                |
+| Deployment identity         | Consumer-owned realized bill of materials  | Product stamp or action salt |
+| Invocation / trace identity | One observed execution                     | Build/product identity       |
 
 A shipped component emits a real, non-zero machine version. Consumers add exact
 closure and deployment identity separately; these never replace the component

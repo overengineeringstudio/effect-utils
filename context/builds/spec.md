@@ -24,13 +24,13 @@ Does not define private products, cache service deployment, activation or CI top
                05 product distribution -> consumer deployment
 ```
 
-| Owner | Contract | Requirement |
-| --- | --- | --- |
-| [01-identity](./01-identity/spec.md) | Component fields and C closure-rev semantics | BUILD-R01 |
-| [02-cache-contract](./02-cache-contract/spec.md) | Tagged descriptors and protocol initialization | BUILD-R04 |
-| [03-authority](./03-authority/spec.md) | Ledger, deletion and complexity trajectory | BUILD-R02 |
-| [04-buck2](./04-buck2/spec.md) | Semantic graph, tools, roots, materialization, actions, reuse and evidence | BUILD-R01–R04 |
-| [05-product-distribution](./05-product-distribution/spec.md) | Product bytes and independent Nix import | BUILD-R03 |
+| Owner                                                        | Contract                                                                   | Requirement   |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------- | ------------- |
+| [01-identity](./01-identity/spec.md)                         | Component fields and C closure-rev semantics                               | BUILD-R01     |
+| [02-cache-contract](./02-cache-contract/spec.md)             | Tagged descriptors and protocol initialization                             | BUILD-R04     |
+| [03-authority](./03-authority/spec.md)                       | Ledger, deletion and complexity trajectory                                 | BUILD-R02     |
+| [04-buck2](./04-buck2/spec.md)                               | Semantic graph, tools, roots, materialization, actions, reuse and evidence | BUILD-R01–R04 |
+| [05-product-distribution](./05-product-distribution/spec.md) | Product bytes and independent Nix import                                   | BUILD-R03     |
 
 The cache contract does not grant writes. [Execution admission](./04-buck2/05-execution/spec.md#cache-writable-lane-admission)
 owns hermetic-lane eligibility because it depends on declared inputs, toolchains,
