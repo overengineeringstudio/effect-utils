@@ -30,6 +30,15 @@ instance_name = <repo-name>
 tls = <true for the public tier>
 ```
 
+`mkConsumerBuckRoot` renders all three client addresses whenever remote client
+configuration is supplied, including when `remoteCacheEnabled = false`. Its
+optional `engineAddress` parameter defaults to `null`; a null value resolves to
+`actionCacheAddress`, matching this contract's shared tier endpoint. Consumers
+with a distinct engine endpoint set `engineAddress` explicitly. The action
+cache address, CAS address, instance name, and TLS flag must be supplied
+together; the resolved engine address must be a string. Buck requires the engine
+address to initialize its RE client even for cache-only local execution.
+
 Public effect-utils uses the public tier. A protected publisher holding
 `BUCK2_CACHE_WRITE_BASIC_AUTH` gets an untracked `.buckconfig.local` overlay
 (`scripts/buck2-cache-posture.ts`) that sets `allow_cache_uploads = true`,
