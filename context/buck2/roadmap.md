@@ -208,21 +208,20 @@ recorded as findings in the owning subsystems' open questions.
 
 The PR waterfall reuses GitBucket's immutable public content-addressed store
 ([trace-access spec](./07-observability/06-trace-access/spec.md#public-immutable-images-and-failure-path)).
-Johannes accepted GitHub-account SSH authentication for end-to-end publication
-as a temporary compromise; a separate key is revocable but not upload-only.
+The deployed GitHub Actions OIDC exchange restricts publication to configured
+repository names and immutable repository/owner IDs, event/ref/workflow
+constraints, and short-lived public PNG upload tokens.
 
-**Sequence:** Define and enforce a restricted GitBucket publisher credential
-for public PNG publication, prove both successful light/dark publication and
-denial of unrelated account operations, then switch the report step and revoke
-its broader credential. Credential registration remains separate from renderer
-changes; keep the secret report-step-scoped and retain Mermaid fallback.
+**Completed cutover:** [PR 1584's live run](https://github.com/overengineeringstudio/effect-utils/actions/runs/37158430402/job/111311680936)
+proved light/dark OIDC publication and public `200 image/png` responses. The
+report no longer has an account-scoped credential input or SSH upload path.
+Authorization and publication failures retain Mermaid. Retired stored
+credentials are an operator cleanup action after review, not workflow inputs.
 
-**Dissolution target:** Remove account-scoped publisher authentication from
-the report step once the restricted path is supported and proven. The unresolved
-credential boundary is tracked in
-[OQ4](./open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
-and trace-access DQ1; this security follow-up does not change the chosen CAS
-host or the V2 D2 T2 presentation.
+**Dissolution achieved:** The account-scoped publication compromise is removed
+from the report. [OQ4](./open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
+and trace-access DQ1 are resolved; the CAS host and V2 D2 T2 presentation are
+unchanged.
 
 ## Cross-phase gates
 

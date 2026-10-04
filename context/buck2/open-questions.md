@@ -71,18 +71,20 @@ Subsystem questions live in their subsystem (`03-materialization`,
 
 - Spec question:
   [trace-access DQ1](./07-observability/06-trace-access/spec.md#open-design-questions).
-- Current boundary: CI publishes an immutable light/dark PNG pair to the
-  existing public GitBucket CAS using a report-step-only SSH credential.
-  GitBucket authenticates a GitHub account, not an upload-only key. A new SSH
-  key can be revoked independently but retains that account's authorization
-  while valid.
-- Accepted temporary compromise: Johannes chose CAS reuse and authorized
-  end-to-end publication with credential hardening as a separate follow-up.
-  This acceptance does not claim least-privilege publication is already solved.
-- Resolution signal: a supported, separately revocable publisher credential
-  whose enforced policy limits it to the approved public PNG namespace,
-  MIME/size bounds, and publication operation; prove pair publication succeeds
-  while unrelated account operations are denied. Then migrate the report
-  step and revoke the broader credential.
+- **Resolved:** The deployed GitBucket Actions OIDC exchange verifies GitHub's
+  signature/issuer, a service-specific audience, expiry and configured
+  repository names plus immutable repository/owner IDs, event/ref/workflow
+  constraints. It mints at-most-five-minute upload-only PNG tokens (5 MiB cap,
+  explicit public consent; no access role or refresh capability).
+- Live proof: [PR 1584 run 37158430402](https://github.com/overengineeringstudio/effect-utils/actions/runs/37158430402/job/111311680936)
+  logged both light/dark uploads via OIDC, with no publication warning. The
+  [picture comment](https://github.com/overengineeringstudio/effect-utils/pull/1584#issuecomment-5969239780)
+  references two URLs verified as `200 image/png`.
+- The report's SSH branch and credential references are removed. Missing OIDC
+  authorization, exchange or upload failure retains Mermaid; no weaker
+  authentication path exists. Stored retired credentials are left for the
+  operator to remove after review, and are no longer consumed by the workflow.
+- The report job's explicit OIDC permission override leaves existing
+  workflow-level Tailscale OIDC authority unchanged.
 - Sequencing and dissolution:
   [restricted public-waterfall publisher](./roadmap.md#restricted-public-waterfall-publisher).

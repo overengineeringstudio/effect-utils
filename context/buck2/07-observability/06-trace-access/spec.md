@@ -154,32 +154,36 @@ content-addressed store; comments reference immutable public HTTPS URLs under
 `gitbucket.schickling.dev`, not a mutable asset branch or authenticated endpoint.
 Use a theme-aware picture pair only after both uploads and URL validation
 succeed. PNGs must be nonempty and at most 5 MiB each; SVG generation and
-rasterization have bounded execution times. The adapter's SSH challenge and
-verify requests are bounded to 8 seconds; the upload request to 40 seconds,
-because GitBucket commits fresh objects to its GitHub-backed store; each
-adapter invocation to 60 seconds, so the pair adds at most two minutes. A
-partial pair is not attached.
+rasterization have bounded execution times. The adapter's OIDC token request
+and GitBucket exchange each have an 8-second limit; the upload request has a
+40-second limit because GitBucket commits to its GitHub-backed store. Each
+adapter invocation is bounded to 60 seconds; a partial pair is not attached.
 
-The publication credential is present only in the Pipeline traces report step,
-not in workflow-wide or job-wide environment. The checked-in PNG adapter uses
-GitBucket's SSH challenge/sign/verify/upload protocol and explicit public-upload
-consent. It receives the configured GitHub username and SSH key; no private
-dotfiles flake is needed. An optional executable-path override receives one PNG
-path and returns one public URL, never arbitrary shell text.
+The Pipeline traces job explicitly grants `id-token: write` in its existing
+permission override; the existing workflow-level Tailscale OIDC grant is unchanged.
+The adapter requests GitHub's ID token with audience
+`https://gitbucket.schickling.dev/api/auth/github-actions`, exchanges it at that
+endpoint, then uploads with explicit public consent. The server verifies GitHub
+JWKS signatures, issuer, audience, expiry, and `GITBUCKET_ACTIONS_POLICIES_JSON`.
+Repository names and immutable repository/owner IDs, PR event/ref and CI workflow
+pattern must match the configured allowlist.
+The minted credential has distinct upload-only type, no role or refresh token,
+a lifetime of at most five minutes, and fixed `image/png`, 5 MiB,
+`requirePublicOk` scope. Existing access and refresh verifiers reject it.
 
-The current SSH key authenticates a GitHub account; authorization is account
-scoped, **not upload-only**. Johannes accepted this temporary compromise for
-end-to-end publication while restricted publisher credentials remain a follow-up
-([DQ1](#open-design-questions)). Independently revoking a fresh key does not
-reduce the account authority granted while that key is valid. Credential
-registration and secret provisioning are separate operator actions.
+The report has no account-scoped publication credential or SSH authentication
+path. A successful adapter invocation emits only its validated public URL on
+stdout and a fixed OIDC authentication marker on stderr; the reporter exposes
+that marker as a controlled per-theme success line. An optional executable-path
+override receives one PNG path and returns one public URL, never arbitrary shell
+text.
 
 Missing credentials, rasterization failure, upload failure, or invalid URLs
 leave the original usable report intact and select the deterministic jobs-only
 Mermaid fallback. Failures emit controlled stage diagnostics without raw
 secret-bearing stderr: an upload failure may append only the adapter's
-sanitized `<challenge|sign|verify|upload|url> <http NNN|exit N>` reason, never
-response bodies, tokens, key material or signing output. Dry-run never uploads.
+sanitized `<oidc|exchange|upload|url> <http NNN|exit N>` reason, never
+response bodies, tokens or raw authentication diagnostics. Dry-run never uploads.
 Image handling adds no Tempo
 reads, task spans, task annotations, or per-build-job workflow steps.
 
@@ -252,12 +256,16 @@ baseline`; a finalizer job never appears as a build row. The collector
 
 ## Open Design Questions
 
-- **DQ1 Restricted GitBucket publisher authority:** Replace the accepted
-  GitHub-account SSH authentication compromise with a separately revocable
-  publisher credential whose enforced authority is limited to the approved
-  public PNG namespace, MIME/size policy, and publication operation. A separate
-  SSH key alone is not that boundary. Resolve through a supported GitBucket
-  credential/policy contract and a proof that CI can publish the pair while
-  unrelated account operations are denied; then migrate the report step and
-  revoke its broader credential. Tracking:
+- **DQ1 Restricted GitBucket publisher authority — resolved:** The deployed
+  GitHub Actions OIDC exchange verifies GitHub's signature, issuer, service
+  audience, expiry and configured repository names plus immutable repository/
+  owner IDs, event/ref/workflow constraints. It mints only short-lived PNG
+  upload tokens with MIME/size/public-consent enforcement and no access role or
+  refresh capability. The CAS remains public with no private namespace.
+  [PR 1584's first live proof](https://github.com/overengineeringstudio/effect-utils/actions/runs/37158430402/job/111311680936)
+  logged both themes uploaded through OIDC; the
+  [picture comment](https://github.com/overengineeringstudio/effect-utils/pull/1584#issuecomment-5969239780)
+  referenced two URLs verified as `200 image/png`, without publication warnings.
+  The report's SSH branch and credential references are removed. Retired stored
+  credentials are an operator cleanup action, not report inputs. Tracking:
   [root open questions](../../open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication).

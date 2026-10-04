@@ -53,3 +53,14 @@ test('generated CI contains exactly the adapter prerequisites consumed by the re
     'OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}',
   )
 })
+
+test('GitBucket adds OIDC authority only to the same-repo PR reporter override', () => {
+  const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
+  const reporterJob = workflow.match(/\n  pipeline-traces:\n([\s\S]*?)(?=\n  [^\s]|$)/)?.[1]
+  expect(reporterJob).toBeDefined()
+  expect(reporterJob).toContain('id-token: write')
+  expect(reporterJob).toContain("github.event_name == 'pull_request'")
+  expect(reporterJob).toContain('github.event.pull_request.head.repo.full_name == github.repository')
+  // Existing workflow-level Tailscale OIDC authority is unchanged by this cutover.
+  expect(workflow).toContain('permissions:\n  contents: read\n  id-token: write')
+})

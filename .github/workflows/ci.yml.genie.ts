@@ -1475,10 +1475,10 @@ const pipelineTracesJob = {
   needs: ['pipeline-attempt-close'],
   if: "${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CI_EVIDENCE_MODE == 'upload' }}",
   'runs-on': 'ubuntu-latest',
-  permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write' },
+  permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
   steps: [
-    { uses: 'actions/checkout@v4' },
+    { uses: 'actions/checkout@v6' },
     { uses: 'cachix/install-nix-action@v31' },
     {
       name: 'Publish Pipeline traces',
@@ -1489,8 +1489,6 @@ const pipelineTracesJob = {
         PR_NUMBER: '${{ github.event.pull_request.number }}',
         GRAFANA_BASE_URL: '${{ vars.GRAFANA_BASE_URL }}',
         PIPELINE_TRACES_PUBLIC_ASSET_COMMAND: '${{ vars.PIPELINE_TRACES_PUBLIC_ASSET_COMMAND }}',
-        PIPELINE_TRACES_ASSET_SSH_KEY: '${{ secrets.PIPELINE_TRACES_ASSET_SSH_KEY }}',
-        PIPELINE_TRACES_ASSET_USERNAME: '${{ vars.PIPELINE_TRACES_ASSET_USERNAME }}',
       },
       run: 'bash genie/ci-scripts/pipeline-traces-report.sh',
     },
