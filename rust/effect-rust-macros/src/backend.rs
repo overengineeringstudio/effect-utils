@@ -57,7 +57,7 @@ impl Backend {
                 },
             },
             Wire::Source(ty, _) => {
-                let construct = match self {
+                match self {
                     Self::Wasm => quote! {
                         let callback = #name.clone();
                         let #name: #ty = effect_rust::host::Source::new(move |request, _token| {
@@ -89,8 +89,7 @@ impl Backend {
                             })
                         }).with_cancellation(__token.clone());
                     },
-                };
-                construct
+                }
             }
             _ => quote!(),
         }
