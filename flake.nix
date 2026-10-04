@@ -158,6 +158,9 @@ rec {
           buck2-events = buck2-stage0-tools.events;
           buck2-product = buck2-stage0-tools.product;
           buck2-fingerprint = buck2-stage0-tools.fingerprint;
+          # The native env binary must start before any interpreter; a shell
+          # wrapper could read ambient BASH_ENV before clearing the environment.
+          buck2-action-env = pkgs.coreutils;
           buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
             exec ${pkgs.coreutils}/bin/readlink "$@"
           '';
