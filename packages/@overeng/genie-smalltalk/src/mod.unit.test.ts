@@ -240,7 +240,7 @@ testWithSt(
         daemon.kill('SIGTERM')
         await promise
       }
-      rmSync(dir, { recursive: true, force: true })
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
     }
   },
   60000,
