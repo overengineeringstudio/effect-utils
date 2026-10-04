@@ -7,8 +7,8 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/outline',
   projectionSource: 'packages/@overeng/outline/BUCK.genie.ts',
   sourceRoots: ['src'],
-  authorities: [{declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json'}],
-  tests: [{name: 'test', runner: 'vitest'}],
+  authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
+  tests: [{ name: 'test', runner: 'vitest' }],
 } as const satisfies Buck2TypeScriptAdmission
 
 export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { Button, Link, type ButtonProps } from 'react-aria-components'
+
 import type { OutlineEntry, OutlineHrefEntry } from './model.ts'
 
 export type OutlineNavigationProps = {
@@ -22,25 +23,57 @@ export type OutlineLinkProps = {
 )
 
 /** Anchors retain native alternate activation; plain activation may delegate to a pane adapter. */
-export const OutlineLink = ({entry, activeId, onNavigate, children, ...presentation}: OutlineLinkProps): React.ReactNode => {
+export const OutlineLink = ({
+  entry,
+  activeId,
+  onNavigate,
+  children,
+  ...presentation
+}: OutlineLinkProps): React.ReactNode => {
   const descriptionId = React.useId()
   const common = {
     ...presentation,
-    'aria-current': entry.id === activeId ? 'location' as const : undefined,
+    'aria-current': entry.id === activeId ? ('location' as const) : undefined,
     'aria-describedby': entry.description === undefined ? undefined : descriptionId,
   }
-  return <>
-    {entry.href !== undefined
-      ? <Link {...common} href={entry.href} onClick={(event) => {
-        const target = event.currentTarget.getAttribute('target')
-        if (onNavigate !== undefined && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.defaultPrevented && (target === null || target === '' || target === '_self') && !event.currentTarget.hasAttribute('download')) {
-          event.preventDefault()
-          onNavigate(entry.id)
-        }
-      }}>{children ?? entry.label}</Link>
-      : <Button {...common} onPress={() => onNavigate?.(entry.id)}>{children ?? entry.label}</Button>}
-    {entry.description !== undefined && <span id={descriptionId} hidden>{entry.description}</span>}
-  </>
+  return (
+    <>
+      {entry.href !== undefined ? (
+        <Link
+          {...common}
+          href={entry.href}
+          onClick={(event) => {
+            const target = event.currentTarget.getAttribute('target')
+            if (
+              onNavigate !== undefined &&
+              event.button === 0 &&
+              !event.metaKey &&
+              !event.ctrlKey &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.defaultPrevented &&
+              (target === null || target === '' || target === '_self') &&
+              !event.currentTarget.hasAttribute('download')
+            ) {
+              event.preventDefault()
+              onNavigate(entry.id)
+            }
+          }}
+        >
+          {children ?? entry.label}
+        </Link>
+      ) : (
+        <Button {...common} onPress={() => onNavigate?.(entry.id)}>
+          {children ?? entry.label}
+        </Button>
+      )}
+      {entry.description !== undefined && (
+        <span id={descriptionId} hidden>
+          {entry.description}
+        </span>
+      )}
+    </>
+  )
 }
 
 export interface OutlineRailInteractions {
@@ -53,7 +86,11 @@ export interface OutlineRailInteractions {
 }
 
 /** A nonmodal navigation disclosure: normal Tab/Enter, no synthetic collection role. */
-export const useOutlineRail = ({activeId}: {readonly activeId: string | undefined}): OutlineRailInteractions => {
+export const useOutlineRail = ({
+  activeId,
+}: {
+  readonly activeId: string | undefined
+}): OutlineRailInteractions => {
   const [isOpen, setOpen] = React.useState(false)
   const triggerRef = React.useRef<HTMLButtonElement>(null)
   const panelRef = React.useRef<HTMLDivElement>(null)
@@ -72,14 +109,24 @@ export const useOutlineRail = ({activeId}: {readonly activeId: string | undefine
     const panelRect = panel.getBoundingClientRect()
     const activeRect = active.getBoundingClientRect()
     if (activeRect.top < panelRect.top) panel.scrollTop += activeRect.top - panelRect.top
-    else if (activeRect.bottom > panelRect.bottom) panel.scrollTop += activeRect.bottom - panelRect.bottom
+    else if (activeRect.bottom > panelRect.bottom)
+      panel.scrollTop += activeRect.bottom - panelRect.bottom
   }, [isOpen, activeId])
 
   return {
-    isOpen, triggerRef, panelRef,
+    isOpen,
+    triggerRef,
+    panelRef,
     navProps: {
-      onPointerEnter: () => { hovered.current = true; suppressed.current = false; setOpen(true) },
-      onPointerLeave: () => { hovered.current = false; if (!focused.current) setOpen(false) },
+      onPointerEnter: () => {
+        hovered.current = true
+        suppressed.current = false
+        setOpen(true)
+      },
+      onPointerLeave: () => {
+        hovered.current = false
+        if (!focused.current) setOpen(false)
+      },
       onFocus: (event) => {
         focused.current = true
         if (!event.currentTarget.contains(event.relatedTarget) && !suppressed.current) setOpen(true)
@@ -102,7 +149,10 @@ export const useOutlineRail = ({activeId}: {readonly activeId: string | undefine
     triggerProps: {
       'aria-expanded': isOpen,
       'aria-controls': panelId,
-      onPress: () => { suppressed.current = false; setOpen(true) },
+      onPress: () => {
+        suppressed.current = false
+        setOpen(true)
+      },
     },
     panelProps: { id: panelId, hidden: !isOpen },
   }
