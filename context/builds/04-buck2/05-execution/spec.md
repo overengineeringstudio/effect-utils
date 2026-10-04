@@ -227,6 +227,19 @@ scratch config, so package-local startup hooks cannot bypass the runner contract
 | Package command runner, arbitrary check/build entrypoints                                        | Scrubbed before runner startup but **not admitted**: an arbitrary script may read undeclared files, network or host state despite receiving only literal child env and passing input-immutability checks. Launch/exec mode remains interactive and uncached.                                                                                                                                                                                                   |
 | External test orchestration, native compilation, repository validation and remaining run actions | No blanket admission. The default deny platform prevents shared reads/writes until the family's complete action closure is audited. Deterministic verdict actions have their own declared admission; flaky/host-dependent suites remain uncached.                                                                                                                                                                                                              |
 
+The prerequisite categories `pnpm_extract`, `pnpm_store_entry`,
+`pnpm_store_scc`, `pnpm_store_view`, `package_tree`, and `tsgo_emit` belong
+to the admitted materialization/TypeScript families above. Their macros select
+the hermetic platform independently: a verdict hit does not admit its ancestors.
+Partial rule imports that omit those macros' admission changes retain default
+denial until the complete contract is imported. This classification does not
+admit native compilation or executable build scripts.
+
+Hash-and-size-validated archive acquisition is a separate admission candidate,
+not part of offline extraction: its network source is an acquisition capability,
+and its launcher still needs the same declared startup/input audit before shared
+AC reads or uploads are authorized.
+
 These local runners do not provide an OS filesystem/network sandbox. GNU env
 scrubbing is startup enforcement, declared-input hashing detects mutation, and
 the bundle farm prevents resolver escape; none is a general undeclared-read
