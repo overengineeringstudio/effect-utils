@@ -1,12 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -179,10 +172,9 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       ],
       server: { host: '127.0.0.1', port: 0 },
     })
-    await vi.waitUntil(
-      () => server!.watcher.getWatched()[root]?.includes('entry.js'),
-      { timeout: 10000 },
-    )
+    await vi.waitUntil(() => server!.watcher.getWatched()[root]?.includes('entry.js'), {
+      timeout: 10000,
+    })
     await server.listen()
     const probeUrl = new URL('build-identity.json', server.resolvedUrls!.local[0]!)
     const response = await fetch(probeUrl)
@@ -194,7 +186,8 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     })
     const head = await fetch(probeUrl, { method: 'HEAD' })
     expect(await head.text()).toBe('')
-    const identity = async () => (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
+    const identity = async () =>
+      (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
     expect((await identity()).dirty).toBe(false)
     writeFileSync(join(root, 'new.txt'), 'untracked\n')
     await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(true))
@@ -274,14 +267,18 @@ it('refreshes local metadata and browser identity on production watch rebuilds',
     })
     if ('close' in output) closeWatcher = output.close.bind(output)
     await waitForWatchUpdate(() =>
-      expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(false),
+      expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(
+        false,
+      ),
     )
     writeFileSync(
       join(root, 'entry.js'),
       "import {buildIdentity} from 'virtual:build-identity'; globalThis.identity=buildIdentity; globalThis.changed=true;\n",
     )
     await waitForWatchUpdate(() =>
-      expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(true),
+      expect(JSON.parse(readFileSync(join(root, 'dist/build-identity.json'), 'utf8')).dirty).toBe(
+        true,
+      ),
     )
     await waitForWatchUpdate(() => {
       const browser: { identity?: { dirty: boolean }; changed?: boolean } = {}
