@@ -4,6 +4,11 @@
 
 ### Added
 
+- `@overeng/genie-smalltalk` adds bounded sequential loops with explicit round
+  completion, completion frontiers, final-phase steps, exhaustion attention, and
+  exec gates with environment and time limits. Ordered `steps` may include
+  `LoopSchema` nodes; zero-step graphs are valid. A synthetic upstream-wait fixture
+  is normalize-compared with independent KDL through the real st scratch daemon.
 - `@overeng/genie-smalltalk` models up to three mission/step goals, multiple
   predicate and built-in gates, completed/failed/terminal dependencies, and
   bounded retries with backoff. Authoring now uses `goals`, `gates`, and an array
