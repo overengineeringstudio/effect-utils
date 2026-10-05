@@ -1,30 +1,32 @@
 // Checked JavaScript: Vite config dependencies must load under Node from node_modules.
-import { execFileSync } from 'node:child_process'
-import { watch } from 'node:fs'
-import { join } from 'node:path'
+import { execFile } from 'node:child_process'
+import { watchFile, unwatchFile } from 'node:fs'
+import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 
 import { parseCliBuildStamp, resolveCliBuildIdentity } from './cli-build-identity.js'
 
 const virtualId = 'virtual:build-identity'
 const resolvedId = `\0${virtualId}`
 
-/** @param {{ root: string, args: string[] }} options */
-const readGit = ({ root, args }) =>
-  execFileSync('git', ['--no-optional-locks', '-C', root, ...args], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim()
+const execFileAsync = promisify(execFile)
 
-/** @param {string} root @returns {import('./cli-build-identity.js').LocalStamp} */
-const localStamp = (root) => {
-  return {
-    type: 'local',
-    rev: readGit({ root, args: ['rev-parse', 'HEAD'] }),
-    ts: Math.floor(Date.now() / 1000),
-    dirty: readGit({ root, args: ['status', '--porcelain', '--untracked-files=normal'] }) !== '',
-  }
-}
+/** @param {{ root: string, args: string[] }} options */
+const readGit = async ({ root, args }) =>
+  (
+    await execFileAsync('git', ['--no-optional-locks', '-C', root, ...args], {
+      encoding: 'utf8',
+    })
+  ).stdout.trim()
+
+/** @param {string} root @returns {Promise<import('./cli-build-identity.js').LocalStamp>} */
+const localStamp = async (root) => ({
+  type: 'local',
+  rev: await readGit({ root, args: ['rev-parse', 'HEAD'] }),
+  ts: Math.floor(Date.now() / 1000),
+  dirty: (await readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] })) !== '',
+})
 
 /**
  * Emit the shared CLI identity as a browser-safe virtual module and JSON asset.
@@ -41,13 +43,13 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   /** @type {import('./cli-build-identity.js').ResolveBuildIdentityOptions} */
   let browserOptions
   const embedded = parseCliBuildStamp(buildStamp)
-  /** @type {Array<() => void>} */
+  /** @type {Array<() => Promise<void>>} */
   const cleanup = []
-  const resolveIdentity = (preserveSnapshot = false) => {
+  const resolveIdentity = async (preserveSnapshot = false) => {
     const options = {
       baseVersion,
       buildStamp,
-      env: embedded?.type === 'nix' ? {} : { CLI_BUILD_STAMP: JSON.stringify(localStamp(root)) },
+      env: embedded?.type === 'nix' ? {} : { CLI_BUILD_STAMP: JSON.stringify(await localStamp(root)) },
     }
     const nextIdentity = resolveCliBuildIdentity({
       ...options,
@@ -71,19 +73,19 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   }
   return {
     name: 'overeng:build-identity',
-    configResolved(config) {
+    async configResolved(config) {
       root = config.root
       serving = config.command === 'serve'
-      resolveIdentity()
+      await resolveIdentity()
     },
-    buildStart() {
-      if (serving === false && embedded?.type !== 'nix') resolveIdentity()
+    async buildStart() {
+      if (serving === false && embedded?.type !== 'nix') await resolveIdentity()
     },
     shouldTransformCachedModule({ id }) {
       if (id === resolvedId && embedded?.type !== 'nix') return true
       return undefined
     },
-    configureServer(server) {
+    async configureServer(server) {
       server.middlewares.use((request, response, next) => {
         if (
           request.url?.split('?')[0] !== '/build-identity.json' ||
@@ -99,40 +101,89 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         response.end(request.method === 'HEAD' ? undefined : `${JSON.stringify(identity)}\n`)
       })
       if (embedded?.type === 'nix') return
+      let stopped = false
+      let pending = false
+      let requestedAt = 0
+      /** @type {Promise<void> | undefined} */
+      let flight
+      /** @type {Map<string, () => void>} */
+      const watched = new Map()
+      const updateWatches = async () => {
+        const branch = await readGit({ root, args: ['rev-parse', '--symbolic-full-name', 'HEAD'] })
+        const names = ['HEAD', 'index', ...(branch === 'HEAD' ? [] : [branch])]
+        const paths = new Set(
+          await Promise.all(
+            names.map((name) =>
+              readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', name] }),
+            ),
+          ),
+        )
+        if (stopped === true) return
+        for (const [path, listener] of watched) {
+          if (paths.has(path) === false) {
+            unwatchFile(path, listener)
+            watched.delete(path)
+          }
+        }
+        for (const path of paths) {
+          if (watched.has(path) === true) continue
+          const listener = () => {
+            void refresh().catch(reportError)
+          }
+          // Poll exact files: Git replaces refs/index atomically and loose refs
+          // may not exist yet. Never subscribe to sibling branches or worktrees.
+          watchFile(path, { persistent: false, interval: 100 }, listener)
+          watched.set(path, listener)
+        }
+      }
+      /** @param {unknown} error */
+      const reportError = (error) =>
+        server.config.logger.error(`Build identity refresh failed: ${String(error)}`)
+      /** @returns {Promise<void>} */
       const refresh = () => {
-        if (resolveIdentity(true) === false) return
-        const module = server.moduleGraph.getModuleById(resolvedId)
-        if (module === undefined) return
-        server.moduleGraph.invalidateModule(module)
-        server.ws.send({ type: 'full-reload' })
-      }
-      server.watcher.on('add', refresh)
-      server.watcher.on('unlink', refresh)
-      cleanup.push(() => {
-        server.watcher.off('add', refresh)
-        server.watcher.off('unlink', refresh)
-      })
-      // Git metadata is excluded by Vite's source watcher. Watch directories so
-      // atomic index/ref replacement and linked worktrees remain observable.
-      const gitDirectory = readGit({ root, args: ['rev-parse', '--absolute-git-dir'] })
-      const commonDirectory = readGit({
-        root,
-        args: ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-      })
-      const directories = new Set([gitDirectory, commonDirectory])
-      for (const directory of directories) {
-        const watcher = watch(directory, (_event, filename) => {
-          if (filename === 'HEAD' || filename === 'index' || filename === 'packed-refs') refresh()
+        pending = true
+        requestedAt = performance.now()
+        if (flight !== undefined) return flight
+        flight = (async () => {
+          while (pending === true && stopped === false) {
+            // Coalesce source and Git events, including events received while
+            // the previous async Git snapshot was being read.
+            await delay(Math.max(0, requestedAt + 50 - performance.now()))
+            if (stopped === true) break
+            if (performance.now() < requestedAt + 50) continue
+            pending = false
+            const changed = await resolveIdentity(true)
+            await updateWatches()
+            if (changed === false || stopped === true) continue
+            const module = server.moduleGraph.getModuleById(resolvedId)
+            if (module === undefined) continue
+            server.moduleGraph.invalidateModule(module)
+            server.ws.send({ type: 'full-reload' })
+          }
+        })().finally(() => {
+          flight = undefined
         })
-        cleanup.push(() => watcher.close())
+        return flight
       }
-      const refs = watch(join(commonDirectory, 'refs'), { recursive: true }, (_event, filename) => {
-        if (filename !== null && filename.endsWith('.lock') === false) refresh()
+      const onSourceEvent = () => {
+        void refresh().catch(reportError)
+      }
+      server.watcher.on('add', onSourceEvent)
+      server.watcher.on('unlink', onSourceEvent)
+      server.watcher.on('change', onSourceEvent)
+      cleanup.push(async () => {
+        stopped = true
+        server.watcher.off('add', onSourceEvent)
+        server.watcher.off('unlink', onSourceEvent)
+        server.watcher.off('change', onSourceEvent)
+        for (const [path, listener] of watched) unwatchFile(path, listener)
+        watched.clear()
+        await flight
       })
-      cleanup.push(() => refs.close())
+      await updateWatches()
     },
-    closeBundle() {
-      for (const dispose of cleanup.splice(0)) dispose()
+    async closeBundle() {
+      for (const dispose of cleanup.splice(0)) await dispose()
     },
     resolveId(id) {
       return id === virtualId ? resolvedId : undefined
@@ -149,13 +200,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         source: `${JSON.stringify(identity, null, 2)}\n`,
       })
     },
-    handleHotUpdate(context) {
-      if (embedded?.type === 'nix') return
-      if (resolveIdentity(true) === false) return
-      const module = context.server.moduleGraph.getModuleById(resolvedId)
-      if (module === undefined) return
-      context.server.moduleGraph.invalidateModule(module)
-      return [...context.modules, module]
-    },
+    // Source changes and Git metadata share the same debounced single-flight
+    // refresh above; Vite's normal HMR processing never runs Git synchronously.
   }
 }

@@ -35,6 +35,10 @@ literal before Vite runs. `effect-utils.lib.cliBuildStamp { inherit pkgs; }`
 provides `mkNixStamp { version; rev; dirtyRev; lastModified; }`, which requires
 real Git identity and positive source time. Source runs read Git from Vite's
 root instead of trusting a stale shell stamp, and report `dev (HMR)`.
+The local dirty flag covers tracked changes only, not untracked files. In dev
+mode, Git reads are asynchronous, debounced and single-flight. Only the served
+worktree's HEAD, current branch ref and index are watched; sibling worktree
+commits do not recompute its identity.
 
 For packaged apps, the static host injects `globalThis.__BUILD_DEPLOYMENT_ID__`
 before browser modules execute. It identifies the serving package's real Nix

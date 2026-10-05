@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 
@@ -192,7 +193,13 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
     expect((await identity()).dirty).toBe(false)
     writeFileSync(join(root, 'new.txt'), 'untracked\n')
+    // This integration probe checks absence of refresh across the real fs
+    // polling/debounce window; fake timers cannot drive native fs.watchFile.
+    await delay(250)
+    expect((await identity()).dirty).toBe(false)
+    git('add', 'new.txt')
     await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(true))
+    git('reset', '--quiet', '--', 'new.txt')
     rmSync(join(root, 'new.txt'))
     await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(false))
     writeFileSync(join(root, 'entry.js'), 'export const value = 2\n')
@@ -222,6 +229,82 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     expect(await (await fetch(probeUrl)).json()).toEqual(await identity())
   } finally {
     await server?.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+}, 60000)
+
+it('does not recompute identity for a sibling worktree commit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'build-identity-siblings-'))
+  const served = join(root, 'served')
+  const sibling = join(root, 'sibling')
+  const trace = join(root, 'git.trace')
+  const previousTrace = process.env['GIT_TRACE']
+  let server: ViteDevServer | undefined
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim()
+  const commit = (cwd: string) =>
+    git(
+      cwd,
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--quiet',
+      '--allow-empty',
+      '-m',
+      'fixture',
+    )
+  try {
+    git(root, 'init', '--quiet')
+    writeFileSync(join(root, 'entry.js'), 'export const value = 1\n')
+    git(root, 'add', 'entry.js')
+    commit(root)
+    git(root, 'worktree', 'add', '--quiet', '-b', 'served', served)
+    git(root, 'worktree', 'add', '--quiet', '-b', 'sibling', sibling)
+    process.env['GIT_TRACE'] = trace
+    server = await createServer({
+      configFile: false,
+      root: served,
+      logLevel: 'silent',
+      optimizeDeps: { noDiscovery: true },
+      plugins: [
+        createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
+      ],
+      server: { middlewareMode: true },
+    })
+    const identity = async () =>
+      (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
+    const initial = await identity()
+    // Native fs.watchFile and Vite source events require a real quiet window;
+    // fake timers cannot establish that no cross-worktree callback occurred.
+    await delay(300)
+    writeFileSync(trace, '')
+    commit(sibling)
+    await delay(500)
+    expect(readFileSync(trace, 'utf8')).not.toContain('--no-optional-locks')
+    expect(await identity()).toEqual(initial)
+
+    // Positive control: the same trace observes actual recomputation for this
+    // worktree, even when Git atomically replaces its current branch ref.
+    commit(served)
+    await waitForWatchUpdate(async () => {
+      expect((await identity()).rev).toBe(git(served, 'rev-parse', 'HEAD'))
+      expect((await identity()).rev).not.toBe(initial.rev)
+    })
+    expect(readFileSync(trace, 'utf8')).toContain('status --porcelain=v1 --untracked-files=no')
+    git(served, 'checkout', '--quiet', '-b', 'nested/branch')
+    commit(served)
+    await waitForWatchUpdate(async () =>
+      expect((await identity()).rev).toBe(git(served, 'rev-parse', 'HEAD')))
+    git(served, 'checkout', '--quiet', '--detach', initial.rev)
+    await waitForWatchUpdate(async () => expect((await identity()).rev).toBe(initial.rev))
+  } finally {
+    await server?.close()
+    if (previousTrace === undefined) delete process.env['GIT_TRACE']
+    else process.env['GIT_TRACE'] = previousTrace
     rmSync(root, { recursive: true, force: true })
   }
 }, 60000)
