@@ -16,6 +16,7 @@ import {
   buildSourceStringWithRef,
   MegarepoConfig,
   getMemberPath,
+  getMembersRoot,
   getSourceUrl,
   parseSourceString,
   isRemoteSource,
@@ -38,6 +39,7 @@ import { classifyRef } from '../../core/ref.ts'
 import { resolveStoreBranchWorktree } from '../../store/store-branch-worktree.ts'
 import { runPreflightChecks } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
+import { assertCanonicalMutationAllowed } from '../../store/store-path.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from '../../sync/member-mount.ts'
 import {
@@ -99,6 +101,8 @@ export const pinCommand = Cli.Command.make(
               return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
             }
 
+            yield* assertCanonicalMutationAllowed(root.value)
+            yield* assertCanonicalMutationAllowed(getMembersRoot(root.value))
             const fs = yield* FileSystem.FileSystem
             const store = yield* Store
 
@@ -590,6 +594,8 @@ export const unpinCommand = Cli.Command.make(
               return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
             }
 
+            yield* assertCanonicalMutationAllowed(root.value)
+            yield* assertCanonicalMutationAllowed(getMembersRoot(root.value))
             const fs = yield* FileSystem.FileSystem
 
             // Load config to verify member exists

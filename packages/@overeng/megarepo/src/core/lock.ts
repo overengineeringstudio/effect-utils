@@ -15,6 +15,8 @@ import { type PlatformError } from 'effect/PlatformError'
 
 import type { AbsoluteFilePath } from '@overeng/effect-path'
 
+import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+
 // =============================================================================
 // Lock File Schema
 // =============================================================================
@@ -94,6 +96,7 @@ export const writeLockFile = ({
   lockFile: LockFile
 }): Effect.Effect<void, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
+    yield* assertCanonicalMutationAllowed(lockPath)
     const fs = yield* FileSystem.FileSystem
     const content = yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(
       lockFile,

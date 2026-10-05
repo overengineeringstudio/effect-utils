@@ -16,6 +16,7 @@ import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
+import { assertCanonicalMutationAllowed } from '../../store/store-path.ts'
 import { findConfigPath, getMemberPath, type MegarepoConfig } from '../config.ts'
 import {
   LOCK_FILE_NAME,
@@ -497,6 +498,7 @@ const syncSingleLockFile = ({
     // Write updated lock file if any changes were made
     if (updatedInputs.length > 0 || schemeNormalized === true) {
       const updatedContent = yield* Schema.encodeEffect(RawFlakeLockJson)(rawJson)
+      yield* assertCanonicalMutationAllowed(lockPath)
       yield* fs.writeFileString(lockPath, updatedContent + '\n')
     }
 
@@ -672,6 +674,7 @@ export const syncSourceFileRevs = ({
     }
 
     if (updatedContent !== content) {
+      yield* assertCanonicalMutationAllowed(filePath)
       yield* fs.writeFileString(filePath, updatedContent)
     }
 
@@ -887,6 +890,7 @@ const applySharedInputSource = ({
       }
 
       if (updatedInputs.length > 0) {
+        yield* assertCanonicalMutationAllowed(lockPath)
         yield* fs.writeFileString(lockPath, encodeRawLockJson(parsed))
         updatedMembers.push({ name: memberName, updatedInputs })
       }
@@ -997,6 +1001,7 @@ const syncMemberRefs = ({
         }
 
         if (finalContent !== content) {
+          yield* assertCanonicalMutationAllowed(filePath)
           yield* fs.writeFileString(filePath, finalContent)
           if (updatedInputDetails.length > 0) {
             results.push({
@@ -1073,6 +1078,7 @@ const syncMemberRefs = ({
         const lockJsonOpt = Schema.decodeOption(RawLockJson)(currentContent)
         if (Option.isNone(lockJsonOpt) === true) {
           if (currentContent !== content) {
+            yield* assertCanonicalMutationAllowed(filePath)
             yield* fs.writeFileString(filePath, currentContent)
             results.push({ path: filePath, type: fileType, updatedInputs: updatedInputDetails })
           }
@@ -1108,6 +1114,7 @@ const syncMemberRefs = ({
         }
 
         if (currentContent !== content) {
+          yield* assertCanonicalMutationAllowed(filePath)
           yield* fs.writeFileString(filePath, currentContent)
           if (updatedInputDetails.length > 0) {
             results.push({
@@ -1152,6 +1159,23 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
     const memberNames = Object.keys(options.config.members).filter(
       (name) => !excludeMembers.has(name),
     )
+
+    // Authorize the whole scope before parallel sync or shared-source propagation can write.
+    for (const name of memberNames) {
+      const memberPath = getMemberPath({ megarepoRoot: options.megarepoRoot, name })
+      if ((yield* fs.exists(memberPath)) === true) {
+        yield* assertCanonicalMutationAllowed(memberPath)
+        const filenames =
+          scope === 'recursive'
+            ? [FLAKE_LOCK, DEVENV_LOCK, FLAKE_NIX, DEVENV_YAML, MEGAREPO_LOCK]
+            : [FLAKE_LOCK, DEVENV_LOCK, FLAKE_NIX, DEVENV_YAML]
+        for (const filename of filenames) {
+          yield* assertCanonicalMutationAllowed(
+            EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(filename)),
+          )
+        }
+      }
+    }
 
     // Auto-detect nested megarepos by scanning for megarepo config if not explicitly provided
     const recursiveMegarepoMembers =

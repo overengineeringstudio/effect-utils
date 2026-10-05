@@ -42,6 +42,7 @@ import { generateAll, getEnabledGenerators } from '../../generators/mod.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import type { StoreLock } from '../../store/store-lock.ts'
+import { assertCanonicalMutationAllowed } from '../../store/store-path.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from '../../sync/member-mount.ts'
 import {
@@ -162,7 +163,9 @@ export const syncMegarepo = <R = never>({
     const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
 
     if (dryRun === false) {
+      yield* assertCanonicalMutationAllowed(megarepoRoot)
       const membersRoot = getMembersRoot(megarepoRoot)
+      yield* assertCanonicalMutationAllowed(membersRoot)
       yield* fs.makeDirectory(membersRoot, { recursive: true })
     }
 
