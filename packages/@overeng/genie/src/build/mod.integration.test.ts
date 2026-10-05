@@ -6,7 +6,7 @@ import { Effect, FileSystem, Path, Schema, Stream } from 'effect'
 import * as Command from 'effect/process/ChildProcess'
 import { expect } from 'vitest'
 
-import { Vitest } from '@overeng/utils-dev/node-vitest'
+import { makeTempGitEnvironment, Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { GenieApp } from './app.ts'
 
@@ -455,6 +455,7 @@ export default { data: {}, stringify: () => '{}' }`,
 
             const init = Command.make('git', ['init', '-q'], {
               cwd: env.root,
+              env: makeTempGitEnvironment(),
               stdout: 'pipe',
               stderr: 'pipe',
             })
