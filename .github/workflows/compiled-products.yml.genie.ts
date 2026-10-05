@@ -14,6 +14,8 @@ import {
   readBinaryCacheDescriptors,
   withCiSourceRoot,
 } from '../../genie/ci-workflow.ts'
+import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
+import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 
 const binaryCache = readBinaryCacheDescriptors(
   new URL('../../nix/binary-caches.json', import.meta.url),
@@ -41,7 +43,7 @@ export default ciWorkflow({
     group: '${{ github.workflow }}-${{ github.ref }}',
     'cancel-in-progress': false,
   },
-  jobs: {
+  jobs: withBuck2CacheEvidence({
     'publish-compiled-products': {
       if: protectedMainIf,
       strategy: {
@@ -55,7 +57,7 @@ export default ciWorkflow({
       'timeout-minutes': 120,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
-      env: { CI: 'true', ...githubTokenEnv() },
+      env: { CI: 'true', ...githubTokenEnv(), ...buck2CachePostureEnv('reader') },
       steps: [
         checkoutStep(),
         installNixStep({ binaryCaches: [binaryCache] }),
@@ -73,5 +75,5 @@ export default ciWorkflow({
         }),
       ],
     },
-  },
+  }),
 } satisfies CiWorkflowArgs)

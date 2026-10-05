@@ -11,6 +11,8 @@ import {
   storybookPreviewRunner,
   storybookPreviewSetupSteps,
 } from '../../genie/storybook-preview.ts'
+import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
+import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 
 // Storybook play and accessibility tests (#1392) for every package opted in
 // with `playTests` in devenv.nix. A workflow of its own rather than a `ci.yml`
@@ -34,13 +36,13 @@ export default ciWorkflow({
     group: '${{ github.workflow }}-${{ github.ref }}',
     'cancel-in-progress': true,
   },
-  jobs: {
+  jobs: withBuck2CacheEvidence({
     [playsJobName]: {
       'runs-on': storybookPreviewRunner,
       'timeout-minutes': 45,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
-      env: { FORCE_SETUP: '1', CI: 'true' },
+      env: { FORCE_SETUP: '1', CI: 'true', ...buck2CachePostureEnv('reader') },
       steps: [
         checkoutStep(),
         ...storybookPreviewSetupSteps,
@@ -51,5 +53,5 @@ export default ciWorkflow({
         },
       ],
     },
-  },
+  }),
 } satisfies CiWorkflowArgs)

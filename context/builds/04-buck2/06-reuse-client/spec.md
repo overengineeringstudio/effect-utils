@@ -58,6 +58,23 @@ never enter the config file; the daemon expands the variable at startup.
 The public read-only override takes precedence over either credential.
 No publisher credential is a fallback for a host writer.
 
+Public CI declares every job's Buck cache posture in the Genie workflow source:
+
+| Posture  | `BUCK2_NO_REMOTE_CACHE` | `BUCK2_PUBLIC_CACHE_READ_ONLY` | Authority                                                |
+| -------- | ----------------------- | ------------------------------ | -------------------------------------------------------- |
+| `writer` | `0`                     | `0`                            | Protected-main proof step supplies the writer credential |
+| `reader` | `0`                     | `1`                            | Anonymous reads; credentials cannot enable uploads       |
+| `none`   | `1`                     | `1`                            | Inert PR proof; no remote-cache reads or uploads         |
+
+Generation rejects missing or unknown job declarations and conflicting explicit
+job environment settings. The trusted proof is main-only (push or manual dispatch)
+on its declared runner; all other CI jobs remain readers except the inert PR proof.
+The writer secret stays step-local. The proof's fresh replay root explicitly selects
+reader posture before daemon startup, so it cannot reuse writer authority.
+Reader declarations may disable remote caching under an explicit condition:
+measurement baseline backfills do so for older revisions without public-reader
+posture support. This conditional opt-out cannot enable uploads.
+
 Default executor platforms deny remote-cache reads and writes regardless of
 root upload policy. Audited actions request the paired `cache_hermetic` execution
 platform, which reads `remote_cache_enabled` and `allow_cache_uploads` from root
@@ -114,6 +131,23 @@ build report and event log), not from wall-clock inference:
 Budget measurements (BUILD.BUCK.REUSE-R03)
 run on a quiet host or record load context; contention-dominated numbers are
 not regressions.
+
+### CI cache-evidence artifacts
+
+CI retains `buck2-cache-evidence-<job>[-<matrix-index>]-<run-attempt>` artifacts
+for 14 days. Each contains `buck2-cache-evidence.json`, schema version `1`:
+allowlisted run/job/revision/posture metadata, complete native outcome `counts`,
+per-build-ID `invocations`, and at most 64 representative `actions` with
+category, target, configuration, exact action digest, and outcome. Populate and
+replay invocations retain their proof context labels; repeated native logs are
+deduplicated by build ID.
+
+Consumers must distinguish `collected`, `no-native-logs`, and
+`remote-cache-disabled-by-design` statuses. In-Nix product jobs use the last
+status and zero action rows; their reuse metric is Nix substitution, not Buck AC.
+The daily cache-health mission and post-merge proof consume this contract.
+See [observability](../07-observability/spec.md#ci-action-cache-evidence) for
+outcome classes and missing-evidence counters.
 
 ### Action reuse versus verdict reuse
 
