@@ -138,6 +138,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   let server: ViteDevServer | undefined
   let sourceUpdated: (() => void) | undefined
+  let watcherReady: Promise<void> | undefined
   try {
     git('init', '--quiet')
     writeFileSync(join(root, '.gitignore'), 'node_modules/\ndist/\n')
@@ -165,6 +166,9 @@ it('refreshes served identity after creating, deleting, and committing worktree 
         createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
         {
           name: 'identity-fixture-update-barrier',
+          configureServer(server) {
+            watcherReady = new Promise<void>((resolve) => server.watcher.once('ready', resolve))
+          },
           handleHotUpdate() {
             sourceUpdated?.()
           },
@@ -172,9 +176,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       ],
       server: { host: '127.0.0.1', port: 0 },
     })
-    await vi.waitUntil(() => server!.watcher.getWatched()[root]?.includes('entry.js'), {
-      timeout: 10000,
-    })
+    await watcherReady
     await server.listen()
     const probeUrl = new URL('build-identity.json', server.resolvedUrls!.local[0]!)
     const response = await fetch(probeUrl)
