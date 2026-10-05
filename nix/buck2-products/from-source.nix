@@ -166,7 +166,6 @@ let
 
     nativeBuildInputs = [
       buck2
-      pkgs.watchman
       pkgs.cacert
       pkgs.jq
     ]
@@ -187,6 +186,14 @@ let
       ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
+      # Nix inputs are immutable and Watchman's state-directory chmod is not
+      # permitted in the sandbox. Hash only this declared source tree instead
+      # of requiring a native notification daemon; mutable edit loops use the
+      # shipped Watchman policy. Startup reads the file, not CLI -c overrides.
+      cat >> .buckconfig.local <<'BUCKLOCAL'
+      [buck2]
+        file_watcher = fs_hash_crawler
+      BUCKLOCAL
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
         # Consumer roots carry the already-patched local prelude from
         # buck2-rules. Only the producer's bundled external prelude needs
