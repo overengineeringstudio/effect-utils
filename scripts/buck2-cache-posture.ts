@@ -81,10 +81,13 @@ const PUBLISHER_CACHE_BLOCK = `${MANAGED_BEGIN}
   tier = public
 ${MANAGED_END}`
 
-const trustedCacheBlock = ({ tier, urlPrefix }: TrustedArchiveOrigin): string => `${MANAGED_BEGIN}
+const trustedCacheBlock = (origin: TrustedArchiveOrigin | undefined): string =>
+  origin === undefined
+    ? `${MANAGED_BEGIN}\n${MANAGED_END}`
+    : `${MANAGED_BEGIN}
 [archive_origin]
-  url_prefix = ${urlPrefix}
-  tier = ${tier}
+  url_prefix = ${origin.urlPrefix}
+  tier = ${origin.tier}
 ${MANAGED_END}`
 
 const privateWriterCacheBlock = ({
@@ -92,7 +95,7 @@ const privateWriterCacheBlock = ({
   trustedOrigin,
 }: {
   readonly env: Readonly<Record<string, string | undefined>>
-  readonly trustedOrigin: TrustedArchiveOrigin
+  readonly trustedOrigin: TrustedArchiveOrigin | undefined
 }): string => {
   const address = env['BUCK2_PRIVATE_CACHE_ADDRESS']
   if (address === undefined || /^grpc:\/\/[^/\s]+$/u.test(address) === false)
@@ -106,10 +109,14 @@ const privateWriterCacheBlock = ({
   cas_address = ${address}
   engine_address = ${address}
   tls = false
-  http_headers = authorization: Basic $BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH
+  http_headers = authorization: Basic $BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH${
+    trustedOrigin === undefined
+      ? ''
+      : `
 [archive_origin]
   url_prefix = ${trustedOrigin.urlPrefix}
-  tier = ${trustedOrigin.tier}
+  tier = ${trustedOrigin.tier}`
+  }
 ${MANAGED_END}`
 }
 
@@ -152,7 +159,7 @@ export const standaloneCachePostureConfig = ({
 }: {
   readonly current: string
   readonly env: Readonly<Record<string, string | undefined>>
-  readonly trustedOrigin: TrustedArchiveOrigin
+  readonly trustedOrigin: TrustedArchiveOrigin | undefined
 }): string => {
   const withoutManaged = withoutManagedBlock(current)
   const managed =
@@ -182,9 +189,11 @@ export const reconcileStandaloneCachePosture = ({
   if (exists === true && lstatSync(output).isSymbolicLink() === true)
     fail('.buckconfig.local must not be a symbolic link')
   const current = exists === true ? readFileSync(output, 'utf8') : ''
-  const trustedOrigin = trustedArchiveOriginFromConfig(
-    readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8'),
-  )
+  const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
+  const trustedOrigin =
+    buckConfigValues(tracked)['archive_origin.trusted_url_prefix'] === undefined
+      ? undefined
+      : trustedArchiveOriginFromConfig(tracked)
   const next = standaloneCachePostureConfig({ current, env, trustedOrigin })
   if (next === current) return
   const candidate = `${output}.candidate-${randomUUID().replaceAll('-', '')}`

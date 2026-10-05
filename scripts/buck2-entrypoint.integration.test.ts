@@ -58,10 +58,15 @@ describe('direct pinned Buck posture', () => {
     expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toBe(local)
   })
 
-  it('admits the consuming policy default when the root omits remote_cache_enabled', async () => {
+  it('admits RE-only roots with the consuming default, without requiring archive metadata', async () => {
     const root = fixture()
     const config = readFileSync(join(root, '.buckconfig'), 'utf8')
-    writeFileSync(join(root, '.buckconfig'), config.replace('remote_cache_enabled = true\n', ''))
+    writeFileSync(
+      join(root, '.buckconfig'),
+      config
+        .slice(0, config.indexOf('[archive_origin]'))
+        .replace('remote_cache_enabled = true\n', ''),
+    )
     const reader = await directBuckArguments({ ...options(root), args: ['build', '//:app'] })
     expect(effective(reader)['buck2.remote_cache_enabled']).toBe('false')
     await expect(

@@ -83,6 +83,10 @@ probe lifetime; the key includes config contents, arguments, working directory
 and exported environment. Writer credentials, includes and external mode files
 bypass that fast path.
 
+RE client configuration alone opts into admission. A missing
+`remote_cache_enabled` inherits the execution policy's enabled default;
+RE-only roots do not need trusted archive metadata.
+
 Read-only REAPI admission failures disable cache reads/uploads while retaining
 local execution. Archive-origin admission failures clear the origin prefix and
 select the registry; a reachable REAPI client remains enabled. Every fail-open

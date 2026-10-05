@@ -239,6 +239,9 @@ converts raw host credentials into `BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH`;
 credentials never enter config files. Do not use a publisher credential as a
 host credential.
 
+Configured REAPI roots without archive-origin metadata use the same admission;
+an omitted `remote_cache_enabled` follows the execution policy's enabled default.
+
 `BUCK2_NO_REMOTE_CACHE=1` disables reads and uploads, and public read-only posture
 wins over either writer credential. The entrypoint probes REAPI capabilities and
 the archive origin concurrently with a 900 ms deadline, caches endpoint outcomes

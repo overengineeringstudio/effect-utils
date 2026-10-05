@@ -144,23 +144,20 @@ export const directBuckArguments = async ({
   // Unrelated Buck projects do not opt into effect-utils' cache policy.
   if (
     trackedValues['archive_origin.trusted_url_prefix'] === undefined &&
+    base['buck2_re_client.action_cache_address'] === undefined &&
     base['buck2.remote_cache_enabled'] !== 'true'
   )
     return [...args]
-  const posture =
+  const trustedOrigin =
     trackedValues['archive_origin.trusted_url_prefix'] === undefined
-      ? ''
-      : standaloneCachePostureConfig({
-          current: '',
-          env,
-          trustedOrigin: trustedArchiveOriginFromConfig(tracked),
-        })
+      ? undefined
+      : trustedArchiveOriginFromConfig(tracked)
+  const posture = standaloneCachePostureConfig({ current: '', env, trustedOrigin })
   // Native RE client construction ignores CLI config. Writer headers/endpoints must
   // be in the root overlay before daemon startup, including removal on public reads.
   if (
-    (unmanaged.found === true ||
-      Object.keys(buckConfigValues(posture)).some((key) => key.startsWith('buck2_re_client.'))) &&
-    trackedValues['archive_origin.trusted_url_prefix'] !== undefined
+    unmanaged.found === true ||
+    Object.keys(buckConfigValues(posture)).some((key) => key.startsWith('buck2_re_client.'))
   )
     reconcileStandaloneCachePosture({ repoRoot: root, env })
   const values = { ...base, ...buckConfigValues(posture) }
@@ -195,7 +192,7 @@ export const directBuckArguments = async ({
       standaloneCachePostureConfig({
         current: '',
         env,
-        trustedOrigin: { tier: 'private', urlPrefix: '' },
+        trustedOrigin,
       }),
     )
     Object.assign(values, disabled)
