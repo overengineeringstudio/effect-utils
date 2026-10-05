@@ -46,6 +46,17 @@ const canonical = () =>
     }),
   ])
 describe('Smalltalk declarations', () => {
+  it('accepts hyphenated resource input names in subject gates', () => {
+    const pr = input.resource('pull-request', { kind: 'vcs.pull-request' })
+    const review = step({ id: 'review', gates: [
+      fieldIs({ name: 'open', subject: pr, path: 'state', value: 'open' }),
+    ] })
+    const kdl = emit([mission({
+      id: 'review-pr', state: 'ready', goals: ['Review the PR.'], inputs: [pr], steps: [review],
+    })])
+    expect(kdl).toContain('input "pull-request" kind="resource"')
+    expect(kdl).toContain('field "state" "${input.pull-request}" "is" "open"')
+  })
   it('preserves named product types and lowers field constraints to graph products', () => {
     const work = step({ id: 'work', produces: {
       report: product.resource({ kind: 'custom.garden.report', fields: { state: 'published' } }),

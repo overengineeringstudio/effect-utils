@@ -251,7 +251,7 @@ const validName = (s: string, full: boolean): boolean =>
   s.length > 0 && s.length <= 512 && /^[A-Za-z0-9][A-Za-z0-9._@/-]*$/u.test(s) &&
   s.split('/').every((part) => part !== '' && part !== '..') && (!full || s.includes('/'))
 const validSubject = (s: string): boolean => {
-  if (/^\$\{[A-Za-z0-9_.]*\}$/u.test(s)) return true
+  if (/^\$\{[A-Za-z0-9_.-]*\}$/u.test(s)) return true
   const concrete = s.replace(/\$\{[^}]*\}/gu, 'x')
   if (concrete.includes('${')) return false
   if (concrete.startsWith('file/')) {
