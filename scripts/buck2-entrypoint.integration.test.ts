@@ -96,6 +96,35 @@ describe('direct pinned Buck posture', () => {
     expect(values['archive_origin.url_prefix']).toBe('')
   })
 
+  it('admits cache-less source builds without validating unused sandbox archive placeholders', async () => {
+    for (const selection of [
+      { args: ['build', '--local-only', '--no-remote-cache', '//:app'], env: {} },
+      { args: ['build', '//:app'], env: { BUCK2_NO_REMOTE_CACHE: '1' } },
+      { args: ['build', '-c', 'buck2.remote_cache_enabled=false', '//:app'], env: {} },
+    ]) {
+      const root = fixture('$BUCK2_CACHE_ADDRESS', '$BUCK2_ARCHIVE_ORIGIN_URL_PREFIX')
+      const result = await directBuckArguments({ ...options(root), ...selection })
+      expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
+      expect(effective(result)['buck2.allow_cache_uploads']).toBe('false')
+      expect(effective(result)['archive_origin.url_prefix']).toBe('')
+    }
+    const root = fixture('$BUCK2_CACHE_ADDRESS', '$BUCK2_ARCHIVE_ORIGIN_URL_PREFIX')
+    writeFileSync(join(root, '.buckconfig.local'), '[buck2]\nremote_cache_enabled = false\n')
+    const result = await directBuckArguments({ ...options(root), args: ['build', '//:app'] })
+    expect(effective(result)['archive_origin.url_prefix']).toBe('')
+    expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
+  })
+
+  it('still rejects invalid trusted origins when cache disabling is only a run argument', async () => {
+    const root = fixture('$BUCK2_CACHE_ADDRESS', '$BUCK2_ARCHIVE_ORIGIN_URL_PREFIX')
+    await expect(
+      directBuckArguments({
+        ...options(root),
+        args: ['run', '//:app', '--', '--no-remote-cache'],
+      }),
+    ).rejects.toThrow('tracked trusted archive origin')
+  })
+
   it('caches healthy capabilities across hot loops but does not reuse them for a different endpoint or writer credential', async () => {
     let requests = 0
     const grpc = createServer()

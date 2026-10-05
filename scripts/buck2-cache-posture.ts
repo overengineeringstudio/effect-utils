@@ -193,6 +193,8 @@ export const reconcileStandaloneCachePosture = ({
   const current = exists === true ? readFileSync(output, 'utf8') : ''
   const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
   const trustedOrigin =
+    env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
+    env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1' ||
     buckConfigValues(tracked)['archive_origin.trusted_url_prefix'] === undefined
       ? undefined
       : trustedArchiveOriginFromConfig(tracked)
