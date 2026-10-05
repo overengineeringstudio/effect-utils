@@ -290,17 +290,17 @@ export const catalog = defineCatalog({
   '@standard-schema/spec': '1.1.0',
 
   // Effect ecosystem
-  // Effect 4 RC cohort (see `effectV4Cohort`): platform/cli/rpc/schema/http/
+  // Effect 4 cohort (see `effectV4Cohort`): platform/cli/rpc/schema/http/
   // socket/process/ai/cluster/workflow/sql and Atom reactivity are merged into
   // the `effect` core package (mostly under `effect/*`); only these
   // packages remain separate.
-  effect: '4.0.0-rc.118',
-  '@effect/ai-openai-compat': '4.0.0-rc.118',
-  '@effect/ai-typesafe': '4.0.0-rc.118',
-  '@effect/platform-node': '4.0.0-rc.118',
-  '@effect/vitest': '4.0.0-rc.118',
-  '@effect/opentelemetry': '4.0.0-rc.118',
-  '@effect/atom-react': '4.0.0-rc.118',
+  effect: '4.0.0',
+  '@effect/ai-openai-compat': '4.0.0',
+  '@effect/ai-typesafe': '4.0.0',
+  '@effect/platform-node': '4.0.0',
+  '@effect/vitest': '4.0.0',
+  '@effect/opentelemetry': '4.0.0',
+  '@effect/atom-react': '4.0.0',
 
   // React ecosystem
   react: '19.2.8',
