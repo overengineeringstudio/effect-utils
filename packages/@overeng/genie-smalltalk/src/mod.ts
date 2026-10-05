@@ -426,6 +426,20 @@ export const GateSchema = Schema.Union([
     ),
     timeLimit: Schema.optionalKey(Duration),
   }),
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literal('human'),
+    reviewer: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('person/'))),
+    mode: Schema.optionalKey(Schema.Literals(['approve', 'feedback'])),
+    question: Schema.optionalKey(Schema.String),
+    review: Schema.optionalKey(
+      Schema.Array(FullSubject).pipe(
+        Schema.refine(
+          (targets): targets is typeof targets => new Set(targets).size === targets.length,
+        ),
+      ),
+    ),
+  }),
 ]).annotate({ identifier: 'St.Gate' })
 
 const Gates = Schema.Array(GateSchema).pipe(
@@ -433,6 +447,9 @@ const Gates = Schema.Array(GateSchema).pipe(
     (gates): gates is typeof gates => new Set(gates.map((g) => g.name)).size === gates.length,
   ),
 )
+
+const withoutFeedback = (gates: readonly (typeof GateSchema.Type)[]): boolean =>
+  gates.every((gate) => gate.kind !== 'human' || gate.mode !== 'feedback')
 
 /** Retry attempts include the initial attempt; zero backoff is allowed. */
 export const RetrySchema = Schema.Struct({
@@ -566,6 +583,9 @@ export const StepSchema = Schema.Struct({
       message: 'agentless and assigned-to conflict',
     },
   ),
+  Schema.refine((s): s is typeof s => s.agentless !== true || withoutFeedback(s.gates ?? []), {
+    message: 'feedback-gate-needs-worker',
+  }),
   Schema.annotate({ identifier: 'St.Step' }),
 )
 /** All exhausted work, or an explicit completion frontier of normal steps. */
@@ -618,6 +638,9 @@ export const LoopSchema = Schema.Struct({
       Schema.refine(
         (gates): gates is typeof gates => new Set(gates.map((g) => g.name)).size === gates.length,
       ),
+      Schema.refine((gates): gates is typeof gates => withoutFeedback(gates), {
+        message: 'feedback-gate-needs-step',
+      }),
     ),
   ),
   round: RoundSchema,
@@ -660,7 +683,13 @@ export const MissionSchema = Schema.Struct({
   state: Schema.Literal('ready'),
   timeout: Schema.optionalKey(Duration),
   goals: Goals.pipe(Schema.refine((goals): goals is typeof goals => goals.length > 0)),
-  gates: Schema.optionalKey(Gates),
+  gates: Schema.optionalKey(
+    Gates.pipe(
+      Schema.refine((gates): gates is typeof gates => withoutFeedback(gates), {
+        message: 'feedback-gate-needs-step',
+      }),
+    ),
+  ),
   constraints: Schema.optionalKey(Schema.Array(Text)),
   steps: Schema.Array(Schema.Union([StepSchema, LoopSchema])),
   completion: Schema.optionalKey(CompletionSchema),
@@ -795,6 +824,21 @@ export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
 /** Decodes and lowers a gate without changing its predicate or built-in kind. */
 export const gate = (input: typeof GateSchema.Encoded): Node => {
   const g = decode({ schema: GateSchema, input })
+  if (g.kind === 'human') {
+    return node({
+      name: 'gate',
+      args: [g.name],
+      props: {
+        type: 'human',
+        ...(g.mode === undefined ? {} : { mode: g.mode }),
+      },
+      children: [
+        child({ name: 'reviewer', value: g.reviewer }),
+        ...optionalChild({ name: 'question', value: g.question }),
+        ...(g.review ?? []).map((target) => child({ name: 'review', value: target })),
+      ],
+    })
+  }
   let predicate: Node
   switch (g.kind) {
     case 'exists':
@@ -844,6 +888,41 @@ export const gate = (input: typeof GateSchema.Encoded): Node => {
     ],
   })
 }
+
+/** Native person review gate data. */
+export type HumanGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'human' }>
+/** Native command gate data. */
+export type ExecGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'exec' }>
+/** Native graph-field predicate data. */
+export type FieldGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'field' }>
+/** Native merged pull-request gate data. */
+export type MergedGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'merged' }>
+/** Native CI check gate data. */
+export type CiPassedGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'ci-passed' }>
+
+/** Native gate constructors retain plain-data semantics and validate when rendered. */
+export const humanGate = (input: Omit<HumanGate, 'kind'>): HumanGate => ({
+  ...input,
+  kind: 'human',
+})
+/** Require a command to succeed. */
+export const execGate = (input: Omit<ExecGate, 'kind'>): ExecGate => ({ ...input, kind: 'exec' })
+/** Require a graph field to equal a value. */
+export const fieldIs = (input: Omit<FieldGate, 'kind' | 'operator'>): FieldGate => ({
+  ...input,
+  kind: 'field',
+  operator: 'is',
+})
+/** Require a pull request to be merged. */
+export const merged = (input: Omit<MergedGate, 'kind'>): MergedGate => ({
+  ...input,
+  kind: 'merged',
+})
+/** Require a named CI check to pass. */
+export const ciPassed = (input: Omit<CiPassedGate, 'kind'>): CiPassedGate => ({
+  ...input,
+  kind: 'ci-passed',
+})
 
 /** Decodes and renders a step node. */
 const lowerStep = (input: typeof StepSchema.Encoded): Node => {
@@ -1014,6 +1093,7 @@ export const step = <const TMission extends string = never>(
   stepData.set(handle, { ...(missionId === undefined ? {} : { missionId }), wire, dependencies })
   return handle
 }
+
 const dependenciesNode = (dependencies: readonly (typeof DependsOnSchema.Encoded)[]): Node =>
   block({
     name: 'depends-on',
