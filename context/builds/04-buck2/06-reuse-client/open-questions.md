@@ -28,4 +28,3 @@ edit-run, quick check, full tests and platform/host proof. No numbers are invent
 [Spec](./spec.md#open-design-questions). Consumer/service owners must specify
 revocable per-host keys, authenticated write-key logging, quarantine and targeted
 AC purge. The public lane eligibility contract is not an authorization mechanism.
-
