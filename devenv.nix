@@ -652,6 +652,10 @@ let
 in
 {
   imports = [
+    (import ./nix/buck2-watchman.nix {
+      buck2 = buck2Machine;
+      capabilities = buck2Capabilities;
+    })
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
@@ -1461,13 +1465,6 @@ in
     # Buck2 expands the cache header in the daemon; keep the optional credential
     # defined so unauthenticated cache reads work when SecretSpec is not active.
     export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
-    capability_parent="$WORKSPACE_ROOT/.buck2"
-    capability_link="$capability_parent/capabilities"
-    ${pkgs.coreutils}/bin/mkdir -p "$capability_parent"
-    if [ -e "$capability_link" ] && [ ! -L "$capability_link" ]; then
-      ${pkgs.coreutils}/bin/rm -rf -- "$capability_link"
-    fi
-    ${pkgs.coreutils}/bin/ln -sfnT ${buck2Capabilities} "$capability_link"
     ${cliBuildStamp.shellHook}
   '';
 

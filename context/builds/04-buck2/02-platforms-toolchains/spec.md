@@ -39,10 +39,11 @@ BuckSupportToolInfo {
 ```
 
 Provider descriptors are data read before execution; they never permit actions
-to evaluate Nix. Devenv preparation projects exact files under the stable
-`.buck2/capabilities/` cell in complete immutable generations; the
-authoritative `defs.bzl` is atomically replaced only after a generation is
-complete, and a missing or stale projection fails closed. Actions using
+to evaluate Nix. Devenv preparation links complete immutable generations under
+the stable `.buck2/capabilities/` cell, atomically switching the link and
+restarting Buck when the generation changes
+([root lifecycle](../03-consumer-roots/spec.md#checkout-file-watching)).
+A missing or stale projection fails closed. Actions using
 executor-local projected tools are explicitly local-only. Toolchain
 executables referenced in action command lines are `/nix/store` paths
 (BUILD.BUCK.PLAT-R02).

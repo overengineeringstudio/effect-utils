@@ -20,6 +20,8 @@ We're using megarepo for repo management. We're using `pnpm` temporarily for ins
 
 Buck owns checking for every TypeScript project and declaration production for every emitting project. The checkout itself is the standalone Buck root; CI and devenv invoke the `//:quick` aggregate through the pinned `BUCK2_BIN`. `buck2:typescript:materialize-dist` publishes declarations atomically when source-side tools or editors need package `dist` trees.
 
+Buck uses a worktree-owned Watchman daemon; devenv exports its socket and permits startup at nice 19. `devenv tasks run buck2:watchman:start` starts/reuses it; `buck2:watchman:stop` stops only this worktree's Buck and Watchman daemons. After editing `.watchmanconfig.genie.ts`, regenerate with Genie, then stop/start to reload exclusions. `buck2:capabilities:refresh` restarts Buck when the Nix capability generation changes; run it before direct Buck commands after a generation change. Never stop a shared user Watchman daemon. See [checkout file watching](context/builds/04-buck2/03-consumer-roots/spec.md#checkout-file-watching).
+
 # Genie (Config File Generation)
 
 Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/ci.yml` are generated from TypeScript source files using genie. The source files have a `.genie.ts` suffix (e.g., `package.json.genie.ts`).

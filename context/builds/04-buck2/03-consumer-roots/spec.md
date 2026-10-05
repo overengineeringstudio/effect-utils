@@ -56,6 +56,42 @@ with one more cell, `rules = .buck2/rules`: the shipped rules product, which
 also carries the prelude. Its platform labels are
 `rules//buck2/platforms:host_platform` and `…:host_execution_platform`.
 
+## Checkout File Watching
+
+```text
+devenv preparation -> worktree-owned Watchman socket -> Buck daemon
+                  -> capability link switch + Buck restart (only on change)
+```
+
+The effect-utils checkout uses `file_watcher = watchman`. Genie authors
+`.watchmanconfig` from `.watchmanconfig.genie.ts`: generated editor caches,
+`buck-out`, `.devenv`, `target`, `tmp`, `node_modules`, and `.git` are excluded
+before traversal. The three editor-cache roots lead the list because macOS
+accelerates only the first eight exclusions. Package sources and
+`.buck2/capabilities` remain watched (BUILD.BUCK.ROOT-R07).
+
+Devenv exports `WATCHMAN_SOCK` for a worktree-keyed, owner-only directory under
+`/tmp`; the short socket path also fits Darwin's Unix socket limit. An owned
+`WATCHMAN_CONFIG_FILE` sets `min_acceptable_nice_value` to 19. Per-worktree
+ownership permits start/stop and exclusion changes without touching another
+worktree or the user's shared daemon.
+
+- `devenv tasks run buck2:watchman:start` starts or reuses that daemon.
+- `devenv tasks run buck2:watchman:stop` stops that root's Buck daemon and its
+  owned Watchman daemon. Run stop then start after changing `.watchmanconfig`;
+  exclusions are not reloaded on an existing watch.
+- Shell entry and Buck tasks prepare Watchman and run
+  `buck2:capabilities:refresh`. Under the capability lock, a changed immutable
+  generation restarts Buck and atomically switches `.buck2/capabilities`.
+  An unchanged generation preserves the warm daemon. Buck retains external-cell
+  roots across symlink retargeting, so watching the link alone is insufficient.
+  Direct Buck callers must refresh after a Nix generation change; custom
+  isolation directories require their own explicit daemon restart.
+
+Fixed-source Nix sandbox builds select `fs_hash_crawler` in their temporary
+`.buckconfig.local` before daemon startup; they do not depend on a host service
+or use that backend for an incremental checkout.
+
 ## Capability Cell
 
 The devenv shell links the pure `packages.<system>.buck2-capabilities` output

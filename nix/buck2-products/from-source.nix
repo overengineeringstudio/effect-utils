@@ -185,6 +185,9 @@ let
       ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
+      # The sandbox's fixed sources need no service or incremental retargeting.
+      # Override before the first daemon starts; checkout roots use owned Watchman.
+      printf '\n[buck2]\n  file_watcher = fs_hash_crawler\n' >> .buckconfig.local
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
         # Consumer roots carry the already-patched local prelude from
         # buck2-rules. Only the producer's bundled external prelude needs

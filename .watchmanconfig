@@ -1,0 +1,13 @@
+{
+  "ignore_dirs": [
+    "packages/.editor-view",
+    ".editor-view",
+    "context/.editor-view",
+    "buck-out",
+    ".devenv",
+    "target",
+    "tmp",
+    "node_modules",
+    ".git"
+  ]
+}
