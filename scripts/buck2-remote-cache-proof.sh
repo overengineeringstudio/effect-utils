@@ -18,7 +18,9 @@ target='effect_utils//packages/@overeng/ci-tools:ci-tools-candidate'
 test_target='effect_utils//packages/@overeng/content-address:test'
 proof_source="$source_root/packages/@overeng/ci-tools/bin/ci-tools.ts"
 test_proof_source="$source_root/packages/@overeng/content-address/src/mod.unit.test.ts"
-printf '%s\n' '' "// trusted remote-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$proof_source"
+# A comment can disappear during bundling, leaving the descriptor action key
+# unchanged. This disposable side effect survives bundling and changes integrity.
+printf '%s\n' '' "console.debug('trusted remote-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}')" >> "$proof_source"
 printf '%s\n' '' "// trusted test-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$test_proof_source"
 evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-a.jsonl"
 test_evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-a.jsonl"
