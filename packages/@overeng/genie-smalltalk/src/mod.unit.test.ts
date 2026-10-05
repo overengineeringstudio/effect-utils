@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { agent, emit, mission, node, resource, schedule, smalltalkKdl } from './mod.ts'
+import { agent, emit, mission, node, omp, resource, schedule, smalltalkKdl } from './mod.ts'
 
 const canonical = () =>
   emit([
@@ -58,6 +58,54 @@ describe('Smalltalk declarations', () => {
     ).toThrow()
     expect(() =>
       agent({ id: 'seat', checkout: { repository: 'repo', base: 'main', branch: 'work' } }),
+    ).toThrow()
+  })
+  it.each([
+    {
+      resume: { transcript: '/sessions/with spaces/"quoted".jsonl' },
+      args: ['--resume', '/sessions/with spaces/"quoted".jsonl'],
+    },
+    { resume: 'latest' as const, args: ['--continue'] },
+    { resume: undefined, args: undefined },
+  ])('selects exactly one OMP recovery mode: $resume', ({ resume, args }) => {
+    const harness = omp({
+      model: 'example',
+      effort: 'medium',
+      ...(resume === undefined ? {} : { resume }),
+    })
+    const seat = agent({ id: 'seat', harness })
+    const launch = seat.children?.find((child) => child.name === 'harness')
+    expect(launch?.children?.filter((child) => child.name === 'args')).toEqual(
+      args === undefined ? [] : [node({ name: 'args', args })],
+    )
+    if (args !== undefined) {
+      expect(emit([seat])).toContain(`args ${args.map((arg) => JSON.stringify(arg)).join(' ')}\n`)
+    }
+  })
+  it('rejects ambiguous recovery intent and free-form harness arguments', () => {
+    for (const resume of [
+      '',
+      'continue',
+      { transcript: '' },
+      { transcript: '/sessions/demo.jsonl', latest: true },
+    ]) {
+      expect(() =>
+        agent({
+          id: 'seat',
+          harness: { kind: 'omp', model: 'example', effort: 'medium', resume },
+        } as never),
+      ).toThrow()
+    }
+    expect(() =>
+      agent({
+        id: 'seat',
+        harness: {
+          kind: 'omp',
+          model: 'example',
+          effort: 'medium',
+          args: ['--resume', '/sessions/demo.jsonl'],
+        },
+      } as never),
     ).toThrow()
   })
   it('preserves explicit false properties in a valid Genie fixture', () => {
