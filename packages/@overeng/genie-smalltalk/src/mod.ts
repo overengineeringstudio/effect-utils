@@ -706,12 +706,12 @@ type MissionInput<TMission extends string> = Omit<typeof MissionSchema.Encoded, 
   readonly finally?: readonly (typeof StepSchema.Encoded & { readonly [stepBrand]?: never } | StepHandle<NoInfer<TMission>>)[]
 }
 
-const stepData = new WeakMap<Node, {
+const stepData = new WeakMap<object, {
   readonly missionId?: string
   readonly wire: typeof StepSchema.Encoded
   readonly dependencies: readonly StepDependency[]
 }>()
-const stepOwners = new WeakMap<Node, string>()
+const stepOwners = new WeakMap<object, string>()
 const isStepHandle = (value: object): value is StepHandle => stepData.has(value)
 
 const dependency = <TMission extends string>(
@@ -728,7 +728,7 @@ export const terminal = <TMission extends string>(handle: StepHandle<TMission>):
 export const step = <const TMission extends string = never>(input: StepInput<TMission>): StepHandle<TMission> => {
   const { missionId, assignedTo, dependsOn, ...rest } = input
   const dependencies = (dependsOn ?? []).filter((d): d is StepDependency<TMission> => dependencyBrand in d)
-  const wire = {
+  const wire = decode({ schema: StepSchema, input: {
     ...rest,
     ...(assignedTo === undefined ? {} : {
       assignedTo: typeof assignedTo === 'string' ? assignedTo :
@@ -737,7 +737,7 @@ export const step = <const TMission extends string = never>(input: StepInput<TMi
     ...(dependsOn === undefined ? {} : {
       dependsOn: dependsOn.map((d) => dependencyBrand in d ? { step: d.handle.id, state: d.state } : d),
     }),
-  }
+  } })
   const rendered = lowerStep(wire)
   const handle = { ...rendered, [stepBrand]: true as const, ...(missionId === undefined ? {} : { missionId }), id: input.id }
   stepData.set(handle, { ...(missionId === undefined ? {} : { missionId }), wire, dependencies })
