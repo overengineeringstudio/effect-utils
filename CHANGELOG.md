@@ -33,6 +33,8 @@
   not a guarantee against subsequent native transport failures.
   Launcher compilation isolates its working directory from Nix's temporary root
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
+- Genie bootstrap discovery excludes Buck output trees, so copied generator files
+  in build artifacts do not enter source-tree closure checks.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
