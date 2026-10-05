@@ -695,10 +695,11 @@ export interface StepDependency<TMission extends string = string> {
   readonly state: typeof DependsOnSchema.Encoded.state
 }
 
+type StepDependencyInput<TMission extends string> = typeof DependsOnSchema.Encoded | StepDependency<NoInfer<TMission>>
 type StepInput<TMission extends string> = Omit<typeof StepSchema.Encoded, 'assignedTo' | 'dependsOn'> & {
   readonly missionId?: TMission
   readonly assignedTo?: string | AgentRef
-  readonly dependsOn?: readonly (typeof DependsOnSchema.Encoded | StepDependency<NoInfer<TMission>>)[]
+  readonly dependsOn?: readonly [StepDependencyInput<TMission>, ...StepDependencyInput<TMission>[]]
 }
 type MissionInput<TMission extends string> = Omit<typeof MissionSchema.Encoded, 'id' | 'steps' | 'finally'> & {
   readonly id: TMission

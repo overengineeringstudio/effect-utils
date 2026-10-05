@@ -55,6 +55,7 @@ describe('Smalltalk declarations', () => {
       ] })]),
     )
     expectTypeOf<StepHandle<'handles'>>().not.toExtend<StepHandle<'other'>>()
+    expectTypeOf<{ id: 'empty'; dependsOn: readonly [] }>().not.toExtend<Parameters<typeof step>[0]>()
     expectTypeOf<typeof first>().not.toExtend<Parameters<typeof mission<'other'>>[0]['steps'][number]>()
     expectTypeOf<StepDependency<'handles'>>().not.toExtend<
       NonNullable<Parameters<typeof step<'other'>>[0]['dependsOn']>[number]
