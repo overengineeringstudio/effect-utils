@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { agent, emit, mission, node, resource, schedule, smalltalkKdl } from './mod.ts'
+import { agent, emit, mission, node, omp, resource, schedule, smalltalkKdl } from './mod.ts'
 
 const canonical = () =>
   emit([
@@ -17,6 +17,45 @@ const canonical = () =>
     }),
   ])
 describe('Smalltalk declarations', () => {
+  it('resumes an exact Codex session without overriding provider defaults', () => {
+    const seat = agent({
+      id: 'example/codex',
+      env: { CODEX_HOME: '/srv/codex' },
+      harness: {
+        kind: 'codex',
+        args: ['--config', 'key=value'],
+        resume: { session: 'native-thread' },
+      },
+    })
+    expect(emit([seat])).toBe(
+      'version 2\nagent "example/codex" {\n  env {\n    CODEX_HOME "/srv/codex"\n    ST3_NATIVE_RESUME_SESSION "native-thread"\n  }\n  harness "codex" {\n    args "--config" "key=value"\n  }\n}\n',
+    )
+    expect(() =>
+      agent({
+        id: 'example/codex',
+        env: { ST3_NATIVE_RESUME_SESSION: 'different-thread' },
+        harness: { kind: 'codex', resume: { session: 'native-thread' } },
+      }),
+    ).toThrow()
+  })
+  it('renders explicit Codex model and effort while retaining OMP selection', () => {
+    expect(
+      emit([
+        agent({
+          id: 'example/codex',
+          harness: { kind: 'codex', model: 'example-model', effort: 'xhigh' },
+        }),
+      ]),
+    ).toContain('harness "codex" {\n    model "example-model"\n    effort "xhigh"\n')
+    expect(
+      emit([
+        agent({
+          id: 'example/omp',
+          harness: { kind: 'omp', model: 'example-model', effort: 'high' },
+        }),
+      ]),
+    ).toContain('harness "omp" {\n    model "example-model"\n    effort "high"\n')
+  })
   it('serializes KDL v2 values, quoted identifiers and stable property ordering', () => {
     expect(
       emit([
@@ -58,6 +97,54 @@ describe('Smalltalk declarations', () => {
     ).toThrow()
     expect(() =>
       agent({ id: 'seat', checkout: { repository: 'repo', base: 'main', branch: 'work' } }),
+    ).toThrow()
+  })
+  it.each([
+    {
+      resume: { transcript: '/sessions/with spaces/"quoted".jsonl' },
+      args: ['--resume', '/sessions/with spaces/"quoted".jsonl'],
+    },
+    { resume: 'latest' as const, args: ['--continue'] },
+    { resume: undefined, args: undefined },
+  ])('selects exactly one OMP recovery mode: $resume', ({ resume, args }) => {
+    const harness = omp({
+      model: 'example',
+      effort: 'medium',
+      ...(resume === undefined ? {} : { resume }),
+    })
+    const seat = agent({ id: 'seat', harness })
+    const launch = seat.children?.find((child) => child.name === 'harness')
+    expect(launch?.children?.filter((child) => child.name === 'args')).toEqual(
+      args === undefined ? [] : [node({ name: 'args', args })],
+    )
+    if (args !== undefined) {
+      expect(emit([seat])).toContain(`args ${args.map((arg) => JSON.stringify(arg)).join(' ')}\n`)
+    }
+  })
+  it('rejects ambiguous recovery intent and free-form harness arguments', () => {
+    for (const resume of [
+      '',
+      'continue',
+      { transcript: '' },
+      { transcript: '/sessions/demo.jsonl', latest: true },
+    ]) {
+      expect(() =>
+        agent({
+          id: 'seat',
+          harness: { kind: 'omp', model: 'example', effort: 'medium', resume },
+        } as never),
+      ).toThrow()
+    }
+    expect(() =>
+      agent({
+        id: 'seat',
+        harness: {
+          kind: 'omp',
+          model: 'example',
+          effort: 'medium',
+          args: ['--resume', '/sessions/demo.jsonl'],
+        },
+      } as never),
     ).toThrow()
   })
   it('preserves explicit false properties in a valid Genie fixture', () => {
