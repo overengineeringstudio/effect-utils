@@ -19,6 +19,12 @@
 - The Vite build-identity dev plugin watches only its worktree's HEAD, current
   branch ref and index. Git snapshots are asynchronous, debounced and
   single-flight, and dirty checks exclude untracked files.
+- Native Effect/Rust panic retirement cancels sibling abortable futures and waits
+  for settle-only futures before releasing or replacing the generation.
+- Portable regex end anchors respect backslash parity in both compiler directions;
+  escaped literal dollars are rejected while anchored literal backslashes work.
+- Native scalar `f32` admission checks finiteness after binary32 rounding, matching
+  wasm at the maximum finite boundary.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources

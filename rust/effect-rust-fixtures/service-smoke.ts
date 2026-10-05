@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { scheduler } from 'node:timers/promises'
 
-import { DateTime, Deferred, Effect, Exit, Fiber, Schema, Stream } from 'effect'
+import { Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from 'effect'
 
 import { ContractJson, Interop } from '@overeng/effect-rust'
 
@@ -21,7 +21,7 @@ assert.ok(
 // own types are checked by compiling the package, not through this script.
 // eslint-disable-next-line import/no-dynamic-require -- Contract codecs are loaded from the runtime-selected generated Buck service package under test.
 const Contracts = await import(resolve(directory, 'contracts.ts'))
-const { EffectRustFixture, ArithmeticError, SourceError } = await import(
+const { EffectRustFixture, ArithmeticError, SourceError, load } = await import(
   // eslint-disable-next-line import/no-dynamic-require -- Service statics are loaded from the runtime-selected generated Buck service package under test.
   resolve(directory, 'service.ts')
 )
@@ -253,6 +253,104 @@ for (const [name, layer] of [
   // eslint-disable-next-line no-await-in-loop -- Drain each released runtime's finalizers before initializing the next transport.
   await scheduler.yield()
   console.log(`${name}: quoteOrder total ${total}`)
+}
+
+interface RetirementApi {
+  readonly pendingJob: () => Interop.RustJob<number>
+  readonly settleJob: (source: Interop.SourceCallback) => Interop.RustJob<Uint8Array>
+  readonly liveJobs: () => number
+  readonly panicTest: () => number
+  readonly add: (left: number, right: number) => number
+}
+class Retirement extends Context.Service<Retirement, Interop.Runtime<RetirementApi>>()(
+  'fixture/Retirement',
+) {}
+for (const panicPolicy of ['rebuild', 'retire'] as const) {
+  const nativeLoad: Interop.InstanceFactory<RetirementApi> = load.native[runtime]
+  const instances: Interop.Instance<RetirementApi>[] = []
+  const releasedLiveJobs: number[] = []
+  const layer = Interop.nativeLayer[runtime](Retirement, {
+    panicPolicy,
+    make: (core) => core,
+    load: async () => {
+      const instance = await nativeLoad()
+      instances.push(instance)
+      return {
+        api: instance.api,
+        release: async () => {
+          releasedLiveJobs.push(instance.api.liveJobs())
+          await instance.release()
+        },
+      }
+    },
+  })
+  // eslint-disable-next-line no-await-in-loop -- Each panic policy owns and releases its native generation before the next case.
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(layer)
+        const core = Context.get(context, Retirement)
+        const cancelled = yield* Deferred.make<void>()
+        const started = yield* Deferred.make<void>()
+        const finishRead = yield* Deferred.make<Uint8Array>()
+        const source = yield* Interop.hostSource('settle-only', {
+          read: () =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(started, undefined)
+              return yield* Deferred.await(finishRead)
+            }),
+          readRange: () => Effect.succeed(new Uint8Array()),
+        })
+        const pending = yield* core
+          .call(({ api }) => {
+            const job = api.pendingJob()
+            assert.equal(job.mode, 'abortable')
+            if (job.mode !== 'abortable') throw new Error('pending fixture must be abortable')
+            return {
+              ...job,
+              cancel: async () => {
+                await job.cancel()
+                Deferred.doneUnsafe(cancelled, Effect.void)
+              },
+            }
+          })
+          .pipe(Effect.forkChild)
+        while (instances[0]!.api.liveJobs() !== 1) yield* Effect.promise(() => scheduler.yield())
+        const settling = yield* core
+          .call(({ api, signal }) => api.settleJob((request) => source.call(signal, request)))
+          .pipe(Effect.forkChild)
+        yield* Deferred.await(started)
+        yield* Effect.addFinalizer(() => Deferred.succeed(finishRead, new Uint8Array([1])))
+        assert.equal(instances[0]!.api.liveJobs(), 2)
+        const panic = yield* Effect.exit(core.call(({ api }) => api.panicTest()))
+        assert.ok(Exit.isFailure(panic) && String(panic.cause).includes('RUST_PANIC:'))
+        yield* Deferred.await(cancelled).pipe(Effect.timeout('5 seconds'))
+        assert.equal(
+          instances[0]!.api.liveJobs(),
+          1,
+          'native cancellation drops the sibling future',
+        )
+        assert.deepEqual(releasedLiveJobs, [], 'generation release waits for settle-only Rust work')
+        assert.equal(instances.length, 1, 'replacement does not overlap the old native future')
+        yield* Deferred.succeed(finishRead, new Uint8Array([1]))
+        assert.ok(Exit.isFailure(yield* Fiber.await(pending)))
+        assert.ok(Exit.isFailure(yield* Fiber.await(settling)))
+        if (panicPolicy === 'rebuild') {
+          assert.equal(yield* core.call(({ api }) => api.add(20, 22)), 42)
+          assert.equal(instances.length, 2)
+        } else {
+          assert.ok(Exit.isFailure(yield* Effect.exit(core.call(({ api }) => api.add(20, 22)))))
+        }
+      }),
+    ),
+  )
+  assert.deepEqual(releasedLiveJobs, panicPolicy === 'rebuild' ? [0, 0] : [0])
+  // eslint-disable-next-line no-await-in-loop -- Observe each completed policy through a fresh native loader, never through released glue.
+  const observer = await nativeLoad()
+  assert.equal(observer.api.liveJobs(), 0, 'no native sibling survives Layer close')
+  // eslint-disable-next-line no-await-in-loop -- Release the observer before running the next policy.
+  await observer.release()
+  console.log(`native ${panicPolicy}: abortable future dropped, settle-only future awaited`)
 }
 console.log(`${vectors.length} shared vectors agree; generated statics verified on ${runtime}`)
 if (process.env.RUST_INTEROP_SMOKE_OUTPUT !== undefined) {

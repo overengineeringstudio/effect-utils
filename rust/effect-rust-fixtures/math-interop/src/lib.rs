@@ -32,6 +32,48 @@ pub fn add(left: i32, right: i32) -> i32 {
     math_core::add(left, right)
 }
 
+#[effect_rust::export(name = "echoF32")]
+pub fn echo_f32(value: f32) -> f32 {
+    value
+}
+
+static LIVE_JOBS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+struct LiveJob;
+impl LiveJob {
+    fn new() -> Self {
+        LIVE_JOBS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Self
+    }
+}
+impl Drop for LiveJob {
+    fn drop(&mut self) {
+        LIVE_JOBS.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[effect_rust::export(name = "liveJobs")]
+pub fn live_jobs() -> u32 {
+    LIVE_JOBS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[effect_rust::export(async, name = "pendingJob")]
+pub async fn pending_job() -> u32 {
+    let _live = LiveJob::new();
+    std::future::pending().await
+}
+
+#[effect_rust::export(async, name = "settleJob")]
+pub async fn settle_job(
+    source: effect_rust::host::Source<effect_rust::host::SettleOnly>,
+) -> effect_rust::Bytes {
+    let _live = LiveJob::new();
+    source
+        .read("/settle")
+        .await
+        .expect("fixture host read succeeds")
+}
+
 #[effect_rust::export(name = "checkedDivide", error_tag = "reason")]
 pub fn checked_divide(dividend: i32, divisor: i32) -> Result<i32, ArithmeticError> {
     if divisor == 0 {

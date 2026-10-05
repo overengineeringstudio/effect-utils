@@ -83,6 +83,8 @@ export interface RuntimeOptions<TApi> {
   readonly byteBudget?: number
   /** Native adapters identify their caught panic envelope here. */
   readonly isPanic?: (cause: unknown) => boolean
+  /** Native unwind boundaries can still cancel jobs; poisoned wasm cannot be called. */
+  readonly panicBoundary?: 'wasm' | 'native'
 }
 
 interface Pending {
@@ -198,9 +200,15 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     if (current === generation) current = undefined
     // Never call Rust handle destructors through poisoned borrows.
     generation.handles.clear()
+    const jobs = options.panicBoundary === 'native' ? Array.from(generation.jobs) : undefined
     for (const job of generation.jobs) job.fail(defect)
     generation.jobs.clear()
     const rebuild = async () => {
+      if (jobs !== undefined) {
+        const stopped = await Promise.allSettled(jobs.map((job) => job.stop()))
+        const failure = stopped.find((result) => result.status === 'rejected')
+        if (failure?.status === 'rejected') throw failure.reason
+      }
       await generation.release()
       if (options.panicPolicy === 'retire' || closed === true) throw defect
       return acquire()
@@ -260,7 +268,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
         stop: () =>
           (stopping ??= (async () => {
             controller.abort()
-            if (generation.state !== 'healthy') {
+            if (generation.state !== 'healthy' && options.panicBoundary !== 'native') {
               await generation.release()
               return
             }

@@ -570,7 +570,13 @@ fn brand(options: &Options, item: ItemStruct) -> syn::Result<TokenStream> {
 /// Full-string anchors are mandatory; `$` becomes `\z` because Rust's `$`
 /// and JavaScript's differ around a trailing newline.
 fn rust_pattern(pattern: &str, flags: &str) -> syn::Result<String> {
-    if !pattern.starts_with('^') || !pattern.ends_with('$') || pattern.ends_with("\\$") {
+    let end_backslashes = pattern
+        .bytes()
+        .rev()
+        .skip(1)
+        .take_while(|byte| *byte == b'\\')
+        .count();
+    if !pattern.starts_with('^') || !pattern.ends_with('$') || end_backslashes % 2 == 1 {
         return Err(syn::Error::new(
             Span::call_site(),
             "portable patterns are full-string anchored: ^...$",
@@ -664,5 +670,31 @@ mod tests {
             )
         )
         .contains("private"));
+    }
+
+    #[test]
+    fn end_anchor_respects_backslash_parity() {
+        for pattern in [r"^foo\$", r"^foo\\\$"] {
+            assert!(expand_error(
+                quote!(pattern = #pattern),
+                quote!(
+                    struct Name(String);
+                )
+            )
+            .contains("anchored"));
+        }
+        for (pattern, value) in [(r"^foo\\$", "foo\\"), (r"^foo\\\\$", "foo\\\\")] {
+            rust_pattern(pattern, "u").expect("unescaped end anchor");
+            assert!(
+                expand(
+                    quote!(pattern = #pattern),
+                    quote!(
+                        struct Name(String);
+                    )
+                )
+                .is_ok(),
+                "brand for {value:?} must be admitted"
+            );
+        }
     }
 }

@@ -24339,6 +24339,55 @@ pnpm_store_view(
 )
 
 pnpm_store_view(
+    name = "view_packages_overeng_effect_rust_fixture_consumer_9a49906f0e34",
+    runtime = ":assemble-store.ts",
+    direct = {
+        "@types/node": "@types+node@26.5.0",
+        "effect": "effect@4.0.0-rc.118",
+        "typescript": "typescript@7.0.2",
+    },
+    closure_by_platform = {
+        "javascript_portable": {
+            "@types+node@26.5.0": ":entry_types_node_26_5_0_a0142d056efc",
+            "effect@4.0.0-rc.118": ":entry_effect_4_0_0_rc_118_7bc2fb479b82",
+            "typescript@7.0.2": ":entry_typescript_7_0_2_a7cefd323dc7",
+            "undici-types@8.9.0": ":entry_undici_types_8_9_0_53cb0487b88b",
+        },
+        "linux_aarch64": {
+            "@types+node@26.5.0": ":entry_types_node_26_5_0_a0142d056efc",
+            "@typescript+typescript-linux-arm64@7.0.2": ":entry_typescript_typescript_linux_arm64_7_0_2_dbe899afde8f",
+            "effect@4.0.0-rc.118": ":entry_effect_4_0_0_rc_118_7bc2fb479b82",
+            "typescript@7.0.2": ":entry_typescript_7_0_2_a7cefd323dc7",
+            "undici-types@8.9.0": ":entry_undici_types_8_9_0_53cb0487b88b",
+        },
+        "linux_x86_64": {
+            "@types+node@26.5.0": ":entry_types_node_26_5_0_a0142d056efc",
+            "@typescript+typescript-linux-x64@7.0.2": ":entry_typescript_typescript_linux_x64_7_0_2_f03df44f666b",
+            "effect@4.0.0-rc.118": ":entry_effect_4_0_0_rc_118_7bc2fb479b82",
+            "typescript@7.0.2": ":entry_typescript_7_0_2_a7cefd323dc7",
+            "undici-types@8.9.0": ":entry_undici_types_8_9_0_53cb0487b88b",
+        },
+        "macos_aarch64": {
+            "@types+node@26.5.0": ":entry_types_node_26_5_0_a0142d056efc",
+            "@typescript+typescript-darwin-arm64@7.0.2": ":entry_typescript_typescript_darwin_arm64_7_0_2_38ca3d6d9939",
+            "effect@4.0.0-rc.118": ":entry_effect_4_0_0_rc_118_7bc2fb479b82",
+            "typescript@7.0.2": ":entry_typescript_7_0_2_a7cefd323dc7",
+            "undici-types@8.9.0": ":entry_undici_types_8_9_0_53cb0487b88b",
+        },
+    },
+    bins = {
+        "tsc": "typescript@7.0.2\tbin/tsc",
+    },
+    workspace_trees = {
+        "workspace_packages_overeng_effect_rust_1c052f70f7cd": "//packages/@overeng/effect-rust:package_tree",
+    },
+    workspace_dependencies = {
+        "@overeng/effect-rust": "workspace_packages_overeng_effect_rust_1c052f70f7cd",
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_view(
     name = "view_packages_overeng_effect_schema_form_9234ab1a7f4a",
     runtime = ":assemble-store.ts",
     direct = {
