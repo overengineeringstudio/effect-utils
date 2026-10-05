@@ -108,32 +108,42 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       let flight
       /** @type {Map<string, () => void>} */
       const watched = new Map()
+      const worktreePaths = await Promise.all(
+        ['HEAD', 'index'].map((name) =>
+          readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', name] }),
+        ),
+      )
+      /** @param {string} path */
+      const subscribe = (path) => {
+        if (watched.has(path) === true || stopped === true) return
+        const listener = () => {
+          void refresh().catch(reportError)
+        }
+        // Poll exact files: Git replaces refs/index atomically and loose refs
+        // may not exist yet. Never subscribe to sibling branches or worktrees.
+        watchFile(path, { persistent: false, interval: 100 }, listener)
+        watched.set(path, listener)
+      }
       const updateWatches = async () => {
+        // Subscribe to HEAD before discovering its branch, then subscribe to
+        // that ref before reading identity. A checkout/commit cannot fall in
+        // a gap between snapshotting and installing the new branch watch.
+        for (const path of worktreePaths) subscribe(path)
         const branch = await readGit({ root, args: ['rev-parse', '--symbolic-full-name', 'HEAD'] })
-        const names = ['HEAD', 'index', ...(branch === 'HEAD' ? [] : [branch])]
-        const paths = new Set(
-          await Promise.all(
-            names.map((name) =>
-              readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', name] }),
-            ),
-          ),
-        )
-        if (stopped === true) return
+        const paths = new Set(worktreePaths)
+        if (branch !== 'HEAD') {
+          const path = await readGit({
+            root,
+            args: ['rev-parse', '--path-format=absolute', '--git-path', branch],
+          })
+          paths.add(path)
+          subscribe(path)
+        }
         for (const [path, listener] of watched) {
           if (paths.has(path) === false) {
             unwatchFile(path, listener)
             watched.delete(path)
           }
-        }
-        for (const path of paths) {
-          if (watched.has(path) === true) continue
-          const listener = () => {
-            void refresh().catch(reportError)
-          }
-          // Poll exact files: Git replaces refs/index atomically and loose refs
-          // may not exist yet. Never subscribe to sibling branches or worktrees.
-          watchFile(path, { persistent: false, interval: 100 }, listener)
-          watched.set(path, listener)
         }
       }
       /** @param {unknown} error */
@@ -152,8 +162,9 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
             if (stopped === true) break
             if (performance.now() < requestedAt + 50) continue
             pending = false
-            const changed = await resolveIdentity(true)
             await updateWatches()
+            if (stopped === true) break
+            const changed = await resolveIdentity(true)
             if (changed === false || stopped === true) continue
             const module = server.moduleGraph.getModuleById(resolvedId)
             if (module === undefined) continue
@@ -180,7 +191,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         watched.clear()
         await flight
       })
-      await updateWatches()
+      await refresh()
     },
     async closeBundle() {
       for (const dispose of cleanup.splice(0)) await dispose()
