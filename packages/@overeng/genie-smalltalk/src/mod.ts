@@ -2,6 +2,11 @@ import { Schema } from 'effect'
 
 import type { GenieOutput } from '@overeng/genie'
 
+import type { InputHandle, ProductFields, ProductHandle, Products, ResourceInput, RunReference, TextInput } from './run-values.ts'
+import { isInputHandle, MissionInputSchema, ProductSchema, productSubjects, referenceText } from './run-values.ts'
+export { input, product } from './run-values.ts'
+export type { InputHandle, ProductHandle, Products, ResourceInput, TextInput } from './run-values.ts'
+
 /** A KDL argument or property value. */
 export type Value = string | number | boolean
 
@@ -246,7 +251,7 @@ const validName = (s: string, full: boolean): boolean =>
   s.length > 0 && s.length <= 512 && /^[A-Za-z0-9][A-Za-z0-9._@/-]*$/u.test(s) &&
   s.split('/').every((part) => part !== '' && part !== '..') && (!full || s.includes('/'))
 const validSubject = (s: string): boolean => {
-  if (/^\$\{[A-Za-z0-9_.]*\}$/u.test(s)) return true
+  if (/^\$\{[A-Za-z0-9_.-]*\}$/u.test(s)) return true
   const concrete = s.replace(/\$\{[^}]*\}/gu, 'x')
   if (concrete.includes('${')) return false
   if (concrete.startsWith('file/')) {
@@ -421,6 +426,9 @@ export const StepSchema = Schema.Struct({
   exec: Schema.optionalKey(ExecSchema),
   gates: Schema.optionalKey(Gates),
   retry: Schema.optionalKey(RetrySchema),
+  produces: Schema.optionalKey(Schema.NonEmptyArray(ProductSchema).pipe(Schema.refine((values): values is typeof values =>
+    values.every((value) => validSubject(value.subject)) &&
+    new Set(values.map((value) => value.subject)).size === values.length))),
 }).pipe(
   Schema.refine(
     (s): s is typeof s => (s.agentless === true && s.assignedTo !== undefined) === false,
@@ -496,6 +504,8 @@ export const ScheduleSchema = Schema.Struct({
 /** A ready mission with unique steps whose dependencies exist. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
+  inputs: Schema.optionalKey(Schema.Array(MissionInputSchema).pipe(Schema.refine((values): values is typeof values =>
+    new Set(values.map((value) => value.name)).size === values.length))),
   ...OwnedDeclarationFields,
   state: Schema.Literal('ready'),
   timeout: Schema.optionalKey(Duration),
@@ -652,13 +662,75 @@ export type FieldGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'fie
 export type MergedGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'merged' }>
 export type CiPassedGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'ci-passed' }>
 
-/** Native gate constructors retain plain-data semantics and validate when rendered. */
-export const humanGate = (input: Omit<HumanGate, 'kind'>): HumanGate => ({ ...input, kind: 'human' })
-export const execGate = (input: Omit<ExecGate, 'kind'>): ExecGate => ({ ...input, kind: 'exec' })
-export const fieldIs = (input: Omit<FieldGate, 'kind' | 'operator'>): FieldGate =>
-  ({ ...input, kind: 'field', operator: 'is' })
-export const merged = (input: Omit<MergedGate, 'kind'>): MergedGate => ({ ...input, kind: 'merged' })
-export const ciPassed = (input: Omit<CiPassedGate, 'kind'>): CiPassedGate => ({ ...input, kind: 'ci-passed' })
+const withReferences = <TGate extends object>(value: TGate, references: readonly RunReference[]): TGate => {
+  gateReferences.set(value, references)
+  return value
+}
+type ReviewTarget = string | ResourceInput | ProductHandle
+export type FieldIsInput<TFields extends ProductFields = ProductFields> =
+  Omit<FieldGate, 'kind' | 'operator' | 'subject' | 'path'> & (
+    { readonly subject: string | ResourceInput; readonly path: string } |
+    { readonly subject: ProductHandle<TFields>; readonly path: Extract<keyof NoInfer<TFields>, string> }
+  )
+
+/** Native gate constructors normalize typed run references to st interpolation. */
+export const humanGate = (input: Omit<HumanGate, 'kind' | 'review'> & {
+  readonly review?: readonly ReviewTarget[]
+}): HumanGate => {
+  const { review, ...rest } = input
+  return withReferences<HumanGate>({
+    ...rest, kind: 'human',
+    ...(review === undefined ? {} : {
+      review: review.map((value) => typeof value === 'string' ? value : referenceText(value)),
+    }),
+  }, (review ?? []).filter((value): value is ResourceInput | ProductHandle => typeof value !== 'string'))
+}
+
+export const execGate = (input: Omit<ExecGate, 'kind' | 'env'> & {
+  readonly env?: Readonly<Record<string, string | RunReference>>
+}): ExecGate => {
+  const { env, ...rest } = input
+  return withReferences<ExecGate>({
+    ...rest, kind: 'exec',
+    ...(env === undefined ? {} : {
+      env: Object.fromEntries(Object.entries(env).map(([name, value]) =>
+        [name, typeof value === 'string' ? value : referenceText(value)])),
+    }),
+  }, Object.values(env ?? {}).filter((value): value is RunReference => typeof value !== 'string'))
+}
+
+export const fieldIs = <const TFields extends ProductFields>(input: FieldIsInput<TFields>): FieldGate =>
+  withReferences<FieldGate>({
+    ...input, kind: 'field', operator: 'is',
+    subject: typeof input.subject === 'string' ? input.subject : referenceText(input.subject),
+  }, typeof input.subject === 'string' ? [] : [input.subject])
+
+export const merged = (input: Omit<MergedGate, 'kind' | 'locator'> & {
+  readonly locator: string | TextInput
+}): MergedGate => withReferences<MergedGate>({
+  ...input, kind: 'merged',
+  locator: typeof input.locator === 'string' ? input.locator : referenceText(input.locator),
+}, typeof input.locator === 'string' ? [] : [input.locator])
+
+export const ciPassed = (input: Omit<CiPassedGate, 'kind' | 'ref'> & {
+  readonly ref: { readonly commit: string | TextInput } | { readonly branch: string | TextInput }
+}): CiPassedGate => {
+  const value = 'commit' in input.ref ? input.ref.commit : input.ref.branch
+  const text = typeof value === 'string' ? value : referenceText(value)
+  return withReferences<CiPassedGate>({
+    ...input, kind: 'ci-passed',
+    ref: 'commit' in input.ref ? { commit: text } : { branch: text },
+  }, typeof value === 'string' ? [] : [value])
+}
+
+const productsNode = (products: readonly typeof ProductSchema.Encoded[]): Node =>
+  block({ name: 'produces', children: products.map((value) => {
+    const separator = value.subject.indexOf('/')
+    return node({
+      name: value.subject.slice(0, separator), args: [value.subject.slice(separator + 1)],
+      children: Object.entries(value.fields).map(([name, field]) => child({ name, value: field })),
+    })
+  }) })
 
 /** Decodes and renders a step node. */
 const lowerStep = (input: typeof StepSchema.Encoded): Node => {
@@ -677,6 +749,7 @@ const lowerStep = (input: typeof StepSchema.Encoded): Node => {
   for (const goal of s.goals ?? []) children.push(child({ name: 'goal', value: goal }))
   for (const document of s.documents ?? []) children.push(child({ name: 'document', value: document }))
   children.push(...ownedDeclarationNodes(s))
+  if (s.produces !== undefined) children.push(productsNode(s.produces))
   if (s.exec !== undefined) {
     children.push(
       node({
@@ -714,10 +787,11 @@ const stepBrand = Symbol('StepHandle')
 const dependencyBrand = Symbol('StepDependency')
 
 /** A renderable step with explicit identity and, optionally, a literal mission scope. */
-export interface StepHandle<TMission extends string = string> extends Node {
+export interface StepHandle<TMission extends string = string, TProducts extends Products = Products> extends Node {
   readonly [stepBrand]: true
   readonly missionId?: TMission
   readonly id: string
+  readonly products: TProducts
 }
 
 export interface StepDependency<TMission extends string = string> {
@@ -727,13 +801,15 @@ export interface StepDependency<TMission extends string = string> {
 }
 
 type StepDependencyInput<TMission extends string> = typeof DependsOnSchema.Encoded | StepDependency<NoInfer<TMission>>
-type StepInput<TMission extends string> = Omit<typeof StepSchema.Encoded, 'assignedTo' | 'dependsOn'> & {
+export type StepInput<TMission extends string, TProducts extends Products = Products> = Omit<typeof StepSchema.Encoded, 'assignedTo' | 'dependsOn' | 'produces'> & {
   readonly missionId?: TMission
   readonly assignedTo?: string | AgentRef
   readonly dependsOn?: readonly [StepDependencyInput<TMission>, ...StepDependencyInput<TMission>[]]
+  readonly produces?: TProducts
 }
-type MissionInput<TMission extends string> = Omit<typeof MissionSchema.Encoded, 'id' | 'steps' | 'finally'> & {
+export type MissionInput<TMission extends string> = Omit<typeof MissionSchema.Encoded, 'id' | 'steps' | 'finally' | 'inputs'> & {
   readonly id: TMission
+  readonly inputs?: readonly (InputHandle | typeof MissionInputSchema.Encoded)[]
   readonly steps: readonly ((typeof StepSchema.Encoded | typeof LoopSchema.Encoded) & { readonly [stepBrand]?: never } | StepHandle<NoInfer<TMission>>)[]
   readonly finally?: readonly (typeof StepSchema.Encoded & { readonly [stepBrand]?: never } | StepHandle<NoInfer<TMission>>)[]
 }
@@ -742,8 +818,11 @@ const stepData = new WeakMap<object, {
   readonly missionId?: string
   readonly wire: typeof StepSchema.Encoded
   readonly dependencies: readonly StepDependency[]
+  readonly references: readonly RunReference[]
 }>()
 const stepOwners = new WeakMap<object, string>()
+const productOwners = new WeakMap<ProductHandle, Node>()
+const gateReferences = new WeakMap<object, readonly RunReference[]>()
 const isStepHandle = (value: object): value is StepHandle => stepData.has(value)
 
 const dependency = <TMission extends string>(
@@ -757,12 +836,23 @@ export const terminal = <TMission extends string>(handle: StepHandle<TMission>):
   dependency(handle, 'terminal')
 
 /** `missionId` gives static scope checking; unscoped/plain-data steps are checked when assembled. */
-export const step = <const TMission extends string = never>(input: StepInput<TMission>): StepHandle<TMission> => {
-  const { missionId, assignedTo, dependsOn, ...rest } = input
-  const dependencies: readonly StepDependency<TMission>[] =
-    dependsOn?.filter((d): d is StepDependency<TMission> => dependencyBrand in d) ?? []
+export function step<const TMission extends string = never, const TProducts extends Products = {}>(
+  input: StepInput<TMission, TProducts>,
+): StepHandle<TMission, TProducts>
+export function step(input: StepInput<string>): StepHandle {
+  const { missionId, assignedTo, dependsOn, produces, ...rest } = input
+  const dependencies: readonly StepDependency[] =
+    dependsOn?.filter((d): d is StepDependency => dependencyBrand in d) ?? []
+  const materializedProducts = Object.entries(produces ?? {}).map(([name, value]) => {
+    Schema.decodeSync(LocalId)(name)
+    if (productOwners.has(value)) throw new TypeError('Product handle already belongs to a step')
+    return { value, subject: value.subject ?? `resource/mission-run/\${ST_MISSION_RUN}/${input.id}/${name}` }
+  })
   const wire = decode({ schema: StepSchema, input: {
     ...rest,
+    ...(produces === undefined ? {} : {
+      produces: materializedProducts.map(({ subject, value }) => ({ subject, fields: value.fields })),
+    }),
     ...(assignedTo === undefined ? {} : {
       assignedTo: typeof assignedTo === 'string' ? assignedTo :
         `agent/${decode({ schema: Schema.Struct({ kind: Schema.Literal('agent'), id: SubjectId }), input: assignedTo }).id}`,
@@ -772,8 +862,15 @@ export const step = <const TMission extends string = never>(input: StepInput<TMi
     }),
   } })
   const rendered = lowerStep(wire)
-  const handle = { ...rendered, [stepBrand]: true as const, ...(missionId === undefined ? {} : { missionId }), id: input.id }
-  stepData.set(handle, { ...(missionId === undefined ? {} : { missionId }), wire, dependencies })
+  const handle = { ...rendered, [stepBrand]: true as const, ...(missionId === undefined ? {} : { missionId }), id: input.id, products: produces ?? {} }
+  for (const { value, subject } of materializedProducts) {
+    productOwners.set(value, handle)
+    productSubjects.set(value, subject)
+  }
+  stepData.set(handle, {
+    ...(missionId === undefined ? {} : { missionId }), wire, dependencies,
+    references: (input.gates ?? []).flatMap((g) => gateReferences.get(g) ?? []),
+  })
   return handle
 }
 
@@ -814,6 +911,18 @@ export const loop = (input: typeof LoopSchema.Encoded): Node => {
 /** Decodes and renders a mission node with its schedule and steps. */
 export const mission = <const TMission extends string>(input: MissionInput<TMission>): Node => {
   const allHandles = [...input.steps, ...(input.finally ?? [])].filter(isStepHandle)
+  const referenced = [
+    ...(input.gates ?? []).flatMap((g) => gateReferences.get(g) ?? []),
+    ...allHandles.flatMap((handle) => stepData.get(handle)!.references),
+  ]
+  for (const ref of referenced) {
+    if (isInputHandle(ref)) {
+      const declared: readonly object[] = input.inputs ?? []
+      if (!declared.includes(ref)) throw new TypeError(`Input ${ref.name} is not declared by this mission`)
+    } else if (!allHandles.some((handle) => handle === productOwners.get(ref))) {
+      throw new TypeError('Product reference belongs to a step outside this mission')
+    }
+  }
   for (const handle of allHandles) {
     const data = stepData.get(handle)!
     if (data.missionId !== undefined && data.missionId !== input.id) {
@@ -833,6 +942,8 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
   }
   const m = decode({ schema: MissionSchema, input: {
     ...input,
+    ...(input.inputs === undefined ? {} : { inputs: input.inputs.map((value) =>
+      isInputHandle(value) ? { name: value.name, kind: value.kind } : value) }),
     steps: input.steps.map((s) => isStepHandle(s) ? stepData.get(s)!.wire : s),
     ...(input.finally === undefined ? {} : {
       finally: input.finally.map((s) => isStepHandle(s) ? stepData.get(s)!.wire : s),
@@ -844,6 +955,7 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
     args: [m.id],
     props: { state: m.state, ...(m.timeout === undefined ? {} : { timeout: m.timeout }) },
     children: [
+      ...(m.inputs ?? []).map((value) => node({ name: 'input', args: [value.name], props: { kind: value.kind } })),
       ...m.goals.map((goal) => child({ name: 'goal', value: goal })),
       ...(m.gates ?? []).map(gate),
       ...(m.constraints ?? []).map((constraint) =>
