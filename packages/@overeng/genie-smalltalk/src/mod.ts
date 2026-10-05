@@ -78,7 +78,8 @@ const optionalChild = ({
 
 const Text = Schema.NonEmptyString
 
-const SubjectId = Schema.String.pipe(
+/** An st subject ID, e.g. a seat or mission path; seats are addressed as `agent/<id>`. */
+export const SubjectId = Schema.String.pipe(
   Schema.refine(
     (s): s is string =>
       s.length <= 512 &&
@@ -88,7 +89,11 @@ const SubjectId = Schema.String.pipe(
     { message: 'invalid st subject ID' },
   ),
   Schema.brand('SubjectId'),
+  Schema.annotate({ identifier: 'St.SubjectId' }),
 )
+
+/** A validated st subject ID. */
+export type SubjectId = typeof SubjectId.Type
 
 const LocalId = Schema.String.pipe(
   Schema.refine((s): s is string => s.length > 0 && s.length <= 160 && /[\s/]/u.test(s) === false, {
