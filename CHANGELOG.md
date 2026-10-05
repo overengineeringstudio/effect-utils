@@ -11,6 +11,8 @@
   packaging and independent per-executable Mach-O inspection during Nix import.
 - `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
   flag and `rollout "manual"` policy. Omitting rollout preserves automatic rollout.
+- `@overeng/genie-smalltalk` schedule work accepts an unpinned mission ID besides
+  an exact `mission@revision`; st starts the ready published head per occurrence.
 - Raw wasm32 guest Buck products with a declared host harness, module import
   descriptors, and independent Nix runtime inspection.
 
