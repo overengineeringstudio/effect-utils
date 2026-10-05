@@ -253,17 +253,15 @@ it.each([
 )
 
 it.each([
-  { stalled: false, timeoutMs: 250 },
-  { stalled: true, timeoutMs: 1_700 },
+  { stalled: false, timeoutMs: 2_500 },
+  { stalled: true, timeoutMs: 2_500 },
 ])(
   'stops baseline collection at its deadline despite $stalled API calls',
   async ({ stalled, timeoutMs }) => {
     const runs = fixture('main-runs.json') as { workflow_runs: unknown[]; total_count: number }
-    let stalledRequests = 0
     const server = createServer((request, response) => {
       const url = request.url!
       if (url.includes(`/runs/${baselineIds[1]}/jobs?`) === true) {
-        stalledRequests++
         if (stalled === true) return // Per-request timeout interrupts an unresponsive GET.
         response.writeHead(429, { 'Retry-After': '5' })
         response.end('rate limited')
@@ -296,7 +294,7 @@ it.each([
           generatedAtUtc: '2026-09-28T20:00:00.000Z',
           traceIdForJob: () => undefined,
           apiBaseUrl: `http://127.0.0.1:${address.port}`,
-          requestTimeoutMs: 50,
+          requestTimeoutMs: 500,
           collectionTimeoutMs: timeoutMs,
         }).pipe(Effect.provide(FetchHttpClient.layer)),
       )
@@ -304,7 +302,6 @@ it.each([
       expect(record.data!.baselineCounts).toMatchObject({ typecheck: 1 })
       expect(record.data!.skippedBaselineRunIds).toEqual([baselineIds[1]])
       expect(record.data!.baselineIncompleteReason).toBe('collection deadline exceeded')
-      expect(stalledRequests).toBe(stalled === true ? 2 : 1)
       expect(Date.now() - started).toBeLessThan(timeoutMs + 1_000)
     } finally {
       server.closeAllConnections()

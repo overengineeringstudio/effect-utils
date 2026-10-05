@@ -25,6 +25,7 @@ export const developerOperationDispositions = {
   'test:<pkg>': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:genie': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:integration': 'outside-by-policy:secret-service-integration',
+  'test:outline': 'outside-by-policy:workspace-publication',
   'test:run': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:utils': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:watch': 'outside-by-policy:long-lived-watcher',

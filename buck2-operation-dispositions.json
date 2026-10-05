@@ -167,6 +167,10 @@
       "operation": "test:integration"
     },
     {
+      "disposition": "outside-by-policy:workspace-publication",
+      "operation": "test:outline"
+    },
+    {
       "disposition": "outside-by-policy:aggregate-includes-policy-excluded-tests",
       "operation": "test:run"
     },

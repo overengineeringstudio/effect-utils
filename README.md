@@ -74,6 +74,22 @@ React hooks and utilities for building Effect-powered applications.
 - **DevTools inspectors** - Browser-style object/table inspectors with Effect Schema awareness
 - **Type-safe runtime access** - Direct access to Effect runtime for advanced use cases
 
+### Document Outlines
+
+[`@overeng/outline`](./packages/@overeng/outline) provides theme-free outline models and accessible
+React Aria navigation. Import `@overeng/outline/model` for DOM-independent hierarchy normalization,
+active-section selection, and fixed-pitch preview geometry.
+
+Callers own stable section IDs, ordered measurements, the reading edge, and scrolling. An
+`OutlineScrollAdapter` connects those measurements to `getActiveSection`; `useOutlineRail` owns hover,
+focus retention, the keyboard opener, and Escape focus return. Render `OutlineLink` with a navigation
+callback or native section hrefs. Pass the active ID from actual scroll position, not the last click.
+The package supplies no theme, document discovery, domain extraction, or virtualization.
+
+Run `devenv tasks run test:outline` for the focused behavioral suite. Its scoped
+`buck2:editor:publish:outline` prerequisite publishes the package's Buck-owned dependency view
+without materializing unrelated package editor views.
+
 ### Browser Telemetry
 
 `@overeng/otel-browser` provides scoped Effect tracing and OTLP/HTTP traces and metrics for browser

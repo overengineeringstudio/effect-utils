@@ -155,6 +155,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/outline",
+      "outputName": "overeng-outline.tgz",
+      "packagePath": "packages/@overeng/outline",
+      "packageTreePath": "packages/@overeng/outline",
+      "target": "effect_utils//packages/@overeng/outline:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/restate-effect",
       "outputName": "overeng-restate-effect.tgz",
       "packagePath": "packages/@overeng/restate-effect",

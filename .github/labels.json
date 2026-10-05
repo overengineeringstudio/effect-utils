@@ -316,6 +316,11 @@
       "description": "@overeng/otelite package · Set: manual"
     },
     {
+      "name": "system:outline",
+      "color": "a371f7",
+      "description": "@overeng/outline package · Set: manual"
+    },
+    {
       "name": "system:oxc-config",
       "color": "a371f7",
       "description": "@overeng/oxc-config package · Set: manual"

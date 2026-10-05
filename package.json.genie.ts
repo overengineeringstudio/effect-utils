@@ -33,6 +33,7 @@ import notionMdPkg from './packages/@overeng/notion-md/package.json.genie.ts'
 import notionPropertyWritePkg from './packages/@overeng/notion-property-write/package.json.genie.ts'
 import notionReactPkg from './packages/@overeng/notion-react/package.json.genie.ts'
 import npmReleasePkg from './packages/@overeng/npm-release/package.json.genie.ts'
+import outlinePkg from './packages/@overeng/outline/package.json.genie.ts'
 import otelBrowserPkg from './packages/@overeng/otel-browser/package.json.genie.ts'
 import otelContractPkg from './packages/@overeng/otel-contract/package.json.genie.ts'
 import oxcConfigPkg from './packages/@overeng/oxc-config/package.json.genie.ts'
@@ -80,6 +81,7 @@ export const rootWorkspacePackages = [
   notionMdPkg,
   notionPropertyWritePkg,
   notionReactPkg,
+  outlinePkg,
   otelBrowserPkg,
   otelContractPkg,
   oxcConfigPkg,

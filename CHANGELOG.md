@@ -7,6 +7,12 @@
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
+- `@overeng/outline` provides theme-free outline hierarchy, measured reading-edge
+  selection, fixed-pitch tick geometry, and React Aria navigation. Callers retain
+  document discovery, scroll coordinates, and adapter subscription lifetimes.
+  The nonmodal rail disclosure retains hover and focus, supports Escape with
+  deliberate re-entry, and preserves native alternate anchor activation.
+  Its focused test task publishes only the outline editor dependency view.
 - Declared Darwin Swift app-bundle Buck products with deterministic bundle
   packaging and independent per-executable Mach-O inspection during Nix import.
 - `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
@@ -16,6 +22,8 @@
 
 ### Fixed
 
+- Pipeline-report deadline coverage verifies bounded completion and retained results
+  without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - The Vite build-identity dev plugin watches only its worktree's HEAD, current
   branch ref and index. Git snapshots are asynchronous, debounced and
   single-flight, and dirty checks exclude untracked files.
@@ -27,6 +35,8 @@
   not a guarantee against subsequent native transport failures.
   Launcher compilation isolates its working directory from Nix's temporary root
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
+- Genie bootstrap discovery excludes Buck output trees, so copied generator files
+  in build artifacts do not enter source-tree closure checks.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
