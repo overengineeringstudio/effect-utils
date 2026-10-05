@@ -104,6 +104,9 @@ describe('Smalltalk declarations', () => {
     } as never)).toThrow()
     expect(() => gate({ name: 'env', kind: 'exec', command: 'true', host: 'local', workspace: '/tmp', env: { 'bad-key': 'x' } })).toThrow()
   })
+  it.each(['ST_WORKSPACE', 'ST_MISSION', 'ST_GATE', 'ST_LOOP_ROUND', 'ST3_SUBJECT'])('rejects reserved exec-gate context key %s', (key) => {
+    expect(() => gate({ name: 'env', kind: 'exec', command: 'true', host: 'local', workspace: '/tmp', env: { [key]: 'x' } })).toThrow()
+  })
   it('rejects excessive goals, duplicate gates and missing dependencies', () => {
     expect(() => step({ id: 'a', goals: ['a', 'b', 'c', 'd'] })).toThrow()
     expect(() => step({ id: 'a', gates: [
@@ -272,7 +275,7 @@ testWithSt(
         return spawnSync(stBin!, ['--endpoint', `unix://${socket}`, 'missions', 'check', source, '--workspace', dir],
           { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
       }
-      const supplied = checkEnv({ ANSWER: 'green' })
+      const supplied = checkEnv({ ANSWER: 'green', PATH: process.env.PATH ?? '/bin' })
       expect(supplied.status, supplied.stderr).toBe(0)
       const absent = checkEnv({})
       expect(absent.status, absent.stderr).toBe(1)

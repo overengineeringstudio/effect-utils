@@ -262,6 +262,15 @@ const FullSubject = Text.pipe(Schema.refine((s): s is string => validSubject(s))
 const Goals = Schema.Array(Text).pipe(Schema.refine((goals): goals is typeof goals => goals.length <= 3))
 const NonNegativeDuration = Schema.Union([Duration, Schema.Literals(['0ms', '0s', '0m', '0h', '0d'])])
 
+const reservedGateEnvNames: Readonly<Record<string, true>> = {
+  ST_MISSION: true, ST_MISSION_REVISION: true, ST_MISSION_RUN: true,
+  ST_RUN_GENERATION: true, ST_ROOT_MISSION_RUN: true, ST_ROOT_MISSION_RUN_ID: true,
+  ST_WORKSPACE: true, ST_REQUESTER: true, ST_STEP: true, ST_STEP_RUN: true,
+  ST_ATTEMPT: true, ST_ASSIGNEE: true, ST_PARENT_STEP_RUN: true, ST_GATE: true,
+  ST_AGENT: true, ST_LOOP_ROUND: true, ST_LOOP_FEEDBACK: true, ST_LOOP_ITEM_ID: true,
+  ST_CANDIDATE_INDEX: true, ST3_SUBJECT: true,
+}
+
 /** Graph predicates and built-in mechanical gates accepted by st. */
 export const GateSchema = Schema.Union([
   Schema.Struct({ name: GateName, kind: Schema.Literal('exists'), subject: FullSubject }),
@@ -287,7 +296,7 @@ export const GateSchema = Schema.Union([
   Schema.Struct({
     name: GateName, kind: Schema.Literal('exec'), command: Text, host: Text, workspace: Text,
     env: Schema.optionalKey(Env.pipe(Schema.refine((env): env is typeof env =>
-      Object.keys(env).every((key) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key))))),
+      Object.keys(env).every((key) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) && reservedGateEnvNames[key] !== true)))),
     timeLimit: Schema.optionalKey(Duration),
   }),
 ]).annotate({ identifier: 'St.Gate' })
