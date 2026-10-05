@@ -72,6 +72,10 @@
     "./node/stylex/next": {
       "types": "./src/node/stylex/next-types.d.ts",
       "default": "./src/node/stylex/next.js"
+    },
+    "./node/vite-build-identity": {
+      "types": "./src/node/vite-build-identity-types.d.ts",
+      "default": "./src/node/vite-build-identity.js"
     }
   },
   "dependencies": {
@@ -141,6 +145,10 @@
       "./node/cli-version": {
         "types": "./dist/src/node/cli-version.d.ts",
         "default": "./dist/src/node/cli-version.js"
+      },
+      "./node/vite-build-identity": {
+        "types": "./src/node/vite-build-identity-types.d.ts",
+        "default": "./src/node/vite-build-identity.js"
       },
       "./node/otel": {
         "types": "./dist/src/node/otel.d.ts",

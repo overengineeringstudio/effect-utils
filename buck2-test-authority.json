@@ -1799,6 +1799,7 @@
         "src/node/cmd.unit.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "packageName": "utils",
@@ -1831,6 +1832,7 @@
         "src/node/stylex/mod.unit.test.ts",
         "src/node/stylex/next.build.test.ts",
         "src/node/stylex/next.unit.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "sourceOwners": {
@@ -1865,6 +1867,7 @@
         "src/node/stylex/mod.unit.test.ts",
         "src/node/stylex/next.build.test.ts",
         "src/node/stylex/next.unit.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "unboundedAfter": [],
@@ -1872,6 +1875,7 @@
         "src/node/cmd.unit.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "unboundedTaskName": "test:utils:unbounded"

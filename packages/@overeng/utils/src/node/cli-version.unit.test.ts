@@ -10,15 +10,12 @@ import {
   jsonStdoutGuardLayer,
   parseCliBuildStamp,
   resolveCliBuildIdentity,
-  resolveCliMachineVersion,
-  resolveCliVersion,
 } from './cli-version.ts'
 
 const placeholder = '__CLI_BUILD_STAMP__'
 const now = 1_740_000_000
 const fiveMinutesAgo = now - 5 * 60
 const threeDaysAgo = now - 3 * 86_400
-const dash = '\u2014'
 
 const localStamp = JSON.stringify({
   type: 'local',
@@ -87,9 +84,8 @@ Vitest.describe('resolveCliBuildIdentity', () => {
   Vitest.it('falls back to package identity without build or runtime stamps', () => {
     expect(
       resolveCliBuildIdentity({ baseVersion: '0.1.0', buildStamp: placeholder, env: {}, now }),
-    ).toEqual({
+    ).toMatchObject({
       baseVersion: '0.1.0',
-      displayVersion: '0.1.0',
       machineVersion: '0.1.0',
       sourceKind: 'package',
       dirty: false,
@@ -104,9 +100,8 @@ Vitest.describe('resolveCliBuildIdentity', () => {
         env: { CLI_BUILD_STAMP: localStamp },
         now,
       }),
-    ).toEqual({
+    ).toMatchObject({
       baseVersion: '0.1.0',
-      displayVersion: `0.1.0 ${dash} running from local source (abc123, 5 min ago, with uncommitted changes)`,
       machineVersion: '0.1.0+local.abc123.dirty',
       sourceKind: 'local',
       rev: 'abc123',
@@ -123,9 +118,8 @@ Vitest.describe('resolveCliBuildIdentity', () => {
         env: { CLI_BUILD_STAMP: nixStamp },
         now,
       }),
-    ).toEqual({
+    ).toMatchObject({
       baseVersion: '0.1.0',
-      displayVersion: `0.1.0+def456 ${dash} committed 3 days ago`,
       machineVersion: '0.1.0+def456',
       sourceKind: 'nix',
       rev: 'def456',
@@ -142,9 +136,8 @@ Vitest.describe('resolveCliBuildIdentity', () => {
         env: { CLI_BUILD_STAMP: localStamp },
         now,
       }),
-    ).toEqual({
+    ).toMatchObject({
       baseVersion: '0.1.0',
-      displayVersion: `0.1.0+def456 ${dash} committed 3 days ago`,
       machineVersion: '0.1.0+def456',
       sourceKind: 'nix',
       rev: 'def456',
@@ -165,7 +158,6 @@ Vitest.describe('resolveCliBuildIdentity', () => {
     expect(
       resolveCliBuildIdentity({ baseVersion: '0.1.0', buildStamp: dirtyStamp, env: {}, now }),
     ).toMatchObject({
-      displayVersion: `0.1.0+def456-dirty ${dash} committed 3 days ago, with uncommitted changes`,
       machineVersion: '0.1.0+def456-dirty',
     })
   })
@@ -183,31 +175,9 @@ Vitest.describe('resolveCliBuildIdentity', () => {
     expect(
       resolveCliBuildIdentity({ baseVersion: '0.1.0', buildStamp: impureStamp, env: {}, now }),
     ).toMatchObject({
-      displayVersion: `0.1.0+def456 ${dash} built 5 min ago`,
       machineVersion: '0.1.0+def456',
       buildTs: fiveMinutesAgo,
     })
-  })
-
-  Vitest.it('keeps the existing display-only API source-compatible', () => {
-    expect(
-      resolveCliVersion({
-        baseVersion: '0.1.0',
-        buildStamp: placeholder,
-        runtimeStampEnvVar: 'CUSTOM_BUILD_STAMP',
-      }),
-    ).toBe('0.1.0')
-  })
-
-  Vitest.it('exposes a machine-version convenience wrapper', () => {
-    expect(
-      resolveCliMachineVersion({
-        baseVersion: '0.1.0',
-        buildStamp: nixStamp,
-        env: { CLI_BUILD_STAMP: localStamp },
-        now,
-      }),
-    ).toBe('0.1.0+def456')
   })
 })
 

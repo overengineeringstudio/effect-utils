@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:9ff6043f6b4847371a499a8226003f2a150bb78d52d700dbf3d4b125e5d4a489
+# Semantic fingerprint: sha256:baef348efa6b7f5bb16b6e2243509f8ef50c542f264757e38458f49cc43a9f87
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/devbar/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-gateway/package.json.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie-smalltalk/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-browser/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-storybook/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/patches/**/*.patch, packages/@overeng/utils/src/**/*.css, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.js, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.spec.cjs, packages/@overeng/utils/src/**/*.spec.jsx, packages/@overeng/utils/src/**/*.spec.mjs, packages/@overeng/utils/src/**/*.test.cjs, packages/@overeng/utils/src/**/*.test.jsx, packages/@overeng/utils/src/**/*.test.mjs, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/src/**/__snapshots__/*.snap, packages/@overeng/utils/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -72,6 +72,7 @@ export_materialization_inputs([
     "src/node/ActiveHandlesDebugger.unit.test.ts",
     "src/node/FileLogger.ts",
     "src/node/FileLogger.unit.test.ts",
+    "src/node/cli-build-identity.js",
     "src/node/cli-help-rewrite.ts",
     "src/node/cli-help-rewrite.unit.test.ts",
     "src/node/cli-version.ts",
@@ -118,6 +119,9 @@ export_materialization_inputs([
     "src/node/stylex/next.build.test.ts",
     "src/node/stylex/next.js",
     "src/node/stylex/next.unit.test.ts",
+    "src/node/vite-build-identity-types.d.ts",
+    "src/node/vite-build-identity.build.test.ts",
+    "src/node/vite-build-identity.js",
     "src/node/watch.ts",
     "src/node/watch.unit.test.ts",
     "src/node/workspace.ts",
@@ -206,6 +210,7 @@ package_view(
         "src/node/ActiveHandlesDebugger.unit.test.ts": "src/node/ActiveHandlesDebugger.unit.test.ts",
         "src/node/FileLogger.ts": "src/node/FileLogger.ts",
         "src/node/FileLogger.unit.test.ts": "src/node/FileLogger.unit.test.ts",
+        "src/node/cli-build-identity.js": "src/node/cli-build-identity.js",
         "src/node/cli-help-rewrite.ts": "src/node/cli-help-rewrite.ts",
         "src/node/cli-help-rewrite.unit.test.ts": "src/node/cli-help-rewrite.unit.test.ts",
         "src/node/cli-version.ts": "src/node/cli-version.ts",
@@ -252,6 +257,9 @@ package_view(
         "src/node/stylex/next.build.test.ts": "src/node/stylex/next.build.test.ts",
         "src/node/stylex/next.js": "src/node/stylex/next.js",
         "src/node/stylex/next.unit.test.ts": "src/node/stylex/next.unit.test.ts",
+        "src/node/vite-build-identity-types.d.ts": "src/node/vite-build-identity-types.d.ts",
+        "src/node/vite-build-identity.build.test.ts": "src/node/vite-build-identity.build.test.ts",
+        "src/node/vite-build-identity.js": "src/node/vite-build-identity.js",
         "src/node/watch.ts": "src/node/watch.ts",
         "src/node/watch.unit.test.ts": "src/node/watch.unit.test.ts",
         "src/node/workspace.ts": "src/node/workspace.ts",
@@ -326,6 +334,7 @@ package_view(
         "src/node/ActiveHandlesDebugger.unit.test.ts": "src/node/ActiveHandlesDebugger.unit.test.ts",
         "src/node/FileLogger.ts": "src/node/FileLogger.ts",
         "src/node/FileLogger.unit.test.ts": "src/node/FileLogger.unit.test.ts",
+        "src/node/cli-build-identity.js": "src/node/cli-build-identity.js",
         "src/node/cli-help-rewrite.ts": "src/node/cli-help-rewrite.ts",
         "src/node/cli-help-rewrite.unit.test.ts": "src/node/cli-help-rewrite.unit.test.ts",
         "src/node/cli-version.ts": "src/node/cli-version.ts",
@@ -372,6 +381,9 @@ package_view(
         "src/node/stylex/next.build.test.ts": "src/node/stylex/next.build.test.ts",
         "src/node/stylex/next.js": "src/node/stylex/next.js",
         "src/node/stylex/next.unit.test.ts": "src/node/stylex/next.unit.test.ts",
+        "src/node/vite-build-identity-types.d.ts": "src/node/vite-build-identity-types.d.ts",
+        "src/node/vite-build-identity.build.test.ts": "src/node/vite-build-identity.build.test.ts",
+        "src/node/vite-build-identity.js": "src/node/vite-build-identity.js",
         "src/node/watch.ts": "src/node/watch.ts",
         "src/node/watch.unit.test.ts": "src/node/watch.unit.test.ts",
         "src/node/workspace.ts": "src/node/workspace.ts",
@@ -416,6 +428,7 @@ tsgo_emit(
     declaration_sources = {
         "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",
         "src/node/stylex/next-types.d.ts": "src/node/stylex/next-types.d.ts",
+        "src/node/vite-build-identity-types.d.ts": "src/node/vite-build-identity-types.d.ts",
     },
     declaration_entrypoint = "src/isomorphic/mod.d.ts",
     visibility = ["PUBLIC"],
@@ -444,6 +457,7 @@ vitest_test(
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
     ],
     tools = {
         "BUN_BIN": "//buck2/toolchains:tool_bun",
@@ -462,6 +476,7 @@ vitest_collect(
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
     ],
     tools = {
         "BUN_BIN": "//buck2/toolchains:tool_bun",

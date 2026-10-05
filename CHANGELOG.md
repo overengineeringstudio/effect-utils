@@ -41,6 +41,13 @@
 - Tailnet host writers use per-host private-tier credentials and an explicit
   private endpoint; public read-only posture wins over credentials and selected
   writer outages fail closed.
+- Browser Vite consumers reuse the canonical CLI build-identity formatter through
+  `createBuildIdentityPlugin`, including immutable Nix metadata, worktree/HMR
+  revisions, and runtime deployment identity injection.
+  Source identities refresh on Git revision/index changes, source creation/deletion,
+  and production watch rebuilds; embedded Nix identities remain immutable.
+  The dev server exposes the same canonical JSON at `/build-identity.json` with
+  no-cache headers and the complete source revision for exact served-source checks.
 - Consumer Buck roots can map nested checkout patch paths to their exporting
   cells; the published rules cell exports the shared pnpm patches without loading
   standalone package declarations.
@@ -58,6 +65,8 @@
   aggregate manifest alignment passthrough.
 - Removed the obsolete prepared-install regression lane and builder-contract
   guard. Shared native dependency policy auditing remains a required CI lane.
+- Removed the Buck test-lane declaration snapshot that compared authored exclusions
+  with normalized ordering; lane partition and collection invariants remain covered.
 
 Buck product imports, CLI wrappers, immutable dependency archives, shared build
 identity, and live pnpm install policy and source-input algebra remain supported.
