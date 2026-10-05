@@ -14,6 +14,7 @@ export type TrustedArchiveOrigin = {
   readonly urlPrefix: string
 }
 
+/** Parse Buck section/key assignments, with later assignments taking precedence. */
 export const buckConfigValues = (text: string): Record<string, string> => {
   let section = ''
   const values: Record<string, string> = {}
@@ -124,6 +125,7 @@ const fail = (message: string): never => {
   throw new Error(`standalone Buck cache posture: ${message}`)
 }
 
+/** Remove only the launcher-owned overlay, rejecting malformed or duplicate managed blocks. */
 export const withoutManagedBlock = (
   current: string,
 ): { readonly content: string; readonly found: boolean } => {
@@ -228,6 +230,7 @@ export const probeArchiveOrigin = async ({
   }
 }
 
+/** Require a successful bounded REAPI capabilities response using the selected client identity. */
 export const probeRemoteCacheCapabilities = async ({
   address,
   instanceName,

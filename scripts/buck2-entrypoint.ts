@@ -30,12 +30,18 @@ const configCommands: Record<string, true> = {
 const readOptional = (path: string): string =>
   existsSync(path) === true ? readFileSync(path, 'utf8') : ''
 
-const readConfig = (path: string, seen = new Set<string>()): string => {
+const readConfig = ({
+  path,
+  seen = new Set<string>(),
+}: {
+  readonly path: string
+  readonly seen?: Set<string>
+}): string => {
   const absolute = resolve(path)
   if (seen.has(absolute) === true) throw new Error('Buck cache posture: recursive config include')
   seen.add(absolute)
   const text = readOptional(absolute).replace(/^\s*<file:([^>]+)>\s*$/gmu, (_, include: string) =>
-    readConfig(resolve(dirname(absolute), include), seen),
+    readConfig({ path: resolve(dirname(absolute), include), seen }),
   )
   seen.delete(absolute)
   return text
@@ -103,7 +109,13 @@ const cachedProbe = async ({
   return available
 }
 
-const warning = (message: string, env: Readonly<Record<string, string | undefined>>): void => {
+const warning = ({
+  message,
+  env,
+}: {
+  readonly message: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): void => {
   failedOpen = true
   process.stderr.write(`warning: Buck2 ${message}\n`)
   if (env['GITHUB_ACTIONS'] === 'true')
@@ -135,9 +147,9 @@ export const directBuckArguments = async ({
   if (args.includes('--help') === true || args.includes('-h') === true) return [...args]
   const root = findRoot(cwd)
   if (root === undefined) return [...args]
-  const tracked = readConfig(join(root, '.buckconfig'))
+  const tracked = readConfig({ path: join(root, '.buckconfig') })
   const trackedValues = buckConfigValues(tracked)
-  const currentLocal = readConfig(join(root, '.buckconfig.local'))
+  const currentLocal = readConfig({ path: join(root, '.buckconfig.local') })
   const unmanaged = withoutManagedBlock(currentLocal)
   const local = unmanaged.content
   const base = buckConfigValues(`${tracked}\n${local}`)
@@ -157,7 +169,8 @@ export const directBuckArguments = async ({
   // be in the root overlay before daemon startup, including removal on public reads.
   if (
     unmanaged.found === true ||
-    Object.keys(buckConfigValues(posture)).some((key) => key.startsWith('buck2_re_client.'))
+    Object.keys(buckConfigValues(posture)).some((key) => key.startsWith('buck2_re_client.')) ===
+      true
   )
     reconcileStandaloneCachePosture({ repoRoot: root, env })
   const values = { ...base, ...buckConfigValues(posture) }
@@ -182,8 +195,10 @@ export const directBuckArguments = async ({
     if (arg === '--config-file' || arg.startsWith('--config-file=') === true) {
       const path = arg === '--config-file' ? configArgs[++index] : arg.slice(14)
       if (path !== undefined)
-        for (const [key, value] of Object.entries(buckConfigValues(readConfig(resolve(cwd, path)))))
-          if (key.startsWith('buck2_re_client.') === false) values[key] = value
+        for (const [key, configValue] of Object.entries(
+          buckConfigValues(readConfig({ path: resolve(cwd, path) })),
+        ))
+          if (key.startsWith('buck2_re_client.') === false) values[key] = configValue
     }
   }
   for (const key of Object.keys(overrides)) overrides[key] = values[key] ?? ''
@@ -239,14 +254,20 @@ export const directBuckArguments = async ({
       throw new Error(
         'Buck cache writer: REAPI unreachable; refusing to publish without remote cache',
       )
-    warning('REAPI is unreachable; using local execution without the remote cache', env)
+    warning({
+      message: 'REAPI is unreachable; using local execution without the remote cache',
+      env,
+    })
     Object.assign(overrides, {
       'buck2.remote_cache_enabled': 'false',
       'buck2.allow_cache_uploads': 'false',
     })
   }
   if (archiveAvailable === false) {
-    warning('archive origin is unreachable; fetching archives from the registry', env)
+    warning({
+      message: 'archive origin is unreachable; fetching archives from the registry',
+      env,
+    })
     Object.assign(overrides, { 'archive_origin.url_prefix': '', 'archive_origin.tier': 'public' })
   }
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])

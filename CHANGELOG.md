@@ -25,6 +25,8 @@
   Healthy invocations cache admission briefly for warm loops; writer REAPI
   outages remain fail-closed. A successful probe is a reachability snapshot,
   not a guarantee against subsequent native transport failures.
+  Launcher compilation isolates its working directory from Nix's temporary root
+  so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
