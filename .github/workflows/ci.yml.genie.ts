@@ -52,6 +52,8 @@ import {
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -1066,9 +1068,6 @@ const extraJobs: Record<string, any> = {
       regressionMode: 'warn',
       env: {
         ...ciMeasurementSubjectEnv,
-        // Backfills checkout older refs whose posture script cannot select the public read tier.
-        BUCK2_NO_REMOTE_CACHE:
-          "${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '0' }}",
       },
       setupSteps: baseSteps,
       taskProbes: [
@@ -1564,9 +1563,50 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read', 'id-token': 'write' },
-  jobs: {
-    ...withPipelineTelemetry(allCiJobs),
-    'pipeline-attempt-close': pipelineCloseJob(allCiJobs),
-    'pipeline-traces': pipelineTracesJob,
-  },
+  jobs: withBuck2CachePostures({
+    jobs: {
+      ...withPipelineTelemetry(withBuck2CacheEvidence(allCiJobs)),
+      'pipeline-attempt-close': pipelineCloseJob(allCiJobs),
+      'pipeline-traces': pipelineTracesJob,
+    },
+    // Public readers never gain uploads from an ambient credential. Only the
+    // protected-main proof receives a step-local writer credential; its replay
+    // context explicitly returns to reader posture before starting a new daemon.
+    postures: {
+      'default-ref-policy': 'reader',
+      typecheck: 'reader',
+      lint: 'reader',
+      test: 'reader',
+      'test-playwright-utils': 'reader',
+      'test-playwright-tui-react': 'reader',
+      'test-megarepo-cold-gc': 'reader',
+      'native-dependency-policy': 'reader',
+      'bundle-smoke': 'reader',
+      cargo: 'reader',
+      weaver: 'reader',
+      'bootstrap-cold-proof': 'reader',
+      'nix-closure-sizes': 'reader',
+      'source-shape': 'reader',
+      'test-integration-restate': 'reader',
+      'build-products': 'reader',
+      'pr-reviews-resolved': 'reader',
+      'test-integration-notion': 'reader',
+      'test-live-deploy-ci-tools': 'reader',
+      'deploy-storybooks': 'reader',
+      'publish-products': 'reader',
+      // Older measurement backfills cannot select the public reader tier.
+      'devenv-perf': {
+        posture: 'reader',
+        disabledWhen:
+          "github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != ''",
+      },
+      'ci-measurements-report': 'reader',
+      'notify-alignment': 'reader',
+      'trusted-buck2-remote-cache-proof': 'writer',
+      'seed-pnpm-archives': 'reader',
+      'pr-a-inert-buck': 'none',
+      'pipeline-attempt-close': 'reader',
+      'pipeline-traces': 'reader',
+    },
+  }),
 } satisfies CiWorkflowArgs)

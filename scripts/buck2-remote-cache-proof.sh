@@ -29,18 +29,31 @@ test_red_evidence="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-re
 test_source_backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-source.ts"
 trap 'if [ -f "$test_source_backup" ]; then cp "$test_source_backup" "$test_proof_source"; fi; rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c" "$test_red_evidence" "$test_source_backup"; rm -rf "$context_b"' EXIT
 
+# Preserve action keys/outcomes before each proof context's native logs are removed.
+# Local invocations without a CI artifact declaration retain the existing proof flow.
+capture_cache_evidence() {
+  if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
+    if ! bun "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
+      --events "$1" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --context "$2"; then
+      echo "::warning::Buck2 cache evidence capture failed for $2" >&2
+    fi
+  fi
+}
+
 # Context A executes locally and uploads run-unique source inputs.
 # `log show --recent` uses zero-based history; 0 is the command just run.
 "$buck" kill
 rm -rf buck-out
 "$buck" build --local-only "$target"
 "$buck" log show --recent 0 > "$evidence_a"
+capture_cache_evidence "$evidence_a" proof-a-build
 if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$evidence_a" >/dev/null; then
   echo '::error::Context A did not report a successful upload for a locally executed action'
   exit 1
 fi
 "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
 "$buck" log show --recent 0 > "$test_evidence_a"
+capture_cache_evidence "$test_evidence_a" proof-a-test
 if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$test_evidence_a" >/dev/null; then
   echo '::error::Context A did not execute and upload the representative unit-test verdict action'
   exit 1
@@ -56,6 +69,7 @@ for attempt in 1 2; do
     exit 1
   fi
   "$buck" log show --recent 0 > "$test_red_evidence"
+  capture_cache_evidence "$test_red_evidence" "proof-red-$attempt"
   if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.execution_kind == $local and $action.failed == true)' "$test_red_evidence" >/dev/null; then
     echo "::error::Red verdict attempt $attempt did not rerun the unit suite locally"
     exit 1
@@ -97,6 +111,7 @@ if grep -Fq 'http_headers' .buckconfig.local; then echo '::error::reader cache i
 # The independent build must hit the remote action cache, not run an action.
 "$buck" build --local-only "$target"
 "$buck" log show --recent 0 > "$evidence_b"
+capture_cache_evidence "$evidence_b" proof-b-build
 if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind == $action_cache)' "$evidence_b" >/dev/null; then
   echo '::error::Context B did not report a remote action-cache hit'
   exit 1
@@ -110,6 +125,7 @@ fi
 # it reads result.json/report.json and never runs Vitest.
 "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
 "$buck" log show --recent 0 > "$test_evidence_b"
+capture_cache_evidence "$test_evidence_b" proof-b-test
 if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_b" >/dev/null; then
   echo '::error::Context B did not report the cached representative unit test as passing'
   exit 1
@@ -127,6 +143,7 @@ fi
 printf '%s\n' '' "// trusted irrelevant-mutation proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> README.md
 "$buck" test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
 "$buck" log show --recent 0 > "$test_evidence_c"
+capture_cache_evidence "$test_evidence_c" proof-irrelevant-mutation
 if ! jq -e 'select(.Event.data.Instant.data.TestResult.name == "effect_utils//packages/@overeng/content-address:test" and .Event.data.Instant.data.TestResult.status == 1)' "$test_evidence_c" >/dev/null; then
   echo '::error::The irrelevant mutation prevented the cached representative unit test from passing'
   exit 1
