@@ -183,6 +183,15 @@ export const OmpSchema = Schema.Struct({
   effort: Schema.Literals(['low', 'medium', 'high']),
 }).annotate({ identifier: 'St.Omp' })
 
+/** Codex configuration; omitted model and effort retain provider defaults. */
+export const CodexSchema = Schema.Struct({
+  kind: Schema.Literal('codex'),
+  model: Schema.optionalKey(Text),
+  effort: Schema.optionalKey(Text),
+  args: Schema.optionalKey(Schema.Array(Text)),
+  resume: Schema.optionalKey(Schema.Struct({ session: Text })),
+}).annotate({ identifier: 'St.Codex' })
+
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
   identity: Schema.optionalKey(Text),
@@ -209,7 +218,7 @@ const AgentSchemaFields = Schema.Struct({
   argv: Schema.optionalKey(Schema.Array(Text)),
   env: Schema.optionalKey(Env),
   render: Schema.optionalKey(Schema.Array(RenderOperation)),
-  harness: Schema.optionalKey(OmpSchema),
+  harness: Schema.optionalKey(Schema.Union([OmpSchema, CodexSchema])),
   freshContext: Schema.optionalKey(Schema.Literal(true)),
   handlesFaults: Schema.optionalKey(Schema.Literal(true)),
   missionAuthority: Schema.optionalKey(Authority),
@@ -224,6 +233,10 @@ const isValidAgent = (a: typeof AgentSchemaFields.Type): boolean =>
   (a.create === undefined || a.workspace !== undefined) &&
   (a.name === undefined || a.name.length <= 160) &&
   (a.description === undefined || a.description.length <= 1000) &&
+  (a.harness?.kind !== 'codex' ||
+    a.harness.resume === undefined ||
+    a.env?.ST3_NATIVE_RESUME_SESSION === undefined ||
+    a.env.ST3_NATIVE_RESUME_SESSION === a.harness.resume.session) &&
   Number(a.command !== undefined) +
     Number(a.argv !== undefined) +
     Number(a.harness !== undefined) <=
@@ -517,8 +530,12 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
     ...optionalChild({ name: 'command', value: a.command }),
   )
   if (a.argv !== undefined) children.push(node({ name: 'argv', args: a.argv }))
-  if (a.env !== undefined) {
-    const entries = Object.entries(a.env).toSorted(([x], [y]) => x.localeCompare(y, 'en'))
+  const env = { ...a.env }
+  if (a.harness?.kind === 'codex' && a.harness.resume !== undefined) {
+    env.ST3_NATIVE_RESUME_SESSION = a.harness.resume.session
+  }
+  if (Object.keys(env).length > 0) {
+    const entries = Object.entries(env).toSorted(([x], [y]) => x.localeCompare(y, 'en'))
     children.push(
       block({ name: 'env', children: entries.map(([key, value]) => child({ name: key, value })) }),
     )
@@ -542,8 +559,11 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
         name: 'harness',
         args: [a.harness.kind],
         children: [
-          child({ name: 'model', value: a.harness.model }),
-          child({ name: 'effort', value: a.harness.effort }),
+          ...optionalChild({ name: 'model', value: a.harness.model }),
+          ...optionalChild({ name: 'effort', value: a.harness.effort }),
+          ...(a.harness.kind === 'codex' && a.harness.args !== undefined
+            ? [node({ name: 'args', args: a.harness.args })]
+            : []),
         ],
       }),
     )

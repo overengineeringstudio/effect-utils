@@ -17,6 +17,45 @@ const canonical = () =>
     }),
   ])
 describe('Smalltalk declarations', () => {
+  it('resumes an exact Codex session without overriding provider defaults', () => {
+    const seat = agent({
+      id: 'example/codex',
+      env: { CODEX_HOME: '/srv/codex' },
+      harness: {
+        kind: 'codex',
+        args: ['--config', 'key=value'],
+        resume: { session: 'native-thread' },
+      },
+    })
+    expect(emit([seat])).toBe(
+      'version 2\nagent "example/codex" {\n  env {\n    CODEX_HOME "/srv/codex"\n    ST3_NATIVE_RESUME_SESSION "native-thread"\n  }\n  harness "codex" {\n    args "--config" "key=value"\n  }\n}\n',
+    )
+    expect(() =>
+      agent({
+        id: 'example/codex',
+        env: { ST3_NATIVE_RESUME_SESSION: 'different-thread' },
+        harness: { kind: 'codex', resume: { session: 'native-thread' } },
+      }),
+    ).toThrow()
+  })
+  it('renders explicit Codex model and effort while retaining OMP selection', () => {
+    expect(
+      emit([
+        agent({
+          id: 'example/codex',
+          harness: { kind: 'codex', model: 'example-model', effort: 'xhigh' },
+        }),
+      ]),
+    ).toContain('harness "codex" {\n    model "example-model"\n    effort "xhigh"\n')
+    expect(
+      emit([
+        agent({
+          id: 'example/omp',
+          harness: { kind: 'omp', model: 'example-model', effort: 'high' },
+        }),
+      ]),
+    ).toContain('harness "omp" {\n    model "example-model"\n    effort "high"\n')
+  })
   it('serializes KDL v2 values, quoted identifiers and stable property ordering', () => {
     expect(
       emit([
