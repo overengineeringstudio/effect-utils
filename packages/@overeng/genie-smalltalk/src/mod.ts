@@ -284,6 +284,12 @@ export const GateSchema = Schema.Union([
     ref: Schema.Union([Schema.Struct({ commit: Text }), Schema.Struct({ branch: Text })]),
     host: Schema.optionalKey(Text), workspace: Schema.optionalKey(Text), timeLimit: Schema.optionalKey(Duration),
   }),
+  Schema.Struct({
+    name: GateName, kind: Schema.Literal('exec'), command: Text, host: Text, workspace: Text,
+    env: Schema.optionalKey(Env.pipe(Schema.refine((env): env is typeof env =>
+      Object.keys(env).every((key) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key))))),
+    timeLimit: Schema.optionalKey(Duration),
+  }),
 ]).annotate({ identifier: 'St.Gate' })
 
 const Gates = Schema.Array(GateSchema).pipe(Schema.refine((gates): gates is typeof gates =>
@@ -332,6 +338,52 @@ export const StepSchema = Schema.Struct({
   ),
   Schema.annotate({ identifier: 'St.Step' }),
 )
+/** All exhausted work, or an explicit completion frontier of normal steps. */
+export const CompletionSchema = Schema.Union([
+  Schema.Struct({ when: Schema.Literal('all-steps-exhausted') }),
+  Schema.Struct({ dependsOn: Schema.NonEmptyArray(DependsOnSchema) }),
+]).annotate({ identifier: 'St.Completion' })
+
+const validGraph = (m: {
+  readonly steps: readonly { readonly id: string; readonly dependsOn?: readonly typeof DependsOnSchema.Type[] }[]
+  readonly finally?: readonly typeof StepSchema.Type[]
+  readonly completion?: typeof CompletionSchema.Type
+}): boolean => {
+  const all = [...m.steps, ...(m.finally ?? [])]
+  const ids = new Set(all.map((s) => s.id))
+  return ids.size === all.length &&
+    [m.steps, m.finally ?? []].every((phase) =>
+      phase.every((s) => (s.dependsOn ?? []).every((d) => phase.some((target) => target.id === d.step)))) &&
+    (m.completion === undefined || 'when' in m.completion ||
+      m.completion.dependsOn.every((d) => m.steps.some((s) => s.id === d.step)))
+}
+
+/** The embedded mission for one sequential loop round. */
+export const RoundSchema = Schema.Struct({
+  completion: CompletionSchema,
+  steps: Schema.Array(StepSchema),
+  finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
+}).pipe(Schema.refine((m): m is typeof m => validGraph(m))).annotate({ identifier: 'St.Round' })
+
+/** A bounded sequential loop, represented as an ordered mission graph node. */
+export const LoopSchema = Schema.Struct({
+  id: LocalId,
+  timeout: Schema.optionalKey(Duration),
+  dependsOn: Schema.optionalKey(Schema.NonEmptyArray(DependsOnSchema)),
+  maxRounds: Schema.Int.pipe(Schema.refine((n): n is number => n >= 1 && n <= 100)),
+  until: Schema.optionalKey(Schema.NonEmptyArray(GateSchema).pipe(Schema.refine((gates): gates is typeof gates =>
+    new Set(gates.map((g) => g.name)).size === gates.length))),
+  round: RoundSchema,
+  onExhausted: Schema.optionalKey(Schema.Union([
+    Schema.Struct({ outcome: Schema.Literal('succeed') }),
+    Schema.Struct({ outcome: Schema.Literal('fail'), attention: Schema.optionalKey(Schema.Struct({
+      title: Text.pipe(Schema.refine((s): s is string => s.trim().length > 0)),
+      reviewer: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('person/'))),
+      severity: Schema.Literals(['warning', 'error']),
+    })) }),
+  ])),
+}).annotate({ identifier: 'St.Loop' })
+
 
 /** The mission revision and workspace a schedule starts. */
 export const WorkSchema = Schema.Struct({ mission: Revision, workspace: Text }).annotate({
@@ -356,17 +408,14 @@ export const MissionSchema = Schema.Struct({
   goals: Goals.pipe(Schema.refine((goals): goals is typeof goals => goals.length > 0)),
   gates: Schema.optionalKey(Gates),
   constraints: Schema.optionalKey(Schema.Array(Text)),
-  steps: Schema.Array(StepSchema),
+  steps: Schema.Array(Schema.Union([StepSchema, LoopSchema])),
+  completion: Schema.optionalKey(CompletionSchema),
+  finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
   schedule: Schema.optionalKey(ScheduleSchema),
 }).pipe(
   Schema.refine(
-    (m): m is typeof m =>
-      m.steps.length > 0 &&
-      new Set(m.steps.map((s) => s.id)).size === m.steps.length &&
-      m.steps.every(
-        (s) => (s.dependsOn ?? []).every((d) => m.steps.some((p) => p.id === d.step)),
-      ),
-    { message: 'mission needs unique steps and existing dependencies' },
+    (m): m is typeof m => validGraph(m),
+    { message: 'mission needs unique graph nodes, existing dependencies and a normal completion frontier' },
   ),
   Schema.annotate({ identifier: 'St.Mission' }),
 )
@@ -441,13 +490,18 @@ export const gate = (input: typeof GateSchema.Encoded): Node => {
       predicate = child({ name: 'merged', value: g.locator }); break
     case 'ci-passed':
       predicate = node({ name: 'ci-passed', args: [g.check], props: { repo: g.repo, ...g.ref } }); break
+    case 'exec':
+      predicate = child({ name: 'exec', value: g.command }); break
   }
   return node({ name: 'gate', args: [g.name], children: [
     predicate,
-    ...(g.kind === 'merged' || g.kind === 'ci-passed' ? [
+    ...(g.kind === 'merged' || g.kind === 'ci-passed' || g.kind === 'exec' ? [
       ...optionalChild({ name: 'host', value: g.host }),
       ...optionalChild({ name: 'workspace', value: g.workspace }),
       ...optionalChild({ name: 'time-limit', value: g.timeLimit }),
+      ...(g.kind === 'exec' && g.env !== undefined ? [block({ name: 'env', children:
+        Object.entries(g.env).toSorted(([a], [b]) => a.localeCompare(b, 'en')).map(([name, value]) => child({ name, value })),
+      })] : []),
     ] : []),
   ] })
 }
@@ -494,6 +548,39 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
   })
 }
 
+const dependenciesNode = (dependencies: readonly typeof DependsOnSchema.Encoded[]): Node =>
+  block({ name: 'depends-on', children: dependencies.map((d) => node({ name: 'step', args: [d.step, d.state] })) })
+
+/** Lowers an explicit completion frontier. */
+export const completion = (input: typeof CompletionSchema.Encoded): Node => {
+  const c = decode({ schema: CompletionSchema, input })
+  return block({ name: 'completion', children: 'when' in c ?
+    [child({ name: 'when', value: c.when })] : [dependenciesNode(c.dependsOn)] })
+}
+
+/** Lowers a loop and its explicitly completed round mission. */
+export const loop = (input: typeof LoopSchema.Encoded): Node => {
+  const l = decode({ schema: LoopSchema, input })
+  return node({ name: 'loop', args: [l.id], props: l.timeout === undefined ? {} : { timeout: l.timeout }, children: [
+    ...(l.dependsOn === undefined ? [] : [dependenciesNode(l.dependsOn)]),
+    child({ name: 'max-rounds', value: l.maxRounds }),
+    ...(l.until === undefined ? [] : [block({ name: 'until', children: l.until.map(gate) })]),
+    block({ name: 'round', children: [
+      completion(l.round.completion), ...l.round.steps.map(step),
+      ...(l.round.finally === undefined ? [] : [block({ name: 'finally', children: l.round.finally.map(step) })]),
+    ] }),
+    ...(l.onExhausted === undefined ? [] : [block({ name: 'on-exhausted', children: [
+      node({ name: l.onExhausted.outcome }),
+      ...(l.onExhausted.outcome === 'fail' && l.onExhausted.attention !== undefined ? [
+        node({ name: 'attention', args: [l.onExhausted.attention.title], children: [
+          child({ name: 'reviewer', value: l.onExhausted.attention.reviewer }),
+          child({ name: 'severity', value: l.onExhausted.attention.severity }),
+        ] }),
+      ] : []),
+    ] })]),
+  ] })
+}
+
 /** Decodes and renders a mission node with its schedule and steps. */
 export const mission = (input: typeof MissionSchema.Encoded): Node => {
   const m = decode({ schema: MissionSchema, input })
@@ -508,7 +595,9 @@ export const mission = (input: typeof MissionSchema.Encoded): Node => {
         child({ name: 'constraint', value: constraint }),
       ),
       ...(m.schedule === undefined ? [] : [schedule(m.schedule)]),
-      ...m.steps.map(step),
+      ...(m.completion === undefined ? [] : [completion(m.completion)]),
+      ...m.steps.map((s) => 'maxRounds' in s ? loop(s) : step(s)),
+      ...(m.finally === undefined ? [] : [block({ name: 'finally', children: m.finally.map(step) })]),
     ],
   })
 }
