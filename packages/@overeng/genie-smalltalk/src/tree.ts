@@ -218,7 +218,6 @@ const lowerMission = Effect.fnUntraced(function* ({
 })
 
 const loadModule = Effect.fnUntraced(function* <C>({
-  fs,
   root,
   file,
   path,
@@ -226,22 +225,15 @@ const loadModule = Effect.fnUntraced(function* <C>({
   id,
   context,
 }: {
-  readonly fs: FileSystem.FileSystem
   readonly root: string
+  /** The module's realpath, which is what Node reports as its `import.meta.url`. */
   readonly file: string
   readonly path: string
   readonly kind: SubjectKind
   readonly id: SubjectId
   readonly context: C
 }) {
-  const real = yield* fs
-    .realPath(file)
-    .pipe(
-      Effect.mapError(
-        (cause) => new SubjectTreeError({ path, message: 'Cannot resolve subject module', cause }),
-      ),
-    )
-  const url = pathToFileURL(real).href
+  const url = pathToFileURL(file).href
   const exports = yield* Effect.tryPromise({
     // oxlint-disable-next-line import/no-dynamic-require -- subject modules are trusted repository code discovered by path
     try: (): Promise<Readonly<Record<string, unknown>>> => import(url),
@@ -360,7 +352,8 @@ const loadKdl = Effect.fnUntraced(function* ({
 /**
  * Loads `<root>/<id>/{agent,mission,schedule}.{ts,kdl}` declarations in path order.
  *
- * The ID is the POSIX directory path below `root`. Seats use the `agent/<id>` namespace; missions
+ * The ID is the POSIX directory path of the file's realpath below `root`'s realpath, so symlinked
+ * aliases load once and links leaving the tree are rejected. Seats use the `agent/<id>` namespace; missions
  * and schedules share `mission/<id>`, so one directory declares at most one of them. KDL files must
  * hold `version 2` and one node whose kind and ID match the path. A TS module's default export is a
  * `define*` definition for its own path and kind, a plain intent, or a factory; factories receive
@@ -386,14 +379,30 @@ export const loadSubjectTree = Effect.fn('genie-smalltalk.loadSubjectTree')(func
     ),
   )
   const seen = new Set<string>()
+  const loaded = new Set<string>()
   const subjects: Subject[] = []
   for (const entry of tree.entries.toSorted()) {
     const match = declarationFile.exec(basename(entry))
     if (match === null) continue
     const kind = match[1] as SubjectKind
-    const file = join(tree.real, entry)
-    const path = entry.split(sep).join('/')
-    const id = yield* subjectId({ root: tree.real, file, path })
+    const discovered = entry.split(sep).join('/')
+    // Directory symlinks are followed while listing; IDs and refs both use the canonical file.
+    const file = yield* fs
+      .realPath(join(tree.real, entry))
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new SubjectTreeError({
+              path: discovered,
+              message: 'Cannot resolve declaration',
+              cause,
+            }),
+        ),
+      )
+    if (loaded.has(file) === true) continue
+    loaded.add(file)
+    const id = yield* subjectId({ root: tree.real, file, path: discovered })
+    const path = relative(tree.real, file).split(sep).join('/')
     const key = `${kind === 'agent' ? 'agent' : 'mission'}/${id}`
     if (seen.has(key) === true) {
       return yield* new SubjectTreeError({ path, message: `Duplicate subject ${key}` })
@@ -402,7 +411,7 @@ export const loadSubjectTree = Effect.fn('genie-smalltalk.loadSubjectTree')(func
     subjects.push(
       match[2] === 'kdl'
         ? yield* loadKdl({ fs, file, path, kind, id })
-        : yield* loadModule({ fs, root: tree.real, file, path, kind, id, context }),
+        : yield* loadModule({ root: tree.real, file, path, kind, id, context }),
     )
   }
   return subjects

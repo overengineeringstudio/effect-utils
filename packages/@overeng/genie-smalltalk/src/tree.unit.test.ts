@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -20,11 +20,12 @@ const fixture = (files: Readonly<Record<string, string>>): string => {
   return root
 }
 
-/** A tree that fails to load, blaming the file at `path`. */
+/** A tree that fails to load, blaming the file at `path` with a message containing `message`. */
 type Case = {
   readonly name: string
   readonly files: Readonly<Record<string, string>>
   readonly path: string
+  readonly message: string
 }
 
 const load = (root: string) =>
@@ -80,24 +81,34 @@ describe('loadSubjectTree', () => {
     }),
   )
 
-  const duplicates: ReadonlyArray<Case> = [
-    {
-      name: 'agent.kdl and agent.ts',
-      files: { 'a/agent.kdl': 'version 2\nagent "a"\n', 'a/agent.ts': '' },
-      path: 'a/agent.ts',
-    },
-    {
-      name: 'mission and schedule',
-      files: {
-        'a/mission.kdl': 'version 2\nmission "a" state="ready" {\n  goal "g"\n}\n',
-        'a/schedule.kdl': 'version 2\nmission "a" state="ready" {\n  schedule "s"\n}\n',
-      },
-      path: 'a/schedule.kdl',
-    },
-  ]
-  it.effect.each(duplicates)('rejects $name in one st namespace', ({ files, path }) =>
+  it.effect('loads a symlinked alias directory once under its canonical ID', () =>
     Effect.gen(function* () {
-      expect(yield* loadError(fixture(files))).toMatchObject({ _tag: 'SubjectTreeError', path })
+      const root = fixture({
+        'a/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
+        'm/mission.ts': `${define}import a from '../alias/agent.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'g', steps: [{ id: 's', assignedTo: a }] } })`,
+      })
+      symlinkSync(join(root, 'a'), join(root, 'alias'))
+      const subjects = yield* load(root)
+      expect(subjects.map(({ id, path }) => ({ id, path }))).toEqual([
+        { id: 'a', path: 'a/agent.ts' },
+        { id: 'm', path: 'm/mission.ts' },
+      ])
+      expect(subjects[1]?.declaration).toMatchObject({
+        intent: { steps: [{ assignedTo: 'agent/a' }] },
+      })
+    }),
+  )
+
+  it.effect('rejects a symlinked declaration outside the tree', () =>
+    Effect.gen(function* () {
+      const outside = fixture({ 'x/agent.kdl': 'version 2\nagent "x"\n' })
+      const root = fixture({})
+      symlinkSync(join(outside, 'x'), join(root, 'ext'))
+      expect(yield* loadError(root)).toMatchObject({
+        _tag: 'SubjectTreeError',
+        path: 'ext/agent.kdl',
+        message: expect.stringContaining('not a valid subject ID inside the tree'),
+      })
     }),
   )
 
@@ -113,71 +124,97 @@ describe('loadSubjectTree', () => {
     }),
   )
 
-  const kdlMismatches: ReadonlyArray<Case> = [
+  const mission = `{ state: 'ready', goal: 'g', steps: [{ id: 's', agentless: true }] }`
+  const rejections: ReadonlyArray<Case> = [
     {
-      name: 'node kind',
-      files: { 'a/agent.kdl': 'version 2\nmission "a"\n' },
-      path: 'a/agent.kdl',
-    },
-    { name: 'node id', files: { 'a/agent.kdl': 'version 2\nagent "b"\n' }, path: 'a/agent.kdl' },
-    { name: 'missing version', files: { 'a/agent.kdl': 'agent "a"\n' }, path: 'a/agent.kdl' },
-    {
-      name: 'extra node',
-      files: { 'a/agent.kdl': 'version 2\nagent "a"\nagent "a/b"\n' },
-      path: 'a/agent.kdl',
-    },
-    {
-      name: 'scheduled mission.kdl',
-      files: { 'a/mission.kdl': 'version 2\nmission "a" state="ready" {\n  schedule "s"\n}\n' },
-      path: 'a/mission.kdl',
-    },
-    {
-      name: 'unscheduled schedule.kdl',
-      files: { 'a/schedule.kdl': 'version 2\nmission "a" state="ready" {\n  goal "g"\n}\n' },
-      path: 'a/schedule.kdl',
-    },
-  ]
-  it.effect.each(kdlMismatches)(
-    'rejects a KDL $name that disagrees with its path',
-    ({ files, path }) =>
-      Effect.gen(function* () {
-        expect(yield* loadError(fixture(files))).toMatchObject({ _tag: 'SubjectTreeError', path })
-      }),
-  )
-
-  const moduleMismatches: ReadonlyArray<Case> = [
-    {
-      name: 'a definition of another kind',
+      name: 'agent.kdl and agent.ts in one directory',
       files: {
-        'a/agent.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'g', steps: [{ id: 's', agentless: true }] } })`,
+        'a/agent.kdl': 'version 2\nagent "a"\n',
+        'a/agent.ts': `export default { id: 'a' }`,
       },
       path: 'a/agent.ts',
+      message: 'Duplicate subject agent/a',
     },
     {
-      name: "another module's definition",
+      name: 'mission and schedule in one directory',
+      files: {
+        'a/mission.kdl': 'version 2\nmission "a" state="ready" {\n  goal "g"\n}\n',
+        'a/schedule.kdl': 'version 2\nmission "a" state="ready" {\n  schedule "s"\n}\n',
+      },
+      path: 'a/schedule.kdl',
+      message: 'Duplicate subject mission/a',
+    },
+    ...(
+      [
+        ['a KDL node of another kind', 'version 2\nmission "a"\n'],
+        ['a KDL node with another id', 'version 2\nagent "b"\n'],
+        ['KDL without a version', 'agent "a"\n'],
+        ['KDL with an extra node', 'version 2\nagent "a"\nagent "a/b"\n'],
+      ] as const
+    ).map(([name, text]) => ({
+      name,
+      files: { 'a/agent.kdl': text },
+      path: 'a/agent.kdl',
+      message: 'KDL declaration must be `version 2` followed by exactly one `agent "a"` node',
+    })),
+    {
+      name: 'a scheduled mission.kdl',
+      files: { 'a/mission.kdl': 'version 2\nmission "a" state="ready" {\n  schedule "s"\n}\n' },
+      path: 'a/mission.kdl',
+      message: 'must be declared in schedule.ts or schedule.kdl',
+    },
+    {
+      name: 'an unscheduled schedule.kdl',
+      files: { 'a/schedule.kdl': 'version 2\nmission "a" state="ready" {\n  goal "g"\n}\n' },
+      path: 'a/schedule.kdl',
+      message: 'A schedule file must declare a mission with a schedule',
+    },
+    {
+      name: 'an unscheduled schedule.ts',
+      files: { 'a/schedule.ts': `export default { id: 'a', ...${mission} }` },
+      path: 'a/schedule.ts',
+      message: 'A schedule file must declare a mission with a schedule',
+    },
+    {
+      name: 'a TS definition of another kind',
+      files: {
+        'a/agent.ts': `${define}export default defineMission({ meta: import.meta, intent: ${mission} })`,
+      },
+      path: 'a/agent.ts',
+      message: 'Module must export its own agent definition, got mission',
+    },
+    {
+      name: "another module's TS definition",
       files: {
         'b/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
         'a/agent.ts': `export { default } from '../b/agent.ts'`,
       },
       path: 'a/agent.ts',
+      message: 'Module must export its own agent definition, got agent from',
     },
     {
-      name: 'a declared id that differs from the path',
+      name: 'a TS id that differs from the path',
       files: { 'a/agent.ts': `export default { id: 'b' }` },
       path: 'a/agent.ts',
+      message: 'Declared id b must equal the subject directory a',
     },
     {
-      name: 'a mission reference as an assignee',
+      name: 'a mission reference as a TS assignee',
       files: {
-        'm/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'g', steps: [{ id: 's', agentless: true }] } })`,
+        'm/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: ${mission} })`,
         'a/mission.ts': `${define}import m from '../m/mission.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'g', steps: [{ id: 's', assignedTo: m as never }] } })`,
       },
       path: 'a/mission.ts',
+      message: 'Reference must point at agent.ts, got mission.ts',
     },
   ]
-  it.effect.each(moduleMismatches)('rejects a TS module with $name', ({ files, path }) =>
+  it.effect.each(rejections)('rejects $name', ({ files, path, message }) =>
     Effect.gen(function* () {
-      expect(yield* loadError(fixture(files))).toMatchObject({ _tag: 'SubjectTreeError', path })
+      expect(yield* loadError(fixture(files))).toMatchObject({
+        _tag: 'SubjectTreeError',
+        path,
+        message: expect.stringContaining(message),
+      })
     }),
   )
 

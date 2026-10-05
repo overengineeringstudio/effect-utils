@@ -19,4 +19,5 @@ The conformance test is opt-in with `ST_BIN` pointing to a binary built from the
 - KDL files must contain `version 2` and exactly one `agent` or `mission` node whose first argument is the path ID. Only that shape is checked; st still parses the body.
 - TS modules default-export a `defineAgent`/`defineMission`/`defineSchedule` definition for their own path and kind, a plain intent, or a factory. Factories receive the caller's `context`; intents are decoded with `AgentSchema`/`MissionSchema`.
 - Imported definitions are typed references. A seat reference lowers to `agent/<id>` as `assignedTo`; a mission reference lowers to the unpinned mission ID as schedule `work.mission`. Other positions are not lowered.
+- IDs come from realpaths, matching Node's `import.meta.url`: a symlinked alias of an in-tree directory loads once under its canonical ID, and a link that resolves outside `root` is rejected.
 - Subject modules are trusted code; loading imports them.
