@@ -17,7 +17,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-storybook-plays:
+  storybook-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+    steps:
+      - id: changes
+        name: Check Storybook inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          STORYBOOK_PATHS: '[".github/workflows/storybook-*.yml",".github/workflows/storybook-*.yml.genie.ts","devenv.lock","devenv.nix","devenv.yaml","flake.lock","flake.nix","genie/ci-scripts/**","genie/ci-workflow.ts","genie/ci-workflow/**","genie/deploy-preview/**","genie/external.ts","genie/internal.ts","genie/packages.ts","genie/storybook-preview.ts","nix/binary-caches.json","nix/devenv-modules/tasks/shared/netlify.nix","nix/devenv-modules/tasks/shared/storybook.nix","package.json","package.json.genie.ts","packages/@overeng/ci-tools/**","packages/@overeng/content-address/**","packages/@overeng/devbar/**","packages/@overeng/effect-distributed-lock/**","packages/@overeng/effect-path/**","packages/@overeng/effect-react/**","packages/@overeng/effect-rpc-explorer-react/**","packages/@overeng/effect-rpc-explorer/**","packages/@overeng/effect-schema-form-aria/**","packages/@overeng/effect-schema-form/**","packages/@overeng/genie/**","packages/@overeng/gh-ci-utils/**","packages/@overeng/kdl-effect/**","packages/@overeng/kdl/**","packages/@overeng/megarepo/**","packages/@overeng/notion-cli/**","packages/@overeng/notion-core/**","packages/@overeng/notion-datasource-sync/**","packages/@overeng/notion-effect-client/**","packages/@overeng/notion-effect-schema/**","packages/@overeng/notion-md/**","packages/@overeng/notion-property-write/**","packages/@overeng/notion-react/**","packages/@overeng/otel-contract/**","packages/@overeng/react-inspector/**","packages/@overeng/stylex-tokens/**","packages/@overeng/tui-core/**","packages/@overeng/tui-react/**","packages/@overeng/tui-stories/**","packages/@overeng/utils-dev/**","packages/@overeng/utils-storybook/**","packages/@overeng/utils/**","patches/**","pnpm-lock.yaml","pnpm-workspace.yaml","pnpm-workspace.yaml.genie.ts"]'
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != pull_request ]] || [[ "$(jq '.pull_request.changed_files' "$GITHUB_EVENT_PATH")" -gt 3000 ]]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          pr="$(jq '.pull_request.number' "$GITHUB_EVENT_PATH")"
+          gh api --paginate "repos/$GH_REPO/pulls/$pr/files?per_page=100" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/storybook-changed-files"
+          mapfile -t patterns < <(jq -r '.[]' <<< "$STORYBOOK_PATHS")
+          changed=false
+          while IFS= read -r file; do
+            for pattern in "${patterns[@]}"; do
+              if [[ "$file" == $pattern ]]; then
+                changed=true
+                break 2
+              fi
+            done
+          done < "$RUNNER_TEMP/storybook-changed-files"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+  run-storybook-plays:
+    needs: [storybook-changes]
+    if: needs.storybook-changes.outputs.changed == 'true'
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
@@ -98,3 +142,31 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run storybook:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run storybook:test'
+  test-storybook-plays:
+    needs: [storybook-changes, run-storybook-plays]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Report Storybook play result
+        env:
+          ADMISSION_RESULT: ${{ needs.storybook-changes.result }}
+          CHANGED: ${{ needs.storybook-changes.outputs.changed }}
+          PLAY_RESULT: ${{ needs.run-storybook-plays.result }}
+        run: |
+          [[ "$ADMISSION_RESULT" == success ]]
+          if [[ "$CHANGED" == false ]]; then
+            [[ "$PLAY_RESULT" == skipped ]]
+            echo 'No Storybook inputs changed; play tests not needed.'
+          else
+            [[ "$CHANGED" == true && "$PLAY_RESULT" == success ]]
+          fi
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'

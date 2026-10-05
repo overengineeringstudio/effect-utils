@@ -6,6 +6,7 @@ import {
   netlifyPreviewBuildSteps,
 } from '../../genie/ci-workflow.ts'
 import {
+  storybookPaths,
   storybookPreviewBuildWorkflowName,
   storybookPreviewRunner,
   storybookPreviewSetupSteps,
@@ -18,7 +19,9 @@ import {
 export default ciWorkflow({
   trustTier: 'public',
   name: storybookPreviewBuildWorkflowName,
-  on: { pull_request: { types: ['opened', 'reopened', 'synchronize'] } },
+  on: {
+    pull_request: { types: ['opened', 'reopened', 'synchronize'], paths: storybookPaths },
+  },
   permissions: { contents: 'read' },
   jobs: {
     'build-storybooks': {
