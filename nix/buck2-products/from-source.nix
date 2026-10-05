@@ -166,6 +166,7 @@ let
 
     nativeBuildInputs = [
       buck2
+      pkgs.watchman
       pkgs.cacert
       pkgs.jq
     ]
