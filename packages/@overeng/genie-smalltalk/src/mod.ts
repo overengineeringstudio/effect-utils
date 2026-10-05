@@ -288,8 +288,21 @@ export const StepSchema = Schema.Struct({
   Schema.annotate({ identifier: 'St.Step' }),
 )
 
-/** The mission revision and workspace a schedule starts. */
-export const WorkSchema = Schema.Struct({ mission: Revision, workspace: Text }).annotate({
+/**
+ * Scheduled work names an exact `mission@revision`, or an unpinned mission ID whose ready
+ * published head st resolves at each occurrence. st reads any `@` as a pinned reference.
+ */
+const ScheduledMission = Schema.Union([
+  Revision,
+  MissionId.pipe(
+    Schema.refine((s): s is typeof s => s.includes('@') === false, {
+      message: 'expected mission@64-hex revision or unpinned mission ID',
+    }),
+  ),
+])
+
+/** The mission, pinned or unpinned, and workspace a schedule starts. */
+export const WorkSchema = Schema.Struct({ mission: ScheduledMission, workspace: Text }).annotate({
   identifier: 'St.Work',
 })
 
