@@ -317,7 +317,7 @@ testWithSt(
       ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
       expect(humanStarted.status, humanStarted.stderr).toBe(0)
       const attention = spawnSync(stBin!, [
-        '--endpoint', `unix://${socket}`, 'attention', 'ls', '--as', 'person/reviewer',
+        '--endpoint', `unix://${socket}`, 'attention', 'show', 'mission-run/human-proof', '--as', 'person/reviewer',
       ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
       expect(attention.status, attention.stderr).toBe(0)
       expect(attention.stdout).toContain('Is the garden ready?')
