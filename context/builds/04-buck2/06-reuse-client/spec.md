@@ -48,8 +48,8 @@ address to initialize its RE client even for cache-only local execution.
 Public effect-utils reads the public tier anonymously. Protected public publishers
 holding `BUCK2_CACHE_WRITE_BASIC_AUTH` receive the publisher overlay.
 Tailnet hosts resolve their own raw `username:password` credential into
-`BUCK2_PRIVATE_CACHE_WRITE_AUTH`; the devenv launcher converts it to
-`BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH` before starting Buck. The private writer
+`BUCK2_PRIVATE_CACHE_WRITE_AUTH`; the shipped pinned `buck2` entrypoint converts it to
+`BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH` before starting the native executable. The private writer
 also declares `BUCK2_PRIVATE_CACHE_ADDRESS=grpc://<private-host>:<port>`.
 Its overlay sets all three RE client addresses, disables TLS for the direct
 private listener, permits root-authorized uploads, retains the trusted private
@@ -63,7 +63,37 @@ root upload policy. Audited actions request the paired `cache_hermetic` executio
 platform, which reads `remote_cache_enabled` and `allow_cache_uploads` from root
 config (local execution, remote reuse; `remote_enabled = False`).
 `BUCK2_NO_REMOTE_CACHE=1` wins over all credentials and disables reads/uploads.
-Read-only endpoint outages fail open; either selected writer posture fails closed.
+Read-only endpoint admission failures fail open; either selected writer posture
+fails closed on REAPI unavailability.
+
+### Direct Invocation Admission (BUILD.BUCK.REUSE-R04)
+
+```text
+pinned buck2 -> identical healthy invocation cache -> native Buck
+            -> concurrent bounded probes -> native Buck + outage overrides
+```
+
+The flake's pinned executable owns admission for direct agent commands, devenv
+tasks and consumer roots. It resolves the nearest `.buckroot`, reads the tracked
+and local Buck configuration, applies the shared environment posture, and probes
+REAPI `GetCapabilities` and the trusted archive origin concurrently with 900 ms
+deadlines. Endpoint outcomes expire after five seconds. Complete successful
+read-only invocations can bypass the JavaScript launcher within the remaining
+probe lifetime; the key includes config contents, arguments, working directory
+and exported environment. Writer credentials, includes and external mode files
+bypass that fast path.
+
+Read-only REAPI admission failures disable cache reads/uploads while retaining
+local execution. Archive-origin admission failures clear the origin prefix and
+select the registry; a reachable REAPI client remains enabled. Every fail-open
+invocation emits a warning. Outage overrides are CLI root-config values, not
+persistent endpoint changes; RE client identity/credentials still require a
+managed root overlay before daemon startup.
+
+Admission is a reachability snapshot, not a native runtime circuit breaker.
+An endpoint that fails after a successful probe can still fail a native action;
+the pinned native client has ten hard-coded connection attempts with 45 seconds
+of cumulative backoff and no configurable startup fallback.
 
 ## Reuse Verification
 

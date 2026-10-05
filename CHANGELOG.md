@@ -19,6 +19,12 @@
 - The Vite build-identity dev plugin watches only its worktree's HEAD, current
   branch ref and index. Git snapshots are asynchronous, debounced and
   single-flight, and dirty checks exclude untracked files.
+- Direct invocations of the shipped pinned `buck2` apply bounded cache admission:
+  unreachable read-only REAPI endpoints fall back to local execution, and
+  unreachable trusted archive origins fall back to the registry, with warnings.
+  Healthy invocations cache admission briefly for warm loops; writer REAPI
+  outages remain fail-closed. A successful probe is a reachability snapshot,
+  not a guarantee against subsequent native transport failures.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
