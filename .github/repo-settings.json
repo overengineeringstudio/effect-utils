@@ -48,9 +48,6 @@
             "context": "test-playwright-tui-react"
           },
           {
-            "context": "test-megarepo-cold-gc"
-          },
-          {
             "context": "native-dependency-policy"
           },
           {
@@ -61,12 +58,6 @@
           },
           {
             "context": "weaver"
-          },
-          {
-            "context": "bootstrap-cold-proof"
-          },
-          {
-            "context": "nix-closure-sizes"
           },
           {
             "context": "source-shape"

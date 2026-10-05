@@ -1,5 +1,5 @@
-import { requiredCIJobs } from '../genie/ci.ts'
 import { prReviewsPullRequestRule } from '../genie/ci-workflow.ts'
+import { requiredCIJobs } from '../genie/ci.ts'
 import {
   githubRuleset,
   type GithubRulesetArgs,
@@ -33,7 +33,7 @@ export default githubRuleset({
     // `pr-reviews-resolved` is the early visible CI signal; this native flag is the
     // live merge-time gate (thread resolution does not retrigger workflows).
     prReviewsPullRequestRule(),
-    // Require CI to pass
+    // Require every ordinary PR invariant; optional empirical proofs are not merge gates.
     {
       type: 'required_status_checks',
       parameters: {
