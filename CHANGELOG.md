@@ -11,6 +11,8 @@
   packaging and independent per-executable Mach-O inspection during Nix import.
 - `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
   flag and `rollout "manual"` policy. Omitting rollout preserves automatic rollout.
+- `@overeng/genie-smalltalk/testing` exports `scratchDaemonLayer`, a Node-only
+  Effect layer that runs an isolated scratch `st up` for the scope's lifetime.
 - Raw wasm32 guest Buck products with a declared host harness, module import
   descriptors, and independent Nix runtime inspection.
 
