@@ -117,3 +117,8 @@ is substituted for a measured lane budget (axe record `uttvbj`).
   consumer/service designs for revocable per-host credentials, authenticated
   action-key logging and targeted AC purge. A worker-name field or IP log is
   insufficient attribution; instance names alone do not isolate keys.
+- **BUILD.BUCK.REUSE-DQ03 Product descriptor reuse:** The strict build half of
+  the trusted remote-cache proof still executes one local
+  `javascript_product_descriptor` action on the second root, while every other
+  build and test action is a remote hit. Open: admit the descriptor action to a
+  hermetic lane, or accept it as local-only work and exempt it from the proof.
