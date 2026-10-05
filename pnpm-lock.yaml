@@ -778,10 +778,16 @@ importers:
       '@overeng/genie':
         specifier: workspace:^
         version: link:../genie
+      '@overeng/kdl':
+        specifier: workspace:^
+        version: link:../kdl
       effect:
         specifier: 4.0.0-rc.118
         version: 4.0.0-rc.118
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.0.0-rc.118
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
         specifier: 4.0.0-rc.118
         version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)

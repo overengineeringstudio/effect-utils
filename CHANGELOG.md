@@ -13,6 +13,9 @@
   flag and `rollout "manual"` policy. Omitting rollout preserves automatic rollout.
 - `@overeng/genie-smalltalk` schedule work accepts an unpinned mission ID besides
   an exact `mission@revision`; st starts the ready published head per occurrence.
+- `@overeng/genie-smalltalk/tree` loads `<root>/<id>/{agent,mission,schedule}.{ts,kdl}`
+  declaration trees with path-derived IDs, a caller-supplied factory context, and
+  typed seat/mission references; `SubjectId` is exported.
 - Raw wasm32 guest Buck products with a declared host harness, module import
   descriptors, and independent Nix runtime inspection.
 

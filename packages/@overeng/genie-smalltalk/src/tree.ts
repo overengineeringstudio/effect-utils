@@ -67,34 +67,33 @@ export type ScheduleIntent = MissionIntent & {
   }
 }
 
-type ModuleMeta = { readonly url: string }
+/** `meta` is the defining module's `import.meta`; `intent` is a value or a context factory. */
+type DefineArgs<I, C> = {
+  readonly meta: { readonly url: string }
+  readonly intent: I | ((context: C) => I)
+}
+
+type Define<K extends SubjectKind, I> = <C = never>(
+  args: DefineArgs<I, C>,
+) => SubjectDefinition<K, I, C>
 
 const define =
   <K extends SubjectKind>(kind: K) =>
-  <I, C>(meta: ModuleMeta, intent: I | ((context: C) => I)): SubjectDefinition<K, I, C> => ({
+  <I, C>({ meta, intent }: DefineArgs<I, C>): SubjectDefinition<K, I, C> => ({
     _tag: 'SubjectRef',
     kind,
     url: meta.url,
     intent,
   })
 
-/** Defines the seat declared by an `agent.ts` module; pass `import.meta`. */
-export const defineAgent: <C = never>(
-  meta: ModuleMeta,
-  intent: AgentIntent | ((context: C) => AgentIntent),
-) => SubjectDefinition<'agent', AgentIntent, C> = define('agent')
+/** Defines the seat declared by an `agent.ts` module. */
+export const defineAgent: Define<'agent', AgentIntent> = define('agent')
 
-/** Defines the mission declared by a `mission.ts` module; pass `import.meta`. */
-export const defineMission: <C = never>(
-  meta: ModuleMeta,
-  intent: MissionIntent | ((context: C) => MissionIntent),
-) => SubjectDefinition<'mission', MissionIntent, C> = define('mission')
+/** Defines the mission declared by a `mission.ts` module. */
+export const defineMission: Define<'mission', MissionIntent> = define('mission')
 
-/** Defines the scheduled mission declared by a `schedule.ts` module; pass `import.meta`. */
-export const defineSchedule: <C = never>(
-  meta: ModuleMeta,
-  intent: ScheduleIntent | ((context: C) => ScheduleIntent),
-) => SubjectDefinition<'schedule', ScheduleIntent, C> = define('schedule')
+/** Defines the scheduled mission declared by a `schedule.ts` module. */
+export const defineSchedule: Define<'schedule', ScheduleIntent> = define('schedule')
 
 type Declaration<T> =
   | { readonly _tag: 'Kdl'; readonly text: string }
@@ -139,7 +138,7 @@ const subjectId = ({
   readonly file: string
   readonly path: string
 }) =>
-  Schema.decodeUnknownEffect(SubjectId)(relative(root, dirname(file)).split(sep).join('/')).pipe(
+  Schema.decodeEffect(SubjectId)(relative(root, dirname(file)).split(sep).join('/')).pipe(
     Effect.mapError(
       (cause) =>
         new SubjectTreeError({
@@ -164,7 +163,7 @@ const resolveRef = Effect.fnUntraced(function* ({
   if (ref.kind !== expected) {
     return yield* new SubjectTreeError({
       path,
-      message: `Expected a ${expected} reference, got ${ref.kind}`,
+      message: `Reference must point at ${expected}.ts, got ${ref.kind}.ts`,
     })
   }
   const file = yield* Effect.try({
@@ -175,7 +174,7 @@ const resolveRef = Effect.fnUntraced(function* ({
   if (basename(file) !== `${expected}.ts`) {
     return yield* new SubjectTreeError({
       path,
-      message: `Reference must point at a ${expected}.ts module`,
+      message: `Reference must point at ${expected}.ts, got ${basename(file)}`,
     })
   }
   return yield* subjectId({ root, file, path })
@@ -195,27 +194,25 @@ const lowerMission = Effect.fnUntraced(function* ({
   const lowered: Record<string, unknown> = { ...intent }
   if ('steps' in intent && Array.isArray(intent.steps) === true) {
     lowered.steps = yield* Effect.forEach(intent.steps as readonly unknown[], (step) =>
-      typeof step === 'object' && step !== null && 'assignedTo' in step && isRef(step.assignedTo)
+      typeof step === 'object' &&
+      step !== null &&
+      'assignedTo' in step &&
+      isRef(step.assignedTo) === true
         ? resolveRef({ root, path, ref: step.assignedTo, expected: 'agent' }).pipe(
             Effect.map((id) => ({ ...step, assignedTo: `agent/${id}` })),
           )
         : Effect.succeed(step),
     )
   }
-  if (
-    'schedule' in intent &&
-    typeof intent.schedule === 'object' &&
-    intent.schedule !== null &&
-    'work' in intent.schedule &&
-    typeof intent.schedule.work === 'object' &&
-    intent.schedule.work !== null &&
-    'mission' in intent.schedule.work &&
-    isRef(intent.schedule.work.mission)
-  ) {
-    const { schedule } = intent
-    const { work } = intent.schedule
-    const mission = yield* resolveRef({ root, path, ref: work.mission, expected: 'mission' })
-    lowered.schedule = { ...schedule, work: { ...work, mission } }
+  if ('schedule' in intent && typeof intent.schedule === 'object' && intent.schedule !== null) {
+    const schedule = intent.schedule
+    if ('work' in schedule && typeof schedule.work === 'object' && schedule.work !== null) {
+      const work = schedule.work
+      if ('mission' in work && isRef(work.mission) === true) {
+        const mission = yield* resolveRef({ root, path, ref: work.mission, expected: 'mission' })
+        lowered.schedule = { ...schedule, work: { ...work, mission } }
+      }
+    }
   }
   return lowered
 })
@@ -245,8 +242,8 @@ const loadModule = Effect.fnUntraced(function* <C>({
       ),
     )
   const url = pathToFileURL(real).href
-  // Subject modules are trusted repository code; their default export is decoded below.
   const exports = yield* Effect.tryPromise({
+    // oxlint-disable-next-line import/no-dynamic-require -- subject modules are trusted repository code discovered by path
     try: (): Promise<Readonly<Record<string, unknown>>> => import(url),
     catch: (cause) =>
       new SubjectTreeError({ path, message: 'Cannot import subject module', cause }),
@@ -254,7 +251,8 @@ const loadModule = Effect.fnUntraced(function* <C>({
   if ('default' in exports === false) {
     return yield* new SubjectTreeError({ path, message: 'Subject module needs a default export' })
   }
-  const definition = isRef(exports.default) === true ? exports.default : undefined
+  const value = exports.default
+  const definition = isRef(value) === true ? value : undefined
   if (definition !== undefined && (definition.kind !== kind || definition.url !== url)) {
     return yield* new SubjectTreeError({
       path,
@@ -262,7 +260,7 @@ const loadModule = Effect.fnUntraced(function* <C>({
     })
   }
   const source =
-    definition === undefined ? exports.default : 'intent' in definition ? definition.intent : undefined
+    definition === undefined ? value : 'intent' in definition ? definition.intent : undefined
   const intent = yield* Effect.try({
     try: (): unknown => (typeof source === 'function' ? source(context) : source),
     catch: (cause) => new SubjectTreeError({ path, message: 'Subject factory failed', cause }),
@@ -272,33 +270,45 @@ const loadModule = Effect.fnUntraced(function* <C>({
     definition !== undefined && typeof intent === 'object' && intent !== null
       ? { id, ...intent }
       : intent
-  const decoded = yield* (
-    kind === 'agent'
-      ? Schema.decodeUnknownEffect(AgentSchema, { onExcessProperty: 'error' })(identified)
-      : lowerMission({ root, path, intent: identified }).pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(MissionSchema, { onExcessProperty: 'error' })),
-        )
-  ).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof SubjectTreeError
-        ? cause
-        : new SubjectTreeError({ path, message: `Invalid ${kind} declaration`, cause }),
-    ),
-  )
-  if (decoded.id !== id) {
+  if (
+    typeof identified === 'object' &&
+    identified !== null &&
+    'id' in identified &&
+    identified.id !== id
+  ) {
     return yield* new SubjectTreeError({
       path,
-      message: `Declared id ${decoded.id} must equal the subject directory ${id}`,
+      message: `Declared id ${String(identified.id)} must equal the subject directory ${id}`,
     })
   }
-  if (
-    kind !== 'agent' &&
-    'steps' in decoded &&
-    (decoded.schedule !== undefined) !== (kind === 'schedule')
-  ) {
+  const invalid = (cause: unknown) =>
+    new SubjectTreeError({ path, message: `Invalid ${kind} declaration`, cause })
+  if (kind === 'agent') {
+    const agent = yield* Schema.decodeUnknownEffect(AgentSchema, { onExcessProperty: 'error' })(
+      identified,
+    ).pipe(Effect.mapError(invalid))
+    const subject: Subject = {
+      kind,
+      id,
+      path,
+      declaration: { _tag: 'Module', intent: agent, exports },
+    }
+    return subject
+  }
+  const wire = yield* lowerMission({ root, path, intent: identified })
+  const mission = yield* Schema.decodeUnknownEffect(MissionSchema, { onExcessProperty: 'error' })(
+    wire,
+  ).pipe(Effect.mapError(invalid))
+  if ((mission.schedule !== undefined) !== (kind === 'schedule')) {
     return yield* new SubjectTreeError({ path, message: scheduleMismatch[kind] })
   }
-  return { kind, id, path, declaration: { _tag: 'Module', intent: decoded, exports } } as Subject
+  const subject: Subject = {
+    kind,
+    id,
+    path,
+    declaration: { _tag: 'Module', intent: mission, exports },
+  }
+  return subject
 })
 
 const loadKdl = Effect.fnUntraced(function* ({
@@ -343,7 +353,8 @@ const loadKdl = Effect.fnUntraced(function* ({
   if (kind !== 'agent' && scheduled !== (kind === 'schedule')) {
     return yield* new SubjectTreeError({ path, message: scheduleMismatch[kind] })
   }
-  return { kind, id, path, declaration: { _tag: 'Kdl', text } } as Subject
+  const subject: Subject = { kind, id, path, declaration: { _tag: 'Kdl', text } }
+  return subject
 })
 
 /**
