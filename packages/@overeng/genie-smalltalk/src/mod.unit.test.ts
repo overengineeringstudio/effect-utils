@@ -5,15 +5,29 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { agent, emit, mission, node, omp, resource, schedule, smalltalkKdl } from './mod.ts'
+import { agent, emit, gate, mission, node, omp, resource, schedule, smalltalkKdl, step } from './mod.ts'
 
 const canonical = () =>
   emit([
     mission({
       id: 'demo',
       state: 'ready',
-      goal: 'Demonstrate KDL.',
-      steps: [{ id: 'first', goal: 'Inspect input.', agentless: true }],
+      goals: ['Demonstrate KDL.', 'Preserve all goals.', 'Bound goals to three.'],
+      gates: [{ name: 'exists', kind: 'exists', subject: 'resource/input' }],
+      steps: [
+        { id: 'first', goals: ['Inspect input.'], agentless: true, retry: { attempts: 100, backoff: '0s' },
+          gates: [
+            { name: 'state', kind: 'field', path: 'state', subject: 'resource/input', operator: 'is', value: 'ready' },
+            { name: 'prefix', kind: 'field', path: 'name', subject: 'resource/input', operator: 'starts-with', value: 'input' },
+            { name: 'empty', kind: 'empty', subject: 'mission-run/previous' },
+            { name: 'has', kind: 'has', subject: 'doc/guide', text: 'ready' },
+            { name: 'lacks', kind: 'lacks', subject: 'file/local:/tmp/result', text: 'error' },
+            { name: 'merged', kind: 'merged', locator: 'acme/garden#7' },
+            { name: 'ci', kind: 'ci-passed', check: 'build', repo: 'acme/garden', ref: { branch: 'main' } },
+          ] },
+        { id: 'second', agentless: true, dependsOn: [{ step: 'first', state: 'failed' }] },
+        { id: 'last', agentless: true, dependsOn: [{ step: 'first', state: 'completed' }, { step: 'second', state: 'terminal' }] },
+      ],
     }),
   ])
 describe('Smalltalk declarations', () => {
@@ -77,7 +91,7 @@ describe('Smalltalk declarations', () => {
       mission({
         id: 'demo',
         state: 'ready',
-        goal: 'go',
+        goals: ['go'],
         steps: [{ id: 'a', agentless: true, assignedTo: 'agent/a' }],
       }),
     ).toThrow()
@@ -146,6 +160,28 @@ describe('Smalltalk declarations', () => {
         },
       } as never),
     ).toThrow()
+  })
+  it.each([0, 101, 1.5])('rejects invalid retry attempts %s', (attempts) => {
+    expect(() => step({ id: 'a', retry: { attempts } })).toThrow()
+  })
+  it('rejects excessive goals, duplicate gates and missing dependencies', () => {
+    expect(() => step({ id: 'a', goals: ['a', 'b', 'c', 'd'] })).toThrow()
+    expect(() => step({ id: 'a', gates: [
+      { name: 'same', kind: 'exists', subject: 'resource/a' },
+      { name: 'same', kind: 'exists', subject: 'resource/b' },
+    ] })).toThrow()
+    expect(() => mission({ id: 'a', state: 'ready', goals: ['a'], steps: [
+      { id: 'a', dependsOn: [{ step: 'missing', state: 'terminal' }] },
+    ] })).toThrow()
+  })
+  it('lowers predicates and built-ins without conflating them', () => {
+    expect(gate({ name: 'prefix', kind: 'field', path: 'facts.head', subject: 'resource/ref', operator: 'starts-with', value: 'abc' }).children).toEqual([
+      node({ name: 'field', args: ['facts.head', 'resource/ref', 'starts-with', 'abc'] }),
+    ])
+    expect(gate({ name: 'ci', kind: 'ci-passed', check: 'build', repo: 'acme/garden', ref: { commit: 'abc' } }).children).toEqual([
+      node({ name: 'ci-passed', args: ['build'], props: { repo: 'acme/garden', commit: 'abc' } }),
+    ])
+    expect(() => gate({ name: 'ci', kind: 'ci-passed', check: 'build', repo: 'acme/garden', ref: { commit: 'abc', branch: 'main' } } as never)).toThrow()
   })
   it('preserves explicit false properties in a valid Genie fixture', () => {
     const nodes = [
@@ -246,6 +282,7 @@ testWithSt(
             'missions',
             'publish',
             source,
+            '--no-gate-check',
             '--as',
             actor,
           ],
