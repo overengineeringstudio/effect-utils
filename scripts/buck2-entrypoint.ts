@@ -147,9 +147,16 @@ export const directBuckArguments = async ({
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
-  const command = args.find((arg) => configCommands[arg] === true)
-  if (command === undefined) return [...args]
-  if (args.includes('--help') === true || args.includes('-h') === true) return [...args]
+  const sentinel = args.indexOf('--')
+  const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
+  const command = configArgs.find((arg) => configCommands[arg] === true)
+  if (
+    configArgs.length === 0 ||
+    configArgs.includes('--help') === true ||
+    configArgs.includes('-h') === true ||
+    configArgs.includes('--version') === true
+  )
+    return [...args]
   const root = findRoot(cwd)
   if (root === undefined) return [...args]
   const tracked = readConfig({ path: join(root, '.buckconfig') })
@@ -184,6 +191,8 @@ export const directBuckArguments = async ({
   } else if (localWithoutWatcher !== currentLocal.trimEnd()) {
     reconcileFileWatcher({ repoRoot: root })
   }
+  // Watcher startup is independent of the narrower cache-command allowlist.
+  if (command === undefined) return [...args]
   const unmanaged = withoutManagedBlock(localWithoutWatcher)
   const local = unmanaged.content
   const base = buckConfigValues(`${tracked}\n${local}`)
@@ -195,8 +204,6 @@ export const directBuckArguments = async ({
   )
     return [...args]
   const cliValues: Record<string, string> = {}
-  const sentinel = args.indexOf('--')
-  const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
   for (let index = 0; index < configArgs.length; index++) {
     const arg = configArgs[index] ?? ''
     const value =

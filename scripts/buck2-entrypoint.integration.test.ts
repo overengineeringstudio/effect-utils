@@ -255,7 +255,7 @@ describe('direct pinned Buck posture', () => {
 describe('direct pinned Buck watcher admission', () => {
   it('admits a healthy service in a watcher-only root before the cache opt-in return', async () => {
     const { root, env, calls } = watcherFixture()
-    const args = ['run', '//:app', '--', '-c', 'buck2.file_watcher=notify']
+    const args = ['run', '//:app', '--', '--version', '--help', '-c', 'buck2.file_watcher=notify']
     const result = await directBuckArguments({ ...options(root), env, args })
     expect(result).toEqual(args)
     expect(watcherLocal(root)).toContain('file_watcher = watchman')
@@ -269,6 +269,33 @@ describe('direct pinned Buck watcher admission', () => {
     writeFileSync(state, 'unreachable')
     await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
     expect(watcherLocal(root)).toContain('file_watcher = notify')
+  })
+
+  it('admits expand-external-cell daemon startup without applying the cache-command policy', async () => {
+    const { root, env, state } = watcherFixture()
+    writeFileSync(
+      join(root, '.buckconfig'),
+      '[buck2]\nfile_watcher = watchman\nremote_cache_enabled = true\n[buck2_re_client]\naction_cache_address = grpc://127.0.0.1:1\n',
+    )
+    writeFileSync(state, 'unreachable')
+    const args = ['expand-external-cell', 'prelude']
+    const result = await directBuckArguments({ ...options(root), env, args })
+    expect(result).toEqual(args)
+    expect(watcherLocal(root)).toContain('file_watcher = notify')
+    expect(watcherLocal(root)).not.toContain('standalone cache posture')
+  })
+
+  it('does not query Watchman or mutate local configuration for help, version, or empty invocation', async () => {
+    const { root, env, calls, state } = watcherFixture()
+    writeFileSync(state, 'unreachable')
+    const local = '[ui]\ncolor = false\n'
+    writeFileSync(join(root, '.buckconfig.local'), local)
+    for (const args of [[], ['--help'], ['-h'], ['--version'], ['build', '--help']]) {
+      const result = await directBuckArguments({ ...options(root), env, args })
+      expect(result).toEqual(args)
+      expect(watcherLocal(root)).toBe(local)
+    }
+    expect(existsSync(calls)).toBe(false)
   })
 
   it.each(['malformed', 'error', 'wrong-type', 'missing-version'])(
