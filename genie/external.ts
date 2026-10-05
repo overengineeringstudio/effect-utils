@@ -560,9 +560,8 @@ export const commonPnpmPolicySettings = {
   verifyStoreIntegrity: true as const,
   strictStorePkgContentCheck: true as const,
   ignoreScripts: true as const,
-  // The Effect 4 RC cohort moves fast; keep minimum-release-age strict
-  // globally but let these advance immediately during the coordinated
-  // migration window.
+  // Admit coordinated Effect cohort updates immediately while keeping
+  // minimum-release-age strict for other dependencies.
   minimumReleaseAgeExclude: ['@types/node', ...effectV4Cohort, '@effect/platform-node-shared'],
   pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
