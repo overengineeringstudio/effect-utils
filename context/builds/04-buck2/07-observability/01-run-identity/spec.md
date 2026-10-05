@@ -53,6 +53,11 @@ Truncate SHA-256 to 16 bytes for trace IDs and 8 bytes for span IDs; if
 all zero, rehash the original preimage with appended `u32be(counter)` from
 1 until nonzero. No stringified `job[runner=value]` is hashed.
 
+The shell identity producer frames and hashes inside a subshell with
+`LC_ALL=C`. This counts bytes independently of the caller's locale without
+restoring an ambient native locale in a forked hashing pipeline; commands
+wrapped by `pipeline-run` retain their own locale.
+
 In CI, `job` is the workflow job identifier. The generated GitHub workflow
 already supplies it as `JOB_KEY`; its sole current matrix dimension is
 `runner`, supplied by `MATRIX_VALUE` (`matrix.runner`). For example,
