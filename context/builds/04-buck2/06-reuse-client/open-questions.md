@@ -28,3 +28,15 @@ edit-run, quick check, full tests and platform/host proof. No numbers are invent
 [Spec](./spec.md#open-design-questions). Consumer/service owners must specify
 revocable per-host keys, authenticated write-key logging, quarantine and targeted
 AC purge. The public lane eligibility contract is not an authorization mechanism.
+
+## BUILD.BUCK.REUSE-DQ03: Product descriptor reuse
+
+[Spec](./spec.md#open-design-questions). Measured 2026-10-05 with
+`scripts/buck2-remote-cache-proof.sh` (two roots, loopback cache) at the
+[#1616](https://github.com/overengineeringstudio/effect-utils/pull/1616#issuecomment-5987277977)
+head: the test half passes with 192 remote hits and no local work, but the build
+half on root B runs 581 remote hits and exactly one local
+`javascript_product_descriptor` action (`buck2/products/defs.bzl`, declared
+`local_only`). The action stays default-denied for cache reads. Undetermined:
+whether its output is root-independent enough to share (its provenance embeds the
+configured target label), or whether the proof should exempt local-only actions.
