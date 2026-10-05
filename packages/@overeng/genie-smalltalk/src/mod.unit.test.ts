@@ -99,6 +99,34 @@ describe('Smalltalk declarations', () => {
   it.each([false, 'true', 1])('rejects non-bare fault handling flag %j', (handlesFaults) => {
     expect(() => agent({ id: 'garden/orchard', handlesFaults } as never)).toThrow()
   })
+  const cycle = (mission: string) =>
+    schedule({
+      id: 'cycle',
+      host: 'local',
+      every: '6h',
+      anchor: '2026-01-01T00:00:00Z',
+      catchUp: 'latest',
+      work: { mission, workspace: '/work/cycles' },
+    })
+  it.each(['fabric/cycle', `fabric/cycle@${'a'.repeat(64)}`])(
+    'emits scheduled work for mission %s',
+    (mission) => {
+      expect(emit([cycle(mission)])).toBe(
+        `version 2\nschedule "cycle" {\n  host "local"\n  every "6h"\n  anchor "2026-01-01T00:00:00Z"\n  catch-up "latest"\n  work {\n    mission "${mission}"\n    workspace "/work/cycles"\n  }\n}\n`,
+      )
+    },
+  )
+  it.each([
+    'fabric/cycle@',
+    `fabric/cycle@${'a'.repeat(63)}`,
+    'a@b',
+    '/fabric',
+    'fabric/',
+    'a b',
+    '',
+  ])('rejects scheduled mission reference %j', (mission) => {
+    expect(() => cycle(mission)).toThrow()
+  })
 })
 
 const stBin = process.env.ST_BIN
