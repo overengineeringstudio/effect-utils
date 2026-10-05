@@ -70,7 +70,7 @@ if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$U
   echo '::error::Context A did not execute and upload the product descriptor action'
   exit 1
 fi
-descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value[0]')"
+descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
 cp "$descriptor_path" "$descriptor_a"
 run_proof_command "$test_evidence_a" proof-a-test test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
 if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$test_evidence_a" >/dev/null; then
@@ -139,7 +139,7 @@ if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(
   echo '::error::Context B did not reuse the remote product descriptor action'
   exit 1
 fi
-descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value[0]')"
+descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
 cp "$descriptor_path" "$descriptor_b"
 if ! cmp -s "$descriptor_a" "$descriptor_b"; then
   echo '::error::Product descriptor bytes differ between independent roots'
