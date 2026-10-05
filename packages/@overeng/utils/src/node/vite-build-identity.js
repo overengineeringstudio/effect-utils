@@ -25,7 +25,8 @@ const localStamp = async (root) => ({
   type: 'local',
   rev: await readGit({ root, args: ['rev-parse', 'HEAD'] }),
   ts: Math.floor(Date.now() / 1000),
-  dirty: (await readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] })) !== '',
+  dirty:
+    (await readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] })) !== '',
 })
 
 /**
