@@ -6,13 +6,15 @@ import { join, resolve } from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-site'
+type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-site' | 'rate-limit-once' | 'rate-limit'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
 let apiMode: ApiMode = 'ok'
 let server: Server
 let apiBaseUrl = ''
+let rateLimitHeaders = (_now: number): Record<string, string> => ({})
+let apiRequestTimes: number[] = []
 
 const testProcessEnv = () => {
   const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
@@ -91,6 +93,16 @@ beforeAll(async () => {
   server = createServer((request, response) => {
     if (request.url !== '/api/v1/sites/fake-site-id') {
       response.writeHead(404, { connection: 'close' }).end('not found')
+      return
+    }
+    apiRequestTimes.push(Date.now())
+    if (
+      apiMode === 'rate-limit' ||
+      (apiMode === 'rate-limit-once' && apiRequestTimes.length === 1)
+    ) {
+      response
+        .writeHead(429, { connection: 'close', ...rateLimitHeaders(apiRequestTimes.at(-1)!) })
+        .end('rate limited')
       return
     }
     if (apiMode === 'unauthorized') {
@@ -481,6 +493,109 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
       expect(readRecord(reportFile)).toMatchObject({
         status: 'skipped',
         summary: expect.stringContaining('cannot retrieve the project'),
+      })
+      expect(existsSync(workspace.logPath)).toBe(false)
+    } finally {
+      apiMode = 'ok'
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it.each(['seconds', 'date', 'reset', 'invalid'] as const)(
+    'recovers from a rate-limited lookup using %s retry headers before uploading',
+    async (header) => {
+      apiMode = 'rate-limit-once'
+      apiRequestTimes = []
+      let deadline = 0
+      rateLimitHeaders = (now) => {
+        deadline = Math.ceil(now / 1000) * 1000 + 2000
+        return header === 'seconds'
+          ? { 'retry-after': '2' }
+          : header === 'date'
+            ? { 'retry-after': new Date(deadline).toUTCString() }
+            : header === 'reset'
+              ? { 'x-ratelimit-reset': String(deadline / 1000) }
+              : { 'retry-after': 'invalid', 'x-ratelimit-reset': 'invalid' }
+      }
+      const workspace = makeWorkspace()
+      const reportFile = join(workspace.root, 'report.jsonl')
+      try {
+        const result = await runCiTools({
+          workdir: workspace.root,
+          fakeNetlifyBin: workspace.fakeNetlifyBin,
+          reportFile,
+          args: [
+            '--target',
+            'storybook',
+            '--artifact-dir',
+            workspace.artifactDir,
+            '--mode',
+            'draft',
+          ],
+        })
+        expect(result.status, result.stderr).toBe(0)
+        expect(apiRequestTimes).toHaveLength(2)
+        if (header === 'seconds' || header === 'invalid') {
+          expect(apiRequestTimes[1]! - apiRequestTimes[0]!).toBeGreaterThanOrEqual(
+            header === 'seconds' ? 2000 : 1000,
+          )
+        } else {
+          expect(apiRequestTimes[1]!).toBeGreaterThanOrEqual(deadline)
+        }
+        expect(readRecord(reportFile)).toMatchObject({ status: 'success', data: { attempts: 2 } })
+        expect(readFileSync(workspace.logPath, 'utf8').trim().split('\n')).toHaveLength(1)
+      } finally {
+        apiMode = 'ok'
+        rmSync(workspace.root, { recursive: true, force: true })
+      }
+    },
+    20_000,
+  )
+
+  it('bounds repeated rate limits to three retries and does not upload', async () => {
+    apiMode = 'rate-limit'
+    apiRequestTimes = []
+    rateLimitHeaders = () => ({ 'retry-after': '0' })
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeNetlifyBin: workspace.fakeNetlifyBin,
+        reportFile,
+        args: ['--target', 'storybook', '--artifact-dir', workspace.artifactDir, '--mode', 'draft'],
+      })
+      expect(result.status).not.toBe(0)
+      expect(apiRequestTimes).toHaveLength(4)
+      expect(readRecord(reportFile)).toMatchObject({
+        status: 'failure',
+        data: { errorKind: 'ProviderProjectLookupFailed', retryable: true, attempts: 4 },
+      })
+      expect(existsSync(workspace.logPath)).toBe(false)
+    } finally {
+      apiMode = 'ok'
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  }, 20_000)
+
+  it('does not retry early when the provider delay exceeds the total wait cap', async () => {
+    apiMode = 'rate-limit'
+    apiRequestTimes = []
+    rateLimitHeaders = () => ({ 'retry-after': '61' })
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeNetlifyBin: workspace.fakeNetlifyBin,
+        reportFile,
+        args: ['--target', 'storybook', '--artifact-dir', workspace.artifactDir, '--mode', 'draft'],
+      })
+      expect(result.status).not.toBe(0)
+      expect(apiRequestTimes).toHaveLength(1)
+      expect(readRecord(reportFile)).toMatchObject({
+        status: 'failure',
+        data: { errorKind: 'ProviderProjectLookupFailed', retryable: true, attempts: 1 },
       })
       expect(existsSync(workspace.logPath)).toBe(false)
     } finally {
