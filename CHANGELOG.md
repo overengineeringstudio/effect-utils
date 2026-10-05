@@ -43,6 +43,8 @@
   `cacheable = False` or rule-owned cache eligibility.
 - Vitest collection explicitly disables static parsing unless a package admits it,
   preserving runtime-generated test inventories with Vitest 5's changed default.
+- pnpm lock mutation uses matching bytewise collation throughout its executable
+  metadata preservation guard, regardless of the caller's locale.
 
 ### Changed
 
