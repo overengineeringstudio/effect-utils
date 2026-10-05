@@ -46,6 +46,12 @@
 - TypeScript Git fixtures preserve the caller's environment while removing
   hook-local repository and index selectors, so temporary commits cannot alter
   the repository running the hook.
+- Native Effect/Rust panic retirement cancels sibling abortable futures and waits
+  for settle-only futures before releasing or replacing the generation.
+- Portable regex end anchors respect backslash parity in both compiler directions;
+  escaped literal dollars are rejected while anchored literal backslashes work.
+- Native scalar `f32` admission checks finiteness after binary32 rounding, matching
+  wasm at the maximum finite boundary.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources

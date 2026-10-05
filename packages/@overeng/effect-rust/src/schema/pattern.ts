@@ -19,7 +19,14 @@ export const assertPortablePattern = (
     )
   }
   if (flags !== 'u' && flags !== 'iu') fail(`Non-portable flags ${flags}`)
-  if (source.startsWith('^') === false || source.endsWith('$') === false)
+  let endBackslashes = 0
+  for (let index = source.length - 2; index >= 0 && source[index] === '\\'; index--)
+    endBackslashes++
+  if (
+    source.startsWith('^') === false ||
+    source.endsWith('$') === false ||
+    endBackslashes % 2 === 1
+  )
     fail('Full-string ^ and $ anchors required')
   let inClass = false
   let groups = 0

@@ -47,7 +47,7 @@ Service classes use `defineStatics(Service, { make, wasm?, native? })` with gene
 - `Input`, `Transport`, and `Unsupported` are foundation `Schema.TaggedError` classes. Domain error enums are generated separately, preserving their reason union.
 - A wasm trap poisons its entire generation: every pending Effect dies with the trap, Rust handles are retired without destructors, and glue is released. The default `panicPolicy: 'rebuild'` constructs fresh glue and an instance before further calls; `'retire'` permanently denies further calls. Calls and streams bound to the old generation cannot use the rebuilt instance accidentally.
 - Generated lexical wasm glue uses instance-local finalization registries. Live instances run bindgen finalizers normally; retiring an instance disables its delayed destructors before clearing wasm references, so garbage collection after Scope release cannot dereference retired glue.
-- Native adapters expose caught panics with the `RUST_PANIC:` envelope, which is also a defect. The native build must enable unwinding and guard every export.
+- Native adapters expose caught panics with the `RUST_PANIC:` envelope, which is also a defect. The native build must enable unwinding and guard every export. Retirement cancels sibling abortable Rust jobs and awaits their acknowledgments, and waits for settle-only jobs to finish before releasing the generation or loading its replacement. This native cancellation never applies to poisoned wasm, whose job functions and handle destructors must not be called.
 - The Layer's Scope owns the runtime. `Effect.provide(layer)` releases it when that Effect finishes. Use `Layer.build(layer)` in a caller-owned Scope if the service must live across multiple operations.
 - Runtime acquisition is asynchronous. Once acquired, a synchronous export remains synchronous and can be evaluated with `Effect.runSync`; only PromiseLike results and explicit `RustJob` results suspend.
 
@@ -247,7 +247,9 @@ Pinned Effect's built-in `Schema.isPattern` is admitted with `u` or `iu` when
 the pattern satisfies the same fully anchored portable grammar as
 `EffectRust.pattern`. Multiline/global/sticky flags, unanchored patterns, and opaque
 filters remain rejected. A final newline is not accepted unless the portable
-pattern itself consumes it.
+pattern itself consumes it. The final `$` must be an actual anchor: an odd number
+of immediately preceding backslashes makes it a literal dollar and is rejected;
+an even number represents literal backslashes followed by the anchor.
 
 `Schema.TaggedStruct` and `Schema.tag` constant string-literal constructor
 defaults are admitted without evaluating user code. The encoded discriminator

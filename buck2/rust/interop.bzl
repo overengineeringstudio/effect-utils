@@ -223,7 +223,7 @@ def _service_impl(ctx):
         GeneratedPackageInfo(package_name = ctx.attrs.package_name, package = package, read_roots = [package]),
     ]
 
-_rust_interop_service = rule(impl = _service_impl, attrs = {
+_rust_interop_service = cache_guarded_rule(impl = _service_impl, attrs = {
     "service": attrs.string(),
     "package_name": attrs.string(),
     "wasm": attrs.option(attrs.dep(providers = [RustInteropProductInfo]), default = None),
@@ -387,7 +387,7 @@ def _service_smoke_impl(ctx):
         default_executor = CommandExecutorConfig(local_enabled = True, remote_enabled = False, remote_cache_enabled = root_remote_cache_enabled(), allow_cache_uploads = root_allow_cache_uploads(), use_windows_path_separators = False),
     )]
 
-rust_interop_service_smoke = rule(impl = _service_smoke_impl, attrs = {
+rust_interop_service_smoke = cache_guarded_rule(impl = _service_smoke_impl, attrs = {
     "service": attrs.dep(),
     "compiler": attrs.dep(default = "//packages/@overeng/effect-rust:package_tree"),
     "runtime_dist": attrs.dep(default = "//packages/@overeng/effect-rust:dist"),
@@ -424,7 +424,7 @@ def _consumer_smoke_impl(ctx):
         ),
     ]
 
-rust_interop_consumer_smoke = rule(impl = _consumer_smoke_impl, attrs = {
+rust_interop_consumer_smoke = cache_guarded_rule(impl = _consumer_smoke_impl, attrs = {
     "package_tree": attrs.dep(providers = [PackageTreeInfo]),
     "dist": attrs.dep(),
     "runtime": attrs.enum(["node", "bun"]),

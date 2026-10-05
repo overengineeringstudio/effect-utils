@@ -14,6 +14,10 @@ export const Text = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty())
 export const Digest = Schema.String.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/u)).annotate({
   identifier: 'Digest',
 })
+/** A literal trailing backslash followed by the required end anchor. */
+export const Backslash = Schema.String.check(Schema.isPattern(/^foo\\$/u)).annotate({
+  identifier: 'Backslash',
+})
 /** Tagged descriptor contract exercising optional fields and constrained strings. */
 export const Descriptor = Schema.TaggedStruct('Descriptor', {
   text: Text,
@@ -21,7 +25,7 @@ export const Descriptor = Schema.TaggedStruct('Descriptor', {
   digest: Digest,
 })
 /** Named schemas compiled by the shared edge proof harness. */
-export const edgeContracts = { Text, Digest, Descriptor }
+export const edgeContracts = { Text, Digest, Descriptor, Backslash }
 
 const whitespace = [
   '\t',
@@ -62,6 +66,10 @@ export const edgeVectors = [
     accept: false,
   },
   { contract: 'Digest', name: 'prefix', input: `xsha256:${'a'.repeat(64)}`, accept: false },
+  { contract: 'Backslash', name: 'literal_backslash', input: 'foo\\', accept: true },
+  { contract: 'Backslash', name: 'missing_backslash', input: 'foo', accept: false },
+  { contract: 'Backslash', name: 'literal_dollar', input: 'foo$', accept: false },
+  { contract: 'Backslash', name: 'trailing_newline', input: 'foo\\\n', accept: false },
   {
     contract: 'Descriptor',
     name: 'tagged_omitted_codec',
@@ -105,6 +113,18 @@ describe('portable built-in string checks and tags', () => {
       expect(Schema.is(schema)(vector.input)).toBe(vector.accept)
       if (vector.contract === 'Text') expect(Schema.is(portable)(vector.input)).toBe(vector.accept)
     })
+  it('rejects literal trailing dollars instead of treating them as end anchors', () => {
+    for (const source of ['^abc\\$', '^abc\\\\\\$']) {
+      expect(() => pattern(source)).toThrow(AdmissionError)
+      expect(() =>
+        compile({
+          LiteralDollar: Schema.String.check(Schema.isPattern(new RegExp(source, 'u'))).annotate({
+            identifier: 'LiteralDollar',
+          }),
+        }),
+      ).toThrow(AdmissionError)
+    }
+  })
   it('keeps arbitrary constructor defaults and UTF-16 bounds out of the contract', () => {
     expect(() =>
       lower({

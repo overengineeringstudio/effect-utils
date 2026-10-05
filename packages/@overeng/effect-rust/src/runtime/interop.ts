@@ -76,22 +76,42 @@ export const wasmLayer = {
   node: <TId, TService, TApi>(
     Service: Context.Key<TId, TService>,
     options: LayerOptions<TApi, TService>,
-  ): Layer.Layer<TId, Init> => instanceLayer({ runtimeName: 'wasm.node', Service, options }),
+  ): Layer.Layer<TId, Init> =>
+    instanceLayer({
+      runtimeName: 'wasm.node',
+      Service,
+      options: { ...options, panicBoundary: 'wasm' },
+    }),
   // eslint-disable-next-line overeng/named-args -- Public wasmLayer.bun preserves the SDK's (Service, options) signature.
   bun: <TId, TService, TApi>(
     Service: Context.Key<TId, TService>,
     options: LayerOptions<TApi, TService>,
-  ): Layer.Layer<TId, Init> => instanceLayer({ runtimeName: 'wasm.bun', Service, options }),
+  ): Layer.Layer<TId, Init> =>
+    instanceLayer({
+      runtimeName: 'wasm.bun',
+      Service,
+      options: { ...options, panicBoundary: 'wasm' },
+    }),
   // eslint-disable-next-line overeng/named-args -- Public wasmLayer.browser preserves the SDK's (Service, options) signature.
   browser: <TId, TService, TApi>(
     Service: Context.Key<TId, TService>,
     options: LayerOptions<TApi, TService>,
-  ): Layer.Layer<TId, Init> => instanceLayer({ runtimeName: 'wasm.browser', Service, options }),
+  ): Layer.Layer<TId, Init> =>
+    instanceLayer({
+      runtimeName: 'wasm.browser',
+      Service,
+      options: { ...options, panicBoundary: 'wasm' },
+    }),
   // eslint-disable-next-line overeng/named-args -- Public wasmLayer.worker preserves the SDK's (Service, options) signature.
   worker: <TId, TService, TApi>(
     Service: Context.Key<TId, TService>,
     options: LayerOptions<TApi, TService>,
-  ): Layer.Layer<TId, Init> => instanceLayer({ runtimeName: 'wasm.worker', Service, options }),
+  ): Layer.Layer<TId, Init> =>
+    instanceLayer({
+      runtimeName: 'wasm.worker',
+      Service,
+      options: { ...options, panicBoundary: 'wasm' },
+    }),
 } as const
 
 const nativePanic = (cause: unknown): boolean =>
@@ -106,7 +126,7 @@ export const nativeLayer = {
     instanceLayer({
       runtimeName: 'native.node',
       Service,
-      options: { ...options, isPanic: options.isPanic ?? nativePanic },
+      options: { ...options, panicBoundary: 'native', isPanic: options.isPanic ?? nativePanic },
     }),
   // eslint-disable-next-line overeng/named-args -- Public nativeLayer.bun preserves the SDK's (Service, options) signature.
   bun: <TId, TService, TApi>(
@@ -116,7 +136,7 @@ export const nativeLayer = {
     instanceLayer({
       runtimeName: 'native.bun',
       Service,
-      options: { ...options, isPanic: options.isPanic ?? nativePanic },
+      options: { ...options, panicBoundary: 'native', isPanic: options.isPanic ?? nativePanic },
     }),
 } as const
 
@@ -139,7 +159,7 @@ export interface GeneratedStatics<TApi, TService> {
   readonly native?: NativeLoaders<TApi>
 }
 /** Per-layer instance policy; generated statics supply their own loader. */
-export type StaticOptions = Omit<RuntimeOptions<never>, 'load' | 'isPanic'>
+export type StaticOptions = Omit<RuntimeOptions<never>, 'load' | 'isPanic' | 'panicBoundary'>
 /** Runtime-specific Wasm layer constructors exposed by generated services. */
 export interface WasmLayers<TId> {
   readonly node: (options?: StaticOptions) => Layer.Layer<TId, Init>

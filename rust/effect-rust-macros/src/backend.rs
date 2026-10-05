@@ -47,10 +47,10 @@ impl Backend {
     fn decode(self, name: &syn::Ident, wire: &Wire, export: &Export) -> Tokens {
         match wire {
             Wire::Scalar(ty) if self == Self::Napi && super::type_name(ty) == "f32" => quote! {
-                if !#name.is_finite() || #name.abs() > f64::from(f32::MAX) {
+                let #name = #name as f32;
+                if !#name.is_finite() {
                     return Err(edge_error("RUST_INPUT:expected a finite f32"));
                 }
-                let #name = #name as f32;
             },
             Wire::Scalar(ty) if matches!(super::type_name(ty).as_str(), "f32" | "f64") => quote! {
                 if !#name.is_finite() { return Err(edge_error("RUST_INPUT:expected a finite float")); }

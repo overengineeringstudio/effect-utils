@@ -37,6 +37,12 @@ const checkHash = (api) => {
 }
 
 const checkArithmetic = (api) => {
+  for (const value of [3.4028235e38, -3.4028235e38, 1.00000006, 0, -0]) {
+    assert.equal(api.echoF32(value), Math.fround(value), `f32 rounds ${value} before admission`)
+  }
+  for (const value of [3.4028236e38, -3.4028236e38, Infinity, -Infinity, NaN]) {
+    assert.throws(() => api.echoF32(value), /RUST_INPUT:/)
+  }
   const result = {
     sum: api.add(20, 22),
     upperBoundary: api.add(2147483647, 1),
