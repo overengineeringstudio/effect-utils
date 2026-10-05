@@ -24,6 +24,7 @@ import {
 } from '@overeng/effect-path'
 import { parseKdl } from '@overeng/kdl-effect'
 
+import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
 import { parseSourceRef } from './ref.ts'
 
 // =============================================================================
@@ -337,6 +338,7 @@ export const writeMegarepoConfig = ({
   config: MegarepoConfig
 }) =>
   Effect.gen(function* () {
+    yield* assertCanonicalMutationAllowed(configPath)
     const fs = yield* FileSystem.FileSystem
     const format: ConfigFormat = configPath.endsWith('.kdl') === true ? 'kdl' : 'json'
 

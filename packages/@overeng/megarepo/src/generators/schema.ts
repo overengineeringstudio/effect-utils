@@ -15,6 +15,8 @@ import {
   type MegarepoConfig,
 } from '../core/config.ts'
 
+import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+
 /** Options for the JSON Schema generator */
 export interface SchemaGeneratorOptions {
   /** Path to the megarepo root */
@@ -45,6 +47,7 @@ export const generateSchema = (options: SchemaGeneratorOptions) =>
       options.megarepoRoot,
       EffectPath.unsafe.relativeFile(options.outputPath ?? 'schema/megarepo.schema.json'),
     )
+    yield* assertCanonicalMutationAllowed(outputPath)
     const outputDir = EffectPath.ops.parent(outputPath)
 
     if (outputDir !== undefined) {

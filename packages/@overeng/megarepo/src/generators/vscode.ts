@@ -15,6 +15,8 @@ import {
   type MegarepoConfig,
 } from '../core/config.ts'
 
+import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+
 /** Options for the VSCode workspace generator */
 export interface VscodeGeneratorOptions {
   /** Path to the megarepo root */
@@ -265,6 +267,7 @@ export const generateVscode = (options: VscodeGeneratorOptions) =>
       vscodeDir,
       EffectPath.unsafe.relativeFile('megarepo.code-workspace'),
     )
+    yield* assertCanonicalMutationAllowed(outputPath)
 
     // Ensure .vscode directory exists
     yield* fs.makeDirectory(vscodeDir, { recursive: true })

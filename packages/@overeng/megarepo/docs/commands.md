@@ -44,6 +44,15 @@ mr apply [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
 
 This is the reproducible CI mode. It requires a non-stale lock file and materializes commit worktrees.
 
+Member lock rewrites are opt-in with `--lock-sync=direct` or `--lock-sync=recursive`.
+Lock sync refuses shared canonical worktrees under `refs/commits/*`, `refs/heads/*`,
+and `refs/tags/*`, including symlinked targets, before rewriting any member.
+Use `--lock-sync=off` to materialize members without changing their lockfiles, or
+sync locks in an owned worktree outside the canonical store layout. Config, lock,
+generator, and recursive apply writes have the same protection.
+`MEGAREPO_ALLOW_CANONICAL_MUTATION=1` is an explicit administrative override;
+other values do not authorize writes.
+
 ## Pin Commands
 
 ### `mr pin`
