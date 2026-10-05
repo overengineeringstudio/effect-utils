@@ -258,13 +258,6 @@ printf '200'`,
     }
   })
 })
-const generatedStorybookPlaysWorkflowYamlSource = readFileSync(
-  new URL(
-    ['../../../../../../.github/workflows', 'storybook-plays.yml'].join('/'),
-    import.meta.url,
-  ),
-  'utf8',
-)
 const generatedAutoReviewWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'auto-review.yml'].join('/'), import.meta.url),
   'utf8',
@@ -348,11 +341,29 @@ const workflowJobKeys = (workflowYamlSource: string) =>
     ([, jobKey]) => jobKey,
   ).filter((jobKey): jobKey is string => jobKey !== undefined)
 
-// Required-eligible jobs come from `ci.yml` plus the standalone per-PR workflows that
-// `ci.yml`'s size limit pushes out of it.
+// Standalone workflows can contain admission and conditional execution helpers.
+// Only terminal semantic gates are required candidates; their dependency
+// failures must propagate through the gate rather than become separate policy.
+const standaloneGateFixture = spawnSync(
+  'bun',
+  [
+    '-e',
+    `
+      import { readFileSync } from 'node:fs'
+      const { jobs } = Bun.YAML.parse(
+        readFileSync('.github/workflows/storybook-plays.yml', 'utf8'),
+      )
+      const dependencies = Object.values(jobs).flatMap((job) => job.needs ?? [])
+      console.log(JSON.stringify(Object.keys(jobs).filter((key) => !dependencies.includes(key))))
+    `,
+  ],
+  { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+)
+if (standaloneGateFixture.status !== 0) throw new Error(standaloneGateFixture.stderr)
+const standaloneGateJobKeys: string[] = JSON.parse(standaloneGateFixture.stdout)
 const generatedCiJobKeys = [
   ...workflowJobKeys(generatedCiWorkflowYamlSource),
-  ...workflowJobKeys(generatedStorybookPlaysWorkflowYamlSource),
+  ...standaloneGateJobKeys,
 ]
 
 const advisoryCheckContexts: Record<string, true> = {
@@ -1546,11 +1557,10 @@ describe('ci workflow standard job helpers', () => {
 
 interface StorybookPlaysWorkflowFacts {
   readonly triggers: unknown
-  readonly jobs: readonly string[]
-  readonly permissions: readonly unknown[]
+  readonly permissions: ReadonlyArray<Readonly<Record<string, string>>>
   readonly referencesSecrets: boolean
-  readonly runsPlays: boolean
-  readonly jobConditions: ReadonlyArray<string | null>
+  readonly requiredCondition: string | null
+  readonly gateScript: string
   readonly ciHasPlaysJob: boolean
 }
 
@@ -1569,11 +1579,10 @@ describe('storybook plays workflow', () => {
           const ci = YAML.parse(readFileSync('.github/workflows/ci.yml', 'utf8'))
           console.log(JSON.stringify({
             triggers: plays.on,
-            jobs: Object.keys(plays.jobs),
-            jobConditions: Object.values(plays.jobs).map((job) => job.if ?? null),
-            permissions: [plays.permissions, ...Object.values(plays.jobs).map((job) => job.permissions)],
+            requiredCondition: plays.jobs['test-storybook-plays'].if ?? null,
+            gateScript: plays.jobs['test-storybook-plays'].steps.find((step) => step.run).run,
+            permissions: [plays.permissions, ...Object.values(plays.jobs).map((job) => job.permissions ?? {})],
             referencesSecrets: JSON.stringify(plays).includes('secrets.'),
-            runsPlays: JSON.stringify(plays).includes('tasks run storybook:test'),
             ciHasPlaysJob: Object.keys(ci.jobs).includes('test-storybook-plays'),
           }))
         `,
@@ -1589,18 +1598,45 @@ describe('storybook plays workflow', () => {
       pull_request: { types: ['opened', 'reopened', 'synchronize'] },
       push: { branches: ['main'] },
     })
-    expect(facts.jobs).toEqual(['test-storybook-plays'])
-    expect(facts.runsPlays).toBe(true)
     expect(facts.referencesSecrets).toBe(false)
-    for (const permissions of facts.permissions) expect(permissions).toEqual({ contents: 'read' })
+    for (const permissions of facts.permissions) {
+      for (const level of Object.values(permissions)) expect(level).toBe('read')
+    }
   })
 
   it('requires the plays lane from its own workflow, outside ci.yml', () => {
     expect(facts.ciHasPlaysJob).toBe(false)
     expect(generatedRequiredCheckContexts).toContain('test-storybook-plays')
-    // A skipped required job reports no check run and blocks every PR.
-    expect(facts.jobConditions).toEqual([null])
+    // The required semantic gate must run even when admission or plays fail,
+    // are cancelled, or intentionally skip unrelated PRs.
+    expect(facts.requiredCondition).toBe('always()')
   })
+
+  it.each([
+    ['success', 'false', 'skipped', 0],
+    ['success', 'true', 'success', 0],
+    ['success', 'true', 'failure', 1],
+    ['success', 'true', 'cancelled', 1],
+    ['success', 'true', 'skipped', 1],
+    ['failure', '', 'skipped', 1],
+    ['cancelled', '', 'skipped', 1],
+    ['success', '', 'skipped', 1],
+    ['success', 'false', 'failure', 1],
+  ] as const)(
+    'reports admission=%s, changed=%s, plays=%s with exit status %s',
+    (admission, changed, plays, status) => {
+      const result = spawnSync('bash', ['-eo', 'pipefail', '-c', facts.gateScript], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          ADMISSION_RESULT: admission,
+          CHANGED: changed,
+          PLAY_RESULT: plays,
+        },
+      })
+      expect(result.status, result.stderr).toBe(status)
+    },
+  )
 })
 
 describe('storybook preview split build/deploy', () => {
