@@ -14,7 +14,6 @@ import {
   MEMBER_ROOT_DIR,
   type MegarepoConfig,
 } from '../core/config.ts'
-
 import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
 
 /** Options for the VSCode workspace generator */

@@ -9,12 +9,11 @@ import { describe, expect, test } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
-import { createEmptyLockFile, LockFile, LockedMember, writeLockFile } from '../core/lock.ts'
 import { MegarepoConfig } from '../core/config.ts'
+import { createEmptyLockFile, LockFile, LockedMember, writeLockFile } from '../core/lock.ts'
 import { syncNixLocks } from '../core/nix-lock/mod.ts'
 import { generateSchema } from '../generators/schema.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
-
 import { abbreviateStorePath } from './store-path.ts'
 
 describe('abbreviateStorePath', () => {
@@ -60,7 +59,7 @@ describe('abbreviateStorePath', () => {
 })
 
 describe('canonical mutation write boundaries', () => {
-  test('denies aliased canonical outputs, including missing generator parents, but writes owned outputs', async () => {
+  test('denies canonical aliases and missing outputs, but writes owned files', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'mr-write-guard-'))
     const previousOverride = process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION']
     process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] = 'true'
@@ -72,7 +71,7 @@ describe('canonical mutation write boundaries', () => {
       const owned = path.join(root, 'owned')
       await mkdir(owned)
       const lockFile = createEmptyLockFile()
-      const run = <A, E>(effect: Effect.Effect<A, E, FileSystem>) =>
+      const run = <TA, TE>(effect: Effect.Effect<TA, TE, FileSystem>) =>
         Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)))
       await expect(
         run(

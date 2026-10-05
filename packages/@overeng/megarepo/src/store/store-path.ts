@@ -15,12 +15,18 @@ export const assertCanonicalMutationAllowed = (
     let resolvedPath: string | void = undefined
     while (typeof resolvedPath !== 'string') {
       resolvedPath = yield* fs.realPath(existingPath).pipe(
-        Effect.catchIf((error) => error.reason._tag === 'NotFound', () => Effect.void),
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.void,
+        ),
       )
       if (typeof resolvedPath !== 'string') {
         // realPath reports ENOENT for dangling links too; writes still follow their destinations.
         const link = yield* fs.readLink(existingPath).pipe(
-          Effect.catchIf((error) => error.reason._tag === 'NotFound', () => Effect.void),
+          Effect.catchIf(
+            (error) => error.reason._tag === 'NotFound',
+            () => Effect.void,
+          ),
         )
         if (typeof link === 'string') {
           existingPath = path.resolve(path.dirname(existingPath), link)
