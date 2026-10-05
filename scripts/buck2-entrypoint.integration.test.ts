@@ -66,11 +66,14 @@ esac
     root,
     state,
     calls,
-    env: { PATH: `${root}:${process.env['PATH'] ?? ''}`, HOME: root, WATCHMAN_SOCK: join(root, 'socket') },
+    env: {
+      PATH: `${root}:${process.env['PATH'] ?? ''}`,
+      HOME: root,
+      WATCHMAN_SOCK: join(root, 'socket'),
+    },
   }
 }
-const watcherLocal = (root: string): string =>
-  readFileSync(join(root, '.buckconfig.local'), 'utf8')
+const watcherLocal = (root: string): string => readFileSync(join(root, '.buckconfig.local'), 'utf8')
 const effective = (args: readonly string[]): Record<string, string> => {
   const values: Record<string, string> = {}
   for (let index = 0; index < args.length; index++) {
@@ -337,23 +340,20 @@ describe('direct pinned Buck watcher admission', () => {
     'USER',
     'LOGNAME',
     'WATCHMAN_CONFIG_FILE',
-  ])(
-    'does not reuse a healthy service probe after %s changes',
-    async (identity) => {
-      const { root, env, state, calls } = watcherFixture()
-      await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
-      expect(watcherLocal(root)).toContain('file_watcher = watchman')
-      if (identity !== 'WATCHMAN_SOCK') writeFileSync(state, 'unreachable')
-      const changed = {
-        ...env,
-        [identity]: identity === 'PATH' ? `${env.PATH}:/nonexistent` : join(root, 'changed'),
-      }
-      if (identity === 'WATCHMAN_SOCK') writeFileSync(join(root, 'changed'), 'unreachable')
-      await directBuckArguments({ ...options(root), env: changed, args: ['build', '//:app'] })
-      expect(watcherLocal(root)).toContain('file_watcher = notify')
-      expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
-    },
-  )
+  ])('does not reuse a healthy service probe after %s changes', async (identity) => {
+    const { root, env, state, calls } = watcherFixture()
+    await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
+    expect(watcherLocal(root)).toContain('file_watcher = watchman')
+    if (identity !== 'WATCHMAN_SOCK') writeFileSync(state, 'unreachable')
+    const changed = {
+      ...env,
+      [identity]: identity === 'PATH' ? `${env.PATH}:/nonexistent` : join(root, 'changed'),
+    }
+    if (identity === 'WATCHMAN_SOCK') writeFileSync(join(root, 'changed'), 'unreachable')
+    await directBuckArguments({ ...options(root), env: changed, args: ['build', '//:app'] })
+    expect(watcherLocal(root)).toContain('file_watcher = notify')
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
+  })
 
   it('removes stale admission while preserving a later unmanaged sandbox provider and cache overlay', async () => {
     const { root, env, calls } = watcherFixture()
