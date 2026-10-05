@@ -316,6 +316,14 @@ export const GateSchema = Schema.Union([
       Object.keys(env).every((key) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) && reservedGateEnvNames[key] !== true)))),
     timeLimit: Schema.optionalKey(Duration),
   }),
+  Schema.Struct({
+    name: GateName, kind: Schema.Literal('human'),
+    reviewer: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('person/'))),
+    mode: Schema.optionalKey(Schema.Literals(['approve', 'feedback'])),
+    question: Schema.optionalKey(Schema.String),
+    review: Schema.optionalKey(Schema.Array(FullSubject).pipe(Schema.refine((targets): targets is typeof targets =>
+      new Set(targets).size === targets.length))),
+  }),
 ]).annotate({ identifier: 'St.Gate' })
 
 const Gates = Schema.Array(GateSchema).pipe(Schema.refine((gates): gates is typeof gates =>
@@ -601,6 +609,15 @@ export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
 /** Decodes and lowers a gate without changing its predicate or built-in kind. */
 export const gate = (input: typeof GateSchema.Encoded): Node => {
   const g = decode({ schema: GateSchema, input })
+  if (g.kind === 'human') {
+    return node({ name: 'gate', args: [g.name], props: {
+      type: 'human', ...(g.mode === undefined ? {} : { mode: g.mode }),
+    }, children: [
+      child({ name: 'reviewer', value: g.reviewer }),
+      ...optionalChild({ name: 'question', value: g.question }),
+      ...(g.review ?? []).map((target) => child({ name: 'review', value: target })),
+    ] })
+  }
   let predicate: Node
   switch (g.kind) {
     case 'exists': case 'empty': case 'document':
@@ -628,6 +645,20 @@ export const gate = (input: typeof GateSchema.Encoded): Node => {
     ] : []),
   ] })
 }
+
+export type HumanGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'human' }>
+export type ExecGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'exec' }>
+export type FieldGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'field' }>
+export type MergedGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'merged' }>
+export type CiPassedGate = Extract<typeof GateSchema.Encoded, { readonly kind: 'ci-passed' }>
+
+/** Native gate constructors retain plain-data semantics and validate when rendered. */
+export const humanGate = (input: Omit<HumanGate, 'kind'>): HumanGate => ({ ...input, kind: 'human' })
+export const execGate = (input: Omit<ExecGate, 'kind'>): ExecGate => ({ ...input, kind: 'exec' })
+export const fieldIs = (input: Omit<FieldGate, 'kind' | 'operator'>): FieldGate =>
+  ({ ...input, kind: 'field', operator: 'is' })
+export const merged = (input: Omit<MergedGate, 'kind'>): MergedGate => ({ ...input, kind: 'merged' })
+export const ciPassed = (input: Omit<CiPassedGate, 'kind'>): CiPassedGate => ({ ...input, kind: 'ci-passed' })
 
 /** Decodes and renders a step node. */
 const lowerStep = (input: typeof StepSchema.Encoded): Node => {

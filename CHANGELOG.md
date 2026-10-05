@@ -4,6 +4,9 @@
 
 ### Added
 
+- `@overeng/genie-smalltalk` adds native human approval/feedback gates with
+  reviewer, question and review targets, plus `humanGate`, `execGate`, `fieldIs`,
+  `merged` and `ciPassed` plain-data constructors usable on step handles.
 - `@overeng/genie-smalltalk` step handles support completed/failed/terminal
   dependencies, explicit literal mission scopes, runtime identity/ownership
   checking, and resolved typed agent assignees. Plain-data missions remain valid.

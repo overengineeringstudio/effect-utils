@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import type { StepDependency } from './mod.ts'
+import { ciPassed, execGate, fieldIs, humanGate, merged } from './mod.ts'
 import { agent, completed, completion, doc, emit, failed, gate, loop, mission, node, observer, resource, schedule, smalltalkKdl, step, subscription, terminal, type StepHandle } from './mod.ts'
 import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
 
@@ -43,6 +44,15 @@ const canonical = () =>
     }),
   ])
 describe('Smalltalk declarations', () => {
+  it('renders native human reviewer requests and rejects ambiguous review targets', () => {
+    expect(emit([gate(humanGate({
+      name: 'approve', reviewer: 'person/reviewer', mode: 'feedback',
+      question: 'Is this ready?', review: ['resource/garden', 'doc/report'],
+    }))])).toBe('version 2\ngate "approve" mode="feedback" type="human" {\n  reviewer "person/reviewer"\n  question "Is this ready?"\n  review "resource/garden"\n  review "doc/report"\n}\n')
+    expect(() => gate(humanGate({ name: 'bad', reviewer: 'agent/team/worker' }))).toThrow()
+    expect(() => gate(humanGate({ name: 'bad', reviewer: 'person/reviewer', review: ['resource/a', 'resource/a'] }))).toThrow()
+    expect(() => gate({ name: 'bad', kind: 'human', reviewer: 'person/reviewer', mode: 'unknown' } as never)).toThrow()
+  })
   it('lowers handle dependencies and resolved agents to the plain mission grammar', () => {
     const first = step({ id: 'first', missionId: 'handles', assignedTo: { kind: 'agent', id: 'team/worker' } })
     const second = step({ id: 'second', missionId: 'handles', dependsOn: [completed(first), failed(first), terminal(first)] })
@@ -295,6 +305,31 @@ testWithSt(
       const second = publish()
       expect(second.status, second.stderr).toBe(0)
       expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
+      writeFileSync(source, emit([mission({
+        id: 'human-proof', state: 'ready', goals: ['Request a real human decision.'], steps: [],
+        gates: [humanGate({ name: 'approve', reviewer: 'person/reviewer', question: 'Is the garden ready?', review: ['resource/garden'] })],
+      })]))
+      const humanPublished = publish()
+      expect(humanPublished.status, humanPublished.stderr).toBe(0)
+      const humanStarted = spawnSync(stBin!, [
+        '--endpoint', `unix://${socket}`, 'missions', 'start', 'human-proof',
+        '--id', 'human-proof', '--workspace', dir, '--as', actor,
+      ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
+      expect(humanStarted.status, humanStarted.stderr).toBe(0)
+      const attention = spawnSync(stBin!, [
+        '--endpoint', `unix://${socket}`, 'attention', 'ls', '--as', 'person/reviewer',
+      ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
+      expect(attention.status, attention.stderr).toBe(0)
+      expect(attention.stdout).toContain('Is the garden ready?')
+      const mechanical = step({ id: 'mechanical', missionId: 'gate-proof', gates: [
+        execGate({ name: 'exec', command: 'true', host: 'local', workspace: dir }),
+        fieldIs({ name: 'field', path: 'state', subject: 'resource/garden', value: 'ready' }),
+        merged({ name: 'merged', locator: 'acme/garden#7' }),
+        ciPassed({ name: 'ci', check: 'build', repo: 'acme/garden', ref: { branch: 'main' } }),
+      ] })
+      writeFileSync(source, emit([mission({ id: 'gate-proof', state: 'ready', goals: ['Prove native gate grammar.'], steps: [mechanical] })]))
+      const gatesPublished = publish()
+      expect(gatesPublished.status, gatesPublished.stderr).toBe(0)
       const seatSource = join(dir, 'agent.kdl')
       const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
       const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
