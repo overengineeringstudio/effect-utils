@@ -159,13 +159,13 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
             // Coalesce source and Git events, including events received while
             // the previous async Git snapshot was being read.
             await delay(Math.max(0, requestedAt + 50 - performance.now()))
-            if (stopped === true) break
+            if (stopped) break
             if (performance.now() < requestedAt + 50) continue
             pending = false
             await updateWatches()
-            if (stopped === true) break
+            if (stopped) break
             const changed = await resolveIdentity(true)
-            if (changed === false || stopped === true) continue
+            if (changed === false || stopped) continue
             const module = server.moduleGraph.getModuleById(resolvedId)
             if (module === undefined) continue
             server.moduleGraph.invalidateModule(module)
