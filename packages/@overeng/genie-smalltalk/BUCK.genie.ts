@@ -13,6 +13,11 @@ export const buck2TypeScriptAdmission = {
       distTarget: '//packages/@overeng/genie:dist',
     },
     {
+      packageName: '@overeng/kdl',
+      packagePath: 'packages/@overeng/kdl',
+      distTarget: '//packages/@overeng/kdl:dist',
+    },
+    {
       packageName: '@overeng/utils-dev',
       packagePath: 'packages/@overeng/utils-dev',
       distTarget: '//packages/@overeng/utils-dev:dist',

@@ -352,11 +352,11 @@
       "packageName": "genie-smalltalk",
       "packagePath": "packages/@overeng/genie-smalltalk",
       "runner": "vitest",
-      "selectedTestFiles": ["src/mod.unit.test.ts"],
+      "selectedTestFiles": ["src/mod.unit.test.ts", "src/tree.unit.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/genie-smalltalk:test",
       "taskName": "test:genie-smalltalk",
-      "testFiles": ["src/mod.unit.test.ts"],
+      "testFiles": ["src/mod.unit.test.ts", "src/tree.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },

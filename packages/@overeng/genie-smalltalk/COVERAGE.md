@@ -11,3 +11,13 @@ Authoritative grammar: `compoundingtech/smalltalk`, `crates/st3/src/graph.rs` at
 | `version 2`                                                                                                                                   | Covered     | All emitted documents start with this directive.                                                                                                                                                                                                                                                               |
 
 The conformance test is opt-in with `ST_BIN` pointing to a binary built from the exact pinned upstream revision. Its scratch daemon must be isolated from the caller's runtime directories.
+
+## Subject trees (`@overeng/genie-smalltalk/tree`, Node only)
+
+`loadSubjectTree({ root, context })` maps `<root>/<id>/{agent,mission,schedule}.{ts,kdl}` to subjects whose ID is the POSIX directory path below `root`. Seats occupy st's `agent/<id>` namespace; missions and schedules share `mission/<id>`, so a directory holds at most one of `mission.*` and `schedule.*`, and a mission with a `schedule` child must live in `schedule.*`.
+
+- KDL files must contain `version 2` and exactly one `agent` or `mission` node whose first argument is the path ID. Only that shape is checked; st still parses the body.
+- TS modules default-export a `defineAgent`/`defineMission`/`defineSchedule` definition for their own path and kind, a plain intent, or a factory. Factories receive the caller's `context`; intents are decoded with `AgentSchema`/`MissionSchema`.
+- Imported definitions are typed references. A seat reference lowers to `agent/<id>` as `assignedTo`; a mission reference lowers to the unpinned mission ID as schedule `work.mission`. Other positions are not lowered.
+- IDs come from realpaths, matching Node's `import.meta.url`: a symlinked alias of an in-tree directory loads once under its canonical ID, and a link that resolves outside `root` is rejected.
+- Subject modules are trusted code; loading imports them.
