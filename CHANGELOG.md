@@ -24,6 +24,8 @@
 
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
+- Negative Buck artifact-import fixtures capture remote Nix builder logs, so
+  expected rejection diagnostics are checked instead of generic build failures.
 - The Vite build-identity dev plugin watches only its worktree's HEAD, current
   branch ref and index. Git snapshots are asynchronous, debounced and
   single-flight, and dirty checks exclude untracked files.
