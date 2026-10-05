@@ -4,13 +4,16 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
+import type { StepDependency } from './mod.ts'
 import {
   agent,
+  completed,
   completion,
   doc,
   emit,
+  failed,
   gate,
   loop,
   mission,
@@ -22,6 +25,8 @@ import {
   smalltalkKdl,
   step,
   subscription,
+  terminal,
+  type StepHandle,
 } from './mod.ts'
 import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
 
@@ -146,6 +151,74 @@ describe('Smalltalk declarations', () => {
         }),
       ]),
     ).toContain('harness "omp" {\n    model "example-model"\n    effort "high"\n')
+  })
+  it('lowers handle dependencies and resolved agents to the plain mission grammar', () => {
+    const first = step({
+      id: 'first',
+      missionId: 'handles',
+      assignedTo: { kind: 'agent', id: 'team/worker' },
+    })
+    const second = step({
+      id: 'second',
+      missionId: 'handles',
+      dependsOn: [completed(first), failed(first), terminal(first)],
+    })
+    expect(
+      emit([
+        mission({ id: 'handles', state: 'ready', goals: ['Land work.'], steps: [first, second] }),
+      ]),
+    ).toBe(
+      emit([
+        mission({
+          id: 'handles',
+          state: 'ready',
+          goals: ['Land work.'],
+          steps: [
+            { id: 'first', assignedTo: 'agent/team/worker' },
+            {
+              id: 'second',
+              dependsOn: [
+                { step: 'first', state: 'completed' },
+                { step: 'first', state: 'failed' },
+                { step: 'first', state: 'terminal' },
+              ],
+            },
+          ],
+        }),
+      ]),
+    )
+    expectTypeOf<StepHandle<'handles'>>().not.toExtend<StepHandle<'other'>>()
+    expectTypeOf<{ id: 'empty'; dependsOn: readonly [] }>().not.toExtend<
+      Parameters<typeof step>[0]
+    >()
+    expectTypeOf<typeof first>().not.toExtend<
+      Parameters<typeof mission<'other'>>[0]['steps'][number]
+    >()
+    expectTypeOf<StepDependency<'handles'>>().not.toExtend<
+      NonNullable<Parameters<typeof step<'other'>>[0]['dependsOn']>[number]
+    >()
+  })
+  it('rejects foreign handles even when a local step has the same explicit ID', () => {
+    const foreign = step({ id: 'review' })
+    const local = step({ id: 'review' })
+    const land = step({ id: 'land', dependsOn: [completed(foreign)] })
+    expect(() =>
+      mission({ id: 'landing', state: 'ready', goals: ['Land.'], steps: [local, land] }),
+    ).toThrow('same mission phase')
+    mission({ id: 'other', state: 'ready', goals: ['Review.'], steps: [foreign] })
+    expect(() =>
+      mission({ id: 'landing', state: 'ready', goals: ['Land.'], steps: [foreign, land] }),
+    ).toThrow('already belongs')
+    const scoped = step({ id: 'review', missionId: 'other' })
+    expect(() =>
+      mission({ id: 'landing', state: 'ready', goals: ['Land.'], steps: [scoped] } as never),
+    ).toThrow('belongs to mission')
+    expect(() =>
+      step({ id: 'review', assignedTo: { kind: 'mission', id: 'work' } } as never),
+    ).toThrow()
+    expect(() =>
+      step({ id: 'review', assignedTo: { kind: 'agent', url: 'file:///tree/agent.ts' } } as never),
+    ).toThrow()
   })
   it('serializes KDL v2 values, quoted identifiers and stable property ordering', () => {
     expect(
@@ -617,6 +690,29 @@ testWithSt(
         emit([agent({ id: 'example/updater', workspace: dir, command: 'true', restart: 'never' })]),
       )
       expect(fixtureSeat.status, fixtureSeat.stderr).toBe(0)
+      const ownerSeat = applySeat(
+        emit([agent({ id: 'team/worker', workspace: dir, command: 'true', rollout: 'manual' })]),
+      )
+      expect(ownerSeat.status, ownerSeat.stderr).toBe(0)
+      const review = step({
+        id: 'review',
+        missionId: 'handle-proof',
+        assignedTo: { kind: 'agent', id: 'team/worker' },
+      })
+      const land = step({ id: 'land', missionId: 'handle-proof', dependsOn: [completed(review)] })
+      writeFileSync(
+        source,
+        emit([
+          mission({
+            id: 'handle-proof',
+            state: 'ready',
+            goals: ['Prove handles.'],
+            steps: [review, land],
+          }),
+        ]),
+      )
+      const handlesPublished = publish()
+      expect(handlesPublished.status, handlesPublished.stderr).toBe(0)
       // Re-publication uses st's normalized mission revision, not whitespace comparison.
       writeFileSync(source, upstreamRepinKdl)
       const originalFixture = publish()
