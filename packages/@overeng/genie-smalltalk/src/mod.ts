@@ -678,7 +678,7 @@ export const humanGate = (input: Omit<HumanGate, 'kind' | 'review'> & {
   readonly review?: readonly ReviewTarget[]
 }): HumanGate => {
   const { review, ...rest } = input
-  return withReferences({
+  return withReferences<HumanGate>({
     ...rest, kind: 'human',
     ...(review === undefined ? {} : {
       review: review.map((value) => typeof value === 'string' ? value : referenceText(value)),
@@ -690,7 +690,7 @@ export const execGate = (input: Omit<ExecGate, 'kind' | 'env'> & {
   readonly env?: Readonly<Record<string, string | RunReference>>
 }): ExecGate => {
   const { env, ...rest } = input
-  return withReferences({
+  return withReferences<ExecGate>({
     ...rest, kind: 'exec',
     ...(env === undefined ? {} : {
       env: Object.fromEntries(Object.entries(env).map(([name, value]) =>
@@ -700,14 +700,14 @@ export const execGate = (input: Omit<ExecGate, 'kind' | 'env'> & {
 }
 
 export const fieldIs = <const TFields extends ProductFields>(input: FieldIsInput<TFields>): FieldGate =>
-  withReferences({
+  withReferences<FieldGate>({
     ...input, kind: 'field', operator: 'is',
     subject: typeof input.subject === 'string' ? input.subject : referenceText(input.subject),
   }, typeof input.subject === 'string' ? [] : [input.subject])
 
 export const merged = (input: Omit<MergedGate, 'kind' | 'locator'> & {
   readonly locator: string | TextInput
-}): MergedGate => withReferences({
+}): MergedGate => withReferences<MergedGate>({
   ...input, kind: 'merged',
   locator: typeof input.locator === 'string' ? input.locator : referenceText(input.locator),
 }, typeof input.locator === 'string' ? [] : [input.locator])
@@ -717,7 +717,7 @@ export const ciPassed = (input: Omit<CiPassedGate, 'kind' | 'ref'> & {
 }): CiPassedGate => {
   const value = 'commit' in input.ref ? input.ref.commit : input.ref.branch
   const text = typeof value === 'string' ? value : referenceText(value)
-  return withReferences({
+  return withReferences<CiPassedGate>({
     ...input, kind: 'ci-passed',
     ref: 'commit' in input.ref ? { commit: text } : { branch: text },
   }, typeof value === 'string' ? [] : [value])
