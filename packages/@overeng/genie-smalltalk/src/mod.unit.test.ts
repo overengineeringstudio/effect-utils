@@ -1,11 +1,11 @@
-import { spawn, spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { agent, emit, mission, node, resource, schedule, smalltalkKdl } from './mod.ts'
+import { ScratchDaemon, scratchDaemonLayer } from './testing.ts'
 
 const canonical = () =>
   emit([
@@ -101,106 +101,43 @@ describe('Smalltalk declarations', () => {
   })
 })
 
+const decodeChanged = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ changed: Schema.Boolean })),
+)
 const stBin = process.env.ST_BIN
 const testWithSt = stBin !== undefined && stBin !== '' ? it : it.skip
 testWithSt(
   'round-trips canonical mission and strict agent fields through isolated st daemon',
-  async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'genie-st-'))
-    const socket = join(dir, 'daemon.sock')
-    const gateway = join(dir, 'gateway.sock')
-    const source = join(dir, 'mission.kdl')
-    const actor = process.env.ST_AGENT ?? 'person/genie-test'
-    const isolatedEnv = {
-      ...process.env,
-      HOME: join(dir, 'home'),
-      XDG_CONFIG_HOME: join(dir, 'config'),
-      XDG_DATA_HOME: join(dir, 'data'),
-      XDG_STATE_HOME: join(dir, 'xdg-state'),
-      XDG_RUNTIME_DIR: join(dir, 'runtime'),
-    }
-    for (const path of [
-      isolatedEnv.HOME,
-      isolatedEnv.XDG_CONFIG_HOME,
-      isolatedEnv.XDG_DATA_HOME,
-      isolatedEnv.XDG_STATE_HOME,
-      isolatedEnv.XDG_RUNTIME_DIR,
-    ])
-      mkdirSync(path)
-    writeFileSync(source, canonical())
-    const daemon = spawn(
-      stBin!,
-      [
-        'up',
-        '--node',
-        'genie-test',
-        '--state-dir',
-        join(dir, 'state'),
-        '--pty-root',
-        join(dir, 'pty'),
-        '--socket',
-        socket,
-        '--client-gateway-socket',
-        gateway,
-      ],
-      { env: isolatedEnv, stdio: 'pipe' },
-    )
-    try {
-      for (let i = 0; i < 100 && existsSync(socket) === false && daemon.exitCode === null; i++)
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      expect(existsSync(socket)).toBe(true)
-      const publish = () =>
-        spawnSync(
-          stBin!,
-          [
-            '--endpoint',
-            `unix://${socket}`,
-            '--json',
-            'missions',
-            'publish',
-            source,
-            '--as',
-            actor,
-          ],
-          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-        )
-      const first = publish()
+  ({ signal }) =>
+    Effect.gen(function* () {
+      const daemon = yield* ScratchDaemon
+      const dir = daemon.directory
+      const source = join(dir, 'mission.kdl')
+      const actor = process.env.ST_AGENT ?? 'person/genie-test'
+      writeFileSync(source, canonical())
+      const publish = daemon.run(['--json', 'missions', 'publish', source, '--as', actor])
+      const first = yield* publish
       expect(first.status, first.stderr).toBe(0)
-      const second = publish()
+      const second = yield* publish
       expect(second.status, second.stderr).toBe(0)
-      expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
+      expect((yield* decodeChanged(second.stdout)).changed).toBe(false)
       const seatSource = join(dir, 'agent.kdl')
       const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
       const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
-      const applySeat = (declaration: string) => {
-        writeFileSync(seatSource, declaration)
-        return spawnSync(
-          stBin!,
-          [
-            '--endpoint',
-            `unix://${socket}`,
-            '--json',
-            'agents',
-            'apply',
-            seatSource,
-            '--as',
-            actor,
-          ],
-          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-        )
-      }
-      const applied = applySeat(seat)
+      const applySeat = (declaration: string) =>
+        Effect.suspend(() => {
+          writeFileSync(seatSource, declaration)
+          return daemon.run(['--json', 'agents', 'apply', seatSource, '--as', actor])
+        })
+      const show = daemon.run(['subject', 'show', 'agent/garden/orchard', '--kdl'])
+      const applied = yield* applySeat(seat)
       expect(applied.status, applied.stderr).toBe(0)
-      const shown = spawnSync(
-        stBin!,
-        ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/orchard', '--kdl'],
-        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-      )
+      const shown = yield* show
       expect(shown.status, shown.stderr).toBe(0)
       expect(shown.stdout).toMatch(/^\s*handles-faults\s*$/mu)
-      const reapplied = applySeat(shown.stdout)
+      const reapplied = yield* applySeat(shown.stdout)
       expect(reapplied.status, reapplied.stderr).toBe(0)
-      expect(JSON.parse(reapplied.stdout)).toMatchObject({ changed: false })
+      expect((yield* decodeChanged(reapplied.stdout)).changed).toBe(false)
       for (const field of [
         'rollout "automatic"',
         'rollout 1',
@@ -208,7 +145,7 @@ testWithSt(
         'rollout "manual" { ignored; }',
         'rollout "manual" ignored="value"',
       ]) {
-        const invalid = applySeat(seat.replace('rollout "manual"', field))
+        const invalid = yield* applySeat(seat.replace('rollout "manual"', field))
         expect(invalid.status, field).not.toBe(0)
       }
       for (const field of [
@@ -216,29 +153,20 @@ testWithSt(
         'handles-faults ignored="value"',
         'handles-faults; handles-faults',
       ]) {
-        const invalid = applySeat(seat.replace('handles-faults', field))
+        const invalid = yield* applySeat(seat.replace('handles-faults', field))
         expect(invalid.status, field).not.toBe(0)
       }
-      const automatic = applySeat(emit([agent(launch)]))
+      const automatic = yield* applySeat(emit([agent(launch)]))
       expect(automatic.status, automatic.stderr).toBe(0)
-      expect(JSON.parse(automatic.stdout)).toMatchObject({ changed: true })
-      const automaticShown = spawnSync(
-        stBin!,
-        ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/orchard', '--kdl'],
-        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-      )
+      expect((yield* decodeChanged(automatic.stdout)).changed).toBe(true)
+      const automaticShown = yield* show
       expect(automaticShown.status, automaticShown.stderr).toBe(0)
       expect(automaticShown.stdout).not.toContain('rollout')
       expect(automaticShown.stdout).not.toContain('handles-faults')
-    } finally {
-      if (daemon.exitCode === null && daemon.signalCode === null) {
-        const { promise, resolve } = Promise.withResolvers<void>()
-        daemon.once('exit', () => resolve())
-        daemon.kill('SIGTERM')
-        await promise
-      }
-      rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
-    }
-  },
+    }).pipe(
+      Effect.provide(scratchDaemonLayer({ binary: stBin!, node: 'genie-test' })),
+      // Vitest aborts `signal` on timeout, interrupting the fiber so the scratch daemon is torn down.
+      (effect) => Effect.runPromise(effect, { signal }),
+    ),
   60000,
 )
