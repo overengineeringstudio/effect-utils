@@ -26,6 +26,7 @@ const admitted = (
   action = '',
   labels: string[] = [],
   label = '',
+  baselineRef = '',
 ) => {
   const triggers = workflowForJob(jobId).split('\njobs:\n')[0]!
   if (eventName === 'pull_request') {
@@ -54,7 +55,7 @@ const admitted = (
           pull_request: { labels: labels.map((name) => ({ name })) },
         },
       },
-      { measurement_baseline_ref: '' },
+      { measurement_baseline_ref: baselineRef },
       (values: string[], value: string) => values.includes(value),
       () => true,
       () => false,
@@ -194,5 +195,21 @@ test('empirical workflow cannot receive writer credentials or enable uploads', (
     const proofJob = decoded.jobs[jobId]!
     expect(proofJob.env.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe('1')
     expect(JSON.stringify(proofJob).match(/secrets\.[A-Z_]+/g)).toBeNull()
+  }
+})
+
+test('historical source measurements retain any-ref dispatch backfills', () => {
+  for (const ref of ['refs/heads/main', 'refs/heads/feature']) {
+    expect(
+      admitted('main-source-shape', 'workflow_dispatch', ref, '', [], '', 'historical-sha'),
+    ).toBe(true)
+  }
+  for (const event of ['push', 'schedule']) {
+    expect(admitted('main-source-shape', event, 'refs/heads/feature')).toBe(false)
+  }
+  for (const jobId of EMPIRICAL_PROOF_CI_JOB_NAMES) {
+    expect(
+      admitted(jobId, 'workflow_dispatch', 'refs/heads/main', '', [], '', 'historical-sha'),
+    ).toBe(false)
   }
 })

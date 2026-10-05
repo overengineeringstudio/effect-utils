@@ -30,6 +30,8 @@ The generated CI and Empirical Proofs workflows partition revision validation fr
 
 Empirical Proofs emits no ordinary required contexts. Source measurements are partitioned: required `source-shape` runs on PR revisions in CI, while `main/source-shape` runs on main push/nightly/dispatch alongside closure/performance artifacts and the aggregate report. A proof-workflow skip therefore cannot replace failed code evidence.
 
+Source measurement dispatch retains historical backfills on any ref, including nonempty `measurement_baseline_ref`; this credential-free measurement exception does not admit the three empirical proof jobs or credentialed remote proof on non-main dispatches. Report publication remains main-only.
+
 Some control-event workflows admit actions where the requested side effect is validly unnecessary. Those workflows keep the job alive and gate only the conditional step, so GitHub produces a successful check suite rather than an absent required check. The auto-review workflow is the current example: its review-request step is conditional, while the job itself always concludes.
 
 ## Lane semantics

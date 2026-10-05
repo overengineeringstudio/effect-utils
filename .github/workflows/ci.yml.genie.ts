@@ -1547,7 +1547,7 @@ export const empiricalProofJobs: CiWorkflowArgs['jobs'] = {
   'main-source-shape': {
     ...allCiJobs['source-shape'],
     name: 'main/source-shape',
-    if: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}`,
+    if: "\${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}",
   },
   'ci-measurements-report': allCiJobs['ci-measurements-report'],
 }
