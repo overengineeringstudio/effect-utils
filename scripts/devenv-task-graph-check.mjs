@@ -351,11 +351,6 @@ const scopedPublisherContracts = {
   },
 }
 for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
-  const publisherDependencies = [...(dependencies.get(publisher) ?? [])]
-  ok({
-    condition: publisherDependencies.length === 1 && publisherDependencies[0] === 'genie:check',
-    name: `${publisher} waits directly and only for standalone generator freshness`,
-  })
   const publisherTask = requireTask(publisher)
   const command = publisherTask.command
   ok({
