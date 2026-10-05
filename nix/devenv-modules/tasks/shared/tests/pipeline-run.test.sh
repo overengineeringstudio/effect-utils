@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Hooks export repository-local variables; every fixture and child owns its repo.
+mapfile -t git_local_env < <(git rev-parse --local-env-vars)
+unset "${git_local_env[@]}"
 span=${1:-${OTEL_SPAN_BIN:?otel-span binary required}}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -242,4 +245,34 @@ if [[ $(id -u) != 0 ]]; then
     "$span" pipeline-run -- bash -c 'exit 17' || code=$?
   chmod 700 "$(dirname "$spool")"
   [[ $code == 17 ]] || { echo "cleanup replaced task exit status: $code" >&2; exit 1; }
+fi
+
+# Exercise the real fixture with a staged caller index, as in a pre-commit hook.
+if [[ ${PIPELINE_GIT_HOOK_FIXTURE_CHILD:-0} != 1 ]]; then
+  caller="$tmp/hook-caller"
+  mkdir -p "$caller"
+  git -C "$caller" init -q
+  printf 'committed\n' > "$caller/caller.txt"
+  git -C "$caller" add caller.txt
+  git -C "$caller" -c core.hooksPath=/dev/null -c user.name=CI \
+    -c user.email=ci@example.invalid commit -q -m caller
+  printf 'staged by caller\n' > "$caller/caller.txt"
+  git -C "$caller" add caller.txt
+  caller_head="$(git -C "$caller" rev-parse HEAD)"
+  cp "$caller/.git/index" "$tmp/caller-index.before"
+  PIPELINE_GIT_HOOK_FIXTURE_CHILD=1 \
+    GIT_DIR="$caller/.git" GIT_WORK_TREE="$caller" \
+    GIT_INDEX_FILE="$caller/.git/index" GIT_OBJECT_DIRECTORY="$caller/.git/objects" \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES="$caller/.git/objects" \
+    GIT_COMMON_DIR="$caller/.git" GIT_PREFIX=hook-prefix/ \
+    bash "$0" "$span" "$repo"
+  [[ "$(git -C "$caller" rev-parse HEAD)" == "$caller_head" ]] || {
+    echo "pipeline fixture changed the hook caller's HEAD" >&2
+    exit 1
+  }
+  cmp "$tmp/caller-index.before" "$caller/.git/index" || {
+    echo "pipeline fixture changed the hook caller's index" >&2
+    exit 1
+  }
+  printf 'hook caller HEAD and staged index unchanged\n'
 fi
