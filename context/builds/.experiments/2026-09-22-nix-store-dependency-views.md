@@ -16,12 +16,12 @@ Can Nix realize the digest-pinned pnpm archives while the unchanged declared Buc
 
 ## Declared input inventory
 
-| Input                 | Identity / measurement                                           |
-| --------------------- | ---------------------------------------------------------------- |
-| Repository            | `52fd104944da62bfc57867d3f14932866938d9cd`                       |
-| Archive set           | 671 fixed-output archives; 645,724,000-byte closure              |
-| Buck2                 | `2026-08-31-be6971d47dcc835b7356e1698b23039ffee4f4c2`            |
-| Prelude               | `1f8c24e0b1f85e645011f93a4073b0c6c762d7b1`                       |
+| Input | Identity / measurement |
+|---|---|
+| Repository | `52fd104944da62bfc57867d3f14932866938d9cd` |
+| Archive set | 671 fixed-output archives; 645,724,000-byte closure |
+| Buck2 | `2026-08-31-be6971d47dcc835b7356e1698b23039ffee4f4c2` |
+| Prelude | `1f8c24e0b1f85e645011f93a4073b0c6c762d7b1` |
 | Capability projection | full `buck2-member.json` projection, not the prior Bun-only stub |
 
 ## Result
@@ -30,10 +30,10 @@ Cold realization of all 671 Nix archives succeeded in 37.85 s inside the fleet g
 
 The normal Nix sandbox rebuilt two previously failing products through the real graph:
 
-| Product                  | Result  | Buck commands | Inner Buck wall | Product SHA-256                                                    |
-| ------------------------ | ------- | ------------: | --------------: | ------------------------------------------------------------------ |
-| `genie` JavaScript       | success |     872 local |          27.0 s | `4e5febf7ce9948a6e4e8d4d8e1cad111f2fecffd542182caf3111a93744678fe` |
-| `@overeng/utils` package | success |     792 local |          16.5 s | `5b030580ddc7fbe76380381b261da0b4dc979c24f938e6b2e1e67fb6a9f695ff` |
+| Product | Result | Buck commands | Inner Buck wall | Product SHA-256 |
+|---|---|---:|---:|---|
+| `genie` JavaScript | success | 872 local | 27.0 s | `4e5febf7ce9948a6e4e8d4d8e1cad111f2fecffd542182caf3111a93744678fe` |
+| `@overeng/utils` package | success | 792 local | 16.5 s | `5b030580ddc7fbe76380381b261da0b4dc979c24f938e6b2e1e67fb6a9f695ff` |
 
 The standalone root built both targets together with 1,664 local commands in 559.20 s under contemporaneous host pressure. Both artifact hashes exactly matched the Nix sandbox outputs. This timing is a measurement, not an apples-to-apples speed comparison.
 

@@ -7,7 +7,9 @@ export interface OutlineEntry {
   readonly href?: string
   readonly position?: number
 }
+/** Outline destination with a native browser navigation target. */
 export type OutlineHrefEntry = OutlineEntry & { readonly href: string }
+/** Raw caller-discovered destination before hierarchy normalization. */
 export interface OutlineCandidate {
   readonly id: string
   readonly label: string
@@ -16,25 +18,31 @@ export interface OutlineCandidate {
   readonly description?: string
   readonly href?: string
 }
+/** Normalized destination with a measured top and bounded document position. */
 export type ResolvedOutlineEntry = OutlineEntry & {
   readonly top: number
   readonly position: number
 }
+/** Coordinates used by scroll-derived active-section selection. */
 export interface MeasuredOutlineEntry {
   readonly id: string
   readonly top: number
 }
 
+const normalize = (label: string): string => label.replace(/\s+/g, ' ').trim().toLowerCase()
+
 /** Drops repeated IDs and immediately nested equivalent titles, then derives gap-free depth. */
-export const resolveOutline = (
-  candidates: readonly OutlineCandidate[],
-  documentHeight: number,
-): readonly ResolvedOutlineEntry[] => {
+export const resolveOutline = ({
+  candidates,
+  documentHeight,
+}: {
+  readonly candidates: readonly OutlineCandidate[]
+  readonly documentHeight: number
+}): readonly ResolvedOutlineEntry[] => {
   const kept: OutlineCandidate[] = []
   const seen = new Set<string>()
-  const normalize = (label: string): string => label.replace(/\s+/g, ' ').trim().toLowerCase()
   for (const candidate of candidates) {
-    if (candidate.id === '' || candidate.label === '' || seen.has(candidate.id)) continue
+    if (candidate.id === '' || candidate.label === '' || seen.has(candidate.id) === true) continue
     const previous = kept.at(-1)
     if (
       previous !== undefined &&
@@ -46,25 +54,34 @@ export const resolveOutline = (
     kept.push(candidate)
   }
   const depths: number[] = []
-  return kept.map(({ rawDepth, ...entry }) => {
-    while (depths.length > 0 && depths[depths.length - 1]! >= rawDepth) depths.pop()
+  return kept.map((candidate) => {
+    while (depths.length > 0 && depths[depths.length - 1]! >= candidate.rawDepth) depths.pop()
     const depth = depths.length
-    depths.push(rawDepth)
-    return {
-      ...entry,
+    depths.push(candidate.rawDepth)
+    const entry: { -readonly [TKey in keyof ResolvedOutlineEntry]: ResolvedOutlineEntry[TKey] } = {
+      id: candidate.id,
+      label: candidate.label,
+      top: candidate.top,
       depth,
-      position: documentHeight > 0 ? Math.min(1, Math.max(0, entry.top / documentHeight)) : 0,
+      position: documentHeight > 0 ? Math.min(1, Math.max(0, candidate.top / documentHeight)) : 0,
     }
+    if (candidate.description !== undefined) entry.description = candidate.description
+    if (candidate.href !== undefined) entry.href = candidate.href
+    return entry
   })
 }
 
 /** Measurements must have nondecreasing tops in document order and use readingEdge's coordinates. */
-export const activeSectionId = (
-  items: readonly MeasuredOutlineEntry[],
-  readingEdge: number,
-  atBottom: boolean = false,
-): string | undefined => {
-  if (atBottom) return items.at(-1)?.id
+export const activeSectionId = ({
+  items,
+  readingEdge,
+  atBottom = false,
+}: {
+  readonly items: readonly MeasuredOutlineEntry[]
+  readonly readingEdge: number
+  readonly atBottom?: boolean
+}): string | undefined => {
+  if (atBottom === true) return items.at(-1)?.id
   let active = items[0]?.id
   for (const item of items) {
     if (item.top > readingEdge) break
@@ -74,11 +91,15 @@ export const activeSectionId = (
 }
 
 /** Long rails compress only to the two-pixel tick height; the expanded list owns overflow. */
-export const fixedPitchOffsets = (
-  count: number,
-  maxTrackHeight: number = 308,
-  pitch: number = 14,
-): readonly number[] => {
+export const fixedPitchOffsets = ({
+  count,
+  maxTrackHeight = 308,
+  pitch = 14,
+}: {
+  readonly count: number
+  readonly maxTrackHeight?: number
+  readonly pitch?: number
+}): readonly number[] => {
   const effectivePitch = count < 2 ? 0 : Math.max(2, Math.min(pitch, maxTrackHeight / (count - 1)))
   return Array.from({ length: count }, (_, index) => index * effectivePitch)
 }
@@ -96,5 +117,5 @@ export const getActiveSection = (
   adapter: Pick<OutlineScrollAdapter, 'measure' | 'read'>,
 ): string | undefined => {
   const { readingEdge, atBottom } = adapter.read()
-  return activeSectionId(adapter.measure(), readingEdge, atBottom)
+  return activeSectionId({ items: adapter.measure(), readingEdge, atBottom })
 }

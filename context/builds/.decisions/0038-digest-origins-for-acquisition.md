@@ -41,12 +41,12 @@ action, with no synthetic root or prepared `node_modules` adapter.
 
 ## Options
 
-| Option                                                  | Tradeoff                                                                                                                                              | Outcome  |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| Digest origin per Buck context plus per-digest Nix FODs | Keeps acquisition local to each context, preserves exact verification, and lets the sandbox execute the real graph.                                   | Accepted |
-| One aggregate prepared dependency tree                  | Fewer fetch actions, but broad invalidation, duplicated worktree materialization, and the failed synthetic adapter preserve the wrong build boundary. | Rejected |
-| Registry only                                           | Correct recovery path, but repeats network transfer and cannot exploit the existing digest CAS.                                                       | Rejected |
-| CAS only                                                | Fast while present, but eviction removes recovery authority and availability depends on one unproven retention tier.                                  | Rejected |
+| Option | Tradeoff | Outcome |
+| --- | --- | --- |
+| Digest origin per Buck context plus per-digest Nix FODs | Keeps acquisition local to each context, preserves exact verification, and lets the sandbox execute the real graph. | Accepted |
+| One aggregate prepared dependency tree | Fewer fetch actions, but broad invalidation, duplicated worktree materialization, and the failed synthetic adapter preserve the wrong build boundary. | Rejected |
+| Registry only | Correct recovery path, but repeats network transfer and cannot exploit the existing digest CAS. | Rejected |
+| CAS only | Fast while present, but eviction removes recovery authority and availability depends on one unproven retention tier. | Rejected |
 
 ## Decision
 

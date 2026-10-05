@@ -30,9 +30,9 @@ Both performed 587 local command actions, downloaded 50 MiB, and produced
 SHA-256 `66838fbd49a6f7fe3fcc53c73dacc46a1486e05238ff0368d826a932fb520861`.
 
 | Worktree | Wall time | Physical `buck-out/pair` | Apparent size |
-| -------- | --------: | -----------------------: | ------------: |
-| A        |   21.27 s |            492,331,008 B | 383,718,725 B |
-| B        |   22.71 s |            490,565,632 B | 381,974,980 B |
+| --- | ---: | ---: | ---: |
+| A | 21.27 s | 492,331,008 B | 383,718,725 B |
+| B | 22.71 s | 490,565,632 B | 381,974,980 B |
 
 The private archive CAS avoids registry authority but does not eliminate
 per-worktree output materialization: the second fresh root still transferred 50

@@ -14,13 +14,13 @@ The inherited branch could not evaluate its devenv task graph because the commit
 
 ## Result
 
-| Probe                      | Samples                     | Result                                                                                                                                                                      |
-| -------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Before, warm `check:quick` | 68.280 s, 10.235 s, 9.012 s | REJECTED: all three failed during devenv evaluation with `javascript-product-import: external capability mismatch`                                                          |
-| After, warm `check:quick`  | 2.183 s, 2.081 s, 1.950 s   | REJECTED: all three reused the diagnostic evaluation and failed in inherited Genie generation; the committed product reports `nixCacheSetupStep is not defined`             |
-| After, `check:all`         | 8.701 s                     | REJECTED: inherited Genie, Nix flake, and Rust workspace checks failed                                                                                                      |
-| Task graph assertions      | 204 assertions              | PASS: `mr:setup` and the three composition checks are absent, both check aggregates avoid `mr:apply`, and standalone Buck tasks retain the `genie:check` freshness edge     |
-| Standalone format task     | 14.654 s                    | INCONCLUSIVE: the task reached the repository-root Buck target without composition, but an unavailable remote-cache credential caused retries and the probe was interrupted |
+| Probe | Samples | Result |
+| --- | --- | --- |
+| Before, warm `check:quick` | 68.280 s, 10.235 s, 9.012 s | REJECTED: all three failed during devenv evaluation with `javascript-product-import: external capability mismatch` |
+| After, warm `check:quick` | 2.183 s, 2.081 s, 1.950 s | REJECTED: all three reused the diagnostic evaluation and failed in inherited Genie generation; the committed product reports `nixCacheSetupStep is not defined` |
+| After, `check:all` | 8.701 s | REJECTED: inherited Genie, Nix flake, and Rust workspace checks failed |
+| Task graph assertions | 204 assertions | PASS: `mr:setup` and the three composition checks are absent, both check aggregates avoid `mr:apply`, and standalone Buck tasks retain the `genie:check` freshness edge |
+| Standalone format task | 14.654 s | INCONCLUSIVE: the task reached the repository-root Buck target without composition, but an unavailable remote-cache credential caused retries and the probe was interrupted |
 
 The before and after timings are failure timings. They do not support a performance comparison. They are retained to make the blocked control explicit rather than presenting rejected samples as successful evidence.
 

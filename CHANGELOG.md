@@ -12,6 +12,7 @@
   document discovery, scroll coordinates, and adapter subscription lifetimes.
   The nonmodal rail disclosure retains hover and focus, supports Escape with
   deliberate re-entry, and preserves native alternate anchor activation.
+  Its focused test task publishes only the outline editor dependency view.
 - Declared Darwin Swift app-bundle Buck products with deterministic bundle
   packaging and independent per-executable Mach-O inspection during Nix import.
 - `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`

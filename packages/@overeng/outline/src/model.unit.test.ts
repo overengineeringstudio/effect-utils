@@ -20,7 +20,7 @@ describe('activeSectionId', () => {
     ([tops, edge]) => {
       const items = measured(tops)
       const expected = items.findLast((item) => item.top <= edge) ?? items[0]
-      return activeSectionId(items, edge) === expected?.id
+      return activeSectionId({ items: items, readingEdge: edge }) === expected?.id
     },
   )
   it.prop(
@@ -28,9 +28,9 @@ describe('activeSectionId', () => {
     [Tops, Coordinate, Coordinate],
     ([tops, a, b]) => {
       const items = measured(tops)
-      if (items.length === 0) return activeSectionId(items, a) === undefined
-      const before = Number(activeSectionId(items, Math.min(a, b)))
-      const after = Number(activeSectionId(items, Math.max(a, b)))
+      if (items.length === 0) return activeSectionId({ items: items, readingEdge: a }) === undefined
+      const before = Number(activeSectionId({ items: items, readingEdge: Math.min(a, b) }))
+      const after = Number(activeSectionId({ items: items, readingEdge: Math.max(a, b) }))
       return before <= after && before >= 0 && after < items.length
     },
   )
@@ -40,11 +40,11 @@ describe('activeSectionId', () => {
     ([tops, edge, shift]) => {
       const items = measured(tops)
       return (
-        activeSectionId(items, edge) ===
-        activeSectionId(
-          items.map((item) => ({ ...item, top: item.top + shift })),
-          edge + shift,
-        )
+        activeSectionId({ items: items, readingEdge: edge }) ===
+        activeSectionId({
+          items: items.map((item) => ({ id: item.id, top: item.top + shift })),
+          readingEdge: edge + shift,
+        })
       )
     },
   )
@@ -53,7 +53,9 @@ describe('activeSectionId', () => {
     [Tops, Coordinate],
     ([tops, edge]) => {
       const items = measured(tops)
-      return activeSectionId(items, edge, true) === items.at(-1)?.id
+      return (
+        activeSectionId({ items: items, readingEdge: edge, atBottom: true }) === items.at(-1)?.id
+      )
     },
   )
   it.prop(
@@ -62,29 +64,30 @@ describe('activeSectionId', () => {
     ([tops]) => {
       const items = measured(tops)
       return (
-        activeSectionId(items, (items[0]?.top ?? 0) - 1) === items[0]?.id &&
-        activeSectionId(items, (items.at(-1)?.top ?? 0) + 1) === items.at(-1)?.id
+        activeSectionId({ items: items, readingEdge: (items[0]?.top ?? 0) - 1 }) === items[0]?.id &&
+        activeSectionId({ items: items, readingEdge: (items.at(-1)?.top ?? 0) + 1 }) ===
+          items.at(-1)?.id
       )
     },
   )
   it('chooses the last document-ordered destination tied at the reading edge', () => {
     expect(
-      activeSectionId(
-        [
+      activeSectionId({
+        items: [
           { id: 'a', top: 10 },
           { id: 'b', top: 10 },
           { id: 'c', top: 20 },
         ],
-        10,
-      ),
+        readingEdge: 10,
+      }),
     ).toBe('b')
   })
 })
 
 describe('resolveOutline', () => {
   it('deduplicates nested equivalent titles and IDs while preserving gap-free siblings', () => {
-    const result = resolveOutline(
-      [
+    const result = resolveOutline({
+      candidates: [
         { id: 'a', label: 'Title', rawDepth: 2, top: -10 },
         { id: 'heading', label: '  TITLE ', rawDepth: 4, top: 0 },
         { id: 'b', label: 'Child', rawDepth: 8, top: 20 },
@@ -92,8 +95,8 @@ describe('resolveOutline', () => {
         { id: 'a', label: 'Repeated ID', rawDepth: 1, top: 75 },
         { id: 'd', label: 'Root', rawDepth: 1, top: 150 },
       ],
-      100,
-    )
+      documentHeight: 100,
+    })
     expect(result.map(({ id, depth, position }) => ({ id, depth, position }))).toEqual([
       { id: 'a', depth: 0, position: 0 },
       { id: 'b', depth: 1, position: 0.2 },
@@ -102,15 +105,15 @@ describe('resolveOutline', () => {
     ])
   })
   it.prop('keeps hierarchy and proportional positions bounded', [Tops], ([depths]) => {
-    const result = resolveOutline(
-      depths.map((rawDepth, index) => ({
+    const result = resolveOutline({
+      candidates: depths.map((rawDepth, index) => ({
         id: String(index),
         label: String(index),
         rawDepth,
         top: rawDepth,
       })),
-      100,
-    )
+      documentHeight: 100,
+    })
     return result.every(
       (entry, index) =>
         entry.depth >= 0 &&
@@ -124,12 +127,12 @@ describe('resolveOutline', () => {
 
 describe('fixedPitchOffsets', () => {
   it('preserves ordinary pitch, compresses long outlines, and never overlaps ticks', () => {
-    expect(fixedPitchOffsets(0)).toEqual([])
-    expect(fixedPitchOffsets(1)).toEqual([0])
-    expect(fixedPitchOffsets(3)).toEqual([0, 14, 28])
-    expect(fixedPitchOffsets(23).at(-1)).toBe(308)
-    expect(fixedPitchOffsets(155).at(-1)).toBe(308)
-    expect(fixedPitchOffsets(156).at(-1)).toBe(310)
-    expect(fixedPitchOffsets(3, 10)).toEqual([0, 5, 10])
+    expect(fixedPitchOffsets({ count: 0 })).toEqual([])
+    expect(fixedPitchOffsets({ count: 1 })).toEqual([0])
+    expect(fixedPitchOffsets({ count: 3 })).toEqual([0, 14, 28])
+    expect(fixedPitchOffsets({ count: 23 }).at(-1)).toBe(308)
+    expect(fixedPitchOffsets({ count: 155 }).at(-1)).toBe(308)
+    expect(fixedPitchOffsets({ count: 156 }).at(-1)).toBe(310)
+    expect(fixedPitchOffsets({ count: 3, maxTrackHeight: 10 })).toEqual([0, 5, 10])
   })
 })
