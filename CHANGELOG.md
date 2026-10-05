@@ -40,6 +40,9 @@
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
 - Genie bootstrap discovery excludes Buck output trees, so copied generator files
   in build artifacts do not enter source-tree closure checks.
+- Buck remote-cache uploads reserve protobuf headroom below the backend's 4 MiB
+  gRPC limit, including in generated consumer roots, so large React Aria
+  dependency outputs upload and reuse across independent roots.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
