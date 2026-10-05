@@ -11,7 +11,7 @@ import { ciPassed, execGate, fieldIs, humanGate, merged } from './mod.ts'
 import { input, product } from './mod.ts'
 import { agent, completed, completion, doc, emit, failed, gate, loop, mission, node, observer, resource, schedule, smalltalkKdl, step, subscription, terminal, type StepHandle } from './mod.ts'
 import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
-import { prLanding } from './pr-landing.fixture.ts'
+import { prLanding, prLandingFragment } from './pr-landing.fixture.ts'
 
 const guideText = 'This immutable guide is ready.\n'
 const guideHash = createHash('sha256').update(guideText).digest('hex')
@@ -408,6 +408,8 @@ testWithSt(
       writeFileSync(source, emit([prLanding()]))
       const inputPublished = publish()
       expect(inputPublished.status, inputPublished.stderr).toBe(0)
+      expect(JSON.parse(inputPublished.stdout).published_missions.map((entry: { subject: string }) => entry.subject))
+        .toEqual(['mission/pr-landing'])
       const observePr = (state: string) => spawnSync(stBin!, [
         '--endpoint', `unix://${socket}`, '--json', 'claim', 'resource/acme/garden/pr-7', 'resource.observed',
         '--field', 'kind=vcs.pull-request', '--field', `state=${state}`, '--field', 'number=7',
@@ -415,8 +417,8 @@ testWithSt(
       const observedPr = observePr('open')
       expect(observedPr.status, observedPr.stderr).toBe(0)
       const claimId = JSON.parse(observedPr.stdout).id
-      const startLanding = (values: readonly string[]) => spawnSync(stBin!, [
-        '--endpoint', `unix://${socket}`, '--json', 'missions', 'start', 'pr-landing', '--id', 'input-proof',
+      const startLanding = (values: readonly string[], id = 'input-proof') => spawnSync(stBin!, [
+        '--endpoint', `unix://${socket}`, '--json', 'missions', 'start', 'pr-landing', '--id', id,
         '--workspace', dir, '--as', actor, ...values.flatMap((value) => ['--input', value]),
       ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
       const missingInput = startLanding(['pr=resource/acme/garden/pr-7'])
@@ -431,6 +433,25 @@ testWithSt(
       expect(JSON.parse(startedLanding.stdout)).toMatchObject({ mission_run: { inputs: {
         pr: pinnedPr, commit: { kind: 'text', value: 'a'.repeat(40) }, locator: { kind: 'text', value: 'acme/garden#7' },
       } } })
+      const capacityRejected = startLanding(values, 'input-proof-second')
+      expect(capacityRejected.status).not.toBe(0)
+      expect(capacityRejected.stderr).toContain('reached its active run limit')
+      const prNumbers = Array.from({ length: 41 }, (_, index) => index + 1)
+      writeFileSync(source, emit(prNumbers.map((number) => prLandingFragment({ number, commit: 'a'.repeat(40) }))))
+      const fragmentsPublished = publish()
+      expect(fragmentsPublished.status, fragmentsPublished.stderr).toBe(0)
+      expect(JSON.parse(fragmentsPublished.stdout).published_missions.map((entry: { subject: string }) => entry.subject).sort())
+        .toEqual(prNumbers.map((number) => `mission/pr-landing-${number}`).sort())
+      for (const number of [1, 2]) {
+        const fragmentStarted = spawnSync(stBin!, [
+          '--endpoint', `unix://${socket}`, '--json', 'missions', 'start', `pr-landing-${number}`,
+          '--id', `fragment-proof-${number}`, '--workspace', dir, '--as', actor,
+        ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
+        expect(fragmentStarted.status, fragmentStarted.stderr).toBe(0)
+        expect(JSON.parse(fragmentStarted.stdout)).toMatchObject({
+          mission_run: { mission: `mission/pr-landing-${number}`, status: 'running' },
+        })
+      }
       const laterObservation = observePr('closed')
       expect(laterObservation.status, laterObservation.stderr).toBe(0)
       const inputShown = spawnSync(stBin!, [
