@@ -51,6 +51,11 @@
 - Buck roots use Watchman with output-directory exclusions and idle watch reaping.
   This prevents daemon startup from recursively traversing ignored build outputs
   and dependency symlinks; warm commands no longer need a full-file hash crawl.
+  The packaged entrypoint admits the actual service before native startup, with
+  a bounded probe and short-lived environment-scoped cache. Unavailable Watchman
+  warns and falls back to notify; explicit local providers remain authoritative.
+  Immutable Nix source products retain their service-free `fs_hash_crawler`
+  override because Watchman's state initialization is forbidden in the sandbox.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources

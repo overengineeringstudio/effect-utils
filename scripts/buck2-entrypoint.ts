@@ -14,6 +14,11 @@ import {
   trustedArchiveOriginFromConfig,
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
+import {
+  probeWatchman,
+  reconcileFileWatcher,
+  withoutManagedWatcherBlock,
+} from './buck2-file-watcher.ts'
 
 const configCommands: Record<string, true> = {
   build: true,
@@ -122,7 +127,7 @@ const warning = ({
     process.stderr.write(`::warning title=Buck2 cache::${message}\n`)
 }
 
-/** Apply cache posture at the pinned entrypoint; outage overrides are invocation-local. */
+/** Admit the initial file watcher and cache posture before pinned native startup. */
 export const directBuckArguments = async ({
   args,
   cwd,
@@ -150,7 +155,36 @@ export const directBuckArguments = async ({
   const tracked = readConfig({ path: join(root, '.buckconfig') })
   const trackedValues = buckConfigValues(tracked)
   const currentLocal = readConfig({ path: join(root, '.buckconfig.local') })
-  const unmanaged = withoutManagedBlock(currentLocal)
+  const localWithoutWatcher = withoutManagedWatcherBlock(currentLocal)
+  const explicitWatcher = buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
+  if (trackedValues['buck2.file_watcher'] === 'watchman' && explicitWatcher === undefined) {
+    const available = await cachedProbe({
+      cacheDirectory,
+      key: JSON.stringify([
+        'watchman-service',
+        process.platform,
+        env['PATH'],
+        env['HOME'],
+        env['XDG_RUNTIME_DIR'],
+        env['WATCHMAN_SOCK'],
+        env['WATCHMAN_STATE_DIR'],
+        env['TMPDIR'],
+        env['TMP'],
+        env['USER'],
+        env['LOGNAME'],
+        env['WATCHMAN_CONFIG_FILE'],
+      ]),
+      probe: () => probeWatchman({ env, deadlineMs }),
+    })
+    reconcileFileWatcher({ repoRoot: root, provider: available === true ? 'watchman' : 'notify' })
+    if (available === false) {
+      failedOpen = true
+      process.stderr.write('warning: Buck2 Watchman service is unavailable; using notify\n')
+    }
+  } else if (localWithoutWatcher !== currentLocal.trimEnd()) {
+    reconcileFileWatcher({ repoRoot: root })
+  }
+  const unmanaged = withoutManagedBlock(localWithoutWatcher)
   const local = unmanaged.content
   const base = buckConfigValues(`${tracked}\n${local}`)
   // Unrelated Buck projects do not opt into effect-utils' cache policy.
