@@ -13,6 +13,7 @@ import { createEmptyLockFile, LockFile, LockedMember, writeLockFile } from '../c
 import { MegarepoConfig } from '../core/config.ts'
 import { syncNixLocks } from '../core/nix-lock/mod.ts'
 import { generateSchema } from '../generators/schema.ts'
+import { decodeJson, encodeJson } from '../test-utils/json.ts'
 
 import { abbreviateStorePath } from './store-path.ts'
 
@@ -110,7 +111,7 @@ describe('canonical mutation write boundaries', () => {
           lockFile,
         }),
       )
-      expect(JSON.parse(await readFile(`${owned}/megarepo.lock`, 'utf8'))).toEqual({
+      expect(decodeJson(await readFile(`${owned}/megarepo.lock`, 'utf8'))).toEqual({
         version: 1,
         members: {},
       })
@@ -134,7 +135,7 @@ describe('canonical mutation write boundaries', () => {
       const source = `{ inputs.dep.url = "github:acme/dep/main?rev=${'b'.repeat(40)}"; }\n`
       await writeFile(`${canonical}/flake.nix`, source)
       await symlink(`${canonical}/flake.nix`, `${owned}/flake.nix`)
-      const originalLock = JSON.stringify({
+      const originalLock = encodeJson({
         version: 7,
         root: 'root',
         nodes: {

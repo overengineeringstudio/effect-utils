@@ -24,6 +24,7 @@ import {
 } from '../core/lock.ts'
 import { MegarepoSyncTree, SyncErrorItem } from '../sync/schema.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
+import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import {
   addCommit,
   createRepo,
@@ -1782,7 +1783,7 @@ describe('canonical member mutation guard', () => {
           const branchPath = store.worktreePaths['github.com/acme/victim#main']!
           yield* runGitCommand(branchPath, 'symbolic-ref', 'HEAD', 'refs/heads/main')
           const depCommit = 'a'.repeat(40)
-          const nixLock = JSON.stringify({
+          const nixLock = encodeJson({
             version: 7,
             root: 'root',
             nodes: {
@@ -1809,14 +1810,14 @@ describe('canonical member mutation guard', () => {
           })
           yield* fs.writeFileString(
             `${workspacePath}megarepo.json`,
-            JSON.stringify({
+            encodeJson({
               members: { victim: 'acme/victim#main', dep: 'acme/dep#feature' },
               lockSync: { enabled: true },
             }),
           )
           yield* fs.writeFileString(
             `${workspacePath}megarepo.lock`,
-            JSON.stringify({
+            encodeJson({
               version: 1,
               members: {
                 victim: {
@@ -1877,8 +1878,8 @@ describe('canonical member mutation guard', () => {
             `{ inputs.dep.url = "github:acme/dep/feature?rev=${depCommit}"; }\n`,
           )
           expect(
-            JSON.parse(yield* fs.readFileString(`${physicalMember}/flake.lock`)).nodes.dep.original.ref,
-          ).toBe('feature')
+            decodeJson(yield* fs.readFileString(`${physicalMember}/flake.lock`)),
+          ).toMatchObject({ nodes: { dep: { original: { ref: 'feature' } } } })
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,
