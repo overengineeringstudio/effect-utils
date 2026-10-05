@@ -21,7 +21,7 @@ export type GithubRulesetOptions = {
 export type GithubRulesetReport = {
   readonly repo: string
   readonly rulesetName: string
-  readonly rulesetId: number
+  readonly rulesetId: number | null
   readonly changed: boolean
   readonly applied: boolean
   readonly diffs: ReadonlyArray<RulesetDiff>
@@ -51,6 +51,27 @@ export const reconcileGithubRuleset = async ({
 }): Promise<GithubRulesetReport> => {
   const desired = JSON.parse(await readFile(options.file, 'utf8')) as unknown
   const summary = await findRuleset({ repo: options.repo, rulesetName: options.ruleset })
+  if (summary === undefined) {
+    let rulesetId: number | null = null
+    if (mode === 'apply') {
+      const created = asRecord(await ghJson({
+        endpoint: `repos/${options.repo}/rulesets`,
+        args: ['--method', 'POST', '--input', options.file],
+      }))
+      if (typeof created.id !== 'number') {
+        throw new Error(`expected created GitHub ruleset to have an id for ${options.repo}`)
+      }
+      rulesetId = created.id
+    }
+    return {
+      repo: options.repo,
+      rulesetName: options.ruleset,
+      rulesetId,
+      changed: true,
+      applied: mode === 'apply',
+      diffs: diffGithubRuleset({ desired, actual: undefined }),
+    }
+  }
   const actual = await ghJson({ endpoint: `repos/${options.repo}/rulesets/${summary.id}` })
   const diffs = diffGithubRuleset({ desired, actual })
   const applied = mode === 'apply' && diffs.length > 0
@@ -88,7 +109,7 @@ export const formatGithubRulesetReport = ({
 
   const action = report.applied === true ? 'applied' : 'drift'
   return [
-    `${action}: ${report.repo} ruleset \`${report.rulesetName}\` (${report.rulesetId})`,
+    `${action}: ${report.repo} ruleset \`${report.rulesetName}\` (${report.rulesetId ?? 'absent'})`,
     ...report.diffs.map((diff) => `- ${diff.field}`),
   ].join('\n')
 }
@@ -201,7 +222,7 @@ const findRuleset = async ({
 }: {
   readonly repo: string
   readonly rulesetName: string
-}): Promise<RulesetSummary> => {
+}): Promise<RulesetSummary | undefined> => {
   const summaries = await ghJson({ endpoint: `repos/${repo}/rulesets` })
   if (Array.isArray(summaries) === false) {
     throw new Error(`expected GitHub rulesets response to be an array for ${repo}`)
@@ -211,10 +232,6 @@ const findRuleset = async ({
     const candidate = summary as Partial<RulesetSummary>
     return candidate.name === rulesetName && typeof candidate.id === 'number'
   })
-
-  if (match === undefined) {
-    throw new Error(`repo ${repo} has no ruleset named \`${rulesetName}\``)
-  }
 
   return match
 }
