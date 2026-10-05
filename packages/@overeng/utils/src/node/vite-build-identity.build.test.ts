@@ -164,16 +164,18 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       logLevel: 'silent',
       optimizeDeps: { noDiscovery: true },
       plugins: [
-        createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
         {
           name: 'identity-fixture-update-barrier',
           configureServer(server) {
-            watcherReady = new Promise<void>((resolve) => server.watcher.once('ready', resolve))
+            const { promise, resolve } = Promise.withResolvers<void>()
+            watcherReady = promise
+            server.watcher.once('ready', resolve)
           },
           handleHotUpdate() {
             sourceUpdated?.()
           },
         },
+        createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
       ],
       server: { host: '127.0.0.1', port: 0 },
     })
@@ -208,9 +210,8 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     const now = Date.now
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 60_000)
     try {
-      const updated = new Promise<void>((resolve) => {
-        sourceUpdated = resolve
-      })
+      const { promise: updated, resolve } = Promise.withResolvers<void>()
+      sourceUpdated = resolve
       writeFileSync(join(root, 'entry.js'), 'export const value = 3\n')
       await updated
       expect(await (await fetch(probeUrl)).json()).toEqual(dirtyIdentity)
@@ -298,7 +299,8 @@ it('does not recompute identity for a sibling worktree commit', async () => {
     git(served, 'checkout', '--quiet', '-b', 'nested/branch')
     commit(served)
     await waitForWatchUpdate(async () =>
-      expect((await identity()).rev).toBe(git(served, 'rev-parse', 'HEAD')))
+      expect((await identity()).rev).toBe(git(served, 'rev-parse', 'HEAD')),
+    )
     git(served, 'checkout', '--quiet', '--detach', initial.rev)
     await waitForWatchUpdate(async () => expect((await identity()).rev).toBe(initial.rev))
   } finally {

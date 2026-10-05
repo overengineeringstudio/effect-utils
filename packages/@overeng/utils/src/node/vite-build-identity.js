@@ -49,7 +49,8 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
     const options = {
       baseVersion,
       buildStamp,
-      env: embedded?.type === 'nix' ? {} : { CLI_BUILD_STAMP: JSON.stringify(await localStamp(root)) },
+      env:
+        embedded?.type === 'nix' ? {} : { CLI_BUILD_STAMP: JSON.stringify(await localStamp(root)) },
     }
     const nextIdentity = resolveCliBuildIdentity({
       ...options,
@@ -102,6 +103,8 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       })
       if (embedded?.type === 'nix') return
       let stopped = false
+      // Query closure-owned lifecycle state anew after each async boundary.
+      const isStopped = () => stopped
       let pending = false
       let requestedAt = 0
       /** @type {Promise<void> | undefined} */
@@ -115,7 +118,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       )
       /** @param {string} path */
       const subscribe = (path) => {
-        if (watched.has(path) === true || stopped === true) return
+        if (watched.has(path) === true || isStopped() === true) return
         const listener = () => {
           void refresh().catch(reportError)
         }
@@ -155,17 +158,20 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         requestedAt = performance.now()
         if (flight !== undefined) return flight
         flight = (async () => {
-          while (pending === true && stopped === false) {
+          while (pending === true) {
             // Coalesce source and Git events, including events received while
             // the previous async Git snapshot was being read.
+            // oxlint-disable-next-line eslint/no-await-in-loop -- debounce and snapshots must remain single-flight
             await delay(Math.max(0, requestedAt + 50 - performance.now()))
-            if (stopped) break
+            if (isStopped() === true) break
             if (performance.now() < requestedAt + 50) continue
             pending = false
+            // oxlint-disable-next-line eslint/no-await-in-loop -- subscribe before the sequential snapshot
             await updateWatches()
-            if (stopped) break
+            if (isStopped() === true) break
+            // oxlint-disable-next-line eslint/no-await-in-loop -- snapshots cannot overlap
             const changed = await resolveIdentity(true)
-            if (changed === false || stopped) continue
+            if (changed === false || isStopped() === true) continue
             const module = server.moduleGraph.getModuleById(resolvedId)
             if (module === undefined) continue
             server.moduleGraph.invalidateModule(module)
@@ -194,7 +200,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       await refresh()
     },
     async closeBundle() {
-      for (const dispose of cleanup.splice(0)) await dispose()
+      await Promise.all(cleanup.splice(0).map((dispose) => dispose()))
     },
     resolveId(id) {
       return id === virtualId ? resolvedId : undefined
