@@ -105,7 +105,7 @@ const stBin = process.env.ST_BIN
 const testWithSt = stBin !== undefined && stBin !== '' ? it : it.skip
 testWithSt(
   'round-trips canonical mission and strict agent fields through isolated st daemon',
-  () =>
+  ({ signal }) =>
     Effect.gen(function* () {
       const daemon = yield* ScratchDaemon
       const dir = daemon.directory
@@ -162,7 +162,8 @@ testWithSt(
       expect(automaticShown.stdout).not.toContain('handles-faults')
     }).pipe(
       Effect.provide(scratchDaemonLayer({ binary: stBin!, node: 'genie-test' })),
-      Effect.runPromise,
+      // Vitest aborts `signal` on timeout, interrupting the fiber so the scratch daemon is torn down.
+      (effect) => Effect.runPromise(effect, { signal }),
     ),
   60000,
 )

@@ -49,6 +49,8 @@ export interface ScratchDaemonOptions {
   readonly path?: string
   /** Socket readiness timeout. Default 10 seconds. */
   readonly readyTimeout?: Duration.Input
+  /** Per-`run` timeout; the CLI process is killed and `run` fails with {@link ScratchDaemonError}. Default 30 seconds. */
+  readonly commandTimeout?: Duration.Input
   /** Keep the scratch directory after scope close for debugging. Default false. */
   readonly keepDirectory?: boolean
 }
@@ -101,31 +103,41 @@ const escapedProcesses = (marker: string) => {
 /**
  * Stops `st up` (its own process-group leader) and every process still carrying the scratch
  * environment, so nothing can recreate files in the directory after it is removed. SIGTERM first,
- * SIGKILL after 5 seconds.
+ * SIGKILL after 5 seconds; gives up 2 seconds later (unreapable zombies, D-state) and logs the
+ * survivors instead of hanging the finalizer.
  */
 const stop = ({ child, marker }: { child: ChildProcess; marker: string }) =>
   Effect.callback<void>((resume) => {
     const pid = child.pid
     const signalAll = (signal: NodeJS.Signals | 0) => {
-      let alive = pid !== undefined && signalGroup({ pid, signal })
-      for (const escaped of escapedProcesses(marker)) {
-        alive = true
-        if (signal !== 0) {
+      const escaped = escapedProcesses(marker)
+      const groupAlive = pid !== undefined && signalGroup({ pid, signal })
+      if (signal !== 0) {
+        for (const survivor of escaped) {
           try {
-            process.kill(escaped, signal)
+            process.kill(survivor, signal)
           } catch {
             // Already gone.
           }
         }
       }
-      return alive
+      return { alive: groupAlive === true || escaped.length > 0, escaped }
     }
-    if (signalAll('SIGTERM') === false) return resume(Effect.void)
-    const deadline = Date.now() + 5000
+    if (signalAll('SIGTERM').alive === false) return resume(Effect.void)
+    const killAt = Date.now() + 5000
+    const giveUpAt = killAt + 2000
     const poll = setInterval(() => {
-      if (signalAll(Date.now() > deadline ? 'SIGKILL' : 0) === true) return
+      const now = Date.now()
+      const { alive, escaped } = signalAll(now > killAt ? 'SIGKILL' : 0)
+      if (alive === true && now <= giveUpAt) return
       clearInterval(poll)
-      resume(Effect.void)
+      resume(
+        alive === true
+          ? Effect.logWarning(
+              `scratch daemon teardown gave up; group ${pid} or pids [${escaped.join(', ')}] still alive`,
+            )
+          : Effect.void,
+      )
     }, 50)
     return Effect.sync(() => clearInterval(poll))
   })
@@ -183,8 +195,9 @@ export const scratchDaemonLayer = (options: ScratchDaemonOptions) =>
       const socket = join(directory, 'daemon.sock')
       const endpoint = `unix://${socket}`
       const stderr: Array<string> = []
+      let ready = false
       const daemon = yield* Effect.acquireRelease(
-        Effect.sync(() => {
+        Effect.callback<ChildProcess, ScratchDaemonError>((resume) => {
           const child = spawn(
             binary,
             [
@@ -202,14 +215,23 @@ export const scratchDaemonLayer = (options: ScratchDaemonOptions) =>
             ],
             { env: isolatedEnv, stdio: ['ignore', 'ignore', 'pipe'], detached: true },
           )
-          child.stderr.setEncoding('utf8').on('data', (chunk: string) => stderr.push(chunk))
-          child.on('error', (cause) => stderr.push(cause.message))
-          return child
+          // Keep draining stderr for the daemon's lifetime but only buffer it for startup diagnostics.
+          child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+            if (ready === false) stderr.push(chunk)
+          })
+          child.once('spawn', () => resume(Effect.succeed(child)))
+          child.once('error', (cause) =>
+            resume(
+              Effect.fail(
+                new ScratchDaemonError({ message: `cannot spawn ${binary}: ${cause.message}` }),
+              ),
+            ),
+          )
         }),
         (child) => stop({ child, marker: `HOME=${env.HOME}` }),
       )
       yield* Effect.suspend(() => {
-        if (daemon.pid === undefined || daemon.exitCode !== null || daemon.signalCode !== null)
+        if (daemon.exitCode !== null || daemon.signalCode !== null)
           return Effect.fail(
             new ScratchDaemonError({
               message: `st up failed to start or exited: ${stderr.join('')}`,
@@ -232,6 +254,8 @@ export const scratchDaemonLayer = (options: ScratchDaemonOptions) =>
             ),
         }),
       )
+      ready = true
+      const commandTimeout = options.commandTimeout ?? '30 seconds'
       return {
         directory,
         binary,
@@ -239,7 +263,13 @@ export const scratchDaemonLayer = (options: ScratchDaemonOptions) =>
         endpoint,
         env: isolatedEnv,
         run: (args) =>
-          capture({ binary, args: ['--endpoint', endpoint, ...args], env: isolatedEnv }),
+          capture({ binary, args: ['--endpoint', endpoint, ...args], env: isolatedEnv }).pipe(
+            Effect.timeoutOrElse({
+              duration: commandTimeout,
+              orElse: () =>
+                Effect.fail(new ScratchDaemonError({ message: `st ${args.join(' ')} timed out` })),
+            }),
+          ),
       }
     }),
   )
