@@ -291,7 +291,8 @@ export const GateSchema = Schema.Union([
     name: GateName, kind: Schema.Literal('field'),
     path: Text.pipe(Schema.refine((s): s is string => /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)*$/u.test(s))),
     subject: FullSubject, operator: Schema.Literals(['is', 'starts-with', 'contains']),
-    value: Schema.Union([Schema.String, Schema.Finite, Schema.Boolean]),
+    value: Schema.Union([Schema.String, Schema.Finite.pipe(Schema.refine((n): n is number =>
+      !Number.isInteger(n) || Number.isSafeInteger(n))), Schema.Boolean]),
   }),
   Schema.Struct({
     name: GateName, kind: Schema.Literal('merged'),

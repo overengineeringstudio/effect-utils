@@ -20,7 +20,7 @@ const canonical = () =>
             { name: 'state', kind: 'field', path: 'state', subject: 'resource/input', operator: 'is', value: 'ready' },
             { name: 'prefix', kind: 'field', path: 'name', subject: 'resource/input', operator: 'starts-with', value: 'input' },
             { name: 'empty', kind: 'empty', subject: 'mission-run/previous' },
-            { name: 'has', kind: 'has', subject: 'doc/guide', text: 'ready' },
+            { name: 'has', kind: 'has', subject: 'message/guide', text: 'ready' },
             { name: 'lacks', kind: 'lacks', subject: 'file/local:/tmp/result', text: 'error' },
             { name: 'merged', kind: 'merged', locator: 'acme/garden#7' },
             { name: 'ci', kind: 'ci-passed', check: 'build', repo: 'acme/garden', ref: { branch: 'main' } },
@@ -163,6 +163,9 @@ describe('Smalltalk declarations', () => {
   })
   it.each([0, 101, 1.5])('rejects invalid retry attempts %s', (attempts) => {
     expect(() => step({ id: 'a', retry: { attempts } })).toThrow()
+  })
+  it.each([1e19, -1e19, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe integral field values %s', (value) => {
+    expect(() => gate({ name: 'number', kind: 'field', path: 'count', subject: 'resource/result', operator: 'is', value })).toThrow()
   })
   it('rejects excessive goals, duplicate gates and missing dependencies', () => {
     expect(() => step({ id: 'a', goals: ['a', 'b', 'c', 'd'] })).toThrow()
