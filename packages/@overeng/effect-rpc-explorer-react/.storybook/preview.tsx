@@ -24,7 +24,9 @@ const StorybookDecorator = ({
   children: ReactNode
   isDark: boolean
 }): ReactNode => (
-  <div {...stylex.props(styles.page, isDark ? darkExplorerTheme : undefined)}>{children}</div>
+  <div {...stylex.props(styles.page, isDark ? darkExplorerTheme : undefined)}>
+    {children}
+  </div>
 )
 
 const preview: Preview = {

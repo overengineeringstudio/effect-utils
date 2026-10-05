@@ -3,6 +3,7 @@ import { Button, Link, type ButtonProps } from 'react-aria-components'
 
 import type { OutlineEntry, OutlineHrefEntry } from './model.ts'
 
+/** Controlled reading state and either callback or complete href navigation. */
 export type OutlineNavigationProps = {
   readonly activeId: string | undefined
   readonly 'aria-label'?: string
@@ -11,6 +12,7 @@ export type OutlineNavigationProps = {
   | { readonly entries: readonly OutlineHrefEntry[]; readonly onNavigate?: undefined }
 )
 
+/** Accessible destination presentation with a callback or native href. */
 export type OutlineLinkProps = {
   readonly activeId: string | undefined
   readonly className?: string
@@ -33,8 +35,8 @@ export const OutlineLink = ({
   const descriptionId = React.useId()
   const common = {
     ...presentation,
-    'aria-current': entry.id === activeId ? ('location' as const) : undefined,
-    'aria-describedby': entry.description === undefined ? undefined : descriptionId,
+    ...(entry.id === activeId ? { 'aria-current': 'location' as const } : {}),
+    ...(entry.description === undefined ? {} : { 'aria-describedby': descriptionId }),
   }
   return (
     <>
@@ -47,13 +49,13 @@ export const OutlineLink = ({
             if (
               onNavigate !== undefined &&
               event.button === 0 &&
-              !event.metaKey &&
-              !event.ctrlKey &&
-              !event.shiftKey &&
-              !event.altKey &&
-              !event.defaultPrevented &&
+              event.metaKey === false &&
+              event.ctrlKey === false &&
+              event.shiftKey === false &&
+              event.altKey === false &&
+              event.defaultPrevented === false &&
               (target === null || target === '' || target === '_self') &&
-              !event.currentTarget.hasAttribute('download')
+              event.currentTarget.hasAttribute('download') === false
             ) {
               event.preventDefault()
               onNavigate(entry.id)
@@ -76,6 +78,7 @@ export const OutlineLink = ({
   )
 }
 
+/** Props and refs for the nonmodal hover/focus-retained rail disclosure. */
 export interface OutlineRailInteractions {
   readonly isOpen: boolean
   readonly triggerRef: React.RefObject<HTMLButtonElement | null>
@@ -100,12 +103,12 @@ export const useOutlineRail = ({
   const panelId = React.useId()
 
   React.useLayoutEffect(() => {
-    if (!isOpen) return
+    if (isOpen === false) return
     const panel = panelRef.current
     const active = panel?.querySelector<HTMLElement>('[aria-current="location"]')
     if (panel === null || active === undefined || active === null) return
     // Reading-state updates must not displace the row a keyboard user is navigating.
-    if (panel.contains(panel.ownerDocument.activeElement)) return
+    if (panel.contains(panel.ownerDocument.activeElement) === true) return
     const panelRect = panel.getBoundingClientRect()
     const activeRect = active.getBoundingClientRect()
     if (activeRect.top < panelRect.top) panel.scrollTop += activeRect.top - panelRect.top
@@ -125,20 +128,24 @@ export const useOutlineRail = ({
       },
       onPointerLeave: () => {
         hovered.current = false
-        if (!focused.current) setOpen(false)
+        if (focused.current === false) setOpen(false)
       },
       onFocus: (event) => {
         focused.current = true
-        if (!event.currentTarget.contains(event.relatedTarget) && !suppressed.current) setOpen(true)
+        if (
+          event.currentTarget.contains(event.relatedTarget) === false &&
+          suppressed.current === false
+        )
+          setOpen(true)
       },
       onBlur: (event) => {
-        if (event.currentTarget.contains(event.relatedTarget)) return
+        if (event.currentTarget.contains(event.relatedTarget) === true) return
         focused.current = false
         suppressed.current = false
-        if (!hovered.current) setOpen(false)
+        if (hovered.current === false) setOpen(false)
       },
       onKeyDown: (event) => {
-        if (event.key !== 'Escape' || !isOpen) return
+        if (event.key !== 'Escape' || isOpen === false) return
         event.preventDefault()
         event.stopPropagation()
         suppressed.current = true

@@ -50,9 +50,9 @@ The remaining aggregate boundaries are classified rather than disguised:
 
 ## Options
 
-| Option                                      | Outcome                        |
-| ------------------------------------------- | ------------------------------ |
-| Preserve the selected authority boundary    | Accepted                       |
+| Option | Outcome |
+| --- | --- |
+| Preserve the selected authority boundary | Accepted |
 | Move external/freshness authority into Buck | Rejected for the reasons below |
 
 - **Reimplement Weaver validation in TypeScript:** duplicates an upstream semantic validator and would

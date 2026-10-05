@@ -49,9 +49,9 @@ proof target itself.
 
 ## Options
 
-| Option                                      | Outcome                        |
-| ------------------------------------------- | ------------------------------ |
-| Preserve the selected authority boundary    | Accepted                       |
+| Option | Outcome |
+| --- | --- |
+| Preserve the selected authority boundary | Accepted |
 | Move external/freshness authority into Buck | Rejected for the reasons below |
 
 - **A Buck freshness target:** circular authority; a stale graph can omit or weaken its own verifier.

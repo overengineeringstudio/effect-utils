@@ -86,6 +86,10 @@ focus retention, the keyboard opener, and Escape focus return. Render `OutlineLi
 callback or native section hrefs. Pass the active ID from actual scroll position, not the last click.
 The package supplies no theme, document discovery, domain extraction, or virtualization.
 
+Run `devenv tasks run test:outline` for the focused behavioral suite. Its scoped
+`buck2:editor:publish:outline` prerequisite publishes the package's Buck-owned dependency view
+without materializing unrelated package editor views.
+
 ### Browser Telemetry
 
 `@overeng/otel-browser` provides scoped Effect tracing and OTLP/HTTP traces and metrics for browser
