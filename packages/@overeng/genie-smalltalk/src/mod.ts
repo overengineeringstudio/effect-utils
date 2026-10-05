@@ -844,7 +844,7 @@ export function step(input: StepInput<string>): StepHandle {
   const dependencies: readonly StepDependency[] =
     dependsOn?.filter((d): d is StepDependency => dependencyBrand in d) ?? []
   const materializedProducts = Object.entries(produces ?? {}).map(([name, value]) => {
-    Schema.decodeUnknownSync(LocalId)(name)
+    Schema.decodeSync(LocalId)(name)
     if (productOwners.has(value)) throw new TypeError('Product handle already belongs to a step')
     return { value, subject: value.subject ?? `resource/mission-run/\${ST_MISSION_RUN}/${input.id}/${name}` }
   })

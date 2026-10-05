@@ -41,13 +41,13 @@ export type RunReference = InputHandle | ProductHandle
 
 export const input = {
   text: <const TName extends string>(name: TName): TextInput<TName> => {
-    Schema.decodeUnknownSync(Name)(name)
+    Schema.decodeSync(Name)(name)
     return { [inputBrand]: true, name, kind: 'text' }
   },
   resource: <const TName extends string, const TKind extends string>(
     name: TName, options: { readonly kind: TKind },
   ): ResourceInput<TName, TKind> => {
-    Schema.decodeUnknownSync(Name)(name)
+    Schema.decodeSync(Name)(name)
     if (options.kind.length === 0) throw new TypeError('Resource input needs a kind')
     return { [inputBrand]: true, name, kind: 'resource', resourceKind: options.kind }
   },
