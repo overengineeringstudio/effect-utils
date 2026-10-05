@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { agent, emit, mission, node, resource, schedule, smalltalkKdl } from './mod.ts'
@@ -101,6 +101,9 @@ describe('Smalltalk declarations', () => {
   })
 })
 
+const decodeChanged = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ changed: Schema.Boolean })),
+)
 const stBin = process.env.ST_BIN
 const testWithSt = stBin !== undefined && stBin !== '' ? it : it.skip
 testWithSt(
@@ -117,7 +120,7 @@ testWithSt(
       expect(first.status, first.stderr).toBe(0)
       const second = yield* publish
       expect(second.status, second.stderr).toBe(0)
-      expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
+      expect((yield* decodeChanged(second.stdout)).changed).toBe(false)
       const seatSource = join(dir, 'agent.kdl')
       const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
       const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
@@ -134,7 +137,7 @@ testWithSt(
       expect(shown.stdout).toMatch(/^\s*handles-faults\s*$/mu)
       const reapplied = yield* applySeat(shown.stdout)
       expect(reapplied.status, reapplied.stderr).toBe(0)
-      expect(JSON.parse(reapplied.stdout)).toMatchObject({ changed: false })
+      expect((yield* decodeChanged(reapplied.stdout)).changed).toBe(false)
       for (const field of [
         'rollout "automatic"',
         'rollout 1',
@@ -155,7 +158,7 @@ testWithSt(
       }
       const automatic = yield* applySeat(emit([agent(launch)]))
       expect(automatic.status, automatic.stderr).toBe(0)
-      expect(JSON.parse(automatic.stdout)).toMatchObject({ changed: true })
+      expect((yield* decodeChanged(automatic.stdout)).changed).toBe(true)
       const automaticShown = yield* show
       expect(automaticShown.status, automaticShown.stderr).toBe(0)
       expect(automaticShown.stdout).not.toContain('rollout')
