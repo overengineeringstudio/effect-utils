@@ -4,6 +4,9 @@
 
 ### Added
 
+- Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
+  artifacts with normalized reports and a `buck2 test` adapter. Failed suites
+  exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
 - Declared Darwin Swift app-bundle Buck products with deterministic bundle
   packaging and independent per-executable Mach-O inspection during Nix import.
 - `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
@@ -13,6 +16,12 @@
 
 ### Fixed
 
+- The distributed Buck rules cell includes the verdict runtime, and Vitest rules
+  own hermetic execution admission through the shared rules-cell constraint.
+- The rules-product inventory test again verifies complete distribution sources
+  and tool exports, including the Swift, wasm, hermetic and verdict additions.
+- Repository-context rejection tests no longer assume the runner's temporary
+  directory is outside the repository, preserving hermetic test containment.
 - The JavaScript product-import contract task declares OpenSSL instead of relying
   on an ambient executable for its integrity fixture.
 - Swift source products select bundle-aware runtime inspection during Nix import.

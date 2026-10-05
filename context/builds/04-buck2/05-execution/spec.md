@@ -149,7 +149,7 @@ ConfiguredOperation
 ```text
 declared suite + closure + runner + policy -> cacheable Buck build action
                                           -> result.json + structured report
-caller / test adapter -> cached result -> pass or fail, without rerunning suite
+caller / test adapter -> cached passing result -> pass, without rerunning suite
 ```
 
 Unit tests are result-producing build actions, not a reliance on uploads from
@@ -157,7 +157,7 @@ local `buck2 test` orchestration. Pinned Buck2 `be6971d4` never uploads local
 test executions (`orchestrator.rs:1533–1538`); compile hits alone therefore
 cannot prove verdict reuse. Axe record `ecwtsb` selects this mechanism;
 [issue #1600](https://github.com/overengineeringstudio/effect-utils/issues/1600)
-tracks implementation and its blocked proof. ADR
+tracks the verdict action and adapter. ADR
 [0026, Amendment 1](../../.decisions/0026-buck-owned-unit-tests.md) retains the
 unit-test authority and unchanged-input reuse goals.
 
@@ -167,13 +167,20 @@ artifact binds `schemaVersion: 1`, `verdict: "pass" | "fail"`, configured
 operation identity and report path. The report is a declared output, not stdout.
 The repository owns this exact, case-sensitive schema and verdict vocabulary;
 unknown versions/verdicts or missing report/output fail closed. A valid failed
-suite emits `verdict: "fail"` while the artifact-producing action succeeds, so
-its deterministic failure is reusable. Tool crashes, malformed outputs and
-infrastructure failures remain action failures and are not converted to verdicts.
+suite writes `verdict: "fail"` and exits nonzero. Ordinary nonzero actions are
+never uploaded, so a red verdict always reruns rather than becoming a reusable
+cached failure. A zero-exit action encoding failure was rejected: it would
+publish a reusable red artifact and make transient failures sticky. Successful
+actions alone are reusable; tool crashes, malformed outputs and infrastructure
+failures also remain action failures.
 A reader/test adapter fails the gate for a failed verdict without becoming a
 second suite executor. It cannot turn a failed suite into a successful gate.
-Flaky or nonhermetic suites are explicitly uncached, not admitted as deterministic
-verdict reuse (BUILD.BUCK.EXEC-R07/R09; BUILD.BUCK.REUSE-R02).
+Flaky or host-dependent suites declare `cacheable: false` in their package's
+`BUCK.genie.ts` test lane (`cacheable = False` in generated BUCK). They remain
+ordinary uncached test executions, without a verdict build action, on the
+non-cache-readable execution platform (BUILD.BUCK.EXEC-R07/R09;
+BUILD.BUCK.REUSE-R02). Suites requiring undeclared host inputs remain with their
+source-side devenv owner rather than entering the contained package-tree lane.
 
 ## Cache-Writable Lane Admission
 
@@ -267,12 +274,6 @@ the same runner. Feasible sandbox enforcement remains an explicit design questio
 
 ## Open Design Questions
 
-- **BUILD.BUCK.EXEC-DQ01 Verdict artifact implementation:** Blocked by
-  [#1600](https://github.com/overengineeringstudio/effect-utils/issues/1600).
-  Resolve with the runner/result schema, failed-verdict gate propagation, and
-  independent same-platform warm-context proof of both pass and fail reuse, plus
-  relevant/irrelevant mutation and crash/flaky controls. The mechanism is selected;
-  implementation and its proof are not claimed complete.
 - **BUILD.BUCK.EXEC-DQ02 Filesystem/network sandbox enforcement:** The inventory
   and startup env scrubbing above are implemented; local actions still need a
   feasible OS-level sandbox where declared-closure controls do not enforce all
