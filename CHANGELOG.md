@@ -37,6 +37,9 @@
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
 - Genie bootstrap discovery excludes Buck output trees, so copied generator files
   in build artifacts do not enter source-tree closure checks.
+- JavaScript product descriptor actions use the audited hermetic cache lane, so
+  independent roots reuse their byte-identical descriptors instead of executing
+  one default-denied local action.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
