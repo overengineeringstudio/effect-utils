@@ -7,6 +7,22 @@ import {
   type GitHubWorkflowArgs,
 } from '../mod.ts'
 import { runActionlint } from './actionlint.ts'
+import { isFleetCacheRunner } from './cache-policy.ts'
+
+describe('isFleetCacheRunner', () => {
+  it.each([
+    ['sh-linux-x64-publish'],
+    ['sh-linux-x64-publish', 'nix'],
+    ['sh-linux-arm64-publish'],
+    ['sh-linux-arm64-publish', 'nix'],
+  ])('accepts publisher runner labels %j', (...labels) => {
+    expect(isFleetCacheRunner(labels)).toBe(true)
+  })
+
+  it('rejects an unknown publisher runner label', () => {
+    expect(isFleetCacheRunner(['sh-linux-x64-publishx'])).toBe(false)
+  })
+})
 
 // Inject the actionlint capability the engine normally provides, so the actionlint integration cases below
 // actually exercise the spawn runner (rather than no-op'ing through the `ctx.actionlint === undefined` guard).
