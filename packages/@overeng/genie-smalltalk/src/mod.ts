@@ -261,53 +261,109 @@ export const AgentSchema = AgentSchemaFields.pipe(
   Schema.annotate({ identifier: 'St.Agent' }),
 )
 
-const GateName = Text.pipe(Schema.refine((s): s is string => new TextEncoder().encode(s).length <= 160))
-const validName = (s: string, full: boolean): boolean =>
-  s.length > 0 && s.length <= 512 && /^[A-Za-z0-9][A-Za-z0-9._@/-]*$/u.test(s) &&
-  s.split('/').every((part) => part !== '' && part !== '..') && (!full || s.includes('/'))
+const GateName = Text.pipe(
+  Schema.refine((s): s is string => new TextEncoder().encode(s).length <= 160),
+)
+const validName = ({
+  value: s,
+  full,
+}: {
+  readonly value: string
+  readonly full: boolean
+}): boolean =>
+  s.length > 0 &&
+  s.length <= 512 &&
+  /^[A-Za-z0-9][A-Za-z0-9._@/-]*$/u.test(s) &&
+  s.split('/').every((part) => part !== '' && part !== '..') &&
+  (!full || s.includes('/'))
 const validSubject = (s: string): boolean => {
-  if (/^\$\{[A-Za-z0-9_.]*\}$/u.test(s)) return true
+  if (/^\$\{[A-Za-z0-9_.]*\}$/u.test(s) === true) return true
   const concrete = s.replace(/\$\{[^}]*\}/gu, 'x')
-  if (concrete.includes('${')) return false
-  if (concrete.startsWith('file/')) {
+  if (concrete.includes('${') === true) return false
+  if (concrete.startsWith('file/') === true) {
     const colon = concrete.indexOf(':')
     const host = concrete.slice(5, colon)
     const path = concrete.slice(colon + 1)
-    return colon > 5 && validName(host, false) && path.startsWith('/') &&
-      !path.includes('/../') && !path.endsWith('/..')
+    return (
+      colon > 5 &&
+      validName({ value: host, full: false }) &&
+      path.startsWith('/') &&
+      !path.includes('/../') &&
+      !path.endsWith('/..')
+    )
   }
-  return validName(concrete, true)
+  return validName({ value: concrete, full: true })
 }
 const FullSubject = Text.pipe(Schema.refine((s): s is string => validSubject(s)))
-const Goals = Schema.Array(Text).pipe(Schema.refine((goals): goals is typeof goals => goals.length <= 3))
-const NonNegativeDuration = Schema.Union([Duration, Schema.Literals(['0ms', '0s', '0m', '0h', '0d'])])
+const Goals = Schema.Array(Text).pipe(
+  Schema.refine((goals): goals is typeof goals => goals.length <= 3),
+)
+const NonNegativeDuration = Schema.Union([
+  Duration,
+  Schema.Literals(['0ms', '0s', '0m', '0h', '0d']),
+])
 
 /** Graph predicates and built-in mechanical gates accepted by st. */
 export const GateSchema = Schema.Union([
   Schema.Struct({ name: GateName, kind: Schema.Literal('exists'), subject: FullSubject }),
-  Schema.Struct({ name: GateName, kind: Schema.Literal('empty'), subject: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('mission-run/'))) }),
-  Schema.Struct({ name: GateName, kind: Schema.Literals(['has', 'lacks']), subject: FullSubject.pipe(Schema.refine((s): s is string => /^(file|doc|message)\//u.test(s))), text: Schema.String }),
   Schema.Struct({
-    name: GateName, kind: Schema.Literal('field'),
-    path: Text.pipe(Schema.refine((s): s is string => /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)*$/u.test(s))),
-    subject: FullSubject, operator: Schema.Literals(['is', 'starts-with', 'contains']),
-    value: Schema.Union([Schema.String, Schema.Finite.pipe(Schema.refine((n): n is number =>
-      !Number.isInteger(n) || Number.isSafeInteger(n))), Schema.Boolean]),
+    name: GateName,
+    kind: Schema.Literal('empty'),
+    subject: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('mission-run/'))),
   }),
   Schema.Struct({
-    name: GateName, kind: Schema.Literal('merged'),
-    locator: Text.pipe(Schema.refine((s): s is string => s.includes('${') || /^[^/#]+\/[^/#]+#[1-9][0-9]*$/u.test(s))),
-    host: Schema.optionalKey(Text), workspace: Schema.optionalKey(Text), timeLimit: Schema.optionalKey(Duration),
+    name: GateName,
+    kind: Schema.Literals(['has', 'lacks']),
+    subject: FullSubject.pipe(Schema.refine((s): s is string => /^(file|doc|message)\//u.test(s))),
+    text: Schema.String,
   }),
   Schema.Struct({
-    name: GateName, kind: Schema.Literal('ci-passed'), check: Text, repo: Text,
+    name: GateName,
+    kind: Schema.Literal('field'),
+    path: Text.pipe(
+      Schema.refine((s): s is string =>
+        /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)*$/u.test(s),
+      ),
+    ),
+    subject: FullSubject,
+    operator: Schema.Literals(['is', 'starts-with', 'contains']),
+    value: Schema.Union([
+      Schema.String,
+      Schema.Finite.pipe(
+        Schema.refine((n): n is number => !Number.isInteger(n) || Number.isSafeInteger(n)),
+      ),
+      Schema.Boolean,
+    ]),
+  }),
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literal('merged'),
+    locator: Text.pipe(
+      Schema.refine(
+        (s): s is string => s.includes('${') || /^[^/#]+\/[^/#]+#[1-9][0-9]*$/u.test(s),
+      ),
+    ),
+    host: Schema.optionalKey(Text),
+    workspace: Schema.optionalKey(Text),
+    timeLimit: Schema.optionalKey(Duration),
+  }),
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literal('ci-passed'),
+    check: Text,
+    repo: Text,
     ref: Schema.Union([Schema.Struct({ commit: Text }), Schema.Struct({ branch: Text })]),
-    host: Schema.optionalKey(Text), workspace: Schema.optionalKey(Text), timeLimit: Schema.optionalKey(Duration),
+    host: Schema.optionalKey(Text),
+    workspace: Schema.optionalKey(Text),
+    timeLimit: Schema.optionalKey(Duration),
   }),
 ]).annotate({ identifier: 'St.Gate' })
 
-const Gates = Schema.Array(GateSchema).pipe(Schema.refine((gates): gates is typeof gates =>
-  new Set(gates.map((g) => g.name)).size === gates.length))
+const Gates = Schema.Array(GateSchema).pipe(
+  Schema.refine(
+    (gates): gates is typeof gates => new Set(gates.map((g) => g.name)).size === gates.length,
+  ),
+)
 
 /** Retry attempts include the initial attempt; zero backoff is allowed. */
 export const RetrySchema = Schema.Struct({
@@ -383,9 +439,7 @@ export const MissionSchema = Schema.Struct({
     (m): m is typeof m =>
       m.steps.length > 0 &&
       new Set(m.steps.map((s) => s.id)).size === m.steps.length &&
-      m.steps.every(
-        (s) => (s.dependsOn ?? []).every((d) => m.steps.some((p) => p.id === d.step)),
-      ),
+      m.steps.every((s) => (s.dependsOn ?? []).every((d) => m.steps.some((p) => p.id === d.step))),
     { message: 'mission needs unique steps and existing dependencies' },
   ),
   Schema.annotate({ identifier: 'St.Mission' }),
@@ -457,25 +511,38 @@ export const gate = (input: typeof GateSchema.Encoded): Node => {
   const g = decode({ schema: GateSchema, input })
   let predicate: Node
   switch (g.kind) {
-    case 'exists': case 'empty':
-      predicate = child({ name: g.kind, value: g.subject }); break
-    case 'has': case 'lacks':
-      predicate = node({ name: g.kind, args: [g.subject, g.text] }); break
+    case 'exists':
+    case 'empty':
+      predicate = child({ name: g.kind, value: g.subject })
+      break
+    case 'has':
+    case 'lacks':
+      predicate = node({ name: g.kind, args: [g.subject, g.text] })
+      break
     case 'field':
-      predicate = node({ name: 'field', args: [g.path, g.subject, g.operator, g.value] }); break
+      predicate = node({ name: 'field', args: [g.path, g.subject, g.operator, g.value] })
+      break
     case 'merged':
-      predicate = child({ name: 'merged', value: g.locator }); break
+      predicate = child({ name: 'merged', value: g.locator })
+      break
     case 'ci-passed':
-      predicate = node({ name: 'ci-passed', args: [g.check], props: { repo: g.repo, ...g.ref } }); break
+      predicate = node({ name: 'ci-passed', args: [g.check], props: { repo: g.repo, ...g.ref } })
+      break
   }
-  return node({ name: 'gate', args: [g.name], children: [
-    predicate,
-    ...(g.kind === 'merged' || g.kind === 'ci-passed' ? [
-      ...optionalChild({ name: 'host', value: g.host }),
-      ...optionalChild({ name: 'workspace', value: g.workspace }),
-      ...optionalChild({ name: 'time-limit', value: g.timeLimit }),
-    ] : []),
-  ] })
+  return node({
+    name: 'gate',
+    args: [g.name],
+    children: [
+      predicate,
+      ...(g.kind === 'merged' || g.kind === 'ci-passed'
+        ? [
+            ...optionalChild({ name: 'host', value: g.host }),
+            ...optionalChild({ name: 'workspace', value: g.workspace }),
+            ...optionalChild({ name: 'time-limit', value: g.timeLimit }),
+          ]
+        : []),
+    ],
+  })
 }
 
 /** Decodes and renders a step node. */
@@ -508,10 +575,16 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     )
   }
   children.push(...(s.gates ?? []).map(gate))
-  if (s.retry !== undefined) children.push(block({ name: 'retry', children: [
-    child({ name: 'attempts', value: s.retry.attempts }),
-    ...optionalChild({ name: 'backoff', value: s.retry.backoff }),
-  ] }))
+  if (s.retry !== undefined)
+    children.push(
+      block({
+        name: 'retry',
+        children: [
+          child({ name: 'attempts', value: s.retry.attempts }),
+          ...optionalChild({ name: 'backoff', value: s.retry.backoff }),
+        ],
+      }),
+    )
   return node({
     name: 'step',
     args: [s.id],

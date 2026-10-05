@@ -15,18 +15,50 @@ const canonical = () =>
       goals: ['Demonstrate KDL.', 'Preserve all goals.', 'Bound goals to three.'],
       gates: [{ name: 'exists', kind: 'exists', subject: 'resource/input' }],
       steps: [
-        { id: 'first', goals: ['Inspect input.'], agentless: true, retry: { attempts: 100, backoff: '0s' },
+        {
+          id: 'first',
+          goals: ['Inspect input.'],
+          agentless: true,
+          retry: { attempts: 100, backoff: '0s' },
           gates: [
-            { name: 'state', kind: 'field', path: 'state', subject: 'resource/input', operator: 'is', value: 'ready' },
-            { name: 'prefix', kind: 'field', path: 'name', subject: 'resource/input', operator: 'starts-with', value: 'input' },
+            {
+              name: 'state',
+              kind: 'field',
+              path: 'state',
+              subject: 'resource/input',
+              operator: 'is',
+              value: 'ready',
+            },
+            {
+              name: 'prefix',
+              kind: 'field',
+              path: 'name',
+              subject: 'resource/input',
+              operator: 'starts-with',
+              value: 'input',
+            },
             { name: 'empty', kind: 'empty', subject: 'mission-run/previous' },
             { name: 'has', kind: 'has', subject: 'message/guide', text: 'ready' },
             { name: 'lacks', kind: 'lacks', subject: 'file/local:/tmp/result', text: 'error' },
             { name: 'merged', kind: 'merged', locator: 'acme/garden#7' },
-            { name: 'ci', kind: 'ci-passed', check: 'build', repo: 'acme/garden', ref: { branch: 'main' } },
-          ] },
+            {
+              name: 'ci',
+              kind: 'ci-passed',
+              check: 'build',
+              repo: 'acme/garden',
+              ref: { branch: 'main' },
+            },
+          ],
+        },
         { id: 'second', agentless: true, dependsOn: [{ step: 'first', state: 'failed' }] },
-        { id: 'last', agentless: true, dependsOn: [{ step: 'first', state: 'completed' }, { step: 'second', state: 'terminal' }] },
+        {
+          id: 'last',
+          agentless: true,
+          dependsOn: [
+            { step: 'first', state: 'completed' },
+            { step: 'second', state: 'terminal' },
+          ],
+        },
       ],
     }),
   ])
@@ -164,27 +196,72 @@ describe('Smalltalk declarations', () => {
   it.each([0, 101, 1.5])('rejects invalid retry attempts %s', (attempts) => {
     expect(() => step({ id: 'a', retry: { attempts } })).toThrow()
   })
-  it.each([1e19, -1e19, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe integral field values %s', (value) => {
-    expect(() => gate({ name: 'number', kind: 'field', path: 'count', subject: 'resource/result', operator: 'is', value })).toThrow()
-  })
+  it.each([1e19, -1e19, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects unsafe integral field values %s',
+    (value) => {
+      expect(() =>
+        gate({
+          name: 'number',
+          kind: 'field',
+          path: 'count',
+          subject: 'resource/result',
+          operator: 'is',
+          value,
+        }),
+      ).toThrow()
+    },
+  )
   it('rejects excessive goals, duplicate gates and missing dependencies', () => {
     expect(() => step({ id: 'a', goals: ['a', 'b', 'c', 'd'] })).toThrow()
-    expect(() => step({ id: 'a', gates: [
-      { name: 'same', kind: 'exists', subject: 'resource/a' },
-      { name: 'same', kind: 'exists', subject: 'resource/b' },
-    ] })).toThrow()
-    expect(() => mission({ id: 'a', state: 'ready', goals: ['a'], steps: [
-      { id: 'a', dependsOn: [{ step: 'missing', state: 'terminal' }] },
-    ] })).toThrow()
+    expect(() =>
+      step({
+        id: 'a',
+        gates: [
+          { name: 'same', kind: 'exists', subject: 'resource/a' },
+          { name: 'same', kind: 'exists', subject: 'resource/b' },
+        ],
+      }),
+    ).toThrow()
+    expect(() =>
+      mission({
+        id: 'a',
+        state: 'ready',
+        goals: ['a'],
+        steps: [{ id: 'a', dependsOn: [{ step: 'missing', state: 'terminal' }] }],
+      }),
+    ).toThrow()
   })
   it('lowers predicates and built-ins without conflating them', () => {
-    expect(gate({ name: 'prefix', kind: 'field', path: 'facts.head', subject: 'resource/ref', operator: 'starts-with', value: 'abc' }).children).toEqual([
-      node({ name: 'field', args: ['facts.head', 'resource/ref', 'starts-with', 'abc'] }),
-    ])
-    expect(gate({ name: 'ci', kind: 'ci-passed', check: 'build', repo: 'acme/garden', ref: { commit: 'abc' } }).children).toEqual([
+    expect(
+      gate({
+        name: 'prefix',
+        kind: 'field',
+        path: 'facts.head',
+        subject: 'resource/ref',
+        operator: 'starts-with',
+        value: 'abc',
+      }).children,
+    ).toEqual([node({ name: 'field', args: ['facts.head', 'resource/ref', 'starts-with', 'abc'] })])
+    expect(
+      gate({
+        name: 'ci',
+        kind: 'ci-passed',
+        check: 'build',
+        repo: 'acme/garden',
+        ref: { commit: 'abc' },
+      }).children,
+    ).toEqual([
       node({ name: 'ci-passed', args: ['build'], props: { repo: 'acme/garden', commit: 'abc' } }),
     ])
-    expect(() => gate({ name: 'ci', kind: 'ci-passed', check: 'build', repo: 'acme/garden', ref: { commit: 'abc', branch: 'main' } } as never)).toThrow()
+    expect(() =>
+      gate({
+        name: 'ci',
+        kind: 'ci-passed',
+        check: 'build',
+        repo: 'acme/garden',
+        ref: { commit: 'abc', branch: 'main' },
+      } as never),
+    ).toThrow()
   })
   it('preserves explicit false properties in a valid Genie fixture', () => {
     const nodes = [
