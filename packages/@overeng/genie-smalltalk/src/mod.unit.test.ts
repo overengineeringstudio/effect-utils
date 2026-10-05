@@ -123,6 +123,12 @@ describe('Smalltalk declarations', () => {
     expect(() => subscription({ id: 'changed', observer: 'resource/ref', to: 'agent/worker', on: ['head'], delivery: 'message' })).toThrow()
     expect(() => subscription({ id: 'changed', observer: 'observer/ref', to: 'agent/worker', on: [], delivery: 'message' })).toThrow()
   })
+  it.each(['acme/garden', '/garden@main', 'acme/@main', 'acme/garden@', 'acme/extra/garden@main'])('rejects malformed github.ref locator %s', (locator) => {
+    expect(() => observer({ id: 'ref', resource: 'resource/ref', provider: 'github.ref', locator, fields: ['head'] })).toThrow()
+  })
+  it.each(['state', 'checks', ''])('rejects unsupported github.ref field %s', (field) => {
+    expect(() => observer({ id: 'ref', resource: 'resource/ref', provider: 'github.ref', locator: 'acme/garden@main', fields: [field] } as never)).toThrow()
+  })
   it('rejects excessive goals, duplicate gates and missing dependencies', () => {
     expect(() => step({ id: 'a', goals: ['a', 'b', 'c', 'd'] })).toThrow()
     expect(() => step({ id: 'a', gates: [
@@ -292,7 +298,7 @@ testWithSt(
         id: 'watch-proof', state: 'ready', goals: ['Keep the ref watch owned by this run.'],
         resources: [{ id: 'ref', kind: 'vcs.ref' }],
         observers: [{ id: 'watch', resource: 'resource/ref', provider: 'github.ref',
-          locator: 'acme/garden@main', fields: ['head'], every: '1h' }],
+          locator: 'acme/garden@feature/proof', fields: ['head', 'ancestors'], every: '1h' }],
         subscriptions: [{ id: 'changes', observer: 'observer/watch', to: 'agent/example/updater',
           on: ['head'], delivery: 'message', when: { path: 'head', operator: 'starts-with', value: 'git:' } }],
         steps: [{ id: 'wait', agentless: true, documents: [`doc/example/guide@${guideHash}`],
@@ -324,6 +330,9 @@ testWithSt(
       expect(JSON.parse(ownedObserver.stdout)).toMatchObject({ status: { subjects: [
         { subject: 'observer/watch-proof/watch', desired: { children: expect.arrayContaining([
           expect.objectContaining({ name: 'provider', arguments: ['github.ref'] }),
+          expect.objectContaining({ name: 'locator', arguments: ['acme/garden@feature/proof'] }),
+          expect.objectContaining({ name: 'field', arguments: ['head'] }),
+          expect.objectContaining({ name: 'field', arguments: ['ancestors'] }),
         ]) } },
       ] } })
       const ownedSubscription = showOwned('subscription/watch-proof/changes')

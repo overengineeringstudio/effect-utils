@@ -363,8 +363,16 @@ export const ObserverSchema = Schema.Struct({
   id: SubjectId,
   resource: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('resource/'))),
   provider: Schema.Literal('github.ref'),
-  locator: Text,
-  fields: UniqueFields,
+  locator: Text.pipe(Schema.refine((s): s is string => {
+    const at = s.lastIndexOf('@')
+    if (at < 0 || at === s.length - 1) return false
+    const repository = s.slice(0, at)
+    const slash = repository.indexOf('/')
+    return slash > 0 && slash < repository.length - 1 && !repository.slice(slash + 1).includes('/')
+  })),
+  fields: Schema.NonEmptyArray(Schema.Literals(['head', 'ancestors'])).pipe(
+    Schema.refine((fields): fields is typeof fields => new Set(fields).size === fields.length),
+  ),
   every: Schema.optionalKey(Duration),
 }).annotate({ identifier: 'St.Observer' })
 
