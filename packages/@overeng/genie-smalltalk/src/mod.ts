@@ -728,7 +728,8 @@ export const terminal = <TMission extends string>(handle: StepHandle<TMission>):
 /** `missionId` gives static scope checking; unscoped/plain-data steps are checked when assembled. */
 export const step = <const TMission extends string = never>(input: StepInput<TMission>): StepHandle<TMission> => {
   const { missionId, assignedTo, dependsOn, ...rest } = input
-  const dependencies = (dependsOn ?? []).filter((d): d is StepDependency<TMission> => dependencyBrand in d)
+  const dependencies: readonly StepDependency<TMission>[] =
+    dependsOn?.filter((d): d is StepDependency<TMission> => dependencyBrand in d) ?? []
   const wire = decode({ schema: StepSchema, input: {
     ...rest,
     ...(assignedTo === undefined ? {} : {
