@@ -61,7 +61,8 @@ The projector uses numeric native execution/upload enums: action-cache execution
 remote execution and remote dep-file hits remain distinct. Omitted rows and missing
 command digests are counted explicitly. Duplicate logs of one native build ID do not
 double-count actions. The trusted populate/replay proof captures each context before
-its native logs are removed, retaining uploads and hits in the same job artifact.
+its native logs are removed, including failed Buck commands before returning their
+original exit status. Uploads, hits and failed invocations remain in one job artifact.
 
 `no-native-logs` means no native Buck invocation was observed, not a cache hit.
 In-Nix product jobs report `remote-cache-disabled-by-design` with no action rows:
