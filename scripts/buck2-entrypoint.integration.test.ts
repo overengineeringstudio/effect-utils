@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:http2'
+import { createServer, type ServerHttp2Stream } from 'node:http2'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -99,7 +99,7 @@ describe('direct pinned Buck posture', () => {
   it('caches healthy capabilities across hot loops but does not reuse them for a different endpoint or writer credential', async () => {
     let requests = 0
     const grpc = createServer()
-    grpc.on('stream', (stream) => {
+    grpc.on('stream', (stream: ServerHttp2Stream) => {
       requests++
       stream.on('data', () => {})
       stream.on('end', () => {

@@ -321,6 +321,8 @@ if (import.meta.main === true) {
         }
       }
     }
+    if (process.execve === undefined)
+      throw new Error('pinned Buck launcher requires a runtime with process.execve')
     process.execve(native, [native, ...args], process.env)
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
