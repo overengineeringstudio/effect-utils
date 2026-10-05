@@ -4,6 +4,10 @@
 
 ### Added
 
+- `@overeng/genie-smalltalk` adds named text/resource mission input handles,
+  named step field/resource products, and native gates referencing those handles.
+  A public `pr-landing` fixture demonstrates review → CI → land and st's immutable
+  per-run input binding; resource inputs retain exact observation claim IDs.
 - `@overeng/genie-smalltalk` adds native human approval/feedback gates with
   reviewer, question and review targets, plus `humanGate`, `execGate`, `fieldIs`,
   `merged` and `ciPassed` plain-data constructors usable on step handles.

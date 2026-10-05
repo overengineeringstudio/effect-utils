@@ -6,8 +6,9 @@ import { join } from 'node:path'
 
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
-import type { StepDependency } from './mod.ts'
+import type { FieldIsInput, StepDependency } from './mod.ts'
 import { ciPassed, execGate, fieldIs, humanGate, merged } from './mod.ts'
+import { input, product } from './mod.ts'
 import {
   agent,
   completed,
@@ -29,6 +30,7 @@ import {
   terminal,
   type StepHandle,
 } from './mod.ts'
+import { prLanding, prLandingFragment } from './pr-landing.fixture.ts'
 import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
 
 const guideText = 'This immutable guide is ready.\n'
@@ -152,6 +154,222 @@ describe('Smalltalk declarations', () => {
         }),
       ]),
     ).toContain('harness "omp" {\n    model "example-model"\n    effort "high"\n')
+  })
+  it('accepts hyphenated resource input names in subject gates', () => {
+    const pr = input.resource({ name: 'pull-request', kind: 'vcs.pull-request' })
+    const review = step({
+      id: 'review',
+      gates: [fieldIs({ name: 'open', subject: pr, path: 'state', value: 'open' })],
+    })
+    const kdl = emit([
+      mission({
+        id: 'review-pr',
+        state: 'ready',
+        goals: ['Review the PR.'],
+        inputs: [pr],
+        steps: [review],
+      }),
+    ])
+    expect(kdl).toContain('input "pull-request" kind="resource"')
+    expect(kdl).toContain('field "state" "${input.pull-request}" "is" "open"')
+  })
+  it('preserves named product types and lowers field constraints to graph products', () => {
+    const work = step({
+      id: 'work',
+      produces: {
+        report: product.resource({ kind: 'custom.garden.report', fields: { state: 'published' } }),
+        receipt: product.field({ subject: 'message/receipt', fields: { text: 'ready' } }),
+      },
+    })
+    expectTypeOf<keyof typeof work.products>().toEqualTypeOf<'report' | 'receipt'>()
+    expectTypeOf<{
+      name: string
+      subject: typeof work.products.report
+      path: 'staet'
+      value: string
+    }>().not.toExtend<FieldIsInput<typeof work.products.report.fields>>()
+    expect(emit([work])).toContain('resource "mission-run/${ST_MISSION_RUN}/work/report"')
+    expect(
+      emit([
+        gate(
+          fieldIs({
+            name: 'ready',
+            subject: work.products.report,
+            path: 'state',
+            value: 'published',
+          }),
+        ),
+      ]),
+    ).toContain(
+      'field "state" "resource/mission-run/${ST_MISSION_RUN}/work/report" "is" "published"',
+    )
+    expect(() => step({ id: 'empty', produces: {} })).toThrow()
+    expect(() =>
+      step({
+        id: 'duplicate',
+        produces: {
+          a: product.resource({
+            kind: 'custom.garden.report',
+            subject: 'resource/report',
+            fields: {},
+          }),
+          b: product.resource({
+            kind: 'custom.garden.report',
+            subject: 'resource/report',
+            fields: {},
+          }),
+        },
+      }),
+    ).toThrow()
+    expect(() =>
+      step({ id: 'missing-kind', produces: { a: { fields: {}, subject: 'resource/a' } } } as never),
+    ).toThrow()
+  })
+  it('rejects aliasing one product handle under multiple output names', () => {
+    const report = product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } })
+    expect(() => step({ id: 'work', produces: { a: report, b: report } })).toThrow(
+      'multiple produces keys',
+    )
+    const work = step({ id: 'work', produces: { report } })
+    expect(
+      emit([
+        gate(
+          fieldIs({ name: 'ready', subject: work.products.report, path: 'state', value: 'ready' }),
+        ),
+      ]),
+    ).toContain('/work/report')
+  })
+  it('validates typed references in plain steps and every loop gate placement', () => {
+    const pr = input.resource({ name: 'pr', kind: 'vcs.pull-request' })
+    const foreign = step({
+      id: 'foreign',
+      produces: {
+        report: product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } }),
+      },
+    })
+    for (const [subject, error] of [
+      [pr, 'not declared'],
+      [foreign.products.report, 'outside this mission'],
+    ] as const) {
+      const gates = [fieldIs({ name: 'ready', subject, path: 'state', value: 'ready' })]
+      const raw = { id: 'work', gates }
+      expect(() =>
+        mission({ id: 'raw', state: 'ready', goals: ['Review.'], steps: [raw] }),
+      ).toThrow(error)
+      expect(() =>
+        mission({ id: 'raw', state: 'ready', goals: ['Review.'], steps: [], finally: [raw] }),
+      ).toThrow(error)
+      for (const placement of ['until', 'steps', 'finally'] as const) {
+        const round = {
+          completion: { when: 'all-steps-exhausted' as const },
+          steps: placement === 'steps' ? [raw] : [],
+          ...(placement === 'finally' ? { finally: [raw] as [typeof raw] } : {}),
+        }
+        const loopInput = {
+          id: 'rounds',
+          maxRounds: 2,
+          round,
+          ...(placement === 'until' ? { until: gates as [(typeof gates)[number]] } : {}),
+        }
+        expect(() =>
+          mission({ id: 'raw', state: 'ready', goals: ['Review.'], steps: [loopInput] }),
+        ).toThrow(error)
+        expect(() => loop(loopInput)).toThrow('require mission assembly')
+      }
+    }
+    const open = fieldIs({ name: 'open', subject: pr, path: 'state', value: 'open' })
+    expect(
+      emit([
+        mission({
+          id: 'raw-valid',
+          state: 'ready',
+          goals: ['Review.'],
+          inputs: [pr],
+          steps: [
+            { id: 'work', gates: [open] },
+            {
+              id: 'rounds',
+              maxRounds: 2,
+              until: [open],
+              round: {
+                completion: { when: 'all-steps-exhausted' },
+                steps: [{ id: 'work', gates: [open] }],
+                finally: [{ id: 'cleanup', gates: [open] }],
+              },
+            },
+          ],
+        }),
+      ]),
+    ).toContain('${input.pr}')
+  })
+  it('rejects undeclared input identity, duplicate input names and foreign product handles', () => {
+    const pr = input.resource({ name: 'pr', kind: 'vcs.pull-request' })
+    const otherPr = input.resource({ name: 'pr', kind: 'vcs.pull-request' })
+    const review = step({
+      id: 'review',
+      gates: [fieldIs({ name: 'open', subject: pr, path: 'state', value: 'open' })],
+    })
+    expect(() =>
+      mission({
+        id: 'inputs',
+        state: 'ready',
+        goals: ['Review.'],
+        inputs: [otherPr],
+        steps: [review],
+      }),
+    ).toThrow('not declared')
+    expect(() =>
+      mission({
+        id: 'inputs',
+        state: 'ready',
+        goals: ['Review.'],
+        inputs: [pr, otherPr],
+        steps: [review],
+      }),
+    ).toThrow()
+    const foreign = step({
+      id: 'foreign',
+      produces: {
+        report: product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } }),
+      },
+    })
+    expect(() =>
+      mission({
+        id: 'inputs',
+        state: 'ready',
+        goals: ['Review.'],
+        steps: [],
+        gates: [
+          fieldIs({
+            name: 'foreign',
+            subject: foreign.products.report,
+            path: 'state',
+            value: 'ready',
+          }),
+        ],
+      }),
+    ).toThrow('outside this mission')
+    const text = input.text('note')
+    expect(
+      emit([
+        mission({
+          id: 'text',
+          state: 'ready',
+          goals: ['Check the note.'],
+          inputs: [text],
+          steps: [],
+          gates: [
+            execGate({
+              name: 'note',
+              command: 'test -n "$NOTE"',
+              host: 'local',
+              workspace: '${ST_WORKSPACE}',
+              env: { NOTE: text },
+            }),
+          ],
+        }),
+      ]),
+    ).toContain('NOTE "${input.note}"')
   })
   it('renders native human reviewer requests and rejects ambiguous review targets', () => {
     expect(
@@ -854,6 +1072,132 @@ testWithSt(
       )
       const handlesPublished = publish()
       expect(handlesPublished.status, handlesPublished.stderr).toBe(0)
+      writeFileSync(source, emit([prLanding()]))
+      const inputPublished = publish()
+      expect(inputPublished.status, inputPublished.stderr).toBe(0)
+      expect(
+        JSON.parse(inputPublished.stdout).published_missions.map(
+          (entry: { subject: string }) => entry.subject,
+        ),
+      ).toEqual(['mission/pr-landing'])
+      const observePr = (state: string) =>
+        spawnSync(
+          stBin!,
+          [
+            '--endpoint',
+            `unix://${socket}`,
+            '--json',
+            'claim',
+            'resource/acme/garden/pr-7',
+            'resource.observed',
+            '--field',
+            'kind=vcs.pull-request',
+            '--field',
+            `state=${state}`,
+            '--field',
+            'number=7',
+          ],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      const observedPr = observePr('open')
+      expect(observedPr.status, observedPr.stderr).toBe(0)
+      const claimId = JSON.parse(observedPr.stdout).id
+      const startLanding = (values: readonly string[], id = 'input-proof') =>
+        spawnSync(
+          stBin!,
+          [
+            '--endpoint',
+            `unix://${socket}`,
+            '--json',
+            'missions',
+            'start',
+            'pr-landing',
+            '--id',
+            id,
+            '--workspace',
+            dir,
+            '--as',
+            actor,
+            ...values.flatMap((value) => ['--input', value]),
+          ],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      const missingInput = startLanding(['pr=resource/acme/garden/pr-7'])
+      expect(missingInput.status).not.toBe(0)
+      const values = [
+        'pr=resource/acme/garden/pr-7',
+        `commit=${'a'.repeat(40)}`,
+        'locator=acme/garden#7',
+      ]
+      const extraInput = startLanding([...values, 'surprise=wrong'])
+      expect(extraInput.status).not.toBe(0)
+      const startedLanding = startLanding(values)
+      expect(startedLanding.status, startedLanding.stderr).toBe(0)
+      const pinnedPr = {
+        kind: 'resource',
+        subject: 'resource/acme/garden/pr-7',
+        value: `resource/acme/garden/pr-7@${claimId}`,
+        claim_id: claimId,
+      }
+      expect(JSON.parse(startedLanding.stdout)).toMatchObject({
+        mission_run: {
+          inputs: {
+            pr: pinnedPr,
+            commit: { kind: 'text', value: 'a'.repeat(40) },
+            locator: { kind: 'text', value: 'acme/garden#7' },
+          },
+        },
+      })
+      const capacityRejected = startLanding(values, 'input-proof-second')
+      expect(capacityRejected.status).not.toBe(0)
+      expect(capacityRejected.stderr).toContain('reached its active run limit')
+      const prNumbers = Array.from({ length: 41 }, (_, index) => index + 1)
+      writeFileSync(
+        source,
+        emit(prNumbers.map((number) => prLandingFragment({ number, commit: 'a'.repeat(40) }))),
+      )
+      const fragmentsPublished = publish()
+      expect(fragmentsPublished.status, fragmentsPublished.stderr).toBe(0)
+      expect(
+        JSON.parse(fragmentsPublished.stdout)
+          .published_missions.map((entry: { subject: string }) => entry.subject)
+          .sort(),
+      ).toEqual(prNumbers.map((number) => `mission/pr-landing-${number}`).sort())
+      for (const number of [1, 2]) {
+        const fragmentStarted = spawnSync(
+          stBin!,
+          [
+            '--endpoint',
+            `unix://${socket}`,
+            '--json',
+            'missions',
+            'start',
+            `pr-landing-${number}`,
+            '--id',
+            `fragment-proof-${number}`,
+            '--workspace',
+            dir,
+            '--as',
+            actor,
+          ],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+        expect(fragmentStarted.status, fragmentStarted.stderr).toBe(0)
+        expect(JSON.parse(fragmentStarted.stdout)).toMatchObject({
+          mission_run: { mission: `mission/pr-landing-${number}`, status: 'running' },
+        })
+      }
+      const laterObservation = observePr('closed')
+      expect(laterObservation.status, laterObservation.stderr).toBe(0)
+      const inputShown = spawnSync(
+        stBin!,
+        ['--endpoint', `unix://${socket}`, '--json', 'subject', 'show', 'mission-run/input-proof'],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(inputShown.status, inputShown.stderr).toBe(0)
+      expect(JSON.parse(inputShown.stdout)).toMatchObject({
+        status: { subjects: [{ actual: { inputs: { pr: pinnedPr } } }] },
+      })
       // Re-publication uses st's normalized mission revision, not whitespace comparison.
       writeFileSync(source, upstreamRepinKdl)
       const originalFixture = publish()
