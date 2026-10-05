@@ -294,11 +294,6 @@ testWithSt(
       const second = publish()
       expect(second.status, second.stderr).toBe(0)
       expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
-      const review = step({ id: 'review', missionId: 'handle-proof', assignedTo: { kind: 'agent', id: 'team/worker' } })
-      const land = step({ id: 'land', missionId: 'handle-proof', dependsOn: [completed(review)] })
-      writeFileSync(source, emit([mission({ id: 'handle-proof', state: 'ready', goals: ['Prove handles.'], steps: [review, land] })]))
-      const handlesPublished = publish()
-      expect(handlesPublished.status, handlesPublished.stderr).toBe(0)
       const seatSource = join(dir, 'agent.kdl')
       const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
       const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
@@ -321,6 +316,13 @@ testWithSt(
       }
       const fixtureSeat = applySeat(emit([agent({ id: 'example/updater', workspace: dir, command: 'true', restart: 'never' })]))
       expect(fixtureSeat.status, fixtureSeat.stderr).toBe(0)
+      const ownerSeat = applySeat(emit([agent({ id: 'team/worker', workspace: dir, command: 'true', rollout: 'manual' })]))
+      expect(ownerSeat.status, ownerSeat.stderr).toBe(0)
+      const review = step({ id: 'review', missionId: 'handle-proof', assignedTo: { kind: 'agent', id: 'team/worker' } })
+      const land = step({ id: 'land', missionId: 'handle-proof', dependsOn: [completed(review)] })
+      writeFileSync(source, emit([mission({ id: 'handle-proof', state: 'ready', goals: ['Prove handles.'], steps: [review, land] })]))
+      const handlesPublished = publish()
+      expect(handlesPublished.status, handlesPublished.stderr).toBe(0)
       // Re-publication uses st's normalized mission revision, not whitespace comparison.
       writeFileSync(source, upstreamRepinKdl)
       const originalFixture = publish()
