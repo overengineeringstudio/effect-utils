@@ -427,3 +427,21 @@ Platform-independent Nix Git-source archives preserve executable bits, normalize
 symlink modes to `0555`, ignore physical hardlink topology and fix timestamps,
 ownership and gzip metadata; identical NAR sources produce identical archives
 on Linux and Darwin ([#1589](https://github.com/overengineeringstudio/effect-utils/pull/1589)).
+
+## Open Design Questions
+
+**DQ1 — Action-level reuse across changed-closure product builds**
+(BUILD.DIST.NIX-R08): product source builds remain pure sandboxed invocations
+of the pinned Buck graph with shared remote caching disabled. Nix substitution
+reuses unchanged complete products; a changed closure still pays local product
+compilation. The current answer is to retain that boundary rather than adopt
+offline capsules or outside-Nix publication.
+
+Revisit if the daily cache-health mission shows changed-product rebuild cost
+dominating. End-to-end changed-product timing, including cache transport and
+materialization, must justify a design change; shared AC hit rates alone do not
+resolve this question. [Open question](./open-questions.md#dq1-action-level-reuse-across-changed-closure-product-builds)
+owns the current answer and non-chosen E/D alternatives;
+[experiment](./.experiments/2026-10-05-action-level-innix-reuse.md) owns the
+measurement and limits. This question does not amend
+[0037](../../.decisions/0037-nix-substitution-is-the-distribution-layer.md).
