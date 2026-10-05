@@ -24,6 +24,7 @@ export_file(
 export_materialization_inputs([
     "src/mod.ts",
     "src/mod.unit.test.ts",
+    "src/upstream-repin.fixture.ts",
 ])
 
 static_source_set(
@@ -67,6 +68,7 @@ package_view(
         "package.json": "package.json",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
@@ -92,6 +94,7 @@ package_view(
         "package.json": "package.json",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },
