@@ -94,7 +94,11 @@ const cachedProbe = async ({
   } catch {
     /* Cache storage is an optimization, never a build prerequisite. */
   } finally {
-    rmSync(candidate, { force: true })
+    try {
+      rmSync(candidate, { force: true })
+    } catch {
+      /* An inaccessible cache directory must not turn cleanup into a build failure. */
+    }
   }
   return available
 }
@@ -201,7 +205,7 @@ export const directBuckArguments = async ({
     /\$([A-Z_][A-Z0-9_]*)/gu,
     (_, key: string) => env[key] ?? '',
   )
-  const remote = values['buck2.remote_cache_enabled'] === 'true'
+  const remote = (values['buck2.remote_cache_enabled'] ?? 'true') === 'true'
   const prefix = values['archive_origin.url_prefix'] ?? ''
   const [remoteAvailable, archiveAvailable] = await Promise.all([
     remote === false
@@ -292,7 +296,11 @@ if (import.meta.main === true) {
       } catch {
         /* Warm launch caching is optional. */
       } finally {
-        rmSync(candidate, { force: true })
+        try {
+          rmSync(candidate, { force: true })
+        } catch {
+          /* An inaccessible cache directory must not turn cleanup into a build failure. */
+        }
       }
     }
     process.execve(native, [native, ...args], process.env)
