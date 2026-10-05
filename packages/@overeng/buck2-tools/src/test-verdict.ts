@@ -26,7 +26,8 @@ export const normalizeTestReport = ({
   readonly status: number
 }): { readonly verdict: 'pass' | 'fail'; readonly suites: readonly unknown[] } => {
   const report = object(raw)
-  if (!('success' in report) || typeof report.success !== 'boolean') fail('missing report success')
+  if (!('success' in report) || typeof report.success !== 'boolean')
+    return fail('missing report success')
   const suites = list('testResults' in report ? report.testResults : undefined)
     .map((value) => {
       const suite = object(value)
@@ -105,17 +106,17 @@ export const readTestVerdict = async ({
     !('verdict' in result) ||
     ['pass', 'fail'].includes(text(result.verdict)) === false
   )
-    fail('unsupported result schema or verdict')
+    return fail('unsupported result schema or verdict')
   if (
     !('operation' in result) ||
     result.operation !== operation ||
     !('report' in result) ||
     result.report !== 'report.json'
   )
-    fail('operation identity or report path mismatch')
+    return fail('operation identity or report path mismatch')
   const report = object(await Bun.file(join(output, 'report.json')).json())
   if (!('verdict' in report) || report.verdict !== result.verdict)
-    fail('result and report verdict disagree')
+    return fail('result and report verdict disagree')
   list('suites' in report ? report.suites : undefined)
   console.log(`${operation}: ${result.verdict} (cached verdict artifact)`)
   if (result.verdict === 'fail') console.error(JSON.stringify(report, undefined, 2))
