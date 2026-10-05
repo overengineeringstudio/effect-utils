@@ -118,10 +118,10 @@ describe('Smalltalk declarations', () => {
   it('rejects invalid document hashes and observer/subscription field selections', () => {
     expect(() => doc({ id: 'guide', hash: 'abc' })).toThrow()
     expect(() => gate({ name: 'guide', kind: 'document', subject: 'resource/guide' })).toThrow()
-    expect(() => observer({ id: 'ref', resource: 'resource/ref', provider: 'github.ref', locator: 'acme/garden@main', fields: [] })).toThrow()
+    expect(() => observer({ id: 'ref', resource: 'resource/ref', provider: 'github.ref', locator: 'acme/garden@main', fields: [] } as never)).toThrow()
     expect(() => observer({ id: 'ref', resource: 'resource/ref', provider: 'github.ref', locator: 'acme/garden@main', fields: ['head', 'head'] })).toThrow()
     expect(() => subscription({ id: 'changed', observer: 'resource/ref', to: 'agent/worker', on: ['head'], delivery: 'message' })).toThrow()
-    expect(() => subscription({ id: 'changed', observer: 'observer/ref', to: 'agent/worker', on: [], delivery: 'message' })).toThrow()
+    expect(() => subscription({ id: 'changed', observer: 'observer/ref', to: 'agent/worker', on: [], delivery: 'message' } as never)).toThrow()
   })
   it.each(['acme/garden', '/garden@main', 'acme/@main', 'acme/garden@', 'acme/extra/garden@main'])('rejects malformed github.ref locator %s', (locator) => {
     expect(() => observer({ id: 'ref', resource: 'resource/ref', provider: 'github.ref', locator, fields: ['head'] })).toThrow()
