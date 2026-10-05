@@ -48,6 +48,9 @@
 - TypeScript Git fixtures preserve the caller's environment while removing
   hook-local repository and index selectors, so temporary commits cannot alter
   the repository running the hook.
+- Buck roots use Watchman with output-directory exclusions and idle watch reaping.
+  This prevents daemon startup from recursively traversing ignored build outputs
+  and dependency symlinks; warm commands no longer need a full-file hash crawl.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources

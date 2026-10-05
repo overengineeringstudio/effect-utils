@@ -54,6 +54,7 @@ let
           [
             (repositoryRoot + "/.buckconfig")
             (repositoryRoot + "/.buckroot")
+            (repositoryRoot + "/.watchmanconfig")
             (repositoryRoot + "/BUCK")
             (repositoryRoot + "/package.json")
             (repositoryRoot + "/pnpm-workspace.yaml")

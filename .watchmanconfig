@@ -1,0 +1,12 @@
+{
+  "ignore_dirs": [
+    "buck-out",
+    ".devenv",
+    ".direnv",
+    "node_modules",
+    ".editor-view",
+    "target",
+    "tmp"
+  ],
+  "idle_reap_age_seconds": 3600
+}

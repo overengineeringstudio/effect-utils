@@ -67,7 +67,7 @@ let
       execution_platforms = rules//buck2/platforms:host_execution_platform
 
     [buck2]
-      file_watcher = notify
+      file_watcher = watchman
       digest_algorithms = SHA256
       remote_cache_enabled = ${boolString remoteCacheEnabled}
       allow_cache_uploads = ${boolString allowCacheUploads}${lib.optionalString allowCacheUploads "\n  default_allow_cache_upload = true"}
@@ -209,6 +209,7 @@ pkgs.runCommand "${cellName}-buck2-root"
     cat > "$out/.buckconfig" <<'BUCKCONFIG'
     ${buckConfig}
     BUCKCONFIG
+    cp ${../../.watchmanconfig} "$out/.watchmanconfig"
     : > "$out/.buckroot"
     cat > "$out/BUCK" <<'ROOT_BUCK'
     ${rootBuck}
