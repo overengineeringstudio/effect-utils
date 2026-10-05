@@ -44,10 +44,11 @@ describe('declared Buck2 job cache posture', () => {
   })
 
   it('rejects conflicting explicit cache settings instead of silently overriding them', () => {
-    for (const env of [
+    const conflictingWriterEnvs: Array<Record<string, string>> = [
       { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
       { BUCK2_NO_REMOTE_CACHE: '1' },
-    ]) {
+    ]
+    for (const env of conflictingWriterEnvs) {
       expect(() =>
         withBuck2CachePostures({
           jobs: { publisher: { ...mainOnlyJob, env } },

@@ -64,7 +64,11 @@ describe('native Buck cache evidence projection', () => {
   it('preserves the exact uploaded ActionCache key and owner, not output hashes or payloads', () => {
     const result = project(
       [
-        { trace_id: fixtureBuildId, command_line_args: ['SECRET_ARG'], working_dir: '/private/root' },
+        {
+          trace_id: fixtureBuildId,
+          command_line_args: ['SECRET_ARG'],
+          working_dir: '/private/root',
+        },
         nativeEvent('SpanStart', fixtureIdentity),
         nativeEvent(
           'SpanEnd',
@@ -196,7 +200,12 @@ describe('native Buck cache evidence projection', () => {
     const result = project([
       nativeEvent(
         'SpanEnd',
-        actionEnd({ kind: 'SymlinkedDir', execution_kind: 4, cache_upload_result: 3, commands: [] }),
+        actionEnd({
+          kind: 'SymlinkedDir',
+          execution_kind: 4,
+          cache_upload_result: 3,
+          commands: [],
+        }),
         20180,
       ),
       nativeEvent(
@@ -236,7 +245,9 @@ describe('native Buck cache evidence projection', () => {
       digest: fixtureDigest,
     })
     expect(result.invocations[0]!.unpairedStartCount).toBe(1)
-    const unmatched = project([nativeEvent('SpanEnd', { execution_kind: 1, commands: [fixtureCommand] })])
+    const unmatched = project([
+      nativeEvent('SpanEnd', { execution_kind: 1, commands: [fixtureCommand] }),
+    ])
     expect(unmatched.invocations[0]!.missingIdentityCount).toBe(1)
     expect(unmatched.actions).toEqual([])
   })
@@ -301,7 +312,7 @@ describe('native Buck cache evidence projection', () => {
     }
     const writer = makeInvocation('writer-build', 'proof-a-build', 1, 1)
     const reader = makeInvocation('reader-build', 'proof-b-build', 3, 8)
-    const merged = mergeCacheEvidence(writer, reader)
+    const merged = mergeCacheEvidence({ previous: writer, next: reader })
     expect(merged.actions.length).toBe(maxCacheEvidenceActions)
     expect(merged.counts).toMatchObject({ uploaded: 100, 'remote-hit': 100 })
     expect(merged.actionCount).toBe(200)
@@ -317,24 +328,33 @@ describe('native Buck cache evidence projection', () => {
   })
 
   it('does not let repeated actions crowd out distinct category/target representatives', () => {
-    const values = Array.from({ length: 100 }, (_, index) => nativeEvent('SpanEnd', actionEnd({
-      commands: [
-        {
-          details: {
-            command_kind: {
-              command: {
-                OmittedLocalCommand: {
-                  action_digest: `digest-${String(index).padStart(3, '0')}:142`,
+    const values = Array.from({ length: 100 }, (_, index) =>
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({
+          commands: [
+            {
+              details: {
+                command_kind: {
+                  command: {
+                    OmittedLocalCommand: {
+                      action_digest: `digest-${String(index).padStart(3, '0')}:142`,
+                    },
+                  },
                 },
               },
             },
-          },
-        },
-      ],
-    }), index + 1))
+          ],
+        }),
+        index + 1,
+      ),
+    )
     values.push(nativeEvent('SpanEnd', actionEnd({ name: { category: 'second_family' } }), 500))
     const result = project(values)
-    expect(result.actions.map((row) => row.category)).toEqual(['repository_validation', 'second_family'])
+    expect(result.actions.map((row) => row.category)).toEqual([
+      'repository_validation',
+      'second_family',
+    ])
     expect(result.actions[0]!.digest).toBe('digest-000:142')
     expect(result.counts.uploaded).toBe(101)
     expect(result.droppedActionCount).toBe(99)
@@ -343,9 +363,9 @@ describe('native Buck cache evidence projection', () => {
   it('deduplicates a native build id across spool/default logs and preserves the descriptive first context', () => {
     const original = project([nativeEvent('SpanEnd', actionEnd())], 'proof-a-build')
     const discovered = project([nativeEvent('SpanEnd', actionEnd())], 'native-log')
-    expect(mergeCacheEvidence(original, discovered)).toEqual(original)
-    expect(mergeCacheEvidence(emptyCacheEvidence(), original)).toEqual(original)
-    expect(mergeCacheEvidence(original, emptyCacheEvidence())).toEqual(original)
+    expect(mergeCacheEvidence({ previous: original, next: discovered })).toEqual(original)
+    expect(mergeCacheEvidence({ previous: emptyCacheEvidence(), next: original })).toEqual(original)
+    expect(mergeCacheEvidence({ previous: original, next: emptyCacheEvidence() })).toEqual(original)
   })
 
   it('keeps no-logs and disabled-by-design status honest rather than fabricating action evidence', () => {
@@ -363,7 +383,9 @@ describe('native Buck cache evidence projection', () => {
       invocations: [],
     })
     expect(disabled.reason).toContain('Nix substitution')
-    expect(() => mergeCacheEvidence(disabled, emptyCacheEvidence())).toThrow('Cannot combine')
+    expect(() => mergeCacheEvidence({ previous: disabled, next: emptyCacheEvidence() })).toThrow(
+      'Cannot combine',
+    )
   })
 
   it('rejects mixed invocation streams and unknown persisted contracts', () => {

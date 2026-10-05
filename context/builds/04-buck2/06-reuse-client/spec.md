@@ -60,11 +60,11 @@ No publisher credential is a fallback for a host writer.
 
 Public CI declares every job's Buck cache posture in the Genie workflow source:
 
-| Posture | `BUCK2_NO_REMOTE_CACHE` | `BUCK2_PUBLIC_CACHE_READ_ONLY` | Authority |
-| --- | --- | --- | --- |
-| `writer` | `0` | `0` | Protected-main proof step supplies the writer credential |
-| `reader` | `0` | `1` | Anonymous reads; credentials cannot enable uploads |
-| `none` | `1` | `1` | Inert PR proof; no remote-cache reads or uploads |
+| Posture  | `BUCK2_NO_REMOTE_CACHE` | `BUCK2_PUBLIC_CACHE_READ_ONLY` | Authority                                                |
+| -------- | ----------------------- | ------------------------------ | -------------------------------------------------------- |
+| `writer` | `0`                     | `0`                            | Protected-main proof step supplies the writer credential |
+| `reader` | `0`                     | `1`                            | Anonymous reads; credentials cannot enable uploads       |
+| `none`   | `1`                     | `1`                            | Inert PR proof; no remote-cache reads or uploads         |
 
 Generation rejects missing or unknown job declarations and conflicting explicit
 job environment settings. The trusted proof is main-only (push or manual dispatch)

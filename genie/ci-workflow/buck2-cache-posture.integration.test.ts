@@ -22,7 +22,12 @@ const writerId = 'trusted-buck2-remote-cache-proof'
 const writerSecret = 'secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH'
 
 // The checked-in guard uses the JavaScript-compatible subset of GitHub expressions.
-const evaluateExpression = (guard: string, eventName: string, ref: string, baselineRef = ''): unknown => {
+const evaluateExpression = (
+  guard: string,
+  eventName: string,
+  ref: string,
+  baselineRef = '',
+): unknown => {
   const expression = guard.replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
   return new Function('github', 'inputs', `return (${expression})`)(
     { event_name: eventName, ref },
@@ -49,9 +54,9 @@ describe('generated CI Buck2 cache policy', () => {
       // A step cannot override the declared job policy to gain write authority.
       for (const step of job.steps) {
         if (step.env?.BUCK2_NO_REMOTE_CACHE !== undefined)
-          expect(step.env.BUCK2_NO_REMOTE_CACHE).toBe(job.env?.BUCK2_NO_REMOTE_CACHE)
+          expect(job.env?.BUCK2_NO_REMOTE_CACHE).toBe(step.env.BUCK2_NO_REMOTE_CACHE)
         if (step.env?.BUCK2_PUBLIC_CACHE_READ_ONLY !== undefined)
-          expect(step.env.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY)
+          expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe(step.env.BUCK2_PUBLIC_CACHE_READ_ONLY)
       }
     }
   })

@@ -61,11 +61,8 @@ export type CacheEvidence = {
   actions: CacheAction[]
 }
 
-const field = (value: unknown, key: string): unknown =>
-  typeof value === 'object' &&
-  value !== null &&
-  Array.isArray(value) === false &&
-  key in value
+const field = ({ value, key }: { value: unknown; key: string }): unknown =>
+  typeof value === 'object' && value !== null && Array.isArray(value) === false && key in value
     ? Reflect.get(value, key)
     : undefined
 const text = (value: unknown): string | undefined =>
@@ -86,7 +83,13 @@ const zeroCounts = (): OutcomeCounts => ({
   other: 0,
 })
 const nativeEnum = (value: unknown): number => (typeof value === 'number' ? value : 0)
-const outcomeFor = (executionKind: number, uploadResult: number): CacheOutcome => {
+const outcomeFor = ({
+  executionKind,
+  uploadResult,
+}: {
+  executionKind: number
+  uploadResult: number
+}): CacheOutcome => {
   if (uploadResult === 1) return 'uploaded'
   switch (executionKind) {
     case 1:
@@ -109,8 +112,8 @@ const outcomeFor = (executionKind: number, uploadResult: number): CacheOutcome =
 
 type Identity = { category?: string; target?: string; configuration?: string }
 const identityFor = (action: unknown): Identity => {
-  const owner = field(field(action, 'key'), 'owner')
-  const category = text(field(field(action, 'name'), 'category'))
+  const owner = field({ value: field({ value: action, key: 'key' }), key: 'owner' })
+  const category = text(field({ value: field({ value: action, key: 'name' }), key: 'category' }))
   for (const variant of [
     'TargetLabel',
     'TestTargetLabel',
@@ -118,28 +121,45 @@ const identityFor = (action: unknown): Identity => {
     'AnonTarget',
     'BxlFunctionKey',
   ]) {
-    const value = field(owner, variant)
-    const label = field(value, variant === 'AnonTarget' ? 'name' : 'label')
-    const pkg = text(field(label, variant === 'BxlFunctionKey' ? 'bxl_path' : 'package'))
-    const name = text(field(label, 'name'))
+    const value = field({ value: owner, key: variant })
+    const label = field({ value: value, key: variant === 'AnonTarget' ? 'name' : 'label' })
+    const pkg = text(
+      field({ value: label, key: variant === 'BxlFunctionKey' ? 'bxl_path' : 'package' }),
+    )
+    const name = text(field({ value: label, key: 'name' }))
     if (pkg !== undefined && name !== undefined) {
       return {
         category,
         target: `${pkg}:${name}`,
-        configuration: text(field(field(value, 'configuration'), 'full_name')),
+        configuration: text(
+          field({ value: field({ value: value, key: 'configuration' }), key: 'full_name' }),
+        ),
       }
     }
   }
   return { category }
 }
 const digestFor = (action: unknown): string | undefined => {
-  const commands = field(action, 'commands')
+  const commands = field({ value: action, key: 'commands' })
   if (Array.isArray(commands) === false) return undefined
   // Buck orders attempts; the last command is the result shown to the user.
   for (let index = commands.length - 1; index >= 0; index--) {
-    const command = field(field(field(commands[index], 'details'), 'command_kind'), 'command')
-    for (const variant of ['OmittedLocalCommand', 'LocalCommand', 'RemoteCommand', 'WorkerCommand']) {
-      const digest = text(field(field(command, variant), 'action_digest'))
+    const command = field({
+      value: field({
+        value: field({ value: commands[index], key: 'details' }),
+        key: 'command_kind',
+      }),
+      key: 'command',
+    })
+    for (const variant of [
+      'OmittedLocalCommand',
+      'LocalCommand',
+      'RemoteCommand',
+      'WorkerCommand',
+    ]) {
+      const digest = text(
+        field({ value: field({ value: command, key: variant }), key: 'action_digest' }),
+      )
       if (digest !== undefined) return digest
     }
   }
@@ -150,16 +170,25 @@ const groupKey = (action: CacheAction): string =>
 const rowKey = (action: CacheAction): string => JSON.stringify([groupKey(action), action.digest])
 const invocationKey = (invocation: { buildId: string; context?: string }): string =>
   JSON.stringify([invocation.buildId, invocation.context])
-const compareRows = (a: CacheAction, b: CacheAction): number =>
-  rowKey(a) < rowKey(b) ? -1 : rowKey(a) > rowKey(b) ? 1 : 0
+const compareRows = ({ a, b }: { a: CacheAction; b: CacheAction }): number => {
+  const left = rowKey(a)
+  const right = rowKey(b)
+  return left < right ? -1 : left > right ? 1 : 0
+}
 
 /** Stable smallest digest per category/target/configuration/outcome, hard bounded. */
-const retainRepresentative = (rows: CacheAction[], action: CacheAction): void => {
+const retainRepresentative = ({
+  rows,
+  action,
+}: {
+  rows: CacheAction[]
+  action: CacheAction
+}): void => {
   const index = rows.findIndex((row) => groupKey(row) === groupKey(action))
   if (index >= 0) {
-    if (compareRows(action, rows[index]!) < 0) rows[index] = action
+    if (compareRows({ a: action, b: rows[index]! }) < 0) rows[index] = action
   } else rows.push(action)
-  rows.sort(compareRows)
+  rows.sort((a, b) => compareRows({ a, b }))
   if (rows.length > maxCacheEvidenceActions) rows.pop()
 }
 
@@ -177,8 +206,8 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
   let missingCommandDigestCount = 0
   let missingIdentityCount = 0
   const add = (value: unknown): void => {
-    const event = field(value, 'Event')
-    const traceId = text(field(event ?? value, 'trace_id'))
+    const event = field({ value: value, key: 'Event' })
+    const traceId = text(field({ value: event ?? value, key: 'trace_id' }))
     if (traceId !== undefined) {
       if (buildId !== undefined && buildId !== traceId) {
         throw new Error('Expected one Buck invocation per event file')
@@ -186,18 +215,24 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
       buildId = traceId
     }
     if (event === undefined) return
-    const spanId = field(event, 'span_id')
+    const spanId = field({ value: event, key: 'span_id' })
     // Large u64 ids must not be rounded into a false start/end pairing.
     const spanKey =
       typeof spanId === 'string'
         ? spanId
-        : typeof spanId === 'number' && Number.isSafeInteger(spanId)
+        : typeof spanId === 'number' && Number.isSafeInteger(spanId) === true
           ? String(spanId)
           : undefined
-    const data = field(event, 'data')
-    const start = field(field(field(data, 'SpanStart'), 'data'), 'ActionExecution')
+    const data = field({ value: event, key: 'data' })
+    const start = field({
+      value: field({ value: field({ value: data, key: 'SpanStart' }), key: 'data' }),
+      key: 'ActionExecution',
+    })
     if (start !== undefined && spanKey !== undefined) starts.set(spanKey, identityFor(start))
-    const end = field(field(field(data, 'SpanEnd'), 'data'), 'ActionExecution')
+    const end = field({
+      value: field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' }),
+      key: 'ActionExecution',
+    })
     if (end === undefined) return
     const fallback = spanKey === undefined ? undefined : starts.get(spanKey)
     if (spanKey !== undefined) starts.delete(spanKey)
@@ -205,23 +240,37 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
     const category = identity.category ?? fallback?.category
     const target = identity.target ?? fallback?.target
     const configuration = identity.configuration ?? fallback?.configuration
-    const executionKind = nativeEnum(field(end, 'execution_kind'))
-    const cacheUploadResult = nativeEnum(field(end, 'cache_upload_result'))
-    const outcome = outcomeFor(executionKind, cacheUploadResult)
+    const executionKind = nativeEnum(field({ value: end, key: 'execution_kind' }))
+    const cacheUploadResult = nativeEnum(field({ value: end, key: 'cache_upload_result' }))
+    const outcome = outcomeFor({ executionKind: executionKind, uploadResult: cacheUploadResult })
     counts[outcome]++
     actionCount++
     const digest = digestFor(end)
     if (digest === undefined) {
       missingDigestCount++
-      if (field(end, 'kind') === 'Run' || cacheUploadResult === 1 || executionKind === 3) missingCommandDigestCount++
+      if (
+        field({ value: end, key: 'kind' }) === 'Run' ||
+        cacheUploadResult === 1 ||
+        executionKind === 3
+      )
+        missingCommandDigestCount++
     }
     if (category === undefined || target === undefined) missingIdentityCount++
     if (digest === undefined || category === undefined || target === undefined) return
     if (buildId === undefined) throw new Error('Action event is missing its native trace id')
-    retainRepresentative(actions, {
-      buildId, ...(context === undefined ? {} : { context }), category, target,
-      ...(configuration === undefined ? {} : { configuration }),
-      digest, outcome, executionKind, cacheUploadResult,
+    retainRepresentative({
+      rows: actions,
+      action: {
+        buildId,
+        ...(context === undefined ? {} : { context }),
+        category,
+        target,
+        ...(configuration === undefined ? {} : { configuration }),
+        digest,
+        outcome,
+        executionKind,
+        cacheUploadResult,
+      },
     })
   }
   const finish = (): CacheEvidence => {
@@ -253,7 +302,13 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
 }
 
 /** Merge contexts fairly; duplicate native build ids preserve the first context. */
-export const mergeCacheEvidence = (previous: CacheEvidence, next: CacheEvidence): CacheEvidence => {
+export const mergeCacheEvidence = ({
+  previous,
+  next,
+}: {
+  previous: CacheEvidence
+  next: CacheEvidence
+}): CacheEvidence => {
   if (
     previous.status === 'remote-cache-disabled-by-design' ||
     next.status === 'remote-cache-disabled-by-design'
@@ -266,11 +321,14 @@ export const mergeCacheEvidence = (previous: CacheEvidence, next: CacheEvidence)
   const additions = next.invocations.filter((item) => seen.has(item.buildId) === false)
   const addedIds = new Set(additions.map((item) => item.buildId))
   const invocations = [...previous.invocations, ...additions]
-  const candidates = [...previous.actions, ...next.actions.filter((item) => addedIds.has(item.buildId))]
+  const candidates = [
+    ...previous.actions,
+    ...next.actions.filter((item) => addedIds.has(item.buildId) === true),
+  ]
   const buckets = invocations.map((invocation) =>
     candidates
       .filter((action) => invocationKey(action) === invocationKey(invocation))
-      .sort(compareRows),
+      .toSorted((a, b) => compareRows({ a, b })),
   )
   const actions: CacheAction[] = []
   for (let round = 0; actions.length < maxCacheEvidenceActions; round++) {
@@ -315,7 +373,8 @@ const metadataKeys = [
 ]
 const decodeCounts = (value: unknown): OutcomeCounts => {
   const counts = zeroCounts()
-  for (const outcome of cacheEvidenceOutcomes) counts[outcome] = count(field(value, outcome))
+  for (const outcome of cacheEvidenceOutcomes)
+    counts[outcome] = count(field({ value: value, key: outcome }))
   return counts
 }
 const requiredText = (value: unknown): string => {
@@ -323,22 +382,18 @@ const requiredText = (value: unknown): string => {
   if (result === undefined) throw new Error('Invalid cache evidence identity')
   return result
 }
-const contextFields = (value: unknown): { context?: string } => {
-  const context = field(value, 'context')
-  return context === undefined ? {} : { context: requiredText(context) }
-}
 
 /** Decode only allowlisted fields when appending; never copy arbitrary JSON. */
 export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
-  const status = field(value, 'status')
+  const status = field({ value: value, key: 'status' })
   if (
-    field(value, 'schemaVersion') !== 1 ||
+    field({ value: value, key: 'schemaVersion' }) !== 1 ||
     (status !== 'collected' && status !== 'no-native-logs')
   ) {
     throw new Error('Unsupported cache evidence schema/status')
   }
-  const invocationValues = field(value, 'invocations')
-  const actionValues = field(value, 'actions')
+  const invocationValues = field({ value: value, key: 'invocations' })
+  const actionValues = field({ value: value, key: 'actions' })
   if (
     Array.isArray(invocationValues) === false ||
     Array.isArray(actionValues) === false ||
@@ -346,35 +401,43 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
   ) {
     throw new Error('Invalid cache evidence rows')
   }
-  const invocations = invocationValues.map((item): CacheInvocation => ({
-    buildId: requiredText(field(item, 'buildId')),
-    ...contextFields(item),
-    counts: decodeCounts(field(item, 'counts')),
-    actionCount: count(field(item, 'actionCount')),
-    missingDigestCount: count(field(item, 'missingDigestCount')),
-    missingCommandDigestCount: count(field(item, 'missingCommandDigestCount')),
-    missingIdentityCount: count(field(item, 'missingIdentityCount')),
-    unpairedStartCount: count(field(item, 'unpairedStartCount')),
-  }))
-  const actions = actionValues.map((item): CacheAction => {
-    const outcome = cacheEvidenceOutcomes.find((outcome) => outcome === field(item, 'outcome'))
-    if (outcome === undefined) throw new Error('Invalid cache evidence outcome')
-    const configuration = text(field(item, 'configuration'))
-    return {
-      buildId: requiredText(field(item, 'buildId')),
-      ...contextFields(item),
-      category: requiredText(field(item, 'category')),
-      target: requiredText(field(item, 'target')),
-      ...(configuration === undefined ? {} : { configuration }),
-      digest: requiredText(field(item, 'digest')),
-      outcome,
-      executionKind: count(field(item, 'executionKind')),
-      cacheUploadResult: count(field(item, 'cacheUploadResult')),
+  const invocations = invocationValues.map((item): CacheInvocation => {
+    const invocation: CacheInvocation = {
+      buildId: requiredText(field({ value: item, key: 'buildId' })),
+      counts: decodeCounts(field({ value: item, key: 'counts' })),
+      actionCount: count(field({ value: item, key: 'actionCount' })),
+      missingDigestCount: count(field({ value: item, key: 'missingDigestCount' })),
+      missingCommandDigestCount: count(field({ value: item, key: 'missingCommandDigestCount' })),
+      missingIdentityCount: count(field({ value: item, key: 'missingIdentityCount' })),
+      unpairedStartCount: count(field({ value: item, key: 'unpairedStartCount' })),
     }
+    const context = field({ value: item, key: 'context' })
+    if (context !== undefined) invocation.context = requiredText(context)
+    return invocation
+  })
+  const actions = actionValues.map((item): CacheAction => {
+    const outcome = cacheEvidenceOutcomes.find(
+      (candidate) => candidate === field({ value: item, key: 'outcome' }),
+    )
+    if (outcome === undefined) throw new Error('Invalid cache evidence outcome')
+    const configuration = text(field({ value: item, key: 'configuration' }))
+    const action: CacheAction = {
+      buildId: requiredText(field({ value: item, key: 'buildId' })),
+      category: requiredText(field({ value: item, key: 'category' })),
+      target: requiredText(field({ value: item, key: 'target' })),
+      digest: requiredText(field({ value: item, key: 'digest' })),
+      outcome,
+      executionKind: count(field({ value: item, key: 'executionKind' })),
+      cacheUploadResult: count(field({ value: item, key: 'cacheUploadResult' })),
+    }
+    const context = field({ value: item, key: 'context' })
+    if (context !== undefined) action.context = requiredText(context)
+    if (configuration !== undefined) action.configuration = configuration
+    return action
   })
   const metadata: Record<string, string> = {}
   for (const key of metadataKeys) {
-    const entry = text(field(field(value, 'metadata'), key))
+    const entry = text(field({ value: field({ value: value, key: 'metadata' }), key: key }))
     if (entry !== undefined) metadata[key] = entry
   }
   return {
@@ -382,9 +445,9 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
     status,
     ...(status === 'no-native-logs' ? { reason: 'No native Buck action logs observed.' } : {}),
     metadata,
-    counts: decodeCounts(field(value, 'counts')),
-    actionCount: count(field(value, 'actionCount')),
-    droppedActionCount: count(field(value, 'droppedActionCount')),
+    counts: decodeCounts(field({ value: value, key: 'counts' })),
+    actionCount: count(field({ value: value, key: 'actionCount' })),
+    droppedActionCount: count(field({ value: value, key: 'droppedActionCount' })),
     invocations,
     actions,
   }
@@ -427,7 +490,9 @@ const run = async (): Promise<void> => {
   })
   const disabled = values['remote-cache-disabled-by-design']
   if (values.output === undefined || (disabled === true && values.events !== undefined)) {
-    throw new Error('Usage: --events <native-jsonl> --output <compact-json> [--context <label>], or --remote-cache-disabled-by-design --output <compact-json>')
+    throw new Error(
+      'Usage: --events <native-jsonl> --output <compact-json> [--context <label>], or --remote-cache-disabled-by-design --output <compact-json>',
+    )
   }
   if (values.context !== undefined && /^[a-zA-Z0-9_.:-]{1,96}$/.test(values.context) === false) {
     throw new Error('Invalid evidence context label')
@@ -458,8 +523,11 @@ const run = async (): Promise<void> => {
   }
   if (disabled === false) {
     const previous = Bun.file(values.output)
-    if (await previous.exists()) {
-      evidence = mergeCacheEvidence(decodeCacheEvidence(await previous.json()), evidence)
+    if ((await previous.exists()) === true) {
+      evidence = mergeCacheEvidence({
+        previous: decodeCacheEvidence(await previous.json()),
+        next: evidence,
+      })
     }
   }
   const envFields = {
@@ -475,7 +543,8 @@ const run = async (): Promise<void> => {
   }
   for (const [key, env] of Object.entries(envFields)) {
     const value = process.env[env]
-    if (value !== undefined && /^[a-zA-Z0-9_./-]{1,160}$/.test(value)) evidence.metadata[key] = value
+    if (value !== undefined && /^[a-zA-Z0-9_./-]{1,160}$/.test(value) === true)
+      evidence.metadata[key] = value
   }
   await Bun.write(values.output, `${JSON.stringify(evidence)}\n`)
   const missing = evidence.invocations.reduce(
@@ -483,7 +552,9 @@ const run = async (): Promise<void> => {
     0,
   )
   if (missing > 0) {
-    console.error(`Cache evidence: ${missing} command action(s) have no native action digest; artifact records omissions.`)
+    console.error(
+      `Cache evidence: ${missing} command action(s) have no native action digest; artifact records omissions.`,
+    )
     process.exitCode = 1
   }
 }
@@ -491,7 +562,9 @@ const run = async (): Promise<void> => {
 if (import.meta.main) {
   await run().catch(() => {
     // Native payloads and input/output filesystem paths must not leak via errors.
-    console.error('Cache evidence collection failed: invalid arguments, native input, or existing evidence.')
+    console.error(
+      'Cache evidence collection failed: invalid arguments, native input, or existing evidence.',
+    )
     process.exitCode = 1
   })
 }

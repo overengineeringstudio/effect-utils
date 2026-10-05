@@ -57,7 +57,9 @@ export const withBuck2CacheEvidence = (
             CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA:
               '${{ github.event.pull_request.head.sha || github.sha }}',
             CI_BUCK2_CACHE_EVIDENCE_DISABLED:
-              ['build-products', 'publish-products', 'publish-compiled-products'].includes(jobId)
+              ['build-products', 'publish-products', 'publish-compiled-products'].includes(
+                jobId,
+              ) === true
                 ? '1'
                 : '0',
           },
