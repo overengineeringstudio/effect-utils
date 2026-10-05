@@ -630,7 +630,7 @@ export const gate = (input: typeof GateSchema.Encoded): Node => {
 }
 
 /** Decodes and renders a step node. */
-export const step = (input: typeof StepSchema.Encoded): Node => {
+const lowerStep = (input: typeof StepSchema.Encoded): Node => {
   const s = decode({ schema: StepSchema, input })
   const children: Node[] = []
   if (s.agentless === true) children.push(node({ name: 'agentless' }))
@@ -673,6 +673,77 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
   })
 }
 
+/** A resolved agent reference. Tree-module refs (#1628) require their tree root to resolve an ID. */
+export interface AgentRef {
+  readonly kind: 'agent'
+  readonly id: string
+}
+
+const stepBrand = Symbol('StepHandle')
+const dependencyBrand = Symbol('StepDependency')
+
+/** A renderable step with explicit identity and, optionally, a literal mission scope. */
+export interface StepHandle<TMission extends string = string> extends Node {
+  readonly [stepBrand]: true
+  readonly missionId?: TMission
+  readonly id: string
+}
+
+export interface StepDependency<TMission extends string = string> {
+  readonly [dependencyBrand]: true
+  readonly handle: StepHandle<TMission>
+  readonly state: typeof DependsOnSchema.Encoded.state
+}
+
+type StepInput<TMission extends string> = Omit<typeof StepSchema.Encoded, 'assignedTo' | 'dependsOn'> & {
+  readonly missionId?: TMission
+  readonly assignedTo?: string | AgentRef
+  readonly dependsOn?: readonly (typeof DependsOnSchema.Encoded | StepDependency<NoInfer<TMission>>)[]
+}
+type MissionInput<TMission extends string> = Omit<typeof MissionSchema.Encoded, 'id' | 'steps' | 'finally'> & {
+  readonly id: TMission
+  readonly steps: readonly ((typeof StepSchema.Encoded | typeof LoopSchema.Encoded) & { readonly [stepBrand]?: never } | StepHandle<NoInfer<TMission>>)[]
+  readonly finally?: readonly (typeof StepSchema.Encoded & { readonly [stepBrand]?: never } | StepHandle<NoInfer<TMission>>)[]
+}
+
+const stepData = new WeakMap<Node, {
+  readonly missionId?: string
+  readonly wire: typeof StepSchema.Encoded
+  readonly dependencies: readonly StepDependency[]
+}>()
+const stepOwners = new WeakMap<Node, string>()
+const isStepHandle = (value: object): value is StepHandle => stepData.has(value)
+
+const dependency = <TMission extends string>(
+  handle: StepHandle<TMission>, state: StepDependency['state'],
+): StepDependency<TMission> => ({ [dependencyBrand]: true, handle, state })
+export const completed = <TMission extends string>(handle: StepHandle<TMission>): StepDependency<TMission> =>
+  dependency(handle, 'completed')
+export const failed = <TMission extends string>(handle: StepHandle<TMission>): StepDependency<TMission> =>
+  dependency(handle, 'failed')
+export const terminal = <TMission extends string>(handle: StepHandle<TMission>): StepDependency<TMission> =>
+  dependency(handle, 'terminal')
+
+/** `missionId` gives static scope checking; unscoped/plain-data steps are checked when assembled. */
+export const step = <const TMission extends string = never>(input: StepInput<TMission>): StepHandle<TMission> => {
+  const { missionId, assignedTo, dependsOn, ...rest } = input
+  const dependencies = (dependsOn ?? []).filter((d): d is StepDependency<TMission> => dependencyBrand in d)
+  const wire = {
+    ...rest,
+    ...(assignedTo === undefined ? {} : {
+      assignedTo: typeof assignedTo === 'string' ? assignedTo :
+        `agent/${decode({ schema: Schema.Struct({ kind: Schema.Literal('agent'), id: SubjectId }), input: assignedTo }).id}`,
+    }),
+    ...(dependsOn === undefined ? {} : {
+      dependsOn: dependsOn.map((d) => dependencyBrand in d ? { step: d.handle.id, state: d.state } : d),
+    }),
+  }
+  const rendered = lowerStep(wire)
+  const handle = { ...rendered, [stepBrand]: true as const, ...(missionId === undefined ? {} : { missionId }), id: input.id }
+  stepData.set(handle, { ...(missionId === undefined ? {} : { missionId }), wire, dependencies })
+  return handle
+}
+
 const dependenciesNode = (dependencies: readonly typeof DependsOnSchema.Encoded[]): Node =>
   block({ name: 'depends-on', children: dependencies.map((d) => node({ name: 'step', args: [d.step, d.state] })) })
 
@@ -691,9 +762,9 @@ export const loop = (input: typeof LoopSchema.Encoded): Node => {
     child({ name: 'max-rounds', value: l.maxRounds }),
     ...(l.until === undefined ? [] : [block({ name: 'until', children: l.until.map(gate) })]),
     block({ name: 'round', children: [
-      completion(l.round.completion), ...l.round.steps.map(step),
+      completion(l.round.completion), ...l.round.steps.map(lowerStep),
       ...ownedDeclarationNodes(l.round),
-      ...(l.round.finally === undefined ? [] : [block({ name: 'finally', children: l.round.finally.map(step) })]),
+      ...(l.round.finally === undefined ? [] : [block({ name: 'finally', children: l.round.finally.map(lowerStep) })]),
     ] }),
     ...(l.onExhausted === undefined ? [] : [block({ name: 'on-exhausted', children: [
       node({ name: l.onExhausted.outcome }),
@@ -708,8 +779,33 @@ export const loop = (input: typeof LoopSchema.Encoded): Node => {
 }
 
 /** Decodes and renders a mission node with its schedule and steps. */
-export const mission = (input: typeof MissionSchema.Encoded): Node => {
-  const m = decode({ schema: MissionSchema, input })
+export const mission = <const TMission extends string>(input: MissionInput<TMission>): Node => {
+  const allHandles = [...input.steps, ...(input.finally ?? [])].filter(isStepHandle)
+  for (const handle of allHandles) {
+    const data = stepData.get(handle)!
+    if (data.missionId !== undefined && data.missionId !== input.id) {
+      throw new TypeError(`Step ${data.wire.id} belongs to mission ${data.missionId}, not ${input.id}`)
+    }
+    const owner = stepOwners.get(handle)
+    if (owner !== undefined && owner !== input.id) {
+      throw new TypeError(`Step ${data.wire.id} already belongs to mission ${owner}`)
+    }
+    const normalPhase: readonly object[] = input.steps
+    const phase: readonly object[] = normalPhase.includes(handle) ? input.steps : input.finally ?? []
+    for (const dependency of data.dependencies) {
+      if (!phase.includes(dependency.handle)) {
+        throw new TypeError(`Dependency ${dependency.handle.id} is not a handle in the same mission phase`)
+      }
+    }
+  }
+  const m = decode({ schema: MissionSchema, input: {
+    ...input,
+    steps: input.steps.map((s) => isStepHandle(s) ? stepData.get(s)!.wire : s),
+    ...(input.finally === undefined ? {} : {
+      finally: input.finally.map((s) => isStepHandle(s) ? stepData.get(s)!.wire : s),
+    }),
+  } })
+  for (const handle of allHandles) stepOwners.set(handle, input.id)
   return node({
     name: 'mission',
     args: [m.id],
@@ -723,8 +819,8 @@ export const mission = (input: typeof MissionSchema.Encoded): Node => {
       ...ownedDeclarationNodes(m),
       ...(m.schedule === undefined ? [] : [schedule(m.schedule)]),
       ...(m.completion === undefined ? [] : [completion(m.completion)]),
-      ...m.steps.map((s) => 'maxRounds' in s ? loop(s) : step(s)),
-      ...(m.finally === undefined ? [] : [block({ name: 'finally', children: m.finally.map(step) })]),
+      ...m.steps.map((s) => 'maxRounds' in s ? loop(s) : lowerStep(s)),
+      ...(m.finally === undefined ? [] : [block({ name: 'finally', children: m.finally.map(lowerStep) })]),
     ],
   })
 }

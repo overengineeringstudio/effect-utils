@@ -4,6 +4,9 @@
 
 ### Added
 
+- `@overeng/genie-smalltalk` step handles support completed/failed/terminal
+  dependencies, explicit literal mission scopes, runtime identity/ownership
+  checking, and resolved typed agent assignees. Plain-data missions remain valid.
 - `@overeng/genie-smalltalk` adds immutable step document references, named or
   pinned document gates and `doc` hash bindings. Mission, step and loop-round
   declarations can contain resources, docs, `github.ref` observers and message
