@@ -20,6 +20,8 @@
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
   and tool exports, including the Swift, wasm, hermetic and verdict additions.
+- Repository-context rejection tests no longer assume the runner's temporary
+  directory is outside the repository, preserving hermetic test containment.
 - The JavaScript product-import contract task declares OpenSSL instead of relying
   on an ambient executable for its integrity fixture.
 - Swift source products select bundle-aware runtime inspection during Nix import.
