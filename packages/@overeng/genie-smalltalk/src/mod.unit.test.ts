@@ -6,10 +6,12 @@ import { join } from 'node:path'
 
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
-import type { StepDependency } from './mod.ts'
+import type { FieldIsInput, StepDependency } from './mod.ts'
 import { ciPassed, execGate, fieldIs, humanGate, merged } from './mod.ts'
+import { input, product } from './mod.ts'
 import { agent, completed, completion, doc, emit, failed, gate, loop, mission, node, observer, resource, schedule, smalltalkKdl, step, subscription, terminal, type StepHandle } from './mod.ts'
 import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
+import { prLanding } from './pr-landing.fixture.ts'
 
 const guideText = 'This immutable guide is ready.\n'
 const guideHash = createHash('sha256').update(guideText).digest('hex')
@@ -44,6 +46,39 @@ const canonical = () =>
     }),
   ])
 describe('Smalltalk declarations', () => {
+  it('preserves named product types and lowers field constraints to graph products', () => {
+    const work = step({ id: 'work', produces: {
+      report: product.resource({ kind: 'custom.garden.report', fields: { state: 'published' } }),
+      receipt: product.field({ subject: 'message/receipt', fields: { text: 'ready' } }),
+    } })
+    expectTypeOf<keyof typeof work.products>().toEqualTypeOf<'report' | 'receipt'>()
+    expectTypeOf<{ name: string; subject: typeof work.products.report; path: 'staet'; value: string }>()
+      .not.toExtend<FieldIsInput<typeof work.products.report.fields>>()
+    expect(emit([work])).toContain('resource "mission-run/${ST_MISSION_RUN}/work/report"')
+    expect(emit([gate(fieldIs({ name: 'ready', subject: work.products.report, path: 'state', value: 'published' }))]))
+      .toContain('field "state" "resource/mission-run/${ST_MISSION_RUN}/work/report" "is" "published"')
+    expect(() => step({ id: 'empty', produces: {} })).toThrow()
+    expect(() => step({ id: 'duplicate', produces: {
+      a: product.resource({ kind: 'custom.garden.report', subject: 'resource/report', fields: {} }),
+      b: product.resource({ kind: 'custom.garden.report', subject: 'resource/report', fields: {} }),
+    } })).toThrow()
+    expect(() => step({ id: 'missing-kind', produces: { a: { fields: {}, subject: 'resource/a' } } } as never)).toThrow()
+  })
+  it('rejects undeclared input identity, duplicate input names and foreign product handles', () => {
+    const pr = input.resource('pr', { kind: 'vcs.pull-request' })
+    const otherPr = input.resource('pr', { kind: 'vcs.pull-request' })
+    const review = step({ id: 'review', gates: [fieldIs({ name: 'open', subject: pr, path: 'state', value: 'open' })] })
+    expect(() => mission({ id: 'inputs', state: 'ready', goals: ['Review.'], inputs: [otherPr], steps: [review] })).toThrow('not declared')
+    expect(() => mission({ id: 'inputs', state: 'ready', goals: ['Review.'], inputs: [pr, otherPr], steps: [review] })).toThrow()
+    const foreign = step({ id: 'foreign', produces: { report: product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } }) } })
+    expect(() => mission({ id: 'inputs', state: 'ready', goals: ['Review.'], steps: [],
+      gates: [fieldIs({ name: 'foreign', subject: foreign.products.report, path: 'state', value: 'ready' })],
+    })).toThrow('outside this mission')
+    const text = input.text('note')
+    expect(emit([mission({ id: 'text', state: 'ready', goals: ['Check the note.'], inputs: [text], steps: [],
+      gates: [execGate({ name: 'note', command: 'test -n "$NOTE"', host: 'local', workspace: '${ST_WORKSPACE}', env: { NOTE: text } })],
+    })])).toContain('NOTE "${input.note}"')
+  })
   it('renders native human reviewer requests and rejects ambiguous review targets', () => {
     expect(emit([gate(humanGate({
       name: 'approve', reviewer: 'person/reviewer', mode: 'feedback',
@@ -359,6 +394,41 @@ testWithSt(
       writeFileSync(source, emit([mission({ id: 'handle-proof', state: 'ready', goals: ['Prove handles.'], steps: [review, land] })]))
       const handlesPublished = publish()
       expect(handlesPublished.status, handlesPublished.stderr).toBe(0)
+      writeFileSync(source, emit([prLanding()]))
+      const inputPublished = publish()
+      expect(inputPublished.status, inputPublished.stderr).toBe(0)
+      const observePr = (state: string) => spawnSync(stBin!, [
+        '--endpoint', `unix://${socket}`, '--json', 'claim', 'resource/acme/garden/pr-7', 'resource.observed',
+        '--field', 'kind=vcs.pull-request', '--field', `state=${state}`, '--field', 'number=7',
+      ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
+      const observedPr = observePr('open')
+      expect(observedPr.status, observedPr.stderr).toBe(0)
+      const claimId = JSON.parse(observedPr.stdout).id
+      const startLanding = (values: readonly string[]) => spawnSync(stBin!, [
+        '--endpoint', `unix://${socket}`, '--json', 'missions', 'start', 'pr-landing', '--id', 'input-proof',
+        '--workspace', dir, '--as', actor, ...values.flatMap((value) => ['--input', value]),
+      ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
+      const missingInput = startLanding(['pr=resource/acme/garden/pr-7'])
+      expect(missingInput.status).not.toBe(0)
+      const values = ['pr=resource/acme/garden/pr-7', `commit=${'a'.repeat(40)}`, 'locator=acme/garden#7']
+      const extraInput = startLanding([...values, 'surprise=wrong'])
+      expect(extraInput.status).not.toBe(0)
+      const startedLanding = startLanding(values)
+      expect(startedLanding.status, startedLanding.stderr).toBe(0)
+      const pinnedPr = { kind: 'resource', subject: 'resource/acme/garden/pr-7',
+        value: `resource/acme/garden/pr-7@${claimId}`, claim_id: claimId }
+      expect(JSON.parse(startedLanding.stdout)).toMatchObject({ mission_run: { inputs: {
+        pr: pinnedPr, commit: { kind: 'text', value: 'a'.repeat(40) }, locator: { kind: 'text', value: 'acme/garden#7' },
+      } } })
+      const laterObservation = observePr('closed')
+      expect(laterObservation.status, laterObservation.stderr).toBe(0)
+      const inputShown = spawnSync(stBin!, [
+        '--endpoint', `unix://${socket}`, '--json', 'subject', 'show', 'mission-run/input-proof',
+      ], { encoding: 'utf8', timeout: 30000, env: isolatedEnv })
+      expect(inputShown.status, inputShown.stderr).toBe(0)
+      expect(JSON.parse(inputShown.stdout)).toMatchObject({ status: { subjects: [
+        { actual: { inputs: { pr: pinnedPr } } },
+      ] } })
       // Re-publication uses st's normalized mission revision, not whitespace comparison.
       writeFileSync(source, upstreamRepinKdl)
       const originalFixture = publish()
