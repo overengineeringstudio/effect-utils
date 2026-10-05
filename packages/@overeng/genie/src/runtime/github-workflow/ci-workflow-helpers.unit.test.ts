@@ -1268,7 +1268,7 @@ describe('ci workflow standard job helpers', () => {
               readFileSync('.github/workflows/ci.yml', 'utf8'),
             )
             const nativeDependencyPolicyRegressionStep = generatedWorkflow.jobs[
-              'native-dependency-policy'
+              'quality'
             ].steps.find(
               (step) => step.name === 'CI runtime and native dependency policy regression checks',
             )
@@ -2034,7 +2034,6 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^concurrency:/m)
     expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
-    expect(generatedCiWorkflowYamlSource).toContain('}}-typecheck')
     expect(ciWorkflowSource).toContain('export const ciJobConcurrency = ({ jobId, ...opts }:')
     expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
     expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')

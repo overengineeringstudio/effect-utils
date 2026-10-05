@@ -46,6 +46,8 @@ A **lane** is one workflow job (or a job matrix) with one declared cadence and o
 
 The schedule covers empirical cold-bootstrap/cold-GC authority and deterministic trends, not a nightly rerun of product CI. The empirical lanes do not block ordinary PR merges; build-products, frozen-lockfile checks, generated freshness, and ordinary product tests remain merge-blocking.
 
+The Linux `quality` job emits `pr/quality` and shares one checkout, Nix/devenv setup, and diagnostics lifecycle across TypeScript, format/lint/generated freshness, frozen-lockfile validation, bundle smoke, native dependency policy, shell-entry checks, and the CI-runtime/downstream-flake regressions. Each invariant retains a named failing step; the lane stops after a failure, while failure summaries and diagnostic artifacts still run. The job declares reader-only Buck cache posture.
+
 ## Checks and ruleset
 
 GitHub creates a check run for each materialized job and groups runs from one workflow execution in a check suite. Branch protection names required check-run contexts, not source-level job keys.
