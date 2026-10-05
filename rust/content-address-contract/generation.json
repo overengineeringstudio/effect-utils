@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:77fdf279b01bf6ed5d8bfd127d535aa8a0bf1febddb46ddd043aff2f2ceab1c4",
-  "generatedAt": "2026-10-03T16:40:07.498Z",
+  "inputFingerprint": "sha256:ff4934cea560d62b47972efd44facc04d7f72db6d5d4762a92d0024a9e0755f8",
+  "generatedAt": "2026-10-05T13:42:33.936Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -13,7 +13,7 @@
     },
     {
       "path": "packages/@overeng/content-address/src/generate-contract.ts",
-      "sha256": "bd41f8902fa45ab655b83a21e6f4c0f87cd40c88ee47c24c0846e58b053ffcfc"
+      "sha256": "cd7bf9e8dc24dfb80cd9c0485b0d4c9d07d820beba4c158637d332b03677f696"
     },
     {
       "path": "packages/@overeng/content-address/src/schema.ts",
@@ -53,7 +53,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/rust-template.ts",
-      "sha256": "5557a7a3586a56ffa618d68c7e9a43096c13d4af871d8ce91e09a9e2e0f9724f"
+      "sha256": "695a68fe7c32e1b8b71ac6f4f0a8be88b7601c92d0ed0fc9dff15fae6b0785c7"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/rust.ts",
@@ -93,7 +93,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/pattern.ts",
-      "sha256": "c4a655558f520a65ca7dc4ef7d942dc89560a42465140d5cedd975f08fff9a0b"
+      "sha256": "6b88966da3f1ebab3862974317c018a527ab8f66f154ae18ae131cf8e733569e"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/timestamp.ts",
@@ -113,13 +113,13 @@
     },
     {
       "path": "rust/Cargo.toml",
-      "sha256": "cab7647efe4072896a2025f7502b400a3b763e7a2c03a6296dd413536e3f26ea"
+      "sha256": "d516251d30f7b838a582af4b5fe47ec0b521c88e181c6b33b36a7c3bfbe2bcd7"
     }
   ],
   "artifacts": [
     {
       "path": "Cargo.toml",
-      "sha256": "526618ed92f715e3df2003d815c376eeaf14e7e1927d38a36822c9076cd5536e"
+      "sha256": "130b96354d1607d678f607378caf758adb1b93fa0a9849600e294a75e9293eaf"
     },
     {
       "path": "schema/Codec.json",
@@ -143,7 +143,7 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "108ee69569f834fd2d9debd04862bf6abd48087c026d1f7a6ad321d0510c8461"
+      "sha256": "22184dc0fcbea45333de7f3ccb6a2c92e45984a8ed62d18f488414c2b1634c70"
     }
   ]
 }

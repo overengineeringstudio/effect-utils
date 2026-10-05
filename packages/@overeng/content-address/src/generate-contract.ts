@@ -66,7 +66,6 @@ const fingerprint = ({
   readonly inputs: typeof GenerationManifest.Type.inputs
 }): string => `sha256:${sha256({ content: JSON.stringify({ schemaVersion: 1, runtime, inputs }) })}`
 
-
 // The scope is deliberately named, not the ambient package tree. Tests and
 // snapshots cannot affect generation; new compiler/schema source files can.
 const collectSources = Effect.fn('ContentAddress.collectContractSources')(function* ({

@@ -103,6 +103,8 @@
   warns and falls back to notify; explicit local providers remain authoritative.
   Immutable Nix source products retain their service-free `fs_hash_crawler`
   override because Watchman's state initialization is forbidden in the sandbox.
+- Content-address filesystem tree hashing uses lstat classification and mode,
+  preserving literal symlink identity without traversing directory links or cycles.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources

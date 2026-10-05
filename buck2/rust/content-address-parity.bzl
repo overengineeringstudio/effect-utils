@@ -1,7 +1,7 @@
 """Execute pilot parity against an admitted consumer and generated service product."""
 
 load("//buck2:materialization.bzl", "GeneratedPackageInfo", "PackageTreeInfo")
-load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
@@ -48,7 +48,7 @@ def _parity_impl(ctx):
         ),
     ]
 
-content_address_parity = rule(impl = _parity_impl, attrs = {
+content_address_parity = cache_guarded_rule(impl = _parity_impl, attrs = {
     "package_tree": attrs.dep(providers = [PackageTreeInfo]),
     "dist": attrs.dep(),
     "service": attrs.dep(providers = [GeneratedPackageInfo]),

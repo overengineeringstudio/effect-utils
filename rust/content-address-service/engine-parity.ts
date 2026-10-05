@@ -1,12 +1,12 @@
 // Run: bun (or node --experimental-transform-types) engine-parity.ts <generated-service-dir> <result.json>
 // Console output is the standalone parity verdict and benchmark report.
 import assert from 'node:assert/strict'
+import { lstat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { loadavg } from 'node:os'
 import { resolve } from 'node:path'
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { ContentAddressCore } from './service/dist/service.js'
 import { Effect, FileSystem, Layer, Schema, Stream } from 'effect'
 
 import { ContractJson } from '@overeng/effect-rust'
@@ -21,9 +21,11 @@ import {
   hashBytes,
   makeFileSystemContentStore,
   putBytes,
+  treeEntries,
   verifyDescriptor,
 } from './dist/src/mod.js'
 import { descriptorVectors, hashVectors } from './dist/src/vectors.js'
+import { ContentAddressCore } from './service/dist/service.js'
 
 const [directoryArgument, output] = process.argv.slice(2)
 assert.ok(
@@ -85,9 +87,52 @@ const program = Effect.gen(function* () {
   yield* fs.writeFileString(`${fixture}/\ue000`, 'bmp')
   yield* fs.writeFileString(`${fixture}/\u{10000}`, 'astral')
   yield* fs.symlink('abc', `${fixture}/link`)
+  yield* fs.symlink('nested', `${fixture}/directory-link`)
+  yield* fs.symlink('.', `${fixture}/cycle`)
+  yield* fs.makeDirectory(`${root}/outside`)
+  yield* fs.writeFileString(`${root}/outside/secret`, 'outside one')
+  yield* fs.symlink('../outside', `${fixture}/outside-link`)
+  yield* fs.symlink('missing', `${fixture}/broken-link`)
   yield* fs.chmod(fixture, 0o755)
   yield* fs.chmod(`${fixture}/nested`, 0o755)
   yield* fs.chmod(`${fixture}/abc`, 0o640)
+  const entries = yield* treeEntries(fixture)
+  for (const [path, target] of [
+    ['link', 'abc'],
+    ['directory-link', 'nested'],
+    ['cycle', '.'],
+    ['outside-link', '../outside'],
+    ['broken-link', 'missing'],
+  ]) {
+    const metadata = yield* Effect.promise(() => lstat(`${fixture}/${path}`))
+    assert.deepEqual(
+      entries.find((entry) => entry.path === path),
+      {
+        kind: 'symlink',
+        path,
+        mode: metadata.mode & 0o7777,
+        target,
+      },
+      `literal symlink classification and lstat mode: ${path}`,
+    )
+  }
+  assert.deepEqual(
+    entries.map((entry) => entry.path),
+    [
+      '.',
+      'abc',
+      'broken-link',
+      'cycle',
+      'directory-link',
+      'link',
+      'nested',
+      'nested/random',
+      'outside-link',
+      '\u{10000}',
+      '\ue000',
+    ],
+    'directory, external and cyclic links are never traversed',
+  )
   const realTree = resolve('rust/effect-rust-fixtures')
   const trees = [fixture, realTree]
   const treeExpected: string[] = []
@@ -187,6 +232,30 @@ const program = Effect.gen(function* () {
       }
       // Mode and literal symlink target are identity, not just file contents.
       const initial = digests[0]!
+      yield* fs.writeFileString(`${root}/outside/secret`, `outside ${backend}`)
+      assert.equal(
+        yield* engine.hashTree(fixture),
+        initial,
+        `${backend}/directory-link containment`,
+      )
+      yield* fs.remove(`${fixture}/link`)
+      yield* fs.copyFile(`${fixture}/abc`, `${fixture}/link`)
+      assert.notEqual(
+        yield* engine.hashTree(fixture),
+        initial,
+        `${backend}/link and byte-identical regular file have different identities`,
+      )
+      yield* fs.remove(`${fixture}/link`)
+      yield* fs.symlink('abc', `${fixture}/link`)
+      // Retarget to another file with identical bytes: identity is literal target text.
+      yield* fs.writeFileString(`${fixture}/other`, 'abc')
+      const beforeRetarget = yield* engine.hashTree(fixture)
+      yield* fs.remove(`${fixture}/link`)
+      yield* fs.symlink('other', `${fixture}/link`)
+      assert.notEqual(yield* engine.hashTree(fixture), beforeRetarget, `${backend}/literal target`)
+      yield* fs.remove(`${fixture}/other`)
+      yield* fs.remove(`${fixture}/link`)
+      yield* fs.symlink('abc', `${fixture}/link`)
       yield* fs.chmod(`${fixture}/abc`, 0o600)
       const modeChanged = yield* engine.hashTree(fixture)
       assert.notEqual(modeChanged, initial)

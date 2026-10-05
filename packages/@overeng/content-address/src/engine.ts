@@ -1,3 +1,4 @@
+import { lstat } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 
 import { sha256 } from '@noble/hashes/sha2.js'
@@ -54,19 +55,20 @@ export const treeEntries = Effect.fn('ContentAddress.treeEntries')(function* (ro
   const records: TreeEntry[] = []
   const visit = (path: string): Effect.Effect<void, ContentStoreIoError> =>
     Effect.gen(function* () {
-      const info = yield* fs.stat(path).pipe(Effect.mapError(ioError(root)))
+      // Effect FileSystem.stat follows links and has no lstat option.
+      const info = yield* Effect.tryPromise({ try: () => lstat(path), catch: ioError(root) })
       const entryPath = relative(absolute, path) || '.'
       const mode = info.mode & 0o7777
-      if (info.type === 'Directory') {
+      if (info.isDirectory() === true) {
         records.push({ kind: 'directory', path: entryPath, mode })
         const names = yield* fs.readDirectory(path).pipe(Effect.mapError(ioError(root)))
         for (const name of names.toSorted()) yield* visit(join(path, name))
-      } else if (info.type === 'SymbolicLink') {
+      } else if (info.isSymbolicLink() === true) {
         const target = yield* fs.readLink(path).pipe(Effect.mapError(ioError(root)))
         records.push({ kind: 'symlink', path: entryPath, mode, target })
-      } else if (info.type === 'File')
+      } else if (info.isFile() === true)
         records.push({ kind: 'file', path: entryPath, mode, readPath: path })
-      else return yield* ioError(root)(`Unsupported filesystem entry ${path}: ${info.type}`)
+      else return yield* ioError(root)(`Unsupported filesystem entry ${path}: mode ${info.mode}`)
     })
   yield* visit(absolute)
   return records
