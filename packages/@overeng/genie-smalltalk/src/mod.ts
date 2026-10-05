@@ -547,7 +547,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
   if (a.harness?.kind === 'codex' && a.harness.resume !== undefined) {
     env.ST3_NATIVE_RESUME_SESSION = a.harness.resume.session
   }
-  if (Object.keys(env).length > 0) {
+  if (a.env !== undefined || Object.keys(env).length > 0) {
     const entries = Object.entries(env).toSorted(([x], [y]) => x.localeCompare(y, 'en'))
     children.push(
       block({ name: 'env', children: entries.map(([key, value]) => child({ name: key, value })) }),
