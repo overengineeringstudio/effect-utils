@@ -86,53 +86,34 @@ Configure the host at `$MEGAREPO_STORE/.state/gc-config.json`:
   "generatedArtifacts": {
     "enabled": true,
     "retentionMs": 86400000,
-    "allowlist": ["node_modules", ".direnv", "target"],
-    "agentLivenessManifest": "/run/megarepo/st2-workspace-activity.json",
-    "agentLivenessEpoch": { "catalog": "/var/lib/st2/catalog", "host": "dev3" }
+    "allowlist": ["node_modules", ".direnv", "target", "storybook-static"]
   }
 }
 ```
 
-The allowlist may contain only the compiled canonical classes. The liveness manifest must be a
-native, short-lived `st2 workspace-activity --json` snapshot:
+The allowlist may contain only the compiled canonical classes, including `storybook-static`.
+Activity is captured directly from `st3 agents ls --all --json`, each agent's
+`st3 subject show <id> --json` `actual.workspace`, and `pty list --json --tags`.
+There is no external activity manifest to configure. Both `st3` and `pty` must be available
+on the invoking host. Active workspaces and running PTYs protect overlapping worktree paths,
+including sessions whose cwd is a nested directory or whose workspace is a composed root.
 
-```json
-{
-  "schemaVersion": "st2.workspace-activity.v1",
-  "producer": "st2",
-  "epoch": { "catalog": "/var/lib/st2/catalog", "host": "dev3", "catalogGeneration": 42 },
-  "capturedAt": "2026-09-07T08:00:00.000Z",
-  "expiresAt": "2026-09-07T08:01:00.000Z",
-  "complete": true,
-  "errors": [],
-  "claims": [
-    {
-      "workspace": "/absolute/path/to/a/store/worktree",
-      "agents": ["dev3.example.agent"],
-      "activeRuntimeIds": ["dev3.example.agent"],
-      "active": true
-    }
-  ]
-}
-```
-
-Missing, invalid, incomplete, erroneous, expired, or non-canonical liveness data produces
-`unknown`. The configured catalog and host admit the expected epoch, its catalog generation must
-not move between the pre-scan and post-scan reads, and claims must be sorted, unique, and named by
-canonical path. A candidate
-must also be Git-ignored, older than the retention window, absent from Megarepo's live set, and
-inside a clean registered worktree. A capped, timed recursive scan uses the newest nested mtime;
-symlinks or incomplete scans produce `unknown`. JSON results distinguish
-`would-delete`, `deleted`, `keep`, and `unknown` and include a deterministic `planSha256`.
+Missing, invalid, incomplete, expired, or unreadable activity evidence produces `unknown`.
+A candidate must also contain no Git-tracked files (including force-added files beneath ignored
+directories), be Git-ignored, older than the retention window, absent from Megarepo's live set,
+and inside a clean registered worktree with no live process cwd. An unavailable native process
+probe also produces `unknown`. A capped, timed recursive scan uses the newest nested mtime;
+symlinks or incomplete scans produce `unknown`. JSON results retain the same shape and distinguish
+`would-delete`, `deleted`, `keep`, and `unknown` with a deterministic `planSha256`.
 Application recomputes the complete plan, requires the exact digest and a unique candidate, then
 revalidates and removes only that candidate under its owner-worktree lock and its deletion lease.
 
 ### Deletion lease
 
-The liveness manifest is written by an external agent manager, so rereading it cannot exclude an
-activation that starts immediately afterwards. A lease per canonical owner worktree closes that
-window: reclamation holds it across final classification and deletion, and activation holds it from
-before its first worktree write until after it has published the manifest. The lease is one file at
+An activity snapshot cannot exclude an activation that starts immediately afterwards. A lease
+per canonical owner worktree closes that window for cooperating activators: reclamation holds it
+across final classification and deletion, and activation holds it from before its first worktree
+write until after it has published its activity. The lease is one file at
 `$MEGAREPO_STORE/.state/deletion-leases/<sha256-of-owner-path>.lease`, taken by hard-linking onto
 that path — atomic on POSIX, so the loser fails closed instead of proceeding on a stale snapshot.
 Every plan-bound deletion takes it, whole worktrees and archive reaps included, since an activation
