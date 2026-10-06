@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,19 +9,24 @@ import { describe, expect, it } from 'vitest'
 import {
   agent,
   completion,
+  doc,
   emit,
   gate,
   loop,
   mission,
   node,
+  observer,
   omp,
   resource,
   schedule,
   smalltalkKdl,
   step,
+  subscription,
 } from './mod.ts'
 import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
 
+const guideText = 'This immutable guide is ready.\n'
+const guideHash = createHash('sha256').update(guideText).digest('hex')
 const canonical = () =>
   emit([
     mission({
@@ -28,6 +34,7 @@ const canonical = () =>
       state: 'ready',
       goals: ['Demonstrate KDL.', 'Preserve all goals.', 'Bound goals to three.'],
       gates: [{ name: 'exists', kind: 'exists', subject: 'resource/input' }],
+      docs: [{ id: 'example/guide', hash: guideHash }],
       completion: { dependsOn: [{ step: 'last', state: 'completed' }] },
       finally: [
         {
@@ -57,6 +64,7 @@ const canonical = () =>
           goals: ['Inspect input.'],
           agentless: true,
           retry: { attempts: 100, backoff: '0s' },
+          documents: [`doc/example/guide@${guideHash}`],
           gates: [
             {
               name: 'state',
@@ -321,6 +329,92 @@ describe('Smalltalk declarations', () => {
       ).toThrow()
     },
   )
+  it.each(['doc/guide', 'doc/guide@abc', `doc/../guide@${'a'.repeat(64)}`])(
+    'rejects unpinned or malformed step document %s',
+    (reference) => {
+      expect(() => step({ id: 'read', documents: [reference] })).toThrow()
+    },
+  )
+  it('rejects invalid document hashes and observer/subscription field selections', () => {
+    expect(() => doc({ id: 'guide', hash: 'abc' })).toThrow()
+    expect(() => gate({ name: 'guide', kind: 'document', subject: 'resource/guide' })).toThrow()
+    expect(() =>
+      observer({
+        id: 'ref',
+        resource: 'resource/ref',
+        provider: 'github.ref',
+        locator: 'acme/garden@main',
+        fields: [],
+      } as never),
+    ).toThrow()
+    expect(() =>
+      observer({
+        id: 'ref',
+        resource: 'resource/ref',
+        provider: 'github.ref',
+        locator: 'acme/garden@main',
+        fields: ['head', 'head'],
+      }),
+    ).toThrow()
+    expect(() =>
+      subscription({
+        id: 'changed',
+        observer: 'resource/ref',
+        to: 'agent/worker',
+        on: ['head'],
+        delivery: 'message',
+      }),
+    ).toThrow()
+    expect(() =>
+      subscription({
+        id: 'changed',
+        observer: 'observer/ref',
+        to: 'agent/worker',
+        on: [],
+        delivery: 'message',
+      } as never),
+    ).toThrow()
+  })
+  it.each(['acme/garden', '/garden@main', 'acme/@main', 'acme/garden@', 'acme/extra/garden@main'])(
+    'rejects malformed github.ref locator %s',
+    (locator) => {
+      expect(() =>
+        observer({
+          id: 'ref',
+          resource: 'resource/ref',
+          provider: 'github.ref',
+          locator,
+          fields: ['head'],
+        }),
+      ).toThrow()
+    },
+  )
+  it.each(['state', 'checks', ''])('rejects unsupported github.ref field %s', (field) => {
+    expect(() =>
+      observer({
+        id: 'ref',
+        resource: 'resource/ref',
+        provider: 'github.ref',
+        locator: 'acme/garden@main',
+        fields: [field],
+      } as never),
+    ).toThrow()
+  })
+  it.each(['ST_WORKSPACE', 'ST_MISSION', 'ST_GATE', 'ST_LOOP_ROUND', 'ST3_SUBJECT'])(
+    'rejects reserved exec-gate context key %s',
+    (key) => {
+      expect(() =>
+        gate({
+          name: 'env',
+          kind: 'exec',
+          command: 'true',
+          host: 'local',
+          workspace: '/tmp',
+          env: { [key]: 'x' },
+        }),
+      ).toThrow()
+    },
+  )
   it('rejects excessive goals, duplicate gates and missing dependencies', () => {
     expect(() => step({ id: 'a', goals: ['a', 'b', 'c', 'd'] })).toThrow()
     expect(() =>
@@ -478,6 +572,22 @@ testWithSt(
           ],
           { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
         )
+      const documentFile = join(dir, 'guide.txt')
+      writeFileSync(documentFile, guideText)
+      const storedGuide = spawnSync(
+        stBin!,
+        [
+          '--endpoint',
+          `unix://${socket}`,
+          'documents',
+          'put',
+          documentFile,
+          '--as',
+          'doc/example/guide',
+        ],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(storedGuide.status, storedGuide.stderr).toBe(0)
       const first = publish()
       expect(first.status, first.stderr).toBe(0)
       const second = publish()
@@ -515,6 +625,138 @@ testWithSt(
       const typedFixture = publish()
       expect(typedFixture.status, typedFixture.stderr).toBe(0)
       expect(JSON.parse(typedFixture.stdout)).toMatchObject({ changed: false })
+      writeFileSync(
+        source,
+        emit([
+          mission({
+            id: 'watch-proof',
+            state: 'ready',
+            goals: ['Keep the ref watch owned by this run.'],
+            resources: [{ id: 'ref', kind: 'vcs.ref' }],
+            observers: [
+              {
+                id: 'watch',
+                resource: 'resource/ref',
+                provider: 'github.ref',
+                locator: 'acme/garden@feature/proof',
+                fields: ['head', 'ancestors'],
+                every: '1h',
+              },
+            ],
+            subscriptions: [
+              {
+                id: 'changes',
+                observer: 'observer/watch',
+                to: 'agent/example/updater',
+                on: ['head'],
+                delivery: 'message',
+                when: { path: 'head', operator: 'starts-with', value: 'git:' },
+              },
+            ],
+            steps: [
+              {
+                id: 'wait',
+                agentless: true,
+                documents: [`doc/example/guide@${guideHash}`],
+                gates: [
+                  { name: 'guide', kind: 'document', subject: 'doc/example/guide' },
+                  {
+                    name: 'pinned-guide',
+                    kind: 'document',
+                    subject: `doc/example/guide@${guideHash}`,
+                  },
+                  {
+                    name: 'hold',
+                    kind: 'field',
+                    path: 'state',
+                    subject: 'resource/ref',
+                    operator: 'is',
+                    value: 'waiting-for-proof',
+                  },
+                ],
+              },
+            ],
+          }),
+        ]),
+      )
+      const publishedWatch = publish()
+      expect(publishedWatch.status, publishedWatch.stderr).toBe(0)
+      const startedWatch = spawnSync(
+        stBin!,
+        [
+          '--endpoint',
+          `unix://${socket}`,
+          'missions',
+          'start',
+          'watch-proof',
+          '--id',
+          'watch-proof',
+          '--workspace',
+          dir,
+          '--as',
+          actor,
+        ],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(startedWatch.status, startedWatch.stderr).toBe(0)
+      const showOwned = (subject: string) =>
+        spawnSync(
+          stBin!,
+          ['--endpoint', `unix://${socket}`, '--json', 'subject', 'show', subject],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      let ownedObserver = showOwned('observer/watch-proof/watch')
+      // The external daemon reconciles on its real process clock; fake JS timers cannot drive it.
+      for (
+        let attempt = 0;
+        attempt < 100 && JSON.parse(ownedObserver.stdout).status.subjects[0]?.desired == null;
+        attempt++
+      ) {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        setTimeout(resolve, 100)
+        await promise
+        ownedObserver = showOwned('observer/watch-proof/watch')
+      }
+      expect(ownedObserver.status, ownedObserver.stderr).toBe(0)
+      expect(JSON.parse(ownedObserver.stdout)).toMatchObject({
+        status: {
+          subjects: [
+            {
+              subject: 'observer/watch-proof/watch',
+              desired: {
+                children: expect.arrayContaining([
+                  expect.objectContaining({ name: 'provider', arguments: ['github.ref'] }),
+                  expect.objectContaining({
+                    name: 'locator',
+                    arguments: ['acme/garden@feature/proof'],
+                  }),
+                  expect.objectContaining({ name: 'field', arguments: ['head'] }),
+                  expect.objectContaining({ name: 'field', arguments: ['ancestors'] }),
+                ]),
+              },
+            },
+          ],
+        },
+      })
+      const ownedSubscription = showOwned('subscription/watch-proof/changes')
+      expect(ownedSubscription.status, ownedSubscription.stderr).toBe(0)
+      expect(JSON.parse(ownedSubscription.stdout)).toMatchObject({
+        status: {
+          subjects: [
+            {
+              subject: 'subscription/watch-proof/changes',
+              desired: {
+                children: expect.arrayContaining([
+                  expect.objectContaining({
+                    name: 'observer',
+                    arguments: ['observer/watch-proof/watch'],
+                  }),
+                ]),
+              },
+            },
+          ],
+        },
+      })
       const checkEnv = (env: Readonly<Record<string, string>>) => {
         writeFileSync(
           source,

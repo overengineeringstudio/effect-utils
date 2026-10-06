@@ -4,6 +4,10 @@
 
 ### Added
 
+- `@overeng/genie-smalltalk` adds immutable step document references, named or
+  pinned document gates and `doc` hash bindings. Mission, step and loop-round
+  declarations can contain resources, docs, `github.ref` observers and message
+  subscriptions; st scopes observer/subscription IDs to the owning run.
 - `@overeng/genie-smalltalk` adds bounded sequential loops with explicit round
   completion, completion frontiers, final-phase steps, exhaustion attention, and
   exec gates with environment and time limits. Ordered `steps` may include

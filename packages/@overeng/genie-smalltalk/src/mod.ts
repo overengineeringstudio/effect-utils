@@ -326,9 +326,38 @@ const reservedGateEnvNames: Readonly<Record<string, true>> = {
   ST3_SUBJECT: true,
 }
 
+const DocumentHash = Schema.String.pipe(
+  Schema.refine((s): s is string => /^[0-9a-fA-F]{64}$/u.test(s)),
+)
+/** A document gate may wait for a name or an immutable version. */
+export const DocumentReferenceSchema = Text.pipe(
+  Schema.refine((s): s is string => {
+    if (s.startsWith('doc/') === false) return false
+    if (s.includes('${') === true) return true
+    const at = s.lastIndexOf('@')
+    const name = at < 0 ? s : s.slice(0, at)
+    return (
+      name.length > 4 &&
+      !name.includes('..') &&
+      !name.endsWith('/') &&
+      (at < 0 || /^[0-9a-fA-F]{64}$/u.test(s.slice(at + 1)))
+    )
+  }),
+).annotate({ identifier: 'St.DocumentReference' })
+
+/** Step documents always pin an exact immutable version. */
+export const PinnedDocumentReferenceSchema = DocumentReferenceSchema.pipe(
+  Schema.refine((s): s is string => !s.includes('${') && /@[0-9a-fA-F]{64}$/u.test(s)),
+).annotate({ identifier: 'St.PinnedDocumentReference' })
+
 /** Graph predicates and built-in mechanical gates accepted by st. */
 export const GateSchema = Schema.Union([
   Schema.Struct({ name: GateName, kind: Schema.Literal('exists'), subject: FullSubject }),
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literal('document'),
+    subject: DocumentReferenceSchema,
+  }),
   Schema.Struct({
     name: GateName,
     kind: Schema.Literal('empty'),
@@ -428,9 +457,100 @@ export const DependsOnSchema = Schema.Struct({
   identifier: 'St.DependsOn',
 })
 
+/** A typed st resource. */
+export const ResourceSchema = Schema.Struct({
+  id: SubjectId,
+  kind: Schema.Literals(['vcs.repository', 'filesystem.file', 'vcs.pull-request', 'vcs.ref']),
+}).annotate({ identifier: 'St.Resource' })
+
+/** A named binding to a previously stored immutable document. */
+export const DocSchema = Schema.Struct({
+  id: SubjectId,
+  hash: DocumentHash,
+}).annotate({ identifier: 'St.Doc' })
+
+const UniqueFields = Schema.NonEmptyArray(Text).pipe(
+  Schema.refine((fields): fields is typeof fields => new Set(fields).size === fields.length),
+)
+
+/** A ref observer; st scopes its ID when declared within a mission run. */
+export const ObserverSchema = Schema.Struct({
+  id: SubjectId,
+  resource: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('resource/'))),
+  provider: Schema.Literal('github.ref'),
+  locator: Text.pipe(
+    Schema.refine((s): s is string => {
+      const at = s.lastIndexOf('@')
+      if (at < 0 || at === s.length - 1) return false
+      const repository = s.slice(0, at)
+      const slash = repository.indexOf('/')
+      return (
+        slash > 0 && slash < repository.length - 1 && !repository.slice(slash + 1).includes('/')
+      )
+    }),
+  ),
+  fields: Schema.NonEmptyArray(Schema.Literals(['head', 'ancestors'])).pipe(
+    Schema.refine((fields): fields is typeof fields => new Set(fields).size === fields.length),
+  ),
+  every: Schema.optionalKey(Duration),
+}).annotate({ identifier: 'St.Observer' })
+
+/** A message subscription to changed ref fields, optionally filtered by a field predicate. */
+export const SubscriptionSchema = Schema.Struct({
+  id: SubjectId,
+  observer: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('observer/'))),
+  to: FullSubject,
+  on: UniqueFields,
+  delivery: Schema.Literal('message'),
+  when: Schema.optionalKey(
+    Schema.Struct({
+      path: Text.pipe(
+        Schema.refine((s): s is string =>
+          /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)*$/u.test(s),
+        ),
+      ),
+      operator: Schema.Literals(['is', 'starts-with', 'contains']),
+      value: Schema.Union([
+        Schema.String,
+        Schema.Finite.pipe(
+          Schema.refine((n): n is number => !Number.isInteger(n) || Number.isSafeInteger(n)),
+        ),
+        Schema.Boolean,
+      ]),
+    }),
+  ),
+}).annotate({ identifier: 'St.Subscription' })
+
+const uniqueIds = (values: readonly { readonly id: string }[]): boolean =>
+  new Set(values.map((value) => value.id)).size === values.length
+const OwnedDeclarationFields = {
+  resources: Schema.optionalKey(
+    Schema.Array(ResourceSchema).pipe(
+      Schema.refine((values): values is typeof values => uniqueIds(values)),
+    ),
+  ),
+  docs: Schema.optionalKey(
+    Schema.Array(DocSchema).pipe(
+      Schema.refine((values): values is typeof values => uniqueIds(values)),
+    ),
+  ),
+  observers: Schema.optionalKey(
+    Schema.Array(ObserverSchema).pipe(
+      Schema.refine((values): values is typeof values => uniqueIds(values)),
+    ),
+  ),
+  subscriptions: Schema.optionalKey(
+    Schema.Array(SubscriptionSchema).pipe(
+      Schema.refine((values): values is typeof values => uniqueIds(values)),
+    ),
+  ),
+}
+
 /** One mission step. */
 export const StepSchema = Schema.Struct({
   id: LocalId,
+  ...OwnedDeclarationFields,
+  documents: Schema.optionalKey(Schema.Array(PinnedDocumentReferenceSchema)),
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(SubjectId),
@@ -479,6 +599,7 @@ const validGraph = (m: {
 
 /** The embedded mission for one sequential loop round. */
 export const RoundSchema = Schema.Struct({
+  ...OwnedDeclarationFields,
   completion: CompletionSchema,
   steps: Schema.Array(StepSchema),
   finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
@@ -535,6 +656,7 @@ export const ScheduleSchema = Schema.Struct({
 /** A ready mission with unique steps whose dependencies exist. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
+  ...OwnedDeclarationFields,
   state: Schema.Literal('ready'),
   timeout: Schema.optionalKey(Duration),
   goals: Goals.pipe(Schema.refine((goals): goals is typeof goals => goals.length > 0)),
@@ -551,12 +673,6 @@ export const MissionSchema = Schema.Struct({
   }),
   Schema.annotate({ identifier: 'St.Mission' }),
 )
-
-/** A typed st resource. */
-export const ResourceSchema = Schema.Struct({
-  id: SubjectId,
-  kind: Schema.Literals(['vcs.repository', 'filesystem.file', 'vcs.pull-request']),
-}).annotate({ identifier: 'St.Resource' })
 
 const decode = <S extends Schema.ConstraintDecoder<unknown>>({
   schema,
@@ -591,6 +707,69 @@ export const resource = (input: typeof ResourceSchema.Encoded): Node => {
   })
 }
 
+/** Decodes and renders a binding to an immutable document hash. */
+export const doc = (input: typeof DocSchema.Encoded): Node => {
+  const d = decode({ schema: DocSchema, input })
+  return node({
+    name: 'doc',
+    args: [d.id],
+    children: [child({ name: 'hash', value: d.hash.toLowerCase() })],
+  })
+}
+
+/** Decodes and renders a ref observer, including repeated selected fields. */
+export const observer = (input: typeof ObserverSchema.Encoded): Node => {
+  const o = decode({ schema: ObserverSchema, input })
+  return node({
+    name: 'observer',
+    args: [o.id],
+    children: [
+      child({ name: 'resource', value: o.resource }),
+      child({ name: 'provider', value: o.provider }),
+      child({ name: 'locator', value: o.locator }),
+      ...o.fields.map((field) => child({ name: 'field', value: field })),
+      ...optionalChild({ name: 'every', value: o.every }),
+    ],
+  })
+}
+
+/** Decodes and renders a message subscription to ref observations. */
+export const subscription = (input: typeof SubscriptionSchema.Encoded): Node => {
+  const s = decode({ schema: SubscriptionSchema, input })
+  return node({
+    name: 'subscription',
+    args: [s.id],
+    children: [
+      child({ name: 'observer', value: s.observer }),
+      child({ name: 'to', value: s.to }),
+      ...s.on.map((field) => child({ name: 'on', value: field })),
+      ...(s.when === undefined
+        ? []
+        : [
+            block({
+              name: 'when',
+              children: [
+                node({ name: 'field', args: [s.when.path, s.when.operator, s.when.value] }),
+              ],
+            }),
+          ]),
+      child({ name: 'delivery', value: s.delivery }),
+    ],
+  })
+}
+
+const ownedDeclarationNodes = (input: {
+  readonly resources?: readonly (typeof ResourceSchema.Encoded)[]
+  readonly docs?: readonly (typeof DocSchema.Encoded)[]
+  readonly observers?: readonly (typeof ObserverSchema.Encoded)[]
+  readonly subscriptions?: readonly (typeof SubscriptionSchema.Encoded)[]
+}): Node[] => [
+  ...(input.resources ?? []).map(resource),
+  ...(input.docs ?? []).map(doc),
+  ...(input.observers ?? []).map(observer),
+  ...(input.subscriptions ?? []).map(subscription),
+]
+
 /** Decodes and renders a schedule node. */
 export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
   const s = decode({ schema: ScheduleSchema, input })
@@ -620,6 +799,7 @@ export const gate = (input: typeof GateSchema.Encoded): Node => {
   switch (g.kind) {
     case 'exists':
     case 'empty':
+    case 'document':
       predicate = child({ name: g.kind, value: g.subject })
       break
     case 'has':
@@ -680,6 +860,9 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     )
   }
   for (const goal of s.goals ?? []) children.push(child({ name: 'goal', value: goal }))
+  for (const document of s.documents ?? [])
+    children.push(child({ name: 'document', value: document }))
+  children.push(...ownedDeclarationNodes(s))
   if (s.exec !== undefined) {
     children.push(
       node({
@@ -745,6 +928,7 @@ export const loop = (input: typeof LoopSchema.Encoded): Node => {
         children: [
           completion(l.round.completion),
           ...l.round.steps.map(step),
+          ...ownedDeclarationNodes(l.round),
           ...(l.round.finally === undefined
             ? []
             : [block({ name: 'finally', children: l.round.finally.map(step) })]),
@@ -789,6 +973,7 @@ export const mission = (input: typeof MissionSchema.Encoded): Node => {
       ...(m.constraints ?? []).map((constraint) =>
         child({ name: 'constraint', value: constraint }),
       ),
+      ...ownedDeclarationNodes(m),
       ...(m.schedule === undefined ? [] : [schedule(m.schedule)]),
       ...(m.completion === undefined ? [] : [completion(m.completion)]),
       ...m.steps.map((s) => ('maxRounds' in s ? loop(s) : step(s))),
