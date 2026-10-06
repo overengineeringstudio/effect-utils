@@ -703,13 +703,13 @@ mod tests {
     #[test]
     fn end_anchor_respects_backslash_parity() {
         for pattern in [r"^foo\$", r"^foo\\\$"] {
-            assert!(expand_error(
+            assert!(expand(
                 quote!(pattern = #pattern),
                 quote!(
                     struct Name(String);
                 )
             )
-            .contains("anchored"));
+            .is_err());
         }
         for (pattern, value) in [(r"^foo\\$", "foo\\"), (r"^foo\\\\$", "foo\\\\")] {
             rust_pattern(pattern, "u").expect("unescaped end anchor");

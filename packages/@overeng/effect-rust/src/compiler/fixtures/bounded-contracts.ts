@@ -5,6 +5,7 @@ import type { Vector } from '../mod.ts'
 
 /** Non-primitive intervals exercise independent storage selection and validation. */
 export const boundedContracts = {
+  Binary32: Schema.Struct({ value: Schema.NullOr(EffectRust.F32) }),
   Percent: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
   SignedByte: Schema.Int.check(Schema.isBetween({ minimum: -5, maximum: 100 })),
   SignedShort: Schema.Int.check(Schema.isBetween({ minimum: -129, maximum: 128 })),
@@ -31,6 +32,14 @@ export const boundedContracts = {
 
 /** Exact boundaries, storage-valid outliers and fractions must agree in both languages. */
 export const boundedVectors: readonly Vector[] = [
+  ...[3.4028235e38, -3.4028235e38].map((value) => ({
+    contract: 'Binary32',
+    name: value > 0 ? 'positive_maximum_rounding' : 'negative_maximum_rounding',
+    input: { value },
+    canonical: { value: Math.fround(value) },
+    accept: true,
+  })),
+  { contract: 'Binary32', name: 'overflow', input: { value: 3.4028236e38 }, accept: false },
   ...['Percent', 'PinnedPercent'].flatMap((contract) => [
     { contract, name: 'minimum', input: 0, accept: true },
     { contract, name: 'maximum', input: 100, accept: true },

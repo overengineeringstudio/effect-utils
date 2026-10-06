@@ -643,7 +643,7 @@ ${conversions.join('\n')}`
       )
     const assertion =
       vector.accept === true
-        ? `let value = result.expect(${literal(`${vector.contract}/${vector.name} must accept`)});\n        assert_eq!(encode_json(&value).unwrap(), ${literal(canonicalJson(vector.canonical ?? vector.input, tags))});\n        let frame = encode_frame(&value, 0x12345678, 1).unwrap();\n        let binary: ${rustNames[vector.contract]} = decode_frame(&frame, 0x12345678, 1).unwrap();\n        assert_eq!(binary, value);`
+        ? `let value = result.expect(${literal(`${vector.contract}/${vector.name} must accept`)});\n        assert_eq!(encode_json(&value).unwrap(), ${literal(canonicalJson(vector.canonical ?? vector.input, tags, features.f32))});\n        let frame = encode_frame(&value, 0x12345678, 1).unwrap();\n        let binary: ${rustNames[vector.contract]} = decode_frame(&frame, 0x12345678, 1).unwrap();\n        assert_eq!(binary, value);`
         : `assert!(result.is_err(), ${literal(`${vector.contract}/${vector.name} must reject`)});`
     return `    #[test]\n    fn vector_${index}_${fieldName(vector.name).replace(/^r#/, '')}() {\n        let result = decode_json::<${rustNames[vector.contract]}>(${literal(input)});\n        ${assertion}\n    }`
   })

@@ -38,7 +38,9 @@ describe('bounded integer contracts', () => {
       if (row.accept === false) {
         expect(() => decode(text)).toThrow()
       } else {
-        expect(ContractJson.encode(schema)(decode(text))).toBe(text)
+        expect(ContractJson.encode(schema)(decode(text))).toBe(
+          canonicalJson(row.canonical ?? row.input, [], row.contract === 'Binary32'),
+        )
       }
     })
   it('retains validation intervals and storage pins through interchange', () => {

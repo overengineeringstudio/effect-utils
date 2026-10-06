@@ -71,6 +71,30 @@ export const tagFields = (ir: ContractIR): readonly string[] =>
     ),
     // eslint-disable-next-line unicorn/no-array-sort -- This array is freshly constructed here; sorting in place avoids an unnecessary copy.
   ].sort()
+const typeHasNumericFloats = (type: Type): boolean => {
+  switch (type.kind) {
+    case 'f32':
+      return true
+    case 'nullable':
+    case 'patch':
+      return typeHasNumericFloats(type.inner)
+    case 'array':
+      return typeHasNumericFloats(type.item)
+    case 'record':
+      return typeHasNumericFloats(type.key) || typeHasNumericFloats(type.value)
+    default:
+      return false
+  }
+}
+
+/** Whether this contract set's JSON policy admits finite floating-point numbers. */
+export const hasNumericFloats = (ir: ContractIR): boolean =>
+  Object.values(ir.defs).some((definition) =>
+    definition.kind === 'alias'
+      ? typeHasNumericFloats(definition.type)
+      : definition.kind === 'struct' &&
+        definition.fields.some((field) => typeHasNumericFloats(field.type)),
+  )
 /** Contract admission failure with a precise path, unsupported feature and remedy. */
 export class AdmissionError extends Error {
   readonly _tag = 'AdmissionError'

@@ -37,7 +37,7 @@ import { Schema } from 'effect'
 import type { FrameOptions } from '../schema/borsh.ts'
 import { canonicalJson } from '../schema/json.ts'
 import { importRustSchema } from './import-rust.ts'
-import { tagFields, type ContractIR } from './ir.ts'
+import { hasNumericFloats, tagFields, type ContractIR } from './ir.ts'
 import { emitJsonSchema } from './json-schema.ts'
 import { lower } from './lower.ts'
 import { emitRust, type RustOptions } from './rust.ts'
@@ -113,6 +113,7 @@ export const compile = (
 // eslint-disable-next-line overeng/named-args -- Preserve the public emitVitest positional SDK signature.
 export const emitVitest = (ir: ContractIR, vectors: readonly Vector[]): string => {
   const tags = tagFields(ir)
+  const numericFloats = hasNumericFloats(ir)
   const imports = [...new Set(vectors.map((vector) => vector.contract))]
     // eslint-disable-next-line unicorn/no-array-sort -- This array is freshly constructed here; sorting in place avoids an unnecessary copy.
     .sort()
@@ -123,7 +124,7 @@ export const emitVitest = (ir: ContractIR, vectors: readonly Vector[]): string =
       const text = JSON.stringify(JSON.stringify(vector.input))
       const body =
         vector.accept === true
-          ? `const value = ContractJson.decode(${vector.contract})(${text})\n  expect(ContractJson.encode(${vector.contract})(value)).toBe(${JSON.stringify(canonicalJson(vector.canonical ?? vector.input, tags))})`
+          ? `const value = ContractJson.decode(${vector.contract})(${text})\n  expect(ContractJson.encode(${vector.contract})(value)).toBe(${JSON.stringify(canonicalJson(vector.canonical ?? vector.input, tags, numericFloats))})`
           : `expect(() => ContractJson.decode(${vector.contract})(${text})).toThrow()`
       return `it(${JSON.stringify(`${vector.contract}/${vector.name}`)}, () => {\n  ${body}\n})`
     })
