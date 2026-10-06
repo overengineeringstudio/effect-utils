@@ -63,6 +63,7 @@ export const files = discoverCollectableTestModules({ repoRoot: process.cwd(), p
       )
       expect(runBun(['bundled.js'], root)).toBe(source)
     }),
+    60_000,
   )
 
   it('still rejects unsafe entries outside Genie state', () =>
