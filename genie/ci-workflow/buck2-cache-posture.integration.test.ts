@@ -10,7 +10,14 @@ type GeneratedWorkflow = {
       if?: string
       needs?: string[]
       env?: Record<string, string>
-      steps: Array<{ name?: string; env?: Record<string, string>; run?: string }>
+      steps: Array<{
+        name?: string
+        uses?: string
+        if?: string
+        env?: Record<string, string>
+        run?: string
+        with?: Record<string, string | number>
+      }>
     }
   >
 }
@@ -206,8 +213,8 @@ describe('generated CI cache trust behavior', () => {
           quality: { result: quality },
           'tested-tree': { result: lookup, outputs: { tested } },
           ...Object.fromEntries(
-            job.needs!
-              .filter((id) => id !== 'quality' && id !== 'tested-tree')
+            job
+              .needs!.filter((id) => id !== 'quality' && id !== 'tested-tree')
               .map((id) => [id, { result: publication }]),
           ),
         },
@@ -245,5 +252,33 @@ describe('generated CI cache trust behavior', () => {
         expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe('1')
         expect(JSON.stringify(job)).not.toContain('secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH')
       }
+  })
+
+  it('uploads both native evidence artifacts for every decorated workflow job', async () => {
+    for (const filename of [
+      'ci.yml',
+      'compiled-products.yml',
+      'storybook-plays.yml',
+      'storybook-preview-build.yml',
+    ]) {
+      const workflow = await readWorkflow(filename)
+      for (const job of Object.values(workflow.jobs)) {
+        const start = job.steps.find((step) => step.name === 'Start Buck2 cache evidence window')
+        if (start === undefined) continue
+        expect(job.env?.CI_BUCK2_CACHE_ACTIONS_PATH).toBe(
+          '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz',
+        )
+        expect(start.run).toContain('CI_BUCK2_CACHE_EVIDENCE_STARTED_AT')
+        expect(start.run).toContain('[ ! -e "$source_root/buck-out" ]')
+        expect(start.run).toContain('[ ! -L "$source_root/buck-out" ]')
+        const uploads = job.steps.filter((step) => step.name === 'Upload Buck2 cache evidence')
+        expect(uploads).toHaveLength(1)
+        expect(uploads[0]?.if).toBe('${{ always() }}')
+        expect(String(uploads[0]?.with?.path).trimEnd()).toBe(
+          '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+        )
+        expect(uploads[0]?.with?.['retention-days']).toBe(14)
+      }
+    }
   })
 })

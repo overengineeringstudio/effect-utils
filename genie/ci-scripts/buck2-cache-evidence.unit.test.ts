@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
+import type { ActionInvocation, ActionRecord } from './buck2-action-evidence.ts'
 import {
   createCacheEvidenceProjector,
   decodeCacheEvidence,
@@ -477,5 +478,185 @@ describe('native Buck cache evidence projection', () => {
     expect(decoded.counts).toEqual(original.counts)
     expect(decoded.metadata).toEqual({ job: 'writer' })
     expect(JSON.stringify(decoded)).not.toContain('PRIVATE_')
+  })
+
+  it('emits every first action end alongside unchanged bounded representatives', () => {
+    const rows: ActionRecord[] = []
+    const invocations: ActionInvocation[] = []
+    const projector = createCacheEvidenceProjector({
+      context: 'populate',
+      freshRoot: true,
+      onAction: (row) => rows.push(row),
+      onInvocation: (invocation) => invocations.push(invocation),
+    })
+    const command = (phase: 'SpanStart' | 'SpanEnd', seconds: number) => ({
+      Event: {
+        trace_id: fixtureBuildId,
+        timestamp: [seconds, 0],
+        span_id: 1,
+        data: { [phase]: { data: { Command: {} } } },
+      },
+    })
+    projector.add(command('SpanStart', 1700000000))
+    for (let index = 0; index < 100; index++) {
+      projector.add({
+        Event: {
+          ...nativeEvent('SpanStart', fixtureIdentity, index + 10).Event,
+          timestamp: [1700000001, index * 1000000],
+        },
+      })
+      const end = {
+        Event: {
+          ...nativeEvent('SpanEnd', actionEnd(), index + 10).Event,
+          timestamp: [1700000002, index * 1000000],
+        },
+      }
+      projector.add(end)
+      projector.add(end)
+    }
+    projector.add(command('SpanEnd', 1700000003))
+    const summary = projector.finish()
+    expect(summary.actionCount).toBe(100)
+    expect(summary.actions).toHaveLength(1)
+    expect(summary.droppedActionCount).toBe(99)
+    expect(rows).toHaveLength(100)
+    expect(rows[0]).toMatchObject({
+      type: 'action',
+      context: 'populate',
+      executionKind: 1,
+      cacheUploadResult: 1,
+      digest: fixtureDigest,
+      startedAt: 1700000001000,
+      completedAt: 1700000002000,
+      endTime: 1700000002000,
+      uploadCompletedAt: 1700000002000,
+      uploadOutcome: 'uploaded',
+    })
+    expect(invocations).toEqual([
+      {
+        buildId: fixtureBuildId,
+        context: 'populate',
+        freshRoot: true,
+        actionCount: 100,
+        complete: true,
+        startedAt: 1700000000000,
+        completedAt: 1700000003000,
+      },
+    ])
+  })
+
+  it('retains sanitized null identity/digest rows and invalidates missing command evidence', () => {
+    const rows: ActionRecord[] = []
+    const invocations: ActionInvocation[] = []
+    const projector = createCacheEvidenceProjector({
+      onAction: (row) => rows.push(row),
+      onInvocation: (invocation) => invocations.push(invocation),
+    })
+    projector.add(
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({
+          name: { category: '/private/secret' },
+          key: {
+            owner: {
+              TargetLabel: {
+                label: { package: '/private/root', name: 'SECRET=token' },
+                configuration: { full_name: '/private/host/path' },
+              },
+            },
+          },
+          commands: [
+            {
+              details: {
+                command_kind: {
+                  command: {
+                    LocalCommand: { action_digest: '/private/secret:12', env: ['SECRET_ENV'] },
+                  },
+                },
+              },
+            },
+          ],
+        }),
+      ),
+    )
+    projector.finish()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      category: null,
+      target: null,
+      configuration: null,
+      digest: null,
+      startedAt: null,
+      completedAt: null,
+      uploadCompletedAt: null,
+    })
+    expect(JSON.stringify(rows)).not.toContain('private')
+    expect(JSON.stringify(rows)).not.toContain('SECRET')
+    expect(invocations[0]!.complete).toBe(false)
+  })
+
+  it('preserves upload rejection and local-dep-file raw classifications without inventing hits', () => {
+    for (const cacheUploadResult of [9, 10, 11, 12, 13, 14, 15, 16]) {
+      const rows: ActionRecord[] = []
+      const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+      projector.add(
+        nativeEvent(
+          'SpanEnd',
+          actionEnd({
+            execution_kind: 7,
+            cache_upload_result: cacheUploadResult,
+          }),
+        ),
+      )
+      projector.finish()
+      expect(rows[0]).toMatchObject({
+        executionKind: 7,
+        cacheUploadResult,
+        outcome: 'local-cache',
+        uploadOutcome: cacheUploadResult === 16 ? 'not-uploaded' : 'failed',
+        uploadCompletedAt: null,
+      })
+    }
+  })
+
+  it('invalidates unknown action kinds and mistyped native enums instead of excluding a possible command', () => {
+    for (const overrides of [
+      { kind: 'UnknownNativeKind' },
+      { kind: undefined },
+      { execution_kind: '3' },
+      { cache_upload_result: '1' },
+    ]) {
+      const invocations: ActionInvocation[] = []
+      const projector = createCacheEvidenceProjector({
+        onInvocation: (invocation) => invocations.push(invocation),
+      })
+      projector.add({
+        Event: {
+          trace_id: fixtureBuildId,
+          span_id: 1,
+          timestamp: [1700000000, 0],
+          data: { SpanStart: { data: { Command: {} } } },
+        },
+      })
+      projector.add({
+        Event: { ...nativeEvent('SpanStart', fixtureIdentity).Event, timestamp: [1700000001, 0] },
+      })
+      projector.add({
+        Event: {
+          ...nativeEvent('SpanEnd', actionEnd(overrides)).Event,
+          timestamp: [1700000002, 0],
+        },
+      })
+      projector.add({
+        Event: {
+          trace_id: fixtureBuildId,
+          span_id: 1,
+          timestamp: [1700000003, 0],
+          data: { SpanEnd: { data: { Command: {} } } },
+        },
+      })
+      expect(projector.finish().actionCount).toBe(1)
+      expect(invocations[0]!.complete).toBe(false)
+    }
   })
 })

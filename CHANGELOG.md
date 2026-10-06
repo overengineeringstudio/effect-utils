@@ -4,6 +4,10 @@
 
 ### Added
 
+- Every Buck cache-enabled CI job retains complete sanitized gzip JSONL action
+  identities beside its existing compact evidence summary. The warm99 evaluator
+  joins prior successful uploads against fresh-root readers per lane and rejects
+  missing evidence, requiring two consecutive observations at or above 99%.
 - pnpm development installs can opt into the graph-hashed global virtual store;
   default and CI installs retain root-local projections.
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict

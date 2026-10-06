@@ -1,6 +1,6 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
-/** Retain compact native cache evidence independently of tailnet/OTLP delivery. */
+/** Retain compact and complete native cache evidence independently of tailnet/OTLP delivery. */
 export const withBuck2CacheEvidence = (
   jobs: GitHubWorkflowArgs['jobs'],
 ): GitHubWorkflowArgs['jobs'] =>
@@ -15,7 +15,24 @@ export const withBuck2CacheEvidence = (
       steps.splice(checkout + 1, 0, {
         name: 'Start Buck2 cache evidence window',
         shell: 'bash',
-        run: 'mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"',
+        run: [
+          'set -euo pipefail',
+          'marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"',
+          'mkdir -p "${marker%/*}"',
+          'started_at=$(( $(date +%s) * 1000 ))',
+          'source_root=""',
+          'fresh_root=0',
+          'if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then',
+          '  if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&',
+          '     tracked_root=$(cd "$tracked_root" && pwd -P) &&',
+          '     [ "$tracked_root" = "$source_root" ] &&',
+          '     [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then',
+          '    fresh_root=1',
+          '  fi',
+          'fi',
+          'printf "%s\\n%s\\n%s\\n" "$started_at" "$source_root" "$fresh_root" > "$marker"',
+          'printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\\n" "$started_at" >> "$GITHUB_ENV"',
+        ].join('\n'),
       })
       steps.push(
         {
@@ -39,7 +56,10 @@ export const withBuck2CacheEvidence = (
               `buck2-cache-evidence-${jobId}` +
               (matrix === true ? '-${{ strategy.job-index }}' : '') +
               '-${{ github.run_attempt }}',
-            path: '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}',
+            path: [
+              '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}',
+              '${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+            ].join('\n'),
             'if-no-files-found': 'warn',
             'retention-days': 14,
           },
@@ -52,6 +72,7 @@ export const withBuck2CacheEvidence = (
           env: {
             ...job.env,
             CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json',
+            CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz',
             CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start',
             CI_BUCK2_CACHE_EVIDENCE_JOB: jobId,
             CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA:

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { createHash } from 'node:crypto'
 /**
  * Project pinned Buck2 `log show` JSONL, never command/environment/log payloads.
  *
@@ -9,12 +10,26 @@
  *
  * Outcomes use data.proto's numeric enums, not command cache_hit booleans.
  * Digests are the exact native RE ActionCache `hash:size`, NOT output tiny_digest.
- * End spans repeat identity; active starts supply only a fallback. Memory retains
- * active action identities and at most 64 representatives, not the event stream.
+ * End spans repeat identity; active starts supply only a fallback. The compact
+ * view stays bounded; an optional sink receives every normalized action row.
  */
 import { createReadStream } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
+import { gzipSync, gunzipSync } from 'node:zlib'
+
+import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
+import {
+  actionsArtifactName,
+  cacheOutcomeMapping,
+  invocationWithinJobWindow,
+  maxActionArtifactBytes,
+  outcomeFor,
+  type ActionArtifact,
+  type ActionInvocation,
+  type ActionRecord,
+} from './buck2-action-evidence.ts'
 
 export const maxCacheEvidenceActions = 64
 export const cacheEvidenceOutcomes = [
@@ -61,6 +76,16 @@ export type CacheEvidence = {
   droppedActionCount: number
   invocations: CacheInvocation[]
   actions: CacheAction[]
+  cacheOutcomeMapping?: typeof cacheOutcomeMapping
+  actionsArtifact?: {
+    name: string
+    rows: number
+    sha256: string
+    bytes: number
+    uncompressedBytes: number
+    complete: boolean
+    droppedActionCount: number
+  }
 }
 
 const field = ({ value, key }: { value: unknown; key: string }): unknown =>
@@ -85,32 +110,6 @@ const zeroCounts = (): OutcomeCounts => ({
   other: 0,
 })
 const nativeEnum = (value: unknown): number => (typeof value === 'number' ? value : 0)
-const outcomeFor = ({
-  executionKind,
-  uploadResult,
-}: {
-  executionKind: number
-  uploadResult: number
-}): CacheOutcome => {
-  if (uploadResult === 1) return 'uploaded'
-  switch (executionKind) {
-    case 1:
-    case 8:
-      return 'local'
-    case 3:
-      return 'remote-hit'
-    case 7:
-    case 10:
-      return 'local-cache'
-    case 2:
-    case 11:
-      return 'remote-execution'
-    case 9:
-      return 'remote-dep-file-hit'
-    default:
-      return 'other'
-  }
-}
 
 type Identity = { category?: string; target?: string; configuration?: string }
 const identityFor = (action: unknown): Identity => {
@@ -194,13 +193,61 @@ const retainRepresentative = ({
   if (rows.length > maxCacheEvidenceActions) rows.pop()
 }
 
+/** Pinned log-show serializes protobuf timestamps as [seconds, nanoseconds]. */
+const eventTime = (event: unknown): number | null => {
+  const value = field({ value: event, key: 'timestamp' })
+  if (Array.isArray(value) === false || value.length !== 2) return null
+  const [seconds, nanos] = value
+  if (
+    typeof seconds !== 'number' ||
+    Number.isSafeInteger(seconds) === false ||
+    seconds < 0 ||
+    typeof nanos !== 'number' ||
+    Number.isInteger(nanos) === false ||
+    nanos < 0 ||
+    nanos >= 1e9
+  )
+    return null
+  const result = seconds * 1000 + Math.floor(nanos / 1e6)
+  return Number.isSafeInteger(result) === true ? result : null
+}
+const safeIdentity = (value: string | undefined, grammar: RegExp): string | null =>
+  value !== undefined && value.length <= 4096 && grammar.test(value) === true ? value : null
+const labelGrammar = /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/
+const configurationGrammar =
+  /^[a-zA-Z0-9_.-]+(?:\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+)?#[a-fA-F0-9]+$/
+const knownActionKinds: Record<string, true> = {
+  NotSet: true,
+  Copy: true,
+  DownloadFile: true,
+  Run: true,
+  SymlinkedDir: true,
+  Write: true,
+  WriteMacrosToFile: true,
+  CasArtifact: true,
+}
+
 /** Pure incremental projector: add one decoded JSONL value, finish once. */
-export const createCacheEvidenceProjector = ({ context }: { context?: string } = {}): {
+export const createCacheEvidenceProjector = ({
+  context,
+  onAction,
+  onInvocation,
+  freshRoot = false,
+}: {
+  context?: string
+  onAction?: (action: ActionRecord) => void
+  onInvocation?: (invocation: ActionInvocation) => void
+  freshRoot?: boolean
+} = {}): {
   add: (value: unknown) => void
   finish: () => CacheEvidence
 } => {
   let buildId: string | undefined
-  const starts = new Map<string, Identity>()
+  const starts = new Map<string, { identity: Identity; startedAt: number | null }>()
+  const ended = new Set<string>()
+  let invocationStartedAt: number | null = null
+  let invocationCompletedAt: number | null = null
+  let invalidActionCount = 0
   const actions: CacheAction[] = []
   const counts = zeroCounts()
   let actionCount = 0
@@ -227,22 +274,32 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
           ? String(spanId)
           : undefined
     const data = field({ value: event, key: 'data' })
+    const time = eventTime(event)
+    const startData = field({ value: field({ value: data, key: 'SpanStart' }), key: 'data' })
+    const endData = field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' })
+    if (field({ value: startData, key: 'Command' }) !== undefined) invocationStartedAt = time
+    if (field({ value: endData, key: 'Command' }) !== undefined) invocationCompletedAt = time
     const start = field({
       value: field({ value: field({ value: data, key: 'SpanStart' }), key: 'data' }),
       key: 'ActionExecution',
     })
-    if (start !== undefined && spanKey !== undefined) starts.set(spanKey, identityFor(start))
+    if (start !== undefined && spanKey !== undefined && ended.has(spanKey) === false)
+      starts.set(spanKey, { identity: identityFor(start), startedAt: time })
     const end = field({
       value: field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' }),
       key: 'ActionExecution',
     })
     if (end === undefined) return
+    if (spanKey !== undefined) {
+      if (ended.has(spanKey) === true) return
+      ended.add(spanKey)
+    }
     const fallback = spanKey === undefined ? undefined : starts.get(spanKey)
     if (spanKey !== undefined) starts.delete(spanKey)
     const identity = identityFor(end)
-    const category = identity.category ?? fallback?.category
-    const target = identity.target ?? fallback?.target
-    const configuration = identity.configuration ?? fallback?.configuration
+    const category = identity.category ?? fallback?.identity.category
+    const target = identity.target ?? fallback?.identity.target
+    const configuration = identity.configuration ?? fallback?.identity.configuration
     const executionKind = nativeEnum(field({ value: end, key: 'execution_kind' }))
     const cacheUploadResult = nativeEnum(field({ value: end, key: 'cache_upload_result' }))
     const outcome = outcomeFor({ executionKind: executionKind, uploadResult: cacheUploadResult })
@@ -260,6 +317,57 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
         missingCommandDigestCount++
     }
     if (category === undefined || target === undefined) missingIdentityCount++
+    const actionKind = field({ value: end, key: 'kind' })
+    const commandAction = actionKind === 'Run'
+    const row: ActionRecord = {
+      type: 'action',
+      buildId: safeIdentity(buildId, /^[a-zA-Z0-9_.-]+$/),
+      context: safeIdentity(context, /^[a-zA-Z0-9_.:-]+$/),
+      category: safeIdentity(category, /^[a-zA-Z0-9_.-]+$/),
+      target: safeIdentity(target, labelGrammar),
+      configuration: safeIdentity(configuration, configurationGrammar),
+      digest: safeIdentity(digest, /^[a-fA-F0-9]+:[0-9]+$/),
+      executionKind,
+      cacheUploadResult,
+      outcome,
+      cacheOutcome: outcome,
+      uploadOutcome:
+        cacheUploadResult === 1
+          ? 'uploaded'
+          : cacheUploadResult >= 9 && cacheUploadResult <= 15
+            ? 'failed'
+            : 'not-uploaded',
+      startedAt: fallback?.startedAt ?? null,
+      completedAt: time,
+      endTime: time,
+      uploadCompletedAt: cacheUploadResult === 1 ? time : null,
+      commandAction,
+    }
+    if (
+      row.buildId === null ||
+      row.completedAt === null ||
+      spanKey === undefined ||
+      typeof actionKind !== 'string' ||
+      knownActionKinds[actionKind] !== true ||
+      typeof field({ value: end, key: 'execution_kind' }) !== 'number' ||
+      typeof field({ value: end, key: 'cache_upload_result' }) !== 'number' ||
+      executionKind === 5 ||
+      executionKind > 11 ||
+      executionKind < 0 ||
+      Number.isSafeInteger(executionKind) === false ||
+      cacheUploadResult > 16 ||
+      cacheUploadResult < 0 ||
+      Number.isSafeInteger(cacheUploadResult) === false ||
+      (row.startedAt !== null && row.completedAt !== null && row.startedAt > row.completedAt) ||
+      ((commandAction === true || executionKind === 3 || cacheUploadResult === 1) &&
+        (row.category === null ||
+          row.target === null ||
+          row.configuration === null ||
+          row.digest === null ||
+          row.startedAt === null))
+    )
+      invalidActionCount++
+    onAction?.(row)
     if (digest === undefined || category === undefined || target === undefined) return
     if (buildId === undefined) throw new Error('Action event is missing its native trace id')
     retainRepresentative({
@@ -279,6 +387,20 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
   }
   const finish = (): CacheEvidence => {
     if (buildId === undefined) throw new Error('Event file is missing its native trace id')
+    onInvocation?.({
+      buildId,
+      context: context ?? null,
+      startedAt: invocationStartedAt,
+      completedAt: invocationCompletedAt,
+      freshRoot,
+      actionCount,
+      complete:
+        invalidActionCount === 0 &&
+        starts.size === 0 &&
+        invocationStartedAt !== null &&
+        invocationCompletedAt !== null &&
+        invocationCompletedAt >= invocationStartedAt,
+    })
     return {
       schemaVersion: 1,
       status: 'collected',
@@ -484,6 +606,43 @@ export const emptyCacheEvidence = (): CacheEvidence => ({
   actions: [],
 })
 
+const emptyActionArtifact = (status: CacheEvidence['status']): ActionArtifact => ({
+  header: {
+    type: 'header',
+    schemaVersion: 1,
+    cacheOutcomeMapping,
+    metadata: {
+      repo: null,
+      runId: null,
+      runAttempt: null,
+      job: null,
+      lane: null,
+      headSha: null,
+      posture: status === 'remote-cache-disabled-by-design' ? 'disabled-by-design' : 'read-only',
+      startedAt: null,
+      finishedAt: null,
+    },
+    status,
+    complete: false,
+    actionCount: 0,
+    rows: 0,
+    missingDigestCount: 0,
+    missingIdentityCount: 0,
+    missingTimestampCount: 0,
+    droppedActionCount: 0,
+    evidenceGaps: [],
+    invocations: [],
+  },
+  actions: [],
+})
+
+const envTime = (key: string): number | null => {
+  const value = process.env[key]
+  if (value === undefined || /^[0-9]{1,16}$/.test(value) === false) return null
+  const result = Number(value)
+  return Number.isSafeInteger(result) === true ? result : null
+}
+
 const run = async (): Promise<void> => {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
@@ -492,6 +651,10 @@ const run = async (): Promise<void> => {
       events: { type: 'string' },
       output: { type: 'string' },
       context: { type: 'string' },
+      'actions-output': { type: 'string' },
+      'fresh-root': { type: 'boolean', default: false },
+      finalize: { type: 'boolean', default: false },
+      'evidence-gap': { type: 'string' },
       'remote-cache-disabled-by-design': { type: 'boolean', default: false },
     },
   })
@@ -504,39 +667,107 @@ const run = async (): Promise<void> => {
   if (values.context !== undefined && /^[a-zA-Z0-9_.:-]{1,96}$/.test(values.context) === false) {
     throw new Error('Invalid evidence context label')
   }
+  if (
+    values['evidence-gap'] !== undefined &&
+    /^[a-z][a-z0-9-]{0,95}$/.test(values['evidence-gap']) === false
+  )
+    throw new Error('Invalid evidence gap code')
+  const actionsOutput =
+    values['actions-output'] ?? join(dirname(values.output), actionsArtifactName)
+  if (basename(actionsOutput) !== actionsArtifactName)
+    throw new Error('Action artifact must use the canonical filename')
   let evidence = disabled === true ? disabledCacheEvidence() : emptyCacheEvidence()
+  const previousSummary = Bun.file(values.output)
+  let previous: CacheEvidence | undefined
+  let full = emptyActionArtifact(evidence.status)
+  if (disabled === false && (await previousSummary.exists()) === true) {
+    let previousValue: unknown
+    try {
+      previousValue = await previousSummary.json()
+      previous = decodeCacheEvidence(previousValue)
+    } catch {
+      full.header.evidenceGaps.push('prior-summary-unreadable')
+    }
+    const previousActions = Bun.file(actionsOutput)
+    if ((await previousActions.exists()) === true) {
+      try {
+        const bytes = new Uint8Array(await previousActions.arrayBuffer())
+        const raw = gunzipSync(bytes, { maxOutputLength: maxActionArtifactBytes + 1024 * 1024 })
+        const decoded = decodeActionArtifact(raw.toString('utf8'))
+        decoded.header.evidenceGaps.push(...full.header.evidenceGaps)
+        full = decoded
+        const reference = field({ value: previousValue, key: 'actionsArtifact' })
+        if (
+          field({ value: reference, key: 'sha256' }) !==
+            createHash('sha256').update(bytes).digest('hex') ||
+          field({ value: reference, key: 'rows' }) !== full.actions.length
+        )
+          full.header.evidenceGaps.push('prior-artifact-reference-mismatch')
+      } catch {
+        full.header.evidenceGaps.push('prior-artifact-unreadable')
+      }
+    } else if ((previous?.actionCount ?? 0) > 0)
+      full.header.evidenceGaps.push('prior-artifact-missing')
+  }
+  if (values['evidence-gap'] !== undefined) full.header.evidenceGaps.push(values['evidence-gap'])
   if (values.events !== undefined) {
-    const projector = createCacheEvidenceProjector({ context: values.context })
+    const rows: ActionRecord[] = []
+    let rowBytes = full.actions.reduce(
+      (total, row) => total + Buffer.byteLength(JSON.stringify(row)) + 1,
+      0,
+    )
+    let dropped = 0
+    const invocations: ActionInvocation[] = []
+    const projector = createCacheEvidenceProjector({
+      context: values.context,
+      // Native-log candidates resolve by command start time at finalization.
+      // Explicit proof contexts own independent wiped roots.
+      freshRoot: values['fresh-root'] === true,
+      onAction: (row) => {
+        const size = Buffer.byteLength(JSON.stringify(row)) + 1
+        if (rowBytes + size > maxActionArtifactBytes) dropped++
+        else {
+          rowBytes += size
+          rows.push(row)
+        }
+      },
+      onInvocation: (invocation) => invocations.push(invocation),
+    })
     const stream = createReadStream(values.events, { encoding: 'utf8' })
     const lines = createInterface({ input: stream, crlfDelay: Infinity })
-    let lineNumber = 0
     try {
       for await (const line of lines) {
-        lineNumber++
         if (line.trim().length === 0) continue
         let value: unknown
         try {
           value = JSON.parse(line)
         } catch {
-          throw new Error(`Invalid native JSON on line ${lineNumber}`)
+          full.header.evidenceGaps.push('invalid-native-json')
+          break
         }
         projector.add(value)
       }
       evidence = projector.finish()
+      const invocation = invocations[0]
+      if (
+        invocation !== undefined &&
+        full.header.invocations.some((item) => item.buildId === invocation.buildId) === false
+      ) {
+        for (const row of rows) full.actions.push(row)
+        full.header.invocations.push(invocation)
+        full.header.droppedActionCount += dropped
+      }
+    } catch {
+      full.header.evidenceGaps.push('native-projection-failed')
+      // Retain every available row even if a malformed invocation cannot be finalized.
+      for (const row of rows) full.actions.push(row)
+      full.header.droppedActionCount += dropped
     } finally {
       lines.close()
       stream.destroy()
     }
   }
-  if (disabled === false) {
-    const previous = Bun.file(values.output)
-    if ((await previous.exists()) === true) {
-      evidence = mergeCacheEvidence({
-        previous: decodeCacheEvidence(await previous.json()),
-        next: evidence,
-      })
-    }
-  }
+  if (previous !== undefined) evidence = mergeCacheEvidence({ previous, next: evidence })
   const envFields = {
     repository: 'GITHUB_REPOSITORY',
     runId: 'GITHUB_RUN_ID',
@@ -553,7 +784,134 @@ const run = async (): Promise<void> => {
     if (value !== undefined && /^[a-zA-Z0-9_./-]{1,160}$/.test(value) === true)
       evidence.metadata[key] = value
   }
+  const header = full.header
+  header.status = evidence.status
+  if (values.finalize === true) {
+    const nativeInvocations = header.invocations.filter((item) => item.context === 'native-log')
+    const earliest = nativeInvocations.reduce(
+      (minimum, item) => Math.min(minimum, item.startedAt ?? Infinity),
+      Infinity,
+    )
+    const tied = nativeInvocations.filter((item) => item.startedAt === earliest).length !== 1
+    for (const invocation of nativeInvocations) {
+      invocation.freshRoot =
+        invocation.freshRoot === true && tied === false && invocation.startedAt === earliest
+    }
+  }
+  header.metadata = {
+    repo: safeIdentity(evidence.metadata.repository, /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/),
+    runId: safeIdentity(evidence.metadata.runId, /^[0-9]+$/),
+    runAttempt: safeIdentity(evidence.metadata.runAttempt, /^[0-9]+$/),
+    job: safeIdentity(evidence.metadata.job, /^[a-zA-Z0-9_.-]+$/),
+    lane:
+      process.env.GITHUB_EVENT_NAME === 'merge_group'
+        ? 'merge_group'
+        : process.env.GITHUB_EVENT_NAME === 'pull_request' ||
+            process.env.GITHUB_EVENT_NAME === 'pull_request_target'
+          ? 'pr'
+          : process.env.GITHUB_REF === 'refs/heads/main'
+            ? evidence.metadata.readOnly === '0'
+              ? 'main-writer'
+              : 'main-reader'
+            : null,
+    headSha: safeIdentity(evidence.metadata.headSha, /^[a-fA-F0-9]{40}$/),
+    posture:
+      disabled === true || evidence.metadata.remoteCacheDisabled === '1'
+        ? 'disabled-by-design'
+        : evidence.metadata.readOnly === '0'
+          ? 'writer'
+          : 'read-only',
+    startedAt: header.metadata.startedAt ?? envTime('CI_BUCK2_CACHE_EVIDENCE_STARTED_AT'),
+    finishedAt:
+      values.finalize === true
+        ? (envTime('CI_BUCK2_CACHE_EVIDENCE_FINISHED_AT') ?? Date.now())
+        : null,
+  }
+  if (values.finalize === true) {
+    for (const invocation of header.invocations) {
+      if (!invocationWithinJobWindow(invocation, header.metadata)) {
+        invocation.freshRoot = false
+        header.evidenceGaps.push('native-invocation-outside-job-window')
+      }
+    }
+  }
+  header.rows = full.actions.length
+  header.actionCount = evidence.actionCount
+  header.missingDigestCount = full.actions.filter((row) => row.digest === null).length
+  header.missingIdentityCount = full.actions.filter(
+    (row) =>
+      row.buildId === null ||
+      row.category === null ||
+      row.target === null ||
+      row.configuration === null,
+  ).length
+  header.missingTimestampCount = full.actions.filter(
+    (row) =>
+      row.startedAt === null ||
+      row.completedAt === null ||
+      (row.cacheUploadResult === 1 && row.uploadCompletedAt === null),
+  ).length
+  if (header.droppedActionCount > 0) header.evidenceGaps.push('action-payload-size-limit')
+  if (header.rows !== header.actionCount) header.evidenceGaps.push('action-count-mismatch')
+  if (header.invocations.some((item) => item.complete === false) === true)
+    header.evidenceGaps.push('incomplete-native-invocation')
+  const metadataComplete = Object.values(header.metadata).every((item) => item !== null)
+  if (values.finalize === true && metadataComplete === false)
+    header.evidenceGaps.push('job-metadata-missing')
+  header.evidenceGaps = [...new Set(header.evidenceGaps)].sort()
+  header.complete =
+    values.finalize === true &&
+    metadataComplete === true &&
+    header.evidenceGaps.length === 0 &&
+    header.status !== 'no-native-logs'
+  header.invocations.sort(
+    (left, right) =>
+      (left.startedAt ?? Infinity) - (right.startedAt ?? Infinity) ||
+      (left.buildId < right.buildId ? -1 : left.buildId > right.buildId ? 1 : 0),
+  )
+  full.actions.sort((left, right) => {
+    const a = JSON.stringify([
+      left.buildId,
+      left.completedAt,
+      left.category,
+      left.target,
+      left.configuration,
+      left.digest,
+      left.startedAt,
+      left.executionKind,
+      left.cacheUploadResult,
+    ])
+    const b = JSON.stringify([
+      right.buildId,
+      right.completedAt,
+      right.category,
+      right.target,
+      right.configuration,
+      right.digest,
+      right.startedAt,
+      right.executionKind,
+      right.cacheUploadResult,
+    ])
+    return a < b ? -1 : a > b ? 1 : 0
+  })
+  const raw = `${JSON.stringify(header)}\n${full.actions.map((row) => JSON.stringify(row)).join('\n')}${full.actions.length === 0 ? '' : '\n'}`
+  const bytes = gzipSync(raw, { level: 9 })
+  await Bun.write(actionsOutput, bytes)
+  evidence.cacheOutcomeMapping = cacheOutcomeMapping
+  evidence.actionsArtifact = {
+    name: actionsArtifactName,
+    rows: header.rows,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    bytes: bytes.length,
+    uncompressedBytes: Buffer.byteLength(raw),
+    complete: header.complete,
+    droppedActionCount: header.droppedActionCount,
+  }
   await Bun.write(values.output, `${JSON.stringify(evidence)}\n`)
+  if (values.finalize === true && header.complete === false) {
+    console.error('Cache action evidence incomplete; observation is invalid.')
+    process.exitCode = 1
+  }
   const inconsistent = evidence.invocations.reduce(
     (total, invocation) =>
       total +
