@@ -94,11 +94,20 @@ Configure the host at `$MEGAREPO_STORE/.state/gc-config.json`:
 The allowlist may contain only the compiled canonical classes, including `storybook-static`.
 Activity is captured directly from `st3 agents ls --all --json`, each agent's
 `st3 subject show <id> --json` `actual.workspace`, and `pty list --json --tags`.
-There is no external activity manifest to configure. Both `st3` and `pty` must be available
-on the invoking host. Active workspaces and running PTYs protect overlapping worktree paths,
-including sessions whose cwd is a nested directory or whose workspace is a composed root.
+There is no external activity manifest to configure. By default `st3` and `pty` are resolved
+on PATH. Set `MEGAREPO_GC_ST3_BIN` and `MEGAREPO_GC_PTY_BIN` to explicit executable paths
+(for example Nix store paths in a systemd unit). A configured executable that cannot be run
+produces `unknown`; it never falls back to another binary on PATH.
 
-Missing, invalid, incomplete, expired, or unreadable activity evidence produces `unknown`.
+Active workspaces and all retained PTY records protect overlapping worktree paths, including
+exited or vanished sessions, nested cwds, and composed workspace roots. A terminal PTY record
+continues to own its workspace until the record is removed; process exit alone does not release
+its conservative GC protection.
+
+Missing, invalid, incomplete, timed-out, or unreadable activity evidence produces `unknown`.
+Each bounded command invocation observes the native live surface. st3's snapshot `created_at`
+is the last incorporated claim's timestamp, not request time, so an idle projection is not
+rejected merely because that timestamp is old.
 A candidate must also contain no Git-tracked files (including force-added files beneath ignored
 directories), be Git-ignored, older than the retention window, absent from Megarepo's live set,
 and inside a clean registered worktree with no live process cwd. An unavailable native process

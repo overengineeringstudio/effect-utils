@@ -64,16 +64,16 @@ import {
   type PrStateResolverService,
 } from '../../../store/store-pr-state.ts'
 import {
+  isWorkspaceActive,
+  readWorkspaceActivity,
+  type WorkspaceActivityEpoch,
+} from '../../../store/store-workspace-activity.ts'
+import {
   classifyColdWorktree,
   isNamedRefWorktree,
   type ColdWorktreeDecision,
 } from '../../../store/store-worktree-policy.ts'
 import { classifyStoreWorktreePolicy } from '../../../store/store-worktree-policy.ts'
-import {
-  isWorkspaceActive,
-  readWorkspaceActivity,
-  type WorkspaceActivityEpoch,
-} from '../../../store/store-workspace-activity.ts'
 import { Store, StoreLayer } from '../../../store/store.ts'
 import { getCloneUrl } from '../../../sync/mod.ts'
 import {
@@ -196,7 +196,6 @@ const planGeneratedArtifacts = ({
   now,
   onArtifact,
   onRepoCompleted,
-  readCurrentTimeMillis,
   repoWorktrees,
 }: {
   config: StoreGcConfig
@@ -205,7 +204,6 @@ const planGeneratedArtifacts = ({
   now: number
   onArtifact?: ((result: StoreGcResult) => Effect.Effect<void>) | undefined
   onRepoCompleted?: (() => Effect.Effect<void>) | undefined
-  readCurrentTimeMillis: Effect.Effect<number>
   repoWorktrees: GeneratedArtifactRepoWorktrees
 }): Effect.Effect<
   {
@@ -219,9 +217,7 @@ const planGeneratedArtifacts = ({
   Effect.gen(function* () {
     const generatedResults: StoreGcResult[] = []
     const initialActivity =
-      config.generatedArtifacts.enabled === true
-        ? yield* readWorkspaceActivity({ fs, atMs: yield* readCurrentTimeMillis })
-        : undefined
+      config.generatedArtifacts.enabled === true ? yield* readWorkspaceActivity({ fs }) : undefined
     for (const { repo, worktrees } of repoWorktrees) {
       for (const worktree of worktrees) {
         if (worktree.broken === true) continue
@@ -268,7 +264,7 @@ const planGeneratedArtifacts = ({
           const agentLive =
             canonicalWorktree === undefined || agentActivity === undefined
               ? undefined
-              : isWorkspaceActive(agentActivity, canonicalWorktree)
+              : isWorkspaceActive({ activity: agentActivity, canonicalWorktree: canonicalWorktree })
           const tracked = yield* Git.hasTrackedFiles({
             cwd: worktree.path,
             path: artifactClass,
@@ -316,7 +312,6 @@ const planGeneratedArtifacts = ({
             traversal?._tag === 'complete'
               ? yield* readWorkspaceActivity({
                   fs,
-                  atMs: yield* readCurrentTimeMillis,
                   ...(agentActivity === undefined ? {} : { admittedEpoch: agentActivity.epoch }),
                 })
               : agentActivity
@@ -366,8 +361,10 @@ const planGeneratedArtifacts = ({
                 ? 'artifact-scan-incomplete'
                 : finalAgentActivity === undefined
                   ? 'agent-liveness-unavailable'
-                  : isWorkspaceActive(finalAgentActivity, finalCanonicalWorktree) === true ||
-                      finalInUse._tag === 'in-use'
+                  : isWorkspaceActive({
+                        activity: finalAgentActivity,
+                        canonicalWorktree: finalCanonicalWorktree,
+                      }) === true || finalInUse._tag === 'in-use'
                     ? 'live'
                     : finalInUse._tag === 'unknown'
                       ? 'process-liveness-unavailable'
@@ -383,7 +380,8 @@ const planGeneratedArtifacts = ({
                                 ? 'artifact-ignore-unknown'
                                 : finalIgnored === 'not-ignored'
                                   ? 'artifact-not-ignored'
-                                  : now - traversal.newestMtimeMs < config.generatedArtifacts.retentionMs
+                                  : now - traversal.newestMtimeMs <
+                                      config.generatedArtifacts.retentionMs
                                     ? 'retention'
                                     : 'eligible')
           const outcome =
@@ -2117,7 +2115,6 @@ const storeGcCommand = Cli.Command.make(
                       }),
                   }
                 : {}),
-              readCurrentTimeMillis: Clock.currentTimeMillis,
               repoWorktrees,
             })
             planSha256 = generatedPlan.planSha256
@@ -2179,7 +2176,6 @@ const storeGcCommand = Cli.Command.make(
                   fs,
                   liveSet: freshLiveSet,
                   now,
-                  readCurrentTimeMillis: Clock.currentTimeMillis,
                   repoWorktrees: freshRepoWorktrees,
                 })
                 if (freshPlan.planSha256 !== expectedPlan.value) {
@@ -2221,14 +2217,10 @@ const storeGcCommand = Cli.Command.make(
                     message: 'candidate owner became live before deletion',
                   })
                 }
-                // Same native reader and the same epoch admission as the plan,
-                // re-read under the lease: an expired, re-derived, or otherwise
-                // inadmissible snapshot is not evidence, and a snapshot that now
-                // claims this owner active vetoes the deletion outright.
-                const removalTime = yield* Clock.currentTimeMillis
+                // A fresh native capture under the lease must remain admitted
+                // on the same host, and newly active owners veto deletion.
                 const removalActivity = yield* readWorkspaceActivity({
                   fs,
-                  atMs: removalTime,
                   ...(freshPlan.activityEpoch === undefined
                     ? {}
                     : { admittedEpoch: freshPlan.activityEpoch }),
@@ -2238,7 +2230,12 @@ const storeGcCommand = Cli.Command.make(
                     message: 'agent liveness became unknown before deletion',
                   })
                 }
-                if (isWorkspaceActive(removalActivity, canonicalOwner) === true) {
+                if (
+                  isWorkspaceActive({
+                    activity: removalActivity,
+                    canonicalWorktree: canonicalOwner,
+                  }) === true
+                ) {
                   return yield* new StoreCommandError({
                     message: 'candidate owner is live before deletion',
                   })

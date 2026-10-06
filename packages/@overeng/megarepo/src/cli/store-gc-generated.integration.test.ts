@@ -55,29 +55,46 @@ type JsonResult = {
 const generated = (results: ReadonlyArray<JsonResult>, artifactClass: string) =>
   results.find((row) => row.kind === 'generated-artifact' && row.artifactClass === artifactClass)
 
+type ActivityBinaries = {
+  readonly st3?: string
+  readonly pty?: string
+}
+
 const runGc = ({
   cwd,
   storePath,
   args,
   generatedArtifacts = true,
+  activityBins,
 }: {
   cwd: AbsoluteDirPath
   storePath: AbsoluteDirPath
   args: ReadonlyArray<string>
   generatedArtifacts?: boolean
+  activityBins?: ActivityBinaries
 }) =>
   Effect.gen(function* () {
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
     const previousStore = process.env['MEGAREPO_STORE']
     const previousPath = process.env['PATH']
+    const previousSt3 = process.env['MEGAREPO_GC_ST3_BIN']
+    const previousPty = process.env['MEGAREPO_GC_PTY_BIN']
     process.env['MEGAREPO_STORE'] = storePath
     process.env['PATH'] = `${storePath}/.state/bin:${previousPath ?? ''}`
+    if (activityBins?.st3 === undefined) delete process.env['MEGAREPO_GC_ST3_BIN']
+    else process.env['MEGAREPO_GC_ST3_BIN'] = activityBins.st3
+    if (activityBins?.pty === undefined) delete process.env['MEGAREPO_GC_PTY_BIN']
+    else process.env['MEGAREPO_GC_PTY_BIN'] = activityBins.pty
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
         if (previousStore === undefined) delete process.env['MEGAREPO_STORE']
         else process.env['MEGAREPO_STORE'] = previousStore
         if (previousPath === undefined) delete process.env['PATH']
         else process.env['PATH'] = previousPath
+        if (previousSt3 === undefined) delete process.env['MEGAREPO_GC_ST3_BIN']
+        else process.env['MEGAREPO_GC_ST3_BIN'] = previousSt3
+        if (previousPty === undefined) delete process.env['MEGAREPO_GC_PTY_BIN']
+        else process.env['MEGAREPO_GC_PTY_BIN'] = previousPty
       }),
     )
     const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })([
@@ -244,10 +261,12 @@ const runNativeGc = ({
   cwd,
   storePath,
   args,
+  activityBins,
 }: {
   cwd: AbsoluteDirPath
   storePath: AbsoluteDirPath
   args: ReadonlyArray<string>
+  activityBins?: ActivityBinaries
 }) => {
   const result = spawnSync(
     'bun',
@@ -268,14 +287,14 @@ const runNativeGc = ({
         ...process.env,
         MEGAREPO_STORE: storePath,
         PATH: `${storePath}/.state/bin:${process.env['PATH'] ?? ''}`,
+        MEGAREPO_GC_ST3_BIN: activityBins?.st3,
+        MEGAREPO_GC_PTY_BIN: activityBins?.pty,
         NO_COLOR: '1',
       },
     },
   )
   const json =
-    result.stdout.length === 0
-      ? undefined
-      : (decodeJson(result.stdout) as Record<string, unknown>)
+    result.stdout.length === 0 ? undefined : (decodeJson(result.stdout) as Record<string, unknown>)
   return {
     exitCode: result.status,
     stderr: result.stderr,
@@ -342,6 +361,136 @@ describe('mr store gc --generated-artifacts', () => {
         expect(yield* FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(artifact)))).toBe(
           true,
         )
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'uses configured native paths and executable names instead of poisoned PATH defaults',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const f = yield* fixture()
+        yield* oldIgnoredArtifact(f.worktree)
+        const state = `${f.storePath}/.state`
+        const explicit = `${state}/explicit-bins`
+        yield* fs.makeDirectory(explicit)
+        const activityBins = { st3: `${explicit}/native-st3`, pty: `${explicit}/native-pty` }
+        const executableNames = { st3: 'native-st3', pty: 'native-pty' }
+        for (const name of ['st3', 'pty'] as const) {
+          const script = yield* fs.readFileString(`${state}/bin/${name}`)
+          yield* fs.writeFileString(activityBins[name], script)
+          yield* fs.writeFileString(`${state}/bin/${executableNames[name]}`, script)
+          yield* fs.chmod(`${state}/bin/${executableNames[name]}`, 0o755)
+          yield* fs.chmod(activityBins[name], 0o755)
+          yield* fs.writeFileString(`${state}/bin/${name}`, '#!/bin/sh\nexit 79\n')
+        }
+        const result = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+          activityBins,
+        })
+        expect(generated(result.results, 'node_modules')).toMatchObject({
+          outcome: 'would-delete',
+          reason: 'eligible',
+        })
+        const native = runNativeGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+          activityBins,
+        })
+        expect(native.exitCode, native.stderr).toBe(0)
+        expect(generated(native.results, 'node_modules')).toMatchObject({
+          outcome: 'would-delete',
+          reason: 'eligible',
+        })
+        const named = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+          activityBins: executableNames,
+        })
+        expect(generated(named.results, 'node_modules')).toMatchObject({
+          outcome: 'would-delete',
+          reason: 'eligible',
+        })
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    30_000,
+  )
+
+  it.effect(
+    'fails closed for each invalid explicit native binary without falling back to healthy PATH',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* oldIgnoredArtifact(f.worktree)
+        const healthy = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+        })
+        expect(generated(healthy.results, 'node_modules')?.outcome).toBe('would-delete')
+        for (const activityBins of [
+          { st3: `${f.outside}/missing-st3` },
+          { pty: `${f.outside}/missing-pty` },
+          { st3: '' },
+          { pty: '' },
+        ]) {
+          const invalid = yield* runGc({
+            cwd: f.outside,
+            storePath: f.storePath,
+            args: ['--dry-run'],
+            activityBins,
+          })
+          expect(generated(invalid.results, 'node_modules')).toMatchObject({
+            outcome: 'unknown',
+            reason: 'agent-liveness-unavailable',
+          })
+        }
+        const restored = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+        })
+        expect(generated(restored.results, 'node_modules')?.outcome).toBe('would-delete')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'admits idle projection timestamps while still protecting observed active workspaces',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* oldIgnoredArtifact(f.worktree)
+        yield* configure({
+          config: f.config,
+          listing: agentListing({ createdAtMs: 0 }),
+        })
+        const idle = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        expect(generated(idle.results, 'node_modules')).toMatchObject({
+          outcome: 'would-delete',
+          reason: 'eligible',
+        })
+        yield* configure({
+          config: f.config,
+          activeWorkspacePaths: [f.worktree],
+          listing: agentListing({ activeWorkspacePaths: [f.worktree], createdAtMs: NOW - DAY_MS }),
+        })
+        const active = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        expect(generated(active.results, 'node_modules')).toMatchObject({
+          outcome: 'keep',
+          reason: 'live',
+        })
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -449,7 +598,7 @@ describe('mr store gc --generated-artifacts', () => {
   )
 
   it.effect(
-    'running PTY descendant cwd vetoes reclamation while exited PTY releases the same plan',
+    'running, retained exited, and vanished PTY cwd records veto until removed',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -459,23 +608,33 @@ describe('mr store gc --generated-artifacts', () => {
         const candidate = generated(idle.results, 'node_modules')!
         expect(candidate.outcome).toBe('would-delete')
         const pty = { name: 'fixture-holder', cwd: artifact, tags: ['test'] }
-        yield* configure({
-          config: f.config,
-          ptys: [{ ...pty, status: 'running', pid: process.pid }],
-        })
-        const live = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(generated(live.results, 'node_modules')).toMatchObject({
-          outcome: 'keep',
-          reason: 'live',
-        })
         const args = ['--expected-plan', idle.planSha256!, '--candidate-path', candidate.path]
-        const refused = yield* runGc({ cwd: f.outside, storePath: f.storePath, args })
-        expect(refused.exitCode).toBe(1)
-        expect(yield* fs.exists(artifact)).toBe(true)
-        yield* configure({ config: f.config, ptys: [{ ...pty, status: 'exited', pid: null }] })
-        const exited = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(generated(exited.results, 'node_modules')?.outcome).toBe('would-delete')
-        expect(exited.planSha256).toBe(idle.planSha256)
+        for (const status of ['running', 'exited', 'vanished']) {
+          yield* configure({
+            config: f.config,
+            ptys: [{ ...pty, status, pid: status === 'running' ? process.pid : null }],
+          })
+          const retained = yield* runGc({
+            cwd: f.outside,
+            storePath: f.storePath,
+            args: ['--dry-run'],
+          })
+          expect(generated(retained.results, 'node_modules')).toMatchObject({
+            outcome: 'keep',
+            reason: 'live',
+          })
+          const refused = yield* runGc({ cwd: f.outside, storePath: f.storePath, args })
+          expect(refused.exitCode).toBe(1)
+          expect(yield* fs.exists(artifact)).toBe(true)
+        }
+        yield* configure({ config: f.config, ptys: [] })
+        const removed = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+        })
+        expect(generated(removed.results, 'node_modules')?.outcome).toBe('would-delete')
+        expect(removed.planSha256).toBe(idle.planSha256)
         const applied = yield* runGc({ cwd: f.outside, storePath: f.storePath, args })
         expect(applied.exitCode).toBe(0)
         expect(yield* fs.exists(artifact)).toBe(false)
@@ -613,7 +772,7 @@ describe('mr store gc --generated-artifacts', () => {
   )
 
   it.effect(
-    'fails closed for stale, invalid, or incomplete native st3 listings',
+    'fails closed for invalid or incomplete native st3 listings',
     Effect.fnUntraced(
       function* () {
         const f = yield* fixture()
@@ -623,7 +782,6 @@ describe('mr store gc --generated-artifacts', () => {
         const cases = [
           { listing: { ...valid, api_version: 'unsupported' } },
           { listing: { ...valid, snapshot: { ...valid.snapshot, host_id: 'host/other-host' } } },
-          { listing: agentListing({ createdAtMs: NOW - DAY_MS }) },
           { listing: agentListing({ hasMore: true }) },
           { listing: agentListing({ syncState: 'failed' }) },
           { listing: { ...valid, value: { ...valid.value, items: [{ name: 'missing-id' }] } } },
@@ -727,7 +885,10 @@ describe('mr store gc --generated-artifacts', () => {
         const fs = yield* FileSystem.FileSystem
         const f = yield* fixture()
         const artifact = yield* oldIgnoredArtifact(f.worktree)
-        yield* Git.runCommand({ args: ['add', '--force', 'node_modules/fixture.txt'], cwd: f.worktree })
+        yield* Git.runCommand({
+          args: ['add', '--force', 'node_modules/fixture.txt'],
+          cwd: f.worktree,
+        })
         yield* Git.runCommand({
           args: ['commit', '-m', 'track ignored generated file'],
           cwd: f.worktree,
