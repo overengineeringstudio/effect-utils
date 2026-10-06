@@ -1777,10 +1777,14 @@ describe('canonical member mutation guard', () => {
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
-          const { workspacePath } = yield* createWorkspace({ members: {} })
+          const workspacePath = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const canonicalRoot = EffectPath.ops.join(
             workspacePath,
-            EffectPath.unsafe.relativeDir(`store/github.com/acme/workspace/refs/${refKind}/team/feature/`),
+            EffectPath.unsafe.relativeDir(
+              `store/github.com/acme/workspace/refs/${refKind}/team/feature/`,
+            ),
           )
           const memberPath = `${workspacePath}owned`
           yield* fs.makeDirectory(canonicalRoot, { recursive: true })
@@ -1936,7 +1940,9 @@ describe('canonical member mutation guard', () => {
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
-          const { workspacePath: tempRoot } = yield* createWorkspace({ members: {} })
+          const tempRoot = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const workspacePath =
             canonicalWorkspace === true
               ? EffectPath.ops.join(
