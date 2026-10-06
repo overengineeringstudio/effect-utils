@@ -84,6 +84,11 @@
 
 ### Changed
 
+- Storybook preview builds select Storybook package inputs and their generated
+  transitive workspace dependency closure. Unrelated pull requests avoid preview
+  build and deploy runners; required Storybook plays execute on the native merge
+  queue head rather than consuming runners on individual pull requests.
+
 - Shared Buck cache reads and writes now require an audited hermetic execution
   platform; unadmitted actions default to no shared reuse. Admitted JavaScript,
   materialization, TypeScript and static-check actions start under projected
