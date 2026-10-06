@@ -1148,6 +1148,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Mount local Nix substituter cache volume
+        uses: namespacelabs/nscloud-cache-action@v1
+        continue-on-error: true
+        with:
+          path: /Users/runner/.cache/nix-substituter
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -1190,6 +1195,14 @@ jobs:
         with:
           name: overeng-effect-utils
           skipPush: true
+      - name: Enable local Nix substituter
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          conf="${XDG_CONFIG_HOME:-$HOME/.config}/nix/nix.conf"
+          mkdir -p "$(dirname "$conf")"
+          printf '\nextra-substituters = %s\n' 'file:///Users/runner/.cache/nix-substituter?priority=10' >> "$conf"
+          nix config show substituters
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1261,6 +1274,17 @@ jobs:
           fi
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh
+      - name: Save signed store paths to local Nix substituter
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          started=$SECONDS
+          paths="$RUNNER_TEMP/signed-store-paths"
+          nix path-info --all --sigs | awk -F'\t' '{ n = split($2, t, " "); for (i = 1; i <= n; i++) if (t[i] != "ultimate" && t[i] !~ /^ca:/) { print $1; break } }' > "$paths"
+          sudo env "PATH=$PATH" nix copy --stdin --to 'file:///Users/runner/.cache/nix-substituter?compression=zstd&parallel-compression=true' < "$paths"
+          echo "saved $(wc -l < "$paths") signed paths in $((SECONDS - started))s; cache size $(du -sh '/Users/runner/.cache/nix-substituter/' | cut -f1)"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
