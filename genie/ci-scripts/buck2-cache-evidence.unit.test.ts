@@ -229,6 +229,72 @@ describe('native Buck cache evidence projection', () => {
     expect(result.droppedActionCount).toBe(2)
   })
 
+  it('records no-digest reasons for local cache hits without inventing RE action keys', () => {
+    for (const executionKind of [7, 10]) {
+      // Pinned B worktree log d4af231b has Run/kind 10/upload 3/commands [].
+      // Kind 7 is the paired native local-dep-file cache transition.
+      const result = project([
+        nativeEvent(
+          'SpanEnd',
+          actionEnd({ execution_kind: executionKind, cache_upload_result: 3, commands: [] }),
+        ),
+      ])
+      expect(result.counts['local-cache']).toBe(1)
+      expect(result.actions).toEqual([])
+      expect(result.invocations[0]).toMatchObject({
+        missingDigestCount: 1,
+        missingCommandDigestCount: 1,
+        noDigestReasons: { 'local-cache': 1, 'remote-hit': 0, uploaded: 0 },
+      })
+      expect(decodeCacheEvidence(result)).toEqual(result)
+    }
+  })
+
+  it('distinguishes missing remote cache keys from legitimate nondigest outcomes', () => {
+    const result = project([
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({ execution_kind: 3, cache_upload_result: 8, commands: [] }),
+      ),
+      nativeEvent('SpanEnd', actionEnd({ commands: [] }), 20182),
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({ execution_kind: 1, cache_upload_result: 2, commands: [] }),
+        20183,
+      ),
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({ kind: 'Write', execution_kind: 6, cache_upload_result: 2, commands: [] }),
+        20184,
+      ),
+    ])
+    expect(result.invocations[0]).toMatchObject({
+      missingDigestCount: 4,
+      noDigestReasons: { 'remote-hit': 1, uploaded: 1, local: 1, other: 1, 'local-cache': 0 },
+    })
+    expect(result.actions).toEqual([])
+    expect(result.counts).toMatchObject({ 'remote-hit': 1, uploaded: 1, local: 1, other: 1 })
+  })
+
+  it('preserves earlier artifacts without fabricating unavailable omission reasons', () => {
+    const original = project([
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({ execution_kind: 10, cache_upload_result: 8, commands: [] }),
+      ),
+    ])
+    const earlier = {
+      ...original,
+      invocations: original.invocations.map(
+        ({ noDigestReasons: _noDigestReasons, ...invocation }) => invocation,
+      ),
+    }
+    const decoded = decodeCacheEvidence(earlier)
+    expect(decoded).toEqual(earlier)
+    expect(decoded.invocations[0]!.noDigestReasons).toBeUndefined()
+    expect(decoded.invocations[0]!.missingCommandDigestCount).toBe(1)
+  })
+
   it('joins a missing end identity by span id, not parent id, and reports incomplete starts', () => {
     const result = project([
       nativeEvent('SpanStart', fixtureIdentity, 10),
