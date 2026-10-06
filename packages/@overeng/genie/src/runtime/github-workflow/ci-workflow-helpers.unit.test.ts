@@ -1466,89 +1466,6 @@ describe('ci workflow standard job helpers', () => {
   })
 })
 
-interface StorybookPlaysWorkflowFacts {
-  readonly triggers: unknown
-  readonly permissions: ReadonlyArray<Readonly<Record<string, string>>>
-  readonly referencesSecrets: boolean
-  readonly requiredCondition: string | null
-  readonly gateScript: string
-  readonly ciHasPlaysJob: boolean
-}
-
-describe('storybook plays workflow', () => {
-  let facts: StorybookPlaysWorkflowFacts
-
-  beforeAll(() => {
-    const fixture = spawnSync(
-      'bun',
-      [
-        '-e',
-        `
-          import { readFileSync } from 'node:fs'
-          import { YAML } from 'bun'
-          const plays = YAML.parse(readFileSync('.github/workflows/storybook-plays.yml', 'utf8'))
-          const ci = YAML.parse(readFileSync('.github/workflows/ci.yml', 'utf8'))
-          console.log(JSON.stringify({
-            triggers: plays.on,
-            requiredCondition: plays.jobs['test-storybook-plays'].if ?? null,
-            gateScript: plays.jobs['test-storybook-plays'].steps.find((step) => step.run).run,
-            permissions: [plays.permissions, ...Object.values(plays.jobs).map((job) => job.permissions ?? {})],
-            referencesSecrets: JSON.stringify(plays).includes('secrets.'),
-            ciHasPlaysJob: Object.keys(ci.jobs).includes('test-storybook-plays'),
-          }))
-        `,
-      ],
-      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
-    )
-    expect(fixture.status, fixture.stderr).toBe(0)
-    facts = JSON.parse(fixture.stdout) as StorybookPlaysWorkflowFacts
-  })
-
-  it('runs story plays for pull requests and main with read-only, secret-free access', () => {
-    expect(facts.triggers).toEqual({
-      pull_request: { types: ['opened', 'reopened', 'synchronize'] },
-      push: { branches: ['main'] },
-    })
-    expect(facts.referencesSecrets).toBe(false)
-    for (const permissions of facts.permissions) {
-      for (const level of Object.values(permissions)) expect(level).toBe('read')
-    }
-  })
-
-  it('requires the plays lane from its own workflow, outside ci.yml', () => {
-    expect(facts.ciHasPlaysJob).toBe(false)
-    expect(generatedRequiredCheckContexts).toContain('test-storybook-plays')
-    // The required semantic gate must run even when admission or plays fail,
-    // are cancelled, or intentionally skip unrelated PRs.
-    expect(facts.requiredCondition).toBe('always()')
-  })
-
-  it.each([
-    ['success', 'false', 'skipped', 0],
-    ['success', 'true', 'success', 0],
-    ['success', 'true', 'failure', 1],
-    ['success', 'true', 'cancelled', 1],
-    ['success', 'true', 'skipped', 1],
-    ['failure', '', 'skipped', 1],
-    ['cancelled', '', 'skipped', 1],
-    ['success', '', 'skipped', 1],
-    ['success', 'false', 'failure', 1],
-  ] as const)(
-    'reports admission=%s, changed=%s, plays=%s with exit status %s',
-    (admission, changed, plays, status) => {
-      const result = spawnSync('bash', ['-eo', 'pipefail', '-c', facts.gateScript], {
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          ADMISSION_RESULT: admission,
-          CHANGED: changed,
-          PLAY_RESULT: plays,
-        },
-      })
-      expect(result.status, result.stderr).toBe(status)
-    },
-  )
-})
 
 describe('storybook preview split build/deploy', () => {
   let facts: ReturnType<typeof JSON.parse>
@@ -1995,7 +1912,25 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('export const ciJobConcurrency = ({ jobId, ...opts }:')
     expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
     expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')
-    expect(generatedCiWorkflowYamlSource).toContain('}}-test-${{ strategy.job-index }}')
+    // Repository workflow sources are outside this package's hermetic compiler input.
+    // Exercise their actual concurrency contract through the existing Bun probe boundary.
+    const concurrencyProbe = spawnSync(
+      process.env.BUN_BIN ?? 'bun',
+      [
+        '-e',
+        `import workflow from './.github/workflows/ci.yml.genie.ts';
+         console.log(JSON.stringify([
+           workflow.data.jobs.test.concurrency,
+           workflow.data.jobs['test-macos'].concurrency,
+         ]));`,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(concurrencyProbe.status, concurrencyProbe.stderr).toBe(0)
+    const [linuxConcurrency, darwinConcurrency] = JSON.parse(concurrencyProbe.stdout)
+    expect(linuxConcurrency.group).toBeTypeOf('string')
+    expect(darwinConcurrency.group).toBeTypeOf('string')
+    expect(linuxConcurrency.group).not.toBe(darwinConcurrency.group)
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
     expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
     expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')

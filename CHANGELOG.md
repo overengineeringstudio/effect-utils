@@ -42,6 +42,9 @@
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
 - Genie bootstrap discovery excludes Buck output trees, so copied generator files
   in build artifacts do not enter source-tree closure checks.
+- JavaScript product descriptor actions use the audited hermetic cache lane, so
+  independent roots reuse their byte-identical descriptors instead of executing
+  one default-denied local action.
 - Buck remote-cache uploads reserve protobuf headroom below the backend's 4 MiB
   gRPC limit, including in generated consumer roots, so large React Aria
   dependency outputs upload and reuse across independent roots.
@@ -79,9 +82,10 @@
 
 ### Changed
 
-- Storybook preview builds and play tests select Storybook package inputs and
-  their generated transitive workspace dependency closure. Unrelated pull requests
-  avoid Namespace Storybook runners while retaining the required play-test status.
+- Storybook preview builds select Storybook package inputs and their generated
+  transitive workspace dependency closure. Unrelated pull requests avoid preview
+  build and deploy runners; required Storybook plays execute on the native merge
+  queue head rather than consuming runners on individual pull requests.
 
 - Shared Buck cache reads and writes now require an audited hermetic execution
   platform; unadmitted actions default to no shared reuse. Admitted JavaScript,

@@ -62,49 +62,6 @@ export const storybookPaths = [
   'nix/binary-caches.json',
 ].toSorted()
 
-/**
- * Hosted admission job: never occupies Namespace for an unrelated PR. The API
- * is paginated; renames consider both names. Beyond GitHub's 3,000-file API cap,
- * run conservatively. Main pushes keep their existing unconditional coverage.
- */
-export const storybookChangesJob = {
-  'runs-on': 'ubuntu-latest',
-  'timeout-minutes': 5,
-  permissions: { contents: 'read', 'pull-requests': 'read' },
-  defaults: { run: { shell: 'bash' } },
-  outputs: { changed: '${{ steps.changes.outputs.changed }}' },
-  steps: [
-    {
-      id: 'changes',
-      name: 'Check Storybook inputs',
-      env: {
-        GH_TOKEN: '${{ github.token }}',
-        GH_REPO: '${{ github.repository }}',
-        STORYBOOK_PATHS: JSON.stringify(storybookPaths),
-      },
-      run: `if [[ "$GITHUB_EVENT_NAME" != pull_request ]] || \
-[[ "$(jq '.pull_request.changed_files' "$GITHUB_EVENT_PATH")" -gt 3000 ]]; then
-  echo 'changed=true' >> "$GITHUB_OUTPUT"
-  exit 0
-fi
-pr="$(jq '.pull_request.number' "$GITHUB_EVENT_PATH")"
-gh api --paginate "repos/$GH_REPO/pulls/$pr/files?per_page=100" \\
-  --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/storybook-changed-files"
-mapfile -t patterns < <(jq -r '.[]' <<< "$STORYBOOK_PATHS")
-changed=false
-while IFS= read -r file; do
-  for pattern in "\${patterns[@]}"; do
-    if [[ "$file" == $pattern ]]; then
-      changed=true
-      break 2
-    fi
-  done
-done < "$RUNNER_TEMP/storybook-changed-files"
-echo "changed=$changed" >> "$GITHUB_OUTPUT"`,
-    },
-  ],
-} as const
-
 export const storybookPreviewRunner = namespaceRunner({
   profile: 'namespace-profile-linux-x86-64',
   runId: '${{ github.run_id }}',

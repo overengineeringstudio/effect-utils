@@ -18,7 +18,9 @@ target='effect_utils//packages/@overeng/ci-tools:ci-tools-candidate'
 test_target='effect_utils//packages/@overeng/content-address:test'
 proof_source="$source_root/packages/@overeng/ci-tools/bin/ci-tools.ts"
 test_proof_source="$source_root/packages/@overeng/content-address/src/mod.unit.test.ts"
-printf '%s\n' '' "// trusted remote-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$proof_source"
+# A comment can disappear during bundling, leaving the descriptor action key
+# unchanged. This disposable side effect survives bundling and changes integrity.
+printf '%s\n' '' "console.debug('trusted remote-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}')" >> "$proof_source"
 printf '%s\n' '' "// trusted test-cache proof ${GITHUB_RUN_ID:?GITHUB_RUN_ID not set}-${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT not set}" >> "$test_proof_source"
 evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-a.jsonl"
 test_evidence_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-a.jsonl"
@@ -27,7 +29,9 @@ test_evidence_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-b.js
 test_evidence_c="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-c.jsonl"
 test_red_evidence="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-red.jsonl"
 test_source_backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-source.ts"
-trap 'if [ -f "$test_source_backup" ]; then cp "$test_source_backup" "$test_proof_source"; fi; rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c" "$test_red_evidence" "$test_source_backup"; rm -rf "$context_b"' EXIT
+descriptor_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-product-descriptor-a.json"
+descriptor_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-product-descriptor-b.json"
+trap 'if [ -f "$test_source_backup" ]; then cp "$test_source_backup" "$test_proof_source"; fi; rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c" "$test_red_evidence" "$test_source_backup" "$descriptor_a" "$descriptor_b"; if [ -d "$context_b" ]; then (cd "$context_b" && "$buck" kill); fi; rm -rf "$context_b"' EXIT
 
 # Preserve action keys/outcomes before each proof context's native logs are removed.
 # Local invocations without a CI artifact declaration retain the existing proof flow.
@@ -64,6 +68,12 @@ if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$U
   echo '::error::Context A did not report a successful upload for a locally executed action'
   exit 1
 fi
+if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "javascript_product_descriptor" and $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$evidence_a" >/dev/null; then
+  echo '::error::Context A did not execute and upload the product descriptor action'
+  exit 1
+fi
+descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
+cp "$descriptor_path" "$descriptor_a"
 run_proof_command "$test_evidence_a" proof-a-test test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
 if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$test_evidence_a" >/dev/null; then
   echo '::error::Context A did not execute and upload the representative unit-test verdict action'
@@ -125,6 +135,16 @@ if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(
 fi
 if jq -e --argjson kinds "$EXECUTED_OR_LOCAL_CACHE_KINDS" 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind as $kind | $kinds | index($kind))' "$evidence_b" >/dev/null; then
   echo '::error::Context B executed an action or reused local action state instead of relying on the remote action cache'
+  exit 1
+fi
+if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "javascript_product_descriptor" and $action.execution_kind == $action_cache)' "$evidence_b" >/dev/null; then
+  echo '::error::Context B did not reuse the remote product descriptor action'
+  exit 1
+fi
+descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
+cp "$descriptor_path" "$descriptor_b"
+if ! cmp -s "$descriptor_a" "$descriptor_b"; then
+  echo '::error::Product descriptor bytes differ between independent roots'
   exit 1
 fi
 
