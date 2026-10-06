@@ -1059,7 +1059,7 @@ export const syncMember = <R = never>({
               // Preserve the existing recovery policy for mutable branch and tag targets.
               const dirExists = yield* fs.exists(worktreePath)
               if (dirExists === true) {
-                yield* assertCanonicalMutationAllowed(worktreePath)
+                yield* assertCanonicalMutationAllowed({ target: worktreePath })
                 yield* fs.remove(worktreePath, { recursive: true })
                 yield* Git.pruneWorktrees(bareRepoPath)
               }
@@ -1172,7 +1172,7 @@ export const syncMember = <R = never>({
         const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
         const currentCommit = Option.getOrUndefined(currentCommitOpt)
         if (currentCommit !== undefined && currentCommit !== targetCommit) {
-          yield* assertCanonicalMutationAllowed(worktreePath)
+          yield* assertCanonicalMutationAllowed({ target: worktreePath })
           const mergeResult = yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
             Effect.map(() => 'ok' as const),
             Effect.orElseSucceed(() => 'failed' as const),

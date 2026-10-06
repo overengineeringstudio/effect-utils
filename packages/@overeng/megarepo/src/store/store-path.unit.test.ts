@@ -66,7 +66,7 @@ describe('canonical mutation write boundaries', () => {
       await mkdir(canonical, { recursive: true })
       const run = (target: string, materializationRoot = canonical) =>
         Effect.runPromise(
-          assertCanonicalMutationAllowed(target, { materializationRoot }).pipe(
+          assertCanonicalMutationAllowed({ target, materializationRoot }).pipe(
             Effect.provide(NodeServices.layer),
           ),
         )

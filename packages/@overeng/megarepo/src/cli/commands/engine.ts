@@ -165,9 +165,9 @@ export const syncMegarepo = <R = never>({
     if (dryRun === false) {
       const authorization =
         isApplyMode === true && depth === 0 ? { materializationRoot: megarepoRoot } : {}
-      yield* assertCanonicalMutationAllowed(megarepoRoot, authorization)
+      yield* assertCanonicalMutationAllowed({ target: megarepoRoot, ...authorization })
       const membersRoot = getMembersRoot(megarepoRoot)
-      yield* assertCanonicalMutationAllowed(membersRoot, authorization)
+      yield* assertCanonicalMutationAllowed({ target: membersRoot, ...authorization })
       yield* fs.makeDirectory(membersRoot, { recursive: true })
     }
 

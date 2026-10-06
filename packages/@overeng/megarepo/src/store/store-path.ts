@@ -5,10 +5,13 @@ import * as FileSystem from 'effect/FileSystem'
 import { systemError, type PlatformError } from 'effect/PlatformError'
 
 /** Ref worktrees are shared. Resolve aliases and missing output parents before authorizing writes. */
-export const assertCanonicalMutationAllowed = (
-  target: string,
-  { materializationRoot }: { materializationRoot?: string } = {},
-): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
+export const assertCanonicalMutationAllowed = ({
+  target,
+  materializationRoot,
+}: {
+  target: string
+  materializationRoot?: string
+}): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return
     const fs = yield* FileSystem.FileSystem
