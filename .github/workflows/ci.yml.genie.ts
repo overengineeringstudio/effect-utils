@@ -1460,15 +1460,18 @@ const allCiJobs: Record<string, any> = {
   ...withCiOtelCapture(jobs),
   ...extraJobs,
   ...deployJobs,
-  'notify-alignment': notifyAlignmentJob({
-    targetRepo: 'schickling/megarepo-all',
-    // Heavy products passed on the queue head; skipped post-merge jobs must not suppress dispatch.
-    needs: ['quality', ...Object.keys(deployJobs)],
-    runner: [
-      'namespace-profile-linux-x86-64',
-      'namespace-features:github.run-id=${{ github.run_id }}',
-    ],
-  }),
+  'notify-alignment': {
+    ...notifyAlignmentJob({
+      targetRepo: 'schickling/megarepo-all',
+      needs: ['tested-tree', 'quality', ...Object.keys(deployJobs)],
+      runner: [
+        'namespace-profile-linux-x86-64',
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ],
+    }),
+    // Successful queue evidence replaces quality, but downstream publication must still succeed.
+    if: "${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}",
+  },
 }
 const declaredJobIds = new Set([
   ...Object.keys(allCiJobs),

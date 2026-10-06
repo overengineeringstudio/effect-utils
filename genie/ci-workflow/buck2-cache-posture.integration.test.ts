@@ -177,6 +177,37 @@ describe('generated CI cache trust behavior', () => {
       ).toBe(true)
   })
 
+  it('dispatches alignment after reused queue evidence without ignoring failed publication', async () => {
+    const job = (await readWorkflow()).jobs['notify-alignment']!
+    expect(job.needs).toContain('tested-tree')
+    expect(job.needs).toContain('quality')
+    const expression = job
+      .if!.slice(3, -2)
+      .replaceAll('needs.*.result', 'results')
+      .replaceAll('needs.tested-tree', "needs['tested-tree']")
+    const check = new Function(
+      'github',
+      'needs',
+      'results',
+      'contains',
+      'cancelled',
+      `return (${expression})`,
+    )
+    const run = (tested: string, quality: string, publication: string) =>
+      check(
+        { event_name: 'push', ref: 'refs/heads/main' },
+        { quality: { result: quality }, 'tested-tree': { outputs: { tested } } },
+        [quality, publication],
+        (values: string[], value: string) => values.includes(value),
+        () => false,
+      )
+    expect(run('true', 'skipped', 'success')).toBe(true)
+    expect(run('false', 'success', 'success')).toBe(true)
+    expect(run('false', 'skipped', 'success')).toBe(false)
+    expect(run('true', 'skipped', 'failure')).toBe(false)
+    expect(run('true', 'skipped', 'cancelled')).toBe(false)
+  })
+
   it('keeps credential-free build and preview workflows read-only', async () => {
     for (const filename of ['compiled-products.yml', 'storybook-preview-build.yml'])
       for (const job of Object.values((await readWorkflow(filename)).jobs)) {

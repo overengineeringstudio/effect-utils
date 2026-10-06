@@ -4422,8 +4422,8 @@ jobs:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
-    needs: [quality, deploy-storybooks]
-    if: ${{ (github.ref == 'refs/heads/main') && github.event_name == 'push' }}
+    needs: [tested-tree, quality, deploy-storybooks]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     steps:
       - name: Dispatch alignment to coordinator
         env:
