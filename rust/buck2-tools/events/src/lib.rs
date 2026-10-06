@@ -654,6 +654,8 @@ struct Span {
     critical: bool,
     action: bool,
     cache_hit: bool,
+    /// Subset of `cache_hit` served by a remote action or dependency-file cache.
+    remote_cache_hit: bool,
     ended: bool,
     execution_ns: Option<u64>,
     queue_ns: Option<u64>,
@@ -968,6 +970,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                         critical: false,
                         action,
                         cache_hit: false,
+                        remote_cache_hit: false,
                         execution_ns: None,
                         queue_ns: None,
                         ended: false,
@@ -987,10 +990,10 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                         match data {
                             span_end_event::Data::ActionExecution(a) => {
                                 let kind = action_kind(a.execution_kind);
-                                span.cache_hit = matches!(
-                                    kind,
-                                    "action_cache" | "remote_dep_file_cache" | "local_action_cache"
-                                );
+                                span.remote_cache_hit =
+                                    matches!(kind, "action_cache" | "remote_dep_file_cache");
+                                span.cache_hit =
+                                    span.remote_cache_hit || kind == "local_action_cache";
                                 span.attrs.push(attr("buck2.execution_kind", kind));
                                 span.attrs
                                     .push(bool_attr("buck2.cache_hit", span.cache_hit));
@@ -1112,6 +1115,11 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         .iter()
         .filter(|s| s.action && s.cache_hit)
         .count();
+    let remote_hits = model
+        .spans
+        .iter()
+        .filter(|s| s.action && s.remote_cache_hit)
+        .count();
     let critical_actions = model
         .spans
         .iter()
@@ -1132,6 +1140,8 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         command.attrs.extend([
             int_attr("buck2.action_count", actions),
             int_attr("buck2.cache_hit_count", hits),
+            int_attr("buck2.remote_cache_hit_count", remote_hits),
+            int_attr("buck2.local_cache_hit_count", hits - remote_hits),
             int_attr("buck2.critical_path_action_count", critical_actions),
         ]);
         // A per-log silence estimate; a later cross-command join assigns causal owners.
