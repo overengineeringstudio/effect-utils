@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'bun:test'
 
+import { standaloneCachePostureConfig } from '../../scripts/buck2-cache-posture.ts'
+
 type GeneratedWorkflow = {
   env?: Record<string, string>
   jobs: Record<
     string,
     {
       if?: string
-      'runs-on': string | string[]
+      needs?: string[]
       env?: Record<string, string>
-      steps: Array<{ env?: Record<string, string>; run?: string }>
+      steps: Array<{ name?: string; env?: Record<string, string>; run?: string }>
     }
   >
 }
@@ -18,148 +20,230 @@ const readWorkflow = async (filename = 'ci.yml'): Promise<GeneratedWorkflow> =>
     await Bun.file(new URL(`../../.github/workflows/${filename}`, import.meta.url)).text(),
   ) as GeneratedWorkflow
 
-const writerId = 'trusted-buck2-remote-cache-proof'
-const writerSecret = 'secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH'
-const mainWriterReadOnly =
-  "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '0' || '1' }}"
-const mainWriterSecret =
-  "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}"
-
-// The checked-in guard uses the JavaScript-compatible subset of GitHub expressions.
-const evaluateExpression = (
-  guard: string,
-  eventName: string,
+const evaluate = (
+  value: string,
+  event: string,
   ref: string,
-  baselineRef = '',
+  baseRef = 'refs/heads/main',
+  tested = false,
 ): unknown => {
-  const expression = guard.replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
-  return new Function('github', 'inputs', 'secrets', `return (${expression})`)(
-    { event_name: eventName, ref },
-    { measurement_baseline_ref: baselineRef },
+  if (value.startsWith('${{') === false) return value
+  const expression = value
+    .replace(/^\$\{\{\s*/, '')
+    .replace(/\s*\}\}$/, '')
+    .replaceAll('needs.tested-tree', "needs['tested-tree']")
+  return new Function(
+    'github',
+    'inputs',
+    'secrets',
+    'startsWith',
+    'cancelled',
+    'needs',
+    `return (${expression})`,
+  )(
+    { event_name: event, ref, event: { merge_group: { base_ref: baseRef } } },
+    { measurement_baseline_ref: '' },
     { BUCK2_PUBLIC_CACHE_WRITE_AUTH: 'fixture-credential' },
+    (text: string, prefix: string) => text.startsWith(prefix),
+    () => false,
+    { 'tested-tree': { outputs: { tested: tested === true ? 'true' : 'false' } } },
   )
 }
 
-describe('generated CI Buck2 cache policy', () => {
-  it('keeps only quality and test opportunistic writers, with all other postures unchanged', async () => {
-    const workflow = await readWorkflow()
-    expect(workflow.jobs).toHaveProperty(writerId)
-    expect(workflow.jobs).toHaveProperty('pr-a-inert-buck')
-    for (const [id, job] of Object.entries(workflow.jobs)) {
-      if (id === 'devenv-perf') {
-        const noRemote = job.env!.BUCK2_NO_REMOTE_CACHE!
-        expect(evaluateExpression(noRemote, 'workflow_dispatch', 'refs/heads/main')).toBe('0')
-        expect(
-          evaluateExpression(noRemote, 'workflow_dispatch', 'refs/heads/main', 'older-commit'),
-        ).toBe('1')
-      } else {
-        expect(job.env?.BUCK2_NO_REMOTE_CACHE).toBe(id === 'pr-a-inert-buck' ? '1' : '0')
-      }
-      const opportunisticWriter = id === 'quality' || id === 'test'
-      expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe(
-        opportunisticWriter ? mainWriterReadOnly : id === writerId ? '0' : '1',
+const writers: Record<string, true> = {
+  quality: true,
+  test: true,
+  'test-macos': true,
+  'test-playwright-utils': true,
+  'test-playwright-tui-react': true,
+  cargo: true,
+  weaver: true,
+  'test-integration-restate': true,
+  'build-products': true,
+  'test-storybook-plays': true,
+}
+const strictWriter = 'trusted-buck2-remote-cache-proof'
+
+const scenarios = [
+  { event: 'push', ref: 'refs/heads/main', base: 'refs/heads/main', trusted: true },
+  {
+    event: 'merge_group',
+    ref: 'refs/heads/gh-readonly-queue/main/pr-123',
+    base: 'refs/heads/main',
+    trusted: true,
+  },
+  {
+    event: 'merge_group',
+    ref: 'refs/heads/gh-readonly-queue/main/pr-123',
+    base: 'refs/heads/other',
+    trusted: false,
+  },
+  {
+    event: 'merge_group',
+    ref: 'refs/heads/gh-readonly-queue/other/pr-123',
+    base: 'refs/heads/main',
+    trusted: false,
+  },
+  { event: 'merge_group', ref: 'refs/heads/main', base: 'refs/heads/main', trusted: false },
+  ...['pull_request', 'pull_request_target', 'schedule', 'workflow_dispatch', 'push'].flatMap(
+    (event) =>
+      ['refs/pull/123/merge', 'refs/heads/feature', 'refs/heads/gh-readonly-queue/main/pr-123'].map(
+        (ref) => ({ event, ref, base: 'refs/heads/main', trusted: false }),
+      ),
+  ),
+  { event: 'pull_request', ref: 'refs/heads/main', base: 'refs/heads/main', trusted: false },
+  { event: 'workflow_dispatch', ref: 'refs/heads/main', base: 'refs/heads/main', trusted: false },
+]
+
+describe('generated CI cache trust behavior', () => {
+  it('enables opportunistic uploads only with a protected main or queue event and step-local credential', async () => {
+    for (const filename of ['ci.yml', 'storybook-plays.yml']) {
+      const workflow = await readWorkflow(filename)
+      expect(JSON.stringify(workflow.env ?? {})).not.toContain(
+        'secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH',
       )
-      expect(job.env?.BUCK2_CACHE_WRITE_OPTIONAL).toBe(opportunisticWriter ? '1' : undefined)
-      // A step cannot override the declared job policy to gain write authority.
-      for (const step of job.steps) {
-        if (step.env?.BUCK2_NO_REMOTE_CACHE !== undefined)
-          expect(job.env?.BUCK2_NO_REMOTE_CACHE).toBe(step.env.BUCK2_NO_REMOTE_CACHE)
-        if (step.env?.BUCK2_PUBLIC_CACHE_READ_ONLY !== undefined)
-          expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe(step.env.BUCK2_PUBLIC_CACHE_READ_ONLY)
-      }
-    }
-  })
-
-  it('admits the writer only for main push and manual runs on the deployed Namespace runner', async () => {
-    const workflow = await readWorkflow()
-    const writer = workflow.jobs[writerId]!
-    expect(writer['runs-on']).toEqual([
-      'namespace-profile-linux-x86-64',
-      'namespace-features:github.run-id=${{ github.run_id }}',
-    ])
-    expect(typeof writer.if).toBe('string')
-    const guard = writer.if!
-    const events = [
-      'push',
-      'workflow_dispatch',
-      'pull_request',
-      'pull_request_target',
-      'schedule',
-      'merge_group',
-    ]
-    for (const eventName of events) {
-      for (const ref of ['refs/heads/main', 'refs/heads/feature', 'refs/pull/123/merge']) {
-        expect(Boolean(evaluateExpression(guard, eventName, ref))).toBe(
-          ref === 'refs/heads/main' && (eventName === 'push' || eventName === 'workflow_dispatch'),
-        )
-      }
-    }
-    expect(
-      Boolean(evaluateExpression(guard, 'workflow_dispatch', 'refs/heads/main', 'older-commit')),
-    ).toBe(false)
-  })
-
-  it('never gives merge groups or PRs write authority or a writer credential', async () => {
-    const workflow = await readWorkflow()
-    expect(JSON.stringify(workflow.env ?? {})).not.toContain(writerSecret)
-    for (const [id, job] of Object.entries(workflow.jobs)) {
-      expect(job.env).not.toHaveProperty('BUCK2_PUBLIC_CACHE_WRITE_AUTH')
-      expect(job.env).not.toHaveProperty('BUCK2_CACHE_WRITE_BASIC_AUTH')
-      expect(JSON.stringify(job.env ?? {})).not.toContain(writerSecret)
-      for (const step of job.steps) {
-        expect(step.env ?? {}).not.toHaveProperty('BUCK2_CACHE_WRITE_BASIC_AUTH')
-        const credential = step.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH
-        if (credential === undefined) {
-          expect(JSON.stringify(step)).not.toContain(writerSecret)
-        } else {
-          expect(credential).toBe(
-            id === writerId ? '${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}' : mainWriterSecret,
+      for (const [id, job] of Object.entries(workflow.jobs)) {
+        expect(JSON.stringify(job.env ?? {})).not.toContain('secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH')
+        if (id === strictWriter) continue
+        for (const scenario of scenarios) {
+          const env = Object.fromEntries(
+            Object.entries(job.env ?? {})
+              .filter(([key]) => key.startsWith('BUCK2_'))
+              .map(([key, value]) => [
+                key,
+                String(evaluate(value, scenario.event, scenario.ref, scenario.base)),
+              ]),
           )
-          expect(id === writerId || id === 'quality' || id === 'test').toBe(true)
-        }
-      }
-      for (const event of ['merge_group', 'pull_request', 'workflow_dispatch', 'push']) {
-        for (const ref of [
-          'refs/heads/main',
-          'refs/heads/feature',
-          'refs/heads/gh-readonly-queue/main/pr-123',
-        ]) {
-          if (id === writerId) {
-            if (event === 'merge_group' || event === 'pull_request')
-              expect(Boolean(evaluateExpression(job.if!, event, ref))).toBe(false)
-            continue
-          }
-          const readOnly = job.env!.BUCK2_PUBLIC_CACHE_READ_ONLY!
-          const effectiveReadOnly = readOnly.startsWith('${{')
-            ? evaluateExpression(readOnly, event, ref)
-            : readOnly
-          const mainPushWriter =
-            (id === 'quality' || id === 'test') && event === 'push' && ref === 'refs/heads/main'
-          expect(effectiveReadOnly).toBe(mainPushWriter ? '0' : '1')
+          const writerSteps = job.steps.filter(
+            (step) => step.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH !== undefined,
+          )
+          if (writers[id] === true) expect(writerSteps.length).toBeGreaterThan(0)
           for (const step of job.steps) {
             const credential = step.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH
-            if (credential !== undefined)
-              expect(evaluateExpression(credential, event, ref)).toBe(
-                mainPushWriter ? 'fixture-credential' : '',
-              )
+            const supplied =
+              credential === undefined
+                ? ''
+                : String(evaluate(credential, scenario.event, scenario.ref, scenario.base))
+            expect(supplied).toBe(
+              writers[id] === true && credential !== undefined && scenario.trusted === true
+                ? 'fixture-credential'
+                : '',
+            )
           }
+          // Reader policy wins even if an accidental credential reaches the resolver.
+          const config = standaloneCachePostureConfig({
+            current: '',
+            trustedOrigin: { tier: 'private', urlPrefix: 'https://cache.example/cas/' },
+            env: { ...env, BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-credential' },
+          })
+          expect(config).toContain(
+            `allow_cache_uploads = ${writers[id] === true && scenario.trusted === true ? 'true' : 'false'}`,
+          )
+          expect(env.BUCK2_CACHE_WRITE_OPTIONAL).toBe(writers[id] === true ? '1' : undefined)
         }
       }
     }
   })
 
-  it('keeps the standalone build and Storybook workflows credential-free Buck readers', async () => {
-    for (const filename of [
-      'compiled-products.yml',
-      'storybook-plays.yml',
-      'storybook-preview-build.yml',
-    ]) {
-      const workflow = await readWorkflow(filename)
-      for (const job of Object.values(workflow.jobs)) {
-        expect(job.env?.BUCK2_NO_REMOTE_CACHE).toBe('0')
-        expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe('1')
-        expect(JSON.stringify(job)).not.toContain(writerSecret)
-      }
+  it('keeps the strict remote cache proof on main and never admits it on PR or queue events', async () => {
+    const job = (await readWorkflow()).jobs[strictWriter]!
+    for (const scenario of scenarios.filter(
+      ({ event }) => event === 'pull_request' || event === 'merge_group',
+    ))
+      expect(Boolean(evaluate(job.if!, scenario.event, scenario.ref, scenario.base))).toBe(false)
+    expect(job.env?.BUCK2_CACHE_WRITE_OPTIONAL).toBeUndefined()
+  })
+
+  it('skips main heavy lanes only for tested trees and still runs queues, publishers and the proof', async () => {
+    const workflow = await readWorkflow()
+    for (const id of Object.keys(writers).filter((id) => id !== 'test-storybook-plays')) {
+      const job = workflow.jobs[id]!
+      expect(Boolean(evaluate(job.if!, 'push', 'refs/heads/main', undefined, true))).toBe(false)
+      expect(Boolean(evaluate(job.if!, 'push', 'refs/heads/main', undefined, false))).toBe(true)
+      expect(
+        Boolean(
+          evaluate(
+            job.if!,
+            'merge_group',
+            'refs/heads/gh-readonly-queue/main/pr-123',
+            undefined,
+            true,
+          ),
+        ),
+      ).toBe(true)
     }
+    for (const id of ['publish-products', 'deploy-storybooks', strictWriter])
+      expect(
+        Boolean(evaluate(workflow.jobs[id]!.if!, 'push', 'refs/heads/main', undefined, true)),
+      ).toBe(true)
+  })
+
+  it('dispatches alignment after reused queue evidence without ignoring failed publication', async () => {
+    const job = (await readWorkflow()).jobs['notify-alignment']!
+    expect(job.needs).toContain('tested-tree')
+    expect(job.needs).toContain('quality')
+    const expression = job
+      .if!.slice(3, -2)
+      .replaceAll('needs.*.result', 'results')
+      .replaceAll('needs.tested-tree', "needs['tested-tree']")
+    const check = new Function(
+      'github',
+      'needs',
+      'results',
+      'contains',
+      'cancelled',
+      `return (${expression})`,
+    )
+    const run = (
+      tested: string | undefined,
+      quality: string,
+      publication: string,
+      lookup = 'success',
+    ) =>
+      check(
+        { event_name: 'push', ref: 'refs/heads/main' },
+        {
+          quality: { result: quality },
+          'tested-tree': { result: lookup, outputs: { tested } },
+          ...Object.fromEntries(
+            job.needs!
+              .filter((id) => id !== 'quality' && id !== 'tested-tree')
+              .map((id) => [id, { result: publication }]),
+          ),
+        },
+        [lookup, quality, publication],
+        (values: string[], value: string) => values.includes(value),
+        () => false,
+      )
+    expect(run('true', 'skipped', 'success')).toBe(true)
+    expect(run('false', 'success', 'success')).toBe(true)
+    expect(run('false', 'skipped', 'success')).toBe(false)
+    expect(run('true', 'skipped', 'failure')).toBe(false)
+    expect(run('true', 'skipped', 'cancelled')).toBe(false)
+    expect(run(undefined, 'success', 'success', 'failure')).toBe(true)
+    expect(run(undefined, 'success', 'failure', 'failure')).toBe(false)
+    expect(run(undefined, 'success', 'cancelled', 'failure')).toBe(false)
+  })
+
+  it('runs policy tests by explicit source paths instead of searching Buck outputs', async () => {
+    const workflow = await readWorkflow()
+    const audit = workflow.jobs.quality!.steps.find(
+      (step) => step.name === 'Audit native dependency policy',
+    )
+    const tests = [
+      './genie/ci-scripts/tested-tree.unit.test.ts',
+      './genie/ci-workflow/buck2-cache-posture.unit.test.ts',
+      './genie/ci-workflow/buck2-cache-posture.integration.test.ts',
+    ].join(' ')
+    expect(audit?.run).toContain(`bun test ${tests}`)
+    expect(audit?.run).toContain(`nix run nixpkgs#bun -- test ${tests}`)
+  })
+
+  it('keeps credential-free build and preview workflows read-only', async () => {
+    for (const filename of ['compiled-products.yml', 'storybook-preview-build.yml'])
+      for (const job of Object.values((await readWorkflow(filename)).jobs)) {
+        expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe('1')
+        expect(JSON.stringify(job)).not.toContain('secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH')
+      }
   })
 })
