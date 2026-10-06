@@ -49,6 +49,7 @@ describe('output lock state', () => {
         .digest('hex')}`
       expect(readdirSync(path.join(stateHome, 'genie/locks'))).toEqual([encodeURIComponent(key)])
       // Changing discovery cwd must not create a separate lock namespace for the same output.
+      writeFileSync(path.join(sourceRoot, 'BUCK'), 'stale output\n')
       run(repo)
       expect(existsSync(path.join(repo, 'tmp'))).toBe(false)
       expect(readdirSync(path.join(stateHome, 'genie/locks'))).toEqual([encodeURIComponent(key)])
