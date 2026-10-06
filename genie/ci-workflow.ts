@@ -112,7 +112,11 @@ export {
   isFleetCacheRunner,
   PrivateBinaryCacheRunnerError,
 } from './ci-workflow/binary-cache-composition.ts'
-export { CachePublisherJobError, validateWorkflowCachePolicy } from './ci-workflow/cache-policy.ts'
+export {
+  CachePublisherJobError,
+  publisherWriteSecret,
+  validateWorkflowCachePolicy,
+} from './ci-workflow/cache-policy.ts'
 export {
   ciMeasurementMetrics,
   ciMeasurementBaselineBackfillPredicate,
@@ -191,6 +195,8 @@ export {
 } from './ci-workflow/support-files.ts'
 export {
   appendGitHubAccessTokenToNixConfigStep,
+  buck2MainCacheWriterStep,
+  buck2PublicCacheWriteSecret,
   cachixCliBuildStep,
   cachixStep,
   cachixPublisherStep,

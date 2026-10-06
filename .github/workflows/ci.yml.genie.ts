@@ -1,6 +1,8 @@
 import {
   type RunnerProfile,
   bashShellDefaults,
+  buck2MainCacheWriterStep,
+  buck2PublicCacheWriteSecret,
   cachixCliBuildStep,
   cachixStep,
   cachixPublisherStep,
@@ -44,6 +46,7 @@ import {
   githubAppInstallationTokenStep,
   githubAccessTokenEnv,
   readBinaryCacheDescriptors,
+  publisherWriteSecret,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
@@ -435,24 +438,24 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       laneIf: normalCiIf,
       timeoutMinutes: 90,
       extraSteps: [
-        verifyOtelShellEntryStep,
-        {
+        buck2MainCacheWriterStep(verifyOtelShellEntryStep),
+        buck2MainCacheWriterStep({
           name: 'Type check (Buck)',
           env: githubTokenEnv(),
           run: runDevenvTasksBefore('buck2:quick'),
-        },
+        }),
         frozenLockfileStep,
-        {
+        buck2MainCacheWriterStep({
           name: 'Format + lint',
           env: githubTokenEnv(),
           // Generated-file freshness stays authoritative, not just a local fast path.
           run: runDevenvTasksBefore('genie:check', 'lint:check'),
-        },
-        {
+        }),
+        buck2MainCacheWriterStep({
           name: 'Bundle smoke tests',
           env: githubTokenEnv(),
           run: runDevenvTasksBefore('bundle:smoke'),
-        },
+        }),
         {
           name: 'CI runtime and native dependency policy regression checks',
           env: githubTokenEnv(),
@@ -957,6 +960,7 @@ const extraJobs: Record<string, any> = {
       preparePinnedDevenvStep,
       validateNixStoreStep,
       {
+        [publisherWriteSecret]: buck2PublicCacheWriteSecret,
         name: 'Prove fresh-root remote action and test-cache hits',
         env: {
           ...githubTokenEnv(),
@@ -1571,12 +1575,12 @@ export default ciWorkflow({
       'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
       'pipeline-traces': pipelineTracesJob,
     },
-    // Public readers never gain uploads from an ambient credential. Only the
-    // protected-main proof receives a step-local writer credential; its replay
-    // context explicitly returns to reader posture before starting a new daemon.
+    // Quality uploads are opportunistic on protected-main pushes only. Queue-only
+    // unit jobs remain readers; the dedicated trusted proof has step-local writer
+    // credentials and returns to reader posture before replaying a fresh daemon.
     postures: {
       'default-ref-policy': 'reader',
-      quality: 'reader',
+      quality: 'main-writer',
       test: 'reader',
       'test-macos': 'reader',
       'test-playwright-utils': 'reader',
