@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
 NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
-tmpdir="$(mktemp -d)"
+tmpdir="$(realpath "$(mktemp -d)")"
 trap 'rm -rf "$tmpdir"' EXIT
 export HOME="$tmpdir/home"
 export PNPM_SHARED_STORE_DIR="$tmpdir/store"

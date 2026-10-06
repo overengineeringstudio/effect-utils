@@ -138,11 +138,9 @@ let
   installFlagsString = lib.escapeShellArgs installFlags;
   localPolicyFlagsString = lib.escapeShellArgs pnpmInstallPolicy.liveInstallPolicyFlags;
   gvsPolicyFlagsString = lib.escapeShellArgs pnpmInstallPolicy.commonInstallPolicyFlags;
-  pureInstallFlags =
-    installFlags
-    ++ [
-      (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
-    ];
+  pureInstallFlags = installFlags ++ [
+    (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
+  ];
   pureInstallFlagsString = lib.escapeShellArgs pureInstallFlags;
   lockfileOnlyFlag = lib.optionalString (!materialize) " --lockfile-only";
 
