@@ -228,6 +228,30 @@ The `buck2-rules` package exports the shared pnpm patch registry in its `rules`
 cell. Unmapped patch paths retain same-cell labels; mappings match complete path
 components, and the most specific checkout root wins.
 
+Frozen source dependencies use an exact workspace-path-to-target mapping rather
+than resolving a label beneath an ignored runtime directory:
+
+```ts
+makePnpmStoreProjection({
+  metadata,
+  sidecar,
+  workspaceTreeTargets: {
+    '.devenv/pnpm-source-inputs/current/repos/sdk/client':
+      'pnpm_sources//:sdk_client_package_tree',
+  },
+})
+```
+
+The consumer owns that declared package tree and its cell. It must expose the
+frozen package bytes named by the lockfile, not a mutable checkout with the same
+path suffix. A source cell rooted at `.devenv/pnpm-source-inputs` can keep its
+generated `BUCK` outside the immutable `current` generation and assemble sources
+with `empty_package_view` (or `package_view` for packages with dependencies).
+The consumer's Nix source closure must supply the same cell, package bytes, and
+target declarations. The root continues to ignore `.devenv` wholesale. Unmapped
+workspace packages retain their conventional same-cell `:package_tree` labels;
+mapped labels participate in the projection fingerprint.
+
 Put the effect-utils flake's pinned `packages.<system>.buck2` on `PATH` (or use
 its `bin/buck2` as `BUCK2_BIN`). Direct commands, agents and devenv tasks then
 share the same cache posture preflight; no separate task or probe command is
