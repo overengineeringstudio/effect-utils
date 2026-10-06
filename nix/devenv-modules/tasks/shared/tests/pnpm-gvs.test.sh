@@ -69,6 +69,11 @@ for name in first second ci local; do
   cache_store="$(jq -r .storeDir "$root/node_modules/.modules.yaml")"
   actual_store="$(cd "$root"; PNPM_CONFIG_STORE_DIR="${cache_store%/v11}" "$pnpm_bin" store path)"
   test "$actual_store" = "$cache_store"
+  if [ "$name" = ci ]; then
+    test "$actual_store" = "$root/.devenv/pnpm-store-pure-v1/v11"
+  else
+    test "$actual_store" = "$PNPM_SHARED_STORE_DIR/v11"
+  fi
   if [ "$name" = ci ] || [ "$name" = local ]; then
     case "$target" in "$root/node_modules/.pnpm/"*) ;; *) echo "Expected root-local projection: $target"; exit 1 ;; esac
     test "$metadata_store" = "$root/node_modules/.pnpm"

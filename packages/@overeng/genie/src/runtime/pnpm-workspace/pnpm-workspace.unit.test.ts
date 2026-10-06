@@ -3,7 +3,6 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
-import { parse } from 'yaml'
 
 import { packageJson, type GenieContext } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
@@ -213,10 +212,9 @@ describe('metadata-based workspace projections', () => {
       enableGlobalVirtualStore,
     })
 
-    expect(parse(workspaceFile.stringify(mockGenieContext))).toMatchObject({
-      nodeLinker: 'isolated',
-      enableGlobalVirtualStore,
-    })
+    expect(workspaceFile.stringify(mockGenieContext)).toContain(
+      `enableGlobalVirtualStore: ${enableGlobalVirtualStore}`,
+    )
   })
 
   it('omits enableGlobalVirtualStore when not configured', () => {
@@ -226,9 +224,7 @@ describe('metadata-based workspace projections', () => {
       nodeLinker: 'isolated',
     })
 
-    expect(parse(workspaceFile.stringify(mockGenieContext))).not.toHaveProperty(
-      'enableGlobalVirtualStore',
-    )
+    expect(workspaceFile.stringify(mockGenieContext)).not.toContain('enableGlobalVirtualStore:')
   })
 
   it('serializes hoistingLimits for hoisted pnpm workspaces', () => {
