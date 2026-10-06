@@ -2,6 +2,8 @@ import {
   RUNNER_PROFILES,
   type RunnerProfile,
   bashShellDefaults,
+  buck2MainCacheWriterStep,
+  buck2PublicCacheWriteSecret,
   cachixCliBuildStep,
   cachixStep,
   cachixPublisherStep,
@@ -45,6 +47,7 @@ import {
   githubAppInstallationTokenStep,
   githubAccessTokenEnv,
   readBinaryCacheDescriptors,
+  publisherWriteSecret,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
@@ -443,24 +446,24 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     ...job({
       timeoutMinutes: 90,
       extraSteps: [
-        verifyOtelShellEntryStep,
-        {
+        buck2MainCacheWriterStep(verifyOtelShellEntryStep),
+        buck2MainCacheWriterStep({
           name: 'Type check (Buck)',
           env: githubTokenEnv(),
           run: runDevenvTasksBefore('buck2:quick'),
-        },
+        }),
         frozenLockfileStep,
-        {
+        buck2MainCacheWriterStep({
           name: 'Format + lint',
           env: githubTokenEnv(),
           // Generated-file freshness stays authoritative, not just a local fast path.
           run: runDevenvTasksBefore('genie:check', 'lint:check'),
-        },
-        {
+        }),
+        buck2MainCacheWriterStep({
           name: 'Bundle smoke tests',
           env: githubTokenEnv(),
           run: runDevenvTasksBefore('bundle:smoke'),
-        },
+        }),
         {
           name: 'CI runtime and native dependency policy regression checks',
           env: githubTokenEnv(),
@@ -490,12 +493,17 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   // actual collection. CI must not shard this lane: the gate needs both partitions in one job.
   test: multiPlatformJob({
     timeoutMinutes: 90,
-    name: 'Unit tests',
-    env: githubTokenEnv(),
-    run: runDevenvTasksBefore('test:run'),
+    ...buck2MainCacheWriterStep({
+      name: 'Unit tests',
+      env: githubTokenEnv(),
+      run: runDevenvTasksBefore('test:run'),
+    }),
     // Darwin leg of the compiled-executable proof; `build-products` covers Linux x86_64.
     afterSteps: [
-      { ...compiledProductsSmokeStep, if: "matrix.runner == 'namespace-profile-macos-arm64'" },
+      {
+        ...buck2MainCacheWriterStep(compiledProductsSmokeStep),
+        if: "matrix.runner == 'namespace-profile-macos-arm64'",
+      },
     ],
   }),
   'test-playwright-utils': job({
@@ -973,6 +981,7 @@ const extraJobs: Record<string, any> = {
       preparePinnedDevenvStep,
       validateNixStoreStep,
       {
+        [publisherWriteSecret]: buck2PublicCacheWriteSecret,
         name: 'Prove fresh-root remote action and test-cache hits',
         env: {
           ...githubTokenEnv(),
@@ -1595,8 +1604,8 @@ export default ciWorkflow({
     // context explicitly returns to reader posture before starting a new daemon.
     postures: {
       'default-ref-policy': 'reader',
-      quality: 'reader',
-      test: 'reader',
+      quality: 'main-writer',
+      test: 'main-writer',
       'test-playwright-utils': 'reader',
       'test-playwright-tui-react': 'reader',
       cargo: 'reader',
