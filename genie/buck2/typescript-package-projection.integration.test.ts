@@ -71,8 +71,7 @@ export const files = discoverCollectableTestModules({ repoRoot: process.cwd(), p
       expect(() =>
         discoverCollectableTestModules({ repoRoot: root, packagePath: '.', sourceRoots: ['src'] }),
       ).toThrow('Unsafe package source path segment: unsafe%3Aname')
-    }),
-  )
+    }))
 
   it('still refuses a symlink masquerading as Genie state', () =>
     withFixture((root) => {
@@ -80,6 +79,5 @@ export const files = discoverCollectableTestModules({ repoRoot: process.cwd(), p
       expect(() =>
         discoverCollectableTestModules({ repoRoot: root, packagePath: '.', sourceRoots: ['src'] }),
       ).toThrow('Package source census refuses symlink: src/tmp/genie-locks')
-    }),
-  )
+    }))
 })
