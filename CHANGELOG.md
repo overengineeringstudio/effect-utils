@@ -4,6 +4,8 @@
 
 ### Added
 
+- pnpm development installs can opt into the graph-hashed global virtual store;
+  default and CI installs retain root-local projections.
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
@@ -28,6 +30,11 @@
   cache without exposing credentials to PR runs. Main pushes skip heavy gates
   only after matching their tree to successful required queue checks; publishers
   and empirical/cache proofs keep running.
+- Fixed-source Nix products bound Buck execution, Tokio workers, and blocking
+  threads to the Nix core budget, with unset/zero budgets normalized to one.
+  Worker configuration follows the `build` subcommand so Buck accepts the flags.
+- The cached Genie CLI emits comment-free strict JSON for `.watchmanconfig`,
+  matching its source-side generator and Watchman's runtime parser.
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - Negative Buck artifact-import fixtures capture remote Nix builder logs, so
@@ -57,6 +64,14 @@
 - TypeScript Git fixtures preserve the caller's environment while removing
   hook-local repository and index selectors, so temporary commits cannot alter
   the repository running the hook.
+- Buck roots use Watchman with output-directory exclusions and idle watch reaping.
+  This prevents daemon startup from recursively traversing ignored build outputs
+  and dependency symlinks; warm commands no longer need a full-file hash crawl.
+  The packaged entrypoint admits the actual service before native startup, with
+  a bounded probe and short-lived environment-scoped cache. Unavailable Watchman
+  warns and falls back to notify; explicit local providers remain authoritative.
+  Immutable Nix source products retain their service-free `fs_hash_crawler`
+  override because Watchman's state initialization is forbidden in the sandbox.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources

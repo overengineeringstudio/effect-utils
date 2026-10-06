@@ -484,6 +484,45 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health passes"
 
+echo "Test 20g: GVS health and digest cover reachable edges without scanning unrelated graphs"
+(
+  root="$test_dir/gvs-health"
+  store="$test_dir/gvs-health-store"
+  pkg="$store/v11/links/pkg-graph/node_modules/pkg"
+  dep="$store/v11/links/dep-graph/node_modules/dep"
+  mkdir -p "$root/node_modules" "$pkg" "$dep" "$store/v11/links/unrelated/node_modules"
+  printf '{"name":"pkg","dependencies":{"dep":"1.0.0"}}\n' > "$pkg/package.json"
+  printf '{"name":"dep","version":"1.0.0","main":"index.cjs"}\n' > "$dep/package.json"
+  touch "$dep/index.cjs"
+  ln -s "$pkg" "$root/node_modules/pkg"
+  ln -s "$dep" "$(dirname "$pkg")/dep"
+  export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
+  export PNPM_CONFIG_STORE_DIR="$store"
+  check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$root/node_modules"
+  digest() {
+    NODE_MODULES_HELPER_MODE=projection-hash NODE_MODULES_DIRS="$root/node_modules" node "$PROJECTION_SCRIPT"
+  }
+  before="$(digest)"
+  ln -s "$test_dir/missing-unrelated" "$store/v11/links/unrelated/node_modules/unused"
+  assert_eq "$before" "$(digest)" "unrelated shared graphs do not invalidate this root"
+  rm "$(dirname "$pkg")/dep"
+  test "$before" != "$(digest)"
+  set +e
+  check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$root/node_modules" >/dev/null 2>&1
+  status=$?
+  set -e
+  assert_exit_code 1 "$status" "GVS health rejects a missing reachable dependency"
+  foreign="$test_dir/foreign-store/v11/links/foreign/node_modules/dep"
+  mkdir -p "$foreign"
+  cp "$dep/package.json" "$dep/index.cjs" "$foreign/"
+  ln -s "$foreign" "$(dirname "$pkg")/dep"
+  set +e
+  check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$root/node_modules" >/dev/null 2>&1
+  status=$?
+  set -e
+  assert_exit_code 1 "$status" "GVS health rejects an instance from another store"
+)
+
 echo "Test 20b: Projection health canonicalizes an aliased materialization root"
 healthy_real_dir="$test_dir/healthy-real"
 healthy_alias_dir="$test_dir/healthy-alias"
@@ -638,7 +677,7 @@ echo "Test 34: Linux shared storage selects one full store and automatic zero-co
   unset CI PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
   export PNPM_SHARED_STORE_DIR="$shared_store"
   export PNPM_MIN_FREE_KIB=0
-  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false
   assert_eq "$shared_store" "$npm_config_store_dir" "local roots select the host-owned full store"
   assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "Linux delegates safe zero-copy selection to pnpm"
   test -d "$shared_store/v11/files"
@@ -654,11 +693,30 @@ echo "Test 34b: historical shared-files pools stay outside the managed store"
   printf 'historical\n' > "$historical_pool/sentinel"
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
-  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false
   assert_eq "$isolated_home/.local/share/pnpm/store-shared-v1" "$npm_config_store_dir" "default local store uses its fresh namespace"
   test -d "$npm_config_store_dir/v11/files"
   test ! -L "$npm_config_store_dir/v11/files"
   test -f "$historical_pool/sentinel"
+)
+
+echo "Test 34g: GVS opt-in selects the complete standard store and clears local projection overrides"
+(
+  storage_root="$test_dir/gvs-storage-root"
+  isolated_home="$test_dir/gvs-storage-home"
+  mkdir -p "$storage_root"
+  export HOME="$isolated_home"
+  unset CI PNPM_SHARED_STORE_DIR
+  export PNPM_CONFIG_VIRTUAL_STORE_DIR=node_modules/.pnpm
+  export npm_config_virtual_store_dir=node_modules/.pnpm
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true true
+  assert_eq "$isolated_home/.local/share/pnpm/store" "$npm_config_store_dir" "GVS selects the standard complete store"
+  assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "GVS uses the effective pnpm environment key"
+  test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
+  test -z "${npm_config_virtual_store_dir+x}"
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false
+  assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "non-opted roots disable inherited GVS"
+  assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "non-opted roots retain a local projection"
 )
 
 echo "Test 34c: a preexisting external files bridge fails closed"
@@ -672,7 +730,7 @@ echo "Test 34c: a preexisting external files bridge fails closed"
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
   set +e
-  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false 2>&1)"
   exit_code=$?
   set -e
   assert_exit_code 1 "$exit_code" "preexisting external Store Cache bridge should fail before pnpm runs"
@@ -691,7 +749,7 @@ echo "Test 34d: a preexisting external store-version bridge fails before mutatio
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
   set +e
-  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false 2>&1)"
   exit_code=$?
   set -e
   assert_exit_code 1 "$exit_code" "external Store Cache version bridge should fail before creating files"
@@ -748,7 +806,7 @@ if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir
     export PNPM_SHARED_STORE_DIR="$cross_device_store"
     export PNPM_MIN_FREE_KIB=0
     set +e
-    output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+    output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false 2>&1)"
     exit_code=$?
     set -e
     assert_exit_code 1 "$exit_code" "cross-device zero-copy storage should fail before pnpm runs"
@@ -769,9 +827,14 @@ echo "Test 35b: CI forces its declared job-local store"
   export PNPM_STORE_DIR="$test_dir/runner-shared-store"
   export PNPM_CONFIG_STORE_DIR="$test_dir/runner-shared-store"
   export npm_config_store_dir="$test_dir/runner-shared-store"
-  configure_pnpm_storage node "$storage_root" "$job_store" true
+  export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
+  export npm_config_enable_global_virtual_store=true
+  configure_pnpm_storage node "$storage_root" "$job_store" true true
   assert_eq "$job_store" "$npm_config_store_dir" "CI store authority remains job-local"
   assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "CI uses the same native import policy"
+  assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "CI overrides an inherited GVS opt-in"
+  assert_eq "false" "$npm_config_enable_global_virtual_store" "CI disables npm's inherited GVS opt-in"
+  assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "CI projection remains job-local"
 )
 
 echo "Test 35c: capacity checks each distinct writable device exactly once"

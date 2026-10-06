@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
 export BUCK2_RULES_REPO="$repo_root"
 "$repo_root/nix/buck2-rules/tests/consumer-root-config.test.sh" "$repo_root"
+bash "$repo_root/nix/buck2-rules/tests/file-watcher-contract.test.sh" "$repo_root"
 
 root="$(nix build --impure --no-link --print-out-paths --expr '
   let
@@ -65,6 +66,7 @@ grep -F 'name = "runtime-closure.ts"' "$root/.buck2/rules/buck2/dependencies/BUC
 work="$(mktemp -d)"
 cleanup() {
   (cd "$work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
+  watchman watch-del "$work" >/dev/null 2>&1 || true
   chmod -R u+w "$work"
   rm -rf "$work"
 }
@@ -82,6 +84,10 @@ store_directory(
     visibility = ["PUBLIC"],
 )
 BUCK
+# These must be pruned by Watchman before recursive watch registration.
+mkdir -p "$work/buck-out/watcher-regression"
+printf 'ignored output\n' > "$work/buck-out/watcher-regression/output.txt"
+ln -s "$work" "$work/buck-out/watcher-regression/dependency-loop"
 mkdir -p "$work/vendor"
 cat > "$work/vendor/BUCK" <<'BUCK'
 load("@prelude//:prelude.bzl", "native")
@@ -167,6 +173,11 @@ BUCK
   buck2 --isolation-dir consumer-root-contract uquery \
     'set(rules//:package_tree_runtime rules//:package_command_runtime rules//packages/@overeng/buck2-tools:typescript-runner.ts)' >/dev/null
   buck2 --isolation-dir consumer-root-contract uquery 'rules//buck2/dependencies:runtime-closure.ts' >/dev/null
+  ignored="$(jq -cn --arg root "$work" \
+    '["query",$root,{"fields":["name"],"expression":["dirname","buck-out"]}]' \
+    | watchman --json-command --output-encoding=json)"
+  printf '%s\n' "$ignored" | jq -e 'has("error") | not' >/dev/null
+  printf '%s\n' "$ignored" | jq -e '.files == []' >/dev/null
   vendor_output="$(buck2 --isolation-dir consumer-root-contract build fixture//vendor:consume --show-simple-output)"
   [[ "$(cat "$vendor_output")" == "declared vendor payload" ]]
   buck2 --isolation-dir consumer-root-contract cquery 'fixture//closure:runtime' >/dev/null

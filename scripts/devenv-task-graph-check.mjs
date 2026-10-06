@@ -605,13 +605,6 @@ ok({
     configuredToolchainSource.includes('load("@capabilities//:defs.bzl"') === true,
   name: 'capability Starlark loads use external-cell import syntax',
 })
-const standaloneBuckConfig = readFileSync(`${root}/.buckconfig`, 'utf8')
-ok({
-  condition:
-    standaloneBuckConfig.includes('file_watcher = notify') === true &&
-    standaloneBuckConfig.includes('file_watcher = watchman') === false,
-  name: 'standalone roots use the notify file watcher',
-})
 ok({
   condition: existsSync(`${root}/toolchains`) === false,
   name: 'no legacy top-level toolchains directory remains',
