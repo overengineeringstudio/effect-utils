@@ -237,6 +237,27 @@ required:
 buck2 build //your/package:target
 ```
 
+Tracked `[buck2] file_watcher = watchman` also opts into watcher admission, even
+without remote-cache configuration. The packaged entrypoint queries the actual
+Watchman service with a 900 ms deadline before native daemon startup; service
+results are cached for at most five seconds and scoped to PATH, HOME and socket
+environment identity. Darwin queries use `--no-spawn`, preserving the managed
+service lifecycle. A healthy service selects Watchman in a separately managed
+`.buckconfig.local` block. An unavailable service emits a warning on each launch
+and selects Buck's original `notify` provider without caching that launch.
+This fallback preserves availability, not Watchman's output-tree pruning:
+populated worktrees can still encounter the original notify startup stall.
+
+Explicit unmanaged local watcher choices take precedence and remove stale
+managed watcher settings without disturbing the independent cache overlay.
+In particular, immutable Nix source products select `fs_hash_crawler`: they have
+no interactive edit loop, and Watchman's state-directory initialization is not
+permitted in the Nix sandbox. Mutable worktrees retain Watchman to avoid hashing
+the source tree on each command. After changing providers, stop only your own
+daemon with `buck2 --isolation-dir <your-isolation> kill` in that project.
+Watchman output exclusions are defined by `.watchmanconfig`; Buck's separate
+`[project] ignore` settings alone do not prune notify's initial registrations.
+
 RE client settings belong in `.buckconfig`, not invocation overrides. Pinned
 Buck ignores `[buck2_re_client]` values supplied by `--config` or `--config-file`.
 The entrypoint applies writer credentials/endpoints to the managed
