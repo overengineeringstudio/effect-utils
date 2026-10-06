@@ -47,9 +47,13 @@ This is the reproducible CI mode. It requires a non-stale lock file and material
 Member lock rewrites are opt-in with `--lock-sync=direct` or `--lock-sync=recursive`.
 Lock sync refuses shared canonical worktrees under `refs/commits/*`, `refs/heads/*`,
 and `refs/tags/*`, including symlinked targets, before rewriting any member.
+Top-level apply may materialize `repos/` in its invoking canonical branch workspace
+under `refs/heads/*`; it does not switch that workspace's ref or rewrite its locks.
+The permission does not extend to another canonical workspace through a `repos/`
+alias, immutable tag/commit workspaces, or recursive member apply.
 Use `--lock-sync=off` to materialize members without changing their lockfiles, or
 sync locks in an owned worktree outside the canonical store layout. Config, lock,
-generator, and recursive apply writes have the same protection.
+generator, member lock sync, and branch advancement writes retain canonical protection.
 `MEGAREPO_ALLOW_CANONICAL_MUTATION=1` is an explicit administrative override;
 other values do not authorize writes.
 

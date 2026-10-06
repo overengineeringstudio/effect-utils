@@ -7,11 +7,13 @@ import { systemError, type PlatformError } from 'effect/PlatformError'
 /** Ref worktrees are shared. Resolve aliases and missing output parents before authorizing writes. */
 export const assertCanonicalMutationAllowed = (
   target: string,
+  { materializationRoot }: { materializationRoot?: string } = {},
 ): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return
     const fs = yield* FileSystem.FileSystem
     let existingPath = path.resolve(target)
+    let missingPath = ''
     let resolvedPath: string | void = undefined
     while (typeof resolvedPath !== 'string') {
       resolvedPath = yield* fs.realPath(existingPath).pipe(
@@ -42,10 +44,27 @@ export const assertCanonicalMutationAllowed = (
             description: 'Cannot resolve target; refusing mutation',
           })
         }
+        missingPath = path.join(path.basename(existingPath), missingPath)
         existingPath = parent
       }
     }
     if (/\/refs\/(?:commits|heads|tags)\/.+/.test(resolvedPath) === true) {
+      // The invoking branch workspace owns its repos mount directory. This permission is
+      // only passed by top-level apply, never by lock writers, generators, or nested apply.
+      if (materializationRoot !== undefined) {
+        const root = yield* fs.realPath(materializationRoot)
+        const destination = path.join(resolvedPath, missingPath)
+        const targetPath = path.resolve(target)
+        const workspacePath = path.resolve(materializationRoot)
+        if (
+          root.match(/\/refs\/(commits|heads|tags)\/.+/)?.[1] === 'heads' &&
+          ((targetPath === workspacePath && destination === root) ||
+            (targetPath === path.join(workspacePath, 'repos') &&
+              destination === path.join(root, 'repos')))
+        ) {
+          return
+        }
+      }
       return yield* systemError({
         _tag: 'PermissionDenied',
         module: 'megarepo',

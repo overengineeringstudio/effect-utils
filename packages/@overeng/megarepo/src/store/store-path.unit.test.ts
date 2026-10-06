@@ -14,7 +14,7 @@ import { createEmptyLockFile, LockFile, LockedMember, writeLockFile } from '../c
 import { syncNixLocks } from '../core/nix-lock/mod.ts'
 import { generateSchema } from '../generators/schema.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
-import { abbreviateStorePath } from './store-path.ts'
+import { abbreviateStorePath, assertCanonicalMutationAllowed } from './store-path.ts'
 
 describe('abbreviateStorePath', () => {
   test('branch ref', () => {
@@ -59,6 +59,36 @@ describe('abbreviateStorePath', () => {
 })
 
 describe('canonical mutation write boundaries', () => {
+  test('materialization permission cannot escape through self or dangling repos aliases', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'mr-materialize-guard-'))
+    try {
+      const canonical = path.join(root, 'store/example.com/org/repo/refs/heads/team/feature')
+      await mkdir(canonical, { recursive: true })
+      const run = (target: string, materializationRoot = canonical) =>
+        Effect.runPromise(
+          assertCanonicalMutationAllowed(target, { materializationRoot }).pipe(
+            Effect.provide(NodeServices.layer),
+          ),
+        )
+      await run(canonical)
+      await run(`${canonical}/repos`)
+      await symlink(canonical, `${canonical}/repos`)
+      await expect(run(`${canonical}/repos`)).rejects.toThrow(canonical)
+      await rm(`${canonical}/repos`)
+      await symlink(`${canonical}/other-missing-directory`, `${canonical}/repos`)
+      await expect(run(`${canonical}/repos`)).rejects.toThrow(canonical)
+      await expect(readFile(`${canonical}/other-missing-directory`)).rejects.toMatchObject({
+        code: 'ENOENT',
+      })
+      const immutable = path.join(root, 'store/example.com/org/repo/refs/tags/refs/heads/lookalike')
+      await mkdir(immutable, { recursive: true })
+      await expect(run(immutable, immutable)).rejects.toThrow(immutable)
+      await expect(run(`${immutable}/repos`, immutable)).rejects.toThrow(immutable)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test('denies canonical aliases and missing outputs, but writes owned files', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'mr-write-guard-'))
     const previousOverride = process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION']

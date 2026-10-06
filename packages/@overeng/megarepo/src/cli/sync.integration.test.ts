@@ -1771,6 +1771,48 @@ const createNestedMegarepoLockRefMatchFixture = () =>
   })
 
 describe('canonical member mutation guard', () => {
+  for (const refKind of ['heads', 'tags', 'commits'] as const) {
+    it.effect(
+      `materializes members in an invoking ${refKind} workspace only when it is a branch`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { workspacePath } = yield* createWorkspace({ members: {} })
+          const canonicalRoot = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeDir(`store/github.com/acme/workspace/refs/${refKind}/team/feature/`),
+          )
+          const memberPath = `${workspacePath}owned`
+          yield* fs.makeDirectory(canonicalRoot, { recursive: true })
+          yield* fs.makeDirectory(memberPath)
+          yield* fs.writeFileString(
+            `${canonicalRoot}megarepo.json`,
+            encodeJson({ members: { victim: memberPath } }),
+          )
+          const originalLock = encodeJson({ version: 1, members: {} })
+          yield* fs.writeFileString(`${canonicalRoot}megarepo.lock`, originalLock)
+          const result = yield* runApplyCommand({
+            cwd: canonicalRoot,
+            args: ['--output', 'json', '--worktree-mode', 'commit', '--lock-sync', 'off'],
+            env: {
+              MEGAREPO_STORE: `${workspacePath}store`,
+              MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+            },
+          })
+          expect(result.exitCode).toBe(refKind === 'heads' ? 0 : 1)
+          if (refKind === 'heads') {
+            expect(yield* fs.realPath(`${canonicalRoot}repos/victim`)).toBe(memberPath)
+          } else {
+            expect(yield* fs.exists(`${canonicalRoot}repos`)).toBe(false)
+          }
+          expect(yield* fs.readFileString(`${canonicalRoot}megarepo.lock`)).toBe(originalLock)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
   for (const worktreeMode of ['tracking', 'commit'] as const) {
     it.effect(
       `refuses direct lock sync in canonical ${worktreeMode} worktrees unless explicitly authorized`,
@@ -1888,38 +1930,52 @@ describe('canonical member mutation guard', () => {
     )
   }
 
-  it.effect(
-    'refuses mount writes through a canonical repos directory alias even with lock sync off',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { workspacePath } = yield* createWorkspace({ members: { victim: './owned' } })
-        const canonicalRepos = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeDir('store/github.com/acme/shared/refs/heads/main/repos/'),
-        )
-        yield* fs.makeDirectory(canonicalRepos, { recursive: true })
-        yield* fs.symlink(canonicalRepos.slice(0, -1), `${workspacePath}repos`)
-        yield* fs.writeFileString(`${workspacePath}megarepo.lock`, '{"version":1,"members":{}}')
-        const result = yield* runApplyCommand({
-          cwd: workspacePath,
-          args: ['--output', 'json', '--lock-sync', 'off'],
-          env: {
-            MEGAREPO_STORE: `${workspacePath}store`,
-            MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
-          },
-        })
-        expect(result.exitCode).toBe(1)
-        expect(Exit.isFailure(result.exit)).toBe(true)
-        if (Exit.isFailure(result.exit) === true) {
-          expect(Cause.pretty(result.exit.cause)).toContain(canonicalRepos.slice(0, -1))
-        }
-        expect(yield* fs.readDirectory(canonicalRepos)).toEqual([])
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
+  for (const canonicalWorkspace of [false, true]) {
+    it.effect(
+      `refuses mount writes through a canonical repos directory alias from a ${canonicalWorkspace ? 'canonical' : 'standalone'} workspace even with lock sync off`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { workspacePath: tempRoot } = yield* createWorkspace({ members: {} })
+          const workspacePath =
+            canonicalWorkspace === true
+              ? EffectPath.ops.join(
+                  tempRoot,
+                  EffectPath.unsafe.relativeDir('store/github.com/acme/owned/refs/heads/team/feature/'),
+                )
+              : tempRoot
+          yield* fs.makeDirectory(workspacePath, { recursive: true })
+          yield* fs.writeFileString(
+            `${workspacePath}megarepo.json`,
+            encodeJson({ members: { victim: './owned' } }),
+          )
+          const canonicalRepos = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeDir('store/github.com/acme/shared/refs/heads/main/repos/'),
+          )
+          yield* fs.makeDirectory(canonicalRepos, { recursive: true })
+          yield* fs.symlink(canonicalRepos.slice(0, -1), `${workspacePath}repos`)
+          yield* fs.writeFileString(`${workspacePath}megarepo.lock`, '{"version":1,"members":{}}')
+          const result = yield* runApplyCommand({
+            cwd: workspacePath,
+            args: ['--output', 'json', '--lock-sync', 'off'],
+            env: {
+              MEGAREPO_STORE: `${workspacePath}store`,
+              MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+            },
+          })
+          expect(result.exitCode).toBe(1)
+          expect(Exit.isFailure(result.exit)).toBe(true)
+          if (Exit.isFailure(result.exit) === true) {
+            expect(Cause.pretty(result.exit.cause)).toContain(canonicalRepos.slice(0, -1))
+          }
+          expect(yield* fs.readDirectory(canonicalRepos)).toEqual([])
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
 })
 
 describe('nested megarepo.lock sync scope', () => {
