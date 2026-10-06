@@ -4,6 +4,8 @@
 
 ### Added
 
+- pnpm development installs can opt into the graph-hashed global virtual store;
+  default and CI installs retain root-local projections.
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
