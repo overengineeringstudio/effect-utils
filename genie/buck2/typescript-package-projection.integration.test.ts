@@ -49,7 +49,18 @@ export const files = discoverCollectableTestModules({ repoRoot: process.cwd(), p
       )
       const source = runBun(['BUCK.genie.ts'], root)
       expect(JSON.parse(source)).toEqual(['src/main.test.ts', 'src/tmp/ordinary.test.ts'])
-      runBun(['build', 'BUCK.genie.ts', '--target=bun', '--outfile=bundled.js'], root)
+      // Packaged Genie loads checkout generator libraries at runtime. Keep their source
+      // identity rather than rebasing unrelated import.meta-based configuration into the bundle.
+      runBun(
+        [
+          'build',
+          'BUCK.genie.ts',
+          '--target=bun',
+          '--outfile=bundled.js',
+          `--external=${projectionPath}`,
+        ],
+        root,
+      )
       expect(runBun(['bundled.js'], root)).toBe(source)
     }),
   )
