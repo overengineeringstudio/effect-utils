@@ -5,7 +5,18 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { agent, emit, gate, mission, node, omp, resource, schedule, smalltalkKdl, step } from './mod.ts'
+import {
+  agent,
+  emit,
+  gate,
+  mission,
+  node,
+  omp,
+  resource,
+  schedule,
+  smalltalkKdl,
+  step,
+} from './mod.ts'
 
 const canonical = () =>
   emit([
