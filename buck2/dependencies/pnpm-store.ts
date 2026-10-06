@@ -763,8 +763,11 @@ export const makePnpmStoreProjection = ({
           const enqueue = (edges: PnpmStoreEdgeSet): void => {
             for (const [, edge] of sortedEntries(edges)) {
               if (edge.kind === 'workspace') {
+                const workspaceTarget = Object.hasOwn(workspaceTreeTargets, edge.workspacePath)
+                  ? workspaceTreeTargets[edge.workspacePath]
+                  : undefined
                 workspaceTrees[edge.workspaceKey] =
-                  workspaceTreeTargets[edge.workspacePath] ?? `//${edge.workspacePath}:package_tree`
+                  workspaceTarget ?? `//${edge.workspacePath}:package_tree`
                 continue
               }
               if (closure.has(edge.storeKey) === true) continue

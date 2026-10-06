@@ -403,6 +403,30 @@ describe('normalized store projection', () => {
     },
   )
 
+  it.each(['constructor', 'toString', '__proto__'])(
+    'maps only own target declarations for workspace path %s',
+    async (sourcePath) => {
+      const sourceLock = lock({
+        importers: `  packages/app:
+    dependencies:
+      source-lib:
+        specifier: workspace:*
+        version: link:../../${sourcePath}`,
+        packages: '  {}',
+        snapshots: '  {}',
+      })
+      const sourceKey = workspaceKey(sourcePath)
+      const ordinary = await projectionOf(sourceLock)
+      expect(ordinary.views[0]!.workspaceTrees[sourceKey]).toBe(`//${sourcePath}:package_tree`)
+      const unrelated = await projectionOf(sourceLock, { 'repos/sdk/client': 'pnpm_sources//:sdk' })
+      expect(unrelated.fingerprint).toBe(ordinary.fingerprint)
+      const ownTargets = Object.fromEntries([[sourcePath, 'pnpm_sources//:sdk']])
+      const projected = await projectionOf(sourceLock, ownTargets)
+      expect(projected.views[0]!.workspaceTrees[sourceKey]).toBe('pnpm_sources//:sdk')
+      expect(renderPnpmStoreBuck(projected)).toContain(`"${sourceKey}": "pnpm_sources//:sdk"`)
+    },
+  )
+
   it("links a peer's type companion into the entry that declares the peer", async () => {
     const projection = await projectionOf(peerTypesLock)
     const widget = projection.entries.find(
