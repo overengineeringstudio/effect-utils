@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -15,11 +16,13 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { makeTempGitEnvironment } from '@overeng/utils-dev/node-vitest'
+
 const cliPath = fileURLToPath(new URL('../../bin/genie.tsx', import.meta.url))
 
 describe('output lock state', () => {
   it('generates from a source root without writing lock state into the package', () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'genie-lock-location-'))
+    const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-lock-location-')))
     try {
       const repo = path.join(root, 'repo')
       const sourceRoot = path.join(repo, 'src')
@@ -29,7 +32,7 @@ describe('output lock state', () => {
         path.join(sourceRoot, 'BUCK.genie.ts'),
         "export default { data: {}, stringify: () => 'fixture output\\n' }\n",
       )
-      const env = { ...process.env, XDG_STATE_HOME: stateHome }
+      const env = makeTempGitEnvironment({ ...process.env, XDG_STATE_HOME: stateHome })
       const run = (cwd: string) => {
         const result = spawnSync('bun', [cliPath, '--cwd', cwd, '--writeable', '--json'], {
           cwd,
