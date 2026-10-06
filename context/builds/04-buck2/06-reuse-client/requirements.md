@@ -57,3 +57,21 @@ BUILD.BUCK-R06 and BUILD.BUCK-R07. Service deployment authority is dotfiles-owne
   dists, descriptors), not staged input trees. Buck-owned local state
   (`buck-out`, isolation dirs) observes BUILD.BUCK-R08: no per-invocation isolation
   dirs, stale state reclaimed (`buck2 clean --stale`).
+- **BUILD.BUCK.REUSE-R08 Avoidable misses:** Per CI lane, at most 5% of admitted
+  actions execute locally while the public tier already holds their action
+  digest.
+- **BUILD.BUCK.REUSE-R09 Queue and PR reuse:** Merge-queue and PR lanes reach at
+  least 80% remote hits on admitted actions.
+- **BUILD.BUCK.REUSE-R10 Main reader reuse:** Main reader lanes reach at least 90%
+  remote hits on admitted actions.
+- **BUILD.BUCK.REUSE-R11 Public tier health:** The public tier's daily
+  action-cache hit ratio is at least 50%, and no 6-hour window passes without
+  action-cache writes while main lands changes.
+- **BUILD.BUCK.REUSE-R12 Direct-invocation reuse:** On each trusted host, a clean
+  second root reaches at least 95% remote hits through the private tier.
+- **BUILD.BUCK.REUSE-R13 Product substitution:** Every published product of a
+  main head is substitutable on each published platform within 2 hours of the
+  main push, and unchanged inputs cause no product rebuild.
+- **BUILD.BUCK.REUSE-R14 Efficiency evidence:** Per-lane reuse rates are published
+  daily and retained for at least 90 days. A day that starts in violation of
+  R08–R13 is tracked as a defect.
