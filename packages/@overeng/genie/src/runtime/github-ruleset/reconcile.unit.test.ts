@@ -124,11 +124,11 @@ describe('github ruleset reconciliation', () => {
       spawn: (args: string[]) => {
         const method = args[args.indexOf('--method') + 1]
         let result: unknown
-        if (args.includes('--method')) {
+        if (args.includes('--method') === true) {
           writes.push(method!)
           remote = { ...desired, id: 123 }
           result = remote
-        } else if (args[2]!.endsWith('/123')) {
+        } else if (args[2]!.endsWith('/123') === true) {
           result = remote
         } else {
           result = remote === undefined ? [] : [{ id: 123, name: desired.name }]
