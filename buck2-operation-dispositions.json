@@ -89,6 +89,10 @@
       "operation": "publish-products"
     },
     {
+      "disposition": "outside-by-policy:ci-measurement-with-run-timestamp",
+      "operation": "main-source-shape"
+    },
+    {
       "disposition": "outside-by-policy:ci-control-plane",
       "operation": "ci-measurements-report"
     },

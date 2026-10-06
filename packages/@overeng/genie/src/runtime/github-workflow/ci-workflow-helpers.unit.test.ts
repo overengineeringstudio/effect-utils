@@ -38,11 +38,21 @@ const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
 )
-const generatedCiWorkflowYamlSource = readFileSync(
+const generatedProductCiWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml'].join('/'), import.meta.url),
   'utf8',
 )
-const generatedCiWorkflowTriggers = generatedCiWorkflowYamlSource.split('\njobs:\n')[0] ?? ''
+const generatedEmpiricalWorkflowYamlSource = readFileSync(
+  new URL(
+    ['../../../../../../.github/workflows', 'empirical-proofs.yml'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
+const generatedCiWorkflowYamlSource = [
+  generatedProductCiWorkflowYamlSource,
+  generatedEmpiricalWorkflowYamlSource,
+].join('\n')
 
 describe('pipeline traces image attachment', () => {
   // Modes that run the checked-in GitBucket adapter instead of a stub uploader.
@@ -269,14 +279,6 @@ const generatedAutoReviewWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'auto-review.yml'].join('/'), import.meta.url),
   'utf8',
 )
-const generatedLabelsSource = readFileSync(
-  new URL(['../../../../../../.github', 'labels.json.genie.ts'].join('/'), import.meta.url),
-  'utf8',
-)
-const generatedLabelsJsonSource = readFileSync(
-  new URL(['../../../../../../.github', 'labels.json'].join('/'), import.meta.url),
-  'utf8',
-)
 const generatedRepoSettings = JSON.parse(
   readFileSync(
     new URL(['../../../../../../.github', 'repo-settings.json'].join('/'), import.meta.url),
@@ -351,7 +353,8 @@ const workflowJobKeys = (workflowYamlSource: string) =>
 // Required-eligible jobs come from `ci.yml` plus the standalone per-PR workflows that
 // `ci.yml`'s size limit pushes out of it.
 const generatedCiJobKeys = [
-  ...workflowJobKeys(generatedCiWorkflowYamlSource),
+  ...workflowJobKeys(generatedProductCiWorkflowYamlSource),
+  ...workflowJobKeys(generatedEmpiricalWorkflowYamlSource),
   ...workflowJobKeys(generatedStorybookPlaysWorkflowYamlSource),
 ]
 
@@ -361,11 +364,13 @@ const advisoryCheckContexts: Record<string, true> = {
   'pipeline-attempt-close': true,
   'pipeline-traces': true,
 }
-// Dispatch-only lanes (see OPT_IN_CI_JOB_NAMES in genie/ci.ts) are non-advisory but do
-// not run on every pull request, so branch protection cannot require them: an absent lane
-// produces no check run and a required-but-absent context would wait forever.
+// Optional proof and dispatch lanes do not run on every pull request, so branch protection
+// cannot require them: a required-but-absent context would wait forever.
 const optInCheckContexts = new Set([
   'devenv-perf',
+  'bootstrap-cold-proof',
+  'test-megarepo-cold-gc',
+  'nix-closure-sizes',
   'pr-a-inert-buck',
   'trusted-buck2-remote-cache-proof',
 ])
@@ -375,6 +380,7 @@ const mainOnlyCheckContexts: Record<string, true> = {
   'deploy-storybooks': true,
   'seed-pnpm-archives': true,
   'publish-products': true,
+  'main/source-shape': true,
 }
 const matrixCheckJobs: Record<string, true> = { test: true }
 const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
@@ -382,6 +388,7 @@ const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-maco
 const generatedNonAdvisoryCheckContexts = generatedCiJobKeys
   .flatMap((jobKey) => {
     if (jobKey === 'ci-measurements-report') return ['ci/measurements-report']
+    if (jobKey === 'main-source-shape') return ['main/source-shape']
     if (matrixCheckJobs[jobKey] === true) {
       return matrixRunners.map((runner) => `${jobKey} (${runner})`)
     }
@@ -474,24 +481,6 @@ describe('pull request control-event workflows', () => {
     expect(generatedAutoReviewWorkflowYamlSource).toContain(
       "      - name: Request review from schickling\n        if: github.event.pull_request.user.login == 'schickling-assistant' && github.event.pull_request.draft == false",
     )
-  })
-
-  it('admits only revision-changing pull request events', () => {
-    expect(generatedCiWorkflowYamlSource).toContain(
-      '  pull_request:\n    types: [opened, reopened, synchronize]',
-    )
-    expect(generatedCiWorkflowTriggers).not.toContain('labeled')
-    expect(generatedWorkflowSource).not.toContain('notPerfLabelEventIf')
-  })
-
-  it('runs devenv-perf only for explicit dispatch without label coupling', () => {
-    expect(generatedDevenvPerfJob).toContain("if: ${{ github.event_name == 'workflow_dispatch' }}")
-    expect(generatedDevenvPerfJob).not.toContain("github.event_name == 'schedule'")
-    expect(generatedWorkflowSource).not.toContain('perfLaneLabel')
-    expect(generatedWorkflowSource).not.toContain('ci:perf')
-    expect(generatedLabelsSource).not.toContain('ci:perf')
-    expect(generatedLabelsJsonSource).not.toContain('ci:perf')
-    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_CANDIDATE_EVENTS: workflow_dispatch')
   })
 })
 

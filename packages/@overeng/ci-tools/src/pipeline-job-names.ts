@@ -28,6 +28,7 @@ export const pipelineJobIds = [
   'bootstrap-cold-proof',
   'nix-closure-sizes',
   'source-shape',
+  'main-source-shape',
   'test-integration-restate',
   'build-products',
   'pr-reviews-resolved',
@@ -60,7 +61,12 @@ export const pipelineJobIdentityResolver = (workflow: {
   const duplicateNames = new Set<string>()
   const names = [
     ...workflow.jobIds.map((job) => ({
-      name: job === 'ci-measurements-report' ? 'ci/measurements-report' : job,
+      name:
+        job === 'ci-measurements-report'
+          ? 'ci/measurements-report'
+          : job === 'main-source-shape'
+            ? 'main/source-shape'
+            : job,
       identity: { job, dimensions: {} },
     })),
     ...workflow.runnerProfiles.map((runner) => ({

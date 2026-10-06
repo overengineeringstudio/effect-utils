@@ -41,7 +41,7 @@ export const DEFAULT_REF_POLICY_CI_JOB_NAME = 'default-ref-policy' as const
 /** Additional CI job keys generated outside the core product-job block. */
 export const EXTRA_CI_JOB_NAMES = [
   // Empirical bootstrap-safety authority (R32, issue #884): builds the self-contained nix genie and
-  // proves `genie --phase bootstrap` + `pnpm install` run cold (no node_modules). Merge-blocking.
+  // proves `genie --phase bootstrap` + `pnpm install` run cold (no node_modules).
   'bootstrap-cold-proof',
   'nix-closure-sizes',
   'source-shape',
@@ -61,6 +61,7 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
   'test-live-deploy-ci-tools',
   'deploy-storybooks',
   'publish-products',
+  'main-source-shape',
 ] as const
 
 /**
@@ -73,6 +74,13 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
  * operator `workflow_dispatch`.
  */
 export const OPT_IN_CI_JOB_NAMES = ['devenv-perf'] as const
+
+/** Empirical proofs run on trusted main or a credential-free PR opt-in, not every PR. */
+export const EMPIRICAL_PROOF_CI_JOB_NAMES = [
+  'bootstrap-cold-proof',
+  'test-megarepo-cold-gc',
+  'nix-closure-sizes',
+] as const
 
 /** Workflow jobs that intentionally do not block merging. */
 export const advisoryCIJobNames = ['ci-measurements-report', 'notify-alignment'] as const
@@ -100,8 +108,9 @@ export type CIJobName = (typeof CI_JOB_NAMES)[number]
  */
 export const REQUIRED_CI_JOB_NAMES = [
   DEFAULT_REF_POLICY_CI_JOB_NAME,
-  ...CORE_CI_JOB_NAMES,
-  ...EXTRA_CI_JOB_NAMES,
+  ...[...CORE_CI_JOB_NAMES, ...EXTRA_CI_JOB_NAMES].filter(
+    (jobName) => !EMPIRICAL_PROOF_CI_JOB_NAMES.some((proofJobName) => proofJobName === jobName),
+  ),
 ] as const satisfies readonly CIJobName[]
 
 /**
@@ -117,6 +126,7 @@ const matrixCIJobNames = ['test'] as const
 
 /** GitHub status-check context names emitted by a workflow job key. */
 export const ciJobCheckContexts = (jobName: CIJobName) => {
+  if (jobName === 'main-source-shape') return ['main/source-shape']
   if (jobName === 'ci-measurements-report') return ['ci/measurements-report']
 
   return matrixCIJobNames.includes(jobName as (typeof matrixCIJobNames)[number]) === true

@@ -50,6 +50,7 @@ export const ciOperationDispositions = {
   'deploy-storybooks': 'outside-by-policy:live-deployment',
   'devenv-perf': 'outside-by-policy:operator-benchmark',
   lint: 'outside-by-policy:includes-stage-zero-freshness',
+  'main-source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
   'native-dependency-policy': 'outside-by-policy:shared-native-dependency-policy',
   'nix-closure-sizes': 'outside-by-policy:nix-realization',
   'notify-alignment': 'outside-by-policy:ci-control-plane',
