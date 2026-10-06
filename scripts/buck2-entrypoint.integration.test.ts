@@ -130,6 +130,22 @@ describe('direct pinned Buck posture', () => {
     ).rejects.toThrow('refusing to publish')
   })
 
+  it('falls back to local execution without uploads only for an optional writer', async () => {
+    const root = fixture()
+    const writer = {
+      ...options(root),
+      env: { BUCK2_CACHE_WRITE_BASIC_AUTH: 'publisher-credential' },
+      args: ['build', '//:app'],
+    }
+    await expect(directBuckArguments(writer)).rejects.toThrow('refusing to publish')
+    const result = await directBuckArguments({
+      ...writer,
+      env: { ...writer.env, BUCK2_CACHE_WRITE_OPTIONAL: '1' },
+    })
+    expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
+    expect(effective(result)['buck2.allow_cache_uploads']).toBe('false')
+  })
+
   it('uses effective CLI endpoints rather than the tracked endpoint, and preserves a caller registry selection', async () => {
     const root = fixture()
     const result = await directBuckArguments({

@@ -1115,8 +1115,13 @@ const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
   effect: Effect.Effect<void, E, FileSystem.FileSystem>
 }) {
   yield* Observability.annotateTargetLock({ cwd, targetFilePath })
-  /** Use cwd-relative dir instead of shared /tmp to avoid EACCES when multiple CI jobs with different UIDs share the same tmpdir */
-  const lockDir = path.join(cwd, 'tmp', 'genie-locks')
+  // User-owned state keeps locks outside source roots and avoids shared /tmp UID conflicts.
+  const configuredStateHome = process.env.XDG_STATE_HOME
+  const stateHome =
+    configuredStateHome !== undefined && path.isAbsolute(configuredStateHome) === true
+      ? configuredStateHome
+      : path.join(os.homedir(), '.local', 'state')
+  const lockDir = path.join(stateHome, 'genie', 'locks')
   const lockLayer = FileSystemBacking.layer({ lockDir })
   const lockKey = `genie:file:${createHash('sha256').update(path.resolve(targetFilePath)).digest('hex')}`
 

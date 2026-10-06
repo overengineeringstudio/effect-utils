@@ -56,6 +56,7 @@ export const ciOperationDispositions = {
   quality: 'outside-by-policy:aggregate-includes-stage-zero-freshness-and-native-policy',
   'source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
   test: 'outside-by-policy:aggregate-includes-policy-excluded-tests',
+  'test-macos': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test-integration-notion': 'outside-by-policy:secret-service-integration',
   'test-integration-restate': 'outside-by-policy:service-integration',
   'test-live-deploy-ci-tools': 'outside-by-policy:live-deployment',
