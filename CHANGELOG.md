@@ -22,6 +22,8 @@
 
 ### Fixed
 
+- The cached Genie CLI emits comment-free strict JSON for `.watchmanconfig`,
+  matching its source-side generator and Watchman's runtime parser.
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - Negative Buck artifact-import fixtures capture remote Nix builder logs, so
