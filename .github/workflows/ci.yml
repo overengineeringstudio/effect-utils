@@ -62,7 +62,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -452,7 +468,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-default-ref-policy-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -475,6 +493,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: default-ref-policy
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -532,7 +551,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -670,6 +705,10 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/nix-gc-race-retry.test.sh
           bash genie/ci-scripts/ci-measurement-comparison.test.sh
           bash genie/ci-scripts/native-dep-policy-audit.test.sh
+      - name: Native cache evidence regressions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun test genie/ci-scripts/buck2-cache-evidence.unit.test.ts genie/ci-scripts/buck2-cache-evidence.integration.test.ts genie/ci-scripts/buck2-action-evidence.integration.test.ts genie/ci-scripts/buck2-cache-warm99.unit.test.ts genie/ci-scripts/buck2-cache-warm99.integration.test.ts genie/ci-workflow/buck2-cache-evidence.unit.test.ts genie/ci-workflow/buck2-cache-posture.integration.test.ts'
       - name: Downstream flake-input regression
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -792,7 +831,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-quality-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -815,6 +856,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: quality
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -876,7 +918,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1048,7 +1106,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -1071,6 +1131,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1131,7 +1192,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1307,7 +1384,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-macos-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -1330,6 +1409,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-macos
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1389,7 +1469,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1561,7 +1657,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-playwright-utils-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -1584,6 +1682,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-playwright-utils
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1643,7 +1742,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1815,7 +1930,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-playwright-tui-react-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -1838,6 +1955,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-playwright-tui-react
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1897,7 +2015,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2069,7 +2203,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-cargo-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2092,6 +2228,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: cargo
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2151,7 +2288,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2330,7 +2483,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-weaver-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2353,6 +2508,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: weaver
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2380,6 +2536,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: pr-a-inert-buck
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2400,7 +2557,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -2539,7 +2712,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-pr-a-inert-buck-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2577,6 +2752,7 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: build-products
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2597,7 +2773,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -2641,7 +2833,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-build-products-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2679,6 +2873,7 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: publish-products
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2699,7 +2894,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - id: publication-scope
         name: Check publication scope
         run: |
@@ -2820,7 +3031,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-publish-products-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2857,6 +3070,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '0'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: trusted-buck2-remote-cache-proof
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2877,7 +3091,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -2953,7 +3183,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-trusted-buck2-remote-cache-proof-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -3056,6 +3288,7 @@ jobs:
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: source-shape
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3081,7 +3314,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: 'Measure source shape: effect-utils'
         shell: bash
         env:
@@ -3325,7 +3574,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-source-shape-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -3386,7 +3637,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3522,7 +3789,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-integration-notion-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -3545,6 +3814,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-integration-notion
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3599,7 +3869,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3730,7 +4016,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-integration-restate-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -3753,6 +4041,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-integration-restate
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3804,7 +4093,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3988,7 +4293,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-live-deploy-ci-tools-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -4011,6 +4318,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-live-deploy-ci-tools
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -4062,7 +4370,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -4270,7 +4594,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-deploy-storybooks-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -4293,6 +4619,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: deploy-storybooks
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

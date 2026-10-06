@@ -468,6 +468,22 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           ),
         },
         {
+          name: 'Native cache evidence regressions',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            [
+              'nix shell .#bun --command bun test',
+              'genie/ci-scripts/buck2-cache-evidence.unit.test.ts',
+              'genie/ci-scripts/buck2-cache-evidence.integration.test.ts',
+              'genie/ci-scripts/buck2-action-evidence.integration.test.ts',
+              'genie/ci-scripts/buck2-cache-warm99.unit.test.ts',
+              'genie/ci-scripts/buck2-cache-warm99.integration.test.ts',
+              'genie/ci-workflow/buck2-cache-evidence.unit.test.ts',
+              'genie/ci-workflow/buck2-cache-posture.integration.test.ts',
+            ].join(' '),
+          ),
+        },
+        {
           name: 'Downstream flake-input regression',
           env: githubTokenEnv(),
           run: withCiSourceRoot(
