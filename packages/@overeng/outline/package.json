@@ -29,7 +29,7 @@
     "react-aria-components": "1.21.1",
     "react-dom": "19.2.8",
     "typescript": "7.0.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
     "react": "^19.2.8",

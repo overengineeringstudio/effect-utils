@@ -29,7 +29,13 @@ export default packageJson(
     dependencies: { workspace: [geniePkg], external: catalog.pick('effect') },
     devDependencies: {
       workspace: [utilsDevPkg],
-      external: catalog.pick('@effect/vitest', '@types/node', 'typescript', 'vitest'),
+      external: catalog.pick(
+        '@effect/opentelemetry',
+        '@effect/vitest',
+        '@types/node',
+        'typescript',
+        'vitest',
+      ),
     },
   }),
 )

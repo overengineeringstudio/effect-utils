@@ -16,13 +16,10 @@ export const pipelineRunnerProfiles = [
 /** Static job identifiers declared by the generated CI workflow. */
 export const pipelineJobIds = [
   'default-ref-policy',
-  'typecheck',
-  'lint',
+  'quality',
   'test-playwright-utils',
   'test-playwright-tui-react',
   'test-megarepo-cold-gc',
-  'native-dependency-policy',
-  'bundle-smoke',
   'cargo',
   'weaver',
   'bootstrap-cold-proof',
@@ -62,11 +59,13 @@ export const pipelineJobIdentityResolver = (workflow: {
   const names = [
     ...workflow.jobIds.map((job) => ({
       name:
-        job === 'ci-measurements-report'
-          ? 'ci/measurements-report'
-          : job === 'main-source-shape'
-            ? 'main/source-shape'
-            : job,
+        job === 'quality'
+          ? 'pr/quality'
+          : job === 'ci-measurements-report'
+            ? 'ci/measurements-report'
+            : job === 'main-source-shape'
+              ? 'main/source-shape'
+              : job,
       identity: { job, dimensions: {} },
     })),
     ...workflow.runnerProfiles.map((runner) => ({
