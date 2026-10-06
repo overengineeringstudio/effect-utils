@@ -26,6 +26,7 @@ export default createGenieOutput({
       ')',
       '',
       'export_file(name = "service-smoke", src = "service-smoke.ts", visibility = ["PUBLIC"])',
+      'export_file(name = "wasm-scheduler-smoke", src = "wasm-scheduler-smoke.ts", visibility = ["PUBLIC"])',
       '',
     ].join('\n'),
 })

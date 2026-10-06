@@ -5,6 +5,7 @@ import {
   chunkProfiles,
   makeRuntime,
   type Instance,
+  type PanicObserver,
   type RustJob,
   type Runtime,
 } from './instance.ts'
@@ -21,12 +22,14 @@ const module = new WebAssembly.Module(
 interface FakeApi {
   readonly value: (input: number) => number
   readonly trap: () => void
+  readonly trapOnPoll: (gate?: Promise<void>) => Promise<never>
   readonly pending: () => Promise<never>
 }
 const fake = () => {
   let loads = 0
   let releases = 0
   let live = 0
+  const observers: PanicObserver[] = []
   const load = (): Instance<FakeApi> => {
     loads++
     const instance = new WebAssembly.Instance(module)
@@ -35,11 +38,28 @@ const fake = () => {
     if (typeof value !== 'function' || typeof trap !== 'function')
       throw new Error('Invalid test wasm exports')
     const pending = new Set<(cause: unknown) => void>()
+    let observer: PanicObserver | undefined
+    let scheduled = 0
     return {
       api: {
         value: (input) => Number(value(input)),
         trap: () => {
           trap()
+        },
+        trapOnPoll: (gate = Promise.resolve()) => {
+          scheduled++
+          live++
+          void gate.then(() => {
+            try {
+              trap()
+            } catch (cause) {
+              if (cause instanceof WebAssembly.RuntimeError && observer !== undefined)
+                observer(cause)
+              else throw cause
+            }
+          })
+          // Like future_to_promise, a poll trap never settles this result.
+          return new Promise<never>(() => undefined)
         },
         pending: () =>
           new Promise<never>((_, reject) => {
@@ -47,15 +67,22 @@ const fake = () => {
             live++
           }),
       },
+      observePanic: (onPanic) => {
+        observer = onPanic
+        observers.push(onPanic)
+        return () => {
+          observer = undefined
+        }
+      },
       release: () => {
         releases++
-        live -= pending.size
+        live -= pending.size + scheduled
         for (const reject of pending) reject(new Error('Instance released'))
         pending.clear()
       },
     }
   }
-  return { load, counts: () => ({ loads, releases, live }) }
+  return { load, observers, counts: () => ({ loads, releases, live }) }
 }
 
 const assertDefect = <T, TError>(exit: Exit.Exit<T, TError>) => {
@@ -106,6 +133,98 @@ describe('instance generations', () => {
         handles: 0,
         state: 'healthy',
       })
+    }),
+  )
+  for (const poll of ['first', 'after-host-await'] as const) {
+    it.effect(
+      `${poll} scheduler traps defect orphaned calls and siblings without leaking generations`,
+      () =>
+        Effect.gen(function* () {
+          const fixture = fake()
+          const runtime = yield* makeRuntime('test/scheduler', { load: fixture.load })
+          const gate = Promise.withResolvers<void>()
+          const waiting = yield* runtime
+            .call(({ api }) => api.pending())
+            .pipe(Effect.forkChild({ startImmediately: true }))
+          const panic = yield* runtime
+            .call(({ api }) => api.trapOnPoll(poll === 'first' ? undefined : gate.promise))
+            .pipe(Effect.forkChild({ startImmediately: true }))
+          if (poll === 'after-host-await') {
+            expect(yield* runtime.snapshot).toMatchObject({
+              generation: 1,
+              jobs: 2,
+              state: 'healthy',
+            })
+            gate.resolve()
+          }
+          assertDefect(yield* Fiber.await(panic))
+          assertDefect(yield* Fiber.await(waiting))
+          expect(yield* runtime.call(({ api }) => api.value(42))).toBe(42)
+          expect(fixture.counts()).toEqual({ loads: 2, releases: 1, live: 0 })
+          // Even a callback captured before unsubscription belongs to the old generation.
+          fixture.observers[0]!(new WebAssembly.RuntimeError('late old-generation trap'))
+          expect(yield* runtime.call(({ api }) => api.value(17))).toBe(17)
+          expect(yield* runtime.snapshot).toMatchObject({
+            generation: 2,
+            jobs: 0,
+            state: 'healthy',
+          })
+        }),
+    )
+  }
+
+  for (const mode of ['abortable', 'settle-only'] as const) {
+    it.effect(
+      `${mode} interruption does not wait forever for promises orphaned by a scheduler trap`,
+      () =>
+        Effect.gen(function* () {
+          const fixture = fake()
+          const runtime = yield* makeRuntime('test/scheduler-cancel', { load: fixture.load })
+          const gate = Promise.withResolvers<void>()
+          const cancelStarted = yield* Deferred.make<void>()
+          const waiting = yield* runtime
+            .call(({ api }): RustJob<never> => {
+              const result = api.trapOnPoll(gate.promise)
+              return mode === 'settle-only'
+                ? { _tag: 'RustJob', mode, result }
+                : {
+                    _tag: 'RustJob',
+                    mode,
+                    result,
+                    cancel: () => {
+                      Deferred.doneUnsafe(cancelStarted, Effect.void)
+                      return new Promise<void>(() => undefined)
+                    },
+                  }
+            })
+            .pipe(Effect.forkChild({ startImmediately: true }))
+          const interrupting = yield* Fiber.interrupt(waiting).pipe(
+            Effect.forkChild({ startImmediately: true }),
+          )
+          if (mode === 'abortable') yield* Deferred.await(cancelStarted)
+          expect((yield* runtime.snapshot).jobs).toBe(1)
+          gate.resolve()
+          yield* Fiber.join(interrupting)
+          expect(yield* runtime.call(({ api }) => api.value(42))).toBe(42)
+          expect(yield* runtime.snapshot).toMatchObject({
+            generation: 2,
+            jobs: 0,
+            state: 'healthy',
+          })
+        }),
+    )
+  }
+
+  it.effect('scheduler traps honor permanent retirement', () =>
+    Effect.gen(function* () {
+      const fixture = fake()
+      const runtime = yield* makeRuntime('test/scheduler-retire', {
+        load: fixture.load,
+        panicPolicy: 'retire',
+      })
+      assertDefect(yield* Effect.exit(runtime.call(({ api }) => api.trapOnPoll())))
+      assertDefect(yield* Effect.exit(runtime.call(({ api }) => api.value(42))))
+      expect(fixture.counts()).toEqual({ loads: 1, releases: 1, live: 0 })
     }),
   )
 

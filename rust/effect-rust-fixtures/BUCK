@@ -2,7 +2,7 @@
 # Source: BUCK.genie.ts
 
 # Projection source: rust/effect-rust-fixtures/BUCK.genie.ts
-# Semantic fingerprint: sha256:708c99b1d2fde91e98589977092e481ac7a4527e9d551bbc5e244505e436cc97
+# Semantic fingerprint: sha256:3a3e3d7b1c233c17c18392376586e39862468a1e01fd8c9f9c92b7034d9099a5
 # Semantic inputs: rust/effect-rust-fixtures/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -13,3 +13,4 @@ export_file(
 )
 
 export_file(name = "service-smoke", src = "service-smoke.ts", visibility = ["PUBLIC"])
+export_file(name = "wasm-scheduler-smoke", src = "wasm-scheduler-smoke.ts", visibility = ["PUBLIC"])

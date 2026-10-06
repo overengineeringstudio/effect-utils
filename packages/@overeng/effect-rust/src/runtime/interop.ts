@@ -25,6 +25,7 @@ export {
   type Invocation,
   type OutputHandle,
   type PanicPolicy,
+  type PanicObserver,
   type Runtime,
   type RustJob,
   type Start,

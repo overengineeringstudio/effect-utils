@@ -406,11 +406,29 @@ for (const entry of exportEntries) {
         ? 'outputStream'
         : 'call'
   const resultCodec = codec({ entry, position: '$returns' })
+  // Validate the original number before wasm-bindgen/napi can narrow the ABI.
+  // Reject negative zero, just as the canonical decimal integer boundary does.
+  const scalarChecks = entry.args.flatMap((arg) => {
+    const width = /^(u|i)(8|16|32)$/.exec(arg.type)
+    if (width === null) return []
+    const bits = Number(width[2])
+    const signed = width[1] === 'i'
+    const minimum = signed === true ? -(2 ** (bits - 1)) : 0
+    const maximum = 2 ** (signed === true ? bits - 1 : bits) - 1
+    return [
+      `if (!Number.isInteger(${arg.name}) || Object.is(${arg.name}, -0) || ${arg.name} < ${minimum} || ${arg.name} > ${maximum}) throw new Error(${JSON.stringify(`RUST_INPUT:${arg.name} must be a canonical ${arg.type} integer`)})`,
+    ]
+  })
   const start =
     sources.length === 0
-      ? [`runtime.${method}(({ api }) => api.${entry.name}(${values}), ${callOptions})`]
+      ? [
+          scalarChecks.length === 0
+            ? `runtime.${method}(({ api }) => api.${entry.name}(${values}), ${callOptions})`
+            : `runtime.${method}(({ api }) => { ${scalarChecks.join('; ')}; return api.${entry.name}(${values}) }, ${callOptions})`,
+        ]
       : [
           `runtime.call(({ api, signal }): Interop.RustJob<${apiType({ entry, position: '$returns', wire: entry.returns })}> => {`,
+          ...scalarChecks.map((check) => `    ${check}`),
           '    const pending = new Set<Promise<Uint8Array>>()',
           ...sources.flatMap((sourceArgument) => {
             const mode =
@@ -529,7 +547,7 @@ if (contracts !== undefined)
 if (wasm !== undefined) {
   // Products are copied, not linked: the typed declarations below replace the products' untyped ones.
   await cp(wasm, join(output, 'wasm'), { recursive: true, dereference: true })
-  const instance = `{ api: ${service}Api; release(): void }`
+  const instance = `{ api: ${service}Api; release(): void; observePanic(observer: (cause: unknown) => void): () => void }`
   await writeFile(
     join(output, 'wasm', 'web', 'load.d.ts'),
     `import type { ${service}Api } from '../../service.ts';\nexport declare const load: (source?: WebAssembly.Module | BufferSource) => Promise<${instance}>;\n`,

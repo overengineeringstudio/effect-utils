@@ -55,6 +55,41 @@ describe('dedicated worker protocol', () => {
     }),
   )
 
+  it.effect('releases request-owned resources before publishing successful responses', () =>
+    Effect.gen(function* () {
+      const pair = ports()
+      let live = 0
+      let finalized = 0
+      const schemas = { request: Schema.Int, response: Schema.Int, error: Schema.Never }
+      yield* serveWorker(pair.server, schemas, (value) =>
+        Effect.gen(function* () {
+          yield* Effect.acquireRelease(
+            Effect.sync(() => {
+              live++
+            }),
+            () =>
+              Effect.sync(() => {
+                live--
+              }),
+          )
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              finalized++
+            }),
+          )
+          return value
+        }),
+      )
+      const client = yield* makeRpcClient(pair.client, schemas)
+      expect(yield* client.request(12)).toBe(12)
+      expect(live).toBe(0)
+      expect(finalized).toBe(1)
+      expect(yield* client.request(34)).toBe(34)
+      expect(live).toBe(0)
+      expect(finalized).toBe(2)
+    }),
+  )
+
   it.effect('acknowledges cancellation only after the remote finalizer quiesces', () =>
     Effect.gen(function* () {
       const pair = ports()
@@ -76,11 +111,12 @@ describe('dedicated worker protocol', () => {
                 }),
               ),
             ),
-        ).pipe(Effect.andThen(Effect.never), Effect.scoped),
+        ).pipe(Effect.andThen(Effect.never)),
       )
       const client = yield* makeRpcClient(pair.client, schemas)
       const request = yield* client.request(12).pipe(Effect.forkChild)
       yield* Deferred.await(started)
+      yield* Effect.addFinalizer(() => Deferred.succeed(finish, undefined))
       let interrupted = false
       const cancellation = yield* Fiber.interrupt(request).pipe(
         Effect.tap(() =>

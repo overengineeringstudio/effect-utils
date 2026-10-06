@@ -46,6 +46,16 @@ impl Backend {
     }
     fn decode(self, name: &syn::Ident, wire: &Wire, export: &Export) -> Tokens {
         match wire {
+            Wire::Scalar(ty) if super::scalar_integer(ty) => quote! {
+                // Admit the original JS number before either backend narrows its ABI value.
+                // Negative zero is noncanonical, matching decimal wide-integer inputs.
+                if !#name.is_finite() || #name.fract() != 0.0
+                    || (#name == 0.0 && #name.is_sign_negative())
+                    || #name < f64::from(#ty::MIN) || #name > f64::from(#ty::MAX) {
+                    return Err(edge_error(concat!("RUST_INPUT:expected a canonical ", stringify!(#ty), " integer")));
+                }
+                let #name = #name as #ty;
+            },
             Wire::Scalar(ty) if self == Self::Napi && super::type_name(ty) == "f32" => quote! {
                 let #name = #name as f32;
                 if !#name.is_finite() {
@@ -222,8 +232,9 @@ fn arguments(export: &Export, backend: Backend) -> (Vec<Tokens>, Vec<Tokens>, Ve
     let mut decode = Vec::new();
     let mut calls = Vec::new();
     for (name, wire) in &export.args {
-        let ty = if backend == Backend::Napi
-            && matches!(wire, Wire::Scalar(ty) if super::type_name(ty)=="f32")
+        let ty = if matches!(wire, Wire::Scalar(ty) if super::scalar_integer(ty))
+            || (backend == Backend::Napi
+                && matches!(wire, Wire::Scalar(ty) if super::type_name(ty)=="f32"))
         {
             quote!(f64)
         } else {

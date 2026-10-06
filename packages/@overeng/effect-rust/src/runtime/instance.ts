@@ -9,10 +9,15 @@ export type ChunkProfile = 'latency' | 'bulk'
 /** Maximum per-operation byte sizes for each chunk profile. */
 export const chunkProfiles = { latency: 64 * 1024, bulk: 256 * 1024 } as const
 
+/** Observes traps raised by an instance's asynchronous scheduler callbacks. */
+export type PanicObserver = (cause: unknown) => void
+
 /** The factory must close over fresh glue state as well as a fresh instance. */
 export interface Instance<TApi> {
   readonly api: TApi
   readonly release: () => void | PromiseLike<void>
+  /** Bindgen glue installs this observer at its generation-local callback boundary. */
+  readonly observePanic?: (observer: PanicObserver) => () => void
 }
 /** Constructs fresh glue state and an independently releasable Rust instance. */
 export type InstanceFactory<TApi> = () => Instance<TApi> | PromiseLike<Instance<TApi>>
@@ -137,6 +142,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
   const isPanic = options.isPanic ?? ((cause: unknown) => cause instanceof WebAssembly.RuntimeError)
   const acquire = async (): Promise<Generation<TApi>> => {
     const instance = await options.load()
+    let unobserve: (() => void) | undefined
     let releasing: Promise<void> | undefined
     const generation: Generation<TApi> = {
       id: ++counter,
@@ -144,13 +150,21 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       jobs: new Set(),
       handles: new Set(),
       state: 'healthy',
-      release: () => (releasing ??= Promise.resolve().then(() => instance.release())),
+      release: () =>
+        (releasing ??= Promise.resolve().then(() => {
+          unobserve?.()
+          unobserve = undefined
+          return instance.release()
+        })),
     }
     if (closed === true) {
       await generation.release()
       throw new Error('Rust runtime scope is closed')
     }
     current = generation
+    unobserve = instance.observePanic?.((defect) => {
+      if (isPanic(defect) === true) poison({ generation, defect })
+    })
     return generation
   }
   // Layer.effect retains this acquisition's Scope; no eager global initialization.
@@ -178,14 +192,6 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       await generation.release()
     }
   })
-  yield* Effect.acquireRelease(
-    Effect.tryPromise({
-      try: acquire,
-      catch: (cause) =>
-        new Init({ runtime: runtimeName, message: 'Unable to construct Rust instance', cause }),
-    }),
-    () => release,
-  )
 
   const poison = ({
     generation,
@@ -201,8 +207,6 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     // Never call Rust handle destructors through poisoned borrows.
     generation.handles.clear()
     const jobs = options.panicBoundary === 'native' ? Array.from(generation.jobs) : undefined
-    for (const job of generation.jobs) job.fail(defect)
-    generation.jobs.clear()
     const rebuild = async () => {
       if (jobs !== undefined) {
         const stopped = await Promise.allSettled(jobs.map((job) => job.stop()))
@@ -225,7 +229,19 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       },
     )
     void transition.catch(() => undefined)
+    // Failing a job can synchronously resume an Effect that calls again.
+    // Publish retirement/rebuild before exposing that completion.
+    for (const job of generation.jobs) job.fail(defect)
+    generation.jobs.clear()
   }
+  yield* Effect.acquireRelease(
+    Effect.tryPromise({
+      try: acquire,
+      catch: (cause) =>
+        new Init({ runtime: runtimeName, message: 'Unable to construct Rust instance', cause }),
+    }),
+    () => release,
+  )
 
   const generationEffect = Effect.suspend(() => {
     if (closed === true) return Effect.die(new Error('Rust runtime scope is closed'))
@@ -254,6 +270,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       let operation: RustJob<T> | undefined
       let settlement: Promise<void> = Promise.resolve()
       let stopping: Promise<void> | undefined
+      let wakeStopping: (() => void) | undefined
       const finish = (effect: Effect.Effect<T, TError>) => {
         if (active === false) return
         active = false
@@ -263,6 +280,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       const job: Pending = {
         fail: (defect) => {
           controller.abort()
+          wakeStopping?.()
           finish(Effect.die(defect))
         },
         stop: () =>
@@ -272,8 +290,18 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
               await generation.release()
               return
             }
-            if (operation?.mode === 'abortable') await operation.cancel()
-            else await settlement
+            const retirement = Promise.withResolvers<void>()
+            wakeStopping = retirement.resolve
+            const acknowledgment = operation?.mode === 'abortable' ? operation.cancel() : settlement
+            if (options.panicBoundary === 'native') await acknowledgment
+            else {
+              // Cancellation can already be waiting when the scheduler traps,
+              // leaving both result and cancel promises permanently unsettled.
+              await Promise.race([
+                acknowledgment,
+                retirement.promise.then(() => generation.release()),
+              ])
+            }
           })()),
       }
       generation.jobs.add(job)

@@ -37,6 +37,36 @@ pub fn echo_f32(value: f32) -> f32 {
     value
 }
 
+#[effect_rust::export(name = "echoI8")]
+pub fn echo_i8(value: i8) -> i8 {
+    value
+}
+
+#[effect_rust::export(name = "echoU8")]
+pub fn echo_u8(value: u8) -> u8 {
+    value
+}
+
+#[effect_rust::export(name = "echoI16")]
+pub fn echo_i16(value: i16) -> i16 {
+    value
+}
+
+#[effect_rust::export(name = "echoU16")]
+pub fn echo_u16(value: u16) -> u16 {
+    value
+}
+
+#[effect_rust::export(name = "echoI32")]
+pub fn echo_i32(value: i32) -> i32 {
+    value
+}
+
+#[effect_rust::export(name = "echoU32")]
+pub fn echo_u32(value: u32) -> u32 {
+    value
+}
+
 static LIVE_JOBS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 struct LiveJob;
@@ -147,4 +177,20 @@ pub fn sum_rows(rows: &[Sample]) -> u64 {
 #[effect_rust::export(name = "panicTest")]
 pub fn panic_test() -> i32 {
     panic!("fixture panic boundary")
+}
+
+#[effect_rust::export(async, name = "panicFirstPoll")]
+pub async fn panic_first_poll() -> u32 {
+    panic!("fixture panic on first asynchronous poll")
+}
+
+#[effect_rust::export(async, name = "panicAfterHostAwait")]
+pub async fn panic_after_host_await(
+    source: effect_rust::host::Source<effect_rust::host::SettleOnly>,
+) -> u32 {
+    source
+        .read("/panic")
+        .await
+        .expect("fixture host read succeeds before panic");
+    panic!("fixture panic after host await")
 }

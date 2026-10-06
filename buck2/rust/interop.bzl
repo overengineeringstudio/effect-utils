@@ -368,6 +368,7 @@ def _service_smoke_impl(ctx):
     tree = ctx.actions.copied_dir("fixture", {
         "service": service,
         "service-smoke.ts": ctx.attrs.script,
+        "wasm-scheduler-smoke.ts": ctx.attrs.scheduler_script,
         "vectors.json": ctx.attrs.vectors,
         "node_modules/effect": dependencies.node_modules.project("effect"),
         "node_modules/@overeng/effect-rust/package.json": runtime_manifest,
@@ -393,6 +394,7 @@ rust_interop_service_smoke = cache_guarded_rule(impl = _service_smoke_impl, attr
     "runtime_dist": attrs.dep(default = "//packages/@overeng/effect-rust:dist"),
     "runtime": attrs.enum(["node", "bun"], default = "node"),
     "script": attrs.source(),
+    "scheduler_script": attrs.source(),
     "vectors": attrs.source(),
     "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
     "_node": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:tool_node", providers = [BuckSupportToolInfo])),

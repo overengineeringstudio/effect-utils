@@ -22,6 +22,12 @@
 
 ### Fixed
 
+- Effect/Rust Worker handlers own request-local scopes, releasing resources before
+  successful responses and cancellation acknowledgments.
+- Async wasm scheduler traps poison their lexical generation, defect pending calls,
+  and unblock interrupted orphaned promises without affecting another instance.
+- Scalar integer wasm/native arguments reject nonfinite, fractional, out-of-width
+  and negative-zero inputs before backend ABI narrowing.
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - Cache-less pinned Buck invocations select local-only posture before validating

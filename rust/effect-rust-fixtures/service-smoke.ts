@@ -12,6 +12,8 @@ import { Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Stream
 
 import { ContractJson, Interop } from '@overeng/effect-rust'
 
+import { wasmSchedulerSmoke } from './wasm-scheduler-smoke.ts'
+
 const [directory, vectorsPath] = process.argv.slice(2)
 assert.ok(
   directory !== undefined && vectorsPath !== undefined,
@@ -70,9 +72,33 @@ const order = {
   placedAt: DateTime.makeUnsafe('2026-10-02T12:00:00.500Z'),
   note: 'gift',
 }
+const scalarCases = [
+  ['echoI8', -128, 127],
+  ['echoU8', 0, 255],
+  ['echoI16', -32768, 32767],
+  ['echoU16', 0, 65535],
+  ['echoI32', -2147483648, 2147483647],
+  ['echoU32', 0, 4294967295],
+] as const
 const program = Effect.scoped(
   Effect.gen(function* () {
     const fixture = yield* EffectRustFixture
+    for (const [operation, minimum, maximum] of scalarCases) {
+      for (const value of [minimum, maximum, 0]) {
+        assert.equal(yield* fixture[operation](value), value, `${operation} accepts ${value}`)
+      }
+      for (const value of [minimum - 1, maximum + 1, 4294967297, 1.5, -0.5, NaN, Infinity, -Infinity, -0]) {
+        const error = yield* fixture[operation](value).pipe(Effect.flip)
+        assert.ok(error instanceof Interop.Input, `${operation} rejects ${value} as Input`)
+        assert.equal(error.operation, operation)
+      }
+    }
+    for (const request of [fixture.checkedDivide(10, 4294967297), fixture.add(1.5, 0)]) {
+      assert.ok((yield* request.pipe(Effect.flip)) instanceof Interop.Input)
+    }
+    assert.equal(yield* fixture.checkedDivide(10, 2), 5)
+    assert.equal(yield* fixture.add(1, 2), 3)
+    assert.equal(yield* fixture.echoF32(1.1), Math.fround(1.1))
     assert.equal(
       Effect.runSync(
         fixture.sumJsonIntegers({
@@ -254,6 +280,40 @@ for (const [name, layer] of [
   await scheduler.yield()
   console.log(`${name}: quoteOrder total ${total}`)
 }
+
+// Bypass the generated service checks: direct backend exports must validate too.
+for (const backend of ['wasm', 'native'] as const) {
+  // eslint-disable-next-line no-await-in-loop -- Each backend instance is released before the next is loaded.
+  const instance = await load[backend][runtime]()
+  try {
+    for (const [operation, minimum, maximum] of scalarCases) {
+      for (const value of [minimum, maximum, 0]) {
+        assert.equal(instance.api[operation](value), value, `${backend} ${operation} accepts ${value}`)
+      }
+      for (const value of [minimum - 1, maximum + 1, 4294967297, 1.5, -0.5, NaN, Infinity, -Infinity, -0]) {
+        assert.throws(
+          () => instance.api[operation](value),
+          (cause: unknown) => cause instanceof Error && cause.message.startsWith('RUST_INPUT:'),
+          `${backend} ${operation} rejects ${value} before ABI narrowing`,
+        )
+      }
+    }
+    assert.throws(
+      () => instance.api.checkedDivide(10, 4294967297),
+      /^Error: RUST_INPUT:/,
+    )
+    assert.throws(() => instance.api.add(1.5, 0), /^Error: RUST_INPUT:/)
+    assert.equal(instance.api.echoF32(1.1), Math.fround(1.1))
+  } finally {
+    // eslint-disable-next-line no-await-in-loop -- Release the current backend before loading another.
+    await instance.release()
+  }
+}
+
+await Effect.runPromise(
+  wasmSchedulerSmoke({ runtime, load: load.wasm[runtime] }).pipe(Effect.timeout('10 seconds')),
+)
+console.log(`wasm ${runtime}: first-poll/host-await traps, sibling defects, retirement and rebuild verified`)
 
 interface RetirementApi {
   readonly pendingJob: () => Interop.RustJob<number>

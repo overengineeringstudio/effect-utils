@@ -165,6 +165,7 @@ export const serveWorker = Effect.fn('effect-rust.serveWorker')(function* <
           Schema.decodeUnknownEffect(schemas.request)(message.payload).pipe(
             Effect.orDie,
             Effect.flatMap(handle),
+            Effect.scoped,
           ),
         )
         if (result._tag === 'Success') {

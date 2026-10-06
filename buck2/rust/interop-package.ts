@@ -220,14 +220,46 @@ if (kind === 'napi') {
     'new FinalizationRegistry(',
     'new InstanceFinalizationRegistry(',
   )
+  // Futures are polled through bindgen closures on later scheduler turns, not
+  // through the export's synchronous call or its (potentially orphaned) Promise.
+  // Guard the callback and its destructor together, and keep the observer inside
+  // the lexical instance. No global scheduler or Promise monkeypatch is needed.
+  const closureCount = [...factoryBody.matchAll(/^function make(?:Mut)?Closure\(/gm)].length
+  const callbackEntry = 'const real = (...args) => {'
+  const callbackDrop = 'real._wbg_cb_unref = () => {'
+  const callbackCalls = [
+    'return f(state.a, state.b, ...args);',
+    'return f(a, state.b, ...args);',
+  ]
+  if (
+    (closureCount === 0 && manifestExports.some((entry) => entry.mode === 'async')) ||
+    factoryBody.split(callbackEntry).length - 1 !== closureCount ||
+    factoryBody.split(callbackDrop).length - 1 !== closureCount ||
+    callbackCalls.reduce(
+      (count, call) => count + factoryBody.split(`${call}\n        } finally {`).length - 1,
+      0,
+    ) !== closureCount
+  )
+    throw new Error('Pinned bindgen scheduler callback contract changed')
+  factoryBody = factoryBody
+    .replaceAll(callbackEntry, `${callbackEntry}\n        if (retired) return;`)
+    .replaceAll(callbackDrop, `${callbackDrop}\n        if (retired) return;`)
+  for (const call of callbackCalls) {
+    factoryBody = factoryBody.replaceAll(
+      `${call}\n        } finally {`,
+      `${call}\n        } catch (cause) {\n            if (!observeSchedulerPanic(cause)) throw cause;\n        } finally {`,
+    )
+  }
   await writeFile(
     join(output, 'web', 'factory.js'),
     [
       'export const create = () => {',
       'let retired = false;',
+      'let panicObserver;',
+      'const observeSchedulerPanic = cause => { if (!(cause instanceof WebAssembly.RuntimeError) || panicObserver === undefined) return false; retired = true; panicObserver(cause); return true; };',
       'const InstanceFinalizationRegistry = typeof FinalizationRegistry === "undefined" ? undefined : class extends FinalizationRegistry { constructor(callback) { super(value => { if (retired === false) callback(value); }); } };',
       factoryBody,
-      `return { api: { ${factoryExports.join(', ')} }, init: __wbg_init, initSync, release() { retired = true; wasm = undefined; wasmInstance = undefined; wasmModule = undefined; } };`,
+      `return { api: { ${factoryExports.join(', ')} }, init: __wbg_init, initSync, observePanic(observer) { panicObserver = observer; return () => { if (panicObserver === observer) panicObserver = undefined; }; }, release() { retired = true; panicObserver = undefined; wasm = undefined; wasmInstance = undefined; wasmModule = undefined; } };`,
       '};',
       '',
     ].join('\n'),
@@ -237,14 +269,14 @@ if (kind === 'napi') {
     [
       "import { create } from './factory.js';",
       `const bytes = Uint8Array.from(atob('${bytes}'), c => c.charCodeAt(0));`,
-      'export const load = async (source = bytes) => { const instance = create(); await instance.init({ module_or_path: source }); return { api: instance.api, release: instance.release }; };',
+      'export const load = async (source = bytes) => { const instance = create(); await instance.init({ module_or_path: source }); return { api: instance.api, release: instance.release, observePanic: instance.observePanic }; };',
       '',
     ].join('\n'),
   )
   // Untyped on purpose: the generated service package (interop-service.ts) owns the typed API.
   await writeFile(
     join(output, 'web', 'load.d.ts'),
-    'export declare const load: (source?: WebAssembly.Module | BufferSource) => Promise<{ api: Readonly<Record<string, unknown>>; release(): void }>;\n',
+    'export declare const load: (source?: WebAssembly.Module | BufferSource) => Promise<{ api: Readonly<Record<string, unknown>>; release(): void; observePanic(observer: (cause: unknown) => void): () => void }>;\n',
   )
   await writeFile(
     join(output, 'web', 'inline.js'),
@@ -301,13 +333,13 @@ if (kind === 'napi') {
     [
       `import module from './web/${name}_bg.wasm';`,
       "import { create } from './web/factory.js';",
-      'export const load = () => { const instance = create(); instance.initSync({ module }); return { api: instance.api, release: instance.release }; };',
+      'export const load = () => { const instance = create(); instance.initSync({ module }); return { api: instance.api, release: instance.release, observePanic: instance.observePanic }; };',
       '',
     ].join('\n'),
   )
   await writeFile(
     join(output, 'worker-load.d.ts'),
-    'export declare const load: () => { api: Readonly<Record<string, unknown>>; release(): void };\n',
+    'export declare const load: () => { api: Readonly<Record<string, unknown>>; release(): void; observePanic(observer: (cause: unknown) => void): () => void };\n',
   )
   await writeFile(
     join(output, 'package.json'),
