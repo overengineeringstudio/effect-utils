@@ -1936,7 +1936,7 @@ describe('canonical member mutation guard', () => {
 
   for (const canonicalWorkspace of [false, true]) {
     it.effect(
-      `refuses mount writes through a canonical repos directory alias from a ${canonicalWorkspace ? 'canonical' : 'standalone'} workspace even with lock sync off`,
+      `refuses mount writes through a foreign repos alias (canonical: ${canonicalWorkspace})`,
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
@@ -1947,7 +1947,9 @@ describe('canonical member mutation guard', () => {
             canonicalWorkspace === true
               ? EffectPath.ops.join(
                   tempRoot,
-                  EffectPath.unsafe.relativeDir('store/github.com/acme/owned/refs/heads/team/feature/'),
+                  EffectPath.unsafe.relativeDir(
+                    'store/github.com/acme/owned/refs/heads/team/feature/',
+                  ),
                 )
               : tempRoot
           yield* fs.makeDirectory(workspacePath, { recursive: true })
