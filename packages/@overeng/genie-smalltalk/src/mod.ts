@@ -261,15 +261,115 @@ export const AgentSchema = AgentSchemaFields.pipe(
   Schema.annotate({ identifier: 'St.Agent' }),
 )
 
-/** A step gate on an exit code or subject state. */
-export const GateSchema = Schema.Struct({
-  name: Text,
-  field: Schema.Struct({
-    kind: Schema.Literals(['exit_code', 'state']),
-    ref: Text,
-    is: Schema.Union([Schema.String, Schema.Finite]),
+const GateName = Text.pipe(
+  Schema.refine((s): s is string => new TextEncoder().encode(s).length <= 160),
+)
+const validName = ({
+  value: s,
+  full,
+}: {
+  readonly value: string
+  readonly full: boolean
+}): boolean =>
+  s.length > 0 &&
+  s.length <= 512 &&
+  /^[A-Za-z0-9][A-Za-z0-9._@/-]*$/u.test(s) &&
+  s.split('/').every((part) => part !== '' && part !== '..') &&
+  (!full || s.includes('/'))
+const validSubject = (s: string): boolean => {
+  if (/^\$\{[A-Za-z0-9_.]*\}$/u.test(s) === true) return true
+  const concrete = s.replace(/\$\{[^}]*\}/gu, 'x')
+  if (concrete.includes('${') === true) return false
+  if (concrete.startsWith('file/') === true) {
+    const colon = concrete.indexOf(':')
+    const host = concrete.slice(5, colon)
+    const path = concrete.slice(colon + 1)
+    return (
+      colon > 5 &&
+      validName({ value: host, full: false }) &&
+      path.startsWith('/') &&
+      !path.includes('/../') &&
+      !path.endsWith('/..')
+    )
+  }
+  return validName({ value: concrete, full: true })
+}
+const FullSubject = Text.pipe(Schema.refine((s): s is string => validSubject(s)))
+const Goals = Schema.Array(Text).pipe(
+  Schema.refine((goals): goals is typeof goals => goals.length <= 3),
+)
+const NonNegativeDuration = Schema.Union([
+  Duration,
+  Schema.Literals(['0ms', '0s', '0m', '0h', '0d']),
+])
+
+/** Graph predicates and built-in mechanical gates accepted by st. */
+export const GateSchema = Schema.Union([
+  Schema.Struct({ name: GateName, kind: Schema.Literal('exists'), subject: FullSubject }),
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literal('empty'),
+    subject: FullSubject.pipe(Schema.refine((s): s is string => s.startsWith('mission-run/'))),
   }),
-}).annotate({ identifier: 'St.Gate' })
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literals(['has', 'lacks']),
+    subject: FullSubject.pipe(Schema.refine((s): s is string => /^(file|doc|message)\//u.test(s))),
+    text: Schema.String,
+  }),
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literal('field'),
+    path: Text.pipe(
+      Schema.refine((s): s is string =>
+        /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)*$/u.test(s),
+      ),
+    ),
+    subject: FullSubject,
+    operator: Schema.Literals(['is', 'starts-with', 'contains']),
+    value: Schema.Union([
+      Schema.String,
+      Schema.Finite.pipe(
+        Schema.refine((n): n is number => !Number.isInteger(n) || Number.isSafeInteger(n)),
+      ),
+      Schema.Boolean,
+    ]),
+  }),
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literal('merged'),
+    locator: Text.pipe(
+      Schema.refine(
+        (s): s is string => s.includes('${') || /^[^/#]+\/[^/#]+#[1-9][0-9]*$/u.test(s),
+      ),
+    ),
+    host: Schema.optionalKey(Text),
+    workspace: Schema.optionalKey(Text),
+    timeLimit: Schema.optionalKey(Duration),
+  }),
+  Schema.Struct({
+    name: GateName,
+    kind: Schema.Literal('ci-passed'),
+    check: Text,
+    repo: Text,
+    ref: Schema.Union([Schema.Struct({ commit: Text }), Schema.Struct({ branch: Text })]),
+    host: Schema.optionalKey(Text),
+    workspace: Schema.optionalKey(Text),
+    timeLimit: Schema.optionalKey(Duration),
+  }),
+]).annotate({ identifier: 'St.Gate' })
+
+const Gates = Schema.Array(GateSchema).pipe(
+  Schema.refine(
+    (gates): gates is typeof gates => new Set(gates.map((g) => g.name)).size === gates.length,
+  ),
+)
+
+/** Retry attempts include the initial attempt; zero backoff is allowed. */
+export const RetrySchema = Schema.Struct({
+  attempts: Schema.Int.pipe(Schema.refine((n): n is number => n >= 1 && n <= 100)),
+  backoff: Schema.optionalKey(NonNegativeDuration),
+}).annotate({ identifier: 'St.Retry' })
 
 /** An agentless command a step runs. */
 export const ExecSchema = Schema.Struct({
@@ -283,7 +383,7 @@ export const ExecSchema = Schema.Struct({
 /** A dependency on another step reaching a state. */
 export const DependsOnSchema = Schema.Struct({
   step: LocalId,
-  state: Schema.Literal('completed'),
+  state: Schema.Literals(['completed', 'failed', 'terminal']),
 }).annotate({
   identifier: 'St.DependsOn',
 })
@@ -294,10 +394,11 @@ export const StepSchema = Schema.Struct({
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(SubjectId),
-  dependsOn: Schema.optionalKey(DependsOnSchema),
-  goal: Schema.optionalKey(Text),
+  dependsOn: Schema.optionalKey(Schema.NonEmptyArray(DependsOnSchema)),
+  goals: Schema.optionalKey(Goals),
   exec: Schema.optionalKey(ExecSchema),
-  gate: Schema.optionalKey(GateSchema),
+  gates: Schema.optionalKey(Gates),
+  retry: Schema.optionalKey(RetrySchema),
 }).pipe(
   Schema.refine(
     (s): s is typeof s => (s.agentless === true && s.assignedTo !== undefined) === false,
@@ -328,7 +429,8 @@ export const MissionSchema = Schema.Struct({
   id: MissionId,
   state: Schema.Literal('ready'),
   timeout: Schema.optionalKey(Duration),
-  goal: Text,
+  goals: Goals.pipe(Schema.refine((goals): goals is typeof goals => goals.length > 0)),
+  gates: Schema.optionalKey(Gates),
   constraints: Schema.optionalKey(Schema.Array(Text)),
   steps: Schema.Array(StepSchema),
   schedule: Schema.optionalKey(ScheduleSchema),
@@ -337,9 +439,7 @@ export const MissionSchema = Schema.Struct({
     (m): m is typeof m =>
       m.steps.length > 0 &&
       new Set(m.steps.map((s) => s.id)).size === m.steps.length &&
-      m.steps.every(
-        (s) => s.dependsOn === undefined || m.steps.some((p) => p.id === s.dependsOn?.step),
-      ),
+      m.steps.every((s) => (s.dependsOn ?? []).every((d) => m.steps.some((p) => p.id === d.step))),
     { message: 'mission needs unique steps and existing dependencies' },
   ),
   Schema.annotate({ identifier: 'St.Mission' }),
@@ -406,6 +506,45 @@ export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
   })
 }
 
+/** Decodes and lowers a gate without changing its predicate or built-in kind. */
+export const gate = (input: typeof GateSchema.Encoded): Node => {
+  const g = decode({ schema: GateSchema, input })
+  let predicate: Node
+  switch (g.kind) {
+    case 'exists':
+    case 'empty':
+      predicate = child({ name: g.kind, value: g.subject })
+      break
+    case 'has':
+    case 'lacks':
+      predicate = node({ name: g.kind, args: [g.subject, g.text] })
+      break
+    case 'field':
+      predicate = node({ name: 'field', args: [g.path, g.subject, g.operator, g.value] })
+      break
+    case 'merged':
+      predicate = child({ name: 'merged', value: g.locator })
+      break
+    case 'ci-passed':
+      predicate = node({ name: 'ci-passed', args: [g.check], props: { repo: g.repo, ...g.ref } })
+      break
+  }
+  return node({
+    name: 'gate',
+    args: [g.name],
+    children: [
+      predicate,
+      ...(g.kind === 'merged' || g.kind === 'ci-passed'
+        ? [
+            ...optionalChild({ name: 'host', value: g.host }),
+            ...optionalChild({ name: 'workspace', value: g.workspace }),
+            ...optionalChild({ name: 'time-limit', value: g.timeLimit }),
+          ]
+        : []),
+    ],
+  })
+}
+
 /** Decodes and renders a step node. */
 export const step = (input: typeof StepSchema.Encoded): Node => {
   const s = decode({ schema: StepSchema, input })
@@ -416,11 +555,11 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     children.push(
       block({
         name: 'depends-on',
-        children: [node({ name: 'step', args: [s.dependsOn.step, s.dependsOn.state] })],
+        children: s.dependsOn.map((d) => node({ name: 'step', args: [d.step, d.state] })),
       }),
     )
   }
-  if (s.goal !== undefined) children.push(child({ name: 'goal', value: s.goal }))
+  for (const goal of s.goals ?? []) children.push(child({ name: 'goal', value: goal }))
   if (s.exec !== undefined) {
     children.push(
       node({
@@ -435,16 +574,17 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
       }),
     )
   }
-  if (s.gate !== undefined) {
-    const field = s.gate.field
+  children.push(...(s.gates ?? []).map(gate))
+  if (s.retry !== undefined)
     children.push(
-      node({
-        name: 'gate',
-        args: [s.gate.name],
-        children: [node({ name: 'field', args: [field.kind, field.ref, 'is', field.is] })],
+      block({
+        name: 'retry',
+        children: [
+          child({ name: 'attempts', value: s.retry.attempts }),
+          ...optionalChild({ name: 'backoff', value: s.retry.backoff }),
+        ],
       }),
     )
-  }
   return node({
     name: 'step',
     args: [s.id],
@@ -461,7 +601,8 @@ export const mission = (input: typeof MissionSchema.Encoded): Node => {
     args: [m.id],
     props: { state: m.state, ...(m.timeout === undefined ? {} : { timeout: m.timeout }) },
     children: [
-      child({ name: 'goal', value: m.goal }),
+      ...m.goals.map((goal) => child({ name: 'goal', value: goal })),
+      ...(m.gates ?? []).map(gate),
       ...(m.constraints ?? []).map((constraint) =>
         child({ name: 'constraint', value: constraint }),
       ),

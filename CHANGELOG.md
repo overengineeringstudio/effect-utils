@@ -4,6 +4,11 @@
 
 ### Added
 
+- `@overeng/genie-smalltalk` models up to three mission/step goals, multiple
+  predicate and built-in gates, completed/failed/terminal dependencies, and
+  bounded retries with backoff. Authoring now uses `goals`, `gates`, and an array
+  of `dependsOn`; field gates use `kind: 'field'`, `path`, `subject`, `operator`,
+  and `value` rather than the previous nested exit-code/state-only shape.
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
