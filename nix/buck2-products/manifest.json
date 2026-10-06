@@ -432,7 +432,9 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/ywvbsg70pl1pqvpvfvzckmq909im554f/genie-bootstrap-closure-check.js",
       "descriptor": {
-        "externalCapabilities": ["typescript-api-server"],
+        "externalCapabilities": [
+          "typescript-api-server"
+        ],
         "externalModules": [],
         "integrity": "sha256-MVImINQUx6K8YH/e/pUNOI3UhKO0f9GMiv3/vyvOCjU=",
         "modulePath": "genie-bootstrap-closure-check.js",
@@ -471,7 +473,11 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/440ciqfan3nhb5cf5xylr3rizzjlr872/gh-ci-utils.js",
       "descriptor": {
-        "externalCapabilities": ["gh", "git", "node"],
+        "externalCapabilities": [
+          "gh",
+          "git",
+          "node"
+        ],
         "externalModules": [],
         "integrity": "sha256-SN03bs4Zd9RpsXo607VL9FrGSweztWVOh00MVa6dRbE=",
         "modulePath": "gh-ci-utils.js",
@@ -510,7 +516,10 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/d2l1c33xbh0vvb326v894gsjcx92s88s/mr.js",
       "descriptor": {
-        "externalCapabilities": ["git", "nix"],
+        "externalCapabilities": [
+          "git",
+          "nix"
+        ],
         "externalModules": [],
         "integrity": "sha256-M549DZ3WvhnHIhFct3GLCQDwjK1RKdL2CjdiljabSXE=",
         "modulePath": "mr.js",
@@ -588,7 +597,9 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/m5aalcmwy038rv1m73jxb3s72aawvcxb/notion-db.js",
       "descriptor": {
-        "externalCapabilities": ["opentui-core-native"],
+        "externalCapabilities": [
+          "opentui-core-native"
+        ],
         "externalModules": [
           "@opentui/core-darwin-arm64",
           "@opentui/core-darwin-x64",
@@ -675,7 +686,9 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/ms51l8zzhwvjcwd2nvgl3avf5w9gx7rs/npm-release.js",
       "descriptor": {
-        "externalCapabilities": ["npm"],
+        "externalCapabilities": [
+          "npm"
+        ],
         "externalModules": [],
         "integrity": "sha256-RFSUX6UT2EzzpbgGn+s85NzCJ5kqBp8HwHWM8Dcqj2s=",
         "modulePath": "npm-release.js",
