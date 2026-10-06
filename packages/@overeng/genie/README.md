@@ -91,6 +91,12 @@ genie --writeable  # Generate writable files (default is read-only)
 genie --dry-run    # Preview changes without writing
 ```
 
+Generation stores output locks under `<cwd>/tmp/genie-locks`. Running with `--cwd`
+inside a package source root can leave those directories beside sources. Buck
+package source and test censuses exclude this state directory; ordinary files
+under `tmp` remain inputs, and unsafe paths or symlinks outside the state are
+still rejected.
+
 ### Creating a Generator
 
 Create a `.genie.ts` file next to the config file you want to generate:
