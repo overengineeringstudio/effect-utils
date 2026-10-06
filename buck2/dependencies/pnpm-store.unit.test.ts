@@ -354,28 +354,23 @@ describe('normalized store projection', () => {
     expect(view.workspaceTrees[expectedKey]).toBe('//packages/lib:package_tree')
   })
 
-  it.each(['direct', 'transitive'] as const)(
-    'projects a %s frozen source through its declared tree without changing workspace identity',
+  it.each(['injected', 'linked'] as const)(
+    'projects an %s frozen source through its declared tree without changing workspace identity',
     async (kind) => {
       const sourcePath = '.devenv/pnpm-source-inputs/current/repos/sdk/client'
       const sourceTarget = 'pnpm_sources//:sdk_client_package_tree'
       const sourceLock = lock({
         importers: `  packages/app:
     dependencies:
-      ${kind === 'direct' ? 'source-lib' : 'host'}:
-        specifier: ${kind === 'direct' ? `file:${sourcePath}` : '1.0.0'}
-        version: ${kind === 'direct' ? `file:${sourcePath}` : '1.0.0'}
+      source-lib:
+        specifier: file:${sourcePath}
+        version: ${kind === 'injected' ? `file:${sourcePath}` : `link:../../${sourcePath}`}
       local-lib:
         specifier: workspace:*
         version: link:../local`,
-        packages: `  host@1.0.0:
-    resolution: {integrity: ${archiveIntegrity}}
-  source-lib@file:${sourcePath}:
+        packages: `  source-lib@file:${sourcePath}:
     resolution: {directory: ${sourcePath}, type: directory}`,
-        snapshots: `  host@1.0.0:
-    dependencies:
-      source-lib: file:${sourcePath}
-  source-lib@file:${sourcePath}: {}`,
+        snapshots: `  source-lib@file:${sourcePath}: {}`,
       })
       const ordinary = await projectionOf(sourceLock)
       const projected = await projectionOf(sourceLock, { [sourcePath]: sourceTarget })
@@ -390,13 +385,11 @@ describe('normalized store projection', () => {
       expect(view.variants).toEqual(ordinary.views[0]!.variants)
       expect(projected.entries).toEqual(ordinary.entries)
       expect(projected.fingerprint).not.toBe(ordinary.fingerprint)
-      if (kind === 'direct') {
-        expect(view.variants[0]!.direct['source-lib']).toEqual({
-          kind: 'workspace',
-          workspaceKey: sourceKey,
-          workspacePath: sourcePath,
-        })
-      }
+      expect(view.variants[0]!.direct['source-lib']).toEqual({
+        kind: 'workspace',
+        workspaceKey: sourceKey,
+        workspacePath: sourcePath,
+      })
 
       const rendered = renderPnpmStoreBuck(projected)
       expect(rendered).toContain(`"${sourceKey}": "${sourceTarget}"`)
