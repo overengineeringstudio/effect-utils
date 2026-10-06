@@ -1,6 +1,7 @@
 import {
   pipelineExportStepName,
   pipelineIdentityStepName,
+  pipelineJobIdentityForName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
@@ -28,12 +29,14 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
       )
       if (checkout < 0) return [jobId, job]
       const matrix = job.strategy !== undefined && 'matrix' in job.strategy
+      const identity = pipelineJobIdentityForName(job.name ?? jobId)
       steps.splice(checkout + 1, 0, {
         name: pipelineIdentityStepName,
         shell: 'bash',
         env: {
-          JOB_KEY: jobId,
-          MATRIX_VALUE: matrix === true ? '${{ matrix.runner }}' : '',
+          JOB_KEY: identity?.job ?? jobId,
+          MATRIX_VALUE:
+            matrix === true ? '${{ matrix.runner }}' : (identity?.dimensions.runner ?? ''),
           PR_HEAD: '${{ github.event.pull_request.head.sha }}',
           PR_NUMBER: '${{ github.event.pull_request.number }}',
           PR_FORK:
@@ -94,7 +97,7 @@ export const pipelineCloseJob = (jobs: Record<string, Job>): Job => ({
   env: {
     CI_EVIDENCE_MODE: '${{ vars.CI_EVIDENCE_MODE }}',
     PIPELINE_TRUSTED:
-      "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}",
+      "${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}",
   },
   steps: [
     { uses: 'actions/checkout@v6', with: { 'persist-credentials': false } },

@@ -22,6 +22,8 @@
 
 ### Fixed
 
+- Generated Effect/Rust services keep inline input and output codecs distinct and
+  reject conflicting synthetic names or collisions with Rust contract definitions.
 - Effect/Rust Worker handlers own request-local scopes, releasing resources before
   successful responses and cancellation acknowledgments.
 - Async wasm scheduler traps poison their lexical generation, defect pending calls,
@@ -30,6 +32,8 @@
   and negative-zero inputs before backend ABI narrowing.
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
+- Negative Buck artifact-import fixtures capture remote Nix builder logs, so
+  expected rejection diagnostics are checked instead of generic build failures.
 - Cache-less pinned Buck invocations select local-only posture before validating
   trusted archive metadata. Fixed-source Nix builds accept unused consumer-root
   placeholders while keeping remote uploads and archive-origin fetching disabled.
@@ -46,6 +50,9 @@
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
 - Genie bootstrap discovery excludes Buck output trees, so copied generator files
   in build artifacts do not enter source-tree closure checks.
+- JavaScript product descriptor actions use the audited hermetic cache lane, so
+  independent roots reuse their byte-identical descriptors instead of executing
+  one default-denied local action.
 - Buck remote-cache uploads reserve protobuf headroom below the backend's 4 MiB
   gRPC limit, including in generated consumer roots, so large React Aria
   dependency outputs upload and reuse across independent roots.

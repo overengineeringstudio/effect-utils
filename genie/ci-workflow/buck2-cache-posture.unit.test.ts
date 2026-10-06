@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import { standaloneCachePostureConfig } from '../../scripts/buck2-cache-posture.ts'
-import { withBuck2CachePostures } from './buck2-cache-posture.ts'
+import { buck2CachePostureEnv, withBuck2CachePostures } from './buck2-cache-posture.ts'
 
 const mainOnlyJob = {
   if: "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}",
@@ -16,6 +16,15 @@ const prJob = {
 }
 
 describe('declared Buck2 job cache posture', () => {
+  it('projects opportunistic writers with uploads and credentials restricted to main pushes', () => {
+    expect(buck2CachePostureEnv('main-writer')).toEqual({
+      BUCK2_NO_REMOTE_CACHE: '0',
+      BUCK2_PUBLIC_CACHE_READ_ONLY:
+        "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '0' || '1' }}",
+      BUCK2_CACHE_WRITE_OPTIONAL: '1',
+    })
+  })
+
   it('allows the declared main-only writer to upload while PR readers and inert jobs cannot', () => {
     const jobs = withBuck2CachePostures({
       jobs: { publisher: mainOnlyJob, pullRequest: prJob, inert: prJob },

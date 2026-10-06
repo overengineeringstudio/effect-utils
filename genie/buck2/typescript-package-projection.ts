@@ -122,6 +122,15 @@ const discoverPackageFiles = ({
       if (entry.isSymbolicLink() === true) {
         throw new Error(`Package source census refuses symlink: ${relativePath}`)
       }
+      // Running Genie with --cwd inside a source root leaves output-lock state here.
+      // It is not package input; do not descend into its URL-encoded semaphore keys.
+      if (
+        entry.isDirectory() === true &&
+        entry.name === 'genie-locks' &&
+        path.posix.basename(relativeDirectory) === 'tmp'
+      ) {
+        continue
+      }
       if (entry.isDirectory() === true) {
         walk(relativePath)
       } else if (entry.isFile() === true && admit(relativePath) === true) {

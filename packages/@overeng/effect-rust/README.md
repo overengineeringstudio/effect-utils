@@ -306,6 +306,10 @@ products do not carry copied `node_modules`; their admitted consumer supplies
 the declared dependencies. The `effect-rust-fixture-consumer` fixture imports the
 actual generated tag and runs both wasm and native Layers under Node and Bun.
 
+Inline boundary schemas receive separate `<Export>Input<Argument>` and
+`<Export>Output` contract aliases. Generation rejects conflicting inline schemas
+that normalize to the same name, and any alias that collides with a Rust type.
+
 ## Developer verification without a Buck daemon
 
 Use the current platform's repository-admitted immutable executables from

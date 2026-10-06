@@ -146,7 +146,12 @@ for (const entry of exportEntries) {
       continue
     }
     // Inline positions (e.g. Vec<String>) become named aliases so they get a codec.
-    const name = `${pascal(entry.name)}${position === '$returns' ? 'Result' : pascal(position)}`
+    const name = `${pascal(entry.name)}${position === '$returns' ? 'Output' : `Input${pascal(position)}`}`
+    if (
+      Object.hasOwn(synthetic, name) === true &&
+      isDeepStrictEqual(synthetic[name], node) === false
+    )
+      throw new Error(`Generated contract name ${name} collides between inline schemas`)
     synthetic[name] = node
     codecs.set(positionKey({ entry, position }), name)
   }

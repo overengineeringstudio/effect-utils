@@ -169,6 +169,27 @@ the normalized report and result content hashes. Local execution of the small
 The red control requires two nonzero local verdict actions with no upload; the
 irrelevant-mutation control requires no locally executed verdict action.
 
+### JavaScript product descriptor reuse
+
+**BUILD.BUCK.REUSE-DQ03 (resolved):** `javascript_product_descriptor` projects a
+declared module descriptor using pinned Bun and the declared package-command
+runtime. The rule owns `cache_guarded_rule` eligibility and its macro selects the
+shared hermetic constraint. `hermetic_action` scrubs ambient environment and
+`hermetic_bun_command` disables `.env`, install discovery and ambient Bun config.
+`local_only` limits execution to the local executor; it does not prohibit remote
+action-cache reads on the admitted lane.
+
+`configuredTarget` records canonical cell/target names and the target
+configuration hash, not the checkout's filesystem root. It remains provenance
+in `effect-utils/javascript-product/v2`; no descriptor fields are removed or
+moved. The JavaScript Nix importer checks exact descriptor fields and bytes but
+does not compare provenance. This projection is distinct from the strict native
+`buck-build-product/v1` contract and does not change that schema or its importer.
+
+The two-root regression requires a locally executed/uploaded descriptor in
+context A, a remote descriptor action-cache hit in context B, byte-identical
+descriptor files, and zero executed/local-cache build actions on B.
+
 ### Lane budget measurements
 
 Record edit-run, quick check, full tests and platform/host proof separately. For
@@ -185,8 +206,3 @@ is substituted for a measured lane budget (axe record `uttvbj`).
   consumer/service designs for revocable per-host credentials, authenticated
   action-key logging and targeted AC purge. A worker-name field or IP log is
   insufficient attribution; instance names alone do not isolate keys.
-- **BUILD.BUCK.REUSE-DQ03 Product descriptor reuse:** The strict build half of
-  the trusted remote-cache proof still executes one local
-  `javascript_product_descriptor` action on the second root, while every other
-  build and test action is a remote hit. Open: admit the descriptor action to a
-  hermetic lane, or accept it as local-only work and exempt it from the proof.
