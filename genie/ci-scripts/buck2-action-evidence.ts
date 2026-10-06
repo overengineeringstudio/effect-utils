@@ -62,6 +62,19 @@ export type ActionArtifactHeader = {
   invocations: ActionInvocation[]
 }
 export type ActionArtifact = { header: ActionArtifactHeader; actions: ActionRecord[] }
+/** Native time, not filesystem mtime, binds retained invocations to this fresh-state observation. */
+export const invocationWithinJobWindow = (
+  invocation: ActionInvocation,
+  metadata: ActionArtifactHeader['metadata'],
+): boolean =>
+  metadata.startedAt !== null &&
+  metadata.finishedAt !== null &&
+  invocation.startedAt !== null &&
+  invocation.completedAt !== null &&
+  metadata.startedAt <= invocation.startedAt &&
+  invocation.startedAt <= invocation.completedAt &&
+  invocation.completedAt <= metadata.finishedAt
+
 export const outcomeFor = ({
   executionKind,
   uploadResult,

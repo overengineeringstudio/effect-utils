@@ -33,6 +33,7 @@ import {
 import {
   actionsArtifactName,
   cacheOutcomeMapping,
+  invocationWithinJobWindow,
   maxActionArtifactBytes,
   type ActionArtifact,
   type ActionRecord,
@@ -225,9 +226,7 @@ const completeArtifact = (artifact: ActionArtifact, writer: boolean): boolean =>
     (!writer ||
       (posture === 'writer' && (cacheLane === 'main-writer' || cacheLane === 'merge_group'))) &&
     h.invocations.length > 0 &&
-    h.invocations.every(
-      (inv) => inv.complete && inv.startedAt !== null && inv.completedAt !== null,
-    ) &&
+    h.invocations.every((inv) => inv.complete && invocationWithinJobWindow(inv, h.metadata)) &&
     (writer || h.invocations.some((inv) => inv.freshRoot)) &&
     artifact.actions.every(
       (a) =>

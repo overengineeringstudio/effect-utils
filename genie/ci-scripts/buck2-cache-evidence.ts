@@ -23,6 +23,7 @@ import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
   actionsArtifactName,
   cacheOutcomeMapping,
+  invocationWithinJobWindow,
   maxActionArtifactBytes,
   outcomeFor,
   type ActionArtifact,
@@ -825,6 +826,14 @@ const run = async (): Promise<void> => {
       values.finalize === true
         ? (envTime('CI_BUCK2_CACHE_EVIDENCE_FINISHED_AT') ?? Date.now())
         : null,
+  }
+  if (values.finalize === true) {
+    for (const invocation of header.invocations) {
+      if (!invocationWithinJobWindow(invocation, header.metadata)) {
+        invocation.freshRoot = false
+        header.evidenceGaps.push('native-invocation-outside-job-window')
+      }
+    }
   }
   header.rows = full.actions.length
   header.actionCount = evidence.actionCount

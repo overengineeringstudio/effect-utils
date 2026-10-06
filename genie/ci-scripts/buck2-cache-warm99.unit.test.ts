@@ -47,8 +47,35 @@ describe('strict action boundary', () => {
     artifact.header.complete = false
     expect(decodeActionArtifact(rawArtifact(artifact)).header.complete).toBe(false)
   })
+  it('rejects complete invocations outside the job window while accepting equality', () => {
+    const artifact = artifactFixture()
+    expect(decodeActionArtifact(rawArtifact(artifact)).header.complete).toBe(true)
+    artifact.header.metadata.startedAt = 201
+    expect(() => decodeActionArtifact(rawArtifact(artifact))).toThrow()
+    artifact.header.metadata.startedAt = 200
+    artifact.header.metadata.finishedAt = 299
+    expect(() => decodeActionArtifact(rawArtifact(artifact))).toThrow()
+    artifact.header.complete = false
+    expect(decodeActionArtifact(rawArtifact(artifact)).header.complete).toBe(false)
+  })
 })
 describe('warm99 identity acceptance', () => {
+  it('invalidates observations whose native invocations fall outside the job window', () => {
+    for (const bound of ['start', 'finish'] as const) {
+      const manifest = manifestFixture()
+      const loaded = loadedFixture(manifest)
+      for (const item of loaded) {
+        const reader = item.readers[0]
+        if (reader === undefined) throw new Error('fixture')
+        if (bound === 'start') reader.header.metadata.startedAt = 201
+        else reader.header.metadata.finishedAt = 299
+      }
+      const report = evaluateWarm99(manifest, loaded)
+      expect(report.accepted).toBe(false)
+      expect(report.lanes[0]?.observations[0]?.complete).toBe(false)
+      expect(report.lanes[0]?.observations[0]?.evidenceGap).toBeGreaterThan(0)
+    }
+  })
   it('requires two observations for every lane and keeps Nix separate', () => {
     const manifest = manifestFixture(['main-reader', 'merge_group', 'pr'])
     const report = evaluateWarm99(manifest, loadedFixture(manifest))
@@ -116,6 +143,7 @@ describe('warm99 identity acceptance', () => {
           actions: 'second.gz',
         })
         const early = artifactFixture(false, [actionFixture({ executionKind: 1 })])
+        early.header.metadata.startedAt = Math.min(start, 200)
         for (const invocation of early.header.invocations) invocation.startedAt = start
         item.readers = [early, artifactFixture()]
       }

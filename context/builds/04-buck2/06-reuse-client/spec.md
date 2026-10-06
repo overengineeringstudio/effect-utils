@@ -215,6 +215,11 @@ to the unique earliest invocation from that root; later invocations are
 excluded. Tied/unknown starts, redirected roots without proof, and preexisting
 native state cannot claim freshness. The two-root proof explicitly marks only
 the first build after each wiped root, preserving its populate/replay labels.
+Every retained invocation must satisfy the native-time enclosure
+`job.startedAt <= invocation.startedAt <= invocation.completedAt <= job.finishedAt`.
+Equality is valid at millisecond precision. Missing or out-of-window bounds retain
+rows only as incomplete evidence and revoke freshness; filesystem mtime cannot
+make an older native invocation part of the current observation.
 
 In-Nix product jobs retain disabled-by-design headers and zero action rows.
 Their reuse metric is Nix substitution, not Buck AC. The daily cache-health

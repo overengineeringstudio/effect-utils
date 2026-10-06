@@ -200,6 +200,58 @@ describe('complete normalized action artifact CLI', () => {
     }
   })
 
+  it('binds native invocations to the job window and retains out-of-window rows only as incomplete evidence', async () => {
+    for (const bounds of [
+      { start: 1700000005000, end: 1700000020000, valid: false },
+      { start: 1700000000000, end: 1700000002000, valid: false },
+      { start: 1700000000123, end: 1700000003123, valid: true },
+    ]) {
+      const directory = await mkdtemp(join(tmpdir(), 'buck-actions-window-'))
+      try {
+        const events = join(directory, 'native.jsonl')
+        const output = join(directory, 'buck2-cache-evidence.json')
+        await Bun.write(events, nativeLog('fixture-build'))
+        const child = Bun.spawn(
+          [
+            process.execPath,
+            collector,
+            '--events',
+            events,
+            '--output',
+            output,
+            '--context',
+            'native-log',
+            '--fresh-root',
+            '--finalize',
+          ],
+          {
+            env: {
+              ...fixtureEnv,
+              CI_BUCK2_CACHE_EVIDENCE_STARTED_AT: String(bounds.start),
+              CI_BUCK2_CACHE_EVIDENCE_FINISHED_AT: String(bounds.end),
+            },
+            stdout: 'ignore',
+            stderr: 'ignore',
+          },
+        )
+        expect(await child.exited).toBe(bounds.valid ? 0 : 1)
+        const full = decodeActionArtifact(
+          gunzipSync(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString(
+            'utf8',
+          ),
+        )
+        expect(full.actions).toHaveLength(100)
+        expect(full.header.complete).toBe(bounds.valid)
+        expect(full.header.invocations[0]?.freshRoot).toBe(bounds.valid)
+        expect(full.header.evidenceGaps).toEqual(
+          bounds.valid ? [] : ['native-invocation-outside-job-window'],
+        )
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
+    }
+  })
+
   it('resolves unsorted native invocations by native start time, never granting freshness to later roots', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-actions-fresh-'))
     try {

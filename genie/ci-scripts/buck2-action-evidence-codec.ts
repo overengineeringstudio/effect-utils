@@ -1,5 +1,6 @@
 import {
   cacheOutcomeMapping,
+  invocationWithinJobWindow,
   outcomeFor,
   type ActionArtifact,
   type ActionArtifactHeader,
@@ -197,6 +198,7 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
   for (const invocation of header.invocations) {
     if (ids.has(invocation.buildId)) return invalid()
     ids.add(invocation.buildId)
+    if (header.complete && !invocationWithinJobWindow(invocation, header.metadata)) return invalid()
     if (
       header.complete &&
       actions.filter((action) => action.buildId === invocation.buildId).length !==
