@@ -18,17 +18,17 @@ import {
   type BinaryCacheDescriptor as Cache,
 } from './binary-cache-descriptors.ts'
 import {
-  mainPushGuardedSecret,
+  CachePublisherJobError,
+  trustedCacheWriterGuardedSecret,
   publisherWriteSecret,
   validateWorkflowCachePolicy,
 } from './cache-policy.ts'
 import { prSnapshotPackJob, prSnapshotReleaseJobs } from './pr-snapshot.ts'
 import {
-  buck2MainCacheWriterStep,
+  buck2TrustedCacheWriterStep,
   cachixPublisherStep,
   cachixPushStep,
   cachixStep,
-  CachePublisherJobError,
   installNixStep,
 } from './setup.ts'
 import { ciWorkflow } from './shared.ts'
@@ -239,10 +239,10 @@ it('guards private descriptors through direct githubWorkflow output', () => {
   ).toThrow(PrivateBinaryCacheRunnerError)
 })
 
-describe('main-push Buck2 publisher', () => {
+describe('trusted Buck2 publisher', () => {
   const secret = 'BUCK2_PUBLIC_CACHE_WRITE_AUTH'
-  const guarded = mainPushGuardedSecret(secret)
-  const step = buck2MainCacheWriterStep({ run: 'devenv tasks run test:run' })
+  const guarded = trustedCacheWriterGuardedSecret(secret)
+  const step = buck2TrustedCacheWriterStep({ run: 'devenv tasks run test:run' })
   const on = { push: { branches: ['main'] }, pull_request: null, merge_group: null } as const
   const validate = (
     steps: Parameters<typeof validateWorkflowCachePolicy>[0]['workflow']['jobs'][string]['steps'],
@@ -252,18 +252,13 @@ describe('main-push Buck2 publisher', () => {
       workflow: { on: triggers, jobs: { test: { 'runs-on': 'ubuntu-latest', steps } } },
     })
 
-  it('accepts marked main-push credentials in jobs shared with PRs and merge groups', () => {
-    expect(guarded).toBe(
-      "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
-    )
-    expect(() => validate([step])).not.toThrow()
-  })
-
   it('rejects every unguarded reference, including aliases alongside a guarded credential', () => {
     for (const reference of [
       '${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}',
       "${{ secrets['BUCK2_PUBLIC_CACHE_WRITE_AUTH'] }}",
       "${{ github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
+      "${{ github.event_name == 'merge_group' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
+      "${{ github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
       '${{ toJSON(secrets) }}',
     ]) {
       expect(() => validate([{ ...step, env: { ...step.env, EXTRA: reference } }])).toThrow(

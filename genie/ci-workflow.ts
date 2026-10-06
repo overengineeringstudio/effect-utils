@@ -195,7 +195,7 @@ export {
 } from './ci-workflow/support-files.ts'
 export {
   appendGitHubAccessTokenToNixConfigStep,
-  buck2MainCacheWriterStep,
+  buck2TrustedCacheWriterStep,
   buck2PublicCacheWriteSecret,
   cachixCliBuildStep,
   cachixStep,

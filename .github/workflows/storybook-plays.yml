@@ -31,7 +31,8 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
@@ -121,7 +122,14 @@ jobs:
       - name: Storybook play tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run storybook:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run storybook:test'
       - name: Collect Buck2 cache evidence

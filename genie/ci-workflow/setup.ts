@@ -5,7 +5,7 @@ import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 import {
   jobCacheDescriptors,
-  mainPushGuardedSecret,
+  trustedCacheWriterGuardedSecret,
   publisherWriteSecret,
   CachePublisherJobError,
 } from './cache-policy.ts'
@@ -272,11 +272,11 @@ export const cachixPushStep = <TStep extends { if?: string; env?: Record<string,
 export const buck2PublicCacheWriteSecret = 'BUCK2_PUBLIC_CACHE_WRITE_AUTH'
 
 /**
- * Publish gating results on main pushes; PRs and merge groups remain read-only.
- * The main-writer job posture makes these opportunistic uploads fail open (q10/q11/q14),
+ * Publish gating results on protected main pushes and merge groups, never PRs.
+ * The trusted-writer posture makes opportunistic uploads fail open (q10/q11/q14),
  * unlike the dedicated trusted proof. Only the masked Base64 header reaches Buck.
  */
-export const buck2MainCacheWriterStep = <
+export const buck2TrustedCacheWriterStep = <
   TStep extends { env?: Record<string, string>; run: string },
 >(
   step: TStep,
@@ -285,7 +285,7 @@ export const buck2MainCacheWriterStep = <
   [publisherWriteSecret]: buck2PublicCacheWriteSecret,
   env: {
     ...step.env,
-    BUCK2_PUBLIC_CACHE_WRITE_AUTH: mainPushGuardedSecret(buck2PublicCacheWriteSecret),
+    BUCK2_PUBLIC_CACHE_WRITE_AUTH: trustedCacheWriterGuardedSecret(buck2PublicCacheWriteSecret),
   },
   run: [
     'if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then',

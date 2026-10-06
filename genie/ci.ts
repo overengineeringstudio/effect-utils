@@ -43,7 +43,7 @@ export const EXTRA_CI_JOB_NAMES = [
   'nix-closure-sizes',
   'source-shape',
   'test-integration-restate',
-  // Credential-free merge-group build of every published `.#buck-product-*-from-source` attr,
+  // Queue and fallback-main build of every published `.#buck-product-*-from-source` attr,
   // so queued changes cannot break the trusted `publish-products` lane. Merge-blocking.
   'build-products',
   // Review-thread resolution gate: fails while any PR review thread is unresolved.
@@ -99,7 +99,7 @@ export type CIJobName = (typeof CI_JOB_NAMES)[number]
  * Merge-blocking CI job keys for branch protection and native merge-queue validation.
  *
  * Cheap quality/source-policy lanes execute on PR and merge-group heads; heavy product
- * lanes execute only on merge groups and publish skipped PR checks for queue admission.
+ * lanes execute on merge groups and unproven main trees; PRs publish skipped heavy checks.
  * The mandatory queue obtains fresh real evidence for every required context before merge.
  * Opt-in, empirical, main-only, and advisory lanes are excluded.
  */
