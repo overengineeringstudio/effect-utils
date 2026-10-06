@@ -436,26 +436,53 @@ const frozenLockfileStep = {
 } as const
 
 // Core product jobs keyed by the shared Genie CI source of truth.
-const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
-  // Buck's quick aggregate is the single TypeScript check authority.
-  typecheck: job({
-    step: {
-      name: 'Type check (Buck)',
-      env: githubTokenEnv(),
-      run: runDevenvTasksBefore('buck2:quick'),
-    },
-    extraSteps: [verifyOtelShellEntryStep],
-  }),
-  lint: job({
-    step: {
-      name: 'Format + lint',
-      env: githubTokenEnv(),
-      // Keep generated-file freshness authoritative in CI. The lint task's
-      // execIfModified filter remains only a local fast path.
-      run: runDevenvTasksBefore('genie:check', 'lint:check'),
-    },
-    extraSteps: [frozenLockfileStep],
-  }),
+const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
+  // Share one Linux bootstrap across the four quality invariants.
+  quality: {
+    name: 'pr/quality',
+    ...job({
+      timeoutMinutes: 90,
+      extraSteps: [
+        verifyOtelShellEntryStep,
+        {
+          name: 'Type check (Buck)',
+          env: githubTokenEnv(),
+          run: runDevenvTasksBefore('buck2:quick'),
+        },
+        frozenLockfileStep,
+        {
+          name: 'Format + lint',
+          env: githubTokenEnv(),
+          // Generated-file freshness stays authoritative, not just a local fast path.
+          run: runDevenvTasksBefore('genie:check', 'lint:check'),
+        },
+        {
+          name: 'Bundle smoke tests',
+          env: githubTokenEnv(),
+          run: runDevenvTasksBefore('bundle:smoke'),
+        },
+        {
+          name: 'CI runtime and native dependency policy regression checks',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            [
+              'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+              'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
+              'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
+            ].join('\n'),
+          ),
+        },
+        {
+          name: 'Downstream flake-input regression',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            'bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"',
+          ),
+        },
+      ],
+      step: nativeDepPolicyAuditStep,
+    }),
+  },
   // Bounded unit-test execution is Buck-owned: `test:run` waits on the single `test:buck2:unit`
   // invocation, source-only packages, and each lane's exact unbounded complement. Explicit
   // live/e2e owners remain separate jobs. The baseline gate reads Buck collection artifacts and
@@ -494,39 +521,6 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       name: 'Megarepo cold-GC tests',
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:megarepo-cold-gc'),
-    },
-  }),
-  'native-dependency-policy': job({
-    step: nativeDepPolicyAuditStep,
-    extraSteps: [
-      {
-        name: 'CI runtime and native dependency policy regression checks',
-        env: githubTokenEnv(),
-        run: withCiSourceRoot(
-          [
-            'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
-            'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
-            'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
-          ].join('\n'),
-        ),
-      },
-      // Retained public outputs (`lib.mkOxlintNpm`, `packages.genie`,
-      // `packages.oxlint-npm`) applied from a downstream flake input; nothing
-      // else exercises them through `--override-input`.
-      {
-        name: 'Downstream flake-input regression',
-        env: githubTokenEnv(),
-        run: withCiSourceRoot(
-          'bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"',
-        ),
-      },
-    ],
-  }),
-  'bundle-smoke': job({
-    step: {
-      name: 'Bundle smoke tests',
-      env: githubTokenEnv(),
-      run: runDevenvTasksBefore('bundle:smoke'),
     },
   }),
 
@@ -1601,13 +1595,10 @@ export default ciWorkflow({
     // context explicitly returns to reader posture before starting a new daemon.
     postures: {
       'default-ref-policy': 'reader',
-      typecheck: 'reader',
-      lint: 'reader',
+      quality: 'reader',
       test: 'reader',
       'test-playwright-utils': 'reader',
       'test-playwright-tui-react': 'reader',
-      'native-dependency-policy': 'reader',
-      'bundle-smoke': 'reader',
       cargo: 'reader',
       weaver: 'reader',
       'source-shape': 'reader',

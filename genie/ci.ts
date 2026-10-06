@@ -16,16 +16,12 @@ export type RunnerProfile = (typeof RUNNER_PROFILES)[number]
 
 /** Core CI job keys used for the typed product-job block in the workflow generator. */
 export const CORE_CI_JOB_NAMES = [
-  // Buck owns every TypeScript project and declaration producer. Keep it in the existing
-  // typecheck lane rather than paying for the same complete authority surface twice.
-  'typecheck',
-  'lint',
+  // One Linux bootstrap; named steps retain each quality invariant's failure attribution.
+  'quality',
   'test',
   'test-playwright-utils',
   'test-playwright-tui-react',
   'test-megarepo-cold-gc',
-  'native-dependency-policy',
-  'bundle-smoke',
   // Rust lane: delegates build/test/clippy/fmt semantics to devenv task cargo:check.
   'cargo',
   // Additive Weaver semantic-conventions gate (separate lane; degrades if weaver unavailable).
@@ -126,6 +122,7 @@ const matrixCIJobNames = ['test'] as const
 
 /** GitHub status-check context names emitted by a workflow job key. */
 export const ciJobCheckContexts = (jobName: CIJobName) => {
+  if (jobName === 'quality') return ['pr/quality']
   if (jobName === 'main-source-shape') return ['main/source-shape']
   if (jobName === 'ci-measurements-report') return ['ci/measurements-report']
 

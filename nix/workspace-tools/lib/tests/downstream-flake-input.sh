@@ -20,6 +20,7 @@ copy_repo() {
   (cd "$repo_root" && tar \
     --exclude=.git --exclude=.devenv --exclude=.direnv --exclude=.cache \
     --exclude=node_modules --exclude=buck-out --exclude=result --exclude=tmp \
+    --exclude=.editor-view \
     -cf - .) | (cd "$1" && tar -xf -)
 }
 
