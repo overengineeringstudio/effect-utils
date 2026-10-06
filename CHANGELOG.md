@@ -22,6 +22,8 @@
 
 ### Fixed
 
+- Native dependency policy CI runs its Bun tests by explicit source paths instead
+  of matching duplicate test files inside Buck validation outputs.
 - Protected-main merge-group gates opportunistically populate the public Buck
   cache without exposing credentials to PR runs. Main pushes skip heavy gates
   only after matching their tree to successful required queue checks; publishers

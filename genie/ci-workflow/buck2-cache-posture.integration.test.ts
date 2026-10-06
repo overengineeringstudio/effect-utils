@@ -9,7 +9,7 @@ type GeneratedWorkflow = {
     {
       if?: string
       env?: Record<string, string>
-      steps: Array<{ env?: Record<string, string>; run?: string }>
+      steps: Array<{ name?: string; env?: Record<string, string>; run?: string }>
     }
   >
 }
@@ -206,6 +206,20 @@ describe('generated CI cache trust behavior', () => {
     expect(run('false', 'skipped', 'success')).toBe(false)
     expect(run('true', 'skipped', 'failure')).toBe(false)
     expect(run('true', 'skipped', 'cancelled')).toBe(false)
+  })
+
+  it('runs policy tests by explicit source paths instead of searching Buck outputs', async () => {
+    const workflow = await readWorkflow()
+    const audit = workflow.jobs.quality!.steps.find(
+      (step) => step.name === 'Audit native dependency policy',
+    )
+    const tests = [
+      './genie/ci-scripts/tested-tree.unit.test.ts',
+      './genie/ci-workflow/buck2-cache-posture.unit.test.ts',
+      './genie/ci-workflow/buck2-cache-posture.integration.test.ts',
+    ].join(' ')
+    expect(audit?.run).toContain(`bun test ${tests}`)
+    expect(audit?.run).toContain(`nix run nixpkgs#bun -- test ${tests}`)
   })
 
   it('keeps credential-free build and preview workflows read-only', async () => {
