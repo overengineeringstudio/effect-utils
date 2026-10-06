@@ -33,7 +33,8 @@
 - Protected-main merge-group gates opportunistically populate the public Buck
   cache without exposing credentials to PR runs. Main pushes skip heavy gates
   only after matching their tree to successful required queue checks; publishers
-  and empirical/cache proofs keep running.
+  and empirical/cache proofs keep running. Optional tree-lookup failures retain
+  alignment dispatch after successful fallback quality and publication.
 - Fixed-source Nix products bound Buck execution, Tokio workers, and blocking
   threads to the Nix core budget, with unset/zero budgets normalized to one.
   Worker configuration follows the `build` subcommand so Buck accepts the flags.
