@@ -266,9 +266,9 @@ describe('main-push Buck2 publisher', () => {
       "${{ github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
       '${{ toJSON(secrets) }}',
     ]) {
-      expect(() =>
-        validate([{ ...step, env: { ...step.env, EXTRA: reference } }]),
-      ).toThrow(CachePublisherJobError)
+      expect(() => validate([{ ...step, env: { ...step.env, EXTRA: reference } }])).toThrow(
+        CachePublisherJobError,
+      )
     }
   })
 
