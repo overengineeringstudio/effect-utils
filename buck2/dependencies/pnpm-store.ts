@@ -678,9 +678,12 @@ export const computeStoreSccs = ({
 export const makePnpmStoreProjection = ({
   metadata,
   sidecar,
+  workspaceTreeTargets = {},
 }: {
   metadata: PnpmLockMetadata
   sidecar: PnpmSha256Sidecar
+  /** Exact lockfile workspace paths mapped to declared trees of the same package bytes. */
+  workspaceTreeTargets?: Readonly<Record<string, string>>
 }): PnpmStoreProjection => {
   validatePnpmSha256Sidecar({ metadata, sidecar })
 
@@ -760,7 +763,8 @@ export const makePnpmStoreProjection = ({
           const enqueue = (edges: PnpmStoreEdgeSet): void => {
             for (const [, edge] of sortedEntries(edges)) {
               if (edge.kind === 'workspace') {
-                workspaceTrees[edge.workspaceKey] = `//${edge.workspacePath}:package_tree`
+                workspaceTrees[edge.workspaceKey] =
+                  workspaceTreeTargets[edge.workspacePath] ?? `//${edge.workspacePath}:package_tree`
                 continue
               }
               if (closure.has(edge.storeKey) === true) continue

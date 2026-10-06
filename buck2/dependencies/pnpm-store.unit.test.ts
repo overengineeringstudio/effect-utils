@@ -157,13 +157,16 @@ const duplicateTypesLock = lock({
       react: 19.0.0`,
 })
 
-const projectionOf = async (lockfileText: string) => {
+const projectionOf = async (
+  lockfileText: string,
+  workspaceTreeTargets?: Readonly<Record<string, string>>,
+) => {
   const metadata = translatePnpmLock({ lockfileText, workspaceText })
   const sidecar = await generatePnpmSha256Sidecar({
     metadata,
     fetchArchive: async () => archive,
   })
-  return makePnpmStoreProjection({ metadata, sidecar })
+  return makePnpmStoreProjection({ metadata, sidecar, workspaceTreeTargets })
 }
 
 describe('normalized store projection', () => {
@@ -350,6 +353,62 @@ describe('normalized store projection', () => {
     })
     expect(view.workspaceTrees[expectedKey]).toBe('//packages/lib:package_tree')
   })
+
+  it.each(['direct', 'transitive'] as const)(
+    'projects a %s frozen source through its declared tree without changing workspace identity',
+    async (kind) => {
+      const sourcePath = '.devenv/pnpm-source-inputs/current/repos/sdk/client'
+      const sourceTarget = 'pnpm_sources//:sdk_client_package_tree'
+      const sourceLock = lock({
+        importers: `  packages/app:
+    dependencies:
+      ${kind === 'direct' ? 'source-lib' : 'host'}:
+        specifier: ${kind === 'direct' ? `file:${sourcePath}` : '1.0.0'}
+        version: ${kind === 'direct' ? `file:${sourcePath}` : '1.0.0'}
+      local-lib:
+        specifier: workspace:*
+        version: link:../local`,
+        packages: `  host@1.0.0:
+    resolution: {integrity: ${archiveIntegrity}}
+  source-lib@file:${sourcePath}:
+    resolution: {directory: ${sourcePath}, type: directory}`,
+        snapshots: `  host@1.0.0:
+    dependencies:
+      source-lib: file:${sourcePath}
+  source-lib@file:${sourcePath}: {}`,
+      })
+      const ordinary = await projectionOf(sourceLock)
+      const projected = await projectionOf(sourceLock, { [sourcePath]: sourceTarget })
+      const view = projected.views[0]!
+      const sourceKey = workspaceKey(sourcePath)
+      const localKey = workspaceKey('packages/local')
+
+      expect(view.workspaceTrees).toEqual({
+        [sourceKey]: sourceTarget,
+        [localKey]: '//packages/local:package_tree',
+      })
+      expect(view.variants).toEqual(ordinary.views[0]!.variants)
+      expect(projected.entries).toEqual(ordinary.entries)
+      expect(projected.fingerprint).not.toBe(ordinary.fingerprint)
+      if (kind === 'direct') {
+        expect(view.variants[0]!.direct['source-lib']).toEqual({
+          kind: 'workspace',
+          workspaceKey: sourceKey,
+          workspacePath: sourcePath,
+        })
+      }
+
+      const rendered = renderPnpmStoreBuck(projected)
+      expect(rendered).toContain(`"${sourceKey}": "${sourceTarget}"`)
+      expect(rendered).toContain(`"${localKey}": "//packages/local:package_tree"`)
+      expect(rendered).not.toContain(`//${sourcePath}:package_tree`)
+      // Matching a live-checkout suffix must not silently replace frozen bytes.
+      const suffixOnly = await projectionOf(sourceLock, {
+        'repos/sdk/client': sourceTarget,
+      })
+      expect(suffixOnly.fingerprint).toBe(ordinary.fingerprint)
+    },
+  )
 
   it("links a peer's type companion into the entry that declares the peer", async () => {
     const projection = await projectionOf(peerTypesLock)
