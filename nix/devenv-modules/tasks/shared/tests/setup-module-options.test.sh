@@ -109,8 +109,8 @@ if ! grep -A 14 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.ni
   exit 1
 fi
 observability_config="$(grep -A 40 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.nix")"
-if ! grep -q '"buck2:editor:publish"' <<< "$observability_config"; then
-  echo "FAIL: Genie OTEL verification must wait for the Buck editor projection" >&2
+if ! grep -q '"buck2:editor:publish:test"' <<< "$observability_config"; then
+  echo "FAIL: Genie OTEL verification must wait for the test-scoped Buck editor projection" >&2
   exit 1
 fi
 if ! grep -q '"test:run"' <<< "$observability_config"; then

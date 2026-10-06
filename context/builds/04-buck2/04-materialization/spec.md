@@ -127,8 +127,13 @@ the lock, the publisher:
    first hop, and emits the package-manifest settle signal required by live
    language servers;
 7. updates the retention record and garbage-collects snapshots outside the
-   configured finite retention set. Pointer helpers validate their exact writes;
-   a separate `buck2:editor:check` performs the full admitted-state traversal.
+   configured finite retention set. Retention proves every snapshot of the
+   published view read-only in full; a store entry owned by another view is
+   proven only by its self-addressed record and read-only root, because its
+   owner proves its payload in full at every publication, reuse, and check. A
+   whole-workspace publication therefore stays linear in total snapshot size.
+   Pointer helpers validate their exact writes; a separate
+   `buck2:editor:check` performs the full admitted-state traversal.
 
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
@@ -162,6 +167,17 @@ editor publication. TypeScript declaration publication waits for that barrier.
 This does not change the standalone freshness contract: `genie:check` still
 runs after bootstrap without invoking `genie:run`, so it cannot repair the
 projection it proves.
+
+`buck2:editor:publish:test` publishes only the views the source-side test
+partition executes through: every source test package, the repository root,
+and the packages `devenv-modules:test` runs from source. Test lanes, the
+`check:all` aggregate, and its observability profile depend on it instead of the
+whole-workspace publisher, so a test run does not rebuild views no test reads.
+Views outside that set refresh only through `buck2:editor:publish` or
+`buck2:editor:materialize`, which setup runs. Two publishers sharing the
+`packages/.editor-view` state root must never be scheduled without an ordering
+edge: the publication lock fails fast instead of waiting, so
+`scripts/devenv-task-graph-check.mjs` rejects such a task graph.
 
 Missing, malformed, escaping, dangling, incomplete, or stale state fails with
 the recorded and current identities. `buck2:editor:recover-lock` is the only

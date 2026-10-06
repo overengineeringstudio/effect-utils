@@ -160,21 +160,7 @@ export const directBuckArguments = async ({
     base['buck2.remote_cache_enabled'] !== 'true'
   )
     return [...args]
-  const trustedOrigin =
-    trackedValues['archive_origin.trusted_url_prefix'] === undefined
-      ? undefined
-      : trustedArchiveOriginFromConfig(tracked)
-  const posture = standaloneCachePostureConfig({ current: '', env, trustedOrigin })
-  // Native RE client construction ignores CLI config. Writer headers/endpoints must
-  // be in the root overlay before daemon startup, including removal on public reads.
-  if (
-    unmanaged.found === true ||
-    Object.keys(buckConfigValues(posture)).some((key) => key.startsWith('buck2_re_client.')) ===
-      true
-  )
-    reconcileStandaloneCachePosture({ repoRoot: root, env })
-  const values = { ...base, ...buckConfigValues(posture) }
-  const overrides = buckConfigValues(posture)
+  const cliValues: Record<string, string> = {}
   const sentinel = args.indexOf('--')
   const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
   for (let index = 0; index < configArgs.length; index++) {
@@ -190,7 +176,7 @@ export const directBuckArguments = async ({
     if (value !== undefined) {
       const equals = value.indexOf('=')
       if (equals !== -1 && value.startsWith('buck2_re_client.') === false)
-        values[value.slice(0, equals)] = value.slice(equals + 1)
+        cliValues[value.slice(0, equals)] = value.slice(equals + 1)
     }
     if (arg === '--config-file' || arg.startsWith('--config-file=') === true) {
       const path = arg === '--config-file' ? configArgs[++index] : arg.slice(14)
@@ -198,15 +184,39 @@ export const directBuckArguments = async ({
         for (const [key, configValue] of Object.entries(
           buckConfigValues(readConfig({ path: resolve(cwd, path) })),
         ))
-          if (key.startsWith('buck2_re_client.') === false) values[key] = configValue
+          if (key.startsWith('buck2_re_client.') === false) cliValues[key] = configValue
     }
   }
+  // Fixed-source builds use Buck's native no-cache flag. Resolve cache selection
+  // before parsing archive trust metadata that cache-less sandboxes never use.
+  const cacheDisabled =
+    env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
+    configArgs.includes('--no-remote-cache') === true ||
+    (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
+  const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
+  const trustedOrigin =
+    cacheDisabled === true ||
+    env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1' ||
+    trackedValues['archive_origin.trusted_url_prefix'] === undefined
+      ? undefined
+      : trustedArchiveOriginFromConfig(tracked)
+  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv, trustedOrigin })
+  // Native RE client construction ignores CLI config. Writer headers/endpoints must
+  // be in the root overlay before daemon startup, including removal on public reads.
+  if (
+    unmanaged.found === true ||
+    Object.keys(buckConfigValues(posture)).some((key) => key.startsWith('buck2_re_client.')) ===
+      true
+  )
+    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
+  const overrides = buckConfigValues(posture)
+  const values = { ...base, ...overrides, ...cliValues }
   for (const key of Object.keys(overrides)) overrides[key] = values[key] ?? ''
-  if (env['BUCK2_NO_REMOTE_CACHE'] === '1' || env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1') {
+  if (cacheDisabled === true || env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1') {
     const disabled = buckConfigValues(
       standaloneCachePostureConfig({
         current: '',
-        env,
+        env: postureEnv,
         trustedOrigin,
       }),
     )

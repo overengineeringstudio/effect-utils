@@ -1139,8 +1139,7 @@ const cargoBuck2PackageProjectionFor = ({
     ) === true
       ? []
       : [
-          'load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")',
-          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "cargo_build_script")`,
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "buildscript_run", "cargo_build_script")`,
         ]),
     'static_source_set(',
     '    name = "static_sources",',

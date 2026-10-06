@@ -26,6 +26,9 @@
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - Negative Buck artifact-import fixtures capture remote Nix builder logs, so
   expected rejection diagnostics are checked instead of generic build failures.
+- Cache-less pinned Buck invocations select local-only posture before validating
+  trusted archive metadata. Fixed-source Nix builds accept unused consumer-root
+  placeholders while keeping remote uploads and archive-origin fetching disabled.
 - The Vite build-identity dev plugin watches only its worktree's HEAD, current
   branch ref and index. Git snapshots are asynchronous, debounced and
   single-flight, and dirty checks exclude untracked files.
@@ -39,6 +42,9 @@
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
 - Genie bootstrap discovery excludes Buck output trees, so copied generator files
   in build artifacts do not enter source-tree closure checks.
+- Buck remote-cache uploads reserve protobuf headroom below the backend's 4 MiB
+  gRPC limit, including in generated consumer roots, so large React Aria
+  dependency outputs upload and reuse across independent roots.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
@@ -61,6 +67,8 @@
 - Buck action rules reject unaudited cache-platform requests using resolved
   constraint identities; relative labels and cell aliases cannot bypass
   `cacheable = False` or rule-owned cache eligibility.
+- Pipeline-report baseline deadline tests use a synchronized virtual clock,
+  so host scheduling and HTTP latency cannot consume their deadline budgets.
 
 ### Changed
 
