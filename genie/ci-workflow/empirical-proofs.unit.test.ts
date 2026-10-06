@@ -98,13 +98,7 @@ for (const jobId of EMPIRICAL_PROOF_CI_JOB_NAMES) {
 }
 
 test('proof opt-in never admits credentialed cache proof or product validation on label churn', () => {
-  for (const jobId of [
-    'trusted-buck2-remote-cache-proof',
-    'build-products',
-    'typecheck',
-    'lint',
-    'test',
-  ]) {
+  for (const jobId of ['trusted-buck2-remote-cache-proof', 'build-products', 'quality', 'test']) {
     expect(
       admitted(
         jobId,
@@ -125,7 +119,7 @@ test('proof opt-in never admits credentialed cache proof or product validation o
       ['ci:heavy-proofs'],
     ),
   ).toBe(false)
-  for (const jobId of ['build-products', 'typecheck', 'lint', 'test']) {
+  for (const jobId of ['build-products', 'quality', 'test']) {
     expect(admitted(jobId, 'pull_request', 'refs/pull/1/merge', 'synchronize')).toBe(true)
   }
 })
