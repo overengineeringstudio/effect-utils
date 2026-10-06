@@ -376,7 +376,7 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/2si7k2wvypl8asl60fcndy168b7glvnl/genie.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/ixwv042q5w5mph053s8xg9b13fjaqym2/genie.js",
       "descriptor": {
         "externalCapabilities": [
           "actionlint",
@@ -395,7 +395,7 @@
           "@opentui/core-win32-arm64",
           "@opentui/core-win32-x64"
         ],
-        "integrity": "sha256-VisANmJE6kp8LrODii68ztF0psQ6O+47VDyL5ebcpmk=",
+        "integrity": "sha256-ZXuMBmQ+h8ovyFh7e1yhOcFE9bZHzkxDfvWGpvT2l9w=",
         "modulePath": "genie.js",
         "platform": {
           "abi": "any",
@@ -413,28 +413,26 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 6289441,
+        "sizeBytes": 6290876,
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "descriptorSha256": "a731fa38f078fdee0bede60c2d3a6b472da9cfafbc17b9e254dfdc173ada6b41",
+      "descriptorSha256": "19afca3c3cebe947f8b9d076147d687027cf1e5e3b6a656edbcd3f7b80378e50",
       "name": "genie",
       "provenance": {
-        "producerCommit": "c4b3844242e5f0c3d31a2f8dc010d56aa1f347d8",
-        "productDigest": "562b00366244ea4a7c2eb3838a2ebcced174a6c43a3bee3b543c8be5e6dca669",
+        "producerCommit": "69c6f1b21e7dd66041c6e0f513bc20c948ce9e4a",
+        "productDigest": "657b8c06643e87ca2fc8587b7b5ca139c144f5b647ce4c437ef586a6f4f697dc",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "sha256": "562b00366244ea4a7c2eb3838a2ebcced174a6c43a3bee3b543c8be5e6dca669",
-      "size": 6289441,
-      "storePath": "/nix/store/2si7k2wvypl8asl60fcndy168b7glvnl-genie-buck2-from-source-0.0.0",
+      "sha256": "657b8c06643e87ca2fc8587b7b5ca139c144f5b647ce4c437ef586a6f4f697dc",
+      "size": 6290876,
+      "storePath": "/nix/store/ixwv042q5w5mph053s8xg9b13fjaqym2-genie-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/ywvbsg70pl1pqvpvfvzckmq909im554f/genie-bootstrap-closure-check.js",
       "descriptor": {
-        "externalCapabilities": [
-          "typescript-api-server"
-        ],
+        "externalCapabilities": ["typescript-api-server"],
         "externalModules": [],
         "integrity": "sha256-MVImINQUx6K8YH/e/pUNOI3UhKO0f9GMiv3/vyvOCjU=",
         "modulePath": "genie-bootstrap-closure-check.js",
@@ -473,11 +471,7 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/440ciqfan3nhb5cf5xylr3rizzjlr872/gh-ci-utils.js",
       "descriptor": {
-        "externalCapabilities": [
-          "gh",
-          "git",
-          "node"
-        ],
+        "externalCapabilities": ["gh", "git", "node"],
         "externalModules": [],
         "integrity": "sha256-SN03bs4Zd9RpsXo607VL9FrGSweztWVOh00MVa6dRbE=",
         "modulePath": "gh-ci-utils.js",
@@ -516,10 +510,7 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/d2l1c33xbh0vvb326v894gsjcx92s88s/mr.js",
       "descriptor": {
-        "externalCapabilities": [
-          "git",
-          "nix"
-        ],
+        "externalCapabilities": ["git", "nix"],
         "externalModules": [],
         "integrity": "sha256-M549DZ3WvhnHIhFct3GLCQDwjK1RKdL2CjdiljabSXE=",
         "modulePath": "mr.js",
@@ -597,9 +588,7 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/m5aalcmwy038rv1m73jxb3s72aawvcxb/notion-db.js",
       "descriptor": {
-        "externalCapabilities": [
-          "opentui-core-native"
-        ],
+        "externalCapabilities": ["opentui-core-native"],
         "externalModules": [
           "@opentui/core-darwin-arm64",
           "@opentui/core-darwin-x64",
@@ -686,9 +675,7 @@
     {
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/ms51l8zzhwvjcwd2nvgl3avf5w9gx7rs/npm-release.js",
       "descriptor": {
-        "externalCapabilities": [
-          "npm"
-        ],
+        "externalCapabilities": ["npm"],
         "externalModules": [],
         "integrity": "sha256-RFSUX6UT2EzzpbgGn+s85NzCJ5kqBp8HwHWM8Dcqj2s=",
         "modulePath": "npm-release.js",
