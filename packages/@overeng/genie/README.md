@@ -147,7 +147,7 @@ export default tsconfigJson({
 ## Features
 
 - **Read-only output** - Generated files are marked read-only by default to prevent accidental edits
-- **Header comments** - Adds source file reference to generated files (where supported)
+- **Header comments** - Adds source file references where supported; strict JSON files, including `.watchmanconfig`, remain comment-free
 - **Formatting** - Automatically formats JSON/YAML output via oxfmt
 - **Check mode** - Verify files are up to date in CI without regenerating
 - **Watch mode** - Auto-regenerate on source file changes

@@ -727,8 +727,8 @@ export const getHeaderComment = ({
     return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
   }
 
-  // Regular JSON files don't support comments - rely on read-only permissions + .gitattributes
-  if (ext === '.json') {
+  // Strict JSON formats rely on read-only permissions + .gitattributes, not comments.
+  if (ext === '.json' || basename === '.watchmanconfig') {
     return ''
   }
 

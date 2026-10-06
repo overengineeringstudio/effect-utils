@@ -112,6 +112,36 @@ Vitest.describe('genie cli', () => {
   })
 
   Vitest.it.effect(
+    'generates a Watchman configuration that strict JSON consumers can read',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            yield* env.writeFile({
+              path: '.watchmanconfig.genie.ts',
+              content: `export default {
+  data: { ignore_dirs: ['node_modules'] },
+  stringify: () => '{"ignore_dirs":["node_modules"]}\\n',
+}`,
+            })
+            const { exitCode } = yield* runGenie(env, [])
+            expect(exitCode).toBe(0)
+            const fs = yield* FileSystem.FileSystem
+            const path = yield* Path.Path
+            const content = yield* fs.readFileString(path.join(env.root, '.watchmanconfig'))
+            const config = yield* Schema.decodeEffect(
+              Schema.fromJsonString(Schema.Struct({ ignore_dirs: Schema.Array(Schema.String) })),
+            )(content)
+            expect(config.ignore_dirs).toEqual(['node_modules'])
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
     'reports import errors with clear error message',
     Effect.fnUntraced(
       function* () {
