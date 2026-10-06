@@ -7,8 +7,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   agent,
+  completion,
   emit,
   gate,
+  loop,
   mission,
   node,
   omp,
@@ -17,6 +19,7 @@ import {
   smalltalkKdl,
   step,
 } from './mod.ts'
+import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
 
 const canonical = () =>
   emit([
@@ -25,6 +28,29 @@ const canonical = () =>
       state: 'ready',
       goals: ['Demonstrate KDL.', 'Preserve all goals.', 'Bound goals to three.'],
       gates: [{ name: 'exists', kind: 'exists', subject: 'resource/input' }],
+      completion: { dependsOn: [{ step: 'last', state: 'completed' }] },
+      finally: [
+        {
+          id: 'cleanup',
+          agentless: true,
+          gates: [
+            {
+              name: 'cleanup',
+              kind: 'exec',
+              command: 'true',
+              host: 'local',
+              workspace: '${ST_WORKSPACE}',
+              env: { RESULT: 'ok' },
+              timeLimit: '1m',
+            },
+          ],
+        },
+        {
+          id: 'after-cleanup',
+          agentless: true,
+          dependsOn: [{ step: 'cleanup', state: 'terminal' }],
+        },
+      ],
       steps: [
         {
           id: 'first',
@@ -222,6 +248,79 @@ describe('Smalltalk declarations', () => {
       ).toThrow()
     },
   )
+  it.each([0, 101, 1.5])('rejects invalid loop bounds %s', (maxRounds) => {
+    expect(() =>
+      loop({
+        id: 'wait',
+        maxRounds,
+        round: { completion: { when: 'all-steps-exhausted' }, steps: [] },
+      }),
+    ).toThrow()
+  })
+  it('rejects conflicting completion and final completion frontiers', () => {
+    expect(() =>
+      completion({
+        when: 'all-steps-exhausted',
+        dependsOn: [{ step: 'a', state: 'completed' }],
+      } as never),
+    ).toThrow()
+    expect(() =>
+      mission({
+        id: 'a',
+        state: 'ready',
+        goals: ['a'],
+        steps: [],
+        finally: [{ id: 'cleanup', agentless: true }],
+        completion: { dependsOn: [{ step: 'cleanup', state: 'terminal' }] },
+      }),
+    ).toThrow()
+    expect(() =>
+      mission({
+        id: 'a',
+        state: 'ready',
+        goals: ['a'],
+        steps: [{ id: 'work' }],
+        finally: [{ id: 'cleanup', dependsOn: [{ step: 'work', state: 'completed' }] }],
+      }),
+    ).toThrow()
+    expect(() => loop({ id: 'wait', maxRounds: 2, round: { steps: [] } } as never)).toThrow()
+    expect(() =>
+      loop({
+        id: 'wait',
+        maxRounds: 2,
+        round: { completion: { when: 'all-steps-exhausted' }, steps: [] },
+        onExhausted: {
+          outcome: 'succeed',
+          attention: { title: 'wrong phase', reviewer: 'person/a', severity: 'warning' },
+        },
+      } as never),
+    ).toThrow()
+    expect(() =>
+      gate({
+        name: 'env',
+        kind: 'exec',
+        command: 'true',
+        host: 'local',
+        workspace: '/tmp',
+        env: { 'bad-key': 'x' },
+      }),
+    ).toThrow()
+  })
+  it.each(['ST_WORKSPACE', 'ST_MISSION', 'ST_GATE', 'ST_LOOP_ROUND', 'ST3_SUBJECT'])(
+    'rejects reserved exec-gate context key %s',
+    (key) => {
+      expect(() =>
+        gate({
+          name: 'env',
+          kind: 'exec',
+          command: 'true',
+          host: 'local',
+          workspace: '/tmp',
+          env: { [key]: 'x' },
+        }),
+      ).toThrow()
+    },
+  )
   it('rejects excessive goals, duplicate gates and missing dependencies', () => {
     expect(() => step({ id: 'a', goals: ['a', 'b', 'c', 'd'] })).toThrow()
     expect(() =>
@@ -404,6 +503,51 @@ testWithSt(
           { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
         )
       }
+      const fixtureSeat = applySeat(
+        emit([agent({ id: 'example/updater', workspace: dir, command: 'true', restart: 'never' })]),
+      )
+      expect(fixtureSeat.status, fixtureSeat.stderr).toBe(0)
+      // Re-publication uses st's normalized mission revision, not whitespace comparison.
+      writeFileSync(source, upstreamRepinKdl)
+      const originalFixture = publish()
+      expect(originalFixture.status, originalFixture.stderr).toBe(0)
+      writeFileSync(source, upstreamRepin())
+      const typedFixture = publish()
+      expect(typedFixture.status, typedFixture.stderr).toBe(0)
+      expect(JSON.parse(typedFixture.stdout)).toMatchObject({ changed: false })
+      const checkEnv = (env: Readonly<Record<string, string>>) => {
+        writeFileSync(
+          source,
+          emit([
+            mission({
+              id: 'environment-proof',
+              state: 'ready',
+              goals: ['Verify the actual exec-gate environment.'],
+              steps: [],
+              gates: [
+                {
+                  name: 'environment',
+                  kind: 'exec',
+                  host: 'local',
+                  workspace: dir,
+                  timeLimit: '5s',
+                  command: 'if test "$ANSWER" = green; then exit 0; else exit 3; fi',
+                  env,
+                },
+              ],
+            }),
+          ]),
+        )
+        return spawnSync(
+          stBin!,
+          ['--endpoint', `unix://${socket}`, 'missions', 'check', source, '--workspace', dir],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      }
+      const supplied = checkEnv({ ANSWER: 'green', PATH: process.env.PATH ?? '/bin' })
+      expect(supplied.status, supplied.stderr).toBe(0)
+      const absent = checkEnv({})
+      expect(absent.status, absent.stderr).toBe(1)
       const applied = applySeat(seat)
       expect(applied.status, applied.stderr).toBe(0)
       const shown = spawnSync(
