@@ -4,6 +4,8 @@
 
 ### Added
 
+- pnpm development installs can opt into the graph-hashed global virtual store;
+  default and CI installs retain root-local projections.
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
@@ -22,6 +24,9 @@
 
 ### Fixed
 
+- Fixed-source Nix products bound Buck execution, Tokio workers, and blocking
+  threads to the Nix core budget, with unset/zero budgets normalized to one.
+  Worker configuration follows the `build` subcommand so Buck accepts the flags.
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - Negative Buck artifact-import fixtures capture remote Nix builder logs, so
@@ -89,6 +94,11 @@
   metadata preservation guard, regardless of the caller's locale.
 
 ### Changed
+
+- Storybook preview builds select Storybook package inputs and their generated
+  transitive workspace dependency closure. Unrelated pull requests avoid preview
+  build and deploy runners; required Storybook plays execute on the native merge
+  queue head rather than consuming runners on individual pull requests.
 
 - Shared Buck cache reads and writes now require an audited hermetic execution
   platform; unadmitted actions default to no shared reuse. Admitted JavaScript,

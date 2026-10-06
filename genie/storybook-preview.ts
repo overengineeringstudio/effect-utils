@@ -3,6 +3,10 @@
  * - `.github/workflows/storybook-preview-build.yml` (uncredentialed `pull_request`)
  * - `.github/workflows/storybook-preview-deploy.yml` (trusted `workflow_run`)
  */
+import { existsSync } from 'node:fs'
+
+import { rootWorkspacePackages } from '../package.json.genie.ts'
+import { projectPnpmPackageClosure } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
 import {
   cachixCliBuildStep,
   cachixStep,
@@ -16,6 +20,47 @@ import {
 
 /** Must match the build workflow `name:`; the deploy workflow triggers on it. */
 export const storybookPreviewBuildWorkflowName = 'Storybook Preview Build'
+
+/**
+ * Discover Storybook consumers and project their complete workspace closure,
+ * including development dependencies (shared Storybook config lives there).
+ * Genie freshness therefore covers new packages and dependency-edge changes.
+ */
+export const storybookPaths = [
+  ...new Set(
+    rootWorkspacePackages
+      .filter((pkg) =>
+        existsSync(new URL(`../${pkg.meta.workspace.memberPath}/.storybook`, import.meta.url)),
+      )
+      .flatMap((pkg) =>
+        projectPnpmPackageClosure({ pkg }).workspaceClosureDirs.map((path) => `${path}/**`),
+      ),
+  ),
+  '.github/workflows/storybook-*.yml',
+  '.github/workflows/storybook-*.yml.genie.ts',
+  'genie/storybook-preview.ts',
+  'genie/ci-workflow.ts',
+  'genie/ci-workflow/**',
+  'genie/ci-scripts/**',
+  'genie/deploy-preview/**',
+  'genie/external.ts',
+  'genie/internal.ts',
+  'genie/packages.ts',
+  'package.json',
+  'package.json.genie.ts',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  'pnpm-workspace.yaml.genie.ts',
+  'patches/**',
+  'devenv.nix',
+  'devenv.yaml',
+  'devenv.lock',
+  'flake.nix',
+  'flake.lock',
+  'nix/devenv-modules/tasks/shared/storybook.nix',
+  'nix/devenv-modules/tasks/shared/netlify.nix',
+  'nix/binary-caches.json',
+].toSorted()
 
 export const storybookPreviewRunner = namespaceRunner({
   profile: 'namespace-profile-linux-x86-64',

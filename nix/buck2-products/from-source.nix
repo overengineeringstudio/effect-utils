@@ -98,7 +98,7 @@ let
   # Descriptor-bearing products: JavaScript product-v2 and build_product.
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
-  buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+  buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config build.num_tokio_workers=\"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
     lib.optionalString (product.kind == "native") " --config rust_profile.mode=release"
   }${
     lib.concatMapStringsSep "" (
@@ -176,6 +176,13 @@ let
 
     buildPhase = ''
       runHook preBuild
+      # Nix's zero/unset budget must not expand to the host's CPU count.
+      export NIX_BUILD_CORES="''${NIX_BUILD_CORES:-1}"
+      if [ "$NIX_BUILD_CORES" = 0 ]; then
+        export NIX_BUILD_CORES=1
+      fi
+      # Bound daemon blocking work as well as execution and Tokio workers.
+      export BUCK2_MAX_BLOCKING_THREADS="$NIX_BUILD_CORES"
       export HOME="$TMPDIR/home"
       export XDG_CACHE_HOME="$TMPDIR/cache"
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"

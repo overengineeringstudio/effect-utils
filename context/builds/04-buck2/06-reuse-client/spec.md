@@ -197,6 +197,25 @@ each lane record platform, revision, target closure, cache posture, warm no-op,
 fresh-context warm-cache time and host load. No 5-second/3-minute universal budget
 is substituted for a measured lane budget (axe record `uttvbj`).
 
+### Cache efficiency measurement
+
+BUILD.BUCK.REUSE-R08–R14 are evaluated over a rolling 7-day window. A lane rate
+counts native outcomes: remote hit / (remote hit + local execution + local
+cache + upload).
+
+| Requirement | Evidence                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------ |
+| R08–R10     | CI cache-evidence artifacts; R08 joins local executions against public-tier action digests       |
+| R11         | public tier server request counters (`GetActionResult` hits/misses, `UpdateActionResult` writes) |
+| R12         | weekly two-root probe per trusted host, native event log                                         |
+| R13         | narinfo presence for each published product and the publish-run derivation diff                  |
+| R14         | daily cache-health measurement history                                                           |
+
+R09 and R10 apply only to lanes where queue writers populate the public tier
+before readers run. Rates measured before that ordering exists form a separate
+pre-ordering baseline
+([2026-10-06 baseline](./.experiments/2026-10-06-cache-efficiency-baseline.md)).
+
 ## Open Design Questions
 
 - **BUILD.BUCK.REUSE-DQ01 Lane budget values:** Blocked on the first honest
