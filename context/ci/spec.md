@@ -48,6 +48,8 @@ The schedule covers empirical cold-bootstrap/cold-GC authority and deterministic
 
 The Linux `quality` job emits `pr/quality` and shares one checkout, Nix/devenv setup, and diagnostics lifecycle across TypeScript, format/lint/generated freshness, frozen-lockfile validation, bundle smoke, native dependency policy, shell-entry checks, and the CI-runtime/downstream-flake regressions. Each invariant retains a named failing step; the lane stops after a failure, while failure summaries and diagnostic artifacts still run. The job declares reader-only Buck cache posture.
 
+The downstream-flake regression copies source inputs, not transient `.editor-view` payloads produced by preceding quality steps. Its disposable checkout therefore excludes the immutable editor backing store along with other build and dependency state.
+
 ## Checks and ruleset
 
 GitHub creates a check run for each materialized job and groups runs from one workflow execution in a check suite. Branch protection names required check-run contexts, not source-level job keys.
