@@ -1,5 +1,6 @@
 """Language-neutral portable build-product packaging contract."""
 
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/package_tools.bzl", "JavaScriptModuleInfo", "PackageCommandRuntimeInfo", "package_command_runtime_inputs")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
@@ -29,7 +30,7 @@ def _javascript_product_impl(ctx):
     descriptor = ctx.actions.declare_output("descriptor.json")
     toolchain = ctx.attrs._bun[BunToolchainInfo]
     args = cmd_args([
-        toolchain.executable,
+        hermetic_bun_command(ctx, toolchain.executable),
         package_command_runtime_inputs(ctx),
         "product-descriptor",
         "--descriptor",
@@ -47,11 +48,11 @@ def _javascript_product_impl(ctx):
         "--provenance",
         "dependencyClosureIdentity={}".format(module.dependency_closure_identity),
     ])
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "javascript_product_descriptor",
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [
         DefaultInfo(
@@ -65,8 +66,11 @@ def _javascript_product_impl(ctx):
     ]
 
 _javascript_product = cache_guarded_rule(
+    # The only run action projects declared module JSON with a pinned, scrubbed
+    # Bun runtime. Configured labels name cells/configurations, not root paths.
+    cache_eligible = lambda ctx: True,
     impl = _javascript_product_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "module": attrs.dep(providers = [JavaScriptModuleInfo]),
         "product_kind": attrs.enum(["cli", "module"]),
         "product_name": attrs.string(),
@@ -78,7 +82,7 @@ _javascript_product = cache_guarded_rule(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [PackageCommandRuntimeInfo],
         )),
-    },
+    }),
 )
 
 def javascript_product(
@@ -94,6 +98,7 @@ def javascript_product(
         product_name = product_name,
         product_kind = product_kind,
         default_target_platform = "@rules//buck2/platforms:javascript_portable",
+        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
         **kwargs
     )
 

@@ -12,6 +12,8 @@ on:
     branches: [main]
   pull_request:
     types: [opened, reopened, synchronize]
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       measurement_baseline_ref:
@@ -592,9 +594,16 @@ jobs:
       - name: Verify mutation-free shell entry
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         shell: bash
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           cd "${GITHUB_WORKSPACE:-$PWD}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
           command -v script >/dev/null 2>&1
@@ -610,8 +619,15 @@ jobs:
       - name: Type check (Buck)
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:quick' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:quick'
       - name: Check pnpm lockfile matches package specifiers
@@ -622,15 +638,29 @@ jobs:
       - name: Format + lint
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
       - name: Bundle smoke tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
       - name: CI runtime and native dependency policy regression checks
@@ -783,13 +813,14 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: quality
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     permissions:
       contents: read
       id-token: write
@@ -797,12 +828,10 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-quality"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
-    runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
+    name: test (namespace-profile-linux-x86-64)
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 90
     defaults:
       run:
@@ -840,7 +869,7 @@ jobs:
         shell: bash
         env:
           JOB_KEY: test
-          MATRIX_VALUE: ${{ matrix.runner }}
+          MATRIX_VALUE: namespace-profile-linux-x86-64
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
@@ -913,11 +942,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
-      - name: Build and smoke native and compiled products
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
-        if: matrix.runner == 'namespace-profile-macos-arm64'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1023,7 +1047,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: 'buck2-cache-evidence-test-${{ strategy.job-index }}-${{ github.run_attempt }}'
+          name: 'buck2-cache-evidence-test-${{ github.run_attempt }}'
           path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
           if-no-files-found: warn
           retention-days: 14
@@ -1056,10 +1080,269 @@ jobs:
       contents: read
       id-token: write
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-${{ strategy.job-index }}"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+  test-macos:
+    name: test (namespace-profile-macos-arm64)
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
+    runs-on:
+      [namespace-profile-macos-arm64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Checkout CI measurement baseline ref
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.measurement_baseline_ref }}
+      - name: Prepare pipeline job identity
+        shell: bash
+        env:
+          JOB_KEY: test
+          MATRIX_VALUE: namespace-profile-macos-arm64
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: Start Buck2 cache evidence window
+        shell: bash
+        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+        shell: bash
+      - name: Force diagnostics failure (debug)
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
+      - name: Unit tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
+      - name: Build and smoke native and compiled products
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              head -n 120 "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Collect Buck2 cache evidence
+        if: ${{ always() }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
+          nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
+      - name: Upload Buck2 cache evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'buck2-cache-evidence-test-macos-${{ github.run_attempt }}'
+          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          if-no-files-found: warn
+          retention-days: 14
+      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
+      - name: Export completed job trace
+        if: ${{ always() }}
+        shell: bash
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
+      CI_BUCK2_CACHE_EVIDENCE_JOB: test-macos
+      CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
+      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-macos"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-playwright-utils:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
@@ -1313,7 +1596,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-playwright-utils"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-playwright-tui-react:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
@@ -1567,7 +1850,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-playwright-tui-react"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   cargo:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
@@ -1821,7 +2104,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-cargo"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   weaver:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
@@ -2082,7 +2365,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-weaver"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-a-inert-buck:
-    if: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -2404,7 +2687,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-seed-pnpm-archives"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   build-products:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'pull_request' }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 120
@@ -3186,7 +3469,7 @@ jobs:
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-source-shape"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -3401,7 +3684,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-integration-notion"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-integration-restate:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'merge_group' }}
     concurrency:
       group: 'test-integration-restate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
       cancel-in-progress: true
@@ -4149,14 +4432,7 @@ jobs:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
-    needs:
-      - quality
-      - test
-      - test-playwright-utils
-      - test-playwright-tui-react
-      - cargo
-      - weaver
-      - deploy-storybooks
+    needs: [quality, deploy-storybooks]
     if: ${{ (github.ref == 'refs/heads/main') && github.event_name == 'push' }}
     steps:
       - name: Dispatch alignment to coordinator
@@ -4186,6 +4462,7 @@ jobs:
       - default-ref-policy
       - quality
       - test
+      - test-macos
       - test-playwright-utils
       - test-playwright-tui-react
       - cargo
@@ -4213,7 +4490,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
-      PIPELINE_TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+      PIPELINE_TRUSTED: ${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - uses: actions/checkout@v6
         with:
