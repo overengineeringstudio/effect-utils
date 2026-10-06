@@ -29,7 +29,7 @@ export class CachePublisherJobError extends Error {
   readonly _tag = 'CachePublisherJobError'
   constructor(readonly jobName: string) {
     super(
-      `Cache publisher job ${jobName} requires a protected main-branch trigger and job-level if; write secrets are step-local`,
+      `Cache publisher job ${jobName} requires protected main-branch publication or an exact main-push Buck2 secret guard; write secrets are step-local`,
     )
     this.name = 'CachePublisherJobError'
   }
@@ -100,11 +100,27 @@ const secretReferences = (value: unknown): readonly string[] => {
 const isWriteStep = (step: GitHubWorkflowArgs['jobs'][string]['steps'][number]): boolean => {
   const action = 'uses' in step && step.uses.startsWith('cachix/cachix-action@')
   return (
+    publisherWriteSecret in step ||
     (action && (step.with?.authToken !== undefined || step.with?.skipPush !== true)) ||
     step.env?.CACHIX_AUTH_TOKEN !== undefined ||
     ('run' in step && /\bcachix\s+push\b/.test(step.run))
   )
 }
+
+/** Only main pushes may give a shared job the public cache writer credential. */
+export const mainPushGuardedSecret = (name: string): string =>
+  `\${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.${name} || '' }}`
+
+const pushRestrictedToMain = (on: GitHubWorkflowArgs['on']): boolean =>
+  typeof on === 'object' &&
+  on !== null &&
+  Array.isArray(on) === false &&
+  'push' in on &&
+  on.push !== null &&
+  on.push !== undefined &&
+  'branches' in on.push &&
+  on.push.branches?.length === 1 &&
+  on.push.branches[0] === 'main'
 
 /**
  * Inspect the complete workflow at the common githubWorkflow output boundary.
@@ -121,7 +137,7 @@ export const validateWorkflowCachePolicy = ({
   caches?: readonly BinaryCacheDescriptor[]
 }): void => {
   const triggers = workflowEvents(workflow.on)
-  const writeSecrets = new Set(['CACHIX_AUTH_TOKEN'])
+  const writeSecrets = new Set(['CACHIX_AUTH_TOKEN', 'BUCK2_PUBLIC_CACHE_WRITE_AUTH'])
   for (const job of Object.values(workflow.jobs)) {
     for (const step of job.steps) {
       if (publisherWriteSecret in step) writeSecrets.add(step[publisherWriteSecret] as string)
@@ -173,6 +189,19 @@ export const validateWorkflowCachePolicy = ({
           workflow.on.push.branches?.includes('main') === true))
     for (const step of job.steps) {
       const writer = isWriteStep(step)
+      // The exception is credential-scoped: Cachix write actions still need a protected job.
+      const guardedSecret = mainPushGuardedSecret('BUCK2_PUBLIC_CACHE_WRITE_AUTH')
+      const stepText = JSON.stringify(step)
+      const mainPushGuardedWriter =
+        publisherWriteSecret in step &&
+        step[publisherWriteSecret] === 'BUCK2_PUBLIC_CACHE_WRITE_AUTH' &&
+        pushRestrictedToMain(workflow.on) &&
+        stepText.includes(guardedSecret) &&
+        containsWriteSecret(JSON.parse(stepText.replaceAll(guardedSecret, ''))) === false &&
+        step.env?.CACHIX_AUTH_TOKEN === undefined &&
+        ('uses' in step && step.uses.startsWith('cachix/cachix-action@')) === false &&
+        ('run' in step && /\bcachix\s+push\b/.test(step.run)) === false
+      if (mainPushGuardedWriter === true) continue
       if (
         (writer === true && protectedPublisher === false) ||
         (containsWriteSecret(step) === true && (writer === false || protectedPublisher === false))

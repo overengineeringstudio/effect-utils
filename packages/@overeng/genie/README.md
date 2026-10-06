@@ -91,6 +91,14 @@ genie --writeable  # Generate writable files (default is read-only)
 genie --dry-run    # Preview changes without writing
 ```
 
+Generation stores output locks under `$XDG_STATE_HOME/genie/locks`, defaulting to
+`~/.local/state/genie/locks` when the variable is unset, empty, or not absolute.
+The target path, not discovery cwd, identifies each lock, so running inside a
+source root does not add package inputs or split the output-lock namespace.
+Buck package source and test censuses also exclude existing `tmp/genie-locks`
+state directories. Ordinary files under `tmp` remain inputs, and unsafe paths
+or symlinks outside the state are still rejected.
+
 ### Creating a Generator
 
 Create a `.genie.ts` file next to the config file you want to generate:

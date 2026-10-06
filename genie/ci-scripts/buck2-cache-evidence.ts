@@ -46,6 +46,8 @@ export type CacheInvocation = {
   actionCount: number
   missingDigestCount: number
   missingCommandDigestCount: number
+  /** Missing native digests grouped by outcome; absent on older retained artifacts. */
+  noDigestReasons?: OutcomeCounts
   missingIdentityCount: number
   unpairedStartCount: number
 }
@@ -205,6 +207,7 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
   let missingDigestCount = 0
   let missingCommandDigestCount = 0
   let missingIdentityCount = 0
+  const noDigestReasons = zeroCounts()
   const add = (value: unknown): void => {
     const event = field({ value: value, key: 'Event' })
     const traceId = text(field({ value: event ?? value, key: 'trace_id' }))
@@ -248,6 +251,7 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
     const digest = digestFor(end)
     if (digest === undefined) {
       missingDigestCount++
+      noDigestReasons[outcome]++
       if (
         field({ value: end, key: 'kind' }) === 'Run' ||
         cacheUploadResult === 1 ||
@@ -291,6 +295,7 @@ export const createCacheEvidenceProjector = ({ context }: { context?: string } =
           actionCount,
           missingDigestCount,
           missingCommandDigestCount,
+          noDigestReasons: { ...noDigestReasons },
           missingIdentityCount,
           unpairedStartCount: starts.size,
         },
@@ -411,6 +416,8 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
       missingIdentityCount: count(field({ value: item, key: 'missingIdentityCount' })),
       unpairedStartCount: count(field({ value: item, key: 'unpairedStartCount' })),
     }
+    const noDigestReasons = field({ value: item, key: 'noDigestReasons' })
+    if (noDigestReasons !== undefined) invocation.noDigestReasons = decodeCounts(noDigestReasons)
     const context = field({ value: item, key: 'context' })
     if (context !== undefined) invocation.context = requiredText(context)
     return invocation
@@ -547,13 +554,16 @@ const run = async (): Promise<void> => {
       evidence.metadata[key] = value
   }
   await Bun.write(values.output, `${JSON.stringify(evidence)}\n`)
-  const missing = evidence.invocations.reduce(
-    (total, invocation) => total + invocation.missingCommandDigestCount,
+  const inconsistent = evidence.invocations.reduce(
+    (total, invocation) =>
+      total +
+      (invocation.noDigestReasons?.['remote-hit'] ?? 0) +
+      (invocation.noDigestReasons?.uploaded ?? 0),
     0,
   )
-  if (missing > 0) {
+  if (inconsistent > 0) {
     console.error(
-      `Cache evidence: ${missing} command action(s) have no native action digest; artifact records omissions.`,
+      `Cache evidence: ${inconsistent} remote-hit/uploaded action(s) have no native action digest; artifact records inconsistencies.`,
     )
     process.exitCode = 1
   }

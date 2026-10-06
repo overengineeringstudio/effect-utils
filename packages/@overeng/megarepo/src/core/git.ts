@@ -348,6 +348,18 @@ const streamGitCommandLines = <A>({
     )
   })()
 
+/** Whether the index contains a file or submodule at or beneath a relative path. */
+export const hasTrackedFiles = ({ cwd, path }: { cwd: string; path: string }) =>
+  streamGitCommandLines({
+    args: ['ls-files', '--cached', '--', path],
+    cwd,
+    sink: Sink.fold<boolean, string>(
+      () => false,
+      () => true,
+      (found, line) => Effect.succeed(found || line.length > 0),
+    ),
+  })
+
 // =============================================================================
 // Transient Error Retry
 // =============================================================================
