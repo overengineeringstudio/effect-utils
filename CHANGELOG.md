@@ -24,6 +24,8 @@
 
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
+- Negative Buck artifact-import fixtures capture remote Nix builder logs, so
+  expected rejection diagnostics are checked instead of generic build failures.
 - Cache-less pinned Buck invocations select local-only posture before validating
   trusted archive metadata. Fixed-source Nix builds accept unused consumer-root
   placeholders while keeping remote uploads and archive-origin fetching disabled.
