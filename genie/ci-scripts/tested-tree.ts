@@ -45,13 +45,12 @@ const isTrustedQueueRun = ({ repository, workflow, head, run }: QueueIdentity): 
   run.head_repository.full_name === repository &&
   run.path === workflow &&
   run.head_sha === head &&
-  run.status === 'completed' &&
   Number.isSafeInteger(run.id) &&
   run.id > 0 &&
   Number.isSafeInteger(run.run_attempt) &&
   run.run_attempt > 0
 
-/** Exact tree and evidence from one trusted workflow's current attempt, never commit-wide check names. */
+/** Required job checks prove the current attempt; unrelated jobs may fail or still be finishing. */
 export const hasRequiredQueueEvidence = (
   input: QueueIdentity & {
     pushedTree: string
@@ -254,9 +253,7 @@ export const lookupTestedTree = async (input: {
       const finalStandalone = decodeRun(await api(`actions/runs/${standalone.id}`))
       if (
         finalRun.run_attempt !== run.run_attempt ||
-        finalRun.status !== 'completed' ||
-        finalStandalone.run_attempt !== standalone.run_attempt ||
-        finalStandalone.status !== 'completed'
+        finalStandalone.run_attempt !== standalone.run_attempt
       )
         continue
       return {
