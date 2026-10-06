@@ -516,6 +516,7 @@ let
       local state_dir
       local had_lockfile=0
       local status
+      local -x LC_ALL=C
 
       state_dir="$(mktemp -d)"
       if [ -f pnpm-lock.yaml ]; then
