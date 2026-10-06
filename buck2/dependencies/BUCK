@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:97db0abcb293b1154a7ac738a3d26f570c1dd0451e271a7f728aa191eef080a4
+# Store fingerprint: sha256:1c6aff7414c2985683dbca8fd6852b8fe11b68fd4e6bcf45cb026750965803a7
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -36441,10 +36441,10 @@ pnpm_store_view(
     name = "view_packages_overeng_outline_6dd7061bb977",
     runtime = ":assemble-store.ts",
     direct = {
-        "@effect/vitest": "@effect+vitest@4.0.0-rc.118_effect@4.0.0-rc.118_vitest@5.0.3",
+        "@effect/vitest": "@effect+vitest@4.0.0_effect@4.0.0_vitest@5.0.3",
         "@types/react": "@types+react@19.2.18",
         "@types/react-dom": "@types+react-dom@19.2.7_@types+react@19.2.18",
-        "effect": "effect@4.0.0-rc.118",
+        "effect": "effect@4.0.0",
         "react": "react@19.2.8",
         "react-aria-components": "react-aria-components@1.21.1_react-dom@19.2.8_react@19.2.8_react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",
@@ -36454,7 +36454,7 @@ pnpm_store_view(
     closure_by_platform = {
         "javascript_portable": {
             "@blazediff+core@1.10.0": ":entry_blazediff_core_1_10_0_126fc1dd62bc",
-            "@effect+vitest@4.0.0-rc.118_effect@4.0.0-rc.118_vitest@5.0.3": ":entry_effect_vitest_4_0_0_rc_118_effect_4_0_0_rc_118_vitest_5_0_3_b3b58b4dd9c4",
+            "@effect+vitest@4.0.0_effect@4.0.0_vitest@5.0.3": ":entry_effect_vitest_4_0_0_effect_4_0_0_vitest_5_0_3_6ab80c579d1a",
             "@internationalized+date@3.12.4": ":entry_internationalized_date_3_12_4_5e4b6a270af8",
             "@internationalized+number@3.6.8": ":entry_internationalized_number_3_6_8_33245ac1adf6",
             "@internationalized+string@3.2.10": ":entry_internationalized_string_3_2_10_6aa62d807286",
@@ -36491,7 +36491,7 @@ pnpm_store_view(
             "convert-source-map@2.0.0": ":entry_convert_source_map_2_0_0_46e32cfc1207",
             "csstype@3.2.3": ":entry_csstype_3_2_3_d75166202534",
             "detect-libc@2.1.2": ":entry_detect_libc_2_1_2_a7155eec83d1",
-            "effect@4.0.0-rc.118": ":entry_effect_4_0_0_rc_118_7bc2fb479b82",
+            "effect@4.0.0": ":entry_effect_4_0_0_c059cf710fc3",
             "entities@7.0.1": ":entry_entities_7_0_1_550970cdda41",
             "es-module-lexer@2.3.2": ":entry_es_module_lexer_2_3_2_28bc626bbe55",
             "esbuild@0.28.2": ":entry_esbuild_0_28_2_0091ac1dc089",
@@ -36541,7 +36541,7 @@ pnpm_store_view(
         },
         "linux_aarch64": {
             "@blazediff+core@1.10.0": ":entry_blazediff_core_1_10_0_126fc1dd62bc",
-            "@effect+vitest@4.0.0-rc.118_effect@4.0.0-rc.118_vitest@5.0.3": ":entry_effect_vitest_4_0_0_rc_118_effect_4_0_0_rc_118_vitest_5_0_3_b3b58b4dd9c4",
+            "@effect+vitest@4.0.0_effect@4.0.0_vitest@5.0.3": ":entry_effect_vitest_4_0_0_effect_4_0_0_vitest_5_0_3_6ab80c579d1a",
             "@esbuild+linux-arm64@0.28.2": ":entry_esbuild_linux_arm64_0_28_2_a67bfa3d5003",
             "@internationalized+date@3.12.4": ":entry_internationalized_date_3_12_4_5e4b6a270af8",
             "@internationalized+number@3.6.8": ":entry_internationalized_number_3_6_8_33245ac1adf6",
@@ -36581,7 +36581,7 @@ pnpm_store_view(
             "convert-source-map@2.0.0": ":entry_convert_source_map_2_0_0_46e32cfc1207",
             "csstype@3.2.3": ":entry_csstype_3_2_3_d75166202534",
             "detect-libc@2.1.2": ":entry_detect_libc_2_1_2_a7155eec83d1",
-            "effect@4.0.0-rc.118": ":entry_effect_4_0_0_rc_118_7bc2fb479b82",
+            "effect@4.0.0": ":entry_effect_4_0_0_c059cf710fc3",
             "entities@7.0.1": ":entry_entities_7_0_1_550970cdda41",
             "es-module-lexer@2.3.2": ":entry_es_module_lexer_2_3_2_28bc626bbe55",
             "esbuild@0.28.2": ":entry_esbuild_0_28_2_0091ac1dc089",
@@ -36632,7 +36632,7 @@ pnpm_store_view(
         },
         "linux_x86_64": {
             "@blazediff+core@1.10.0": ":entry_blazediff_core_1_10_0_126fc1dd62bc",
-            "@effect+vitest@4.0.0-rc.118_effect@4.0.0-rc.118_vitest@5.0.3": ":entry_effect_vitest_4_0_0_rc_118_effect_4_0_0_rc_118_vitest_5_0_3_b3b58b4dd9c4",
+            "@effect+vitest@4.0.0_effect@4.0.0_vitest@5.0.3": ":entry_effect_vitest_4_0_0_effect_4_0_0_vitest_5_0_3_6ab80c579d1a",
             "@esbuild+linux-x64@0.28.2": ":entry_esbuild_linux_x64_0_28_2_a925772984e9",
             "@internationalized+date@3.12.4": ":entry_internationalized_date_3_12_4_5e4b6a270af8",
             "@internationalized+number@3.6.8": ":entry_internationalized_number_3_6_8_33245ac1adf6",
@@ -36672,7 +36672,7 @@ pnpm_store_view(
             "convert-source-map@2.0.0": ":entry_convert_source_map_2_0_0_46e32cfc1207",
             "csstype@3.2.3": ":entry_csstype_3_2_3_d75166202534",
             "detect-libc@2.1.2": ":entry_detect_libc_2_1_2_a7155eec83d1",
-            "effect@4.0.0-rc.118": ":entry_effect_4_0_0_rc_118_7bc2fb479b82",
+            "effect@4.0.0": ":entry_effect_4_0_0_c059cf710fc3",
             "entities@7.0.1": ":entry_entities_7_0_1_550970cdda41",
             "es-module-lexer@2.3.2": ":entry_es_module_lexer_2_3_2_28bc626bbe55",
             "esbuild@0.28.2": ":entry_esbuild_0_28_2_0091ac1dc089",
@@ -36723,7 +36723,7 @@ pnpm_store_view(
         },
         "macos_aarch64": {
             "@blazediff+core@1.10.0": ":entry_blazediff_core_1_10_0_126fc1dd62bc",
-            "@effect+vitest@4.0.0-rc.118_effect@4.0.0-rc.118_vitest@5.0.3": ":entry_effect_vitest_4_0_0_rc_118_effect_4_0_0_rc_118_vitest_5_0_3_b3b58b4dd9c4",
+            "@effect+vitest@4.0.0_effect@4.0.0_vitest@5.0.3": ":entry_effect_vitest_4_0_0_effect_4_0_0_vitest_5_0_3_6ab80c579d1a",
             "@esbuild+darwin-arm64@0.28.2": ":entry_esbuild_darwin_arm64_0_28_2_721282d04d4b",
             "@internationalized+date@3.12.4": ":entry_internationalized_date_3_12_4_5e4b6a270af8",
             "@internationalized+number@3.6.8": ":entry_internationalized_number_3_6_8_33245ac1adf6",
@@ -36763,7 +36763,7 @@ pnpm_store_view(
             "convert-source-map@2.0.0": ":entry_convert_source_map_2_0_0_46e32cfc1207",
             "csstype@3.2.3": ":entry_csstype_3_2_3_d75166202534",
             "detect-libc@2.1.2": ":entry_detect_libc_2_1_2_a7155eec83d1",
-            "effect@4.0.0-rc.118": ":entry_effect_4_0_0_rc_118_7bc2fb479b82",
+            "effect@4.0.0": ":entry_effect_4_0_0_c059cf710fc3",
             "entities@7.0.1": ":entry_entities_7_0_1_550970cdda41",
             "es-module-lexer@2.3.2": ":entry_es_module_lexer_2_3_2_28bc626bbe55",
             "esbuild@0.28.2": ":entry_esbuild_0_28_2_0091ac1dc089",
