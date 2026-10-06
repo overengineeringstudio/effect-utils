@@ -54,10 +54,12 @@ export const reconcileGithubRuleset = async ({
   if (summary === undefined) {
     let rulesetId: number | null = null
     if (mode === 'apply') {
-      const created = asRecord(await ghJson({
-        endpoint: `repos/${options.repo}/rulesets`,
-        args: ['--method', 'POST', '--input', options.file],
-      }))
+      const created = asRecord(
+        await ghJson({
+          endpoint: `repos/${options.repo}/rulesets`,
+          args: ['--method', 'POST', '--input', options.file],
+        }),
+      )
       if (typeof created.id !== 'number') {
         throw new Error(`expected created GitHub ruleset to have an id for ${options.repo}`)
       }

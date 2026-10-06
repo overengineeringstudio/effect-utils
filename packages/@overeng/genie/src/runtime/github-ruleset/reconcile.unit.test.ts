@@ -1,9 +1,14 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { diffGithubRuleset, formatGithubRulesetReport, reconcileGithubRuleset } from './reconcile.ts'
+import {
+  diffGithubRuleset,
+  formatGithubRulesetReport,
+  reconcileGithubRuleset,
+} from './reconcile.ts'
 
 describe('github ruleset diff', () => {
   it('compares controlled fields only', () => {
@@ -105,7 +110,12 @@ describe('github ruleset reconciliation', () => {
 
   const fixture = async () => {
     const directory = await mkdtemp(join(tmpdir(), 'genie-ruleset-'))
-    const desired = { name: 'protect-main', target: 'branch', enforcement: 'active', rules: [{ type: 'deletion' }] }
+    const desired = {
+      name: 'protect-main',
+      target: 'branch',
+      enforcement: 'active',
+      rules: [{ type: 'deletion' }],
+    }
     const file = join(directory, 'ruleset.json')
     await writeFile(file, JSON.stringify(desired))
     let remote: Record<string, unknown> | undefined
@@ -139,7 +149,12 @@ describe('github ruleset reconciliation', () => {
       const report = await reconcileGithubRuleset({ mode: 'check', options: state.options })
       expect(report).toMatchObject({ rulesetId: null, changed: true, applied: false })
       expect(formatGithubRulesetReport({ mode: 'check', report })).toContain('(absent)')
-      expect(report.diffs.map(diff => diff.field)).toEqual(['name', 'target', 'enforcement', 'rules'])
+      expect(report.diffs.map((diff) => diff.field)).toEqual([
+        'name',
+        'target',
+        'enforcement',
+        'rules',
+      ])
       expect(state.writes).toEqual([])
     } finally {
       await state.remove()
