@@ -32,3 +32,18 @@ With `ST_BIN`, conformance stores real immutable document bytes, publishes pinne
 step references and document gates, and starts a held ref-watch mission. It
 observes run-scoped observer/subscription subjects and the rewritten observer
 reference in the subscription, without depending on live GitHub observations.
+
+## Step handles
+
+`step({ id: 'review', missionId: 'landing', assignedTo: { kind: 'agent', id: 'team/worker' } })`
+returns a renderable `StepHandle<'landing'>`. `completed(handle)`, `failed(handle)`
+and `terminal(handle)` lower to the existing dependency grammar. A literal
+`missionId` makes foreign scopes a TypeScript error; omitting it preserves
+unscoped plain-data authoring. Assembly always checks exact dependency handle
+membership within the same phase and rejects handles already owned by another
+mission, including foreign handles with colliding IDs.
+
+The resolved `AgentRef` contains `{ kind: 'agent', id }`. The URL-only tree
+reference in #1628 requires its loader's root to resolve an ID, so it is not
+silently interpreted as a global subject. Resolve it through the tree loader
+before using this standalone constructor.
