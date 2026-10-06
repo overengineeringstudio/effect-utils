@@ -61,7 +61,7 @@ mission "example/upstream-repin" state="ready" timeout="720h" {
 }
 `
 
-const check = (name: string, command: string) => ({
+const check = ({ name, command }: { readonly name: string; readonly command: string }) => ({
   name, kind: 'exec' as const, command, host: 'local', workspace: '${ST_WORKSPACE}',
   env: { CHECK_STYLE: 'plain' }, timeLimit: '3m',
 })
@@ -74,17 +74,17 @@ export const upstreamRepin = (): string => emit([mission({
   steps: [
     {
       id: 'install-gate', agentless: true, retry: { attempts: 3, backoff: '5m' },
-      gates: [check('the readiness helper is installed', 'printf ready > readiness-helper')],
+      gates: [check({ name: 'the readiness helper is installed', command: 'printf ready > readiness-helper' })],
     },
     {
       id: 'await-upstream', timeout: '720h',
       dependsOn: [{ step: 'install-gate', state: 'completed' }], maxRounds: 100,
-      until: [check('upstream is ready', 'test -f ready # round ${loop.round}')],
+      until: [check({ name: 'upstream is ready', command: 'test -f ready # round ${loop.round}' })],
       round: {
         completion: { when: 'all-steps-exhausted' },
         steps: [{
           id: 'settle', agentless: true, retry: { attempts: 100, backoff: '10m' },
-          gates: [check('readiness changed or the heartbeat is due', 'test -f heartbeat # round ${loop.round}')],
+          gates: [check({ name: 'readiness changed or the heartbeat is due', command: 'test -f heartbeat # round ${loop.round}' })],
         }],
       },
       onExhausted: { outcome: 'fail', attention: {
