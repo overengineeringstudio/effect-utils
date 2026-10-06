@@ -106,3 +106,23 @@ action, with no synthetic root or prepared `node_modules` adapter.
   may be published there.
 - Registry or a separately retention-proven backend remains recovery authority
   for archive bytes. CAS eviction is a reseed event, not data loss.
+
+## Amendment 1: the seeder runs on the CAS host (2026-10-03)
+
+Confirmed by Johannes (speed-up-ci decisions q5 and q8, 2026-10-03).
+
+Item 4's protected-main seeder was a CI job on a `[self-hosted, Linux, X64]`
+runner. No runner with those labels was ever registered for this repository:
+all 153 of its jobs, from 2026-09-23 to 2026-09-30, were cancelled without a
+runner or a step. Because the run-close job waits on every job, each main push
+run stayed open until the next push cancelled it. The private CAS was never
+seeded by it; 39 of 733 digests were missing on 2026-09-30.
+
+The seeder runs as a systemd timer on the host that serves the private CAS. It
+runs `buck2/dependencies/seed-archives.ts` against a checkout of `origin/main`,
+with the same verification as before. The CAS write credential stays on that
+host, scoped to the seeder service; this relies on the matching dotfiles
+amendment of BC.REAPI-R02, which otherwise denies fleet hosts any cache write
+credential. No CI job seeds archives, so no runner, pull-request job, or
+protected-main job holds the write credential. Item 4's verification and tier
+rules are unchanged.

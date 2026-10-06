@@ -64,6 +64,11 @@ import {
   type PrStateResolverService,
 } from '../../../store/store-pr-state.ts'
 import {
+  isWorkspaceActive,
+  readWorkspaceActivity,
+  type WorkspaceActivityEpoch,
+} from '../../../store/store-workspace-activity.ts'
+import {
   classifyColdWorktree,
   isNamedRefWorktree,
   type ColdWorktreeDecision,
@@ -158,161 +163,6 @@ type GeneratedArtifactScan =
         | 'io'
     }
 
-/**
- * Native `st2 workspace-activity --json` envelope.
- *
- * st2 is the only producer of agent liveness, so this is the shape megarepo
- * consumes; there is no adapter and no legacy fallback, because an ad-hoc shape
- * nobody produces cannot be bound to a fleet epoch.
- */
-const St2WorkspaceActivitySnapshot = Schema.Struct({
-  schemaVersion: Schema.Literal('st2.workspace-activity.v1'),
-  producer: Schema.Literal('st2'),
-  epoch: Schema.Struct({
-    catalog: Schema.String,
-    host: Schema.String,
-    catalogGeneration: Schema.NullOr(Schema.Finite),
-  }),
-  capturedAt: Schema.String,
-  expiresAt: Schema.String,
-  complete: Schema.Boolean,
-  errors: Schema.Array(Schema.String),
-  claims: Schema.Array(
-    Schema.Struct({
-      workspace: Schema.String,
-      agents: Schema.Array(Schema.String),
-      activeRuntimeIds: Schema.Array(Schema.String),
-      active: Schema.Boolean,
-    }),
-  ),
-})
-
-/** The epoch a snapshot was admitted under, so later reads must match it exactly. */
-interface St2ActivityEpoch {
-  readonly catalog: string
-  readonly host: string
-  readonly catalogGeneration: number | null
-}
-
-/** Admitted activity evidence: the canonical active workspace paths and their epoch. */
-interface St2Activity {
-  readonly activePaths: ReadonlySet<string>
-  readonly epoch: St2ActivityEpoch
-}
-
-/** Longest snapshot validity megarepo will honor: liveness must be short-lived. */
-const ST2_ACTIVITY_MAX_WINDOW_MS = 5 * 60 * 1_000
-
-const decodeSt2Activity = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(St2WorkspaceActivitySnapshot),
-)
-
-/** A timestamp is canonical when it round-trips exactly through ISO-8601. */
-const isCanonicalIsoTimestamp = ({ value, epochMs }: { value: string; epochMs: number }): boolean =>
-  Number.isFinite(epochMs) === true && new Date(epochMs).toISOString() === value
-
-const isStrictlySortedUnique = (values: ReadonlyArray<string>): boolean =>
-  values.every((value, index) => index === 0 || values[index - 1]! < value)
-
-/**
- * Read the native st2 activity snapshot, or `undefined` when it is not usable
- * as evidence.
- *
- * Every rejection is fail-closed by construction: the caller maps `undefined`
- * to `agent-liveness-unavailable`, which is `unknown`, never `would-delete`.
- * Rejected: a foreign producer or schema, an incomplete or erroneous capture, a
- * non-canonical or implausible timestamp pair, a window longer than
- * {@link ST2_ACTIVITY_MAX_WINDOW_MS}, an expired snapshot, an epoch that is not
- * the configured catalog/host, a catalog generation that moved since
- * `admittedEpoch` (the fleet re-derived state mid-decision), unsorted or
- * duplicated claims, a non-normalized or non-canonical workspace path, and any
- * claim whose `active` disagrees with its `activeRuntimeIds`.
- */
-const readSt2Activity = ({
-  fs,
-  config,
-  atMs,
-  admittedEpoch,
-}: {
-  fs: FileSystem.FileSystem
-  config: StoreGcConfig
-  atMs: number
-  admittedEpoch?: St2ActivityEpoch | undefined
-}): Effect.Effect<St2Activity | undefined> =>
-  Effect.gen(function* () {
-    const manifestPath = config.generatedArtifacts.agentLivenessManifest
-    const expectedEpoch = config.generatedArtifacts.agentLivenessEpoch
-    if (manifestPath === undefined || expectedEpoch === undefined) return undefined
-    const content = yield* fs
-      .readFileString(manifestPath)
-      .pipe(Effect.orElseSucceed(() => undefined))
-    if (content === undefined) return undefined
-    const parsed = yield* decodeSt2Activity(content).pipe(Effect.orElseSucceed(() => undefined))
-    if (parsed === undefined) return undefined
-
-    const capturedAtMs = Date.parse(parsed.capturedAt)
-    const expiresAtMs = Date.parse(parsed.expiresAt)
-    const generation = parsed.epoch.catalogGeneration
-    if (
-      parsed.complete === false ||
-      parsed.errors.length > 0 ||
-      isCanonicalIsoTimestamp({ value: parsed.capturedAt, epochMs: capturedAtMs }) === false ||
-      isCanonicalIsoTimestamp({ value: parsed.expiresAt, epochMs: expiresAtMs }) === false ||
-      parsed.epoch.catalog !== expectedEpoch.catalog ||
-      parsed.epoch.host !== expectedEpoch.host ||
-      (generation !== null && (Number.isSafeInteger(generation) === false || generation < 0)) ||
-      (admittedEpoch !== undefined &&
-        (parsed.epoch.catalog !== admittedEpoch.catalog ||
-          parsed.epoch.host !== admittedEpoch.host ||
-          generation !== admittedEpoch.catalogGeneration)) ||
-      capturedAtMs > atMs ||
-      expiresAtMs < capturedAtMs ||
-      expiresAtMs - capturedAtMs > ST2_ACTIVITY_MAX_WINDOW_MS ||
-      expiresAtMs <= atMs ||
-      isStrictlySortedUnique(parsed.claims.map((claim) => claim.workspace)) === false ||
-      parsed.claims.some(
-        (claim) =>
-          isNormalizedAbsolutePath(claim.workspace) === false ||
-          claim.agents.length === 0 ||
-          isStrictlySortedUnique(claim.agents) === false ||
-          isStrictlySortedUnique(claim.activeRuntimeIds) === false ||
-          claim.active !== claim.activeRuntimeIds.length > 0,
-      ) === true
-    ) {
-      return undefined
-    }
-
-    // A claim must name the worktree by its canonical path, so a symlinked or
-    // aliased claim can never silently protect (or fail to protect) a candidate.
-    const canonical = yield* Effect.forEach(
-      parsed.claims,
-      (claim) =>
-        fs.realPath(claim.workspace).pipe(
-          Effect.map((path) => ({ claim, path })),
-          Effect.orElseSucceed(() => undefined),
-        ),
-      { concurrency: 1 },
-    )
-    if (
-      canonical.some(
-        (entry) =>
-          entry === undefined ||
-          normalizeStorePath(entry.path) !== normalizeStorePath(entry.claim.workspace),
-      ) === true
-    ) {
-      return undefined
-    }
-
-    return {
-      activePaths: new Set(
-        canonical.flatMap((entry) =>
-          entry?.claim.active === true ? [normalizeStorePath(entry.path)] : [],
-        ),
-      ),
-      epoch: parsed.epoch,
-    }
-  })
-
 type GeneratedArtifactRepoWorktrees = ReadonlyArray<{
   readonly repo: { readonly relativePath: string }
   readonly worktrees: ReadonlyArray<CollectedWorktree>
@@ -346,7 +196,6 @@ const planGeneratedArtifacts = ({
   now,
   onArtifact,
   onRepoCompleted,
-  readCurrentTimeMillis,
   repoWorktrees,
 }: {
   config: StoreGcConfig
@@ -355,17 +204,20 @@ const planGeneratedArtifacts = ({
   now: number
   onArtifact?: ((result: StoreGcResult) => Effect.Effect<void>) | undefined
   onRepoCompleted?: (() => Effect.Effect<void>) | undefined
-  readCurrentTimeMillis: Effect.Effect<number>
   repoWorktrees: GeneratedArtifactRepoWorktrees
 }): Effect.Effect<
-  { readonly results: ReadonlyArray<StoreGcResult>; readonly planSha256: string },
+  {
+    readonly results: ReadonlyArray<StoreGcResult>
+    readonly planSha256: string
+    readonly activityEpoch?: WorkspaceActivityEpoch | undefined
+  },
   PlatformError,
-  ChildProcessSpawner
+  FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const generatedResults: StoreGcResult[] = []
-    const readActivity = (args: { atMs: number; admittedEpoch?: St2ActivityEpoch | undefined }) =>
-      readSt2Activity({ fs, config, ...args })
+    const initialActivity =
+      config.generatedArtifacts.enabled === true ? yield* readWorkspaceActivity({ fs }) : undefined
     for (const { repo, worktrees } of repoWorktrees) {
       for (const worktree of worktrees) {
         if (worktree.broken === true) continue
@@ -408,11 +260,16 @@ const planGeneratedArtifacts = ({
           const contained =
             canonicalArtifact !== undefined &&
             normalizeStorePath(canonicalArtifact) === expectedCanonicalArtifact
-          const agentActivity = yield* readActivity({ atMs: yield* readCurrentTimeMillis })
+          const agentActivity = initialActivity
           const agentLive =
-            canonicalWorktree === undefined
+            canonicalWorktree === undefined || agentActivity === undefined
               ? undefined
-              : agentActivity?.activePaths.has(normalizeStorePath(canonicalWorktree))
+              : isWorkspaceActive({ activity: agentActivity, canonicalWorktree: canonicalWorktree })
+          const tracked = yield* Git.hasTrackedFiles({
+            cwd: worktree.path,
+            path: artifactClass,
+          }).pipe(Effect.orElseSucceed(() => undefined))
+          const inUse = yield* readWorktreeInUse({ worktreePath: worktree.path })
           const cheapReason =
             config.generatedArtifacts.enabled === false
               ? 'generated-artifacts-disabled'
@@ -420,17 +277,25 @@ const planGeneratedArtifacts = ({
                 ? 'agent-liveness-unavailable'
                 : canonicalWorktree === undefined || contained === false
                   ? 'artifact-scan-incomplete'
-                  : removalStatus._tag === 'unknown'
-                    ? 'cleanliness-unknown'
-                    : removalStatus.status.isDirty === true
-                      ? 'dirty-worktree'
-                      : ignored === 'unknown'
-                        ? 'artifact-ignore-unknown'
-                        : ignored === 'not-ignored'
-                          ? 'artifact-not-ignored'
-                          : megarepoLive === true || agentLive === true
-                            ? 'live'
-                            : undefined
+                  : tracked === undefined
+                    ? 'artifact-tracked-unknown'
+                    : tracked === true
+                      ? 'artifact-tracked'
+                      : inUse._tag === 'unknown'
+                        ? 'process-liveness-unavailable'
+                        : inUse._tag === 'in-use'
+                          ? 'live'
+                          : removalStatus._tag === 'unknown'
+                            ? 'cleanliness-unknown'
+                            : removalStatus.status.isDirty === true
+                              ? 'dirty-worktree'
+                              : ignored === 'unknown'
+                                ? 'artifact-ignore-unknown'
+                                : ignored === 'not-ignored'
+                                  ? 'artifact-not-ignored'
+                                  : megarepoLive === true || agentLive === true
+                                    ? 'live'
+                                    : undefined
           const traversal =
             cheapReason === undefined
               ? yield* scanGeneratedArtifact({ path: artifactPath })
@@ -445,8 +310,8 @@ const planGeneratedArtifacts = ({
               : canonicalArtifact
           const finalAgentActivity =
             traversal?._tag === 'complete'
-              ? yield* readActivity({
-                  atMs: yield* readCurrentTimeMillis,
+              ? yield* readWorkspaceActivity({
+                  fs,
                   ...(agentActivity === undefined ? {} : { admittedEpoch: agentActivity.epoch }),
                 })
               : agentActivity
@@ -473,6 +338,17 @@ const planGeneratedArtifacts = ({
                   ),
                 )
               : ignored
+          const finalTracked =
+            traversal?._tag === 'complete'
+              ? yield* Git.hasTrackedFiles({
+                  cwd: worktree.path,
+                  path: artifactClass,
+                }).pipe(Effect.orElseSucceed(() => undefined))
+              : tracked
+          const finalInUse =
+            traversal?._tag === 'complete'
+              ? yield* readWorktreeInUse({ worktreePath: worktree.path })
+              : inUse
           const mtimeMs = traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
           const reason =
             cheapReason ??
@@ -485,27 +361,37 @@ const planGeneratedArtifacts = ({
                 ? 'artifact-scan-incomplete'
                 : finalAgentActivity === undefined
                   ? 'agent-liveness-unavailable'
-                  : finalAgentActivity.activePaths.has(
-                        normalizeStorePath(finalCanonicalWorktree),
-                      ) === true
+                  : isWorkspaceActive({
+                        activity: finalAgentActivity,
+                        canonicalWorktree: finalCanonicalWorktree,
+                      }) === true || finalInUse._tag === 'in-use'
                     ? 'live'
-                    : finalRemovalStatus._tag === 'unknown'
-                      ? 'cleanliness-unknown'
-                      : finalRemovalStatus.status.isDirty === true
-                        ? 'dirty-worktree'
-                        : finalIgnored === 'unknown'
-                          ? 'artifact-ignore-unknown'
-                          : finalIgnored === 'not-ignored'
-                            ? 'artifact-not-ignored'
-                            : now - traversal.newestMtimeMs < config.generatedArtifacts.retentionMs
-                              ? 'retention'
-                              : 'eligible')
+                    : finalInUse._tag === 'unknown'
+                      ? 'process-liveness-unavailable'
+                      : finalTracked === undefined
+                        ? 'artifact-tracked-unknown'
+                        : finalTracked === true
+                          ? 'artifact-tracked'
+                          : finalRemovalStatus._tag === 'unknown'
+                            ? 'cleanliness-unknown'
+                            : finalRemovalStatus.status.isDirty === true
+                              ? 'dirty-worktree'
+                              : finalIgnored === 'unknown'
+                                ? 'artifact-ignore-unknown'
+                                : finalIgnored === 'not-ignored'
+                                  ? 'artifact-not-ignored'
+                                  : now - traversal.newestMtimeMs <
+                                      config.generatedArtifacts.retentionMs
+                                    ? 'retention'
+                                    : 'eligible')
           const outcome =
             reason === 'eligible'
               ? ('would-delete' as const)
               : reason === 'agent-liveness-unavailable' ||
                   reason === 'cleanliness-unknown' ||
                   reason === 'artifact-ignore-unknown' ||
+                  reason === 'artifact-tracked-unknown' ||
+                  reason === 'process-liveness-unavailable' ||
                   reason === 'artifact-scan-incomplete'
                 ? ('unknown' as const)
                 : ('keep' as const)
@@ -535,6 +421,7 @@ const planGeneratedArtifacts = ({
     return {
       results: generatedResults,
       planSha256: planSha256For(generatedResults),
+      ...(initialActivity === undefined ? {} : { activityEpoch: initialActivity.epoch }),
     }
   })
 
@@ -2228,7 +2115,6 @@ const storeGcCommand = Cli.Command.make(
                       }),
                   }
                 : {}),
-              readCurrentTimeMillis: Clock.currentTimeMillis,
               repoWorktrees,
             })
             planSha256 = generatedPlan.planSha256
@@ -2290,7 +2176,6 @@ const storeGcCommand = Cli.Command.make(
                   fs,
                   liveSet: freshLiveSet,
                   now,
-                  readCurrentTimeMillis: Clock.currentTimeMillis,
                   repoWorktrees: freshRepoWorktrees,
                 })
                 if (freshPlan.planSha256 !== expectedPlan.value) {
@@ -2332,25 +2217,41 @@ const storeGcCommand = Cli.Command.make(
                     message: 'candidate owner became live before deletion',
                   })
                 }
-                // Same native reader and the same epoch admission as the plan,
-                // re-read under the lease: an expired, re-derived, or otherwise
-                // inadmissible snapshot is not evidence, and a snapshot that now
-                // claims this owner active vetoes the deletion outright.
-                const removalTime = yield* Clock.currentTimeMillis
-                const removalActivity = yield* readSt2Activity({
+                // A fresh native capture under the lease must remain admitted
+                // on the same host, and newly active owners veto deletion.
+                const removalActivity = yield* readWorkspaceActivity({
                   fs,
-                  config: freshConfig,
-                  atMs: removalTime,
+                  ...(freshPlan.activityEpoch === undefined
+                    ? {}
+                    : { admittedEpoch: freshPlan.activityEpoch }),
                 })
                 if (removalActivity === undefined) {
                   return yield* new StoreCommandError({
                     message: 'agent liveness became unknown before deletion',
                   })
                 }
-                if (removalActivity.activePaths.has(normalizeStorePath(canonicalOwner)) === true) {
+                if (
+                  isWorkspaceActive({
+                    activity: removalActivity,
+                    canonicalWorktree: canonicalOwner,
+                  }) === true
+                ) {
                   return yield* new StoreCommandError({
                     message: 'candidate owner is live before deletion',
                   })
+                }
+                const tracked = yield* Git.hasTrackedFiles({
+                  cwd: canonicalOwner,
+                  path: freshCandidate.artifactClass,
+                }).pipe(Effect.orElseSucceed(() => undefined))
+                if (tracked !== false) {
+                  return yield* new StoreCommandError({
+                    message: 'candidate contains tracked files or its index could not be read',
+                  })
+                }
+                const holder = yield* inUseVeto({ worktreePath: canonicalOwner })
+                if (holder !== undefined) {
+                  return yield* new StoreCommandError({ message: inUseMessage(holder) })
                 }
                 yield* fs.remove(freshCandidate.path, { recursive: true })
                 return { ...freshCandidate, outcome: 'deleted' as const }
