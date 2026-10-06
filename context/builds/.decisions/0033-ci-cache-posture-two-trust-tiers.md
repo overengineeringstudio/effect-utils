@@ -89,6 +89,23 @@ products built exclusively from this public repository and public dependency
 inputs belong to the public tier. Publication still refuses source paths
 outside the repository and private-repository dependency inputs.
 
+## Amendment — Main-push gating writers
+
+Johannes chose maximum public-cache reuse in q10/q11/q14 after PR runs reported
+0% hits: a proof target alone does not populate the action keys used by the gates.
+The `quality` job and both platforms of `test` now publish their normal Buck
+results only on `push` to `refs/heads/main`. PRs, native merge-queue `merge_group`
+runs, and other events do not receive these steps' writer credential and stay
+read-only. The credential is step-local and admitted only through the exact
+main-push expression by the workflow cache policy.
+
+These opportunistic writers set `BUCK2_CACHE_WRITE_OPTIONAL=1`: if the bounded
+REAPI preflight cannot reach the cache, they warn and execute locally with remote
+cache reads and uploads disabled. A cache outage must not make the main gate red.
+The dedicated trusted remote-cache proof does not set this flag and remains
+fail-closed. This preflight fallback is not a guarantee against an outage that
+starts after a successful probe.
+
 ## Dotfiles lead brief
 
 Target: add a public-repository Buck2 cache tier; do not alter the private cache.
