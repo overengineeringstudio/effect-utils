@@ -18,7 +18,13 @@ const rootNodeModulesPath = path.resolve(moduleDirs[0] || path.dirname(rootModul
 const rootNodeModulesDir = fs.existsSync(rootNodeModulesPath)
   ? fs.realpathSync(rootNodeModulesPath)
   : rootNodeModulesPath
-const rootVirtualStoreDir = path.join(rootNodeModulesDir, '.pnpm')
+const globalVirtualStore = process.env.PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE === 'true'
+const selectedVirtualStoreDir = globalVirtualStore
+  ? path.join(process.env.PNPM_CONFIG_STORE_DIR, 'v11', 'links')
+  : path.join(rootNodeModulesDir, '.pnpm')
+const rootVirtualStoreDir = fs.existsSync(selectedVirtualStoreDir)
+  ? fs.realpathSync(selectedVirtualStoreDir)
+  : selectedVirtualStoreDir
 
 const isWithin = (parentPath, childPath) => {
   const relativePath = path.relative(parentPath, childPath)
@@ -31,7 +37,8 @@ const isWithin = (parentPath, childPath) => {
 }
 
 const isPnpmPackageInstance = (packageDir) =>
-  packageDir.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}`)
+  packageDir.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}`) ||
+  /[/\\]v\d+[/\\]links[/\\]/.test(packageDir)
 
 const collectProjectionEntryPaths = (nodeModulesDir) => {
   const result = []
@@ -78,6 +85,42 @@ const collectVirtualStoreDependencyEdgePaths = (virtualStoreDir) => {
   }
 
   return result.sort()
+}
+
+// Never scan unrelated shared graphs. Follow only instances reachable from
+// this root's package links, retaining evidence for their dependency edges.
+const collectGlobalStoreDependencyEdgePaths = () => {
+  const pending = existingModuleDirs.flatMap(collectProjectionEntryPaths)
+  const visited = new Set()
+  const edges = new Set()
+  for (let index = 0; index < pending.length; index++) {
+    let packageDir
+    try {
+      packageDir = fs.realpathSync(pending[index])
+    } catch {
+      continue
+    }
+    if (!isPnpmPackageInstance(packageDir) || visited.has(packageDir)) continue
+    visited.add(packageDir)
+    if (!isWithin(rootVirtualStoreDir, packageDir)) continue
+    const instanceModulesDir = packageDir.includes(`${path.sep}node_modules${path.sep}@`)
+      ? path.dirname(path.dirname(packageDir))
+      : path.dirname(packageDir)
+    for (const entryPath of collectProjectionEntryPaths(instanceModulesDir)) {
+      if (!fs.lstatSync(entryPath).isSymbolicLink()) continue
+      edges.add(entryPath)
+      pending.push(entryPath)
+    }
+    const nestedModulesDir = path.join(packageDir, 'node_modules')
+    if (fs.existsSync(nestedModulesDir)) {
+      for (const entryPath of collectProjectionEntryPaths(nestedModulesDir)) {
+        if (!fs.lstatSync(entryPath).isSymbolicLink()) continue
+        edges.add(entryPath)
+        pending.push(entryPath)
+      }
+    }
+  }
+  return [...edges].sort()
 }
 
 const collectHealthEntryPaths = (nodeModulesDir) => {
@@ -189,7 +232,7 @@ const packageTargetIsShipped = ({ includedFiles, target }) => {
 }
 
 const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
-  if (!packageDir.includes('/node_modules/.pnpm/')) return
+  if (!isPnpmPackageInstance(packageDir)) return
 
   const includedFiles = Array.isArray(pkg.files)
     ? pkg.files.filter((file) => typeof file === 'string' && !file.startsWith('!'))
@@ -289,7 +332,10 @@ const runProjectionHash = () => {
     }
   }
 
-  for (const edgePath of collectVirtualStoreDependencyEdgePaths(rootVirtualStoreDir)) {
+  const dependencyEdges = globalVirtualStore
+    ? collectGlobalStoreDependencyEdgePaths()
+    : collectVirtualStoreDependencyEdgePaths(rootVirtualStoreDir)
+  for (const edgePath of dependencyEdges) {
     appendSymlinkEvidence(edgePath)
   }
 
@@ -349,7 +395,7 @@ const runHealthCheck = () => {
         failures: packageContentFailures,
       })
 
-      if (!realPath.includes('/node_modules/.pnpm/')) continue
+      if (!isPnpmPackageInstance(realPath)) continue
 
       const requiredDependencyNames = new Set(Object.keys(pkg.dependencies ?? {}))
       const dependencyNames = [

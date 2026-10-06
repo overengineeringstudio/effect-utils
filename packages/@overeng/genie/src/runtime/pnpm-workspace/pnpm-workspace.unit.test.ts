@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import { parse } from 'yaml'
 
 import { packageJson, type GenieContext } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
@@ -202,6 +203,32 @@ describe('metadata-based workspace projections', () => {
     })
 
     expect(workspaceFile.stringify(mockGenieContext)).toContain('storeDir: .pnpm-store')
+  })
+
+  it.each([true, false])('serializes enableGlobalVirtualStore: %s', (enableGlobalVirtualStore) => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      nodeLinker: 'isolated',
+      enableGlobalVirtualStore,
+    })
+
+    expect(parse(workspaceFile.stringify(mockGenieContext))).toMatchObject({
+      nodeLinker: 'isolated',
+      enableGlobalVirtualStore,
+    })
+  })
+
+  it('omits enableGlobalVirtualStore when not configured', () => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      nodeLinker: 'isolated',
+    })
+
+    expect(parse(workspaceFile.stringify(mockGenieContext))).not.toHaveProperty(
+      'enableGlobalVirtualStore',
+    )
   })
 
   it('serializes hoistingLimits for hoisted pnpm workspaces', () => {
