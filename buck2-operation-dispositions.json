@@ -5,12 +5,8 @@
       "operation": "default-ref-policy"
     },
     {
-      "disposition": "buck-owned",
-      "operation": "typecheck"
-    },
-    {
-      "disposition": "outside-by-policy:includes-stage-zero-freshness",
-      "operation": "lint"
+      "disposition": "outside-by-policy:aggregate-includes-stage-zero-freshness-and-native-policy",
+      "operation": "quality"
     },
     {
       "disposition": "outside-by-policy:aggregate-includes-policy-excluded-tests",
@@ -27,14 +23,6 @@
     {
       "disposition": "outside-by-policy:filesystem-integration",
       "operation": "test-megarepo-cold-gc"
-    },
-    {
-      "disposition": "outside-by-policy:shared-native-dependency-policy",
-      "operation": "native-dependency-policy"
-    },
-    {
-      "disposition": "buck-owned",
-      "operation": "bundle-smoke"
     },
     {
       "disposition": "outside-by-policy:aggregate-includes-rust-quality-gates",
@@ -87,6 +75,10 @@
     {
       "disposition": "outside-by-policy:live-publication",
       "operation": "publish-products"
+    },
+    {
+      "disposition": "outside-by-policy:ci-measurement-with-run-timestamp",
+      "operation": "main-source-shape"
     },
     {
       "disposition": "outside-by-policy:ci-control-plane",
@@ -165,6 +157,10 @@
     {
       "disposition": "outside-by-policy:secret-service-integration",
       "operation": "test:integration"
+    },
+    {
+      "disposition": "outside-by-policy:workspace-publication",
+      "operation": "test:outline"
     },
     {
       "disposition": "outside-by-policy:aggregate-includes-policy-excluded-tests",

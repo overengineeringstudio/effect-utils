@@ -42,6 +42,33 @@ then establishes any required collector connectivity immediately before delivery
 archive, index, or reconciliation worker is required.
 A failed decode or export never changes the Buck result (BUILD.BUCK.OBS-R01–R04).
 
+### CI action-cache evidence
+
+```text
+Buck native event log -> `buck2 log show` -> bounded JSON projection -> job artifact
+```
+
+Buck-capable public CI jobs retain `buck2-cache-evidence-<job>[-<matrix-index>]-<attempt>`
+artifacts for 14 days, independently of OTLP delivery. Schema version 1 includes
+repository, run, attempt, job, head revision and public-cache posture metadata;
+per-invocation build IDs and complete outcome counts; and at most 64 representative
+action rows across the invocations. Each row carries native category, target,
+configuration, exact RE ActionCache digest (`hash:size`), and cache outcome.
+Commands, environments, stdout/stderr and runner filesystem paths are not retained.
+
+The projector uses numeric native execution/upload enums: action-cache execution is
+`remote-hit`; a successful cache upload is `uploaded`; local execution, local cache,
+remote execution and remote dep-file hits remain distinct. Omitted rows and missing
+command digests are counted explicitly. Duplicate logs of one native build ID do not
+double-count actions. The trusted populate/replay proof captures each context before
+its native logs are removed, including failed Buck commands before returning their
+original exit status. Uploads, hits and failed invocations remain in one job artifact.
+
+`no-native-logs` means no native Buck invocation was observed, not a cache hit.
+In-Nix product jobs report `remote-cache-disabled-by-design` with no action rows:
+their reuse measure is Nix output substitution, not shared Buck AC. Failed evidence
+collection is visible in job logs and does not change the product result.
+
 ## Children
 
 | Child                                                  | Owns                                                      |

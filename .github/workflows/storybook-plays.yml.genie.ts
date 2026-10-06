@@ -6,6 +6,8 @@ import {
   githubTokenEnv,
   runDevenvTasksBefore,
 } from '../../genie/ci-workflow.ts'
+import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
+import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { STANDALONE_REQUIRED_CI_JOB_NAMES } from '../../genie/ci.ts'
 import {
   storybookChangesJob,
@@ -35,7 +37,7 @@ export default ciWorkflow({
     group: '${{ github.workflow }}-${{ github.ref }}',
     'cancel-in-progress': true,
   },
-  jobs: {
+  jobs: withBuck2CacheEvidence({
     'storybook-changes': storybookChangesJob,
     'run-storybook-plays': {
       needs: ['storybook-changes'],
@@ -44,7 +46,7 @@ export default ciWorkflow({
       'timeout-minutes': 45,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
-      env: { FORCE_SETUP: '1', CI: 'true' },
+      env: { FORCE_SETUP: '1', CI: 'true', ...buck2CachePostureEnv('reader') },
       steps: [
         checkoutStep(),
         ...storybookPreviewSetupSteps,
@@ -80,5 +82,5 @@ fi`,
         },
       ],
     },
-  },
+  }),
 } satisfies CiWorkflowArgs)

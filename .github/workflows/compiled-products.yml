@@ -35,10 +35,18 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
+      CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
+      CI_BUCK2_CACHE_EVIDENCE_JOB: publish-compiled-products
+      CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Start Buck2 cache evidence window
+        shell: bash
+        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -64,9 +72,37 @@ jobs:
         with:
           name: overeng-effect-utils
           skipPush: true
+      - name: Publish Buck capability closure
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          paths=$(nix build --no-link --print-out-paths .#buck2-capabilities .#buck2-events)
+          # Store paths contain no whitespace; word splitting yields one argument per output.
+          cachix push overeng-effect-utils $paths
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Publish native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh --push'
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      - name: Collect Buck2 cache evidence
+        if: ${{ always() }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
+          nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
+      - name: Upload Buck2 cache evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'buck2-cache-evidence-publish-compiled-products-${{ strategy.job-index }}-${{ github.run_attempt }}'
+          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          if-no-files-found: warn
+          retention-days: 14

@@ -30,10 +30,7 @@
             "context": "default-ref-policy"
           },
           {
-            "context": "typecheck"
-          },
-          {
-            "context": "lint"
+            "context": "pr/quality"
           },
           {
             "context": "test (namespace-profile-linux-x86-64)"
@@ -48,25 +45,10 @@
             "context": "test-playwright-tui-react"
           },
           {
-            "context": "test-megarepo-cold-gc"
-          },
-          {
-            "context": "native-dependency-policy"
-          },
-          {
-            "context": "bundle-smoke"
-          },
-          {
             "context": "cargo"
           },
           {
             "context": "weaver"
-          },
-          {
-            "context": "bootstrap-cold-proof"
-          },
-          {
-            "context": "nix-closure-sizes"
           },
           {
             "context": "source-shape"

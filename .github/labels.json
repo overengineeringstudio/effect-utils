@@ -91,6 +91,11 @@
       "description": "TypeScript code, tsconfig, and type definitions · Set: manual"
     },
     {
+      "name": "ci:heavy-proofs",
+      "color": "ededed",
+      "description": "Opt in to credential-free empirical CI proofs on this PR · Set: manual"
+    },
+    {
       "name": "ci:publish-snapshot",
       "color": "0e8a16",
       "description": "Trust this fork PR branch for snapshot publishing · Set: manual"
@@ -314,6 +319,11 @@
       "name": "system:otelite",
       "color": "a371f7",
       "description": "@overeng/otelite package · Set: manual"
+    },
+    {
+      "name": "system:outline",
+      "color": "a371f7",
+      "description": "@overeng/outline package · Set: manual"
     },
     {
       "name": "system:oxc-config",

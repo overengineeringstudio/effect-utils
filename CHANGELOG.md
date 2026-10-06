@@ -7,6 +7,12 @@
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
+- `@overeng/outline` provides theme-free outline hierarchy, measured reading-edge
+  selection, fixed-pitch tick geometry, and React Aria navigation. Callers retain
+  document discovery, scroll coordinates, and adapter subscription lifetimes.
+  The nonmodal rail disclosure retains hover and focus, supports Escape with
+  deliberate re-entry, and preserves native alternate anchor activation.
+  Its focused test task publishes only the outline editor dependency view.
 - Declared Darwin Swift app-bundle Buck products with deterministic bundle
   packaging and independent per-executable Mach-O inspection during Nix import.
 - `@overeng/genie-smalltalk` agent declarations support the bare `handles-faults`
@@ -16,9 +22,32 @@
 
 ### Fixed
 
+- Pipeline-report deadline coverage verifies bounded completion and retained results
+  without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
+- Negative Buck artifact-import fixtures capture remote Nix builder logs, so
+  expected rejection diagnostics are checked instead of generic build failures.
+- Cache-less pinned Buck invocations select local-only posture before validating
+  trusted archive metadata. Fixed-source Nix builds accept unused consumer-root
+  placeholders while keeping remote uploads and archive-origin fetching disabled.
 - The Vite build-identity dev plugin watches only its worktree's HEAD, current
   branch ref and index. Git snapshots are asynchronous, debounced and
   single-flight, and dirty checks exclude untracked files.
+- Direct invocations of the shipped pinned `buck2` apply bounded cache admission:
+  unreachable read-only REAPI endpoints fall back to local execution, and
+  unreachable trusted archive origins fall back to the registry, with warnings.
+  Healthy invocations cache admission briefly for warm loops; writer REAPI
+  outages remain fail-closed. A successful probe is a reachability snapshot,
+  not a guarantee against subsequent native transport failures.
+  Launcher compilation isolates its working directory from Nix's temporary root
+  so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
+- Genie bootstrap discovery excludes Buck output trees, so copied generator files
+  in build artifacts do not enter source-tree closure checks.
+- Buck remote-cache uploads reserve protobuf headroom below the backend's 4 MiB
+  gRPC limit, including in generated consumer roots, so large React Aria
+  dependency outputs upload and reuse across independent roots.
+- TypeScript Git fixtures preserve the caller's environment while removing
+  hook-local repository and index selectors, so temporary commits cannot alter
+  the repository running the hook.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
@@ -41,6 +70,12 @@
 - Buck action rules reject unaudited cache-platform requests using resolved
   constraint identities; relative labels and cell aliases cannot bypass
   `cacheable = False` or rule-owned cache eligibility.
+- Pipeline-report baseline deadline tests use a synchronized virtual clock,
+  so host scheduling and HTTP latency cannot consume their deadline budgets.
+- Vitest collection explicitly disables static parsing unless a package admits it,
+  preserving runtime-generated test inventories with Vitest 5's changed default.
+- pnpm lock mutation uses matching bytewise collation throughout its executable
+  metadata preservation guard, regardless of the caller's locale.
 
 ### Changed
 

@@ -44,7 +44,7 @@
     "@overeng/utils": "workspace:^",
     "@playwright/test": "1.63.0",
     "effect": "4.0.0-rc.118",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "devDependencies": {
     "@effect/platform-node": "4.0.0-rc.118",
@@ -53,7 +53,7 @@
     "@types/node": "26.5.0",
     "effect": "4.0.0-rc.118",
     "typescript": "7.0.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
     "effect": "4.0.0-rc.118"

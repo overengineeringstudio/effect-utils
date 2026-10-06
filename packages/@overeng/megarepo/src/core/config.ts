@@ -338,7 +338,7 @@ export const writeMegarepoConfig = ({
   config: MegarepoConfig
 }) =>
   Effect.gen(function* () {
-    yield* assertCanonicalMutationAllowed(configPath)
+    yield* assertCanonicalMutationAllowed({ target: configPath })
     const fs = yield* FileSystem.FileSystem
     const format: ConfigFormat = configPath.endsWith('.kdl') === true ? 'kdl' : 'json'
 

@@ -1,13 +1,9 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer as createGrpcServer } from 'node:http2'
-import { createServer as createTcpServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { standardCIEnv } from '../genie/ci-workflow/shared.ts'
 import {
-  reconcileStandaloneCachePostureForInvocation,
   reconcileStandaloneCachePosture,
   standaloneCachePostureConfig,
 } from './buck2-cache-posture.ts'
@@ -70,26 +66,20 @@ describe('standalone Buck cache posture', () => {
   })
 
   it('reads the public TLS tier anonymously in a PR lane, without upload rights', () => {
-    const tracked = readFileSync(join(import.meta.dir, '..', '.buckconfig'), 'utf8')
     const prLane = standaloneCachePostureConfig({
       current: '',
-      env: standardCIEnv({ trustTier: 'public' }),
+      env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
       trustedOrigin,
     })
-    const effective = `${tracked}\n${prLane}`
 
     expect(prLane).toContain('remote_cache_enabled = true')
     expect(prLane).toContain('allow_cache_uploads = false')
     expect(prLane).toContain('url_prefix =\n  tier = public')
-    expect(effective).toContain('action_cache_address = grpc://dev3.tail8108.ts.net:8443')
-    expect(effective).toContain('cas_address = grpc://dev3.tail8108.ts.net:8443')
-    expect(effective).toContain('tls = true')
-    expect(effective).not.toContain('http_headers')
-    expect(effective).not.toContain('trusted-cache.example')
+    expect(prLane).not.toContain('http_headers')
 
     const escapeHatch = standaloneCachePostureConfig({
       current: prLane,
-      env: { ...standardCIEnv({ trustTier: 'public' }), BUCK2_NO_REMOTE_CACHE: '1' },
+      env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1', BUCK2_NO_REMOTE_CACHE: '1' },
       trustedOrigin,
     })
     expect(escapeHatch).toContain('remote_cache_enabled = false')
@@ -236,197 +226,5 @@ describe('standalone Buck cache posture', () => {
       'url_prefix = https://trusted-cache.example/cas/',
     )
     expect(readFileSync(output, 'utf8')).not.toContain('remote_cache_enabled = false')
-  })
-})
-
-describe('Buck2 REAPI capability preflight', () => {
-  it('keeps the cache enabled after a real GetCapabilities RPC', async () => {
-    const root = makeRoot()
-    const server = createGrpcServer()
-    const requests: { path: string | undefined; instance: string | undefined }[] = []
-    server.on('stream', (stream, headers) => {
-      const chunks: Buffer[] = []
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-      stream.on('end', () => {
-        const frame = Buffer.concat(chunks)
-        requests.push({
-          path: headers[':path'],
-          instance: frame.subarray(7).toString(),
-        })
-        expect(frame[0]).toBe(0)
-        expect(frame.readUInt32BE(1)).toBe(frame.length - 5)
-        expect(frame[5]).toBe(0x0a)
-        expect(frame[6]).toBe(Buffer.byteLength('effect-utils'))
-        stream.respond(
-          { ':status': 200, 'content-type': 'application/grpc' },
-          { waitForTrailers: true },
-        )
-        stream.on('wantTrailers', () => stream.sendTrailers({ 'grpc-status': '0' }))
-        stream.end(Buffer.from([0, 0, 0, 0, 4, 0x0a, 2, 8, 1]))
-      })
-    })
-    server.listen(0, '127.0.0.1')
-    await new Promise<void>((resolve) => server.once('listening', resolve))
-    try {
-      const bound = server.address()
-      if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
-      writeFileSync(
-        join(root, '.buckconfig'),
-        `${readFileSync(join(root, '.buckconfig'), 'utf8')}
-[buck2_re_client]
-  action_cache_address = grpc://127.0.0.1:${bound.port}
-  instance_name = effect-utils
-  tls = false
-`,
-      )
-      const healthy = await reconcileStandaloneCachePostureForInvocation({
-        repoRoot: root,
-        env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
-      })
-      expect(healthy).toBe(true)
-      expect(requests).toEqual([
-        {
-          path: '/build.bazel.remote.execution.v2.Capabilities/GetCapabilities',
-          instance: 'effect-utils',
-        },
-      ])
-      expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
-        'remote_cache_enabled = true',
-      )
-    } finally {
-      server.close()
-    }
-  })
-
-  it('fails open on an unreachable endpoint, then restores the cache on the next invocation', async () => {
-    const root = makeRoot()
-    const socket = createTcpServer()
-    socket.listen(0, '127.0.0.1')
-    await new Promise<void>((resolve) => socket.once('listening', resolve))
-    const bound = socket.address()
-    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
-    const endpoint = `grpc://127.0.0.1:${bound.port}`
-    socket.close()
-    await new Promise<void>((resolve) => socket.once('close', resolve))
-    writeFileSync(
-      join(root, '.buckconfig'),
-      `${readFileSync(join(root, '.buckconfig'), 'utf8')}
-[buck2_re_client]
-  action_cache_address = ${endpoint}
-  instance_name = effect-utils
-  tls = false
-`,
-    )
-    const run = Bun.spawnSync({
-      cmd: [process.execPath, join(import.meta.dir, 'buck2-cache-posture.ts'), root, '--probe'],
-      env: { ...process.env, GITHUB_ACTIONS: 'true', BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
-    })
-    const stderr = run.stderr.toString()
-    expect(run.exitCode).toBe(0)
-    expect(stderr).toContain('warning: Buck2 REAPI GetCapabilities failed')
-    expect(stderr).toContain('::warning title=Buck2 cache::')
-    expect(stderr).toContain('buck2_reapi_fail_open_total 1')
-    expect(stderr).not.toContain(endpoint)
-    expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
-      'remote_cache_enabled = false',
-    )
-
-    const server = createGrpcServer()
-    server.on('stream', (stream) => {
-      stream.on('data', () => {})
-      stream.on('end', () => {
-        stream.respond({
-          ':status': 200,
-          'content-type': 'application/grpc',
-          'grpc-status': '0',
-        })
-        stream.end(Buffer.from([0, 0, 0, 0, 4, 0x0a, 2, 8, 1]))
-      })
-    })
-    server.listen(bound.port, '127.0.0.1')
-    await new Promise<void>((resolve) => server.once('listening', resolve))
-    try {
-      expect(
-        await reconcileStandaloneCachePostureForInvocation({
-          repoRoot: root,
-          env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
-        }),
-      ).toBe(true)
-      expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
-        'remote_cache_enabled = true',
-      )
-    } finally {
-      server.close()
-    }
-  })
-  it.each(['publisher', 'private'] as const)('rejects unavailable %s cache', async (tier) => {
-    const root = makeRoot()
-    const server = createGrpcServer()
-    const receivedHeaders: string[] = []
-    server.on('stream', (stream, headers) => {
-      receivedHeaders.push(String(headers['authorization']))
-      stream.respond({
-        ':status': 200,
-        'content-type': 'application/grpc',
-        'grpc-status': '7',
-      })
-      stream.end()
-    })
-    server.listen(0, '127.0.0.1')
-    await new Promise<void>((resolve) => server.once('listening', resolve))
-    try {
-      const bound = server.address()
-      if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
-      writeFileSync(
-        join(root, '.buckconfig'),
-        `${readFileSync(join(root, '.buckconfig'), 'utf8')}
-[buck2_re_client]
-  action_cache_address = grpc://127.0.0.1:${bound.port}
-  instance_name = effect-utils
-  tls = false
-  http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH
-`,
-      )
-      const credential = 'not-for-logs'
-      const run = Bun.spawn({
-        cmd: [process.execPath, join(import.meta.dir, 'buck2-cache-posture.ts'), root, '--probe'],
-        stderr: 'pipe',
-        env: {
-          ...process.env,
-          GITHUB_ACTIONS: 'true',
-          ...(tier === 'publisher'
-            ? { BUCK2_CACHE_WRITE_BASIC_AUTH: credential }
-            : {
-                BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential,
-                BUCK2_PRIVATE_CACHE_ADDRESS: `grpc://127.0.0.1:${bound.port}`,
-              }),
-        },
-      })
-      const stderr = await new Response(run.stderr).text()
-      expect(await run.exited).toBe(1)
-      expect(receivedHeaders).toEqual([`Basic ${credential}`])
-      expect(stderr).toContain('::error title=Buck2 cache::')
-      expect(stderr).not.toContain('buck2_reapi_fail_open_total')
-      expect(stderr).not.toContain(credential)
-      const posture = readFileSync(join(root, '.buckconfig.local'), 'utf8')
-      expect(posture).toContain('allow_cache_uploads = true')
-      expect(posture).not.toContain('remote_cache_enabled = false')
-      expect(posture).not.toContain(credential)
-    } finally {
-      server.close()
-    }
-  })
-
-  it('preserves the explicit no-cache opt-out without probing', async () => {
-    const root = makeRoot()
-    expect(
-      await reconcileStandaloneCachePostureForInvocation({
-        repoRoot: root,
-        env: { BUCK2_NO_REMOTE_CACHE: '1' },
-      }),
-    ).toBe(true)
-    expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
-      'remote_cache_enabled = false',
-    )
   })
 })

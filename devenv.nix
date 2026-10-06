@@ -112,7 +112,6 @@ let
   tuiStoriesCli = repoPackages.tui-stories;
   ghCiUtilsCli = repoPackages.gh-ci-utils;
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
-  buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
 
   # The generated root package manifest is the workspace package authority.
   # Consuming it here removes the former hand-maintained Nix package list and
@@ -352,6 +351,18 @@ let
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  # Editor views the source-side test partition executes through: every source test package,
+  # the repository root (`genie:buck2:test` runs `bun test genie/buck2/` from it), and the
+  # packages `devenv-modules:test` runs from source (Genie's compiled-staging proof and the
+  # ci-tools deploy/report task e2e fixtures).
+  testPublicationPackagePaths = lib.unique (
+    [
+      "."
+      "packages/@overeng/ci-tools"
+      "packages/@overeng/genie"
+    ]
+    ++ map (pkg: pkg.path) sourceTestPackages
+  );
   typescriptPublicationRootPredicate = ''
     typescript_publication_root() {
       local member_root repository_root
@@ -369,19 +380,6 @@ let
       printf "%s\n" "$member_root"
     }
   '';
-  standaloneBuckCachePosture = ''
-    if [ -n "''${BUCK2_PRIVATE_CACHE_WRITE_AUTH:-}" ] \
-      && [ "''${BUCK2_PUBLIC_CACHE_READ_ONLY:-}" != 1 ] \
-      && [ "''${BUCK2_NO_REMOTE_CACHE:-}" != 1 ]; then
-      auth="$BUCK2_PRIVATE_CACHE_WRITE_AUTH"
-      case "$auth" in
-        publisher:*|:*|*:|"''${auth%%:*}") echo "private cache writer requires a per-host username:password credential" >&2; exit 1 ;;
-      esac
-      export BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$auth" | ${pkgs.coreutils}/bin/base64 -w0)"
-      unset auth BUCK2_PRIVATE_CACHE_WRITE_AUTH
-    fi
-    ${pkgs.bun}/bin/bun "$root/scripts/buck2-cache-posture.ts" "$root" --probe
-  '';
 
   buck2BuildExec =
     { name, targets }:
@@ -394,7 +392,6 @@ let
           pkgs.watchman
         ]
       }
-      ${standaloneBuckCachePosture}
       cd "$root"
       exec "$BUCK2_BIN" build \
         --target-platforms effect_utils//buck2/platforms:host_platform \
@@ -414,7 +411,6 @@ let
           pkgs.watchman
         ]
       }
-      ${standaloneBuckCachePosture}
       cd "$root"
       exec "$BUCK2_BIN" test \
         --target-platforms effect_utils//buck2/platforms:host_platform \
@@ -566,7 +562,6 @@ let
       root="''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}
       cd "$root"
-      ${standaloneBuckCachePosture}
 
       # Pipeline logs join their job trace after the task graph. Standalone
       # Buck commands convert locally, retaining unacknowledged OTLP chunks.
@@ -637,7 +632,6 @@ let
     trace.exec traceName ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      ${standaloneBuckCachePosture}
       exec ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \
@@ -698,7 +692,7 @@ in
           "check:devenv-eval-inputs"
           "lint:check"
           "nix:check:quick"
-          "buck2:editor:publish"
+          "buck2:editor:publish:test"
           "test:run"
           "weaver:diff"
         ];
@@ -777,7 +771,7 @@ in
       ];
     })
     (taskModules.test {
-      installTask = "buck2:editor:publish";
+      installTask = "buck2:editor:publish:test";
       packages = sourceTestPackages;
       extraTests = [
         "devenv-modules:test"
@@ -877,11 +871,12 @@ in
   tasks."lint:check:lockfile".description =
     lib.mkForce "Verify lockfile and package specifiers through source-side Genie freshness";
   tasks."lint:check:lockfile".after = lib.mkForce [ "genie:check" ];
+  tasks."test:outline".after = lib.mkForce [ "buck2:editor:publish:outline" ];
   tasks."lint:check:lockfile".exec = lib.mkForce (
     trace.exec "lint:check:lockfile" "exec genie --check"
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
-  tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish:test" ];
   tasks."devenv-modules:test".env.OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
   tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish" ];
@@ -928,7 +923,7 @@ in
   effectUtils.genie.extraInputGlobs = genieExtraInputGlobs;
 
   packages = [
-    buck2Stage0Definition.archive-tool
+    repoPackages.buck2-archive-tool
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
@@ -946,7 +941,7 @@ in
     repoPackages.buck2-events
     # Nix-distributed Buck binary used by direct repository tasks.
     buck2Machine
-    buck2Stage0Definition.product
+    repoPackages.buck2-product
     cliBuildStamp.package
     ciToolsCli
     ghCiUtilsCli
@@ -995,6 +990,22 @@ in
     ''
   );
 
+  tasks."buck2:cache-posture:test" = {
+    description = "Exercise direct Buck cache admission, outages and trust precedence";
+    exec = trace.exec "buck2:cache-posture:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun test \
+        ./scripts/buck2-entrypoint.integration.test.ts \
+        ./scripts/buck2-cache-posture.integration.test.ts
+    '';
+    execIfModified = [
+      "nix/buck2.nix"
+      "scripts/buck2-entrypoint.*"
+      "scripts/buck2-cache-posture.*"
+    ];
+  };
+
   # The Buck2 genie projection suite lives outside packages/@overeng, so the
   # per-package `test:<pkg>` tasks and the root Vitest projects list both miss
   # it. Give it its own task and hang it off `test:run`, or the projection and
@@ -1002,7 +1013,7 @@ in
   # Bun: the pnpm-lock projection it imports reads Bun.YAML.
   tasks."genie:buck2:test" = {
     description = "Run the Buck2 genie projection and staged-runtime guards under pinned Bun";
-    after = [ "buck2:editor:publish" ];
+    after = [ "buck2:editor:publish:test" ];
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
@@ -1260,6 +1271,12 @@ in
     traceScope = "otel-contract";
   };
 
+  tasks."buck2:editor:publish:outline" = scopedEditorViewPublisher {
+    description = "Atomically publish the headless outline editor dependency view";
+    packagePaths = [ "packages/@overeng/outline" ];
+    traceScope = "outline";
+  };
+
   tasks."buck2:editor:publish:playwright" = scopedEditorViewPublisher {
     description = "Atomically publish the shared Playwright editor dependency views";
     packagePaths = [
@@ -1267,6 +1284,12 @@ in
       "packages/@overeng/utils"
     ];
     traceScope = "playwright";
+  };
+
+  tasks."buck2:editor:publish:test" = scopedEditorViewPublisher {
+    description = "Atomically publish the editor dependency views the source-side tests execute through";
+    packagePaths = testPublicationPackagePaths;
+    traceScope = "test";
   };
 
   tasks."buck2:editor:check" = {
@@ -1404,6 +1427,7 @@ in
 
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
+    "buck2:cache-posture:test"
     "cargo:proto-bindings:check"
     "check:buck2-producer-overlap"
     "nix:check:quick"

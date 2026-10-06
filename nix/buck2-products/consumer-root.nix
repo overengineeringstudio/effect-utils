@@ -82,6 +82,8 @@ let
       cas_address = ${casAddress}
       instance_name = ${cacheInstanceName}
       tls = ${boolString cacheTls}
+      # Buck batches payload bytes, not protobuf overhead; leave room below 4 MiB.
+      max_total_batch_size = 3145728
   ''
   + lib.optionalString (privateProductRoot != null) ''
     [nix_store]

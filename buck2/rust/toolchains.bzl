@@ -33,6 +33,13 @@ load(
     "require_capability",
 )
 
+# Cargo treats empty wrapper values as disabled. Buck owns compiler selection
+# and caching, so daemon-local Cargo wrappers must not select another compiler.
+RUST_COMPILER_WRAPPER_ENV = {
+    "RUSTC_WRAPPER": "",
+    "RUSTC_WORKSPACE_WRAPPER": "",
+}
+
 _TOOL_IDS = [
     "rust-archiver",
     "rust-c-compiler",
@@ -294,6 +301,7 @@ def _compile_env(metadata, target_triple):
         "LD": metadata["rust-linker"]["executableStorePath"],
         "PATH": metadata["rust-shell"]["executableStorePath"].removesuffix("/bash"),
     }
+    result.update(RUST_COMPILER_WRAPPER_ENV)
     result.update(_portable_link_env(target_triple))
     return result
 

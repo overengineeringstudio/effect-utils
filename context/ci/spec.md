@@ -16,16 +16,21 @@ Requirements are in [requirements.md](./requirements.md), domain terms are in [o
 
 ## Event admission
 
-The generated CI workflow admits:
+The generated CI and Empirical Proofs workflows partition revision validation from empirical evidence:
 
 | Event               | Admitted shape                      | Meaningful outcome                                                                    |
 | ------------------- | ----------------------------------- | ------------------------------------------------------------------------------------- |
 | `pull_request`      | `opened`, `reopened`, `synchronize` | Validate the PR head revision and produce every required check.                       |
+| `pull_request`      | `labeled` with `ci:heavy-proofs`    | Run only credential-free empirical proofs for the labeled PR head.                    |
 | `push`              | `main`                              | Validate the merged trunk revision and run eligible main-only work.                   |
-| `schedule`          | `17 3 * * *`                        | Produce deterministic measurement artifacts and the aggregate trend report.           |
+| `schedule`          | `17 3 * * *`                        | Run empirical proofs, deterministic measurements and the aggregate trend report.      |
 | `workflow_dispatch` | explicit operator request           | Run the requested CI/measurement work, including `devenv-perf` and baseline backfill. |
 
-`pull_request:labeled` is not admitted. Applying a label does not change the revision under test and no label selects a CI lane. The workflow therefore does not need job guards or a runner sentinel to neutralize label events.
+`pull_request:labeled` is admitted only by Empirical Proofs and selects empirical lanes only when the applied label is `ci:heavy-proofs`. Other label events launch no lanes. CI does not admit label events, and proof concurrency is isolated by workflow and event scope, so label churn cannot cancel code checks. A labeled PR also runs empirical proofs on subsequent code pushes. The credentialed remote-cache proof stays in CI on trusted main push/dispatch regardless of labels.
+
+Empirical Proofs emits no ordinary required contexts. Source measurements are partitioned: required `source-shape` runs on PR revisions in CI, while `main/source-shape` runs on main push/nightly/dispatch alongside closure/performance artifacts and the aggregate report. A proof-workflow skip therefore cannot replace failed code evidence.
+
+Source measurement dispatch retains historical backfills on any ref, including nonempty `measurement_baseline_ref`; this credential-free measurement exception does not admit the three empirical proof jobs or credentialed remote proof on non-main dispatches. Report publication remains main-only.
 
 Some control-event workflows admit actions where the requested side effect is validly unnecessary. Those workflows keep the job alive and gate only the conditional step, so GitHub produces a successful check suite rather than an absent required check. The auto-review workflow is the current example: its review-request step is conditional, while the job itself always concludes.
 
@@ -35,11 +40,15 @@ A **lane** is one workflow job (or a job matrix) with one declared cadence and o
 
 - Product and source-policy lanes run for admitted PR revisions.
 - Main-only lanes run only after changes reach `main` or through an authorized dispatch.
-- `nix-closure-sizes` and `source-shape` also run on the scheduled measurement event because they produce deterministic trend artifacts.
+- `bootstrap-cold-proof`, `test-megarepo-cold-gc`, and `nix-closure-sizes` run in Empirical Proofs on trusted main push, nightly, or main dispatch, and on PRs carrying `ci:heavy-proofs`; their PR variants have no writer credentials.
 - `devenv-perf` is dispatch-only. It has no pull-request label coupling and does not run on the schedule.
 - `ci/measurements-report` aggregates the measurement artifacts produced by the current push, schedule, or dispatch and remains advisory.
 
-The schedule is retained for deterministic trends, not as a generic nightly rerun of product CI. Product jobs carry the schedule guard because a cron with no changed revision has no product-validation outcome.
+The schedule covers empirical cold-bootstrap/cold-GC authority and deterministic trends, not a nightly rerun of product CI. The empirical lanes do not block ordinary PR merges; build-products, frozen-lockfile checks, generated freshness, and ordinary product tests remain merge-blocking.
+
+The Linux `quality` job emits `pr/quality` and shares one checkout, Nix/devenv setup, and diagnostics lifecycle across TypeScript, format/lint/generated freshness, frozen-lockfile validation, bundle smoke, native dependency policy, shell-entry checks, and the CI-runtime/downstream-flake regressions. Each invariant retains a named failing step; the lane stops after a failure, while failure summaries and diagnostic artifacts still run. The job declares reader-only Buck cache posture.
+
+The downstream-flake regression copies source inputs, not transient `.editor-view` payloads produced by preceding quality steps. Its disposable checkout therefore excludes the immutable editor backing store along with other build and dependency state.
 
 ## Checks and ruleset
 
@@ -47,11 +56,11 @@ GitHub creates a check run for each materialized job and groups runs from one wo
 
 `genie/ci.ts` is the typed inventory for workflow job keys and required contexts:
 
-- `CORE_CI_JOB_NAMES` and `EXTRA_CI_JOB_NAMES` are non-advisory pull-request jobs;
+- `CORE_CI_JOB_NAMES` and `EXTRA_CI_JOB_NAMES` inventory product, source-policy, and empirical lanes;
 - `MAIN_ONLY_CI_JOB_NAMES` contains jobs that do not materialize on pull requests;
 - `OPT_IN_CI_JOB_NAMES` contains `devenv-perf`, whose dispatch-only cadence prevents it from being required;
 - `advisoryCIJobNames` contains report/notification jobs whose conclusions do not gate merge;
-- `REQUIRED_CI_JOB_NAMES` contains the default-ref policy job plus every core and extra PR job, and excludes opt-in, main-only, and advisory jobs;
+- `REQUIRED_CI_JOB_NAMES` contains the default-ref policy job plus core and extra PR jobs, excluding `EMPIRICAL_PROOF_CI_JOB_NAMES`, opt-in, main-only, and advisory jobs;
 - `STANDALONE_REQUIRED_CI_JOB_NAMES` contains merge-blocking jobs of per-PR workflows outside `ci.yml` (currently `test-storybook-plays`); each runs on every pull request with no path filter or job-level `if`;
 - `ciJobCheckContexts` expands matrix job keys to the exact runner-qualified context strings emitted by GitHub.
 
@@ -99,12 +108,12 @@ The scheduled deterministic lanes remain because their artifacts have stable ide
 
 The editable authorities are:
 
-| Concern                              | Authority                                                                      | Generated output                     |
-| ------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------ |
-| workflow events, jobs, and job gates | `.github/workflows/ci.yml.genie.ts` plus shared `genie/ci-workflow.ts` helpers | `.github/workflows/ci.yml`           |
-| job inventory and required contexts  | `genie/ci.ts`                                                                  | consumed by workflow/ruleset sources |
-| repository required checks           | `.github/repo-settings.json.genie.ts`                                          | `.github/repo-settings.json`         |
-| repository labels                    | `.github/labels.json.genie.ts` and shared label catalogs                       | `.github/labels.json`                |
+| Concern                              | Authority                                                                                                                         | Generated output                     |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| workflow events, jobs, and job gates | `.github/workflows/ci.yml.genie.ts`, `.github/workflows/empirical-proofs.yml.genie.ts`, and shared `genie/ci-workflow.ts` helpers | the corresponding `.yml` files       |
+| job inventory and required contexts  | `genie/ci.ts`                                                                                                                     | consumed by workflow/ruleset sources |
+| repository required checks           | `.github/repo-settings.json.genie.ts`                                                                                             | `.github/repo-settings.json`         |
+| repository labels                    | `.github/labels.json.genie.ts` and shared label catalogs                                                                          | `.github/labels.json`                |
 
 Generated YAML and JSON are checked-in review artifacts, never independent authoring surfaces.
 

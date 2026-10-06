@@ -14,7 +14,8 @@ export type TrustedArchiveOrigin = {
   readonly urlPrefix: string
 }
 
-const buckConfigValues = (text: string): Record<string, string> => {
+/** Parse Buck section/key assignments, with later assignments taking precedence. */
+export const buckConfigValues = (text: string): Record<string, string> => {
   let section = ''
   const values: Record<string, string> = {}
   for (const rawLine of text.split(/\r?\n/u)) {
@@ -81,10 +82,13 @@ const PUBLISHER_CACHE_BLOCK = `${MANAGED_BEGIN}
   tier = public
 ${MANAGED_END}`
 
-const trustedCacheBlock = ({ tier, urlPrefix }: TrustedArchiveOrigin): string => `${MANAGED_BEGIN}
+const trustedCacheBlock = (origin: TrustedArchiveOrigin | undefined): string =>
+  origin === undefined
+    ? `${MANAGED_BEGIN}\n${MANAGED_END}`
+    : `${MANAGED_BEGIN}
 [archive_origin]
-  url_prefix = ${urlPrefix}
-  tier = ${tier}
+  url_prefix = ${origin.urlPrefix}
+  tier = ${origin.tier}
 ${MANAGED_END}`
 
 const privateWriterCacheBlock = ({
@@ -92,7 +96,7 @@ const privateWriterCacheBlock = ({
   trustedOrigin,
 }: {
   readonly env: Readonly<Record<string, string | undefined>>
-  readonly trustedOrigin: TrustedArchiveOrigin
+  readonly trustedOrigin: TrustedArchiveOrigin | undefined
 }): string => {
   const address = env['BUCK2_PRIVATE_CACHE_ADDRESS']
   if (address === undefined || /^grpc:\/\/[^/\s]+$/u.test(address) === false)
@@ -106,10 +110,14 @@ const privateWriterCacheBlock = ({
   cas_address = ${address}
   engine_address = ${address}
   tls = false
-  http_headers = authorization: Basic $BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH
+  http_headers = authorization: Basic $BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH${
+    trustedOrigin === undefined
+      ? ''
+      : `
 [archive_origin]
   url_prefix = ${trustedOrigin.urlPrefix}
-  tier = ${trustedOrigin.tier}
+  tier = ${trustedOrigin.tier}`
+  }
 ${MANAGED_END}`
 }
 
@@ -117,7 +125,8 @@ const fail = (message: string): never => {
   throw new Error(`standalone Buck cache posture: ${message}`)
 }
 
-const withoutManagedBlock = (
+/** Remove only the launcher-owned overlay, rejecting malformed or duplicate managed blocks. */
+export const withoutManagedBlock = (
   current: string,
 ): { readonly content: string; readonly found: boolean } => {
   const output: string[] = []
@@ -152,7 +161,7 @@ export const standaloneCachePostureConfig = ({
 }: {
   readonly current: string
   readonly env: Readonly<Record<string, string | undefined>>
-  readonly trustedOrigin: TrustedArchiveOrigin
+  readonly trustedOrigin: TrustedArchiveOrigin | undefined
 }): string => {
   const withoutManaged = withoutManagedBlock(current)
   const managed =
@@ -182,9 +191,13 @@ export const reconcileStandaloneCachePosture = ({
   if (exists === true && lstatSync(output).isSymbolicLink() === true)
     fail('.buckconfig.local must not be a symbolic link')
   const current = exists === true ? readFileSync(output, 'utf8') : ''
-  const trustedOrigin = trustedArchiveOriginFromConfig(
-    readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8'),
-  )
+  const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
+  const trustedOrigin =
+    env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
+    env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1' ||
+    buckConfigValues(tracked)['archive_origin.trusted_url_prefix'] === undefined
+      ? undefined
+      : trustedArchiveOriginFromConfig(tracked)
   const next = standaloneCachePostureConfig({ current, env, trustedOrigin })
   if (next === current) return
   const candidate = `${output}.candidate-${randomUUID().replaceAll('-', '')}`
@@ -197,58 +210,30 @@ export const reconcileStandaloneCachePosture = ({
 }
 
 /**
- * Preflight only the cache endpoint Buck will use in this checkout. Read-only
- * invocations fail open; publishers must reach the cache before they run.
- * The next read-only invocation restores its normal posture and probes again.
+ * Any HTTP response proves the origin answers (a bare prefix request is not a valid CAS key, so a
+ * 4xx is expected); only DNS, connection, or deadline failures count as unreachable.
  */
-export const reconcileStandaloneCachePostureForInvocation = async ({
-  repoRoot,
-  env,
-  deadlineMs = 1200,
+export const probeArchiveOrigin = async ({
+  urlPrefix,
+  deadlineMs,
 }: {
-  readonly repoRoot: string
-  readonly env: Readonly<Record<string, string | undefined>>
-  readonly deadlineMs?: number
+  readonly urlPrefix: string
+  readonly deadlineMs: number
 }): Promise<boolean> => {
-  reconcileStandaloneCachePosture({ repoRoot, env })
-  if (env['BUCK2_NO_REMOTE_CACHE'] === '1') return true
-
-  const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
-  const local = readFileSync(resolve(repoRoot, '.buckconfig.local'), 'utf8')
-  const values = buckConfigValues(`${tracked}\n${local}`)
-  if (values['buck2.remote_cache_enabled'] === 'false') return true
-
-  const available = await probeRemoteCacheCapabilities({
-    address: values['buck2_re_client.action_cache_address'],
-    instanceName: values['buck2_re_client.instance_name'] ?? '',
-    tls: values['buck2_re_client.tls'] === 'true',
-    header: values['buck2_re_client.http_headers'],
-    env,
-    deadlineMs,
-  })
-  if (available === true) return true
-  if (values['buck2.allow_cache_uploads'] === 'true') {
-    const message =
-      'REAPI GetCapabilities failed for cache writer; refusing to run without remote cache'
-    if (env['GITHUB_ACTIONS'] === 'true')
-      process.stderr.write(`::error title=Buck2 cache::${message}\n`)
-    return fail(message)
+  try {
+    await fetch(urlPrefix, {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(deadlineMs),
+    })
+    return true
+  } catch {
+    return false
   }
-
-  reconcileStandaloneCachePosture({
-    repoRoot,
-    env: { ...env, BUCK2_NO_REMOTE_CACHE: '1' },
-  })
-  const warning =
-    'Buck2 REAPI GetCapabilities failed; using BUCK2_NO_REMOTE_CACHE=1 for this invocation'
-  process.stderr.write(`warning: ${warning}\n`)
-  if (env['GITHUB_ACTIONS'] === 'true')
-    process.stderr.write(`::warning title=Buck2 cache::${warning}\n`)
-  process.stderr.write('buck2_reapi_fail_open_total 1\n')
-  return false
 }
 
-const probeRemoteCacheCapabilities = async ({
+/** Require a successful bounded REAPI capabilities response using the selected client identity. */
+export const probeRemoteCacheCapabilities = async ({
   address,
   instanceName,
   tls,
@@ -359,9 +344,7 @@ const probeRemoteCacheCapabilities = async ({
 if (import.meta.main === true)
   try {
     const repoRoot = process.argv[2] ?? fail('expected repository root argument')
-    if (process.argv[3] === '--probe')
-      await reconcileStandaloneCachePostureForInvocation({ repoRoot, env: process.env })
-    else reconcileStandaloneCachePosture({ repoRoot, env: process.env })
+    reconcileStandaloneCachePosture({ repoRoot, env: process.env })
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

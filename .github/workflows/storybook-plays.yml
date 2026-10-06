@@ -75,10 +75,18 @@ jobs:
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
+      CI_BUCK2_CACHE_EVIDENCE_JOB: run-storybook-plays
+      CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Start Buck2 cache evidence window
+        shell: bash
+        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -142,6 +150,24 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run storybook:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run storybook:test'
+      - name: Collect Buck2 cache evidence
+        if: ${{ always() }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
+          nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
+      - name: Upload Buck2 cache evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'buck2-cache-evidence-run-storybook-plays-${{ github.run_attempt }}'
+          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          if-no-files-found: warn
+          retention-days: 14
   test-storybook-plays:
     needs: [storybook-changes, run-storybook-plays]
     if: always()
