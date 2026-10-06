@@ -6,6 +6,9 @@ unset "${git_local_env[@]}"
 span=${1:-${OTEL_SPAN_BIN:?otel-span binary required}}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# Fixture repositories must not inherit host signing, templates, or other config.
+export GIT_CONFIG_GLOBAL="$tmp/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
+: > "$GIT_CONFIG_GLOBAL"
 # CI wraps the test task in a pipeline-run; this probe owns a separate local spool.
 unset PIPELINE_ENTRYPOINT_ACTIVE PIPELINE_SPOOL_DIR
 
@@ -79,7 +82,7 @@ exit 1
 SH
 chmod +x "$tmp/bin/devenv" "$tmp/bin/buck2-events"
 git -C "$tmp" init -q
-git -C "$tmp" -c core.hooksPath=/dev/null -c user.name=CI -c user.email=ci@example.invalid commit -q --allow-empty -m initial
+git -C "$tmp" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=CI -c user.email=ci@example.invalid commit -q --allow-empty -m initial
 env GITHUB_WORKSPACE="$tmp" GITHUB_ENV="$tmp/job.env" \
   GITHUB_REPOSITORY=overengineeringstudio/effect-utils GITHUB_RUN_ID=421 \
   GITHUB_RUN_ATTEMPT=2 GITHUB_EVENT_NAME=pull_request JOB_KEY=typecheck \
@@ -255,17 +258,32 @@ if [[ ${PIPELINE_GIT_HOOK_FIXTURE_CHILD:-0} != 1 ]]; then
   printf 'committed\n' > "$caller/caller.txt"
   git -C "$caller" add caller.txt
   git -C "$caller" -c core.hooksPath=/dev/null -c user.name=CI \
-    -c user.email=ci@example.invalid commit -q -m caller
+    -c commit.gpgsign=false -c user.email=ci@example.invalid commit -q -m caller
   printf 'staged by caller\n' > "$caller/caller.txt"
   git -C "$caller" add caller.txt
   caller_head="$(git -C "$caller" rev-parse HEAD)"
   cp "$caller/.git/index" "$tmp/caller-index.before"
+  # The same real fixture must also survive signing-enabled ambient config.
+  cat > "$tmp/unavailable-signer" <<'SH'
+#!/usr/bin/env bash
+: > "$PIPELINE_SIGNER_CALLED"
+exit 127
+SH
+  chmod +x "$tmp/unavailable-signer"
+  git config --file "$tmp/ambient.gitconfig" commit.gpgsign true
+  git config --file "$tmp/ambient.gitconfig" gpg.program "$tmp/unavailable-signer"
   PIPELINE_GIT_HOOK_FIXTURE_CHILD=1 \
+    GIT_CONFIG_GLOBAL="$tmp/ambient.gitconfig" \
+    PIPELINE_SIGNER_CALLED="$tmp/signer-called" \
     GIT_DIR="$caller/.git" GIT_WORK_TREE="$caller" \
     GIT_INDEX_FILE="$caller/.git/index" GIT_OBJECT_DIRECTORY="$caller/.git/objects" \
     GIT_ALTERNATE_OBJECT_DIRECTORIES="$caller/.git/objects" \
     GIT_COMMON_DIR="$caller/.git" GIT_PREFIX=hook-prefix/ \
     bash "$0" "$span" "$repo"
+  [[ ! -e "$tmp/signer-called" ]] || {
+    echo 'pipeline fixture invoked the ambient signer' >&2
+    exit 1
+  }
   [[ "$(git -C "$caller" rev-parse HEAD)" == "$caller_head" ]] || {
     echo "pipeline fixture changed the hook caller's HEAD" >&2
     exit 1
@@ -274,5 +292,5 @@ if [[ ${PIPELINE_GIT_HOOK_FIXTURE_CHILD:-0} != 1 ]]; then
     echo "pipeline fixture changed the hook caller's index" >&2
     exit 1
   }
-  printf 'hook caller HEAD and staged index unchanged\n'
+  printf 'hook caller HEAD and staged index unchanged; ambient signer not invoked\n'
 fi
