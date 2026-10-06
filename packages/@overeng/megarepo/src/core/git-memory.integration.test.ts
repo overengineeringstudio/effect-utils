@@ -29,6 +29,8 @@ import * as Command from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
+import { makeTempGitEnvironment } from '@overeng/utils-dev/node-vitest'
+
 /** Files in the untracked tree. Large enough that the old O(n²) concat balloons
  *  RSS, small enough that fixture creation stays fast (~10s). */
 const UNTRACKED_FILE_COUNT = 80_000
@@ -49,9 +51,10 @@ const probeScript = fileURLToPath(new URL('../test-utils/memory-probe.ts', impor
  *  faster here than per-file Effect FS calls). */
 const buildUntrackedWorktree = (): string => {
   const dir = mkdtempSync(join('/tmp', 'gc-mem-regression-'))
-  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir })
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir })
-  execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: dir })
+  const env = makeTempGitEnvironment()
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir, env })
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir, env })
+  execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: dir, env })
   for (let s = 0; s < SUBDIR_COUNT; s++) {
     mkdirSync(join(dir, `untracked_directory_level_one_${s}`), { recursive: true })
   }
@@ -85,12 +88,11 @@ describe('git memory regression', () => {
         // resident growth) is the real bound, not this limit.
         const stdout = yield* ChildProcessSpawner.use((spawner) =>
           spawner.string(
-            Command.make('bash', [
-              '-c',
-              'ulimit -v 16777216; exec bun "$0" "$1"',
-              probeScript,
-              worktreePath,
-            ]),
+            Command.make(
+              'bash',
+              ['-c', 'ulimit -v 16777216; exec bun "$0" "$1"', probeScript, worktreePath],
+              { env: makeTempGitEnvironment() },
+            ),
           ),
         )
         const result = decodeProbe(stdout.trim())
