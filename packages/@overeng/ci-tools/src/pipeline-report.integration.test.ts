@@ -163,7 +163,7 @@ it.each([
       const record = parseMarkedWorkflowReportJsonl(stdout).records[0]!
       expect(record.kind).toBe('pipeline-traces')
       const data = record.data!
-      expect((data.baselineCounts as Record<string, number>).typecheck).toBe(expectedSamples)
+      expect((data.baselineCounts as Record<string, number>).weaver).toBe(expectedSamples)
       expect(data.skippedBaselineRunIds).toEqual(
         failedBaseline === undefined ? [] : [failedBaseline],
       )
@@ -185,7 +185,7 @@ it.each([
           records: [record],
         }),
       })
-      expect(body).toContain(`typecheck n=${expectedSamples}`)
+      expect(body).toContain(`weaver n=${expectedSamples}`)
       expect(body).toContain(`n=${expectedSamples}`)
       expect(body).not.toContain('Jobs API report unavailable:')
       if (failedBaseline !== undefined)
@@ -234,7 +234,7 @@ it.each([
       )
       expect(record.kind).toBe('pipeline-traces')
       expect(record.data!.rows).toEqual(
-        expect.arrayContaining([expect.objectContaining({ job: 'typecheck' })]),
+        expect.arrayContaining([expect.objectContaining({ job: 'weaver' })]),
       )
       expect(record.data!.baselineIncompleteReason).toBe(reason)
       const body = renderWorkflowReportCommentBody({
@@ -329,7 +329,7 @@ effectIt.effect.each([
       yield* TestClock.adjust(1)
       const record = yield* Fiber.join(collection)
       expect(record.kind).toBe('pipeline-traces')
-      expect(record.data!.baselineCounts).toMatchObject({ typecheck: 1 })
+      expect(record.data!.baselineCounts).toMatchObject({ weaver: 1 })
       expect(record.data!.skippedBaselineRunIds).toEqual([baselineIds[1]])
       expect(record.data!.baselineIncompleteReason).toBe('collection deadline exceeded')
       expect(stalledRequests).toBe(stalled === true ? 2 : 1)
