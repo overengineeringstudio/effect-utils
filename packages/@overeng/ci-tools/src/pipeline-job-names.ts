@@ -16,6 +16,7 @@ export const pipelineRunnerProfiles = [
 /** Static job identifiers declared by the generated CI workflow. */
 export const pipelineJobIds = [
   'default-ref-policy',
+  'tested-tree',
   'quality',
   'test-playwright-utils',
   'test-playwright-tui-react',

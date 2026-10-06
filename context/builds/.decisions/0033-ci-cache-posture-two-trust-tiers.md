@@ -89,15 +89,15 @@ products built exclusively from this public repository and public dependency
 inputs belong to the public tier. Publication still refuses source paths
 outside the repository and private-repository dependency inputs.
 
-## Amendment — Main-push gating writers
+## Amendment — Protected queue and main gating writers
 
-Johannes chose maximum public-cache reuse in q10/q11/q14 after PR runs reported
-0% hits: a proof target alone does not populate the action keys used by the gates.
-The `quality` job and both platforms of `test` now publish their normal Buck
-results only on `push` to `refs/heads/main`. PRs, native merge-queue `merge_group`
-runs, and other events do not receive these steps' writer credential and stay
-read-only. The credential is step-local and admitted only through the exact
-main-push expression by the workflow cache policy.
+Johannes chose maximum public-cache reuse in q10/q11/q14 and q31. Heavy gate
+lanes publish Buck results on native `merge_group` heads targeting protected
+main and on fallback main pushes. The credential is step-local: its expression
+requires either a push to `refs/heads/main`, or a `merge_group` whose base is
+`refs/heads/main` and whose ref is under `refs/heads/gh-readonly-queue/main/`.
+Pull-request events never receive the credential, including same-repository PRs.
+The workflow cache policy admits only this exact guarded expression.
 
 These opportunistic writers set `BUCK2_CACHE_WRITE_OPTIONAL=1`: if the bounded
 REAPI preflight cannot reach the cache, they warn and execute locally with remote
@@ -105,6 +105,12 @@ cache reads and uploads disabled. A cache outage must not make the main gate red
 The dedicated trusted remote-cache proof does not set this flag and remains
 fail-closed. This preflight fallback is not a guarantee against an outage that
 starts after a successful probe.
+
+Main pushes compare their Git tree with recent protected-main merge-group heads.
+Heavy lanes skip only when every required context succeeded on that same head,
+using each workflow's latest run attempt. Missing, failed, mismatched or
+unavailable evidence runs the heavy lanes. Publishers, empirical proofs and the
+strict trusted remote-cache proof do not depend on this skip decision.
 
 ## Dotfiles lead brief
 

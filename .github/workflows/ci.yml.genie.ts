@@ -1,7 +1,7 @@
 import {
   type RunnerProfile,
   bashShellDefaults,
-  buck2MainCacheWriterStep,
+  buck2TrustedCacheWriterStep,
   buck2PublicCacheWriteSecret,
   cachixCliBuildStep,
   cachixStep,
@@ -298,8 +298,7 @@ const nixDiagnosticsSummaryStep = {
 const jobTimeoutMinutes = 30
 const longJobTimeoutMinutes = 45
 
-const normalCiIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
-const mergeGroupCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.event_name == 'merge_group' }}`
+const heavyCiIf = `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}`
 const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
 const empiricalProofLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}`
 const publishingCachixStep = cachixPublisherStep({
@@ -335,7 +334,7 @@ const measurementReportIf = [
 const job = ({
   step,
   extraSteps = [],
-  laneIf = mergeGroupCiIf,
+  laneIf = heavyCiIf,
   timeoutMinutes = jobTimeoutMinutes,
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
@@ -344,6 +343,7 @@ const job = ({
   timeoutMinutes?: number
 }) => ({
   if: laneIf,
+  ...(laneIf === heavyCiIf ? { needs: ['tested-tree'] } : {}),
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
@@ -353,7 +353,7 @@ const job = ({
   steps: [
     ...baseSteps,
     ...extraSteps,
-    step,
+    laneIf === heavyCiIf ? buck2TrustedCacheWriterStep(step) : step,
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -371,7 +371,8 @@ const compiledProductsSmokeStep = {
 // runner-qualified contexts must exist on a PR before it can enter the native queue.
 const unitTestJob = (runner: RunnerProfile) => ({
   name: `test (${runner})`,
-  if: mergeGroupCiIf,
+  if: heavyCiIf,
+  needs: ['tested-tree'],
   'runs-on': namespaceRunner({
     profile: runner,
     runId: '${{ github.run_id }}',
@@ -380,12 +381,14 @@ const unitTestJob = (runner: RunnerProfile) => ({
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
-    {
+    buck2TrustedCacheWriterStep({
       name: 'Unit tests',
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:run'),
-    },
-    ...(runner === 'namespace-profile-macos-arm64' ? [compiledProductsSmokeStep] : []),
+    }),
+    ...(runner === 'namespace-profile-macos-arm64'
+      ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep)]
+      : []),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -406,8 +409,10 @@ const nativeDepPolicyAuditStep = {
       'audit=genie/ci-scripts/native-dep-policy-audit.ts',
       'if command -v bun >/dev/null 2>&1; then',
       '  bun "$audit"',
+      '  bun test genie/ci-scripts/tested-tree.unit.test.ts genie/ci-workflow/buck2-cache-posture.unit.test.ts genie/ci-workflow/buck2-cache-posture.integration.test.ts',
       'else',
       '  nix run nixpkgs#bun -- "$audit"',
+      '  nix run nixpkgs#bun -- test genie/ci-scripts/tested-tree.unit.test.ts genie/ci-workflow/buck2-cache-posture.unit.test.ts genie/ci-workflow/buck2-cache-posture.integration.test.ts',
       'fi',
     ].join('\n'),
   ),
@@ -435,23 +440,23 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   quality: {
     name: 'pr/quality',
     ...job({
-      laneIf: normalCiIf,
+      laneIf: `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}`,
       timeoutMinutes: 90,
       extraSteps: [
-        buck2MainCacheWriterStep(verifyOtelShellEntryStep),
-        buck2MainCacheWriterStep({
+        buck2TrustedCacheWriterStep(verifyOtelShellEntryStep),
+        buck2TrustedCacheWriterStep({
           name: 'Type check (Buck)',
           env: githubTokenEnv(),
           run: runDevenvTasksBefore('buck2:quick'),
         }),
         frozenLockfileStep,
-        buck2MainCacheWriterStep({
+        buck2TrustedCacheWriterStep({
           name: 'Format + lint',
           env: githubTokenEnv(),
           // Generated-file freshness stays authoritative, not just a local fast path.
           run: runDevenvTasksBefore('genie:check', 'lint:check'),
         }),
-        buck2MainCacheWriterStep({
+        buck2TrustedCacheWriterStep({
           name: 'Bundle smoke tests',
           env: githubTokenEnv(),
           run: runDevenvTasksBefore('bundle:smoke'),
@@ -477,6 +482,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       ],
       step: nativeDepPolicyAuditStep,
     }),
+    needs: ['tested-tree'],
   },
   // Bounded unit-test execution is Buck-owned: `test:run` waits on the single `test:buck2:unit`
   // invocation, source-only packages, and each lane's exact unbounded complement. Explicit
@@ -633,7 +639,8 @@ const extraJobs: Record<string, any> = {
    * and editor machinery from an untrusted fork without publication authority.
    */
   'pr-a-inert-buck': {
-    if: mergeGroupCiIf,
+    if: heavyCiIf,
+    needs: ['tested-tree'],
     'runs-on': 'ubuntu-latest',
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -739,9 +746,10 @@ const extraJobs: Record<string, any> = {
       },
     ],
   },
-  /** Credential-free merge-group build of every published from-source product. */
+  /** Queue and fallback main build of every published from-source product. */
   'build-products': {
-    if: mergeGroupCiIf,
+    if: heavyCiIf,
+    needs: ['tested-tree'],
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -769,7 +777,7 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
-      compiledProductsSmokeStep,
+      buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
     ],
   },
   'publish-products': {
@@ -1292,7 +1300,8 @@ const extraJobs: Record<string, any> = {
    * aggregate jobs above.
    */
   'test-integration-restate': {
-    if: mergeGroupCiIf,
+    if: heavyCiIf,
+    needs: ['tested-tree'],
     concurrency: {
       group:
         'test-integration-restate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
@@ -1306,11 +1315,11 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     steps: [
       ...baseSteps,
-      {
+      buck2TrustedCacheWriterStep({
         name: 'Restate integration tests',
         env: githubTokenEnv(),
         run: runDevenvTasksBefore('test:restate-integration'),
-      },
+      }),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,
@@ -1466,6 +1475,7 @@ const declaredJobIds = new Set([
   'pipeline-attempt-close',
   'main-source-shape',
   'pipeline-traces',
+  'tested-tree',
 ])
 for (const ciJobId of declaredJobIds) {
   if (pipelineJobIdentifierSet.has(ciJobId) === false)
@@ -1485,7 +1495,7 @@ export const empiricalProofJobs: CiWorkflowArgs['jobs'] = {
   'main-source-shape': {
     ...allCiJobs['source-shape'],
     name: 'main/source-shape',
-    if: "\${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}",
+    if: "${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}",
   },
   'ci-measurements-report': allCiJobs['ci-measurements-report'],
 }
@@ -1496,7 +1506,7 @@ const productCiJobs: CiWorkflowArgs['jobs'] = {
   ),
   'source-shape': {
     ...allCiJobs['source-shape'],
-    if: "\${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}",
+    if: "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}",
   },
 }
 
@@ -1531,25 +1541,52 @@ export default ciWorkflow({
   permissions: { contents: 'read', 'id-token': 'write' },
   jobs: withBuck2CachePostures({
     jobs: {
+      // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
+      'tested-tree': {
+        'runs-on': 'ubuntu-latest',
+        'timeout-minutes': 3,
+        permissions: { contents: 'read', actions: 'read' },
+        outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
+        steps: [
+          {
+            ...checkoutStep(),
+            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+            with: { 'persist-credentials': false },
+          },
+          {
+            uses: 'actions/setup-node@v4',
+            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+            with: { 'node-version': '24' },
+          },
+          {
+            id: 'lookup',
+            name: 'Find successful queue evidence for pushed tree',
+            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+            'continue-on-error': true,
+            env: { GH_TOKEN: '${{ github.token }}' },
+            run: 'node genie/ci-scripts/tested-tree.ts',
+          },
+        ],
+      },
       ...withPipelineTelemetry(withBuck2CacheEvidence(productCiJobs)),
       'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
       'pipeline-traces': pipelineTracesJob,
     },
-    // Quality uploads are opportunistic on protected-main pushes only. Queue-only
-    // unit jobs remain readers; the dedicated trusted proof has step-local writer
-    // credentials and returns to reader posture before replaying a fresh daemon.
+    // Protected queue heads and fallback main pushes warm the cache opportunistically.
+    // PR jobs never receive writer credentials; the dedicated main proof remains strict.
     postures: {
       'default-ref-policy': 'reader',
-      quality: 'main-writer',
-      test: 'reader',
-      'test-macos': 'reader',
-      'test-playwright-utils': 'reader',
-      'test-playwright-tui-react': 'reader',
-      cargo: 'reader',
-      weaver: 'reader',
+      'tested-tree': 'reader',
+      quality: 'trusted-writer',
+      test: 'trusted-writer',
+      'test-macos': 'trusted-writer',
+      'test-playwright-utils': 'trusted-writer',
+      'test-playwright-tui-react': 'trusted-writer',
+      cargo: 'trusted-writer',
+      weaver: 'trusted-writer',
       'source-shape': 'reader',
-      'test-integration-restate': 'reader',
-      'build-products': 'reader',
+      'test-integration-restate': 'trusted-writer',
+      'build-products': 'trusted-writer',
       'pr-reviews-resolved': 'reader',
       'test-integration-notion': 'reader',
       'test-live-deploy-ci-tools': 'reader',

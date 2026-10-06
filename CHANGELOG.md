@@ -22,6 +22,10 @@
 
 ### Fixed
 
+- Protected-main merge-group gates opportunistically populate the public Buck
+  cache without exposing credentials to PR runs. Main pushes skip heavy gates
+  only after matching their tree to successful required queue checks; publishers
+  and empirical/cache proofs keep running.
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - Negative Buck artifact-import fixtures capture remote Nix builder logs, so
