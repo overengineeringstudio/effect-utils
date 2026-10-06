@@ -46,7 +46,7 @@ export const generateSchema = (options: SchemaGeneratorOptions) =>
       options.megarepoRoot,
       EffectPath.unsafe.relativeFile(options.outputPath ?? 'schema/megarepo.schema.json'),
     )
-    yield* assertCanonicalMutationAllowed(outputPath)
+    yield* assertCanonicalMutationAllowed({ target: outputPath })
     const outputDir = EffectPath.ops.parent(outputPath)
 
     if (outputDir !== undefined) {

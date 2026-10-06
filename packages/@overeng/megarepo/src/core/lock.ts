@@ -96,7 +96,7 @@ export const writeLockFile = ({
   lockFile: LockFile
 }): Effect.Effect<void, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
-    yield* assertCanonicalMutationAllowed(lockPath)
+    yield* assertCanonicalMutationAllowed({ target: lockPath })
     const fs = yield* FileSystem.FileSystem
     const content = yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(
       lockFile,

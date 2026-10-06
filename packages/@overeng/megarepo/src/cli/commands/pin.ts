@@ -101,8 +101,8 @@ export const pinCommand = Cli.Command.make(
               return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
             }
 
-            yield* assertCanonicalMutationAllowed(root.value)
-            yield* assertCanonicalMutationAllowed(getMembersRoot(root.value))
+            yield* assertCanonicalMutationAllowed({ target: root.value })
+            yield* assertCanonicalMutationAllowed({ target: getMembersRoot(root.value) })
             const fs = yield* FileSystem.FileSystem
             const store = yield* Store
 
@@ -594,8 +594,8 @@ export const unpinCommand = Cli.Command.make(
               return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
             }
 
-            yield* assertCanonicalMutationAllowed(root.value)
-            yield* assertCanonicalMutationAllowed(getMembersRoot(root.value))
+            yield* assertCanonicalMutationAllowed({ target: root.value })
+            yield* assertCanonicalMutationAllowed({ target: getMembersRoot(root.value) })
             const fs = yield* FileSystem.FileSystem
 
             // Load config to verify member exists
