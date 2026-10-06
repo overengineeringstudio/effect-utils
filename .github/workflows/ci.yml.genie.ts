@@ -1469,8 +1469,8 @@ const allCiJobs: Record<string, any> = {
         'namespace-features:github.run-id=${{ github.run_id }}',
       ],
     }),
-    // Successful queue evidence replaces quality, but downstream publication must still succeed.
-    if: "${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}",
+    // Optional lookup failures permit authoritative quality fallback; publication must succeed.
+    if: `\${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(deployJobs).map((id) => `needs['${id}'].result == 'success'`).join(' && ')} }}`,
   },
 }
 const declaredJobIds = new Set([

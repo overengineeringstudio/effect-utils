@@ -8,6 +8,7 @@ type GeneratedWorkflow = {
     string,
     {
       if?: string
+      needs?: string[]
       env?: Record<string, string>
       steps: Array<{ name?: string; env?: Record<string, string>; run?: string }>
     }
@@ -193,11 +194,24 @@ describe('generated CI cache trust behavior', () => {
       'cancelled',
       `return (${expression})`,
     )
-    const run = (tested: string, quality: string, publication: string) =>
+    const run = (
+      tested: string | undefined,
+      quality: string,
+      publication: string,
+      lookup = 'success',
+    ) =>
       check(
         { event_name: 'push', ref: 'refs/heads/main' },
-        { quality: { result: quality }, 'tested-tree': { outputs: { tested } } },
-        [quality, publication],
+        {
+          quality: { result: quality },
+          'tested-tree': { result: lookup, outputs: { tested } },
+          ...Object.fromEntries(
+            job.needs!
+              .filter((id) => id !== 'quality' && id !== 'tested-tree')
+              .map((id) => [id, { result: publication }]),
+          ),
+        },
+        [lookup, quality, publication],
         (values: string[], value: string) => values.includes(value),
         () => false,
       )
@@ -206,6 +220,9 @@ describe('generated CI cache trust behavior', () => {
     expect(run('false', 'skipped', 'success')).toBe(false)
     expect(run('true', 'skipped', 'failure')).toBe(false)
     expect(run('true', 'skipped', 'cancelled')).toBe(false)
+    expect(run(undefined, 'success', 'success', 'failure')).toBe(true)
+    expect(run(undefined, 'success', 'failure', 'failure')).toBe(false)
+    expect(run(undefined, 'success', 'cancelled', 'failure')).toBe(false)
   })
 
   it('runs policy tests by explicit source paths instead of searching Buck outputs', async () => {
