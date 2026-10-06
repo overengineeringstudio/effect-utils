@@ -260,7 +260,7 @@ export const directBuckArguments = async ({
         }),
   ])
   if (remoteAvailable === false) {
-    if (values['buck2.allow_cache_uploads'] === 'true')
+    if (values['buck2.allow_cache_uploads'] === 'true' && env['BUCK2_CACHE_WRITE_OPTIONAL'] !== '1')
       throw new Error(
         'Buck cache writer: REAPI unreachable; refusing to publish without remote cache',
       )

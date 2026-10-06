@@ -24,6 +24,8 @@
 
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
+- Negative Buck artifact-import fixtures capture remote Nix builder logs, so
+  expected rejection diagnostics are checked instead of generic build failures.
 - Cache-less pinned Buck invocations select local-only posture before validating
   trusted archive metadata. Fixed-source Nix builds accept unused consumer-root
   placeholders while keeping remote uploads and archive-origin fetching disabled.
@@ -40,6 +42,9 @@
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
 - Genie bootstrap discovery excludes Buck output trees, so copied generator files
   in build artifacts do not enter source-tree closure checks.
+- JavaScript product descriptor actions use the audited hermetic cache lane, so
+  independent roots reuse their byte-identical descriptors instead of executing
+  one default-denied local action.
 - Buck remote-cache uploads reserve protobuf headroom below the backend's 4 MiB
   gRPC limit, including in generated consumer roots, so large React Aria
   dependency outputs upload and reuse across independent roots.
@@ -70,6 +75,10 @@
   `cacheable = False` or rule-owned cache eligibility.
 - Pipeline-report baseline deadline tests use a synchronized virtual clock,
   so host scheduling and HTTP latency cannot consume their deadline budgets.
+- Vitest collection explicitly disables static parsing unless a package admits it,
+  preserving runtime-generated test inventories with Vitest 5's changed default.
+- pnpm lock mutation uses matching bytewise collation throughout its executable
+  metadata preservation guard, regardless of the caller's locale.
 
 ### Changed
 

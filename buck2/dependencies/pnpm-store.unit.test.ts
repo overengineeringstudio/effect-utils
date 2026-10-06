@@ -414,9 +414,10 @@ describe('normalized store projection of the real lockfile', () => {
         'storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_prettier@3.9.6_react_da9aab27e30e1021',
       ],
       [
-        '@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9',
-        '@vitest+browser@4.1.9_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9',
-        'vitest@4.1.9_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@4.1.9_happy-dom@20._f830263be88a0e28',
+        '@vitest+browser-playwright@5.0.3_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@5.0.3',
+        '@vitest+browser@5.0.3_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@5.0.3',
+        '@vitest+ui@5.0.3_vitest@5.0.3',
+        'vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._1c9a61b8ae5e04be',
       ],
       ['browserslist@4.28.8', 'update-browserslist-db@1.3.2_browserslist@4.28.8'],
     ])

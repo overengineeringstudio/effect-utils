@@ -24,7 +24,8 @@ case "${1:?mode required}" in
     printf 'PIPELINE_JOB_KEY=%s\nPIPELINE_TASK_KEY=%s\nPIPELINE_MATRIX_RUNNER=%s\n' "${JOB_KEY:?}" "$JOB_KEY" "${MATRIX_VALUE:-}" >> "$GITHUB_ENV"
     printf 'PIPELINE_EXPORT_OWNER=adapter\nCI_PROVIDER=github\nPIPELINE_REPOSITORY=%s\nPIPELINE_EVENT=%s\n' "$GITHUB_REPOSITORY" "$GITHUB_EVENT_NAME" >> "$GITHUB_ENV"
     printf 'VCS_CHANGE_ID=%s\nPIPELINE_FORK=%s\n' "${PR_NUMBER:-}" "${PR_FORK:-false}" >> "$GITHUB_ENV"
-    if [ "${PR_FORK:-false}" = true ]; then echo 'PIPELINE_TRUSTED=false' >> "$GITHUB_ENV"; else echo 'PIPELINE_TRUSTED=true' >> "$GITHUB_ENV"; fi
+    # A merge group can include fork code; the event has no trustworthy per-PR fork identity.
+    if [ "$GITHUB_EVENT_NAME" = merge_group ] || [ "${PR_FORK:-false}" = true ]; then echo 'PIPELINE_TRUSTED=false' >> "$GITHUB_ENV"; else echo 'PIPELINE_TRUSTED=true' >> "$GITHUB_ENV"; fi
     merge=$(git rev-parse HEAD)
     base=$(git rev-parse --verify 'HEAD^1^{commit}' 2>/dev/null || printf '%s' "$merge")
     printf 'BUCK2_VCS_MERGE_REVISION=%s\nVCS_REF_BASE_REVISION=%s\nVCS_REF_HEAD_REVISION=%s\n' "$merge" "$base" "${PR_HEAD:-$merge}" >> "$GITHUB_ENV"
