@@ -55,7 +55,7 @@ expect_build_failure() {
   local expression="$3"
   local log
   log="$(mktemp)"
-  if nix build --impure --no-link --expr "$expression" >"$log" 2>&1; then
+  if nix build --impure --no-link --print-build-logs --expr "$expression" >"$log" 2>&1; then
     echo "buck2-bridge-test: expected $label to fail" >&2
     rm -f "$log"
     exit 1
@@ -173,6 +173,8 @@ in test.mkImport {
   expectedPlatform = descriptor.platform;
   artifact = exported + \"/artifact.tar\";
 }"
+# Regression: this rejection is emitted by the import builder, not Nix evaluation.
+# Remote builder logs must reach expect_build_failure's captured diagnostic.
 expect_build_failure \
   "wasm guest missing declared export" \
   'wasm guest export mismatch: expected [{"name":"answer","kind":"function"},{"name":"missing","kind":"function"}], observed [{"name":"answer","kind":"function"}]' \

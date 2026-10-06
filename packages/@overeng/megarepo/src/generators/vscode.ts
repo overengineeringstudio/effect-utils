@@ -266,7 +266,7 @@ export const generateVscode = (options: VscodeGeneratorOptions) =>
       vscodeDir,
       EffectPath.unsafe.relativeFile('megarepo.code-workspace'),
     )
-    yield* assertCanonicalMutationAllowed(outputPath)
+    yield* assertCanonicalMutationAllowed({ target: outputPath })
 
     // Ensure .vscode directory exists
     yield* fs.makeDirectory(vscodeDir, { recursive: true })

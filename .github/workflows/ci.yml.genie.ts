@@ -46,14 +46,14 @@ import {
   githubAccessTokenEnv,
   readBinaryCacheDescriptors,
 } from '../../genie/ci-workflow.ts'
+import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
+import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import {
   withPipelineTelemetry,
   pipelineCloseJob,
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
-import { type CoreCIJobName } from '../../genie/ci.ts'
+import { EMPIRICAL_PROOF_CI_JOB_NAMES, type CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
-import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
-import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -296,24 +296,15 @@ const nixDiagnosticsSummaryStep = {
 const jobTimeoutMinutes = 30
 const longJobTimeoutMinutes = 45
 
-/**
- * `schedule` exists only for the nightly deterministic measurement snapshot of
- * `main`: the two deterministic measurement lanes and the aggregate report.
- * Product lanes carry this guard so a cron never re-runs the product matrix.
- */
-const notNightlyMeasurementIf = "github.event_name != 'schedule'"
-
-const normalCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ${notNightlyMeasurementIf} }}`
+const normalCiIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
 const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
+const empiricalProofLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}`
 const publishingCachixStep = cachixPublisherStep({
   name: 'overeng-effect-utils',
   authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
   jobIf: trustedSecretCiIf,
   triggers: ['push', 'workflow_dispatch'],
 })
-
-/** Deterministic measurement lanes also feed the nightly snapshot. */
-const measurementLaneIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
 
 /**
  * The paired wall-clock lane runs only when explicitly requested by an operator.
@@ -335,19 +326,21 @@ const measurementReportIf = [
   "&& (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')",
   "&& needs.devenv-perf.result != 'failure'",
   "&& needs.nix-closure-sizes.result != 'failure'",
-  "&& needs.source-shape.result != 'failure' }}",
+  "&& needs.main-source-shape.result != 'failure' }}",
 ].join(' ')
 
 const job = ({
   step,
   extraSteps = [],
+  laneIf = normalCiIf,
   timeoutMinutes = jobTimeoutMinutes,
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   extraSteps?: readonly any[]
+  laneIf?: string
   timeoutMinutes?: number
 }) => ({
-  if: normalCiIf,
+  if: laneIf,
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
@@ -443,26 +436,53 @@ const frozenLockfileStep = {
 } as const
 
 // Core product jobs keyed by the shared Genie CI source of truth.
-const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
-  // Buck's quick aggregate is the single TypeScript check authority.
-  typecheck: job({
-    step: {
-      name: 'Type check (Buck)',
-      env: githubTokenEnv(),
-      run: runDevenvTasksBefore('buck2:quick'),
-    },
-    extraSteps: [verifyOtelShellEntryStep],
-  }),
-  lint: job({
-    step: {
-      name: 'Format + lint',
-      env: githubTokenEnv(),
-      // Keep generated-file freshness authoritative in CI. The lint task's
-      // execIfModified filter remains only a local fast path.
-      run: runDevenvTasksBefore('genie:check', 'lint:check'),
-    },
-    extraSteps: [frozenLockfileStep],
-  }),
+const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
+  // Share one Linux bootstrap across the four quality invariants.
+  quality: {
+    name: 'pr/quality',
+    ...job({
+      timeoutMinutes: 90,
+      extraSteps: [
+        verifyOtelShellEntryStep,
+        {
+          name: 'Type check (Buck)',
+          env: githubTokenEnv(),
+          run: runDevenvTasksBefore('buck2:quick'),
+        },
+        frozenLockfileStep,
+        {
+          name: 'Format + lint',
+          env: githubTokenEnv(),
+          // Generated-file freshness stays authoritative, not just a local fast path.
+          run: runDevenvTasksBefore('genie:check', 'lint:check'),
+        },
+        {
+          name: 'Bundle smoke tests',
+          env: githubTokenEnv(),
+          run: runDevenvTasksBefore('bundle:smoke'),
+        },
+        {
+          name: 'CI runtime and native dependency policy regression checks',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            [
+              'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+              'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
+              'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
+            ].join('\n'),
+          ),
+        },
+        {
+          name: 'Downstream flake-input regression',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            'bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"',
+          ),
+        },
+      ],
+      step: nativeDepPolicyAuditStep,
+    }),
+  },
   // Bounded unit-test execution is Buck-owned: `test:run` waits on the single `test:buck2:unit`
   // invocation, source-only packages, and each lane's exact unbounded complement. Explicit
   // live/e2e owners remain separate jobs. The baseline gate reads Buck collection artifacts and
@@ -495,44 +515,12 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     },
   }),
   'test-megarepo-cold-gc': job({
+    laneIf: empiricalProofLaneIf,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Megarepo cold-GC tests',
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:megarepo-cold-gc'),
-    },
-  }),
-  'native-dependency-policy': job({
-    step: nativeDepPolicyAuditStep,
-    extraSteps: [
-      {
-        name: 'CI runtime and native dependency policy regression checks',
-        env: githubTokenEnv(),
-        run: withCiSourceRoot(
-          [
-            'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
-            'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
-            'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
-          ].join('\n'),
-        ),
-      },
-      // Retained public outputs (`lib.mkOxlintNpm`, `packages.genie`,
-      // `packages.oxlint-npm`) applied from a downstream flake input; nothing
-      // else exercises them through `--override-input`.
-      {
-        name: 'Downstream flake-input regression',
-        env: githubTokenEnv(),
-        run: withCiSourceRoot(
-          'bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"',
-        ),
-      },
-    ],
-  }),
-  'bundle-smoke': job({
-    step: {
-      name: 'Bundle smoke tests',
-      env: githubTokenEnv(),
-      run: runDevenvTasksBefore('bundle:smoke'),
     },
   }),
 
@@ -1014,6 +1002,7 @@ const extraJobs: Record<string, any> = {
   // succeed. This exercises the exact pre-install path; `bootstrap-closure:check` (in `check:all`) is
   // the static fast-feedback pre-check. Separate lane because it is heavier than the product checks.
   'bootstrap-cold-proof': job({
+    laneIf: empiricalProofLaneIf,
     step: {
       name: 'Bootstrap cold-proof (R32)',
       env: githubTokenEnv(),
@@ -1149,7 +1138,7 @@ const extraJobs: Record<string, any> = {
    */
   [prReviewsResolvedJobId]: prReviewsResolvedJob(),
   'nix-closure-sizes': {
-    if: measurementLaneIf,
+    if: empiricalProofLaneIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -1206,7 +1195,11 @@ const extraJobs: Record<string, any> = {
             label: 'Genie CI workflow helpers',
             group: 'source / ci',
             path: ['source', 'effect-utils', 'genie', 'ci-workflow'],
-            includePaths: ['genie/ci-workflow', '.github/workflows/ci.yml.genie.ts'],
+            includePaths: [
+              'genie/ci-workflow',
+              '.github/workflows/ci.yml.genie.ts',
+              '.github/workflows/empirical-proofs.yml.genie.ts',
+            ],
             includeExtensions: ['.ts'],
           },
           {
@@ -1237,7 +1230,7 @@ const extraJobs: Record<string, any> = {
   'ci-measurements-report': {
     name: 'ci/measurements-report',
     if: measurementReportIf,
-    needs: ['devenv-perf', 'nix-closure-sizes', 'source-shape'],
+    needs: ['devenv-perf', 'nix-closure-sizes', 'main-source-shape'],
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -1262,6 +1255,7 @@ const extraJobs: Record<string, any> = {
       downloadCurrentMeasurementArtifactStep({
         artifactName: 'source-shape',
         outputDir: `${ciMeasurementReportDir}/current/source-shape`,
+        producedBy: 'main-source-shape',
       }),
       downloadPreviousGitHubArtifactStep({
         artifactName: 'devenv-perf',
@@ -1498,7 +1492,6 @@ const pipelineTracesJob = {
 const allCiJobs: Record<string, any> = {
   // Source-policy is independent of product gates and has no devenv dependency.
   'default-ref-policy': {
-    if: `\${{ ${notNightlyMeasurementIf} }}`,
     ...defaultRefPolicyCheckJob({
       runsOn: namespaceRunner({
         profile: 'namespace-profile-linux-x86-64',
@@ -1512,7 +1505,12 @@ const allCiJobs: Record<string, any> = {
   ...deployJobs,
   'notify-alignment': notifyAlignmentJob({
     targetRepo: 'schickling/megarepo-all',
-    needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
+    needs: [
+      ...Object.keys(jobs).filter(
+        (jobId) => !EMPIRICAL_PROOF_CI_JOB_NAMES.some((proofJobId) => proofJobId === jobId),
+      ),
+      ...Object.keys(deployJobs),
+    ],
     runner: [
       'namespace-profile-linux-x86-64',
       'namespace-features:github.run-id=${{ github.run_id }}',
@@ -1522,6 +1520,7 @@ const allCiJobs: Record<string, any> = {
 const declaredJobIds = new Set([
   ...Object.keys(allCiJobs),
   'pipeline-attempt-close',
+  'main-source-shape',
   'pipeline-traces',
 ])
 for (const ciJobId of declaredJobIds) {
@@ -1533,6 +1532,30 @@ for (const ciJobId of pipelineJobIdentifierSet) {
     throw new Error(`Jobs API name mapping contains undeclared CI job ${ciJobId}`)
 }
 
+// oxlint-disable-next-line overeng/exports-first -- workflow atoms are assembled after their dependencies
+export const empiricalProofJobs: CiWorkflowArgs['jobs'] = {
+  'test-megarepo-cold-gc': allCiJobs['test-megarepo-cold-gc'],
+  'bootstrap-cold-proof': allCiJobs['bootstrap-cold-proof'],
+  'devenv-perf': allCiJobs['devenv-perf'],
+  'nix-closure-sizes': allCiJobs['nix-closure-sizes'],
+  'main-source-shape': {
+    ...allCiJobs['source-shape'],
+    name: 'main/source-shape',
+    if: "\${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}",
+  },
+  'ci-measurements-report': allCiJobs['ci-measurements-report'],
+}
+
+const productCiJobs: CiWorkflowArgs['jobs'] = {
+  ...Object.fromEntries(
+    Object.entries(allCiJobs).filter(([jobId]) => !(jobId in empiricalProofJobs)),
+  ),
+  'source-shape': {
+    ...allCiJobs['source-shape'],
+    if: "\${{ github.event_name == 'pull_request' }}",
+  },
+}
+
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   trustTier: 'public',
@@ -1540,10 +1563,6 @@ export default ciWorkflow({
   on: {
     push: { branches: ['main'] },
     pull_request: { types: ['opened', 'reopened', 'synchronize'] },
-    // Nightly deterministic measurement snapshot of `main` (03:17 UTC):
-    // `nix-closure-sizes`, `source-shape`, and `ci/measurements-report`.
-    // Product lanes and the dispatch-only `devenv-perf` lane do not run.
-    schedule: [{ cron: '17 3 * * *' }],
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
@@ -1567,8 +1586,8 @@ export default ciWorkflow({
   permissions: { contents: 'read', 'id-token': 'write' },
   jobs: withBuck2CachePostures({
     jobs: {
-      ...withPipelineTelemetry(withBuck2CacheEvidence(allCiJobs)),
-      'pipeline-attempt-close': pipelineCloseJob(allCiJobs),
+      ...withPipelineTelemetry(withBuck2CacheEvidence(productCiJobs)),
+      'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
       'pipeline-traces': pipelineTracesJob,
     },
     // Public readers never gain uploads from an ambient credential. Only the
@@ -1576,18 +1595,12 @@ export default ciWorkflow({
     // context explicitly returns to reader posture before starting a new daemon.
     postures: {
       'default-ref-policy': 'reader',
-      typecheck: 'reader',
-      lint: 'reader',
+      quality: 'reader',
       test: 'reader',
       'test-playwright-utils': 'reader',
       'test-playwright-tui-react': 'reader',
-      'test-megarepo-cold-gc': 'reader',
-      'native-dependency-policy': 'reader',
-      'bundle-smoke': 'reader',
       cargo: 'reader',
       weaver: 'reader',
-      'bootstrap-cold-proof': 'reader',
-      'nix-closure-sizes': 'reader',
       'source-shape': 'reader',
       'test-integration-restate': 'reader',
       'build-products': 'reader',
@@ -1596,13 +1609,6 @@ export default ciWorkflow({
       'test-live-deploy-ci-tools': 'reader',
       'deploy-storybooks': 'reader',
       'publish-products': 'reader',
-      // Older measurement backfills cannot select the public reader tier.
-      'devenv-perf': {
-        posture: 'reader',
-        disabledWhen:
-          "github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != ''",
-      },
-      'ci-measurements-report': 'reader',
       'notify-alignment': 'reader',
       'trusted-buck2-remote-cache-proof': 'writer',
       'seed-pnpm-archives': 'reader',

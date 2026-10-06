@@ -12,6 +12,7 @@ import * as Command from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { makeTempGitEnvironment } from '@overeng/utils-dev/node-vitest'
 
 import { MegarepoConfig } from '../core/config.ts'
 import { makeCanonicalTempDirectoryScoped } from './temp-root.ts'
@@ -58,7 +59,7 @@ export interface WorkspaceResult {
 export const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const result = yield* ChildProcessSpawner.use((spawner) =>
-      spawner.string(Command.make('git', args, { cwd })),
+      spawner.string(Command.make('git', args, { cwd, env: makeTempGitEnvironment() })),
     )
     return result.trim()
   })

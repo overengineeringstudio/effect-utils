@@ -42,19 +42,18 @@ export type DeveloperOperation = keyof typeof developerOperationDispositions
 
 export const ciOperationDispositions = {
   'bootstrap-cold-proof': 'outside-by-policy:bootstrap-integration',
-  'bundle-smoke': 'buck-owned',
   'build-products': 'outside-by-policy:nix-realization',
   cargo: 'outside-by-policy:aggregate-includes-rust-quality-gates',
   'ci-measurements-report': 'outside-by-policy:ci-control-plane',
   'default-ref-policy': 'outside-by-policy:pre-composition-trust-gate',
   'deploy-storybooks': 'outside-by-policy:live-deployment',
   'devenv-perf': 'outside-by-policy:operator-benchmark',
-  lint: 'outside-by-policy:includes-stage-zero-freshness',
-  'native-dependency-policy': 'outside-by-policy:shared-native-dependency-policy',
+  'main-source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
   'nix-closure-sizes': 'outside-by-policy:nix-realization',
   'notify-alignment': 'outside-by-policy:ci-control-plane',
   'pr-reviews-resolved': 'outside-by-policy:github-review-thread-gate',
   'publish-products': 'outside-by-policy:live-publication',
+  quality: 'outside-by-policy:aggregate-includes-stage-zero-freshness-and-native-policy',
   'source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
   test: 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test-integration-notion': 'outside-by-policy:secret-service-integration',
@@ -63,7 +62,6 @@ export const ciOperationDispositions = {
   'test-megarepo-cold-gc': 'outside-by-policy:filesystem-integration',
   'test-playwright-tui-react': 'outside-by-policy:browser-integration',
   'test-playwright-utils': 'outside-by-policy:browser-integration',
-  typecheck: 'buck-owned',
   weaver: 'outside-by-policy:aggregate-includes-change-relative-and-live-integration',
 } as const satisfies Record<CIJobName, OperationDisposition>
 

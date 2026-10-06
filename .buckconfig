@@ -32,6 +32,8 @@
   engine_address = grpc://dev3.tail8108.ts.net:8443
   instance_name = effect-utils
   tls = true
+  # Buck batches payload bytes, not protobuf overhead; leave room below 4 MiB.
+  max_total_batch_size = 3145728
 
 [archive_origin]
   # Source of truth for trusted local and protected-main seeding. The

@@ -1732,6 +1732,7 @@
     {
       "collectionTarget": "effect_utils//packages/@overeng/utils-dev:test_collect",
       "excludes": [
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1745,6 +1746,7 @@
       "selectedTestFiles": [
         "src/baseline-collection.test.ts",
         "src/cli-contract.test.ts",
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1758,6 +1760,7 @@
       "testFiles": [
         "src/baseline-collection.test.ts",
         "src/cli-contract.test.ts",
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1767,6 +1770,7 @@
       ],
       "unboundedAfter": [],
       "unboundedFiles": [
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
