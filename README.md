@@ -306,6 +306,12 @@ in [workspace tools](./nix/workspace-tools/README.md). Live pnpm workspaces shar
 install policy and source-input algebra; Buck products use immutable dependency
 archives.
 
+Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
+Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking
+threads (`BUCK2_MAX_BLOCKING_THREADS`). An unset or zero Nix budget becomes one,
+not the host CPU count. Configuration overrides follow the `build` subcommand;
+only the isolation-directory flag is global.
+
 `check:all` also evaluates every flake output for the host system without
 building anything:
 

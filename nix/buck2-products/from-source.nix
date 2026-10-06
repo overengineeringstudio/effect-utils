@@ -96,8 +96,8 @@ let
   ];
   # Descriptor-bearing products: JavaScript product-v2 and build_product.
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
-  buckGlobalArgs = "--isolation-dir nix-product-${safeName} --config build.num_tokio_workers=\"$NIX_BUILD_CORES\"";
-  buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
+  buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
+  buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config build.num_tokio_workers=\"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
     lib.optionalString (product.kind == "native") " --config rust_profile.mode=release"
   }${
     lib.concatMapStringsSep "" (

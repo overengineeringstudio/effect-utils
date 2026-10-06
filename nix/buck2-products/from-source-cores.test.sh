@@ -29,8 +29,9 @@ phase="$(nix eval --impure --raw --expr '
 count=0
 while IFS= read -r line; do
   if [[ "$line" == *' build '* ]]; then
-    [[ "$line" == *'-j "$NIX_BUILD_CORES"'* ]]
-    [[ "$line" == *'--config build.num_tokio_workers="$NIX_BUILD_CORES"'* ]]
+    # Configuration overrides belong to the build subcommand, not global args.
+    [[ "${line%% build *}" != *'--config'* ]]
+    [[ "$line" == *' build -j "$NIX_BUILD_CORES" --config build.num_tokio_workers="$NIX_BUILD_CORES"'* ]]
     [[ "$line" == *'--local-only --no-remote-cache'* ]]
     count=$((count + 1))
   fi
