@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:97db0abcb293b1154a7ac738a3d26f570c1dd0451e271a7f728aa191eef080a4
+# Store fingerprint: sha256:97ed762a0c53a9985611f820598a5fd208054c1329c501e7ea4d0bf2512f18f4
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
