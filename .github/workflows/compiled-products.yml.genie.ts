@@ -39,7 +39,7 @@ const protectedMainIf =
 // Products are platform-specific imported store paths, not cache-manifest rows:
 // each matching runner builds and smokes the product before publishing it.
 // There is no aarch64 Linux publisher, so its consumers build from source.
-// PR proof uses the same script in ci.yml (`build-products` on Linux x86_64,
+// Merge-group proof uses the same script in ci.yml (`build-products` on Linux x86_64,
 // `test` on Darwin). A separate workflow avoids ci.yml's Actions size limit.
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
 export default ciWorkflow({
