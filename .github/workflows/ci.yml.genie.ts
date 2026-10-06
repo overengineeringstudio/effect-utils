@@ -367,6 +367,69 @@ const compiledProductsSmokeStep = {
   run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh'),
 } as const
 
+/**
+ * Cold macOS runners spent ~34 min substituting the test closure from cache.nixos.org
+ * (q17/q18). The profile's cache volume holds a local binary cache that Nix tries before
+ * the network caches. `/nix` itself cannot live on the volume: macOS mounts it as a
+ * Determinate APFS volume on a read-only root.
+ *
+ * Merge-group runs execute queued PR code and can write the volume, so the cache relies
+ * on Nix signature checks: only paths whose upstream signature (cache.nixos.org, Cachix)
+ * verifies are substituted from it. Cache trouble never fails the lane.
+ */
+const macosNixSubstituterDir = '/Users/runner/.cache/nix-substituter'
+const macosNixSubstituterUri = `file://${macosNixSubstituterDir}`
+
+const macosNixSubstituterMountStep = {
+  name: 'Mount local Nix substituter cache volume',
+  uses: 'namespacelabs/nscloud-cache-action@v1',
+  'continue-on-error': true,
+  with: { path: macosNixSubstituterDir },
+} as const
+
+/**
+ * `cachix use` rewrites the user nix.conf with a replacing `substituters =` line, so the
+ * local cache is appended after it. The runner user is trusted, so the daemon honours it.
+ */
+const macosNixSubstituterEnableStep = {
+  name: 'Enable local Nix substituter',
+  'continue-on-error': true,
+  run: [
+    'set -euo pipefail',
+    'conf="${XDG_CONFIG_HOME:-$HOME/.config}/nix/nix.conf"',
+    'mkdir -p "$(dirname "$conf")"',
+    `printf '\\nextra-substituters = %s\\n' '${macosNixSubstituterUri}?priority=10' >> "$conf"`,
+    'nix config show substituters',
+  ].join('\n'),
+} as const
+
+/**
+ * `--sigs` also prints `ultimate` (locally built) and `ca:` markers; only real signatures
+ * make a path substitutable elsewhere. The daemon (root) owns the cache files, so the copy
+ * runs as root.
+ */
+const macosNixSubstituterSaveStep = {
+  name: 'Save signed store paths to local Nix substituter',
+  if: '${{ !cancelled() }}',
+  'continue-on-error': true,
+  'timeout-minutes': 15,
+  run: [
+    'set -euo pipefail',
+    'started=$SECONDS',
+    'paths="$RUNNER_TEMP/signed-store-paths"',
+    `nix path-info --all --sigs | awk -F'\\t' '{ n = split($2, t, " "); for (i = 1; i <= n; i++) if (t[i] != "ultimate" && t[i] !~ /^ca:/) { print $1; break } }' > "$paths"`,
+    `sudo env "PATH=$PATH" nix copy --stdin --to '${macosNixSubstituterUri}?compression=zstd&parallel-compression=true' < "$paths"`,
+    `echo "saved $(wc -l < "$paths") signed paths in $((SECONDS - started))s; cache size $(du -sh '${macosNixSubstituterDir}/' | cut -f1)"`,
+  ].join('\n'),
+} as const
+
+const withMacosNixSubstituter = <TStep>(steps: readonly TStep[]) => {
+  const [checkout, ...rest] = steps
+  return [checkout!, macosNixSubstituterMountStep, ...rest].flatMap((step) =>
+    step === trustedCachixStep ? [step, macosNixSubstituterEnableStep] : [step],
+  )
+}
+
 // Static names survive GitHub's job-level skip before matrix expansion. Both required
 // runner-qualified contexts must exist on a PR before it can enter the native queue.
 const unitTestJob = (runner: RunnerProfile) => ({
@@ -380,14 +443,16 @@ const unitTestJob = (runner: RunnerProfile) => ({
   'timeout-minutes': 90,
   defaults: bashShellDefaults,
   steps: [
-    ...baseSteps,
+    ...(runner === 'namespace-profile-macos-arm64'
+      ? withMacosNixSubstituter(baseSteps)
+      : baseSteps),
     buck2TrustedCacheWriterStep({
       name: 'Unit tests',
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:run'),
     }),
     ...(runner === 'namespace-profile-macos-arm64'
-      ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep)]
+      ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep), macosNixSubstituterSaveStep]
       : []),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
@@ -1470,7 +1535,11 @@ const allCiJobs: Record<string, any> = {
       ],
     }),
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
-    if: `\${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(deployJobs).map((id) => `needs['${id}'].result == 'success'`).join(' && ')} }}`,
+    if: `\${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(
+      deployJobs,
+    )
+      .map((id) => `needs['${id}'].result == 'success'`)
+      .join(' && ')} }}`,
   },
 }
 const declaredJobIds = new Set([
