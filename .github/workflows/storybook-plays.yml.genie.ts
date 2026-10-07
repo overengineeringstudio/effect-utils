@@ -1,5 +1,6 @@
 import {
   bashShellDefaults,
+  buck2TrustedCacheWriterStep,
   checkoutStep,
   ciWorkflow,
   type CiWorkflowArgs,
@@ -19,8 +20,8 @@ import {
 // job because `ci.yml` sits at the GitHub Actions workflow size limit. The job
 // is a required check (STANDALONE_REQUIRED_CI_JOB_NAMES in genie/ci.ts). PRs
 // publish a skipped check without paying for the heavy lane; the mandatory native
-// merge queue runs the real tests on its combined head before merging. No path
-// filter or secrets. With no opted-in package, `storybook:test` remains empty.
+// merge queue runs the real tests on its combined head before merging. Only the
+// protected main queue receives the cache credential; PRs stay read-only.
 const [playsJobName] = STANDALONE_REQUIRED_CI_JOB_NAMES
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
@@ -43,15 +44,15 @@ export default ciWorkflow({
       'timeout-minutes': 45,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
-      env: { FORCE_SETUP: '1', CI: 'true', ...buck2CachePostureEnv('reader') },
+      env: { FORCE_SETUP: '1', CI: 'true', ...buck2CachePostureEnv('trusted-writer') },
       steps: [
         checkoutStep(),
         ...storybookPreviewSetupSteps,
-        {
+        buck2TrustedCacheWriterStep({
           name: 'Storybook play tests',
           env: githubTokenEnv(),
           run: runDevenvTasksBefore('storybook:test'),
-        },
+        }),
       ],
     },
   }),

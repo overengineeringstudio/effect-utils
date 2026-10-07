@@ -4,6 +4,12 @@
 
 ### Added
 
+- Every Buck cache-enabled CI job retains complete sanitized gzip JSONL action
+  identities beside its existing compact evidence summary. The warm99 evaluator
+  joins prior successful uploads against fresh-root readers per lane and rejects
+  missing evidence, requiring two consecutive observations at or above 99%.
+- pnpm development installs can opt into the graph-hashed global virtual store;
+  default and CI installs retain root-local projections.
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
@@ -30,6 +36,18 @@
   and unblock interrupted orphaned promises without affecting another instance.
 - Scalar integer wasm/native arguments reject nonfinite, fractional, out-of-width
   and negative-zero inputs before backend ABI narrowing.
+- Native dependency policy CI runs its Bun tests by explicit source paths instead
+  of matching duplicate test files inside Buck validation outputs.
+- Protected-main merge-group gates opportunistically populate the public Buck
+  cache without exposing credentials to PR runs. Main pushes skip heavy gates
+  only after matching their tree to successful required queue checks; publishers
+  and empirical/cache proofs keep running. Optional tree-lookup failures retain
+  alignment dispatch after successful fallback quality and publication.
+- Fixed-source Nix products bound Buck execution, Tokio workers, and blocking
+  threads to the Nix core budget, with unset/zero budgets normalized to one.
+  Worker configuration follows the `build` subcommand so Buck accepts the flags.
+- The cached Genie CLI emits comment-free strict JSON for `.watchmanconfig`,
+  matching its source-side generator and Watchman's runtime parser.
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - Negative Buck artifact-import fixtures capture remote Nix builder logs, so
@@ -65,6 +83,14 @@
   escaped literal dollars are rejected while anchored literal backslashes work.
 - Native scalar `f32` admission checks finiteness after binary32 rounding, matching
   wasm at the maximum finite boundary.
+- Buck roots use Watchman with output-directory exclusions and idle watch reaping.
+  This prevents daemon startup from recursively traversing ignored build outputs
+  and dependency symlinks; warm commands no longer need a full-file hash crawl.
+  The packaged entrypoint admits the actual service before native startup, with
+  a bounded probe and short-lived environment-scoped cache. Unavailable Watchman
+  warns and falls back to notify; explicit local providers remain authoritative.
+  Immutable Nix source products retain their service-free `fs_hash_crawler`
+  override because Watchman's state initialization is forbidden in the sandbox.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
@@ -103,6 +129,11 @@
 - PTY client tests pair runtime module mocks with runtime cleanup on Vitest 5.
 
 ### Changed
+
+- Storybook preview builds select Storybook package inputs and their generated
+  transitive workspace dependency closure. Unrelated pull requests avoid preview
+  build and deploy runners; required Storybook plays execute on the native merge
+  queue head rather than consuming runners on individual pull requests.
 
 - Shared Buck cache reads and writes now require an audited hermetic execution
   platform; unadmitted actions default to no shared reuse. Admitted JavaScript,

@@ -6,6 +6,7 @@ import {
   netlifyPreviewBuildSteps,
 } from '../../genie/ci-workflow.ts'
 import {
+  storybookPaths,
   storybookPreviewBuildWorkflowName,
   storybookPreviewRunner,
   storybookPreviewSetupSteps,
@@ -20,7 +21,9 @@ import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-postur
 export default ciWorkflow({
   trustTier: 'public',
   name: storybookPreviewBuildWorkflowName,
-  on: { pull_request: { types: ['opened', 'reopened', 'synchronize'] } },
+  on: {
+    pull_request: { types: ['opened', 'reopened', 'synchronize'], paths: storybookPaths },
+  },
   permissions: { contents: 'read' },
   jobs: withBuck2CacheEvidence({
     'build-storybooks': {

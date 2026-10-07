@@ -107,9 +107,13 @@ const isWriteStep = (step: GitHubWorkflowArgs['jobs'][string]['steps'][number]):
   )
 }
 
-/** Only main pushes may give a shared job the public cache writer credential. */
-export const mainPushGuardedSecret = (name: string): string =>
-  `\${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.${name} || '' }}`
+/** Shared cache writers run only on protected main pushes or its native queue heads. */
+export const trustedCacheWriterPredicate =
+  "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))"
+
+/** Expose a writer secret only after the protected-main or queue event guard passes. */
+export const trustedCacheWriterGuardedSecret = (name: string): string =>
+  `\${{ (${trustedCacheWriterPredicate}) && secrets.${name} || '' }}`
 
 const pushRestrictedToMain = (on: GitHubWorkflowArgs['on']): boolean =>
   typeof on === 'object' &&
@@ -190,18 +194,18 @@ export const validateWorkflowCachePolicy = ({
     for (const step of job.steps) {
       const writer = isWriteStep(step)
       // The exception is credential-scoped: Cachix write actions still need a protected job.
-      const guardedSecret = mainPushGuardedSecret('BUCK2_PUBLIC_CACHE_WRITE_AUTH')
+      const guardedSecret = trustedCacheWriterGuardedSecret('BUCK2_PUBLIC_CACHE_WRITE_AUTH')
       const stepText = JSON.stringify(step)
-      const mainPushGuardedWriter =
+      const trustedGuardedWriter =
         publisherWriteSecret in step &&
         step[publisherWriteSecret] === 'BUCK2_PUBLIC_CACHE_WRITE_AUTH' &&
-        pushRestrictedToMain(workflow.on) &&
+        (triggers.includes('push') === false || pushRestrictedToMain(workflow.on)) &&
         stepText.includes(guardedSecret) &&
         containsWriteSecret(JSON.parse(stepText.replaceAll(guardedSecret, ''))) === false &&
         step.env?.CACHIX_AUTH_TOKEN === undefined &&
         ('uses' in step && step.uses.startsWith('cachix/cachix-action@')) === false &&
         ('run' in step && /\bcachix\s+push\b/.test(step.run)) === false
-      if (mainPushGuardedWriter === true) continue
+      if (trustedGuardedWriter === true) continue
       if (
         (writer === true && protectedPublisher === false) ||
         (containsWriteSecret(step) === true && (writer === false || protectedPublisher === false))

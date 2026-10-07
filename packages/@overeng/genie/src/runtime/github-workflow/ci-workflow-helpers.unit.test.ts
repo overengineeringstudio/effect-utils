@@ -362,12 +362,6 @@ const generatedDevenvPerfJob = extractSourceBlock(
   '  nix-closure-sizes:',
 )
 
-const generatedSeedPnpmArchivesJob = extractSourceBlock(
-  generatedCiWorkflowYamlSource,
-  '  seed-pnpm-archives:',
-  '  publish-products:',
-)
-
 const restorePnpmStateStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const restorePnpmStateStep = (opts?: {',
@@ -426,16 +420,10 @@ describe('pull request control-event workflows', () => {
 })
 
 describe('protected-main archive seeding', () => {
-  it('passes the tracked trusted origin into the protected-main seed step', () => {
-    expect(generatedSeedPnpmArchivesJob).toContain('name: Resolve trusted archive origin')
-    expect(generatedSeedPnpmArchivesJob).toContain('trusted_url_prefix')
-    expect(generatedSeedPnpmArchivesJob).toContain(
-      'BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}',
-    )
-    expect(generatedSeedPnpmArchivesJob).toContain(
-      'BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}',
-    )
-    expect(generatedSeedPnpmArchivesJob).toContain("github.ref == 'refs/heads/main'")
+  it('keeps the archive CAS write credential out of every CI job', () => {
+    // The CAS host seeds itself from main (decision 0038, amendment 1); no runner holds the token.
+    expect(generatedCiWorkflowYamlSource).not.toContain('BUCK2_ARCHIVE_CAS_AUTHORIZATION')
+    expect(generatedCiWorkflowYamlSource).not.toContain('buck2:archives:seed')
     expect(generatedCiWorkflowYamlSource).not.toContain('trusted-cache.example')
   })
 })

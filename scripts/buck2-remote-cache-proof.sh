@@ -37,9 +37,13 @@ trap 'if [ -f "$test_source_backup" ]; then cp "$test_source_backup" "$test_proo
 # Local invocations without a CI artifact declaration retain the existing proof flow.
 capture_cache_evidence() {
   if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
+    local fresh=()
+    case "$2" in proof-a-build|proof-b-build) fresh=(--fresh-root);; esac
     if ! bun "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
-      --events "$1" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --context "$2"; then
+      --events "$1" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --context "$2" "${fresh[@]}"; then
       echo "::warning::Buck2 cache evidence capture failed for $2" >&2
+      bun "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
+        --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --evidence-gap proof-evidence-capture-failed || true
     fi
   fi
 }
@@ -54,6 +58,10 @@ run_proof_command() {
     capture_cache_evidence "$evidence" "$context"
   else
     echo "::warning::Buck2 native event log unavailable for $context" >&2
+    if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
+      bun "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
+        --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --evidence-gap proof-native-log-unavailable || true
+    fi
     if [ "$status" -eq 0 ]; then return 1; fi
   fi
   return "$status"
