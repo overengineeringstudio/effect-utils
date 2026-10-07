@@ -17,7 +17,7 @@ import {
   resolveOutputOption,
 } from '@overeng/tui-react/node'
 
-import { getInfoApp } from '../../renderers/InfoOutput/app.ts'
+import { InfoApp } from '../../renderers/InfoOutput/app.ts'
 import { InfoView } from '../../renderers/InfoOutput/view.tsx'
 
 /** Re-export internal types for TypeScript declaration emit */
@@ -54,10 +54,8 @@ const infoCommand = Command.make(
         authToken: resolvedToken,
       })
 
-      const infoApp = getInfoApp()
-
       yield* run(
-        infoApp,
+        InfoApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {

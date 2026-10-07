@@ -20,13 +20,13 @@ import {
   resolveOutputOption,
 } from '@overeng/tui-react/node'
 
-import { getDiffApp } from '../../renderers/DiffOutput/app.ts'
+import { DiffApp } from '../../renderers/DiffOutput/app.ts'
 import { DiffView } from '../../renderers/DiffOutput/view.tsx'
-import { getGenerateConfigApp } from '../../renderers/GenerateConfigOutput/app.ts'
+import { GenerateConfigApp } from '../../renderers/GenerateConfigOutput/app.ts'
 import { GenerateConfigView } from '../../renderers/GenerateConfigOutput/view.tsx'
-import { getGenerateApp } from '../../renderers/GenerateOutput/app.ts'
+import { GenerateApp } from '../../renderers/GenerateOutput/app.ts'
 import { GenerateView } from '../../renderers/GenerateOutput/view.tsx'
-import { getIntrospectApp } from '../../renderers/IntrospectOutput/app.ts'
+import { IntrospectApp } from '../../renderers/IntrospectOutput/app.ts'
 import { IntrospectView } from '../../renderers/IntrospectOutput/view.tsx'
 import { resolveNotionToken, tokenOption } from '../shared.ts'
 
@@ -239,10 +239,8 @@ export const generateCommand = Command.make(
         authToken: resolvedToken,
       })
 
-      const generateApp = getGenerateApp()
-
       yield* run(
-        generateApp,
+        GenerateApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
@@ -356,10 +354,8 @@ const introspectCommand = Command.make(
         authToken: resolvedToken,
       })
 
-      const introspectApp = getIntrospectApp()
-
       yield* run(
-        introspectApp,
+        IntrospectApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
@@ -469,10 +465,8 @@ const generateFromConfigCommand = Command.make(
         authToken: resolvedToken,
       })
 
-      const generateConfigApp = getGenerateConfigApp()
-
       yield* run(
-        generateConfigApp,
+        GenerateConfigApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
@@ -604,10 +598,8 @@ const diffCommand = Command.make(
         authToken: resolvedToken,
       })
 
-      const diffApp = getDiffApp()
-
       yield* run(
-        diffApp,
+        DiffApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
