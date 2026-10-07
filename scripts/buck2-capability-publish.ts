@@ -312,8 +312,7 @@ const makePrunedDirectoriesWritable = (path: string): void => {
   if (stat.isDirectory() === false) return
   if ((stat.mode & 0o200) === 0) chmodSync(path, stat.mode | 0o200)
   // lstat deliberately does not follow the per-tool Nix store links.
-  for (const name of readdirSync(path))
-    makePrunedDirectoriesWritable(join(path, name))
+  for (const name of readdirSync(path)) makePrunedDirectoriesWritable(join(path, name))
 }
 
 const cleanupPrunedGenerations = ({
