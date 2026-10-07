@@ -371,7 +371,10 @@ fn type_name(ty: &Type) -> String {
     }
 }
 fn scalar_integer(ty: &Type) -> bool {
-    matches!(type_name(ty).as_str(), "u8" | "i8" | "u16" | "i16" | "u32" | "i32")
+    matches!(
+        type_name(ty).as_str(),
+        "u8" | "i8" | "u16" | "i16" | "u32" | "i32"
+    )
 }
 fn generic_types(ty: &Type) -> Vec<&Type> {
     if let Type::Path(path) = ty {
