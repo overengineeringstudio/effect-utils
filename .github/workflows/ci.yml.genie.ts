@@ -858,7 +858,7 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
-      buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
+      compiledProductsSmokeStep,
     ],
   },
   'publish-products': {
@@ -1674,7 +1674,7 @@ export default ciWorkflow({
       weaver: 'trusted-writer',
       'source-shape': 'reader',
       'test-integration-restate': 'trusted-writer',
-      'build-products': 'trusted-writer',
+      'build-products': 'reader',
       'pr-reviews-resolved': 'reader',
       'test-integration-notion': 'reader',
       'test-live-deploy-ci-tools': 'reader',

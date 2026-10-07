@@ -32,6 +32,8 @@
   source filesets, preserving store identities across unrelated checkout changes.
   Source-boundary test fixtures resolve physical temporary paths so macOS
   symlinked temporary directories remain valid Nix source inputs.
+- `build-products` stays credential-free: its sandboxed Nix product builds do not
+  upload Buck actions, so they no longer receive an ineffective cache writer secret.
 - Buck cache admission gives concurrent REAPI and archive-origin probes 2500 ms
   per attempt with one immediate retry (5000 ms total per endpoint), covering
   measured Namespace TLS stalls and permitting lost-SYN recovery before selecting

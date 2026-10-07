@@ -66,7 +66,6 @@ const writers: Record<string, true> = {
   cargo: true,
   weaver: true,
   'test-integration-restate': true,
-  'build-products': true,
   'test-storybook-plays': true,
 }
 const strictWriter = 'trusted-buck2-remote-cache-proof'
@@ -125,6 +124,7 @@ describe('generated CI cache trust behavior', () => {
             (step) => step.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH !== undefined,
           )
           if (writers[id] === true) expect(writerSteps.length).toBeGreaterThan(0)
+          else expect(writerSteps).toHaveLength(0)
           for (const step of job.steps) {
             const credential = step.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH
             const supplied =
@@ -163,7 +163,10 @@ describe('generated CI cache trust behavior', () => {
 
   it('skips main heavy lanes only for tested trees and still runs queues, publishers and the proof', async () => {
     const workflow = await readWorkflow()
-    for (const id of Object.keys(writers).filter((id) => id !== 'test-storybook-plays')) {
+    for (const id of [
+      ...Object.keys(writers).filter((id) => id !== 'test-storybook-plays'),
+      'build-products',
+    ]) {
       const job = workflow.jobs[id]!
       expect(Boolean(evaluate(job.if!, 'push', 'refs/heads/main', undefined, true))).toBe(false)
       expect(Boolean(evaluate(job.if!, 'push', 'refs/heads/main', undefined, false))).toBe(true)
