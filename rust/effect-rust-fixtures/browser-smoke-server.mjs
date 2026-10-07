@@ -1,5 +1,6 @@
 // Usage: node rust/effect-rust-fixtures/browser-smoke-server.mjs <generated-wasm-package> [port]
 // Open the printed URL in real Chromium; the page reports window.smokeResult / window.smokeError.
+import { execFileSync } from 'node:child_process'
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { createServer } from 'node:http'
@@ -10,8 +11,26 @@ const [directory, port = '0'] = process.argv.slice(2)
 if (directory === undefined) throw new Error('Pass the generated wasm package directory')
 const product = resolve(directory)
 const fixture = dirname(fileURLToPath(import.meta.url))
+const scheduler = execFileSync('bun', ['-e', `
+  const result = await Bun.build({
+    entrypoints: [${JSON.stringify(resolve(fixture, 'wasm-scheduler-smoke.ts'))}], target: 'browser',
+    plugins: [{ name: 'fixture-runtime', setup(build) {
+      build.onResolve({ filter: /^@overeng\\/effect-rust$/ }, () => ({ path: 'runtime', namespace: 'fixture' }));
+      build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
+        contents: ${JSON.stringify(`export * as Interop from ${JSON.stringify(resolve(fixture, '../../packages/@overeng/effect-rust/src/runtime/interop.ts'))}`)}, loader: 'ts'
+      }));
+    }}],
+  });
+  if (!result.success) throw new AggregateError(result.logs, 'Scheduler bundle failed');
+  process.stdout.write(await result.outputs[0].text());
+`])
 const server = createServer(async (request, response) => {
   const pathname = new URL(request.url, 'http://localhost').pathname
+  if (pathname === '/smoke/wasm-scheduler-smoke.js') {
+    response.writeHead(200, { 'content-type': 'text/javascript' })
+    response.end(scheduler)
+    return
+  }
   if (pathname === '/') {
     response.writeHead(200, { 'content-type': 'text/html' })
     response.end(`<!doctype html><title>effect-rust browser delivery smoke</title><pre id="result">Running</pre><script type="module">

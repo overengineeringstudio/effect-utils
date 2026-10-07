@@ -1,7 +1,11 @@
 import {
+  actionExclusionReason,
+  countActionExclusions,
   cacheOutcomeMapping,
   invocationWithinJobWindow,
   outcomeFor,
+  zeroActionExclusionCounts,
+  type ActionExclusionCounts,
   type ActionArtifact,
   type ActionArtifactHeader,
   type ActionInvocation,
@@ -16,6 +20,7 @@ export const classifyCacheAction = (
   invocation: ActionInvocation | undefined,
 ): 'local-action-cache-hit' | 'fresh-local-execution' | 'other' => {
   if (action.executionKind === 10) return 'local-action-cache-hit'
+  if (actionExclusionReason(action.category) !== null) return 'other'
   if (
     action.commandAction &&
     (action.executionKind === 1 || action.executionKind === 8) &&
@@ -41,6 +46,9 @@ export const text = (value: unknown): string =>
   typeof value === 'string' && value.length > 0 ? value : invalid()
 export const boolean = (value: unknown): boolean => (typeof value === 'boolean' ? value : invalid())
 export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : invalid())
+export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCounts => ({
+  'local-materialization-policy': integer(field(value, 'local-materialization-policy')),
+})
 const nullableText = (value: unknown, grammar = /^[a-zA-Z0-9_.:-]+$/): string | null => {
   if (value === null) return null
   const result = text(value)
@@ -86,6 +94,7 @@ const decodeAction = (value: unknown): ActionRecord => {
     buildId: nullableText(field(value, 'buildId'), /^[a-zA-Z0-9_.-]+$/),
     context: nullableText(field(value, 'context')),
     category: nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/),
+    exclusionReason: actionExclusionReason(nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/)),
     target: nullableText(
       field(value, 'target'),
       /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/,
@@ -106,6 +115,8 @@ const decodeAction = (value: unknown): ActionRecord => {
     uploadCompletedAt: timestamp(field(value, 'uploadCompletedAt')),
     commandAction: boolean(field(value, 'commandAction')),
   }
+  const exclusionReason = field(value, 'exclusionReason')
+  if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason) return invalid()
   if (
     action.uploadOutcome !==
     (action.cacheUploadResult === 1
@@ -178,6 +189,10 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     status,
     complete: boolean(field(value, 'complete')),
     actionCount: integer(field(value, 'actionCount')),
+    excludedByDesign:
+      field(value, 'excludedByDesign') === undefined
+        ? zeroActionExclusionCounts()
+        : decodeActionExclusionCounts(field(value, 'excludedByDesign')),
     rows: integer(field(value, 'rows')),
     missingDigestCount: integer(field(value, 'missingDigestCount')),
     missingIdentityCount: integer(field(value, 'missingIdentityCount')),
@@ -193,10 +208,37 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
       completedAt: timestamp(field(item, 'completedAt')),
       freshRoot: boolean(field(item, 'freshRoot')),
       actionCount: integer(field(item, 'actionCount')),
+      excludedByDesign:
+        field(item, 'excludedByDesign') === undefined
+          ? zeroActionExclusionCounts()
+          : decodeActionExclusionCounts(field(item, 'excludedByDesign')),
       complete: boolean(field(item, 'complete')),
     })),
   }
   const actions = values.map(decodeAction)
+  // Retained artifacts predate policy fields; complete rows recover the same category policy.
+  const actualExclusions = countActionExclusions(actions)
+  if (field(value, 'excludedByDesign') === undefined) header.excludedByDesign = actualExclusions
+  if (
+    header.complete &&
+    header.excludedByDesign['local-materialization-policy'] !==
+      actualExclusions['local-materialization-policy']
+  )
+    return invalid()
+  const invocationValues = list(field(value, 'invocations'))
+  for (const [index, invocation] of header.invocations.entries()) {
+    const exclusions = countActionExclusions(
+      actions.filter((action) => action.buildId === invocation.buildId),
+    )
+    if (field(invocationValues[index], 'excludedByDesign') === undefined)
+      invocation.excludedByDesign = exclusions
+    if (
+      header.complete &&
+      invocation.excludedByDesign['local-materialization-policy'] !==
+        exclusions['local-materialization-policy']
+    )
+      return invalid()
+  }
   if (
     header.complete &&
     actions.some(

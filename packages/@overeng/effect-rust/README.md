@@ -76,6 +76,10 @@ then open its printed URL in real Chromium. The page exposes
 `window.smokeResult` / `window.smokeError` and exercises default browser delivery,
 two isolated fresh instances, explicit inline no-fetch delivery, and a real
 module Worker, recording actual asset requests and native streaming calls.
+The server and workerd configuration generator require Bun to bundle the shared
+scheduler smoke. Both delivery harnesses run its five scheduler-panic scenarios,
+including first-poll/host-await traps, sibling retirement, rebuild, isolation,
+and interruption of a host-awaiting panic.
 For a real workerd run, generate a configuration with
 `node rust/effect-rust-fixtures/workerd-smoke-config.mjs <wasm-package-directory> <output.capnp> 8787`,
 run `workerd serve <output.capnp>`, and request `http://127.0.0.1:8787/`.

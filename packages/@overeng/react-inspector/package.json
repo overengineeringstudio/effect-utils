@@ -46,7 +46,7 @@
     "@types/is-dom": "1.1.2",
     "@types/react": "19.2.18",
     "@vitejs/plugin-react": "6.1.1",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "happy-dom": "20.14.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -56,7 +56,7 @@
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "4.0.0-rc.118",
+    "effect": "^4.0.0",
     "react": "^19.2.8"
   },
   "publishConfig": {

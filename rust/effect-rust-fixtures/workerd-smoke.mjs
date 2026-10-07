@@ -2,9 +2,10 @@
 // .wasm imports emitted as workerd CompiledWasm modules, then call this Worker.
 import initialize, { add } from 'effect_rust_fixture/workerd'
 import { load } from 'effect_rust_fixture/workerd/load'
+import { runWasmSchedulerSmoke } from './wasm-scheduler-smoke.js'
 
 export default {
-  fetch() {
+  async fetch() {
     const nativeFetch = globalThis.fetch
     globalThis.fetch = () => { throw new Error('workerd precompiled initialization must not fetch') }
     try {
@@ -22,7 +23,8 @@ export default {
       }
       first.release()
       second.release()
-      return Response.json({ passed: true, runtime: 'workerd', precompiled: true, fetches: 0, sum: 42, isolatedTrap: true })
+      await runWasmSchedulerSmoke({ runtime: 'workerd', load })
+      return Response.json({ passed: true, runtime: 'workerd', precompiled: true, fetches: 0, sum: 42, isolatedTrap: true, schedulerScenarios: 5 })
     } finally {
       globalThis.fetch = nativeFetch
     }

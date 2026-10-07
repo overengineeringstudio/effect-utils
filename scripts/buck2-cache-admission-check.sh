@@ -46,6 +46,8 @@ CONFIG
 # normal .buckconfig. No ambient prelude checkout or remote cache is consulted.
 cat > "$work/fixture.bzl" <<'BZL'
 load("//buck2/materialization.bzl", "PackageTreeInfo")
+load("//buck2/materialization.bzl", "empty_package_view", "package_tree", "package_view")
+load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo", "pnpm_package", "pnpm_store_entry", "pnpm_store_scc", "pnpm_store_view")
 load("//buck2/javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2/package_tools.bzl", "PackageCommandRuntimeInfo", "package_bin_check")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
@@ -56,7 +58,9 @@ def _dependency_impl(ctx):
     artifact = ctx.attrs.src
     return [
         DefaultInfo(default_output = artifact),
+        RunInfo(args = artifact),
         PackageTreeInfo(tree = artifact, read_roots = []),
+        PnpmDeclaredClosureInfo(manifest = artifact, node_modules = artifact, read_roots = [], toolchain_identity = "analysis-only"),
         PackageCommandRuntimeInfo(runtime = artifact, read_roots = []),
         RustInteropProductInfo(package = artifact, kind = "wasm"),
         BunToolchainInfo(executable = "/analysis-only/bin/bun", identity = "analysis-only"),
@@ -84,7 +88,66 @@ fixture_dependency = rule(
     attrs = {"src": attrs.source(default = "//:fixture-dependency.txt")},
 )
 
+def fixture_materialization_cases(suffix, constraints = []):
+    pnpm_package(
+        name = "pnpm_extract_" + suffix,
+        package_name = "fixture",
+        url = "https://example.invalid/fixture.tgz",
+        sha256 = "0" * 64,
+        size_bytes = 1,
+        exec_compatible_with = constraints,
+        visibility = ["PUBLIC"],
+    )
+    pnpm_store_entry(
+        name = "pnpm_store_entry_" + suffix,
+        package = "//:pnpm_extract_default",
+        store_key = "fixture@1",
+        runtime = "//:fixture-dependency.txt",
+        dependencies = {},
+        exec_compatible_with = constraints,
+    )
+    pnpm_store_scc(
+        name = "pnpm_store_scc_" + suffix,
+        members = {"fixture@1": "//:pnpm_extract_default"},
+        runtime = "//:fixture-dependency.txt",
+        internal_edges = {},
+        external_edges = {},
+        exec_compatible_with = constraints,
+    )
+    pnpm_store_view(
+        name = "pnpm_store_view_" + suffix,
+        runtime = "//:fixture-dependency.txt",
+        closure = {},
+        direct = {},
+        bins = {},
+        exec_compatible_with = constraints,
+    )
+    empty_package_view(
+        name = "package_tree_" + suffix,
+        files = {},
+        runtime = "//:package_tree",
+        runtime_entry = "fixture.ts",
+        exec_compatible_with = constraints,
+    )
+    package_tree(
+        name = "legacy_package_tree_" + suffix,
+        node_modules = "//:fixture-dependency.txt",
+        files = {},
+        runtime = "//:package_tree",
+        runtime_entry = "fixture.ts",
+        exec_compatible_with = constraints,
+    )
+    package_view(
+        name = "package_view_" + suffix,
+        dependency_view = "//:package_tree",
+        files = {},
+        runtime = "//:package_tree",
+        runtime_entry = "fixture.ts",
+        exec_compatible_with = constraints,
+    )
+
 def fixture_negative_cases(suffix, constraint):
+    fixture_materialization_cases(suffix, [constraint])
     vitest_test(
         name = "uncacheable_verdict_" + suffix,
         package_tree = "//:package_tree",
@@ -118,6 +181,7 @@ fixture_dependency(name = "effect_tsgo", visibility = ["PUBLIC"])
 fixture_dependency(name = "fingerprint_tool", visibility = ["PUBLIC"])
 fixture_dependency(name = "tool_action_env", visibility = ["PUBLIC"])
 fixture_dependency(name = "tool_node", visibility = ["PUBLIC"])
+fixture_dependency(name = "archive_tool", visibility = ["PUBLIC"])
 BUCK
 cat > "$work/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency")
@@ -126,7 +190,8 @@ fixture_dependency(name = "javascript_action_runtime", visibility = ["PUBLIC"])
 fixture_dependency(name = "package_command_runtime", visibility = ["PUBLIC"])
 BUCK
 cat > "$work/BUCK" <<'BUCK'
-load("//:fixture.bzl", "fixture_dependency")
+load("//:fixture.bzl", "fixture_dependency", "fixture_materialization_cases")
+load("//buck2:typescript.bzl", "tsgo_emit")
 load("@rules//buck2:javascript.bzl", "vitest_collect")
 load("@rules//buck2:package_tools.bzl", "package_bin_check")
 load("@prelude//:prelude.bzl", "native")
@@ -134,6 +199,10 @@ load("@prelude//:prelude.bzl", "native")
 native.export_file(name = "fixture-dependency.txt", visibility = ["PUBLIC"])
 
 fixture_dependency(name = "package_tree", visibility = ["PUBLIC"])
+fixture_materialization_cases("default")
+# A caller's valid custom native constraint must survive without cache admission.
+fixture_materialization_cases("custom", ["prelude//os/constraints:" + ("macos" if host_info().os.is_macos else "linux")])
+tsgo_emit(name = "admitted_emit", package_tree = ":package_tree")
 
 vitest_collect(
     name = "admitted_collect",
@@ -190,7 +259,35 @@ for target in admitted_collect default_uncacheable_collect default_unadmitted_ch
   printf 'PASS analysis: %s\n' "$target"
 done
 
-for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop; do
+# Inspect Buck's actual selected execution platform, with root cache policy ON.
+# This is analysis-only: no fixture command or remote-cache request executes.
+for suffix in default custom; do
+  for family in pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
+    target="${family}_${suffix}"
+    "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//:$target" > "$work/$target.log" 2>&1
+    "$buck" --isolation-dir cache-admission-check cquery --output-attribute buck.execution_platform \
+      -c buck2.remote_cache_enabled=true -c buck2.allow_cache_uploads=true \
+      "effect_utils//:$target" > "$work/$target.platform.log" 2>&1
+    if ! grep -Eq 'exec_(linux_x86_64|linux_aarch64|macos_aarch64)([^_[:alnum:]]|$)' "$work/$target.platform.log"; then
+      cat "$work/$target.platform.log" >&2
+      printf 'Materialization did not resolve to a nonremote native platform: %s\n' "$target" >&2
+      exit 1
+    fi
+    printf 'PASS nonremote platform: %s\n' "$target"
+  done
+done
+"$buck" --isolation-dir cache-admission-check audit providers effect_utils//:admitted_emit > "$work/admitted_emit.log" 2>&1
+"$buck" --isolation-dir cache-admission-check cquery --output-attribute buck.execution_platform \
+  -c buck2.remote_cache_enabled=true -c buck2.allow_cache_uploads=true \
+  effect_utils//:admitted_emit > "$work/admitted_emit.platform.log" 2>&1
+if ! grep -Eq 'exec_(linux_x86_64|linux_aarch64|macos_aarch64)_hermetic' "$work/admitted_emit.platform.log"; then
+  cat "$work/admitted_emit.platform.log" >&2
+  printf 'tsgo_emit lost its cache-admitted platform\n' >&2
+  exit 1
+fi
+printf 'PASS cache-admitted platform: tsgo_emit\n'
+
+for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
   for spelling in canonical relative alias alias_at; do
     target="${family}_${spelling}"
     if "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//$spelling:$target" > "$work/$target.log" 2>&1; then

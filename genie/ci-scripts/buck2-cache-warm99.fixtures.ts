@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 
 import {
+  actionExclusionReason,
+  countActionExclusions,
   actionsArtifactName,
   cacheOutcomeMapping,
   outcomeFor,
@@ -16,6 +18,7 @@ export const actionFixture = (overrides: Partial<ActionRecord> = {}): ActionReco
   buildId: 'build',
   context: 'test',
   category: 'compile',
+  exclusionReason: actionExclusionReason(overrides.category ?? 'compile'),
   target: 'test//:test',
   configuration: 'linux#1',
   digest: 'abcd:12',
@@ -63,6 +66,7 @@ export const artifactFixture = (writer = false, input = [actionFixture()]): Acti
       status: 'collected',
       complete: true,
       actionCount: actions.length,
+      excludedByDesign: countActionExclusions(actions),
       rows: actions.length,
       missingDigestCount: actions.filter((a) => a.digest === null).length,
       missingIdentityCount: 0,
@@ -77,6 +81,7 @@ export const artifactFixture = (writer = false, input = [actionFixture()]): Acti
           completedAt: 300,
           freshRoot: true,
           actionCount: actions.length,
+          excludedByDesign: countActionExclusions(actions),
           complete: true,
         },
       ],
@@ -149,9 +154,11 @@ export const encodedFixture = (artifact: ActionArtifact) => {
       admissionInvocations: [],
       actionCount: artifact.actions.length,
       counts,
+      excludedByDesign: artifact.header.excludedByDesign,
       invocations: artifact.header.invocations.map((invocation) => ({
         buildId: invocation.buildId,
         actionCount: invocation.actionCount,
+        excludedByDesign: invocation.excludedByDesign,
       })),
       actionsArtifact: {
         name: actionsArtifactName,

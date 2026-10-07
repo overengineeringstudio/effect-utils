@@ -27,7 +27,7 @@ const acquireRuntime = Effect.fn('fixture.acquireSchedulerRuntime')(function* ({
   panicPolicy = 'rebuild',
 }: {
   readonly load: Interop.InstanceFactory<SchedulerApi>
-  readonly runtime: 'node' | 'bun' | 'browser' | 'worker'
+  readonly runtime: 'node' | 'bun' | 'browser' | 'browserWorker' | 'workerd'
   readonly panicPolicy?: Interop.PanicPolicy
 }) {
   const context = yield* Layer.build(
@@ -42,7 +42,7 @@ export const wasmSchedulerSmoke = Effect.fn('fixture.wasmSchedulerSmoke')(functi
   runtime,
 }: {
   readonly load: Interop.InstanceFactory<SchedulerApi>
-  readonly runtime: 'node' | 'bun' | 'browser' | 'worker'
+  readonly runtime: 'node' | 'bun' | 'browser' | 'browserWorker' | 'workerd'
 }) {
   for (const panicPolicy of ['rebuild', 'retire'] as const) {
     for (const poll of ['first', 'after-host-await'] as const) {
@@ -171,3 +171,7 @@ export const wasmSchedulerSmoke = Effect.fn('fixture.wasmSchedulerSmoke')(functi
     }),
   )
 })
+
+/** Promise entrypoint for browser and workerd delivery harnesses. */
+export const runWasmSchedulerSmoke = (options: Parameters<typeof wasmSchedulerSmoke>[0]) =>
+  Effect.runPromise(wasmSchedulerSmoke(options).pipe(Effect.timeout('10 seconds')))
