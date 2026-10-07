@@ -329,7 +329,7 @@ export const generateCommand = Command.make(
               Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
             )
           }),
-        { view: React.createElement(GenerateView, { stateAtom: generateApp.stateAtom }) },
+        { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Generate Effect schema from a Notion database'))
@@ -425,7 +425,7 @@ const introspectCommand = Command.make(
               Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
             )
           }),
-        { view: React.createElement(IntrospectView, { stateAtom: introspectApp.stateAtom }) },
+        { view: React.createElement(IntrospectView, { stateAtom: IntrospectApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Introspect a Notion database and display its schema'))
@@ -555,7 +555,7 @@ const generateFromConfigCommand = Command.make(
             )
           }),
         {
-          view: React.createElement(GenerateConfigView, { stateAtom: generateConfigApp.stateAtom }),
+          view: React.createElement(GenerateConfigView, { stateAtom: GenerateConfigApp.stateAtom }),
         },
       ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
@@ -661,7 +661,7 @@ const diffCommand = Command.make(
               Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
             )
           }),
-        { view: React.createElement(DiffView, { stateAtom: diffApp.stateAtom }) },
+        { view: React.createElement(DiffView, { stateAtom: DiffApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(

@@ -95,7 +95,7 @@ const infoCommand = Command.make(
               Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
             )
           }),
-        { view: React.createElement(InfoView, { stateAtom: infoApp.stateAtom }) },
+        { view: React.createElement(InfoView, { stateAtom: InfoApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }),
 ).pipe(Command.withDescription('Display information about a Notion database'))
