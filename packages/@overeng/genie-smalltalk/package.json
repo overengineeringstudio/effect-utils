@@ -27,11 +27,11 @@
   },
   "dependencies": {
     "@overeng/genie": "workspace:^",
-    "effect": "4.0.0-rc.118"
+    "effect": "4.0.0"
   },
   "devDependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/opentelemetry": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
     "typescript": "7.0.2",

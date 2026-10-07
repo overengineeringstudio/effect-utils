@@ -30,11 +30,17 @@
 
 - Browser and workerd delivery smokes run the shared scheduler-panic scenarios
   through the explicit `browserWorker` and `workerd` runtime constructors.
-
+- The pnpm task smoke test checks the stable Effect 4.0.0 cohort override rather
+  than the superseded release-candidate pin.
 - Buck capability projections and shipped rules use narrowly declared Nix
   source filesets, preserving store identities across unrelated checkout changes.
   Source-boundary test fixtures resolve physical temporary paths so macOS
   symlinked temporary directories remain valid Nix source inputs.
+- Cheap Buck dependency extraction/store assembly and package-tree projections
+  bypass remote-cache reads and uploads: rebuilding locally avoids downloading
+  hundreds of MiB for inexpensive filesystem work. Cache evidence and warm99
+  report these actions separately as `local-materialization-policy` exclusions;
+  compute and deterministic verdict actions retain remote-cache reuse.
 - `build-products` stays credential-free: its sandboxed Nix product builds do not
   upload Buck actions, so they no longer receive an ineffective cache writer secret.
 - Buck cache admission gives concurrent REAPI and archive-origin probes 2500 ms
@@ -179,6 +185,8 @@
   and production watch rebuilds; embedded Nix identities remain immutable.
   The dev server exposes the same canonical JSON at `/build-identity.json` with
   no-cache headers and the complete source revision for exact served-source checks.
+- The Effect runtime and every runtime `@effect/*` package use the stable
+  4.0.0 cohort. Consumers require matching stable versions and Vitest 5.
 - Consumer Buck roots can map nested checkout patch paths to their exporting
   cells; the published rules cell exports the shared pnpm patches without loading
   standalone package declarations.

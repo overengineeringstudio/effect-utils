@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 
-import type { ActionInvocation, ActionRecord } from './buck2-action-evidence.ts'
+import {
+  localMaterializationCategories,
+  type ActionInvocation,
+  type ActionRecord,
+} from './buck2-action-evidence.ts'
 import {
   createCacheEvidenceProjector,
   decodeCacheAdmissionEvidence,
@@ -63,6 +67,84 @@ const project = (values: unknown[], context?: string) => {
 }
 
 describe('native Buck cache evidence projection', () => {
+  it('reports every materialization category separately without relabeling native outcomes', () => {
+    for (const category of localMaterializationCategories) {
+      for (const executionKind of [1, 3, 8, 10]) {
+        const rows: ActionRecord[] = []
+        const invocations: ActionInvocation[] = []
+        const projector = createCacheEvidenceProjector({
+          onAction: (row) => rows.push(row),
+          onInvocation: (invocation) => invocations.push(invocation),
+        })
+        projector.add(
+          nativeEvent(
+            'SpanEnd',
+            actionEnd({
+              name: { category },
+              execution_kind: executionKind,
+              cache_upload_result: 0,
+              commands: executionKind === 10 ? [] : [fixtureCommand],
+            }),
+          ),
+        )
+        const summary = projector.finish()
+        const outcome =
+          executionKind === 3 ? 'remote-hit' : executionKind === 10 ? 'local-cache' : 'local'
+        expect(summary.counts[outcome]).toBe(1)
+        expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 1 })
+        expect(summary.invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
+        expect(invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
+        expect(rows[0]).toMatchObject({
+          category,
+          executionKind,
+          outcome,
+          exclusionReason: 'local-materialization-policy',
+          digest: executionKind === 10 ? null : fixtureDigest,
+        })
+        expect(decodeCacheEvidence(summary)).toEqual(summary)
+      }
+    }
+    const eligible = project([nativeEvent('SpanEnd', actionEnd({ name: { category: 'tsgo_emit' } }))])
+    expect(eligible.excludedByDesign).toEqual({ 'local-materialization-policy': 0 })
+    expect(eligible.actions[0]?.exclusionReason).toBeNull()
+  })
+
+  it('preserves exclusion counts through bounded decoding and duplicate-aware merging', () => {
+    const summaries = ['policy-first', 'policy-next'].map((buildId) =>
+      decodeCacheEvidence(
+        project(
+          Array.from({ length: 100 }, (_, index) =>
+            nativeEvent(
+              'SpanEnd',
+              actionEnd({
+                name: {
+                  category:
+                    localMaterializationCategories[index % localMaterializationCategories.length],
+                },
+                execution_kind: 3,
+                cache_upload_result: 0,
+              }),
+              index,
+              buildId,
+            ),
+          ),
+        ),
+      ),
+    )
+    const first = summaries[0]!
+    const next = summaries[1]!
+    expect(first.actions).toHaveLength(5)
+    const merged = mergeCacheEvidence({ previous: first, next })
+    expect(merged.excludedByDesign).toEqual({ 'local-materialization-policy': 200 })
+    expect(merged.counts['remote-hit']).toBe(200)
+    expect(merged.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
+      { 'local-materialization-policy': 100 },
+      { 'local-materialization-policy': 100 },
+    ])
+    expect(decodeCacheEvidence(merged)).toEqual(merged)
+    expect(mergeCacheEvidence({ previous: merged, next })).toEqual(merged)
+  })
+
   it('preserves the exact uploaded ActionCache key and owner, not output hashes or payloads', () => {
     const result = project(
       [
@@ -104,6 +186,7 @@ describe('native Buck cache evidence projection', () => {
         buildId: fixtureBuildId,
         context: 'proof-a-build',
         category: 'repository_validation',
+        exclusionReason: null,
         target: 'effect_utils//buck2/static:devenv_trace_audit_check',
         configuration: 'linux_x86_64#a312ca1b',
         digest: fixtureDigest,
@@ -539,6 +622,7 @@ describe('native Buck cache evidence projection', () => {
         context: 'populate',
         freshRoot: true,
         actionCount: 100,
+        excludedByDesign: { 'local-materialization-policy': 0 },
         complete: true,
         startedAt: 1700000000000,
         completedAt: 1700000003000,

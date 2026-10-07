@@ -83,6 +83,68 @@ config (local execution, remote reuse; `remote_enabled = False`).
 Read-only endpoint admission failures fail open; either selected writer posture
 fails closed on REAPI unavailability.
 
+### Local Materialization Policy (BUILD.BUCK.REUSE-R08–R10)
+
+```text
+cheap file-heavy materialization -> default local executor -> no AC reads/writes
+audited compute/verdict action  -> cache_hermetic executor -> root cache posture
+```
+
+**BUILD.BUCK.REUSE-DQ04 (resolved):** `pnpm_extract`, `pnpm_store_entry`,
+`pnpm_store_scc`, `pnpm_store_view`, and `package_tree` execute locally without
+remote-cache lookup or upload. Their rules retain `cache_guarded_rule` but do
+not admit the `cache_hermetic` constraint; their actions prohibit cache uploads.
+The default execution platform has `remote_cache_enabled = False` and
+`allow_cache_uploads = False`, independently of the root writer posture.
+`local_only` alone is insufficient: it restricts execution, not remote-cache
+reads. Compute actions such as `tsgo_emit` retain audited remote-cache admission.
+
+The policy favors recomputing cheap filesystem projections over transferring
+their expanded trees. The Linux test-lane bootstrap in
+[run 37583314483](https://github.com/overengineeringstudio/effect-utils/actions/runs/37583314483)
+completed its Buck invocation in 7.062 s with 660 local command actions. In
+[run 37596446639](https://github.com/overengineeringstudio/effect-utils/actions/runs/37596446639),
+the corresponding invocation took 1071.022 s with all 660 commands hitting the
+remote cache: the action span occupied 441.166 s, followed by 629.856 s before
+command completion. Successful admission exposed expensive cache-hit reads,
+not a cache-key or admission failure.
+
+The latter invocation's cached `ActionResult`/`Tree` metadata gives this output
+cardinality; bytes count regular-file payload per output, before deduplicating
+content shared across actions:
+
+| Category           | Actions | Output files | Output bytes | Baseline median action wall time |
+| ------------------ | ------- | ------------ | ------------ | -------------------------------- |
+| `pnpm_extract`     | 322     | 29,423       | 646,157,901  | 0.796 s                          |
+| `pnpm_store_entry` | 309     | 28,751       | 616,824,427  | 0.530 s                          |
+| `pnpm_store_scc`   | 4       | 672          | 29,333,474   | 0.070 s                          |
+| `pnpm_store_view`  | 9       | 0            | 0            | 0.022 s                          |
+| `package_tree`     | 9       | 2,910        | 12,488,324   | 0.020 s                          |
+
+The views also contain 179 symlinks. Including the seven `tsgo_emit` outputs,
+the required final closure has 27,945 unique regular-file blobs totaling
+638,909,738 bytes (609.312 MiB). Every extract-output blob also occurs in that
+required closure. Read-only ByteStream measurements from a separate clean
+vantage yielded 1.082 MiB/s over public ingress versus 15.066 MiB/s over the
+direct private path for four concurrent 10,032,264-byte reads; persistent
+1 KiB reads had median latencies of 30.374 ms and 3.466 ms respectively.
+These are diagnostic transport samples, not a measured post-policy lane time.
+Even the faster path transfers roughly 40 s of payload to avoid a 7 s local
+build. Disabling uploads also avoids publishing expanded filesystem trees over
+the shared cache transport.
+
+Deferred materialization is already Buck's default. The external editor
+publisher requires the manifest's declared backing roots locally, and
+`DefaultInfo.other_outputs` makes them final outputs. Skipping final
+materialization without changing publication would leave missing files;
+deferring intermediates does not remove unique payload from this closure.
+The policy therefore changes rule admission, not final-output completeness.
+
+Evidence names these categories' exclusion `local-materialization-policy`.
+Native outcomes remain intact, but policy-excluded actions are reported
+separately and never enter R08 avoidable-execution candidates or warm99's
+eligible-hit/miss denominator, even when historical rows show remote hits.
+
 ### Direct Invocation Admission (BUILD.BUCK.REUSE-R04)
 
 ```text
@@ -129,9 +191,9 @@ build report and event log), not from wall-clock inference:
 1. Populate: build an admitted target in context A.
 2. Wipe: `buck2 kill` and remove `buck-out` in context B (second worktree or
    second machine, same platform, same revision).
-3. Rebuild in B: assert zero locally executed actions for unchanged targets
-   (BUILD.BUCK.REUSE-R02); investigate any miss as a key regression using action-digest
-   comparison from the event log.
+3. Rebuild in B: assert zero locally executed actions for unchanged,
+   remote-cache-admitted targets (BUILD.BUCK.REUSE-R02); investigate any eligible
+   miss as a key regression using action-digest comparison from the event log.
 
 Budget measurements (BUILD.BUCK.REUSE-R03)
 run on a quiet host or record load context; contention-dominated numbers are
@@ -153,6 +215,14 @@ most 64 representative `actions`. Its existing `droppedActionCount` continues
 to describe omitted **representatives**, not missing full-artifact rows.
 Populate and replay invocations retain proof context labels; repeated native
 logs are deduplicated by build ID, preserving the first context.
+Summary and per-invocation `excludedByDesign` contain
+`{ "local-materialization-policy": <count> }`. Native `counts` still retain
+every observed outcome; the exclusion counters are a separate policy axis,
+not an alternative execution-kind mapping.
+Retained schema-1 full artifacts without policy fields derive exclusions from
+their complete category rows. Older bounded summaries may omit
+`excludedByDesign`: their sampled rows cannot reconstruct a complete total,
+so absence means unavailable, not zero. New collectors always emit the counters.
 
 Admission evidence is independent of native execution evidence. Before writer
 fail-closed handling, every direct invocation that probes cache appends a UTF-8
@@ -210,7 +280,8 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | `posture`               | `read-only`, `writer`, or `disabled-by-design`                                                                                                 |
 | `status`                | `collected`, `no-native-logs`, or `remote-cache-disabled-by-design`                                                                            |
 | Completeness            | `complete`, `actionCount`, `rows`, `droppedActionCount`, `missingDigestCount`, `missingIdentityCount`, `missingTimestampCount`, `evidenceGaps` |
-| `invocations`           | Native `buildId`, `context`, command `startedAt`/`completedAt`, `freshRoot`, `actionCount`, and `complete`                                     |
+| `invocations`           | Native `buildId`, `context`, command `startedAt`/`completedAt`, `freshRoot`, `actionCount`, `excludedByDesign`, and `complete`                 |
+| `excludedByDesign`      | Reason-keyed counts, including `local-materialization-policy`; independent of native outcome counts                                            |
 
 | Action field          | Contract                                                                                                                                    |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -220,6 +291,7 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | Outcomes              | `outcome` and `cacheOutcome` use the named compact mapping; `uploadOutcome` is `uploaded`, `failed` (native values 9–15), or `not-uploaded` |
 | Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                            |
 | `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                   |
+| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the five policy categories; `null` otherwise                               |
 
 All times are integer Unix milliseconds. The pinned log decoder emits native
 timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
@@ -334,17 +406,21 @@ them as excluded-nonfresh rather than an evidence gap. Fresh command rows still
 require native digests, and uploaded rows always require their native digest.
 The codec's `classifyCacheAction` identifies kind `10` as a local-action-cache
 hit, never an avoidable local-execution candidate. Such candidates are only
-command actions of kind `1` or `8` with a native digest in a matched fresh
-invocation (`fresh-local-execution`); every other outcome is outside that set.
+non-policy-excluded command actions of kind `1` or `8` with a native digest in
+a matched fresh invocation (`fresh-local-execution`); every other outcome is
+outside that set. Policy exclusion does not relabel a kind `10` cache hit.
 Missing identity fields or timestamps remain evidence gaps. Cargo and
 default-ref-policy jobs execute no native Buck actions and are explicitly
 disabled-by-design, not remote-cache reader or writer lanes.
 
 The report separates cold tuples (no prior upload), changed tuples (same
 category/target/configuration, different prior uploaded digest), excluded
-nonfresh/disabled actions, noncacheable native actions, upload failures, and
-evidence gaps. Nix substitution totals are separate and never augment the Buck
-denominator. Missing expected jobs/files, malformed/schema-incompatible or
+nonfresh/disabled actions, reason-keyed `excludedByDesign` policy counts,
+noncacheable native actions, upload failures, and evidence gaps. Policy rows
+cannot seed the prior-upload cohort or enter the eligible denominator, including
+historical remote-hit/upload rows. Nix substitution totals are separate and
+never augment the Buck denominator.
+Missing expected jobs/files, malformed/schema-incompatible or
 truncated artifacts, checksum/row-count mismatch, and unavailable identity/time
 evidence invalidate the observation. Zero eligible identities do not pass.
 

@@ -1,6 +1,6 @@
 """Generic TypeScript package-tree assembly from declared Buck artifacts."""
 
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command")
 load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
@@ -92,12 +92,15 @@ def _package_tree_impl(ctx):
         _require_relative_path(link_path, "workspace link")
         _require_relative_path(target_path, "workspace link target")
         args.add("--workspace-link", link_path, target_path)
+    # local-materialization-policy: cheap tree assembly stays on the nonremote
+    # platform; local_only alone would still permit remote-cache downloads.
     hermetic_action(
         ctx,
         args,
         category = "package_tree",
         identifier = ctx.attrs.name,
         local_only = True,
+        cacheable = False,
     )
     providers = [
         # Export every root that links beneath the tree may resolve into.
@@ -114,7 +117,6 @@ def _package_tree_impl(ctx):
     return providers
 
 _package_tree = cache_guarded_rule(
-    cache_eligible = lambda ctx: True,
     impl = _package_tree_impl,
     attrs = dict(hermetic_attrs(), **{
         "node_modules": attrs.option(attrs.source(), default = None),
@@ -182,7 +184,7 @@ def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_si
         workspace_files = workspace_files,
         workspace_dependency_views = workspace_dependency_views,
         workspace_links = workspace_links,
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
@@ -201,7 +203,7 @@ def package_view(name, dependency_view, files, runtime, runtime_entry, workspace
         workspace_dependency_views = workspace_dependency_views,
         workspace_files = workspace_files,
         workspace_links = {},
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
@@ -216,7 +218,7 @@ def empty_package_view(name, files, runtime, runtime_entry, **kwargs):
         workspace_files = {},
         workspace_dependency_views = {},
         workspace_links = {},
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
