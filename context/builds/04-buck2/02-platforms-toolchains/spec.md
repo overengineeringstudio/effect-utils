@@ -65,9 +65,15 @@ Under BUILD.BUCK-R17 the contract is realized as a worker image: an execution
 platform names the Nix closure that provides every tool its actions bind, a
 worker advertises the closures it holds as platform properties, and the
 scheduler places a cache miss only on a worker whose properties match. The
-first backend evaluated is NativeLink (cache, scheduler, one x86_64-linux
-worker) after the BUILD.BUCK-R06 key-stability delta is closed; the rerunnable kit is
-in `.experiments/2026-09-19-nativelink-remote-execution.md`.
+first candidate is Namespace; adoption is deferred under
+[decision 0039](../../.decisions/0039-namespace-first-remote-candidate-adoption-deferred.md).
+The Linux proof uses one immutable named pool per capability closure identity.
+Worker startup realizes the complete Nix closure, including the capability
+projection root, before registration. Client links point directly to that
+`/nix/store` projection root because exported symlinks contain absolute paths.
+Platform properties bind the pool and closure identity into the action key.
+The [experiment](../../.experiments/2026-09-30-namespace-remote-execution.md)
+proves this mechanism, not production admission or a substitutable Darwin graph.
 
 A stage-zero provider binds an exact Nix realization identity, executable,
 protocol, and execution-platform constraint; a negative test proves an

@@ -144,6 +144,9 @@ export const encodedFixture = (artifact: ActionArtifact) => {
       schemaVersion: 1,
       cacheOutcomeMapping,
       status: artifact.header.status,
+      admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+      admissionInvocations: [],
       actionCount: artifact.actions.length,
       counts,
       invocations: artifact.header.invocations.map((invocation) => ({

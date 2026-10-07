@@ -32,6 +32,17 @@
   source filesets, preserving store identities across unrelated checkout changes.
   Source-boundary test fixtures resolve physical temporary paths so macOS
   symlinked temporary directories remain valid Nix source inputs.
+- Buck cache admission gives concurrent REAPI and archive-origin probes 2500 ms
+  per attempt with one immediate retry (5000 ms total per endpoint), covering
+  measured Namespace TLS stalls and permitting lost-SYN recovery before selecting
+  the existing warning and fallback policy. Required writers remain fail-closed
+  after both failures;
+  Watchman's 900 ms deadline is unchanged. Cache-evidence summaries retain
+  per-invocation `admissionInvocations` and endpoint-wise `admissionFallbacks` /
+  `admissionRetrySuccesses`, including writer refusals without native logs.
+- Buck REAPI preflight diagnostics distinguish DNS, TCP, TLS, and response phases
+  with elapsed time, deadline, and socket address families. Public IPs are visible;
+  private addresses, endpoint names, and credentials remain redacted.
 - The Buck rules distribution inventory regression covers the generated Effect/Rust
   service helpers alongside the existing interop package helper.
 - Generated Effect/Rust services keep inline input and output codecs distinct and

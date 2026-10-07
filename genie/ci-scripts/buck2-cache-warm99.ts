@@ -30,6 +30,7 @@ import {
   list,
   text,
 } from './buck2-action-evidence-codec.ts'
+import { decodeCacheAdmissionEvidence } from './buck2-cache-evidence.ts'
 import {
   actionsArtifactName,
   cacheOutcomeMapping,
@@ -123,6 +124,7 @@ export const decodeEvidence = (
   summary: unknown,
   expectedLane: CacheLane,
 ): ActionArtifact => {
+  decodeCacheAdmissionEvidence(summary)
   const metadata = field(summary, 'actionsArtifact')
   if (
     field(summary, 'schemaVersion') !== 1 ||
