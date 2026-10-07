@@ -106,11 +106,70 @@ The dedicated trusted remote-cache proof does not set this flag and remains
 fail-closed. This preflight fallback is not a guarantee against an outage that
 starts after a successful probe.
 
+Preflight failures emit a fixed error class (configuration, DNS, TCP, TLS,
+transport, deadline, authentication, HTTP, gRPC, or protocol), the configuration,
+DNS, TCP, TLS, or response phase, elapsed milliseconds, and the configured deadline.
+Socket events record DNS-resolved candidates, TCP attempts/connections, and TLS
+readiness with monotonic elapsed time, public IP addresses, and address families.
+Private, tailnet, local, and IPv4-mapped IPv6 addresses are redacted. Endpoint
+names, credentials, certificates, and server-provided error text never enter
+diagnostics. These events observe the existing socket without replacing DNS
+resolution, address selection, or transport settings.
+Each cache endpoint gets 2500 ms per attempt, including connection setup, and
+exactly one immediate retry after a failed first attempt: at most 5000 ms total
+probing per endpoint. REAPI and archive-origin probes run concurrently. Only
+failure of both attempts triggers the existing warning and fallback; required
+writers remain fail-closed after both REAPI attempts fail. Watchman's separate
+900 ms deadline is unchanged. A deadline does not by itself establish a
+cache-server outage. A five-second endpoint-result cache can reuse a failure;
+its original probe emits diagnostics rather than repeating them on cache hits.
+
+In [merge-group run 37557021971](https://github.com/overengineeringstudio/effect-utils/actions/runs/37557021971)
+(PR #1578, 01:25Z), four macOS Namespace test invocations fell back, as did one
+`pr/quality` invocation. The subsequent
+[Namespace vantage run 37575934824](https://github.com/overengineeringstudio/effect-utils/actions/runs/37575934824)
+(05:22–05:32Z, 600 seconds per platform) isolated the dominant Namespace stall
+to TLS, not lost SYNs: TCP connect exceeded 900 ms in 0/138 Linux and 0/141 macOS
+samples, while TLS exceeded 900 ms in 8.0% of Linux samples (p99 1696 ms) and
+14.2% of macOS samples (p99 1467 ms). An independent clean control had 0/660
+bad samples. The 2500 ms attempt deadline covers both measured TLS p99 values;
+per-phase diagnostics remain essential to distinguish transport causes.
+
+Lost-SYN recovery is a secondary rationale: the old 900 ms whole-invocation
+deadline ended before the roughly one-second initial TCP retransmission timeout,
+so around 1% path loss could become fallback instead of a recovered connection.
+The immediate retry gives a failed connection a second bounded attempt. Earlier
+transport evidence likewise did not implicate the cache service: an independent
+clean vantage to the service through Funnel had zero bad samples out of 879.
+The earlier 7–9% stall observation came from a lossy client uplink, not the
+cache service, and does not explain the Namespace TLS measurements.
+
 Main pushes compare their Git tree with recent protected-main merge-group heads.
 Heavy lanes skip only when every required context succeeded on that same head,
 using each workflow's latest run attempt. Missing, failed, mismatched or
 unavailable evidence runs the heavy lanes. Publishers, empirical proofs and the
 strict trusted remote-cache proof do not depend on this skip decision.
+
+## Amendment — Namespace Compatibility and Reader Authorization
+
+Accepted 2026-09-30 by Johannes (q2, q5, q6).
+
+The [Namespace compatibility spike](../.experiments/2026-09-30-namespace-remote-execution.md)
+proves Buck2 AC/CAS/TLS and real Linux RE with plain `host:443` addresses and
+`tls = true`; unchanged-head hits after `clean` are proven. The tested CLI also
+provides `nsc reapi setup buck2`. This supersedes the interoperability uncertainty
+above, not the public-tier trust gate.
+
+Main-only writes are **not enforceable with the tested setup**. The bearer from
+`--storage=read-only` can update the AC and execute after switching to RW
+storage/scheduler endpoints. User/tenant token scope does not attenuate it.
+Different `--key` clusters share AC hits; keys are not isolation.
+
+The public tier therefore stays on self-hosted bazel-remote. Replacement is
+deferred until a non-escalatable reader and branch-scoped writer identity pass
+the escalation rerun and the remaining reuse/outage gates.
+[Decision 0039](./0039-namespace-first-remote-candidate-adoption-deferred.md)
+records the cache-first re-entry tracks and retargets Phase 7 to Namespace.
 
 ## Dotfiles lead brief
 

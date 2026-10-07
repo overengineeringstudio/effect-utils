@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import type { ActionInvocation, ActionRecord } from './buck2-action-evidence.ts'
 import {
   createCacheEvidenceProjector,
+  decodeCacheAdmissionEvidence,
   decodeCacheEvidence,
   disabledCacheEvidence,
   emptyCacheEvidence,
@@ -657,6 +658,52 @@ describe('native Buck cache evidence projection', () => {
       })
       expect(projector.finish().actionCount).toBe(1)
       expect(invocations[0]!.complete).toBe(false)
+    }
+  })
+})
+
+describe('cache admission evidence schema', () => {
+  it('normalizes retained summaries to explicit zero admission evidence', () => {
+    const { admissionFallbacks, admissionRetrySuccesses, admissionInvocations, ...legacy } =
+      emptyCacheEvidence()
+    expect(decodeCacheEvidence(legacy)).toEqual(emptyCacheEvidence())
+    expect(admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
+    expect(admissionRetrySuccesses).toEqual({ reapi: 0, archiveOrigin: 0 })
+    expect(admissionInvocations).toEqual([])
+  })
+  it('merges invocation evidence independently of native logs and recomputes totals', () => {
+    const row = {
+      invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
+      admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 1 },
+    }
+    const previous = { ...emptyCacheEvidence(), admissionInvocations: [row] }
+    const merged = mergeCacheEvidence({ previous, next: previous })
+    expect(merged.admissionInvocations).toEqual([row])
+    expect(merged.admissionFallbacks).toEqual(row.admissionFallbacks)
+    expect(merged.admissionRetrySuccesses).toEqual(row.admissionRetrySuccesses)
+    expect(decodeCacheAdmissionEvidence(merged).admissionInvocations).toEqual([row])
+    expect(() =>
+      decodeCacheAdmissionEvidence({ ...merged, admissionInvocations: [row, row] }),
+    ).toThrow()
+  })
+  it('canonicalizes every Buck UUID spelling without imposing random UUID version bits', () => {
+    const invocation = {
+      invocationId: '01234567-89ab-cdef-0123-456789abcdef',
+      admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 1 },
+    }
+    for (const invocationId of [
+      invocation.invocationId,
+      '0123456789ABCDEF0123456789ABCDEF',
+      '{01234567-89AB-CDEF-0123-456789ABCDEF}',
+      'urn:uuid:01234567-89AB-CDEF-0123-456789ABCDEF',
+    ]) {
+      expect(
+        decodeCacheAdmissionEvidence({
+          admissionInvocations: [{ ...invocation, invocationId }],
+        }).admissionInvocations,
+      ).toEqual([invocation])
     }
   })
 })
