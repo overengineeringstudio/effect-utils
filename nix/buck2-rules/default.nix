@@ -7,10 +7,16 @@
 
 let
   lib = pkgs.lib;
+  sourceRoot = /. + builtins.unsafeDiscardStringContext (toString src);
   inventory = builtins.fromJSON (builtins.readFile ./inventory.json);
   files = inventory.files;
   sortedFiles = builtins.sort builtins.lessThan files;
   patchFiles = builtins.filter (path: lib.hasSuffix ".patch" path) files;
+  # The generated inventory is the authority for this cell's checkout inputs.
+  rulesSource = lib.fileset.toSource {
+    root = sourceRoot;
+    fileset = lib.fileset.unions (map (path: sourceRoot + "/${path}") files);
+  };
 in
 assert lib.assertMsg (
   builtins.attrNames inventory == [
@@ -40,7 +46,7 @@ pkgs.runCommand "buck2-rules"
     mkdir -p "$out"
     ${lib.concatMapStringsSep "\n" (path: ''
       mkdir -p "$out/${builtins.dirOf path}"
-      cp ${lib.escapeShellArg "${src}/${path}"} "$out/${lib.escapeShellArg path}"
+      cp ${lib.escapeShellArg "${rulesSource}/${path}"} "$out/${lib.escapeShellArg path}"
     '') files}
     # The published rules cell has no pnpm store view: stage the two pinned,
     # pure-JavaScript parser packages as a self-contained runner source tree.

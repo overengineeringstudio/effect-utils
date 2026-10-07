@@ -78,6 +78,64 @@ describe('gzip and compact summary boundaries', () => {
       ),
     ).toThrow()
   })
+  it('reads retained v1 summaries but strictly validates present admission fields', () => {
+    const fixture = encodedFixture(artifactFixture())
+    const {
+      admissionFallbacks,
+      admissionRetrySuccesses,
+      admissionInvocations,
+      ...legacy
+    } = fixture.summary
+    expect(decodeEvidence(fixture.compressed, legacy, 'main-reader').actions.length).toBe(1)
+    const row = {
+      invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
+      admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 1 },
+    }
+    const admitted = {
+      ...fixture.summary,
+      admissionFallbacks: row.admissionFallbacks,
+      admissionRetrySuccesses: row.admissionRetrySuccesses,
+      admissionInvocations: [row],
+    }
+    expect(decodeEvidence(fixture.compressed, admitted, 'main-reader').actions.length).toBe(1)
+    for (const key of ['admissionFallbacks', 'admissionRetrySuccesses'] as const) {
+      for (const counters of [
+        null,
+        {},
+        { reapi: -1, archiveOrigin: 0 },
+        { reapi: 0.5, archiveOrigin: 0 },
+        { reapi: '1', archiveOrigin: 0 },
+        { reapi: 0, archiveOrigin: Number.MAX_SAFE_INTEGER + 1 },
+      ]) {
+        expect(() =>
+          decodeEvidence(fixture.compressed, { ...fixture.summary, [key]: counters }, 'main-reader'),
+        ).toThrow()
+      }
+    }
+    for (const rows of [
+      null,
+      {},
+      [row, row],
+      [{ ...row, invocationId: 'invalid' }],
+      [{ ...row, admissionFallbacks: { reapi: 2, archiveOrigin: 0 } }],
+      [{ ...row, admissionRetrySuccesses: { reapi: 1, archiveOrigin: 1 } }],
+    ]) {
+      expect(() =>
+        decodeEvidence(fixture.compressed, { ...admitted, admissionInvocations: rows }, 'main-reader'),
+      ).toThrow()
+    }
+    expect(() =>
+      decodeEvidence(
+        fixture.compressed,
+        { ...admitted, admissionFallbacks: { reapi: 0, archiveOrigin: 0 } },
+        'main-reader',
+      ),
+    ).toThrow()
+    expect(admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
+    expect(admissionRetrySuccesses).toEqual({ reapi: 0, archiveOrigin: 0 })
+    expect(admissionInvocations).toEqual([])
+  })
 })
 describe('warm99 CLI manifest completeness', () => {
   it('accepts complete real files, fails missing/corrupt evidence, and emits no paths/secrets', async () => {

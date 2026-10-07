@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { createServer, type ServerHttp2Stream } from 'node:http2'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer as createTlsServer } from 'node:tls'
 
+import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import { directBuckArguments } from './buck2-entrypoint.ts'
 
 const roots: string[] = []
@@ -91,6 +93,230 @@ afterEach(() => {
 })
 
 describe('direct pinned Buck posture', () => {
+  for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
+    it(`records per-invocation cache admission for ${scenario}`, async () => {
+      let requests = 0
+      let archiveRequests = 0
+      const deadlines: string[] = []
+      const grpc = createServer()
+      grpc.on('stream', (stream: ServerHttp2Stream, headers) => {
+        requests++
+        deadlines.push(String(headers['grpc-timeout']))
+        stream.on('error', () => {})
+        stream.on('data', () => {})
+        stream.on('end', () => {
+          if (scenario === 'both-fail' || (scenario === 'retry-success' && requests === 1)) return
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        })
+      })
+      grpc.listen(0, '127.0.0.1')
+      await new Promise<void>((resolve) => grpc.once('listening', resolve))
+      const bound = grpc.address()
+      if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+      const archive = Bun.serve({
+        port: 0,
+        hostname: '127.0.0.1',
+        fetch: () => {
+          archiveRequests++
+          if (scenario === 'both-fail' || (scenario === 'retry-success' && archiveRequests === 1))
+            return new Promise<Response>(() => {})
+          return new Response(null, { status: 404 })
+        },
+      })
+      try {
+        const root = fixture(
+          `grpc://127.0.0.1:${bound.port}`,
+          `http://127.0.0.1:${archive.port}/cas/`,
+        )
+        const evidence = join(root, 'evidence.json')
+        const admissionOptions = {
+          ...options(root),
+          args: ['build', '//:app'],
+          env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, GITHUB_ACTIONS: 'true' },
+          ...(scenario === 'healthy' ? {} : { deadlineMs: 100 }),
+        }
+        const invocationId = '01234567-89ab-cdef-0123-456789abcdef'
+        const result = await directBuckArguments({
+          ...admissionOptions,
+          env: { ...admissionOptions.env, BUCK_WRAPPER_UUID: invocationId.replaceAll('-', '') },
+        })
+        if (scenario === 'both-fail')
+          expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
+        else expect(effective(result)['buck2.remote_cache_enabled']).not.toBe('false')
+        expect(effective(result)['archive_origin.url_prefix']).toBe(
+          scenario === 'both-fail' ? '' : `http://127.0.0.1:${archive.port}/cas/`,
+        )
+        expect(requests).toBe(scenario === 'healthy' ? 1 : 2)
+        expect(archiveRequests).toBe(scenario === 'healthy' ? 1 : 2)
+        expect(deadlines).toEqual(scenario === 'healthy' ? ['2500m'] : ['100m', '100m'])
+        if (scenario === 'both-fail') {
+          await expect(
+            directBuckArguments({
+              ...admissionOptions,
+              env: { ...admissionOptions.env, BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-secret' },
+            }),
+          ).rejects.toThrow('refusing to publish without remote cache')
+        } else {
+          // A hot-loop cache hit is its own healthy invocation, not a second recovered retry.
+          await directBuckArguments(admissionOptions)
+        }
+        const rows = readFileSync(`${evidence}.admission.jsonl`, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line) as CacheAdmissionInvocation)
+        expect(rows).toHaveLength(2)
+        expect(new Set(rows.map((row) => row.invocationId)).size).toBe(2)
+        expect(rows[0]?.invocationId).toBe(invocationId)
+        for (const [index, row] of rows.entries()) {
+          expect(row.admissionFallbacks).toEqual({
+            reapi: scenario === 'both-fail' ? 1 : 0,
+            // The required writer selects its separate private archive posture (none in this fixture).
+            archiveOrigin: scenario === 'both-fail' && index === 0 ? 1 : 0,
+          })
+          expect(row.admissionRetrySuccesses).toEqual({
+            reapi: scenario === 'retry-success' && index === 0 ? 1 : 0,
+            archiveOrigin: scenario === 'retry-success' && index === 0 ? 1 : 0,
+          })
+        }
+      } finally {
+        archive.stop(true)
+        grpc.close()
+      }
+    })
+  }
+
+  it('preserves reader and writer admission when TLS succeeds without h2 ALPN', async () => {
+    // Public test-only fixture, vendored verbatim from Bun 1.4.2 (valid through February 2036).
+    // Regenerate these literals from the pinned upstream cert.pem and cert.key, not by hand:
+    // https://github.com/oven-sh/bun/tree/744846f844374847c902b5e7fd59b4342a51ef99/test/js/bun/http/fixtures
+    const cert = `-----BEGIN CERTIFICATE-----
+MIIEDDCCAvSgAwIBAgIUbddWE2woW5e96uC4S2fd2M0AsFAwDQYJKoZIhvcNAQEL
+BQAwfjELMAkGA1UEBhMCU0UxDjAMBgNVBAgMBVN0YXRlMREwDwYDVQQHDAhMb2Nh
+dGlvbjEaMBgGA1UECgwRT3JnYW5pemF0aW9uIE5hbWUxHDAaBgNVBAsME09yZ2Fu
+aXphdGlvbmFsIFVuaXQxEjAQBgNVBAMMCWxvY2FsaG9zdDAeFw0yNjAyMTMyMzEx
+MjlaFw0zNjAyMTEyMzExMjlaMH4xCzAJBgNVBAYTAlNFMQ4wDAYDVQQIDAVTdGF0
+ZTERMA8GA1UEBwwITG9jYXRpb24xGjAYBgNVBAoMEU9yZ2FuaXphdGlvbiBOYW1l
+MRwwGgYDVQQLDBNPcmdhbml6YXRpb25hbCBVbml0MRIwEAYDVQQDDAlsb2NhbGhv
+c3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCt7iqkEIco372hv19q
+0zjaYbm6gzxEnR45UjpQYqgztq4QHicD80mqIkCBCYknFxhwxhNn+Y3g5RWQdRep
+lpQbkneqRVp+qixMvu2FmOA4zRRoqObP7FyF1Yusvmroe0Y9SP2xTTmA9Zo73pay
+wPUIuZ9eKGwIiFTtj1yQ1FdghLhzZgxcf3LHEHRkGnxgxxNITFxh4nd6fGIjNqM5
+fQAY8z35lMXdeWjrhtaqgFYB+Z20YY0X7LJx39vYao0wqW8sZjX88TqHI1zXWLpU
+k6UK9RqaNza5xc80wV+9/zjhr3dc1FRjBxI1DS/ufo33dUfvilxv9/LtWwUnKfKL
+ns9LAgMBAAGjgYEwfzAdBgNVHQ4EFgQUQCpSY7ODhdyD6pdZHvfHoWRXWsIwHwYD
+VR0jBBgwFoAUQCpSY7ODhdyD6pdZHvfHoWRXWsIwDwYDVR0TAQH/BAUwAwEB/zAs
+BgNVHREEJTAjgglsb2NhbGhvc3SHBH8AAAGHEAAAAAAAAAAAAAAAAAAAAAEwDQYJ
+KoZIhvcNAQELBQADggEBAGKTIzGQsOqfD0+x15F2cu7FKjIo1ua0OiILAhPqGX65
+kGcetjC/dJip2bGnw1NjG9WxEJNZ4YcsGrwh9egfnXXmfHNL0wzx/LTo2oysbXsN
+nEj+cmzw3Lwjn/ywJc+AC221/xrmDfm3m/hMzLqncnj23ZAHqkXTSp5UtSMs+UDQ
+my0AJOvsDGPVKHQsAX3JDjKHaoVJn4YqpHcIGmpjrNcQSvwUocDHPcC0ywco6SgF
+Ylzy2bwWWdPd9Cz9JkAMb95nWc7Rwf/nxAqCjJFzKEisvrx7VZ+QSVI0nqJzt8V1
+pbtWYH5gMFVstU3ghWdSLbAk4XufGYrIWAlA5mqjQ4o=
+-----END CERTIFICATE-----
+`
+    const key = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCt7iqkEIco372h
+v19q0zjaYbm6gzxEnR45UjpQYqgztq4QHicD80mqIkCBCYknFxhwxhNn+Y3g5RWQ
+dReplpQbkneqRVp+qixMvu2FmOA4zRRoqObP7FyF1Yusvmroe0Y9SP2xTTmA9Zo7
+3paywPUIuZ9eKGwIiFTtj1yQ1FdghLhzZgxcf3LHEHRkGnxgxxNITFxh4nd6fGIj
+NqM5fQAY8z35lMXdeWjrhtaqgFYB+Z20YY0X7LJx39vYao0wqW8sZjX88TqHI1zX
+WLpUk6UK9RqaNza5xc80wV+9/zjhr3dc1FRjBxI1DS/ufo33dUfvilxv9/LtWwUn
+KfKLns9LAgMBAAECggEAAacPHM2G7GBIm/9rCr6tvihNgD8M685zOOZAqGYn9CqY
+cYHC4gtF/L2U6CBj2pNAoCwo3LXUkD+6r7MYKXAgqQg3HTCM4rwFbhD1rU8FVHfh
+OL0QwwZ2ut95DVdjoxTAlEN9ZcdSFc//llMJ1cF8lxoVvKFc4cv3uCI2mcaJk858
+iABfJLl3yfdv1xtpAuOfXf66sXbAmn5NQfN0qTEg2iOdgb4BUee5Wb35MakDQb6+
+/s7/bWB+ublZzYt12ChIh1jkBBHaGyQ8mFnPj99ZAJdFjAzi6ydoJ0a2rCVY7Ugs
+bkhnzDUtAaHKxo9JXaqIwbUaVFkX8dDhbg82dJrWUQKBgQDb7hNR0bJFW845N19M
+74p2PM+0dIiVzwxAg4E2dXDVe39awO/tw8Vu1o1+NPFhWAzGcidP7pAHmPEgRTVO
+7LA2P3CDXpkAEx5E0QW6QWZGqHfSa3+P1AvetvAV+OxtlDphcNeLApY16TUVOKZg
+SZlxW2e0dZylbHewgLBTIV9wUQKBgQDKdML+JD18WfenPeowsw8HzKdaw01iGiV1
+fvTjEXu6YxPPynWFMuj5gjBQodXM2vv0EsQBAPKYfe0nzRFL2kNuYs7TLoaNxqkp
+DNfJ2Ww5OSg7Mp76XgppeKKlsXLyUMYHHrDh6MRi5jvWtiHRpaNmV3cHMRs22c+B
+cqKP5Zma2wKBgCPNnS2Lsrbh3C+qWQRgVq0q9zFMa1PgEgGKpwVjlwvaAACZOjX9
+0e1aVkx+d/E98U55FPdJQf9Koa58NdJ0a7dZGor4YnYFpr7TPFh2/xxvnpoN0AVt
+IsWOCIW7MVohcGOeiChkMmnyXibnQwaX1LgEhlx1bRvtDYsZWBsgarYRAoGAARvo
+oYnDSHYZtDHToZapg2pslEOzndD02ZLrdn73BYtbZWz/fc5MlmlPKHHqgOfGL40W
+w8akjY9LCEfIS3kTm3wxE9kSZZ5r+MyYNgPZ4upcPQ7G7iortm4xveSd85PbsdhK
+McKbqMsIEuIGh2Z34ayi+0galQ9WYqglGdKxJ7cCgYEAuSPBHa+en0xaraZNRvMk
+OfV9Su/wrpR3TXSeo0E1mZHLwq1JwulpfO1SjxTH5uOJtG0tusl122wfm0KjrXUO
+vG5/It+X4u1Nv9oWj+z1+EV4fQrQ/Coqcc1r+5w1yzfURkKlHh74jbK5Yy/KfXrE
+eqbbJD40tKhY8ho15D3iCSo=
+-----END PRIVATE KEY-----
+`
+    let handshakes = 0
+    const tls = createTlsServer({ cert, key }, (socket) => {
+      handshakes++
+      socket.on('error', () => {})
+      socket.end()
+    })
+    tls.on('tlsClientError', () => {})
+    tls.listen(0, '127.0.0.1')
+    await new Promise<void>((resolve) => tls.once('listening', resolve))
+    const bound = tls.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TLS listener')
+    try {
+      const cases = ['reader', 'optional', 'strict'].map((posture) => {
+        const root = fixture()
+        writeFileSync(
+          join(root, '.buckconfig'),
+          `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\n[buck2_re_client]\naction_cache_address = grpc://127.0.0.1:${bound.port}\ninstance_name = fixture\ntls = true\n`,
+        )
+        return {
+          cwd: root,
+          cacheDirectory: join(root, 'probe-cache'),
+          args: ['build', '//:app'],
+          env:
+            posture === 'reader'
+              ? {}
+              : {
+                  BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
+                  ...(posture === 'optional' ? { BUCK2_CACHE_WRITE_OPTIONAL: '1' } : {}),
+                },
+        }
+      })
+      const certificate = join(cases[0]?.cwd ?? '', 'fixture-ca.pem')
+      writeFileSync(certificate, cert)
+      const child = Bun.spawn({
+        cmd: [
+          process.execPath,
+          '-e',
+          `import {directBuckArguments} from ${JSON.stringify(import.meta.dir + '/buck2-entrypoint.ts')};
+const outcomes = [];
+for (const options of ${JSON.stringify(cases)}) {
+  try { outcomes.push({args: await directBuckArguments(options)}) }
+  catch(error) { outcomes.push({error: error.message}) }
+}
+console.log(JSON.stringify(outcomes));`,
+        ],
+        env: { ...process.env, NODE_EXTRA_CA_CERTS: certificate },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(exitCode).toBe(0)
+      expect(handshakes).toBe(6)
+      const outcomes = JSON.parse(stdout) as {
+        readonly args?: string[]
+        readonly error?: string
+      }[]
+      for (const outcome of outcomes.slice(0, 2)) {
+        expect(effective(outcome.args ?? [])['buck2.remote_cache_enabled']).toBe('false')
+        expect(effective(outcome.args ?? [])['buck2.allow_cache_uploads']).toBe('false')
+      }
+      expect(outcomes[2]?.error).toContain('refusing to publish without remote cache')
+      expect(stderr.match(/warning: Buck2 REAPI probe failed:/gu)).toHaveLength(6)
+      expect(stderr).not.toContain('ERR_HTTP2_SOCKET_UNBOUND')
+      expect(stderr).not.toContain('fixture-secret')
+    } finally {
+      tls.close()
+    }
+  })
+
   it('falls back both unavailable endpoints without overwriting concurrent checkout configuration or run arguments', async () => {
     const root = fixture()
     const local = '[ui]\ncolor = false\n'
