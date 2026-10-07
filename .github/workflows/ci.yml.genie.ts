@@ -795,11 +795,12 @@ const extraJobs: Record<string, any> = {
       },
       {
         name: 'Reject tracked product and editor payload bytes',
+        // Colocated Nix recipes and contract tests are source, not inert product payload.
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|compiled\\.nix|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|native\\.nix|native-targets\\.json|native-targets\\.json\\.genie\\.ts|pnpm-archives\\.nix|private-product-tarballs\\.nix|private-product-tarballs\\.test\\.sh|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts|vite-runtime-fixture\\.nix)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|compiled\\.nix|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|from-source\\.nix|manifest\\.json|native\\.nix|native-targets\\.json|native-targets\\.json\\.genie\\.ts|pnpm-archives\\.nix|private-product-tarballs\\.nix|private-product-tarballs\\.test\\.sh|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts|vite-runtime-fixture\\.nix)$' || true)`,
             'if [ -n "$tracked_editor$tracked_product" ]; then',
             '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
             '  exit 1',
