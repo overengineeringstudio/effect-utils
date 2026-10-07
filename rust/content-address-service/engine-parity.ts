@@ -1,4 +1,4 @@
-// Run: bun (or node --experimental-transform-types) engine-parity.ts <generated-service-dir> <result.json>
+// Run: bun (or node --experimental-transform-types) engine-parity.ts <generated-service-dir> [result.json]
 // Console output is the standalone parity verdict and benchmark report.
 import assert from 'node:assert/strict'
 import { lstat } from 'node:fs/promises'
@@ -31,9 +31,8 @@ const [directoryArgument, output] = process.argv.slice(2)
 assert.ok(
   directoryArgument !== undefined &&
     directoryArgument.length > 0 &&
-    output !== undefined &&
-    output.length > 0,
-  'Pass generated service directory and result JSON path',
+    (output === undefined || output.length > 0),
+  'Pass generated service directory and optional result JSON path',
 )
 const directory = resolve(directoryArgument)
 const require = createRequire(import.meta.url)
@@ -291,7 +290,7 @@ const program = Effect.gen(function* () {
     results,
   }
   const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(result)
-  yield* fs.writeFileString(output, encoded)
+  if (output !== undefined) yield* fs.writeFileString(output, encoded)
   console.log(encoded)
 })
 NodeRuntime.runMain(program.pipe(Effect.provide(NodeServices.layer), Effect.scoped))

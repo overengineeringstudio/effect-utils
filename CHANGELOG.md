@@ -33,7 +33,8 @@
 ### Fixed
 
 - Content-address service smokes declare their wasm scheduler fixture, and the
-  exact Buck rules inventory includes the content-address parity rule.
+  distributed Buck rules inventory includes the content-address parity rule.
+  Direct parity runs print their report without requiring an output-file path.
 - The Buck rules distribution inventory regression covers the generated Effect/Rust
   service helpers alongside the existing interop package helper.
 - Generated Effect/Rust services keep inline input and output codecs distinct and

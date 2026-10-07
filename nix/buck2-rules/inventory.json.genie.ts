@@ -22,6 +22,7 @@ const files = [
   'buck2/provenance/BUCK',
   'buck2/provenance/defs.bzl',
   'buck2/rust/BUCK',
+  'buck2/rust/content-address-parity.bzl',
   'buck2/rust/crates.bzl',
   'buck2/rust/defs.bzl',
   'buck2/rust/interop-package.ts',
