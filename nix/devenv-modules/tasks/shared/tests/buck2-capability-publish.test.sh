@@ -22,7 +22,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 fail() { echo "FAIL: $*" >&2; exit 1; }
-export NIX_FLAKE_REF="${NIX_FLAKE_REF:-path:$ROOT}"
+export NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
 export CAPABILITY_FIXTURE_ROOT="$ROOT" CAPABILITY_FIXTURE_NIX="$TESTS_DIR/buck2-capability-fixture/profiles.nix"
 profiles_file="$("$NIX" build --impure --no-link --print-out-paths --expr '
   let

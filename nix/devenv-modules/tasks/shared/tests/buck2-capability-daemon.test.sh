@@ -44,7 +44,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 # Real pinned Nix packages and the production projection generator. No npm
 # acquisition or repository graph/network cache is involved in this fixture.
-export NIX_FLAKE_REF="${NIX_FLAKE_REF:-path:$ROOT}"
+export NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
 export CAPABILITY_FIXTURE_ROOT="$ROOT" CAPABILITY_FIXTURE_NIX="$FIXTURES/profiles.nix"
 profiles_file="$("$NIX" build --impure --no-link --print-out-paths --expr '
   let
