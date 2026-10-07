@@ -1025,7 +1025,7 @@ in
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
       export NIX_FLAKE_REF="git+file://$PWD?shallow=1"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}:$PATH
-      ${pkgs.bun}/bin/bun test scripts/buck2-capability-publish.unit.test.ts
+      ${pkgs.bun}/bin/bun test ./scripts/buck2-capability-publish.unit.test.ts
       ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
       exec ${pkgs.bash}/bin/bash \
