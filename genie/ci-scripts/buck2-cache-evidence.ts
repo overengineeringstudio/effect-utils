@@ -363,7 +363,7 @@ export const createCacheEvidenceProjector = ({
         (row.category === null ||
           row.target === null ||
           row.configuration === null ||
-          row.digest === null ||
+          (row.digest === null && (executionKind !== 10 || cacheUploadResult === 1)) ||
           row.startedAt === null))
     )
       invalidActionCount++
@@ -787,15 +787,20 @@ const run = async (): Promise<void> => {
   const header = full.header
   header.status = evidence.status
   if (values.finalize === true) {
+    // Audits execute no actions and cannot populate the local action cache.
     const nativeInvocations = header.invocations.filter((item) => item.context === 'native-log')
-    const earliest = nativeInvocations.reduce(
+    const cacheBearingInvocations = nativeInvocations.filter((item) => item.actionCount > 0)
+    const earliest = cacheBearingInvocations.reduce(
       (minimum, item) => Math.min(minimum, item.startedAt ?? Infinity),
       Infinity,
     )
-    const tied = nativeInvocations.filter((item) => item.startedAt === earliest).length !== 1
+    const tied = cacheBearingInvocations.filter((item) => item.startedAt === earliest).length !== 1
     for (const invocation of nativeInvocations) {
       invocation.freshRoot =
-        invocation.freshRoot === true && tied === false && invocation.startedAt === earliest
+        invocation.freshRoot === true &&
+        invocation.actionCount > 0 &&
+        tied === false &&
+        invocation.startedAt === earliest
     }
   }
   header.metadata = {
@@ -825,13 +830,22 @@ const run = async (): Promise<void> => {
     finishedAt:
       values.finalize === true
         ? (envTime('CI_BUCK2_CACHE_EVIDENCE_FINISHED_AT') ?? Date.now())
-        : null,
+        : header.metadata.finishedAt,
   }
   if (values.finalize === true) {
     for (const invocation of header.invocations) {
       if (!invocationWithinJobWindow(invocation, header.metadata)) {
         invocation.freshRoot = false
         header.evidenceGaps.push('native-invocation-outside-job-window')
+      }
+    }
+    // Buck's LocalActionCache hits omit command metadata (including the RE action
+    // digest). Preserve those rows, but permit the omission only outside freshness.
+    for (const action of full.actions) {
+      if (action.commandAction && action.executionKind === 10 && action.digest === null) {
+        const invocation = header.invocations.find((item) => item.buildId === action.buildId)
+        if (invocation === undefined || invocation.freshRoot)
+          header.evidenceGaps.push('fresh-local-cache-action-missing-digest')
       }
     }
   }

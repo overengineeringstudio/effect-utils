@@ -58,4 +58,13 @@ describe('Buck2 cache evidence workflow decorator', () => {
     )
     expect('with' in upload && upload.with?.path).toContain('CI_BUCK2_CACHE_ACTIONS_PATH')
   })
+
+  it('excludes Cargo and ref-policy jobs that do not execute native Buck actions', () => {
+    for (const jobId of ['cargo', 'default-ref-policy']) {
+      const jobs = withBuck2CacheEvidence({
+        [jobId]: { 'runs-on': 'ubuntu-latest', steps: [{ uses: 'actions/checkout@v4' }] },
+      })
+      expect(jobs[jobId]!.env?.CI_BUCK2_CACHE_EVIDENCE_DISABLED).toBe('1')
+    }
+  })
 })

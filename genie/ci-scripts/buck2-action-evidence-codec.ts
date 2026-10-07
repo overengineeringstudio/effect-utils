@@ -4,10 +4,28 @@ import {
   outcomeFor,
   type ActionArtifact,
   type ActionArtifactHeader,
+  type ActionInvocation,
   type ActionRecord,
   type CacheLane,
 } from './buck2-action-evidence.ts'
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
+
+/** Local cache hits are reuse, never avoidable local-execution candidates. */
+export const classifyCacheAction = (
+  action: ActionRecord,
+  invocation: ActionInvocation | undefined,
+): 'local-action-cache-hit' | 'fresh-local-execution' | 'other' => {
+  if (action.executionKind === 10) return 'local-action-cache-hit'
+  if (
+    action.commandAction &&
+    (action.executionKind === 1 || action.executionKind === 8) &&
+    action.digest !== null &&
+    invocation?.buildId === action.buildId &&
+    invocation.freshRoot
+  )
+    return 'fresh-local-execution'
+  return 'other'
+}
 
 /** Untrusted JSON boundaries: reconstruct allowlisted fields, never cast parsed input. */
 export const field = (value: unknown, key: string): unknown => {
