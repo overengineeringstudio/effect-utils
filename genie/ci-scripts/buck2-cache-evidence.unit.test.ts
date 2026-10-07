@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 
+import type { ActionInvocation, ActionRecord } from './buck2-action-evidence.ts'
 import {
   createCacheEvidenceProjector,
+  decodeCacheAdmissionEvidence,
   decodeCacheEvidence,
   disabledCacheEvidence,
   emptyCacheEvidence,
@@ -229,6 +231,72 @@ describe('native Buck cache evidence projection', () => {
     expect(result.droppedActionCount).toBe(2)
   })
 
+  it('records no-digest reasons for local cache hits without inventing RE action keys', () => {
+    for (const executionKind of [7, 10]) {
+      // Pinned B worktree log d4af231b has Run/kind 10/upload 3/commands [].
+      // Kind 7 is the paired native local-dep-file cache transition.
+      const result = project([
+        nativeEvent(
+          'SpanEnd',
+          actionEnd({ execution_kind: executionKind, cache_upload_result: 3, commands: [] }),
+        ),
+      ])
+      expect(result.counts['local-cache']).toBe(1)
+      expect(result.actions).toEqual([])
+      expect(result.invocations[0]).toMatchObject({
+        missingDigestCount: 1,
+        missingCommandDigestCount: 1,
+        noDigestReasons: { 'local-cache': 1, 'remote-hit': 0, uploaded: 0 },
+      })
+      expect(decodeCacheEvidence(result)).toEqual(result)
+    }
+  })
+
+  it('distinguishes missing remote cache keys from legitimate nondigest outcomes', () => {
+    const result = project([
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({ execution_kind: 3, cache_upload_result: 8, commands: [] }),
+      ),
+      nativeEvent('SpanEnd', actionEnd({ commands: [] }), 20182),
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({ execution_kind: 1, cache_upload_result: 2, commands: [] }),
+        20183,
+      ),
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({ kind: 'Write', execution_kind: 6, cache_upload_result: 2, commands: [] }),
+        20184,
+      ),
+    ])
+    expect(result.invocations[0]).toMatchObject({
+      missingDigestCount: 4,
+      noDigestReasons: { 'remote-hit': 1, uploaded: 1, local: 1, other: 1, 'local-cache': 0 },
+    })
+    expect(result.actions).toEqual([])
+    expect(result.counts).toMatchObject({ 'remote-hit': 1, uploaded: 1, local: 1, other: 1 })
+  })
+
+  it('preserves earlier artifacts without fabricating unavailable omission reasons', () => {
+    const original = project([
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({ execution_kind: 10, cache_upload_result: 8, commands: [] }),
+      ),
+    ])
+    const earlier = {
+      ...original,
+      invocations: original.invocations.map(
+        ({ noDigestReasons: _noDigestReasons, ...invocation }) => invocation,
+      ),
+    }
+    const decoded = decodeCacheEvidence(earlier)
+    expect(decoded).toEqual(earlier)
+    expect(decoded.invocations[0]!.noDigestReasons).toBeUndefined()
+    expect(decoded.invocations[0]!.missingCommandDigestCount).toBe(1)
+  })
+
   it('joins a missing end identity by span id, not parent id, and reports incomplete starts', () => {
     const result = project([
       nativeEvent('SpanStart', fixtureIdentity, 10),
@@ -411,5 +479,231 @@ describe('native Buck cache evidence projection', () => {
     expect(decoded.counts).toEqual(original.counts)
     expect(decoded.metadata).toEqual({ job: 'writer' })
     expect(JSON.stringify(decoded)).not.toContain('PRIVATE_')
+  })
+
+  it('emits every first action end alongside unchanged bounded representatives', () => {
+    const rows: ActionRecord[] = []
+    const invocations: ActionInvocation[] = []
+    const projector = createCacheEvidenceProjector({
+      context: 'populate',
+      freshRoot: true,
+      onAction: (row) => rows.push(row),
+      onInvocation: (invocation) => invocations.push(invocation),
+    })
+    const command = (phase: 'SpanStart' | 'SpanEnd', seconds: number) => ({
+      Event: {
+        trace_id: fixtureBuildId,
+        timestamp: [seconds, 0],
+        span_id: 1,
+        data: { [phase]: { data: { Command: {} } } },
+      },
+    })
+    projector.add(command('SpanStart', 1700000000))
+    for (let index = 0; index < 100; index++) {
+      projector.add({
+        Event: {
+          ...nativeEvent('SpanStart', fixtureIdentity, index + 10).Event,
+          timestamp: [1700000001, index * 1000000],
+        },
+      })
+      const end = {
+        Event: {
+          ...nativeEvent('SpanEnd', actionEnd(), index + 10).Event,
+          timestamp: [1700000002, index * 1000000],
+        },
+      }
+      projector.add(end)
+      projector.add(end)
+    }
+    projector.add(command('SpanEnd', 1700000003))
+    const summary = projector.finish()
+    expect(summary.actionCount).toBe(100)
+    expect(summary.actions).toHaveLength(1)
+    expect(summary.droppedActionCount).toBe(99)
+    expect(rows).toHaveLength(100)
+    expect(rows[0]).toMatchObject({
+      type: 'action',
+      context: 'populate',
+      executionKind: 1,
+      cacheUploadResult: 1,
+      digest: fixtureDigest,
+      startedAt: 1700000001000,
+      completedAt: 1700000002000,
+      endTime: 1700000002000,
+      uploadCompletedAt: 1700000002000,
+      uploadOutcome: 'uploaded',
+    })
+    expect(invocations).toEqual([
+      {
+        buildId: fixtureBuildId,
+        context: 'populate',
+        freshRoot: true,
+        actionCount: 100,
+        complete: true,
+        startedAt: 1700000000000,
+        completedAt: 1700000003000,
+      },
+    ])
+  })
+
+  it('retains sanitized null identity/digest rows and invalidates missing command evidence', () => {
+    const rows: ActionRecord[] = []
+    const invocations: ActionInvocation[] = []
+    const projector = createCacheEvidenceProjector({
+      onAction: (row) => rows.push(row),
+      onInvocation: (invocation) => invocations.push(invocation),
+    })
+    projector.add(
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({
+          name: { category: '/private/secret' },
+          key: {
+            owner: {
+              TargetLabel: {
+                label: { package: '/private/root', name: 'SECRET=token' },
+                configuration: { full_name: '/private/host/path' },
+              },
+            },
+          },
+          commands: [
+            {
+              details: {
+                command_kind: {
+                  command: {
+                    LocalCommand: { action_digest: '/private/secret:12', env: ['SECRET_ENV'] },
+                  },
+                },
+              },
+            },
+          ],
+        }),
+      ),
+    )
+    projector.finish()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      category: null,
+      target: null,
+      configuration: null,
+      digest: null,
+      startedAt: null,
+      completedAt: null,
+      uploadCompletedAt: null,
+    })
+    expect(JSON.stringify(rows)).not.toContain('private')
+    expect(JSON.stringify(rows)).not.toContain('SECRET')
+    expect(invocations[0]!.complete).toBe(false)
+  })
+
+  it('preserves upload rejection and local-dep-file raw classifications without inventing hits', () => {
+    for (const cacheUploadResult of [9, 10, 11, 12, 13, 14, 15, 16]) {
+      const rows: ActionRecord[] = []
+      const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+      projector.add(
+        nativeEvent(
+          'SpanEnd',
+          actionEnd({
+            execution_kind: 7,
+            cache_upload_result: cacheUploadResult,
+          }),
+        ),
+      )
+      projector.finish()
+      expect(rows[0]).toMatchObject({
+        executionKind: 7,
+        cacheUploadResult,
+        outcome: 'local-cache',
+        uploadOutcome: cacheUploadResult === 16 ? 'not-uploaded' : 'failed',
+        uploadCompletedAt: null,
+      })
+    }
+  })
+
+  it('invalidates unknown action kinds and mistyped native enums instead of excluding a possible command', () => {
+    for (const overrides of [
+      { kind: 'UnknownNativeKind' },
+      { kind: undefined },
+      { execution_kind: '3' },
+      { cache_upload_result: '1' },
+    ]) {
+      const invocations: ActionInvocation[] = []
+      const projector = createCacheEvidenceProjector({
+        onInvocation: (invocation) => invocations.push(invocation),
+      })
+      projector.add({
+        Event: {
+          trace_id: fixtureBuildId,
+          span_id: 1,
+          timestamp: [1700000000, 0],
+          data: { SpanStart: { data: { Command: {} } } },
+        },
+      })
+      projector.add({
+        Event: { ...nativeEvent('SpanStart', fixtureIdentity).Event, timestamp: [1700000001, 0] },
+      })
+      projector.add({
+        Event: {
+          ...nativeEvent('SpanEnd', actionEnd(overrides)).Event,
+          timestamp: [1700000002, 0],
+        },
+      })
+      projector.add({
+        Event: {
+          trace_id: fixtureBuildId,
+          span_id: 1,
+          timestamp: [1700000003, 0],
+          data: { SpanEnd: { data: { Command: {} } } },
+        },
+      })
+      expect(projector.finish().actionCount).toBe(1)
+      expect(invocations[0]!.complete).toBe(false)
+    }
+  })
+})
+
+describe('cache admission evidence schema', () => {
+  it('normalizes retained summaries to explicit zero admission evidence', () => {
+    const { admissionFallbacks, admissionRetrySuccesses, admissionInvocations, ...legacy } =
+      emptyCacheEvidence()
+    expect(decodeCacheEvidence(legacy)).toEqual(emptyCacheEvidence())
+    expect(admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
+    expect(admissionRetrySuccesses).toEqual({ reapi: 0, archiveOrigin: 0 })
+    expect(admissionInvocations).toEqual([])
+  })
+  it('merges invocation evidence independently of native logs and recomputes totals', () => {
+    const row = {
+      invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
+      admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 1 },
+    }
+    const previous = { ...emptyCacheEvidence(), admissionInvocations: [row] }
+    const merged = mergeCacheEvidence({ previous, next: previous })
+    expect(merged.admissionInvocations).toEqual([row])
+    expect(merged.admissionFallbacks).toEqual(row.admissionFallbacks)
+    expect(merged.admissionRetrySuccesses).toEqual(row.admissionRetrySuccesses)
+    expect(decodeCacheAdmissionEvidence(merged).admissionInvocations).toEqual([row])
+    expect(() =>
+      decodeCacheAdmissionEvidence({ ...merged, admissionInvocations: [row, row] }),
+    ).toThrow()
+  })
+  it('canonicalizes every Buck UUID spelling without imposing random UUID version bits', () => {
+    const invocation = {
+      invocationId: '01234567-89ab-cdef-0123-456789abcdef',
+      admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 1 },
+    }
+    for (const invocationId of [
+      invocation.invocationId,
+      '0123456789ABCDEF0123456789ABCDEF',
+      '{01234567-89AB-CDEF-0123-456789ABCDEF}',
+      'urn:uuid:01234567-89AB-CDEF-0123-456789ABCDEF',
+    ]) {
+      expect(
+        decodeCacheAdmissionEvidence({
+          admissionInvocations: [{ ...invocation, invocationId }],
+        }).admissionInvocations,
+      ).toEqual([invocation])
+    }
   })
 })

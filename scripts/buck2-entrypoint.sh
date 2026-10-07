@@ -6,6 +6,7 @@ root="$PWD"
 while [[ ! -f "$root/.buckroot" && "$root" != / ]]; do root="${root%/*}"; [[ -n "$root" ]] || root=/; done
 cache=""
 if [[ $# -gt 0 && -n "${HOME:-}${XDG_CACHE_HOME:-}" && -f "$root/.buckroot" && -f "$root/.buckconfig" && ! -d "$root/.buckconfig.d" \
+  && -z "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" \
   && -z "${BUCK2_PRIVATE_CACHE_WRITE_AUTH:-}${BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:-}${BUCK2_CACHE_WRITE_BASIC_AUTH:-}" ]]; then
   tracked="$(< "$root/.buckconfig")"
   local_config=""

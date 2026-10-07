@@ -14,6 +14,8 @@ import { buck2TypeScriptAdmission as effectRpcExplorerReactAdmission } from '../
 import { buck2TypeScriptAdmission as effectRpcExplorerAdmission } from '../../packages/@overeng/effect-rpc-explorer/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackAdmission } from '../../packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackBasicAdmission } from '../../packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRustAdmission } from '../../packages/@overeng/effect-rust/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRustFixtureConsumerAdmission } from '../../packages/@overeng/effect-rust-fixture-consumer/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAriaAdmission } from '../../packages/@overeng/effect-schema-form-aria/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAdmission } from '../../packages/@overeng/effect-schema-form/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as genieSmalltalkAdmission } from '../../packages/@overeng/genie-smalltalk/BUCK.genie.ts'
@@ -58,6 +60,7 @@ import type {
 
 export type { Buck2TypeScriptProjectAuthorityMetadata } from './typescript-package-projection.ts'
 
+// eslint-disable-next-line overeng/named-args -- Array sort comparator callbacks receive positional operands.
 const compareAuthorityStrings = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0
 
@@ -95,6 +98,8 @@ export const buck2TypeScriptAdmissions = {
   effectRpcExplorerReact: effectRpcExplorerReactAdmission,
   effectRpcTanstack: effectRpcTanstackAdmission,
   effectRpcTanstackBasic: effectRpcTanstackBasicAdmission,
+  effectRust: effectRustAdmission,
+  effectRustFixtureConsumer: effectRustFixtureConsumerAdmission,
   effectSchemaForm: effectSchemaFormAdmission,
   effectSchemaFormAria: effectSchemaFormAriaAdmission,
   genie: genieAdmission,

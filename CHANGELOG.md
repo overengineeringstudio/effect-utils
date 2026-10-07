@@ -4,6 +4,12 @@
 
 ### Added
 
+- Every Buck cache-enabled CI job retains complete sanitized gzip JSONL action
+  identities beside its existing compact evidence summary. The warm99 evaluator
+  joins prior successful uploads against fresh-root readers per lane and rejects
+  missing evidence, requiring two consecutive observations at or above 99%.
+- pnpm development installs can opt into the graph-hashed global virtual store;
+  default and CI installs retain root-local projections.
 - Deterministic, contained Vitest Buck lanes publish cacheable passing verdict
   artifacts with normalized reports and a `buck2 test` adapter. Failed suites
   exit nonzero and are never uploaded; `cacheable: false` lanes stay uncached.
@@ -22,6 +28,47 @@
 
 ### Fixed
 
+- The pnpm task smoke test checks the stable Effect 4.0.0 cohort override rather
+  than the superseded release-candidate pin.
+- Buck cache admission gives concurrent REAPI and archive-origin probes 2500 ms
+  per attempt with one immediate retry (5000 ms total per endpoint), covering
+  measured Namespace TLS stalls and permitting lost-SYN recovery before selecting
+  the existing warning and fallback policy. Required writers remain fail-closed
+  after both failures;
+  Watchman's 900 ms deadline is unchanged. Cache-evidence summaries retain
+  per-invocation `admissionInvocations` and endpoint-wise `admissionFallbacks` /
+  `admissionRetrySuccesses`, including writer refusals without native logs.
+- Buck REAPI preflight diagnostics distinguish DNS, TCP, TLS, and response phases
+  with elapsed time, deadline, and socket address families. Public IPs are visible;
+  private addresses, endpoint names, and credentials remain redacted.
+- The Buck rules distribution inventory regression covers the generated Effect/Rust
+  service helpers alongside the existing interop package helper.
+- Generated Effect/Rust services keep inline input and output codecs distinct and
+  reject conflicting synthetic names or collisions with Rust contract definitions.
+- Effect/Rust Worker handlers own request-local scopes, releasing resources before
+  successful responses and cancellation acknowledgments.
+- Async wasm scheduler traps poison their lexical generation, defect pending calls,
+  and unblock interrupted orphaned promises without affecting another instance.
+- Scalar integer wasm/native arguments reject nonfinite, fractional, out-of-width
+  and negative-zero inputs before backend ABI narrowing.
+- Cache evidence preserves finalized job timestamps on failure, grants freshness
+  to the first action-bearing invocation rather than preceding audits, and
+  retains nondigest local-action-cache reuse as excluded nonfresh evidence.
+  Cargo and ref-policy jobs are explicitly outside native remote-cache lanes.
+- Main-push tested-tree reuse judges successful required queue checks from the
+  current attempt, without waiting for optional jobs or rejecting their failures.
+- Native dependency policy CI runs its Bun tests by explicit source paths instead
+  of matching duplicate test files inside Buck validation outputs.
+- Protected-main merge-group gates opportunistically populate the public Buck
+  cache without exposing credentials to PR runs. Main pushes skip heavy gates
+  only after matching their tree to successful required queue checks; publishers
+  and empirical/cache proofs keep running. Optional tree-lookup failures retain
+  alignment dispatch after successful fallback quality and publication.
+- Fixed-source Nix products bound Buck execution, Tokio workers, and blocking
+  threads to the Nix core budget, with unset/zero budgets normalized to one.
+  Worker configuration follows the `build` subcommand so Buck accepts the flags.
+- The cached Genie CLI emits comment-free strict JSON for `.watchmanconfig`,
+  matching its source-side generator and Watchman's runtime parser.
 - Pipeline-report deadline coverage verifies bounded completion and retained results
   without requiring an incidental retry-attempt count or sub-100ms local HTTP service.
 - Negative Buck artifact-import fixtures capture remote Nix builder logs, so
@@ -42,12 +89,29 @@
   so Darwin's read-only Bun clone cannot collide with the compiler's copy fallback.
 - Genie bootstrap discovery excludes Buck output trees, so copied generator files
   in build artifacts do not enter source-tree closure checks.
+- JavaScript product descriptor actions use the audited hermetic cache lane, so
+  independent roots reuse their byte-identical descriptors instead of executing
+  one default-denied local action.
 - Buck remote-cache uploads reserve protobuf headroom below the backend's 4 MiB
   gRPC limit, including in generated consumer roots, so large React Aria
   dependency outputs upload and reuse across independent roots.
 - TypeScript Git fixtures preserve the caller's environment while removing
   hook-local repository and index selectors, so temporary commits cannot alter
   the repository running the hook.
+- Native Effect/Rust panic retirement cancels sibling abortable futures and waits
+  for settle-only futures before releasing or replacing the generation.
+- Portable regex end anchors respect backslash parity in both compiler directions;
+  escaped literal dollars are rejected while anchored literal backslashes work.
+- Native scalar `f32` admission checks finiteness after binary32 rounding, matching
+  wasm at the maximum finite boundary.
+- Buck roots use Watchman with output-directory exclusions and idle watch reaping.
+  This prevents daemon startup from recursively traversing ignored build outputs
+  and dependency symlinks; warm commands no longer need a full-file hash crawl.
+  The packaged entrypoint admits the actual service before native startup, with
+  a bounded probe and short-lived environment-scoped cache. Unavailable Watchman
+  warns and falls back to notify; explicit local providers remain authoritative.
+  Immutable Nix source products retain their service-free `fs_hash_crawler`
+  override because Watchman's state initialization is forbidden in the sandbox.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
 - The rules-product inventory test again verifies complete distribution sources
@@ -76,8 +140,21 @@
   preserving runtime-generated test inventories with Vitest 5's changed default.
 - pnpm lock mutation uses matching bytewise collation throughout its executable
   metadata preservation guard, regardless of the caller's locale.
+- Effect/Rust object transports normalize safe integral JavaScript doubles before
+  decoding integer contracts, including bounded numbers. JSON-text admission
+  still rejects noncanonical integer spellings such as `1.0`.
+- Effect/Rust fixture test executables resolve Node-API symbols dynamically;
+  native addon products retain real host-symbol lookup.
+- Effect/Rust workspace packages participate in the root TypeScript project
+  registry, and the distributed Buck rules include the service-packaging tool.
+- PTY client tests pair runtime module mocks with runtime cleanup on Vitest 5.
 
 ### Changed
+
+- Storybook preview builds select Storybook package inputs and their generated
+  transitive workspace dependency closure. Unrelated pull requests avoid preview
+  build and deploy runners; required Storybook plays execute on the native merge
+  queue head rather than consuming runners on individual pull requests.
 
 - Shared Buck cache reads and writes now require an audited hermetic execution
   platform; unadmitted actions default to no shared reuse. Admitted JavaScript,

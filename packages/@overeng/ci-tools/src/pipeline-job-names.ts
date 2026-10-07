@@ -16,6 +16,7 @@ export const pipelineRunnerProfiles = [
 /** Static job identifiers declared by the generated CI workflow. */
 export const pipelineJobIds = [
   'default-ref-policy',
+  'tested-tree',
   'quality',
   'test-playwright-utils',
   'test-playwright-tui-react',
@@ -37,7 +38,6 @@ export const pipelineJobIds = [
   'ci-measurements-report',
   'notify-alignment',
   'trusted-buck2-remote-cache-proof',
-  'seed-pnpm-archives',
   'pr-a-inert-buck',
   'pipeline-attempt-close',
   'pipeline-traces',
@@ -88,7 +88,7 @@ export const pipelineJobIdentityForName = pipelineJobIdentityResolver({
 })
 
 /** All known job identifiers, used to check the generator's declarations. */
-export const pipelineJobIdentifierSet = new Set([...pipelineJobIds, 'test'])
+export const pipelineJobIdentifierSet = new Set([...pipelineJobIds, 'test', 'test-macos'])
 
 /** Jobs API fields that locate one job row within a run's attempts. */
 export type AttemptJob = {

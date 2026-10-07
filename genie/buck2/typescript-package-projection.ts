@@ -122,6 +122,15 @@ const discoverPackageFiles = ({
       if (entry.isSymbolicLink() === true) {
         throw new Error(`Package source census refuses symlink: ${relativePath}`)
       }
+      // Running Genie with --cwd inside a source root leaves output-lock state here.
+      // It is not package input; do not descend into its URL-encoded semaphore keys.
+      if (
+        entry.isDirectory() === true &&
+        entry.name === 'genie-locks' &&
+        path.posix.basename(relativeDirectory) === 'tmp'
+      ) {
+        continue
+      }
       if (entry.isDirectory() === true) {
         walk(relativePath)
       } else if (entry.isFile() === true && admit(relativePath) === true) {
@@ -693,6 +702,9 @@ export type Buck2WorkspacePackageGenerator = {
   }
 }
 
+/** Absolute Buck package-product label, resolved in the owning cell. */
+export type BuckTarget = `${string}//${string}:${string}`
+
 export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly packageName: string
   readonly packagePath: string
@@ -700,6 +712,8 @@ export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly rulesCell?: `@${string}`
   readonly sourceRoots: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
+  /** Generated package products participate in build, editor and runtime package views. */
+  readonly generatedDependencies?: Readonly<Record<string, BuckTarget>>
   /** Consumer roots supply their own Genie registry; the platform root defaults to its own. */
   readonly workspacePackages?: readonly Buck2WorkspacePackageGenerator[]
   /** Project-level authority declarations; one package may own more than one root project. */
@@ -720,6 +734,7 @@ export const buck2TypeScriptPackageProjection = ({
   rulesCell,
   sourceRoots,
   workspaceSiblings = [],
+  generatedDependencies = {},
   workspacePackages = rootWorkspacePackages,
   authorities,
   tests,
@@ -815,6 +830,46 @@ export const buck2TypeScriptPackageProjection = ({
   if (packageManifest === undefined) {
     throw new Error(`${packagePath}: missing workspace package generator`)
   }
+  const generatedDependencyEntries = sortedEntries(generatedDependencies)
+  for (const [name, target] of generatedDependencyEntries) {
+    const validName = /^(?:@[A-Za-z0-9][A-Za-z0-9._-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)
+    if (validName === false) {
+      throw new Error(`${packagePath}: unsafe generated dependency package name ${name}`)
+    }
+    const label = /^(?:@?[A-Za-z0-9_.-]+)?\/\/([A-Za-z0-9_./@-]*):([A-Za-z0-9_.+=,@~/-]+)$/.exec(
+      target,
+    )
+    if (
+      label === null ||
+      [label[1], label[2]].some(
+        (part) =>
+          part !== undefined &&
+          part !== '' &&
+          part
+            .split('/')
+            .some((segment) => segment === '' || segment === '.' || segment === '..') === true,
+      ) === true
+    ) {
+      throw new Error(
+        `${packagePath}: generated dependency requires a normalized absolute Buck target: ${target}`,
+      )
+    }
+    if (workspaceSiblings.some((sibling) => sibling.packageName === name) === true) {
+      throw new Error(
+        `${packagePath}: dependency ${name} is both generated and a workspace sibling`,
+      )
+    }
+    if (
+      [
+        packageManifest.dependencies,
+        packageManifest.devDependencies,
+        packageManifest.optionalDependencies,
+        packageManifest.peerDependencies,
+      ].some((dependencies) => Object.hasOwn(dependencies ?? {}, name)) === true
+    ) {
+      throw new Error(`${packagePath}: dependency ${name} is both generated and manifest-declared`)
+    }
+  }
   const workspaceNames = new Set(
     [
       packageManifest.dependencies,
@@ -906,10 +961,11 @@ export const buck2TypeScriptPackageProjection = ({
   // config loads have to be staged: they live beside `package.json`, outside every source root.
   const testConfigEntries = [
     ...new Set(
-      (tests ?? []).flatMap((target) => [
-        ...(target.runner === 'vitest' ? [target.config ?? defaultVitestConfig] : []),
-        ...(target.configInputs ?? []),
-      ]),
+      (tests ?? []).flatMap((target) =>
+        (target.runner === 'vitest' ? [target.config ?? defaultVitestConfig] : []).concat(
+          target.configInputs ?? [],
+        ),
+      ),
     ),
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
@@ -942,8 +998,6 @@ export const buck2TypeScriptPackageProjection = ({
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
     .map((authorityProjectFile) => [authorityProjectFile, authorityProjectFile] as const)
-  const identityEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
-    files.map((file) => [file, file] as const)
   // The compile tree: typecheck, emit and the editor read it, so it carries the TypeScript
   // census and nothing a runner alone collects. A `.jsx` spec, a snapshot baseline, a Vitest
   // config or a committed fixture in here would widen every compile action's identity for
@@ -1070,6 +1124,7 @@ export const buck2TypeScriptPackageProjection = ({
     ),
     dependencyLabel,
     dependencyView,
+    generatedDependencies,
     packageName,
     packagePath,
     packageSources,
@@ -1093,7 +1148,7 @@ export const buck2TypeScriptPackageProjection = ({
   }
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-typescript-package-projection',
-    schemaVersion: 12,
+    schemaVersion: 13,
     semanticData: data,
   })
 
@@ -1154,7 +1209,7 @@ export const buck2TypeScriptPackageProjection = ({
   const stringify = (): string => {
     const lines = [
       `# Projection source: ${projectionSource}`,
-      '# Projection schema version: 12',
+      '# Projection schema version: 13',
       '# Projection generator: effect-utils/genie/buck2-typescript-package-projection',
       `# Semantic fingerprint: ${fingerprint}`,
       `# Semantic inputs: ${semanticInputs.join(', ')}`,
@@ -1237,6 +1292,7 @@ export const buck2TypeScriptPackageProjection = ({
       )},`,
       ...renderMap({ name: 'files', entries: packageFileEntries }),
       ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
+      ...renderMap({ name: 'generated_dependencies', entries: generatedDependencyEntries }),
       ...renderMap({
         name: 'workspace_dependency_views',
         entries: workspaceDependencyViewEntries,
@@ -1255,6 +1311,7 @@ export const buck2TypeScriptPackageProjection = ({
             `    dependency_view = ${starlarkString(dependencyView)},`,
             ...renderMap({ name: 'files', entries: testPackageFileEntries }),
             ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
+            ...renderMap({ name: 'generated_dependencies', entries: generatedDependencyEntries }),
             ...renderMap({
               name: 'workspace_dependency_views',
               entries: workspaceDependencyViewEntries,
@@ -1295,3 +1352,6 @@ export const buck2TypeScriptPackageProjection = ({
 
   return createGenieOutput({ data, stringify })
 }
+
+const identityEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
+  files.map((file) => [file, file] as const)

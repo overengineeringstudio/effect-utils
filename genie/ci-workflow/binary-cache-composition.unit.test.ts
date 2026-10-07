@@ -17,13 +17,18 @@ import {
   readBinaryCacheDescriptors,
   type BinaryCacheDescriptor as Cache,
 } from './binary-cache-descriptors.ts'
-import { validateWorkflowCachePolicy } from './cache-policy.ts'
+import {
+  CachePublisherJobError,
+  trustedCacheWriterGuardedSecret,
+  publisherWriteSecret,
+  validateWorkflowCachePolicy,
+} from './cache-policy.ts'
 import { prSnapshotPackJob, prSnapshotReleaseJobs } from './pr-snapshot.ts'
 import {
+  buck2TrustedCacheWriterStep,
   cachixPublisherStep,
   cachixPushStep,
   cachixStep,
-  CachePublisherJobError,
   installNixStep,
 } from './setup.ts'
 import { ciWorkflow } from './shared.ts'
@@ -232,6 +237,53 @@ it('guards private descriptors through direct githubWorkflow output', () => {
       },
     }),
   ).toThrow(PrivateBinaryCacheRunnerError)
+})
+
+describe('trusted Buck2 publisher', () => {
+  const secret = 'BUCK2_PUBLIC_CACHE_WRITE_AUTH'
+  const guarded = trustedCacheWriterGuardedSecret(secret)
+  const step = buck2TrustedCacheWriterStep({ run: 'devenv tasks run test:run' })
+  const on = { push: { branches: ['main'] }, pull_request: null, merge_group: null } as const
+  const validate = (
+    steps: Parameters<typeof validateWorkflowCachePolicy>[0]['workflow']['jobs'][string]['steps'],
+    triggers: Parameters<typeof validateWorkflowCachePolicy>[0]['workflow']['on'] = on,
+  ) =>
+    validateWorkflowCachePolicy({
+      workflow: { on: triggers, jobs: { test: { 'runs-on': 'ubuntu-latest', steps } } },
+    })
+
+  it('rejects every unguarded reference, including aliases alongside a guarded credential', () => {
+    for (const reference of [
+      '${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}',
+      "${{ secrets['BUCK2_PUBLIC_CACHE_WRITE_AUTH'] }}",
+      "${{ github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
+      "${{ github.event_name == 'merge_group' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
+      "${{ github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
+      '${{ toJSON(secrets) }}',
+    ]) {
+      expect(() => validate([{ ...step, env: { ...step.env, EXTRA: reference } }])).toThrow(
+        CachePublisherJobError,
+      )
+    }
+  })
+
+  it('rejects push triggers not restricted exclusively to main', () => {
+    for (const push of [{}, { branches: ['feature'] }, { branches: ['main', 'feature'] }]) {
+      expect(() => validate([step], { ...on, push })).toThrow(CachePublisherJobError)
+    }
+  })
+
+  it('rejects guarded credentials in an unmarked step even without any marked publisher', () => {
+    expect(() =>
+      validate([{ run: 'devenv tasks run test:run', env: { [secret]: guarded } }]),
+    ).toThrow(CachePublisherJobError)
+    expect(() =>
+      validate([
+        { [publisherWriteSecret]: secret, run: 'true', env: { [secret]: guarded } },
+        { run: 'echo $EXTRA', env: { EXTRA: guarded } },
+      ]),
+    ).toThrow(CachePublisherJobError)
+  })
 })
 
 describe('Cachix publisher', () => {

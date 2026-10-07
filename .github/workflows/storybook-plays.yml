@@ -9,8 +9,8 @@ permissions:
 on:
   pull_request:
     types: [opened, reopened, synchronize]
-  push:
-    branches: [main]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: '${{ github.workflow }}-${{ github.ref }}'
@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   test-storybook-plays:
+    if: ${{ github.event_name == 'merge_group' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
@@ -30,8 +31,10 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-storybook-plays
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -42,7 +45,23 @@ jobs:
           persist-credentials: false
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -103,7 +122,14 @@ jobs:
       - name: Storybook play tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run storybook:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run storybook:test'
       - name: Collect Buck2 cache evidence
@@ -121,6 +147,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-storybook-plays-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14

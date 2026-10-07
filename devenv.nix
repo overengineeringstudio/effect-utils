@@ -512,6 +512,8 @@ let
   genieExtraInputGlobs = [
     "context/otel-scrape/telemetry-registry.json"
     "genie/buck2/*.ts"
+    # Storybook workflow admission discovers consumers from these directories.
+    "packages/**/.storybook/**"
     "packages/@overeng/buck2-tools/src/**/*.ts"
     "packages/@overeng/megarepo/src/buck2-manifest.ts"
     "packages/@overeng/tui-core/src/**/*.ts"

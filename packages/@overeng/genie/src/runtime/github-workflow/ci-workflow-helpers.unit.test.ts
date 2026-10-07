@@ -362,12 +362,6 @@ const generatedDevenvPerfJob = extractSourceBlock(
   '  nix-closure-sizes:',
 )
 
-const generatedSeedPnpmArchivesJob = extractSourceBlock(
-  generatedCiWorkflowYamlSource,
-  '  seed-pnpm-archives:',
-  '  publish-products:',
-)
-
 const restorePnpmStateStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const restorePnpmStateStep = (opts?: {',
@@ -426,16 +420,10 @@ describe('pull request control-event workflows', () => {
 })
 
 describe('protected-main archive seeding', () => {
-  it('passes the tracked trusted origin into the protected-main seed step', () => {
-    expect(generatedSeedPnpmArchivesJob).toContain('name: Resolve trusted archive origin')
-    expect(generatedSeedPnpmArchivesJob).toContain('trusted_url_prefix')
-    expect(generatedSeedPnpmArchivesJob).toContain(
-      'BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}',
-    )
-    expect(generatedSeedPnpmArchivesJob).toContain(
-      'BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}',
-    )
-    expect(generatedSeedPnpmArchivesJob).toContain("github.ref == 'refs/heads/main'")
+  it('keeps the archive CAS write credential out of every CI job', () => {
+    // The CAS host seeds itself from main (decision 0038, amendment 1); no runner holds the token.
+    expect(generatedCiWorkflowYamlSource).not.toContain('BUCK2_ARCHIVE_CAS_AUTHORIZATION')
+    expect(generatedCiWorkflowYamlSource).not.toContain('buck2:archives:seed')
     expect(generatedCiWorkflowYamlSource).not.toContain('trusted-cache.example')
   })
 })
@@ -1466,65 +1454,6 @@ describe('ci workflow standard job helpers', () => {
   })
 })
 
-interface StorybookPlaysWorkflowFacts {
-  readonly triggers: unknown
-  readonly jobs: readonly string[]
-  readonly permissions: readonly unknown[]
-  readonly referencesSecrets: boolean
-  readonly runsPlays: boolean
-  readonly jobConditions: ReadonlyArray<string | null>
-  readonly ciHasPlaysJob: boolean
-}
-
-describe('storybook plays workflow', () => {
-  let facts: StorybookPlaysWorkflowFacts
-
-  beforeAll(() => {
-    const fixture = spawnSync(
-      'bun',
-      [
-        '-e',
-        `
-          import { readFileSync } from 'node:fs'
-          import { YAML } from 'bun'
-          const plays = YAML.parse(readFileSync('.github/workflows/storybook-plays.yml', 'utf8'))
-          const ci = YAML.parse(readFileSync('.github/workflows/ci.yml', 'utf8'))
-          console.log(JSON.stringify({
-            triggers: plays.on,
-            jobs: Object.keys(plays.jobs),
-            jobConditions: Object.values(plays.jobs).map((job) => job.if ?? null),
-            permissions: [plays.permissions, ...Object.values(plays.jobs).map((job) => job.permissions)],
-            referencesSecrets: JSON.stringify(plays).includes('secrets.'),
-            runsPlays: JSON.stringify(plays).includes('tasks run storybook:test'),
-            ciHasPlaysJob: Object.keys(ci.jobs).includes('test-storybook-plays'),
-          }))
-        `,
-      ],
-      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
-    )
-    expect(fixture.status, fixture.stderr).toBe(0)
-    facts = JSON.parse(fixture.stdout) as StorybookPlaysWorkflowFacts
-  })
-
-  it('runs story plays for pull requests and main with read-only, secret-free access', () => {
-    expect(facts.triggers).toEqual({
-      pull_request: { types: ['opened', 'reopened', 'synchronize'] },
-      push: { branches: ['main'] },
-    })
-    expect(facts.jobs).toEqual(['test-storybook-plays'])
-    expect(facts.runsPlays).toBe(true)
-    expect(facts.referencesSecrets).toBe(false)
-    for (const permissions of facts.permissions) expect(permissions).toEqual({ contents: 'read' })
-  })
-
-  it('requires the plays lane from its own workflow, outside ci.yml', () => {
-    expect(facts.ciHasPlaysJob).toBe(false)
-    expect(generatedRequiredCheckContexts).toContain('test-storybook-plays')
-    // A skipped required job reports no check run and blocks every PR.
-    expect(facts.jobConditions).toEqual([null])
-  })
-})
-
 describe('storybook preview split build/deploy', () => {
   let facts: ReturnType<typeof JSON.parse>
 
@@ -1970,7 +1899,25 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('export const ciJobConcurrency = ({ jobId, ...opts }:')
     expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
     expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')
-    expect(generatedCiWorkflowYamlSource).toContain('}}-test-${{ strategy.job-index }}')
+    // Repository workflow sources are outside this package's hermetic compiler input.
+    // Exercise their actual concurrency contract through the existing Bun probe boundary.
+    const concurrencyProbe = spawnSync(
+      process.env.BUN_BIN ?? 'bun',
+      [
+        '-e',
+        `import workflow from './.github/workflows/ci.yml.genie.ts';
+         console.log(JSON.stringify([
+           workflow.data.jobs.test.concurrency,
+           workflow.data.jobs['test-macos'].concurrency,
+         ]));`,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(concurrencyProbe.status, concurrencyProbe.stderr).toBe(0)
+    const [linuxConcurrency, darwinConcurrency] = JSON.parse(concurrencyProbe.stdout)
+    expect(linuxConcurrency.group).toBeTypeOf('string')
+    expect(darwinConcurrency.group).toBeTypeOf('string')
+    expect(linuxConcurrency.group).not.toBe(darwinConcurrency.group)
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
     expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
     expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')

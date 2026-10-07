@@ -93,8 +93,11 @@ pinned buck2 -> identical healthy invocation cache -> native Buck
 The flake's pinned executable owns admission for direct agent commands, devenv
 tasks and consumer roots. It resolves the nearest `.buckroot`, reads the tracked
 and local Buck configuration, applies the shared environment posture, and probes
-REAPI `GetCapabilities` and the trusted archive origin concurrently with 900 ms
-deadlines. Endpoint outcomes expire after five seconds. Complete successful
+REAPI `GetCapabilities` and the trusted archive origin concurrently. Each endpoint
+gets 2500 ms per attempt including connection setup, with exactly one immediate
+retry after a failed first attempt and at most 5000 ms total probing per endpoint.
+Watchman's separate 900 ms deadline is unchanged. Endpoint outcomes expire after
+five seconds. Complete successful
 read-only invocations can bypass the JavaScript launcher within the remaining
 probe lifetime; the key includes config contents, arguments, working directory
 and exported environment. Writer credentials, includes and external mode files
@@ -104,10 +107,12 @@ RE client configuration alone opts into admission. A missing
 `remote_cache_enabled` inherits the execution policy's enabled default;
 RE-only roots do not need trusted archive metadata.
 
-Read-only REAPI admission failures disable cache reads/uploads while retaining
-local execution. Archive-origin admission failures clear the origin prefix and
-select the registry; a reachable REAPI client remains enabled. Every fail-open
-invocation emits a warning. Outage overrides are CLI root-config values, not
+Only failure of both attempts selects an endpoint's outage policy. Read-only
+REAPI admission failures disable cache reads/uploads while retaining local
+execution; required writers fail closed after both REAPI attempts fail.
+Archive-origin admission failures clear the origin prefix and select the
+registry; a reachable REAPI client remains enabled. Every fail-open invocation
+emits the existing warning. Outage overrides are CLI root-config values, not
 persistent endpoint changes; RE client identity/credentials still require a
 managed root overlay before daemon startup.
 
@@ -134,20 +139,221 @@ not regressions.
 
 ### CI cache-evidence artifacts
 
-CI retains `buck2-cache-evidence-<job>[-<matrix-index>]-<run-attempt>` artifacts
-for 14 days. Each contains `buck2-cache-evidence.json`, schema version `1`:
-allowlisted run/job/revision/posture metadata, complete native outcome `counts`,
-per-build-ID `invocations`, and at most 64 representative `actions` with
-category, target, configuration, exact action digest, and outcome. Populate and
-replay invocations retain their proof context labels; repeated native logs are
-deduplicated by build ID.
+```text
+native log show -> allowlisted incremental projector
+                  +-> buck2-cache-evidence.json (compact, <=64 representatives)
+                  +-> buck2-cache-actions.jsonl.gz (every first action end)
+writers + expected fresh readers -> warm99 per-lane evaluator
+```
 
-Consumers must distinguish `collected`, `no-native-logs`, and
-`remote-cache-disabled-by-design` statuses. In-Nix product jobs use the last
-status and zero action rows; their reuse metric is Nix substitution, not Buck AC.
-The daily cache-health mission and post-merge proof consume this contract.
+CI retains `buck2-cache-evidence-<job>[-<matrix-index>]-<run-attempt>` artifacts
+for 14 days. Each upload contains both files. The compact summary remains schema
+version `1`: complete native outcome `counts`, per-build-ID `invocations`, and at
+most 64 representative `actions`. Its existing `droppedActionCount` continues
+to describe omitted **representatives**, not missing full-artifact rows.
+Populate and replay invocations retain proof context labels; repeated native
+logs are deduplicated by build ID, preserving the first context.
+
+Admission evidence is independent of native execution evidence. Before writer
+fail-closed handling, every direct invocation that probes cache appends a UTF-8
+JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authoritative
+`CacheAdmissionInvocation` shape:
+
+```json
+{
+  "invocationId": "9552ef6c-294e-4a51-9100-9006d6f2c343",
+  "admissionFallbacks": { "reapi": 0, "archiveOrigin": 0 },
+  "admissionRetrySuccesses": { "reapi": 0, "archiveOrigin": 1 }
+}
+```
+
+`invocationId` uses `BUCK_WRAPPER_UUID`: the entrypoint preserves an existing
+caller/OTel UUID or generates a random UUID when absent, and passes it to native
+Buck as its trace ID. It therefore joins directly to native `buildId` when Buck
+runs; denied writers still retain admission evidence without a native event.
+Both persistence and decoding canonicalize Buck's accepted UUID spellings
+(32-hex, hyphenated, braced, or UUID URN) to its lowercase hyphenated native
+trace ID, without imposing version or variant bits.
+Evidence-enabled invocations bypass the native-launch argument fast path so it
+cannot reuse a prior UUID or skip admission counters. The compact summary adds
+`admissionInvocations` (these rows, deduplicated by invocation UUID),
+`admissionFallbacks` and `admissionRetrySuccesses` (endpoint-wise sums across
+those rows). Each endpoint counter is 0 or 1 per invocation: healthy first
+attempts have zeroes, failure of both attempts records one fallback, and a
+successful second attempt records one retry success without a fallback. A reused
+cached failure still records one fallback for that invocation; reused cached
+health records no retry success. An endpoint not probed has zeroes. These are
+admission decisions, not action-cache misses or native upload failures, and do
+not enter the warm99 action denominator.
+The sidecar survives devenv task boundaries and is consumed into the compact
+summary, not uploaded as a separate raw artifact. Collector finalization writes
+fallback counts and invocation IDs to `GITHUB_STEP_SUMMARY`; the existing stderr
+warning remains available at invocation time.
+
+The summary adds `cacheOutcomeMapping: "effect-utils/compact-cache-outcome/v1"`
+and `actionsArtifact: { name, rows, sha256, bytes, uncompressedBytes, complete,
+droppedActionCount }`. `name` is `buck2-cache-actions.jsonl.gz`; `sha256` hashes
+the compressed bytes. Valid complete evidence satisfies
+`actionsArtifact.rows == actionCount`, and both full-artifact dropped counts are
+zero. Existing compact consumers need not change.
+
+The gzip payload is UTF-8 JSONL with a header followed by one action record per
+first native `ActionExecution` end span. Rows are never grouped or sampled.
+Missing fields remain explicit `null`; they do not suppress a row.
+
+| Header field            | Contract                                                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`, `schemaVersion` | `"header"`, `1`                                                                                                                                |
+| `cacheOutcomeMapping`   | Repository-owned versioned mapping identifier above                                                                                            |
+| `metadata`              | `repo`, `runId`, `runAttempt`, `job`, `lane`, `headSha`, `posture`, `startedAt`, `finishedAt`; once per file                                   |
+| `lane`                  | `main-writer`, `main-reader`, `merge_group`, or `pr`; unknown is `null` and cannot pass                                                        |
+| `posture`               | `read-only`, `writer`, or `disabled-by-design`                                                                                                 |
+| `status`                | `collected`, `no-native-logs`, or `remote-cache-disabled-by-design`                                                                            |
+| Completeness            | `complete`, `actionCount`, `rows`, `droppedActionCount`, `missingDigestCount`, `missingIdentityCount`, `missingTimestampCount`, `evidenceGaps` |
+| `invocations`           | Native `buildId`, `context`, command `startedAt`/`completedAt`, `freshRoot`, `actionCount`, and `complete`                                     |
+
+| Action field          | Contract                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`                | `"action"`                                                                                                                                  |
+| Identity              | `buildId`, `context`, `category`, `target`, full `configuration`, exact native AC `digest` (`hash:size`)                                    |
+| Native classification | Integer `executionKind` and `cacheUploadResult`, retained even when the normalized outcome overrides the kind                               |
+| Outcomes              | `outcome` and `cacheOutcome` use the named compact mapping; `uploadOutcome` is `uploaded`, `failed` (native values 9–15), or `not-uploaded` |
+| Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                            |
+| `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                   |
+
+All times are integer Unix milliseconds. The pinned log decoder emits native
+timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
+`uploadCompletedAt` is the successful action-end timestamp: a conservative
+upper bound on completed upload, never an inferred start plus `wall_time`.
+Equality with reader start is **not** prior completion. Missing command starts,
+command ends, identity/digest/timestamps, unpaired action starts, unsupported
+native enums, decode/discovery errors, checksum mismatches, and truncated data
+invalidate an observation. Legitimate nondigest non-command actions still
+contribute to omission counters, not a fabricated AC identity.
+
+The projector emits only allowlisted labels, configuration names, native digest
+strings, enum numbers, times, and run identity. Host paths, environment values,
+commands, outputs, host names, and raw error payloads are never copied. Invalid
+identity text becomes `null` rather than a lossy replacement key. The
+repository-local mapping identifier has exact case-sensitive spelling and a
+version suffix; unknown versions are rejected, not silently reinterpreted.
+In particular, compact `uploaded` takes precedence over execution kind, and
+kind `7` maps to `local-cache`; consumers retain raw enums so that they need not
+call local-dep-file reuse a remote hit.
+
+Compression uses deterministic gzip with level 9. A 64 MiB uncompressed
+action-payload ceiling bounds retained bytes; overflow retains the available
+prefix and records a size-limit gap and dropped count. Such an artifact is
+**invalid**, never an accepted complete observation. The summary measures both
+compressed and uncompressed bytes. Collection continues after failed native
+logs, recording gaps before finalizing; the upload step always retains available
+evidence independently of OTLP delivery.
+
+Freshness is a positive proof, not an assumption from checkout. The CI start
+window records that the canonical tracked root has no `buck-out` file or
+symlink. Finalization uses native command timestamps to grant freshness only
+to the unique earliest invocation from that root; later invocations are
+excluded. Tied/unknown starts, redirected roots without proof, and preexisting
+native state cannot claim freshness. The two-root proof explicitly marks only
+the first build after each wiped root, preserving its populate/replay labels.
+Every retained invocation must satisfy the native-time enclosure
+`job.startedAt <= invocation.startedAt <= invocation.completedAt <= job.finishedAt`.
+Equality is valid at millisecond precision. Missing or out-of-window bounds retain
+rows only as incomplete evidence and revoke freshness; filesystem mtime cannot
+make an older native invocation part of the current observation.
+
+In-Nix product jobs retain disabled-by-design headers and zero action rows.
+Their reuse metric is Nix substitution, not Buck AC. The daily cache-health
+mission and post-merge proof consume the full contract.
 See [observability](../07-observability/spec.md#ci-action-cache-evidence) for
-outcome classes and missing-evidence counters.
+the legacy compact outcome classes and missing-evidence counters.
+
+### Per-lane warm99 evaluation
+
+```text
+writer upload completion < fresh reader command start
+    exact (category,target,configuration,digest) join
+    eligible remote identities / eligible identities
+    >=99% for each enabled lane, twice consecutively
+```
+
+`bun genie/ci-scripts/buck2-cache-warm99.ts --manifest <manifest.json>` accepts
+an explicit expected-observation manifest, not a directory glob that can silently
+omit a failed job:
+
+```json
+{
+  "schemaVersion": 1,
+  "enabledLanes": ["main-reader", "merge_group", "pr"],
+  "observations": [
+    {
+      "id": "observation-1",
+      "sequence": 1,
+      "writers": [
+        {
+          "lane": "main-writer",
+          "summary": "writer/buck2-cache-evidence.json",
+          "actions": "writer/buck2-cache-actions.jsonl.gz"
+        }
+      ],
+      "readers": [
+        {
+          "lane": "main-reader",
+          "summary": "reader/buck2-cache-evidence.json",
+          "actions": "reader/buck2-cache-actions.jsonl.gz"
+        }
+      ],
+      "nixSubstitution": { "substituted": 0, "built": 0 }
+    }
+  ]
+}
+```
+
+Paths resolve relative to the manifest; reports omit them. Observation sequence
+numbers strictly increase. Each enabled lane has explicitly enumerated reader
+jobs, and each expected job needs a complete fresh invocation. All writer
+artifacts must be complete before they establish eligible uploads. The reader
+tuple is eligible only where an exact successful upload completed strictly
+before that fresh reader invocation started. Duplicate identities count once;
+all eligible fresh occurrences of an identity must have raw execution kind `3`
+to count as a remote hit. Local-cache and local-dep-file outcomes are misses,
+not remote hits, even if the compact mapping groups them as local-cache.
+Writer and reader repository metadata must agree. Distinct observations require
+distinct native reader build IDs; replaying one artifact under a new manifest
+sequence is an evidence gap, not a second fresh-root measurement.
+
+Freshness belongs to the first cache-bearing native invocation in a fresh job
+root: no earlier invocation may have executed or cached any action. Zero-action
+audits do not consume freshness. Every invocation after the first cache-bearing
+one is nonfresh, even when its command is otherwise cache-enabled.
+
+Buck's native `LocalActionCache` (execution kind `10`) reuses an earlier local
+action without command metadata, so its RE action digest can be absent. Retain
+these rows with `digest: null`; only a known nonfresh invocation may classify
+them as excluded-nonfresh rather than an evidence gap. Fresh command rows still
+require native digests, and uploaded rows always require their native digest.
+The codec's `classifyCacheAction` identifies kind `10` as a local-action-cache
+hit, never an avoidable local-execution candidate. Such candidates are only
+command actions of kind `1` or `8` with a native digest in a matched fresh
+invocation (`fresh-local-execution`); every other outcome is outside that set.
+Missing identity fields or timestamps remain evidence gaps. Cargo and
+default-ref-policy jobs execute no native Buck actions and are explicitly
+disabled-by-design, not remote-cache reader or writer lanes.
+
+The report separates cold tuples (no prior upload), changed tuples (same
+category/target/configuration, different prior uploaded digest), excluded
+nonfresh/disabled actions, noncacheable native actions, upload failures, and
+evidence gaps. Nix substitution totals are separate and never augment the Buck
+denominator. Missing expected jobs/files, malformed/schema-incompatible or
+truncated artifacts, checksum/row-count mismatch, and unavailable identity/time
+evidence invalidate the observation. Zero eligible identities do not pass.
+
+Each enabled lane must reach a warm eligible remote-hit rate of at least 99%
+in two consecutive complete observations. An evidence gap breaks the streak;
+rates are not pooled across lanes or observations. The CLI emits a normalized
+JSON report and exits nonzero when acceptance is unmet or input is invalid.
+This temporal eligible-denominator measurement is distinct from the legacy
+observed action-span rate and from Nix substitution.
 
 ### Action reuse versus verdict reuse
 
@@ -169,12 +375,54 @@ the normalized report and result content hashes. Local execution of the small
 The red control requires two nonzero local verdict actions with no upload; the
 irrelevant-mutation control requires no locally executed verdict action.
 
+### JavaScript product descriptor reuse
+
+**BUILD.BUCK.REUSE-DQ03 (resolved):** `javascript_product_descriptor` projects a
+declared module descriptor using pinned Bun and the declared package-command
+runtime. The rule owns `cache_guarded_rule` eligibility and its macro selects the
+shared hermetic constraint. `hermetic_action` scrubs ambient environment and
+`hermetic_bun_command` disables `.env`, install discovery and ambient Bun config.
+`local_only` limits execution to the local executor; it does not prohibit remote
+action-cache reads on the admitted lane.
+
+`configuredTarget` records canonical cell/target names and the target
+configuration hash, not the checkout's filesystem root. It remains provenance
+in `effect-utils/javascript-product/v2`; no descriptor fields are removed or
+moved. The JavaScript Nix importer checks exact descriptor fields and bytes but
+does not compare provenance. This projection is distinct from the strict native
+`buck-build-product/v1` contract and does not change that schema or its importer.
+
+The two-root regression requires a locally executed/uploaded descriptor in
+context A, a remote descriptor action-cache hit in context B, byte-identical
+descriptor files, and zero executed/local-cache build actions on B.
+
 ### Lane budget measurements
 
 Record edit-run, quick check, full tests and platform/host proof separately. For
 each lane record platform, revision, target closure, cache posture, warm no-op,
 fresh-context warm-cache time and host load. No 5-second/3-minute universal budget
 is substituted for a measured lane budget (axe record `uttvbj`).
+
+### Cache efficiency measurement
+
+BUILD.BUCK.REUSE-R08–R14 retain their rolling 7-day evidence window. The legacy
+compact observed rate counts native outcome spans:
+remote hit / (remote hit + local execution + local cache + upload).
+The warm99 acceptance gate uses the distinct exact-identity, prior-upload,
+fresh-root denominator specified above, not that observed aggregate.
+
+| Requirement | Evidence                                                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| R08–R10     | Full CI action-identity artifacts and warm99 reports; R08 joins local executions against prior successful public-tier uploads |
+| R11         | public tier server request counters (`GetActionResult` hits/misses, `UpdateActionResult` writes)                              |
+| R12         | weekly two-root probe per trusted host, native event log                                                                      |
+| R13         | narinfo presence for each published product and the publish-run derivation diff                                               |
+| R14         | daily cache-health measurement history                                                                                        |
+
+R09 and R10 apply only to lanes where queue writers populate the public tier
+before readers run. Rates measured before that ordering exists form a separate
+pre-ordering baseline
+([2026-10-06 baseline](./.experiments/2026-10-06-cache-efficiency-baseline.md)).
 
 ## Open Design Questions
 
@@ -185,8 +433,3 @@ is substituted for a measured lane budget (axe record `uttvbj`).
   consumer/service designs for revocable per-host credentials, authenticated
   action-key logging and targeted AC purge. A worker-name field or IP log is
   insufficient attribution; instance names alone do not isolate keys.
-- **BUILD.BUCK.REUSE-DQ03 Product descriptor reuse:** The strict build half of
-  the trusted remote-cache proof still executes one local
-  `javascript_product_descriptor` action on the second root, while every other
-  build and test action is a remote hit. Open: admit the descriptor action to a
-  hermetic lane, or accept it as local-only work and exempt it from the proof.

@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
+bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");

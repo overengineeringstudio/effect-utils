@@ -59,10 +59,16 @@ Commands, environments, stdout/stderr and runner filesystem paths are not retain
 The projector uses numeric native execution/upload enums: action-cache execution is
 `remote-hit`; a successful cache upload is `uploaded`; local execution, local cache,
 remote execution and remote dep-file hits remain distinct. Omitted rows and missing
-command digests are counted explicitly. Duplicate logs of one native build ID do not
-double-count actions. The trusted populate/replay proof captures each context before
-its native logs are removed, including failed Buck commands before returning their
-original exit status. Uploads, hits and failed invocations remain in one job artifact.
+command digests are counted explicitly. Each new invocation includes `noDigestReasons`,
+an outcome-keyed count of actions with no native RE digest; local-cache and other
+nondigest native outcomes are informational and do not fail collection. Only a
+`remote-hit` or `uploaded` action without its RE digest is an inconsistency that
+fails collection after writing the artifact. Older schema-1 artifacts may omit
+`noDigestReasons`; absence means reasons are unavailable, not zero omissions.
+Duplicate logs of one native build ID do not double-count actions. The trusted
+populate/replay proof captures each context before its native logs are removed,
+including failed Buck commands before returning their original exit status.
+Uploads, hits and failed invocations remain in one job artifact.
 
 `no-native-logs` means no native Buck invocation was observed, not a cache hit.
 In-Nix product jobs report `remote-cache-disabled-by-design` with no action rows:

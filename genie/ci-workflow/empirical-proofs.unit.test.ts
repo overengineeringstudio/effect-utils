@@ -2,15 +2,22 @@ import { expect, test } from 'bun:test'
 
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
+import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
 import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs } from '../ci.ts'
 
 const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
 const proofWorkflow = empiricalWorkflow.stringify({ cwd: process.cwd(), location: '' })
+const playsWorkflow = storybookPlaysWorkflow.stringify({ cwd: process.cwd(), location: '' })
 const proofJobIds = Array.from(
   proofWorkflow.split('\njobs:\n')[1]!.matchAll(/^  ([a-zA-Z0-9_-]+):$/gm),
   ([, id]) => id!,
 )
-const workflowForJob = (jobId: string) => (proofJobIds.includes(jobId) ? proofWorkflow : workflow)
+const workflowForJob = (jobId: string) =>
+  jobId === 'test-storybook-plays'
+    ? playsWorkflow
+    : proofJobIds.includes(jobId)
+      ? proofWorkflow
+      : workflow
 const condition = (jobId: string) => {
   const block = workflowForJob(jobId).match(
     new RegExp(`\\n  ${jobId}:\\n([\\s\\S]*?)(?=\\n  [^\\s]|$)`),
@@ -29,14 +36,15 @@ const admitted = (
   baselineRef = '',
 ) => {
   const triggers = workflowForJob(jobId).split('\njobs:\n')[0]!
-  if (eventName === 'pull_request') {
-    const activities = triggers
-      .match(/types: \[([^\]]+)\]/)?.[1]
-      ?.split(', ')
-      .map((value) => value.trim())
-    if (activities?.includes(action) !== true) return false
-  }
-  if (eventName === 'schedule' && triggers.includes('\n  schedule:') === false) return false
+  const trigger = triggers.match(
+    new RegExp(`\\n  ${eventName}:([^]*?)(?=\\n  [^\\s]|\\n[^\\s]|$)`),
+  )?.[1]
+  if (trigger === undefined) return false
+  const activities = trigger
+    .match(/types: \[([^\]]+)\]/)?.[1]
+    ?.split(', ')
+    .map((value) => value.trim())
+  if (activities !== undefined && activities.includes(action) === false) return false
   return Boolean(
     new Function(
       'github',
@@ -98,7 +106,13 @@ for (const jobId of EMPIRICAL_PROOF_CI_JOB_NAMES) {
 }
 
 test('proof opt-in never admits credentialed cache proof or product validation on label churn', () => {
-  for (const jobId of ['trusted-buck2-remote-cache-proof', 'build-products', 'quality', 'test']) {
+  for (const jobId of [
+    'trusted-buck2-remote-cache-proof',
+    'build-products',
+    'quality',
+    'test',
+    'test-macos',
+  ]) {
     expect(
       admitted(
         jobId,
@@ -119,8 +133,37 @@ test('proof opt-in never admits credentialed cache proof or product validation o
       ['ci:heavy-proofs'],
     ),
   ).toBe(false)
-  for (const jobId of ['build-products', 'quality', 'test']) {
-    expect(admitted(jobId, 'pull_request', 'refs/pull/1/merge', 'synchronize')).toBe(true)
+  expect(admitted('quality', 'pull_request', 'refs/pull/1/merge', 'synchronize')).toBe(true)
+  for (const jobId of ['build-products', 'test', 'test-macos']) {
+    expect(admitted(jobId, 'pull_request', 'refs/pull/1/merge', 'synchronize')).toBe(false)
+    expect(
+      admitted(jobId, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-1', 'checks_requested'),
+    ).toBe(true)
+  }
+})
+
+test('heavy product lanes run only on the mandatory native merge-group head', () => {
+  for (const jobId of [
+    'test',
+    'test-macos',
+    'test-playwright-utils',
+    'test-playwright-tui-react',
+    'cargo',
+    'weaver',
+    'test-integration-restate',
+    'build-products',
+    'pr-a-inert-buck',
+    'test-storybook-plays',
+  ]) {
+    expect(
+      admitted(jobId, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-1', 'checks_requested'),
+    ).toBe(true)
+    expect(
+      admitted(jobId, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-1', 'destroyed'),
+    ).toBe(false)
+    for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
+      expect(admitted(jobId, event, 'refs/heads/main', 'synchronize')).toBe(false)
+    }
   }
 })
 
@@ -149,7 +192,12 @@ test('label-triggered proofs never publish an ordinary merge-required context', 
     expect(requiredCIJobs.includes(name)).toBe(false)
   }
   for (const name of requiredCIJobs.filter((name) => name !== 'test-storybook-plays')) {
-    const jobId = name.startsWith('test (') ? 'test' : name
+    const jobId =
+      name === 'test (namespace-profile-macos-arm64)'
+        ? 'test-macos'
+        : name.startsWith('test (')
+          ? 'test'
+          : name
     expect(
       admitted(
         jobId,

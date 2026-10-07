@@ -12,6 +12,8 @@ on:
     branches: [main]
   pull_request:
     types: [opened, reopened, synchronize]
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       measurement_baseline_ref:
@@ -36,6 +38,38 @@ on:
         type: boolean
 
 jobs:
+  tested-tree:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tested: ${{ steps.lookup.outputs.tested }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-node@v4
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        with:
+          node-version: '24'
+      - id: lookup
+        name: Find successful queue evidence for pushed tree
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node genie/ci-scripts/tested-tree.ts
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-tested-tree"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   default-ref-policy:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
@@ -60,7 +94,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -450,7 +500,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-default-ref-policy-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -473,17 +525,18 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: default-ref-policy
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
+      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-default-ref-policy"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   quality:
     name: pr/quality
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 90
@@ -530,7 +583,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -592,9 +661,16 @@ jobs:
       - name: Verify mutation-free shell entry
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         shell: bash
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           cd "${GITHUB_WORKSPACE:-$PWD}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
           command -v script >/dev/null 2>&1
@@ -610,8 +686,15 @@ jobs:
       - name: Type check (Buck)
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:quick' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:quick'
       - name: Check pnpm lockfile matches package specifiers
@@ -622,15 +705,29 @@ jobs:
       - name: Format + lint
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
       - name: Bundle smoke tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
       - name: CI runtime and native dependency policy regression checks
@@ -640,6 +737,10 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/nix-gc-race-retry.test.sh
           bash genie/ci-scripts/ci-measurement-comparison.test.sh
           bash genie/ci-scripts/native-dep-policy-audit.test.sh
+      - name: Native cache evidence regressions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun test ./genie/ci-scripts/buck2-cache-evidence.unit.test.ts ./genie/ci-scripts/buck2-cache-evidence.integration.test.ts ./genie/ci-scripts/buck2-action-evidence.integration.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts ./genie/ci-workflow/buck2-cache-evidence.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts'
       - name: Downstream flake-input regression
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -653,8 +754,10 @@ jobs:
           audit=genie/ci-scripts/native-dep-policy-audit.ts
           if command -v bun >/dev/null 2>&1; then
             bun "$audit"
+            bun test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts
           else
             nix run nixpkgs#bun -- "$audit"
+            nix run nixpkgs#bun -- test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts
           fi
       - name: Nix diagnostics summary
         if: failure()
@@ -762,7 +865,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-quality-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -779,17 +884,20 @@ jobs:
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+    needs: [tested-tree]
     env:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: quality
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     permissions:
       contents: read
       id-token: write
@@ -797,12 +905,11 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-quality"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
-    runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
+    name: test (namespace-profile-linux-x86-64)
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 90
     defaults:
       run:
@@ -840,14 +947,30 @@ jobs:
         shell: bash
         env:
           JOB_KEY: test
-          MATRIX_VALUE: ${{ matrix.runner }}
+          MATRIX_VALUE: namespace-profile-linux-x86-64
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -909,15 +1032,17 @@ jobs:
       - name: Unit tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
-      - name: Build and smoke native and compiled products
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
-        if: matrix.runner == 'namespace-profile-macos-arm64'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1023,8 +1148,10 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: 'buck2-cache-evidence-test-${{ strategy.job-index }}-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          name: 'buck2-cache-evidence-test-${{ github.run_attempt }}'
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -1045,21 +1172,343 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     permissions:
       contents: read
       id-token: write
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-${{ strategy.job-index }}"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+  test-macos:
+    name: test (namespace-profile-macos-arm64)
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
+    runs-on:
+      [namespace-profile-macos-arm64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Mount local Nix substituter cache volume
+        uses: namespacelabs/nscloud-cache-action@v1
+        continue-on-error: true
+        with:
+          path: /Users/runner/.cache/nix-substituter
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Checkout CI measurement baseline ref
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.measurement_baseline_ref }}
+      - name: Prepare pipeline job identity
+        shell: bash
+        env:
+          JOB_KEY: test
+          MATRIX_VALUE: namespace-profile-macos-arm64
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: Start Buck2 cache evidence window
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
+      - name: Enable local Nix substituter
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          conf="${XDG_CONFIG_HOME:-$HOME/.config}/nix/nix.conf"
+          mkdir -p "$(dirname "$conf")"
+          printf '\nextra-substituters = %s\n' 'file:///Users/runner/.cache/nix-substituter?priority=10' >> "$conf"
+          nix config show substituters
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+        shell: bash
+      - name: Force diagnostics failure (debug)
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
+      - name: Unit tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
+      - name: Build and smoke native and compiled products
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
+        run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh
+      - name: Save signed store paths to local Nix substituter
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          started=$SECONDS
+          paths="$RUNNER_TEMP/signed-store-paths"
+          nix path-info --all --sigs | awk -F'\t' '{ n = split($2, t, " "); for (i = 1; i <= n; i++) if (t[i] != "ultimate" && t[i] !~ /^ca:/) { print $1; break } }' > "$paths"
+          sudo env "PATH=$PATH" nix copy --stdin --to 'file:///Users/runner/.cache/nix-substituter?compression=zstd&parallel-compression=true' < "$paths"
+          echo "saved $(wc -l < "$paths") signed paths in $((SECONDS - started))s; cache size $(du -sh '/Users/runner/.cache/nix-substituter/' | cut -f1)"
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              head -n 120 "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Collect Buck2 cache evidence
+        if: ${{ always() }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
+          nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
+      - name: Upload Buck2 cache evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'buck2-cache-evidence-test-macos-${{ github.run_attempt }}'
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+          if-no-files-found: warn
+          retention-days: 14
+      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@v4
+        continue-on-error: true
+        with:
+          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
+          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
+          tags: 'tag:ci-buck2-evidence'
+          args: --accept-dns=true
+      - name: Export completed job trace
+        if: ${{ always() }}
+        shell: bash
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
+      CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
+      CI_BUCK2_CACHE_EVIDENCE_JOB: test-macos
+      CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
+      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-macos"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-playwright-utils:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
@@ -1106,7 +1555,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1168,8 +1633,15 @@ jobs:
       - name: Utils Playwright tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:utils' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:utils'
       - name: Nix diagnostics summary
@@ -1278,7 +1750,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-playwright-utils-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -1299,13 +1773,15 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-playwright-utils
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     permissions:
       contents: read
       id-token: write
@@ -1313,7 +1789,8 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-playwright-utils"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-playwright-tui-react:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
@@ -1360,7 +1837,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1422,8 +1915,15 @@ jobs:
       - name: TUI React Playwright tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:tui-react' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:tui-react'
       - name: Nix diagnostics summary
@@ -1532,7 +2032,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-playwright-tui-react-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -1553,13 +2055,15 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-playwright-tui-react
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     permissions:
       contents: read
       id-token: write
@@ -1567,7 +2071,8 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-playwright-tui-react"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   cargo:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
@@ -1614,7 +2119,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1676,8 +2197,15 @@ jobs:
       - name: Cargo build + test + clippy + fmt
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run cargo:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run cargo:check'
       - name: Nix diagnostics summary
@@ -1786,7 +2314,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-cargo-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -1807,13 +2337,15 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: cargo
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
+      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     permissions:
       contents: read
       id-token: write
@@ -1821,7 +2353,8 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-cargo"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   weaver:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
@@ -1868,7 +2401,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1937,8 +2486,15 @@ jobs:
       - name: Weaver registry gates (Buck quick + diff + live-check)
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:quick weaver:diff weaver:live-check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:quick weaver:diff weaver:live-check'
       - name: Nix diagnostics summary
@@ -2047,7 +2603,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-weaver-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2068,13 +2626,15 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: weaver
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     permissions:
       contents: read
       id-token: write
@@ -2082,7 +2642,8 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-weaver"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-a-inert-buck:
-    if: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -2097,6 +2658,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: pr-a-inert-buck
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2117,7 +2679,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -2256,7 +2834,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-pr-a-inert-buck-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2276,135 +2856,9 @@ jobs:
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pr-a-inert-buck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
-  seed-pnpm-archives:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      id-token: write
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Prepare pipeline job identity
-        shell: bash
-        env:
-          JOB_KEY: seed-pnpm-archives
-          MATRIX_VALUE: ''
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: bash genie/ci-scripts/evidence-job.sh identity
-      - name: Start Buck2 cache evidence window
-        shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          extra-conf: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-            extra-substituters = 
-            extra-trusted-public-keys = 
-            access-tokens = github.com=${{ github.token }}
-          summarize: true
-      - name: Use pinned devenv from lock
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
-          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
-            exit 1
-          fi
-          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
-          echo "Pinned devenv rev: $DEVENV_REV"
-        shell: bash
-      - name: Prepare CI helper scripts
-        shell: bash
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
-          scripts_src='genie/ci-scripts'
-          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
-          if [ ! -d "$scripts_src" ]; then
-            echo "::error::CI helper script directory is missing: $scripts_src"
-            exit 1
-          fi
-          rm -rf "$scripts_dst"
-          mkdir -p "$scripts_dst"
-          cp -R "$scripts_src/." "$scripts_dst/"
-          rm -f "$scripts_dst"/*.genie.ts
-          chmod +x "$scripts_dst"/*.sh
-      - id: archive-origin
-        name: Resolve trusted archive origin
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && url=$(sed -n "s/^[[:space:]]*trusted_url_prefix[[:space:]]*=[[:space:]]*//p" .buckconfig)
-          tier=$(sed -n "s/^[[:space:]]*trusted_tier[[:space:]]*=[[:space:]]*//p" .buckconfig)
-          case "$url" in http://*/cas/|https://*/cas/) ;; *) echo "invalid trusted archive origin" >&2; exit 1 ;; esac
-          test "$tier" = private
-          printf "url=%s\ntier=%s\n" "$url" "$tier" >> "$GITHUB_OUTPUT"
-      - name: Verify and seed pnpm archives
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          BUCK2_ARCHIVE_CAS_AUTHORIZATION: ${{ secrets.BUCK2_ARCHIVE_CAS_AUTHORIZATION }}
-          BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}
-          BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}
-          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
-        run: |
-          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:archives:seed' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:archives:seed'
-      - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
-          nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: 'buck2-cache-evidence-seed-pnpm-archives-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
-          if-no-files-found: warn
-          retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
-          args: --accept-dns=true
-      - name: Export completed job trace
-        if: ${{ always() }}
-        shell: bash
-        env:
-          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
-        run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
-    env:
-      FORCE_SETUP: '1'
-      CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
-      CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
-      CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
-      CI_BUCK2_CACHE_EVIDENCE_JOB: seed-pnpm-archives
-      CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
-      CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-seed-pnpm-archives"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   build-products:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name == 'pull_request' }}
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 120
@@ -2418,14 +2872,16 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       GITHUB_TOKEN: ${{ github.token }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: build-products
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -2441,7 +2897,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -2469,7 +2941,15 @@ jobs:
       - name: Build and smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
+        run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh
       - name: Collect Buck2 cache evidence
         if: ${{ always() }}
         shell: bash
@@ -2485,7 +2965,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-build-products-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2523,6 +3005,7 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: publish-products
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2543,7 +3026,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - id: publication-scope
         name: Check publication scope
         run: |
@@ -2664,7 +3163,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-publish-products-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2701,6 +3202,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '0'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: trusted-buck2-remote-cache-proof
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2721,7 +3223,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -2797,7 +3315,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-trusted-buck2-remote-cache-proof-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -2900,6 +3420,7 @@ jobs:
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: source-shape
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2925,7 +3446,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: 'Measure source shape: effect-utils'
         shell: bash
         env:
@@ -3169,7 +3706,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-source-shape-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -3186,7 +3725,7 @@ jobs:
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-source-shape"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -3230,7 +3769,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3366,7 +3921,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-integration-notion-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -3389,6 +3946,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-integration-notion
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3401,7 +3959,8 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-integration-notion"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-integration-restate:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    needs: [tested-tree]
     concurrency:
       group: 'test-integration-restate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
       cancel-in-progress: true
@@ -3443,7 +4002,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3505,8 +4080,15 @@ jobs:
       - name: Restate integration tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:restate-integration' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:restate-integration'
       - name: Nix diagnostics summary
@@ -3574,7 +4156,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-integration-restate-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -3595,13 +4179,15 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-integration-restate
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     permissions:
       contents: read
       id-token: write
@@ -3648,7 +4234,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3832,7 +4434,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-test-live-deploy-ci-tools-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -3855,6 +4459,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-live-deploy-ci-tools
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3906,7 +4511,23 @@ jobs:
         run: bash genie/ci-scripts/evidence-job.sh identity
       - name: Start Buck2 cache evidence window
         shell: bash
-        run: mkdir -p "${CI_BUCK2_CACHE_EVIDENCE_START%/*}"; touch "$CI_BUCK2_CACHE_EVIDENCE_START"
+        run: |
+          set -euo pipefail
+          marker="${CI_BUCK2_CACHE_EVIDENCE_START:?cache evidence start not declared}"
+          mkdir -p "${marker%/*}"
+          started_at=$(( $(date +%s) * 1000 ))
+          source_root=""
+          fresh_root=0
+          if source_root=$(cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" && pwd -P); then
+            if tracked_root=$(git -C "$source_root" rev-parse --show-toplevel 2>/dev/null) &&
+               tracked_root=$(cd "$tracked_root" && pwd -P) &&
+               [ "$tracked_root" = "$source_root" ] &&
+               [ ! -e "$source_root/buck-out" ] && [ ! -L "$source_root/buck-out" ]; then
+              fresh_root=1
+            fi
+          fi
+          printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
+          printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -4114,7 +4735,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'buck2-cache-evidence-deploy-storybooks-${{ github.run_attempt }}'
-          path: ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+          path: |
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
+            ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
@@ -4137,6 +4760,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
+      CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: deploy-storybooks
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -4149,15 +4773,8 @@ jobs:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
-    needs:
-      - quality
-      - test
-      - test-playwright-utils
-      - test-playwright-tui-react
-      - cargo
-      - weaver
-      - deploy-storybooks
-    if: ${{ (github.ref == 'refs/heads/main') && github.event_name == 'push' }}
+    needs: [tested-tree, quality, deploy-storybooks]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && needs['deploy-storybooks'].result == 'success' }}
     steps:
       - name: Dispatch alignment to coordinator
         env:
@@ -4186,12 +4803,12 @@ jobs:
       - default-ref-policy
       - quality
       - test
+      - test-macos
       - test-playwright-utils
       - test-playwright-tui-react
       - cargo
       - weaver
       - pr-a-inert-buck
-      - seed-pnpm-archives
       - build-products
       - publish-products
       - trusted-buck2-remote-cache-proof
@@ -4213,7 +4830,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
-      PIPELINE_TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+      PIPELINE_TRUSTED: ${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - uses: actions/checkout@v6
         with:
