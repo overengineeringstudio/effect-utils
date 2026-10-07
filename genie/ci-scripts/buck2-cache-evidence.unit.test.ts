@@ -687,14 +687,23 @@ describe('cache admission evidence schema', () => {
       decodeCacheAdmissionEvidence({ ...merged, admissionInvocations: [row, row] }),
     ).toThrow()
   })
-  it('accepts hash-shaped wrapper UUIDs without imposing random UUID version bits', () => {
+  it('canonicalizes every Buck UUID spelling without imposing random UUID version bits', () => {
     const invocation = {
       invocationId: '01234567-89ab-cdef-0123-456789abcdef',
       admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
       admissionRetrySuccesses: { reapi: 0, archiveOrigin: 1 },
     }
-    expect(
-      decodeCacheAdmissionEvidence({ admissionInvocations: [invocation] }).admissionInvocations,
-    ).toEqual([invocation])
+    for (const invocationId of [
+      invocation.invocationId,
+      '0123456789ABCDEF0123456789ABCDEF',
+      '{01234567-89AB-CDEF-0123-456789ABCDEF}',
+      'urn:uuid:01234567-89AB-CDEF-0123-456789ABCDEF',
+    ]) {
+      expect(
+        decodeCacheAdmissionEvidence({
+          admissionInvocations: [{ ...invocation, invocationId }],
+        }).admissionInvocations,
+      ).toEqual([invocation])
+    }
   })
 })

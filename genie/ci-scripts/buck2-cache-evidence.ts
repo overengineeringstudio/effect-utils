@@ -23,6 +23,7 @@ import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { gzipSync, gunzipSync } from 'node:zlib'
 
+import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
   actionsArtifactName,
@@ -132,12 +133,7 @@ const decodeAdmissionCounters = (
   archiveOrigin: count(field({ value, key: 'archiveOrigin' })),
 })
 export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionInvocation => {
-  const invocationId = text(field({ value, key: 'invocationId' }))
-  if (
-    invocationId === undefined ||
-    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(invocationId) === false
-  )
-    throw new Error('Invalid cache admission invocation ID')
+  const invocationId = canonicalCacheAdmissionInvocationId(field({ value, key: 'invocationId' }))
   const admissionFallbacks = decodeAdmissionCounters(field({ value, key: 'admissionFallbacks' }))
   const admissionRetrySuccesses = decodeAdmissionCounters(
     field({ value, key: 'admissionRetrySuccesses' }),
@@ -146,7 +142,7 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
     if (admissionFallbacks[endpoint] + admissionRetrySuccesses[endpoint] > 1)
       throw new Error('Invalid cache admission invocation counters')
   }
-  return { invocationId: invocationId.toLowerCase(), admissionFallbacks, admissionRetrySuccesses }
+  return { invocationId, admissionFallbacks, admissionRetrySuccesses }
 }
 const collectAdmissionInvocations = (
   invocations: CacheAdmissionInvocation[],

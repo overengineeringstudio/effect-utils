@@ -171,6 +171,9 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
 caller/OTel UUID or generates a random UUID when absent, and passes it to native
 Buck as its trace ID. It therefore joins directly to native `buildId` when Buck
 runs; denied writers still retain admission evidence without a native event.
+Both persistence and decoding canonicalize Buck's accepted UUID spellings
+(32-hex, hyphenated, braced, or UUID URN) to its lowercase hyphenated native
+trace ID, without imposing version or variant bits.
 Evidence-enabled invocations bypass the native-launch argument fast path so it
 cannot reuse a prior UUID or skip admission counters. The compact summary adds
 `admissionInvocations` (these rows, deduplicated by invocation UUID),

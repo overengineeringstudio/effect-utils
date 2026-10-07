@@ -15,6 +15,24 @@ export type TrustedArchiveOrigin = {
   readonly urlPrefix: string
 }
 
+/** Match Buck's UUID parser and emit the native lowercase hyphenated trace-ID spelling. */
+export const canonicalCacheAdmissionInvocationId = (value: unknown): string => {
+  if (typeof value !== 'string') throw new Error('Invalid cache admission invocation ID')
+  const plain =
+    value.length === 45 && value.startsWith('urn:uuid:') === true
+      ? value.slice(9)
+      : value.length === 38 && value.startsWith('{') === true && value.endsWith('}') === true
+        ? value.slice(1, -1)
+        : value
+  if (
+    /^[a-f0-9]{32}$/i.test(plain) === false &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(plain) === false
+  )
+    throw new Error('Invalid cache admission invocation ID')
+  const hex = plain.replaceAll('-', '').toLowerCase()
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 /** Parse Buck section/key assignments, with later assignments taking precedence. */
 export const buckConfigValues = (text: string): Record<string, string> => {
   let section = ''

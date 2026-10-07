@@ -139,7 +139,7 @@ describe('direct pinned Buck posture', () => {
         const invocationId = '01234567-89ab-cdef-0123-456789abcdef'
         const result = await directBuckArguments({
           ...admissionOptions,
-          env: { ...admissionOptions.env, BUCK_WRAPPER_UUID: invocationId },
+          env: { ...admissionOptions.env, BUCK_WRAPPER_UUID: invocationId.replaceAll('-', '') },
         })
         if (scenario === 'both-fail')
           expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')

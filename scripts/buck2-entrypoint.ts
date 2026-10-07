@@ -16,6 +16,7 @@ import process from 'node:process'
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
   buckConfigValues,
+  canonicalCacheAdmissionInvocationId,
   probeArchiveOrigin,
   probeRemoteCacheCapabilities,
   reconcileStandaloneCachePosture,
@@ -280,7 +281,7 @@ export const directBuckArguments = async ({
   const remote = (values['buck2.remote_cache_enabled'] ?? 'true') === 'true'
   const prefix = values['archive_origin.url_prefix'] ?? ''
   const admission: CacheAdmissionInvocation = {
-    invocationId: env['BUCK_WRAPPER_UUID'] ?? randomUUID(),
+    invocationId: canonicalCacheAdmissionInvocationId(env['BUCK_WRAPPER_UUID'] ?? randomUUID()),
     admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
     admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
   }
