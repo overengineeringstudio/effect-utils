@@ -45,6 +45,7 @@ buck-out/
 /.buck2/capability-generations/
 /.buck2/capability-roots/
 /.buck2/capability-publications/
+/.buck2/capability-trash/
 
 # Direnv
 repos/

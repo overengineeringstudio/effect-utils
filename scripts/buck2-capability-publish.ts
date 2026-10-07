@@ -306,6 +306,31 @@ const publicationSequence = (receipt: string): number => {
   return value
 }
 
+const cleanupPrunedGenerations = ({
+  trash,
+  cell,
+  roots,
+  receipts,
+}: {
+  readonly trash: string
+  readonly cell: string
+  readonly roots: string
+  readonly receipts: string
+}): void => {
+  for (const name of readdirSync(trash)) {
+    const generation = name.slice(0, 64)
+    if (generationPattern.test(generation) === false || name[64] !== '.')
+      throw new Error(`Invalid detached capability generation: ${name}`)
+    // Keep the detached tree as the retry marker until its old metadata is gone.
+    // A newly published live generation, if present, owns its own root and receipt.
+    if (statIfPresent(join(cell, 'generations', generation)) === undefined) {
+      rmSync(join(roots, generation), { force: true })
+      rmSync(join(receipts, `${generation}.json`), { force: true })
+    }
+    rmSync(join(trash, name), { recursive: true, force: true })
+  }
+}
+
 /** Selected generation, retention decision, and migration-only native daemon stops. */
 export type CapabilityPublicationResult = {
   readonly generation: string
@@ -344,6 +369,8 @@ export const publishCapabilities = ({
     const cell = join(buckDirectory, 'capabilities')
     const roots = join(buckDirectory, 'capability-roots')
     const receipts = join(buckDirectory, 'capability-publications')
+    const trash = join(buckDirectory, 'capability-trash')
+    mkdirSync(trash, { recursive: true })
     mkdirSync(roots, { recursive: true })
     const migrationMarker = join(buckDirectory, 'capabilities.migration')
     mkdirSync(receipts, { recursive: true })
@@ -369,6 +396,7 @@ export const publishCapabilities = ({
         copyFileSync(join(previousProfile, 'defs.bzl'), join(candidate, 'defs.bzl'))
       }
     }
+    cleanupPrunedGenerations({ trash, cell: workingCell, roots, receipts })
     if (existing !== undefined) {
       const previousCurrent = capabilityGeneration(
         readFileSync(join(workingCell, 'defs.bzl'), 'utf8'),
@@ -455,11 +483,15 @@ export const publishCapabilities = ({
     if (pruningDeferred === false) {
       for (const previous of publications) {
         if (retained.has(previous.generation) === true) continue
-        rmSync(join(cell, 'generations', previous.generation), { recursive: true })
-        rmSync(join(roots, previous.generation), { force: true })
-        rmSync(join(receipts, `${previous.generation}.json`), { force: true })
+        // Detach atomically before recursive deletion: a crash must never leave
+        // a partial tree under a recognized immutable generation identity.
+        renameSync(
+          join(cell, 'generations', previous.generation),
+          join(trash, `${previous.generation}.${randomUUID()}`),
+        )
       }
     }
+    cleanupPrunedGenerations({ trash, cell, roots, receipts })
     return {
       generation,
       retainedCount: pruningDeferred === true ? publications.length : retained.size,

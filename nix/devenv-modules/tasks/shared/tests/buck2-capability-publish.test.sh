@@ -112,6 +112,39 @@ for version in one two three; do
   [ -d "$live/.buck2/capabilities/generations/$(generation "$(profile "$version")")" ] || fail "daemon-free pruning ignored last-publication recency"
 done
 
+# Simulate interruption after atomic prune detachment, at each metadata cleanup
+# boundary, leaving partially deleted trees. Republishing that identity must
+# install the complete immutable tree rather than diagnose immutable corruption.
+prune_crash="$TEMP_ROOT/prune-crash"
+mkdir -p "$prune_crash" "$(state_root "$prune_crash")/live"
+printf '%s\n' "$$" >"$(state_root "$prune_crash")/live/buckd.pid"
+for version in "${versions[@]}"; do
+  publish "$prune_crash" "$version" >"$TEMP_ROOT/prune-crash-$version.json"
+done
+rm -rf "$(state_root "$prune_crash")"
+mkdir -p "$prune_crash/.buck2/capability-trash"
+for version in one two three; do
+  detached_generation="$(generation "$(profile "$version")")"
+  detached="$prune_crash/.buck2/capability-trash/$detached_generation.interrupted-$version"
+  mv "$prune_crash/.buck2/capabilities/generations/$detached_generation" "$detached"
+  rm "$detached/$PLATFORM/archive-tool/manifest.json"
+  if [ "$version" != one ]; then
+    rm "$prune_crash/.buck2/capability-roots/$detached_generation"
+  fi
+  if [ "$version" = three ]; then
+    rm "$prune_crash/.buck2/capability-publications/$detached_generation.json"
+  fi
+done
+publish "$prune_crash" one >"$TEMP_ROOT/prune-crash-recovery.json"
+assert_result "$TEMP_ROOT/prune-crash-recovery.json" one 3 false
+assert_retained "$prune_crash" 3
+[ -f "$prune_crash/.buck2/capabilities/generations/$(generation "$(profile one)")/$PLATFORM/archive-tool/manifest.json" ] || fail "prune recovery did not restore the republished generation"
+[ -z "$(find "$prune_crash/.buck2/capability-trash" -mindepth 1 -print -quit)" ] || fail "publication left interrupted prune trash"
+for version in two three; do
+  detached_generation="$(generation "$(profile "$version")")"
+  [ ! -e "$prune_crash/.buck2/capability-publications/$detached_generation.json" ] || fail "prune recovery left an orphan receipt"
+done
+
 # Migration preserves both real generation trees and their per-tool links.
 migration="$TEMP_ROOT/migration"
 mkdir -p "$migration/.buck2"
@@ -215,5 +248,5 @@ publish "$migration" one >"$TEMP_ROOT/corrupt.stdout" 2>"$TEMP_ROOT/corrupt.stde
 grep -Fq 'Immutable capability generation has changed contents' "$TEMP_ROOT/corrupt.stderr" || fail "generation corruption was not diagnosed"
 cmp -s "$TEMP_ROOT/defs-before-corruption" "$migration/.buck2/capabilities/defs.bzl" || fail "failed corrupt publication changed selected defs"
 
-jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true}'
+jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,interruptedPruneRecovery:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true}'
 echo 'Buck capability publisher contracts passed.'
