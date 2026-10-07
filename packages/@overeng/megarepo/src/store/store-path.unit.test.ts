@@ -110,7 +110,7 @@ describe('canonical mutation write boundaries', () => {
           lockPath: EffectPath.unsafe.absoluteFile(`${canonical}/megarepo.lock`),
           lockFile: createEmptyLockFile(),
         }).pipe(Effect.flip)
-        expect(lockError.reason._tag).toBe('PermissionDenied')
+        expect(lockError).toMatchObject({ reason: { _tag: 'PermissionDenied' } })
         const generatorError = yield* generateSchema({
           megarepoRoot: EffectPath.unsafe.absoluteDir(`${canonical}/`),
           config: new MegarepoConfig({ members: {} }),

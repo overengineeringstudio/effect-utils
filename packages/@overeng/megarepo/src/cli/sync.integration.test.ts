@@ -1152,7 +1152,11 @@ describe('apply --all canonical recursion', () => {
         expect(out.syncErrorCount).toBe(0)
         expect(out.syncErrors).toEqual([])
         expect(out.syncTree.results).toEqual([
-          expect.objectContaining({ name: 'child', status: 'applied', commit: fixture.childCommit }),
+          expect.objectContaining({
+            name: 'child',
+            status: 'applied',
+            commit: fixture.childCommit,
+          }),
         ])
         expect(out.syncTree.nestedResults).toHaveLength(1)
         const childTree = out.syncTree.nestedResults[0]
