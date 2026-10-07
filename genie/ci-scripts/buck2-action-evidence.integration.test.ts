@@ -24,7 +24,7 @@ const event = (
     data: { [phase]: { data } },
   },
 })
-const nativeLog = (buildId: string, offset = 0): string => {
+const nativeLog = (buildId: string, offset = 0, localCache = false): string => {
   const records: unknown[] = [event(buildId, 'SpanStart', 1, 1700000000 + offset, { Command: {} })]
   for (let index = 0; index < 100; index++) {
     const action = {
@@ -45,23 +45,25 @@ const nativeLog = (buildId: string, offset = 0): string => {
     const end = event(buildId, 'SpanEnd', index + 2, 1700000002 + offset, {
       ActionExecution: {
         ...action,
-        execution_kind: 1,
-        cache_upload_result: 1,
-        commands: [
-          {
-            details: {
-              command_kind: {
-                command: {
-                  LocalCommand: {
-                    action_digest: `${index.toString(16).padStart(64, '0')}:123`,
-                    argv: ['/private/root/SECRET_ARG'],
-                    env: [{ key: 'TOKEN', value: 'SECRET_VALUE' }],
+        execution_kind: localCache ? 10 : 1,
+        cache_upload_result: localCache ? 3 : 1,
+        commands: localCache
+          ? []
+          : [
+              {
+                details: {
+                  command_kind: {
+                    command: {
+                      LocalCommand: {
+                        action_digest: `${index.toString(16).padStart(64, '0')}:123`,
+                        argv: ['/private/root/SECRET_ARG'],
+                        env: [{ key: 'TOKEN', value: 'SECRET_VALUE' }],
+                      },
+                    },
                   },
                 },
               },
-            },
-          },
-        ],
+            ],
       },
     })
     records.push(end, end)
@@ -195,6 +197,26 @@ describe('complete normalized action artifact CLI', () => {
       expect(full.header.evidenceGaps).toContain('invalid-native-json')
       expect(full.header.evidenceGaps).toContain('native-log-decode-failed')
       expect(raw).not.toContain('SECRET')
+      const gap = Bun.spawn(
+        [
+          process.execPath,
+          collector,
+          '--output',
+          output,
+          '--evidence-gap',
+          'evidence-finalization-failed',
+        ],
+        { env: fixtureEnv, stdout: 'ignore', stderr: 'ignore' },
+      )
+      expect(await gap.exited).toBe(0)
+      const updated = decodeActionArtifact(
+        gunzipSync(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString(
+          'utf8',
+        ),
+      )
+      expect(updated.header.metadata.finishedAt).toBe(1700000010000)
+      expect(updated.header.complete).toBe(false)
+      expect(updated.header.evidenceGaps).toContain('evidence-finalization-failed')
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
@@ -252,16 +274,21 @@ describe('complete normalized action artifact CLI', () => {
     }
   })
 
-  it('resolves unsorted native invocations by native start time, never granting freshness to later roots', async () => {
+  it('ignores zero-action audits and retains nondigest local reuse only on later invocations', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-actions-fresh-'))
     try {
       const output = join(directory, 'buck2-cache-evidence.json')
       for (const [buildId, offset] of [
         ['later', 5],
-        ['earlier', 0],
+        ['earlier', 1],
+        ['audit', 0],
       ] as const) {
         const events = join(directory, `${buildId}.jsonl`)
-        await Bun.write(events, nativeLog(buildId, offset))
+        const log =
+          buildId === 'audit'
+            ? `${JSON.stringify(event(buildId, 'SpanStart', 1, 1700000000, { Command: {} }))}\n${JSON.stringify(event(buildId, 'SpanEnd', 1, 1700000000, { Command: {} }))}\n`
+            : nativeLog(buildId, offset, buildId === 'later')
+        await Bun.write(events, log)
         const child = Bun.spawn(
           [
             process.execPath,
@@ -295,6 +322,50 @@ describe('complete normalized action artifact CLI', () => {
       expect(full.header.invocations.find((item) => item.buildId === 'later')!.freshRoot).toBe(
         false,
       )
+      expect(full.header.invocations.find((item) => item.buildId === 'audit')!.freshRoot).toBe(
+        false,
+      )
+      expect(full.header.complete).toBe(true)
+      const localReuse = full.actions.filter((action) => action.buildId === 'later')
+      expect(localReuse).toHaveLength(100)
+      expect(
+        localReuse.every((action) => action.digest === null && action.executionKind === 10),
+      ).toBe(true)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects absent local-action-cache digests in a fresh cache-bearing invocation', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'buck-actions-local-fresh-'))
+    try {
+      const events = join(directory, 'native.jsonl')
+      const output = join(directory, 'buck2-cache-evidence.json')
+      await Bun.write(events, nativeLog('fresh-local-cache', 0, true))
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          collector,
+          '--events',
+          events,
+          '--output',
+          output,
+          '--context',
+          'native-log',
+          '--fresh-root',
+          '--finalize',
+        ],
+        { env: fixtureEnv, stdout: 'ignore', stderr: 'ignore' },
+      )
+      expect(await child.exited).toBe(1)
+      const full = decodeActionArtifact(
+        gunzipSync(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString(
+          'utf8',
+        ),
+      )
+      expect(full.actions).toHaveLength(100)
+      expect(full.header.complete).toBe(false)
+      expect(full.header.evidenceGaps).toEqual(['fresh-local-cache-action-missing-digest'])
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

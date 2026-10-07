@@ -36,6 +36,12 @@
   and unblock interrupted orphaned promises without affecting another instance.
 - Scalar integer wasm/native arguments reject nonfinite, fractional, out-of-width
   and negative-zero inputs before backend ABI narrowing.
+- Cache evidence preserves finalized job timestamps on failure, grants freshness
+  to the first action-bearing invocation rather than preceding audits, and
+  retains nondigest local-action-cache reuse as excluded nonfresh evidence.
+  Cargo and ref-policy jobs are explicitly outside native remote-cache lanes.
+- Main-push tested-tree reuse judges successful required queue checks from the
+  current attempt, without waiting for optional jobs or rejecting their failures.
 - Native dependency policy CI runs its Bun tests by explicit source paths instead
   of matching duplicate test files inside Buck validation outputs.
 - Protected-main merge-group gates opportunistically populate the public Buck

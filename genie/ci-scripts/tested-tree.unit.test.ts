@@ -36,11 +36,25 @@ const evidence = {
 }
 
 describe('trusted tested-tree evidence', () => {
-  it('accepts exact trees with all required jobs successful even when unrelated publishing failed', () => {
+  it('accepts required passing checks despite an optional failure and overall run failure', () => {
+    const failedRun = { ...run, conclusion: 'failure' }
     expect(
       hasRequiredQueueEvidence({
         ...evidence,
-        jobs: [...jobs, { ...jobs[0]!, name: 'publish-products', conclusion: 'failure' }],
+        run: failedRun,
+        jobs: [...jobs, { ...jobs[0]!, name: 'pr-a-inert-buck', conclusion: 'failure' }],
+      }),
+    ).toBe(true)
+  })
+  it('accepts required passing checks while optional jobs and the overall run are finishing', () => {
+    expect(
+      hasRequiredQueueEvidence({
+        ...evidence,
+        run: { ...run, status: 'in_progress' },
+        jobs: [
+          ...jobs,
+          { ...jobs[0]!, name: 'pipeline-attempt-close', status: 'in_progress', conclusion: null },
+        ],
       }),
     ).toBe(true)
   })
@@ -65,7 +79,6 @@ describe('trusted tested-tree evidence', () => {
       { repository: { full_name: 'attacker/fork' } },
       { head_repository: { full_name: 'attacker/fork' } },
       { path: '.github/workflows/other.yml' },
-      { status: 'in_progress' },
       { head_sha: 'd'.repeat(40) },
     ])
       expect(hasRequiredQueueEvidence({ ...evidence, run: { ...run, ...change } })).toBe(false)

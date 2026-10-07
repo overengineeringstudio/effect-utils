@@ -281,6 +281,24 @@ Writer and reader repository metadata must agree. Distinct observations require
 distinct native reader build IDs; replaying one artifact under a new manifest
 sequence is an evidence gap, not a second fresh-root measurement.
 
+Freshness belongs to the first cache-bearing native invocation in a fresh job
+root: no earlier invocation may have executed or cached any action. Zero-action
+audits do not consume freshness. Every invocation after the first cache-bearing
+one is nonfresh, even when its command is otherwise cache-enabled.
+
+Buck's native `LocalActionCache` (execution kind `10`) reuses an earlier local
+action without command metadata, so its RE action digest can be absent. Retain
+these rows with `digest: null`; only a known nonfresh invocation may classify
+them as excluded-nonfresh rather than an evidence gap. Fresh command rows still
+require native digests, and uploaded rows always require their native digest.
+The codec's `classifyCacheAction` identifies kind `10` as a local-action-cache
+hit, never an avoidable local-execution candidate. Such candidates are only
+command actions of kind `1` or `8` with a native digest in a matched fresh
+invocation (`fresh-local-execution`); every other outcome is outside that set.
+Missing identity fields or timestamps remain evidence gaps. Cargo and
+default-ref-policy jobs execute no native Buck actions and are explicitly
+disabled-by-design, not remote-cache reader or writer lanes.
+
 The report separates cold tuples (no prior upload), changed tuples (same
 category/target/configuration, different prior uploaded digest), excluded
 nonfresh/disabled actions, noncacheable native actions, upload failures, and
