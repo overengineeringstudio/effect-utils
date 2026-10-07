@@ -74,6 +74,54 @@ protocol, and execution-platform constraint; a negative test proves an
 undeclared ambient copy is ignored; a graph-built replacement retires it
 (BUILD.BUCK.PLAT-T01).
 
+## Capability Publication
+
+```text
+realized Nix profile
+  -> exclusive capabilities.lock
+  -> indirect GC root + complete immutable generation
+  -> atomic defs.bzl publication in the real capabilities cell
+  -> daemon-state-gated retention
+```
+
+`scripts/buck2-capability-publish.ts` owns the worktree projection for shell
+activation and Buck task preparation (BUILD.BUCK.PLAT-R02). The cell root is a
+real directory, not a retargetable symlink. Buck's watchers receive a change to
+the actual `capabilities//defs.bzl` file, which invalidates the loaded generation
+map. Retargeting a cell-root symlink only invalidates the root path and does not
+invalidate cached descendant Starlark reads.
+
+Publishers serialize through an operating-system file lock on
+`.buck2/capabilities.lock`. They install each complete generation before
+atomically replacing `defs.bzl` on the same filesystem. Migration from an
+existing root symlink prepares a complete real cell and atomically exchanges
+the two entries; readers never encounter a deleted live root. Generation BUCK
+and manifest files are real files. Executable and directory links retain their
+per-tool Nix targets, so action inputs do not acquire an aggregate profile hash.
+
+The one-time symlink-to-directory transition changes native watch topology.
+After publishing the complete real cell, the publisher explicitly invokes
+`buck2 kill` for each isolation recorded in this worktree's Buck state directory
+and logs the scope. This lifecycle boundary prevents old symlink watches from
+retaining descendant DICE state. A durable `.buck2/capabilities.migration`
+marker records the obligation before the exchange and is cleared only after
+all native stop commands succeed. Interrupted migration is resumed on the next
+publication. Steady-state publication never stops a daemon.
+
+Each retained generation has a registered indirect Nix GC root under
+`.buck2/capability-roots/`, pointing to its aggregate profile. This retains the
+profile and its complete referenced tool closures even after the activating
+shell's profile changes.
+
+Retention keeps the three most recently published generations, including the
+current one, only at a daemon-free publication boundary. The publisher checks
+Buck's worktree-specific `buckd.pid` files across every isolation directory
+after publishing the current definition map. Any live daemon, unreadable or
+ambiguous state defers pruning and retains all generations and their GC roots.
+An idle daemon may still reference an arbitrarily old generation, so age or
+count alone is not permission to prune. The bound is restored on a later
+daemon-free publication; pruning never stops a daemon.
+
 ## Darwin Capability
 
 The Apple SDK is an executor-local Nix capability referenced by the compiler

@@ -261,6 +261,23 @@ required:
 buck2 build //your/package:target
 ```
 
+Shell activation and Buck task preparation publish the realized Nix capabilities
+into a stable real `.buck2/capabilities` cell. Publication is process-locked,
+installs immutable generation metadata first, and atomically replaces the
+watched `defs.bzl` last. Ordinary capability changes reach already-running
+daemons without a restart. The one-time cell-root symlink migration uses atomic
+exchange, then explicitly runs `buck2 kill` for this worktree's registered
+isolation directories: the symlink-to-directory transition changes native watch
+topology and requires a fresh daemon. The publisher logs each stop; a persistent
+migration marker makes a failed or interrupted stop retryable.
+
+Retained generations have indirect Nix GC roots under `.buck2/capability-roots`.
+The publisher keeps the three most recently published generations only when
+Buck's state files show no live worktree daemon in any isolation directory.
+Live or uncertain daemon state retains all generations; the next daemon-free
+publication restores the bound. This protects even idle daemons with cached old
+generation references. See the [capability publication contract](context/builds/04-buck2/02-platforms-toolchains/spec.md#capability-publication).
+
 Tracked `[buck2] file_watcher = watchman` also opts into watcher admission, even
 without remote-cache configuration. The packaged entrypoint queries the actual
 Watchman service with a 900 ms deadline before native daemon startup; service

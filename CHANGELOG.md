@@ -28,6 +28,13 @@
 
 ### Fixed
 
+- Capability publication updates a stable real Buck cell, so running daemons
+  observe Nix generation changes instead of retaining stale tool paths.
+  Process-locked, generation-first publication preserves old generations and
+  their Nix GC roots until a daemon-free boundary permits bounded pruning.
+  The one-time symlink-to-directory migration explicitly stops only this
+  worktree's registered Buck isolations; steady-state changes never stop daemons.
+
 - The Buck rules distribution inventory regression covers the generated Effect/Rust
   service helpers alongside the existing interop package helper.
 - Generated Effect/Rust services keep inline input and output codecs distinct and

@@ -41,8 +41,10 @@ buck-out/
 /.buck2/capabilities
 /.buck2/capabilities.candidate.*
 /.buck2/capabilities.lock
+/.buck2/capabilities.migration
 /.buck2/capability-generations/
 /.buck2/capability-roots/
+/.buck2/capability-publications/
 
 # Direnv
 repos/

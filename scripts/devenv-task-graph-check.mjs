@@ -125,6 +125,7 @@ for (const name of [
   'buck2:providers:check',
   'buck2:quick',
   'buck2:all',
+  'buck2:capabilities:test',
   'check:buck2-producer-overlap',
   'buck2:typescript:materialize-dist',
   'buck2:editor:bootstrap',
@@ -140,6 +141,10 @@ for (const name of [
   'test:buck2:unit',
 ])
   requireTask(name)
+ok({
+  condition: reaches({ start: 'check:quick', target: 'buck2:capabilities:test' }),
+  name: 'check:quick exercises real capability publication across long-lived daemons',
+})
 for (const name of [
   'ts:check',
   'ts:check:strict',
