@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
@@ -42,6 +42,7 @@ export type CargoBuck2WasmBindgenOptions = {
   readonly outName?: string
   readonly profile?: CargoBuck2WasmProfile
   readonly smoke?: CargoBuck2InteropSmokeOptions
+  readonly visibility?: readonly string[]
 }
 
 /** Raw wasm32 guest product for one declared host harness. */
@@ -58,8 +59,10 @@ export type CargoBuck2WasmGuestOptions = {
 export type CargoBuck2NapiOptions = {
   readonly name: string
   readonly smoke?: CargoBuck2InteropSmokeOptions
+  readonly visibility?: readonly string[]
 }
 
+/** Package products, interop outputs, and build inputs projected from Cargo into Buck2. */
 export type CargoBuck2PackageProjectionOptions = {
   /** One product named after the package from its only binary. Exclusive with `buildProducts`. */
   readonly buildProduct?: boolean
@@ -76,6 +79,8 @@ export type CargoBuck2PackageProjectionOptions = {
    * script sees each at its repository layout relative to `CARGO_MANIFEST_DIR`.
    */
   readonly buildScriptInputs?: readonly CargoBuck2BuildScriptInput[]
+  /** Explicit rustc inputs, separate from build-script inputs; no macro scanning. */
+  readonly compileTimeResources?: readonly CargoBuck2CompileTimeResource[]
   readonly sourceUrl: string
 }
 
@@ -85,10 +90,17 @@ export type CargoBuck2BuildScriptInput = {
   readonly label?: string
 }
 
+/** Local paths are repository-relative. Destinations are normalized crate-relative paths. */
+export type CargoBuck2CompileTimeResource =
+  | { readonly path: string; readonly destination?: string; readonly label?: never }
+  | { readonly label: string; readonly destination: string; readonly path?: string }
+
+/** Renders a package's Buck2 output using a configured Cargo workspace projection. */
 export type CargoBuck2PackageProjection = (
   options: CargoBuck2PackageProjectionOptions,
 ) => GenieOutput<unknown>
 
+/** Repository and workspace inputs used to configure a Cargo-to-Buck2 package projection. */
 export type DefineCargoBuck2PackageProjectionOptions = {
   readonly repoName: string
   readonly repoImportMetaUrl: string
@@ -181,9 +193,10 @@ export const defineCargoBuck2PackageProjection = ({
     throw new Error(`${reindeerConfigPath} must set root-level cargo_env = true`)
   }
   if (
-    path.posix.isAbsolute(reindeerThirdPartyDir) ||
-    reindeerThirdPartyDir.includes('\\') ||
-    /[\u0000-\u001f\u007f]/.test(reindeerThirdPartyDir)
+    path.posix.isAbsolute(reindeerThirdPartyDir) === true ||
+    reindeerThirdPartyDir.includes('\\') === true ||
+    // oxlint-disable-next-line no-control-regex -- Repository paths must reject ASCII control characters.
+    /[\u0000-\u001f\u007f]/.test(reindeerThirdPartyDir) === true
   ) {
     throw new Error(`${reindeerConfigPath} third_party_dir must be repository-contained`)
   }
@@ -199,9 +212,10 @@ export const defineCargoBuck2PackageProjection = ({
   }
   const thirdPartyPackagePath = path.posix.dirname(thirdPartyBuckPath)
   const cargoResolutionPath = `${thirdPartyPackagePath}/cargo-resolution.json`
-  const cargoResolution: CargoResolution | undefined = existsSync(repo.resolve(cargoResolutionPath))
-    ? (JSON.parse(repo.readText(cargoResolutionPath)) as CargoResolution)
-    : undefined
+  const cargoResolution: CargoResolution | undefined =
+    existsSync(repo.resolve(cargoResolutionPath)) === true
+      ? (JSON.parse(repo.readText(cargoResolutionPath)) as CargoResolution)
+      : undefined
   const expectedThirdPartyPackage = `//${thirdPartyPackagePath}`
   if (
     /^\/\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/.test(thirdPartyPackage) ===
@@ -230,32 +244,35 @@ export const defineCargoBuck2PackageProjection = ({
   ) {
     throw new Error(`buck2LoadLabelPrefix is not a Buck cell/package prefix`)
   }
-  if (/[\r\n]/.test(regenerationCommand)) {
+  if (/[\r\n]/.test(regenerationCommand) === true) {
     throw new Error('regenerationCommand must be a single line')
   }
   const foreignPackagesPath = path.posix.join(workspaceRoot, 'foreign-packages.json')
   const hasForeignPackagesFile = existsSync(repo.resolve(foreignPackagesPath))
-  const foreignPackageManifestPaths: readonly string[] = hasForeignPackagesFile
-    ? (() => {
-        const declaration: unknown = JSON.parse(repo.readText(foreignPackagesPath))
-        if (
-          typeof declaration !== 'object' ||
-          declaration === null ||
-          !('foreignPackageManifestPaths' in declaration) ||
-          !Array.isArray(declaration.foreignPackageManifestPaths) ||
-          declaration.foreignPackageManifestPaths.length === 0 ||
-          !declaration.foreignPackageManifestPaths.every((value) => typeof value === 'string')
-        ) {
-          throw new Error(
-            `${foreignPackagesPath} must contain nonempty foreignPackageManifestPaths: string[]`,
-          )
-        }
-        return declaration.foreignPackageManifestPaths as string[]
-      })()
-    : []
-  const generatorSourcePathsWithForeign = hasForeignPackagesFile
-    ? [...generatorSourcePaths, foreignPackagesPath]
-    : generatorSourcePaths
+  const foreignPackageManifestPaths: readonly string[] =
+    hasForeignPackagesFile === true
+      ? (() => {
+          const declaration: unknown = JSON.parse(repo.readText(foreignPackagesPath))
+          if (
+            typeof declaration !== 'object' ||
+            declaration === null ||
+            !('foreignPackageManifestPaths' in declaration) ||
+            Array.isArray(declaration.foreignPackageManifestPaths) === false ||
+            declaration.foreignPackageManifestPaths.length === 0 ||
+            declaration.foreignPackageManifestPaths.every((value) => typeof value === 'string') ===
+              false
+          ) {
+            throw new Error(
+              `${foreignPackagesPath} must contain nonempty foreignPackageManifestPaths: string[]`,
+            )
+          }
+          return declaration.foreignPackageManifestPaths as string[]
+        })()
+      : []
+  const generatorSourcePathsWithForeign =
+    hasForeignPackagesFile === true
+      ? [...generatorSourcePaths, foreignPackagesPath]
+      : generatorSourcePaths
   const workspaceManifest = Bun.TOML.parse(repo.readText(cargoManifestPath)) as CargoWorkspace
   const lock = Bun.TOML.parse(repo.readText(cargoLockPath)) as CargoLock
   const workspaceMembers = workspaceMemberManifestPaths.map((manifestPath) => ({
@@ -354,11 +371,15 @@ export const defineCargoBuck2PackageProjection = ({
   return (options) => cargoBuck2PackageProjectionFor({ definition, ...options })
 }
 
+const renderRustcFlags = (terms: readonly string[]): readonly string[] =>
+  terms.length === 0 ? [] : [`    rustc_flags = ${terms.join(' + ')},`]
+
 const cargoBuck2PackageProjectionFor = ({
   definition,
   buildProduct = false,
   buildProducts,
   buildScriptInputs,
+  compileTimeResources,
   cliBuildStamp = false,
   wasmBindgen,
   wasmGuest,
@@ -554,6 +575,12 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   const sources = discoverRustSources({ packagePath, repo })
+  const resources = resolveCompileTimeResources({
+    compileTimeResources,
+    packagePath,
+    repo,
+    sources,
+  })
   const { binaries: declaredBinaries, library } = discoverCargoTargets({
     member,
     packageName,
@@ -639,6 +666,13 @@ const cargoBuck2PackageProjectionFor = ({
     'BUCK.genie.ts',
     'Cargo.toml',
     ...sources,
+    ...resources
+      .filter((resource) => resource.label === undefined)
+      .map((resource) =>
+        requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(
+          packagePath.length + 1,
+        ),
+      ),
     ...(buildScript === undefined
       ? []
       : [
@@ -653,6 +687,13 @@ const cargoBuck2PackageProjectionFor = ({
     ...new Set([
       'Cargo.toml',
       ...librarySources,
+      ...resources
+        .filter((resource) => resource.label === undefined)
+        .map((resource) =>
+          requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(
+            packagePath.length + 1,
+          ),
+        ),
       ...(buildScript === undefined
         ? []
         : [
@@ -754,15 +795,24 @@ const cargoBuck2PackageProjectionFor = ({
     projectionSource,
     `${packagePath}/src/**/*.rs`,
     `${packagePath}/tests/**/*.rs`,
+    ...resources.flatMap((resource) => (resource.path === undefined ? [] : [resource.path])),
   ])
+  const resourceFingerprints: Readonly<Record<string, string>> = Object.fromEntries(
+    resources.flatMap((resource) =>
+      resource.path === undefined || resource.fingerprint === undefined
+        ? []
+        : [[resource.path, resource.fingerprint]],
+    ),
+  )
   const graphFingerprints = Object.fromEntries(
     semanticInputPaths
       .filter((input) => input.endsWith('/**/*.rs') === false && input.endsWith('.ts') === false)
-      .map((input) => [input, sha256(repo.readText(input))]),
+      .map((input) => [input, resourceFingerprints[input] ?? sha256(repo.readText(input))]),
   )
   const semanticData = {
     binaries,
     compileEnv,
+    ...(resources.length === 0 ? {} : { compileTimeResources: resources }),
     ...(foreignProjections.length === 0
       ? {}
       : { foreignPackages: foreignProjections.map((projection) => projection.data) }),
@@ -830,8 +880,6 @@ const cargoBuck2PackageProjectionFor = ({
       ? []
       : renderStringList({ name: 'features', values: enabledFeatures })
   const commonRuleLines = [`    edition = ${starlarkString(edition)},`, ...featureLines]
-  const renderRustcFlags = (terms: readonly string[]): readonly string[] =>
-    terms.length === 0 ? [] : [`    rustc_flags = ${terms.join(' + ')},`]
   const normalConditional = activeConditionalNormalDependencies
   const renderRule = ({
     rule,
@@ -842,6 +890,7 @@ const cargoBuck2PackageProjectionFor = ({
     dependencies,
     conditionalDependencies,
     visibility,
+    procMacro = false,
   }: {
     readonly rule: 'rust_binary' | 'rust_library'
     readonly name: string
@@ -851,12 +900,36 @@ const cargoBuck2PackageProjectionFor = ({
     readonly dependencies: readonly string[]
     readonly conditionalDependencies: readonly ConditionalDependency[]
     readonly visibility?: readonly string[]
+    readonly procMacro?: boolean
   }): readonly string[] => [
     `native.${rule}(`,
     `    name = ${starlarkString(name)},`,
     `    crate = ${starlarkString(crate)},`,
     `    crate_root = ${starlarkString(crateRoot)},`,
-    ...renderSources({ name: 'srcs', values: ruleSources, foreignMember }),
+    ...(procMacro === true ? ['    proc_macro = True,'] : []),
+    ...(resources.length === 0
+      ? renderSources({ name: 'srcs', values: ruleSources, foreignMember })
+      : [
+          '    mapped_srcs = {',
+          ...ruleSources.map(
+            (file) =>
+              `        ${starlarkString(sourceLabel({ file, foreignMember }))}: ${starlarkString(file)},`,
+          ),
+          ...resources.map(
+            (resource) =>
+              `        ${starlarkString(
+                resource.label ??
+                  sourceLabel({
+                    file: requireValue({
+                      value: resource.path,
+                      field: 'local compileTimeResources path',
+                    }).slice(packagePath.length + 1),
+                    foreignMember,
+                  }),
+              )}: ${starlarkString(resource.destination)},`,
+          ),
+          '    },',
+        ]),
     ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
     ...(namedDependencies.length === 0
       ? []
@@ -983,6 +1056,7 @@ const cargoBuck2PackageProjectionFor = ({
         name: foreignMember === undefined ? 'lib' : foreignTargetName(foreignMember),
         crate: library.name,
         crateRoot: library.path,
+        ...(library.procMacro === undefined ? {} : { procMacro: library.procMacro }),
         ruleSources: librarySources,
         dependencies: normalLabels,
         conditionalDependencies: normalConditional,
@@ -1010,6 +1084,9 @@ const cargoBuck2PackageProjectionFor = ({
       'rust_wasm_bindgen_library(',
       `    name = ${starlarkString(wasmBindgen.name)},`,
       '    crate = ":lib",',
+      ...(wasmBindgen.visibility === undefined
+        ? []
+        : renderStringList({ name: 'visibility', values: wasmBindgen.visibility })),
       ...(wasmBindgen.outName === undefined
         ? []
         : [`    out_name = ${starlarkString(wasmBindgen.outName)},`]),
@@ -1051,6 +1128,9 @@ const cargoBuck2PackageProjectionFor = ({
       'rust_napi_library(',
       `    name = ${starlarkString(napi.name)},`,
       '    crate = ":lib",',
+      ...(napi.visibility === undefined
+        ? []
+        : renderStringList({ name: 'visibility', values: napi.visibility })),
       ')',
       '',
     )
@@ -1197,7 +1277,11 @@ const validateAbsoluteRepoPath = ({
   const repoRoot = realpathSync(repo.rootPath)
   const resolved = realpathSync(value)
   const relative = path.relative(repoRoot, resolved)
-  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  if (
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`) === true ||
+    path.isAbsolute(relative) === true
+  ) {
     throw new Error(`${field} resolves outside the repository: ${value}`)
   }
   return resolved
@@ -1214,11 +1298,13 @@ const validateRepoPath = ({
 }): string => {
   if (
     value === '' ||
-    path.posix.isAbsolute(value) ||
-    value.includes('\\') ||
+    path.posix.isAbsolute(value) === true ||
+    value.includes('\\') === true ||
     path.posix.normalize(value) !== value ||
-    /[\u0000-\u001f\u007f]/.test(value) ||
-    value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+    // oxlint-disable-next-line no-control-regex -- Repository paths must reject ASCII control characters.
+    /[\u0000-\u001f\u007f]/.test(value) === true ||
+    value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..') ===
+      true
   ) {
     throw new Error(`${field} must be a normalized repository-relative path: ${value}`)
   }
@@ -1816,6 +1902,7 @@ type CargoLibraryTarget = {
   readonly name: string
   readonly path: string
   readonly crateTypes?: readonly string[]
+  readonly procMacro?: boolean
 }
 type CargoBinaryTarget = {
   readonly crateRoot: string
@@ -1852,14 +1939,12 @@ const discoverCargoTargets = ({
   const autobins = autoTarget('autobins')
 
   const explicitLibrary = manifest.lib
-  if (explicitLibrary?.['proc-macro'] === true) {
-    throw new Error(`Cargo proc-macro library semantics are unsupported in ${member.manifestPath}`)
-  }
+  const procMacro = explicitLibrary?.['proc-macro'] ?? false
   const crateTypes = explicitLibrary?.['crate-type']
   if (
     crateTypes !== undefined &&
     (crateTypes.length === 0 ||
-      crateTypes.some((type) => !['lib', 'rlib', 'cdylib'].includes(type)))
+      crateTypes.some((type) => ['lib', 'rlib', 'cdylib'].includes(type) === false) === true)
   ) {
     throw new Error(`Unsupported Cargo library crate-type in ${member.manifestPath}`)
   }
@@ -1878,6 +1963,7 @@ const discoverCargoTargets = ({
       name: explicitLibrary.name ?? crateIdentifier(packageName),
       path: libraryPath,
       ...(crateTypes === undefined ? {} : { crateTypes }),
+      ...(procMacro === true ? { procMacro } : {}),
     }
   } else if (autolib === true && sourceSet.has(defaultLibraryPath) === true) {
     library = { name: crateIdentifier(packageName), path: defaultLibraryPath }
@@ -1989,6 +2075,10 @@ const targetConditionLabels = (condition: string): readonly string[] => {
       return ['prelude//os/constraints:linux']
     case 'cfg(target_os = "macos")':
       return ['prelude//os/constraints:macos']
+    case 'cfg(target_arch = "wasm32")':
+      return ['//buck2/rust:wasm32_config']
+    case 'cfg(not(target_arch = "wasm32"))':
+      return ['DEFAULT']
     default:
       throw new Error(`Unsupported Cargo target dependency condition: ${condition}`)
   }
@@ -2059,19 +2149,28 @@ const renderDependencies = ({
 }): readonly string[] => {
   const base = sorted(unconditional)
   const selected = new Map<string, string[]>()
+  const nativeOnly: string[] = []
   for (const entry of conditional) {
     if (base.includes(entry.dependency.label) === true) continue
+    if (entry.selectLabels.includes('DEFAULT') === true) {
+      nativeOnly.push(entry.dependency.label)
+      continue
+    }
     for (const selectLabel of entry.selectLabels) {
       const labels = selected.get(selectLabel) ?? []
       labels.push(entry.dependency.label)
       selected.set(selectLabel, labels)
     }
   }
+  const nativeSuffix =
+    nativeOnly.length === 0
+      ? ''
+      : ` + select({"//buck2/rust:wasm32_config": [], "DEFAULT": ${JSON.stringify(sorted(nativeOnly))}})`
   const baseLines = renderStringList({ name: 'deps', values: base })
-  if (selected.size === 0) return baseLines
+  if (selected.size === 0) return [...baseLines.slice(0, -1), `    ]${nativeSuffix},`]
   return [
     ...baseLines.slice(0, -1),
-    '    ] + select({',
+    `    ]${nativeSuffix} + select({`,
     ...[...selected.entries()]
       .toSorted(([left], [right]) => compareStrings({ left, right }))
       .flatMap(([selectLabel, labels]) =>
@@ -2086,6 +2185,117 @@ const renderDependencies = ({
 }
 
 const crateIdentifier = (value: string): string => value.replaceAll(/[^A-Za-z0-9_]/g, '_')
+
+type ResolvedCompileTimeResource = {
+  readonly path?: string
+  readonly label?: string
+  readonly destination: string
+  readonly fingerprint?: string
+}
+
+const resolveCompileTimeResources = ({
+  compileTimeResources,
+  packagePath,
+  repo,
+  sources,
+}: {
+  readonly compileTimeResources: readonly CargoBuck2CompileTimeResource[] | undefined
+  readonly packagePath: string
+  readonly repo: RepoContext
+  readonly sources: readonly string[]
+}): readonly ResolvedCompileTimeResource[] => {
+  const destinations = [...sources]
+  return (compileTimeResources ?? [])
+    .map((resource, index) => {
+      const field = `compileTimeResources[${index}]`
+      assertKnownKeys({ value: resource, allowed: ['path', 'label', 'destination'], field })
+      if (resource.path !== undefined) {
+        validateRepoPath({ repo, value: resource.path, field: `${field}.path` })
+        if (statSync(repo.resolve(resource.path)).isFile() === false) {
+          throw new Error(`${field}.path must be a file: ${resource.path}`)
+        }
+      }
+      const inPackage = resource.path?.startsWith(`${packagePath}/`) === true
+      if (resource.label !== undefined) {
+        const label =
+          /^(?:(?:@?[A-Za-z0-9_.-]+)?\/\/([A-Za-z0-9_./@-]*))?:([A-Za-z0-9_.+=,@~/-]+)$/.exec(
+            resource.label,
+          )
+        if (
+          label === null ||
+          [label[1], label[2]].some(
+            (part) =>
+              part !== undefined &&
+              part !== '' &&
+              part
+                .split('/')
+                .some((segment) => segment === '' || segment === '.' || segment === '..') === true,
+          ) === true
+        ) {
+          throw new Error(`${field}.label must be a normalized Buck target label`)
+        }
+      }
+      if (
+        inPackage === false &&
+        (resource.label === undefined || resource.destination === undefined)
+      ) {
+        throw new Error(
+          `${field} external or generated resource needs a label and explicit destination`,
+        )
+      }
+      if (inPackage === true && resource.label !== undefined) {
+        throw new Error(`${field} inside ${packagePath} takes no label`)
+      }
+      const destination =
+        resource.destination ??
+        requireValue({
+          value: resource.path,
+          field: `${field}.path`,
+        }).slice(packagePath.length + 1)
+      if (
+        destination === '' ||
+        path.posix.isAbsolute(destination) === true ||
+        /^[A-Za-z]:/.test(destination) === true ||
+        destination.includes('\\') === true ||
+        path.posix.normalize(destination) !== destination ||
+        // oxlint-disable-next-line no-control-regex -- Resource destinations must reject ASCII control characters.
+        /[\u0000-\u001f\u007f]/.test(destination) === true ||
+        destination
+          .split('/')
+          .some((segment) => segment === '' || segment === '.' || segment === '..') === true
+      ) {
+        throw new Error(
+          `${field}.destination must be a normalized crate-relative path: ${destination}`,
+        )
+      }
+      if (
+        destinations.some(
+          (existing) =>
+            existing === destination ||
+            existing.startsWith(`${destination}/`) === true ||
+            destination.startsWith(`${existing}/`) === true,
+        ) === true
+      ) {
+        throw new Error(
+          `${field}.destination collides with a Rust source or resource: ${destination}`,
+        )
+      }
+      destinations.push(destination)
+      return Object.assign(
+        { destination },
+        resource.label === undefined ? {} : { label: resource.label },
+        resource.path === undefined
+          ? {}
+          : {
+              path: resource.path,
+              fingerprint: `sha256:${createHash('sha256')
+                .update(readFileSync(repo.resolve(resource.path)))
+                .digest('hex')}`,
+            },
+      )
+    })
+    .toSorted((left, right) => compareStrings({ left: left.destination, right: right.destination }))
+}
 
 type ResolvedBuildScript = {
   /** Package-relative crate root of the build script. */
@@ -2556,6 +2766,10 @@ const effectUtilsWorkspaceMemberManifestPaths = [
   'rust/buck2-tools/core/Cargo.toml',
   'rust/buck2-tools/events/Cargo.toml',
   'rust/buck2-tools/product/Cargo.toml',
+  'rust/effect-rust/Cargo.toml',
+  'rust/effect-rust-macros/Cargo.toml',
+  'rust/effect-rust-fixtures/hash-interop/Cargo.toml',
+  'rust/effect-rust-fixtures/math-interop/Cargo.toml',
   'rust/effect-rust-fixtures/hash-core/Cargo.toml',
   'rust/effect-rust-fixtures/math-core/Cargo.toml',
   'rust/effect-rust-fixtures/wasm-adapter/Cargo.toml',

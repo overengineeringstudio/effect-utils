@@ -7,6 +7,10 @@ members = [
   "buck2-tools/core",
   "buck2-tools/events",
   "buck2-tools/product",
+  "effect-rust",
+  "effect-rust-macros",
+  "effect-rust-fixtures/hash-interop",
+  "effect-rust-fixtures/math-interop",
   "effect-rust-fixtures/hash-core",
   "effect-rust-fixtures/math-core",
   "effect-rust-fixtures/wasm-adapter",
@@ -24,11 +28,24 @@ license = "MIT"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+borsh = { version = "1.5", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+serde_path_to_error = "0.1"
+schemars = "1"
+regex = { version = "1", default-features = false, features = ["std", "unicode"] }
+regex-syntax = { version = "0.8", default-features = false, features = ["std", "unicode"] }
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+serde-wasm-bindgen = "0.6"
+js-sys = "=0.3.104"
+wasm-bindgen-futures = "=0.4.77"
 sha2 = "0.11"
 tempfile = "3"
 # Exact match with the hub's wasm-bindgen-cli toolchain.
 wasm-bindgen = "=0.2.127"
-napi = { version = "=3.13.0", default-features = false, features = ["napi4"] }
+# Dynamic host-symbol lookup also permits standalone Rust test executables.
+napi = { version = "=3.13.0", default-features = false, features = ["napi4", "dyn-symbols"] }
 napi-derive = "=3.6.9"
 
 [profile.release]

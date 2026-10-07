@@ -39,6 +39,16 @@
 - Buck REAPI preflight diagnostics distinguish DNS, TCP, TLS, and response phases
   with elapsed time, deadline, and socket address families. Public IPs are visible;
   private addresses, endpoint names, and credentials remain redacted.
+- The Buck rules distribution inventory regression covers the generated Effect/Rust
+  service helpers alongside the existing interop package helper.
+- Generated Effect/Rust services keep inline input and output codecs distinct and
+  reject conflicting synthetic names or collisions with Rust contract definitions.
+- Effect/Rust Worker handlers own request-local scopes, releasing resources before
+  successful responses and cancellation acknowledgments.
+- Async wasm scheduler traps poison their lexical generation, defect pending calls,
+  and unblock interrupted orphaned promises without affecting another instance.
+- Scalar integer wasm/native arguments reject nonfinite, fractional, out-of-width
+  and negative-zero inputs before backend ABI narrowing.
 - Cache evidence preserves finalized job timestamps on failure, grants freshness
   to the first action-bearing invocation rather than preceding audits, and
   retains nondigest local-action-cache reuse as excluded nonfresh evidence.
@@ -86,6 +96,12 @@
 - TypeScript Git fixtures preserve the caller's environment while removing
   hook-local repository and index selectors, so temporary commits cannot alter
   the repository running the hook.
+- Native Effect/Rust panic retirement cancels sibling abortable futures and waits
+  for settle-only futures before releasing or replacing the generation.
+- Portable regex end anchors respect backslash parity in both compiler directions;
+  escaped literal dollars are rejected while anchored literal backslashes work.
+- Native scalar `f32` admission checks finiteness after binary32 rounding, matching
+  wasm at the maximum finite boundary.
 - Buck roots use Watchman with output-directory exclusions and idle watch reaping.
   This prevents daemon startup from recursively traversing ignored build outputs
   and dependency symlinks; warm commands no longer need a full-file hash crawl.
@@ -122,6 +138,14 @@
   preserving runtime-generated test inventories with Vitest 5's changed default.
 - pnpm lock mutation uses matching bytewise collation throughout its executable
   metadata preservation guard, regardless of the caller's locale.
+- Effect/Rust object transports normalize safe integral JavaScript doubles before
+  decoding integer contracts, including bounded numbers. JSON-text admission
+  still rejects noncanonical integer spellings such as `1.0`.
+- Effect/Rust fixture test executables resolve Node-API symbols dynamically;
+  native addon products retain real host-symbol lookup.
+- Effect/Rust workspace packages participate in the root TypeScript project
+  registry, and the distributed Buck rules include the service-packaging tool.
+- PTY client tests pair runtime module mocks with runtime cleanup on Vitest 5.
 
 ### Changed
 

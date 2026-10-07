@@ -16,6 +16,8 @@ import effectRpcExplorerReactTsconfig from '../packages/@overeng/effect-rpc-expl
 import effectRpcExplorerTsconfig from '../packages/@overeng/effect-rpc-explorer/tsconfig.json.genie.ts'
 import effectRpcTanstackBasicTsconfig from '../packages/@overeng/effect-rpc-tanstack/examples/basic/tsconfig.json.genie.ts'
 import effectRpcTanstackTsconfig from '../packages/@overeng/effect-rpc-tanstack/tsconfig.json.genie.ts'
+import effectRustFixtureConsumerTsconfig from '../packages/@overeng/effect-rust-fixture-consumer/tsconfig.json.genie.ts'
+import effectRustTsconfig from '../packages/@overeng/effect-rust/tsconfig.json.genie.ts'
 import effectSchemaFormAriaTsconfig from '../packages/@overeng/effect-schema-form-aria/tsconfig.json.genie.ts'
 import effectSchemaFormTsconfig from '../packages/@overeng/effect-schema-form/tsconfig.json.genie.ts'
 import genieSmalltalkTsconfig from '../packages/@overeng/genie-smalltalk/tsconfig.json.genie.ts'
@@ -125,6 +127,8 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/effect-rpc-tanstack/examples/basic': {
       tsconfig: effectRpcTanstackBasicTsconfig,
     },
+    'packages/@overeng/effect-rust': { tsconfig: effectRustTsconfig },
+    'packages/@overeng/effect-rust-fixture-consumer': { tsconfig: effectRustFixtureConsumerTsconfig },
     'packages/@overeng/effect-schema-form': { tsconfig: effectSchemaFormTsconfig },
     'packages/@overeng/effect-schema-form-aria': { tsconfig: effectSchemaFormAriaTsconfig },
     'packages/@overeng/genie': { tsconfig: genieTsconfig },

@@ -111,6 +111,71 @@ const retiredProviderTerms = [
   'store_dir',
 ] as const
 
+describe('generated dependency admission', () => {
+  it('rejects package destinations that escape or alias the dependency tree', () => {
+    for (const name of [
+      '../escape',
+      '@scope/../escape',
+      '@scope',
+      '@scope/',
+      '@scope/@alias',
+      '.pnpm',
+      '.bin',
+      'pkg/child',
+      'pkg\\child',
+    ]) {
+      expect(() =>
+        buck2TypeScriptPackageProjection({
+          ...buck2TypeScriptAdmissions.kdl,
+          generatedDependencies: { [name]: '//generated:package' },
+        }),
+      ).toThrow('unsafe generated dependency package name')
+    }
+  })
+
+  it('rejects malformed and traversing absolute product labels', () => {
+    for (const target of [
+      '//generated:',
+      '//../generated:package',
+      '//generated//child:package',
+      '//generated:../package',
+      '//generated:bad\nlabel',
+    ] as const) {
+      expect(() =>
+        buck2TypeScriptPackageProjection({
+          ...buck2TypeScriptAdmissions.kdl,
+          generatedDependencies: { 'generated-package': target },
+        }),
+      ).toThrow('normalized absolute Buck target')
+    }
+  })
+
+  it('rejects competing generated and workspace package authorities', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.kdl,
+        generatedDependencies: { 'generated-package': '//generated:package' },
+        workspaceSiblings: [
+          {
+            packageName: 'generated-package',
+            packagePath: 'packages/@overeng/kdl',
+            distTarget: '//packages/@overeng/kdl:dist',
+          },
+        ],
+      }),
+    ).toThrow('both generated and a workspace sibling')
+  })
+
+  it('rejects generated packages shadowing manifest-declared dependencies', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.kdl,
+        generatedDependencies: { effect: '//generated:package' },
+      }),
+    ).toThrow('both generated and manifest-declared')
+  })
+})
+
 describe('declared-closure package projection', () => {
   it('publishes editor views for the complete workspace package registry', () => {
     expect(editorViewConsumerPackagePaths).toEqual(
@@ -556,7 +621,7 @@ describe('declared test lanes', () => {
     ).toThrow('must be named test')
   })
 
-  it('carries the declared lane into the schema version and semantic fingerprint', () => {
+  it('carries the declared lane into the semantic fingerprint', () => {
     const fingerprintOf = (output: string): string =>
       output.split('# Semantic fingerprint: ')[1]?.split('\n')[0] ?? ''
     const withoutTests =
@@ -570,7 +635,6 @@ describe('declared test lanes', () => {
       tests: [{ name: 'test', runner: 'vitest', staticCollection: true }],
     }).stringify(genieContext)
 
-    expect(outputsByAdmission.kdl).toContain('# Projection schema version: 12')
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withoutTests))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withLongerTimeout))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withStaticCollection))
