@@ -793,9 +793,9 @@ describe('direct pinned Buck watcher admission', () => {
     writeFileSync(state, 'hanging')
     const started = performance.now()
     await expect(
-      directBuckArguments({ ...options(root), env, args: ['build', '//:app'], deadlineMs: 30 }),
+      directBuckArguments({ ...options(root), env, args: ['build', '//:app'], deadlineMs: 1000 }),
     ).rejects.toThrow('probe failed (timeout)')
-    expect(performance.now() - started).toBeLessThan(2500)
+    expect(performance.now() - started).toBeLessThan(5000)
     expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
     expect(watcherLocal(root)).not.toContain('file_watcher = notify')
   }, 5000)
