@@ -22,12 +22,16 @@ without inspecting target pages (`src/property-proof.ts:255-267`). The pure
 property-write core already exercises the blocking guards for stale schemas and
 unavailable/unshared relation targets (`src/property-proof.unit.test.ts:339-348`).
 
-**Safety contract:** until each phase below is complete, preserve conservative
-behavior and do not claim verified relation targets or config freshness. A
-proof must use observations from the same fresh live read as its property
-identity and desired write. Missing, inaccessible, malformed, or ambiguous
-remote evidence MUST block; never turn an incomplete observation into an
-allow verdict.
+**Current limitation and required interim posture:** the live provider currently
+reports `all-available` for every relation property without checking any target
+pages (`src/property-proof.ts:255-267`). That verdict is optimistic and does NOT
+prove target existence, data-source membership, or sharing; it must not be
+described as conservative. Until Phase 8.2's live check is implemented, callers
+must treat relation writes as unverified. Phase 8.0's first safety change is to
+make the standalone provider fail closed for relation writes. A proof must use
+observations from the same fresh live read as its property identity and desired
+write. Missing, inaccessible, malformed, or ambiguous remote evidence MUST
+block; never turn an incomplete observation into an allow verdict.
 
 ## Phased plan and entry criteria
 

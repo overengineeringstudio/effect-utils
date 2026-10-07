@@ -23,10 +23,13 @@ other or not-yet-modeled block types.
   renderable block children. Confirm the exact create/update payload against
   the pinned Notion API type before implementation; do not carry an arbitrary
   `content` object through the public API.
-- **`<LinkPreview url="…" />`**: make the URL the required public prop. Provider
-  metadata, if accepted by the current API, must be a separately typed optional
-  prop only when the API schema supports it; it must not be required to create a
-  preview. The wire projection owns the `{ url }` envelope.
+- **`<LinkPreview url="…" />`**: Notion's API exposes `link_preview` in
+  responses only; it cannot be created through the write API. Treat this as a
+  read-only/preserve-only representation of an already existing block, not as a
+  candidate block that the renderer can append or update. The read-side model
+  may expose a typed URL, but must not claim write support
+  (Notion API: [Link preview](https://developers.notion.com/reference/block#link-preview)).
+  Keep this component out of request-payload projection tests.
 - **`<SyncedBlock source={...}>…</SyncedBlock>`**: distinguish an original
   synced block from a reference to an existing source in the API. A source
   block may own children; a reference must not accidentally claim copied
@@ -39,15 +42,18 @@ other or not-yet-modeled block types.
 For each component, use a dedicated props type in `src/components/props.ts`,
 project through the normal block props path, and mirror the public shape in
 `src/web/blocks.tsx`. Keep the DOM/web mirror behavior useful for inspecting the
-modeled fields. Add projection tests for exact Notion request shape and compile-
-time tests for invalid mode/prop combinations. Update API/cookbook tables and
+modeled fields. Add request-shape tests for Template/SyncedBlock and response-
+shape tests for read-only LinkPreview. Add compile-time tests for invalid
+mode/prop combinations. Update API/cookbook tables and
 remove the obsolete passthrough-wrapper wording for these three only. Keep
 `Raw`, `ChildDatabase`, and `Breadcrumb` unchanged in this scope.
 
 **Readback boundary:** first-class request props alone do not make provider
-responses verifiable. Unless a block-specific readback normalizer and its
-semantics are implemented, these blocks remain unsupported for adoption and
-readback, preserving the fail-closed contract (`src/renderer/adopt.ts:131-135`,
+responses verifiable. LinkPreview must have a response-side, read/preserve-only
+representation and must never enter a create/update request. Until a
+block-specific readback normalizer and its semantics exist, LinkPreview,
+Template, and SyncedBlock remain unsupported for adoption/readback, preserving
+the fail-closed contract (`src/renderer/adopt.ts:131-135`,
 `src/renderer/readback.ts:48-56`). In particular, do not infer or delete
 source-owned synced-block children.
 
@@ -55,16 +61,18 @@ source-owned synced-block children.
 
 1. Template title projects to the exact type-tagged request payload; absent or
    invalid title follows the Notion schema's actual rules.
-2. Link preview URL projects exactly, and malformed/missing URL is rejected by
-   TypeScript or the component boundary as appropriate to the existing API
-   contract.
+2. LinkPreview models an API response without producing a create/update
+   request; existing link-preview data is not lost by a read/preserve path, and
+   write attempts are explicitly unsupported.
 3. Synced-block original and reference modes produce distinct, schema-valid
    payloads; child ownership is explicit and reference children cannot be
    mistaken for locally managed descendants.
-4. Each public component works through both the reconciler and web mirror; Raw
-   still supports arbitrary extension blocks.
+4. Template and SyncedBlock project through the reconciler as applicable;
+   LinkPreview is read/preserve-only; Raw still supports arbitrary extension
+   blocks.
 5. Until block-specific response normalization exists, readback/adoption refuse
-   these nodes rather than reporting verified equality.
+   these nodes rather than reporting verified equality, including LinkPreview
+   even when its response-side read/preserve representation exists.
 
 ## Pagination and API-boundary cases
 
@@ -99,7 +107,7 @@ inventory that distinguishes implemented cases from genuinely open work.
    pages and assert all cursors are followed exactly once, in order, until
    `has_more=false`; include an empty intermediate page with a continuation
    cursor and a final empty page. This tests retrieval pagination rather than
-   append batching (`sync.ts:1041-1044`).
+   append batching (`sync.ts:1085-1105`).
 3. **Large tree / bounded request behavior:** generate a large multi-parent tree
    with mixed append and insert operations; assert per-parent request cap,
    operation order, and that no request exceeds Notion's limit. This should be a
