@@ -49,7 +49,6 @@ rec {
         pkgs = import nixpkgs { inherit system; };
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
-        rootPath = self.outPath;
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         pnpm = import ./nix/pnpm.nix { inherit pkgs; };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
@@ -202,11 +201,11 @@ rec {
         };
         buck2Rules = import ./nix/buck2-rules {
           inherit pkgs buck2 pnpmArchives;
-          src = rootPath;
+          src = ./.;
         };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
-          src = rootPath;
+          src = ./.;
         };
         # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products {
