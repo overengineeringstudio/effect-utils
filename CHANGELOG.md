@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- The pnpm task smoke test checks the stable Effect 4.0.0 cohort override rather
+  than the superseded release-candidate pin.
 - Buck capability projections and shipped rules use narrowly declared Nix
   source filesets, preserving store identities across unrelated checkout changes.
   Source-boundary test fixtures resolve physical temporary paths so macOS
@@ -181,6 +183,8 @@
   and production watch rebuilds; embedded Nix identities remain immutable.
   The dev server exposes the same canonical JSON at `/build-identity.json` with
   no-cache headers and the complete source revision for exact served-source checks.
+- The Effect runtime and every runtime `@effect/*` package use the stable
+  4.0.0 cohort. Consumers require matching stable versions and Vitest 5.
 - Consumer Buck roots can map nested checkout patch paths to their exporting
   cells; the published rules cell exports the shared pnpm patches without loading
   standalone package declarations.
