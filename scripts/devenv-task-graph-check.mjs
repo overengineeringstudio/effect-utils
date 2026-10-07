@@ -581,8 +581,8 @@ const capabilityPublisherHelper = source.slice(
 )
 ok({
   condition:
-    capabilityPublisherHelper.includes('buck2-capability-publish.ts') === true &&
-    capabilityPublisherHelper.includes('--buck2 "$BUCK2_BIN" >&2') === true,
+    /buck2-capability-publish\.ts/.test(capabilityPublisherHelper) === true &&
+    /--buck2 "\$BUCK2_BIN" >&2/.test(capabilityPublisherHelper) === true,
   name: 'capability preparation keeps shell command stdout free of publication diagnostics',
 })
 
