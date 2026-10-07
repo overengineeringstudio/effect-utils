@@ -7,6 +7,10 @@ import { createHash } from 'node:crypto'
  * Reusing --output appends new build ids; duplicate logs preserve the first context.
  * --remote-cache-disabled-by-design --output evidence.json records the in-Nix exclusion.
  * --output evidence.json alone initializes honest no-native-logs evidence.
+ * Every collection reads evidence.json.admission.jsonl and deduplicates entrypoint
+ * UUIDs independently of native logs, retaining denied-writer admissions too.
+ * Admission totals are recomputed from retained invocation rows, never incremented
+ * from a previous summary. Missing sidecars produce explicit zeros on new evidence.
  *
  * Outcomes use data.proto's numeric enums, not command cache_hit booleans.
  * Digests are the exact native RE ActionCache `hash:size`, NOT output tiny_digest.
@@ -19,6 +23,7 @@ import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { gzipSync, gunzipSync } from 'node:zlib'
 
+import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
   actionsArtifactName,
@@ -43,6 +48,16 @@ export const cacheEvidenceOutcomes = [
 ] as const
 export type CacheOutcome = (typeof cacheEvidenceOutcomes)[number]
 export type OutcomeCounts = Record<CacheOutcome, number>
+export type CacheAdmissionInvocation = {
+  invocationId: string
+  admissionFallbacks: { reapi: number; archiveOrigin: number }
+  admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
+}
+type CacheAdmissionEvidence = {
+  admissionFallbacks: CacheAdmissionInvocation['admissionFallbacks']
+  admissionRetrySuccesses: CacheAdmissionInvocation['admissionRetrySuccesses']
+  admissionInvocations: CacheAdmissionInvocation[]
+}
 export type CacheAction = {
   buildId: string
   context?: string
@@ -69,6 +84,10 @@ export type CacheInvocation = {
 export type CacheEvidence = {
   schemaVersion: 1
   status: 'collected' | 'remote-cache-disabled-by-design' | 'no-native-logs'
+  /** Absent only on retained summaries written before admission collection. */
+  admissionFallbacks?: CacheAdmissionInvocation['admissionFallbacks']
+  admissionRetrySuccesses?: CacheAdmissionInvocation['admissionRetrySuccesses']
+  admissionInvocations?: CacheAdmissionInvocation[]
   reason?: string
   metadata: Record<string, string>
   counts: OutcomeCounts
@@ -99,6 +118,74 @@ const count = (value: unknown): number => {
     throw new Error('Invalid cache evidence count')
   }
   return value
+}
+
+const admissionEndpoints = ['reapi', 'archiveOrigin'] as const
+const zeroAdmissionEvidence = (): CacheAdmissionEvidence => ({
+  admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
+  admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+  admissionInvocations: [],
+})
+const decodeAdmissionCounters = (
+  value: unknown,
+): CacheAdmissionInvocation['admissionFallbacks'] => ({
+  reapi: count(field({ value, key: 'reapi' })),
+  archiveOrigin: count(field({ value, key: 'archiveOrigin' })),
+})
+export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionInvocation => {
+  const invocationId = canonicalCacheAdmissionInvocationId(field({ value, key: 'invocationId' }))
+  const admissionFallbacks = decodeAdmissionCounters(field({ value, key: 'admissionFallbacks' }))
+  const admissionRetrySuccesses = decodeAdmissionCounters(
+    field({ value, key: 'admissionRetrySuccesses' }),
+  )
+  for (const endpoint of admissionEndpoints) {
+    if (admissionFallbacks[endpoint] + admissionRetrySuccesses[endpoint] > 1)
+      throw new Error('Invalid cache admission invocation counters')
+  }
+  return { invocationId, admissionFallbacks, admissionRetrySuccesses }
+}
+const collectAdmissionInvocations = (
+  invocations: CacheAdmissionInvocation[],
+): CacheAdmissionEvidence => {
+  const result = zeroAdmissionEvidence()
+  const seen = new Map<string, CacheAdmissionInvocation>()
+  for (const invocation of invocations) {
+    const previous = seen.get(invocation.invocationId)
+    if (previous !== undefined) {
+      if (JSON.stringify(previous) !== JSON.stringify(invocation))
+        throw new Error('Conflicting cache admission invocation')
+      continue
+    }
+    seen.set(invocation.invocationId, invocation)
+    result.admissionInvocations.push(invocation)
+    for (const endpoint of admissionEndpoints) {
+      result.admissionFallbacks[endpoint] += invocation.admissionFallbacks[endpoint]
+      result.admissionRetrySuccesses[endpoint] += invocation.admissionRetrySuccesses[endpoint]
+    }
+  }
+  return result
+}
+/** Legacy v1 summaries omit all admission fields; present fields remain strictly validated. */
+export const decodeCacheAdmissionEvidence = (value: unknown): CacheAdmissionEvidence => {
+  const rows = field({ value, key: 'admissionInvocations' })
+  if (rows !== undefined && Array.isArray(rows) === false)
+    throw new Error('Invalid cache admission invocations')
+  const result = collectAdmissionInvocations(
+    rows === undefined ? [] : rows.map(decodeCacheAdmissionInvocation),
+  )
+  if (rows !== undefined && result.admissionInvocations.length !== rows.length)
+    throw new Error('Duplicate cache admission invocation ID')
+  for (const key of ['admissionFallbacks', 'admissionRetrySuccesses'] as const) {
+    const counters = field({ value, key })
+    if (counters === undefined) continue
+    const decoded = decodeAdmissionCounters(counters)
+    for (const endpoint of admissionEndpoints) {
+      if (rows !== undefined && decoded[endpoint] !== result[key][endpoint])
+        throw new Error('Cache admission aggregate mismatch')
+    }
+    result[key] = decoded
+  }
+  return result
 }
 const zeroCounts = (): OutcomeCounts => ({
   'remote-hit': 0,
@@ -404,6 +491,7 @@ export const createCacheEvidenceProjector = ({
     return {
       schemaVersion: 1,
       status: 'collected',
+      ...zeroAdmissionEvidence(),
       metadata: {},
       counts: { ...counts },
       actionCount,
@@ -442,8 +530,12 @@ export const mergeCacheEvidence = ({
   ) {
     throw new Error('Cannot combine disabled-by-design and collected cache evidence')
   }
-  if (previous.status === 'no-native-logs') return next
-  if (next.status === 'no-native-logs') return previous
+  const admission = collectAdmissionInvocations([
+    ...(previous.admissionInvocations ?? []),
+    ...(next.admissionInvocations ?? []),
+  ])
+  if (previous.status === 'no-native-logs') return { ...next, ...admission }
+  if (next.status === 'no-native-logs') return { ...previous, ...admission }
   const seen = new Set(previous.invocations.map((item) => item.buildId))
   const additions = next.invocations.filter((item) => seen.has(item.buildId) === false)
   const addedIds = new Set(additions.map((item) => item.buildId))
@@ -478,6 +570,7 @@ export const mergeCacheEvidence = ({
   return {
     schemaVersion: 1,
     status: 'collected',
+    ...admission,
     metadata: { ...previous.metadata, ...next.metadata },
     counts,
     actionCount,
@@ -572,6 +665,7 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
   return {
     schemaVersion: 1,
     status,
+    ...decodeCacheAdmissionEvidence(value),
     ...(status === 'no-native-logs' ? { reason: 'No native Buck action logs observed.' } : {}),
     metadata,
     counts: decodeCounts(field({ value: value, key: 'counts' })),
@@ -585,6 +679,7 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
 export const disabledCacheEvidence = (): CacheEvidence => ({
   schemaVersion: 1,
   status: 'remote-cache-disabled-by-design',
+  ...zeroAdmissionEvidence(),
   reason: 'In-Nix product reuse uses Nix substitution, not the shared Buck ActionCache.',
   metadata: {},
   counts: zeroCounts(),
@@ -597,6 +692,7 @@ export const disabledCacheEvidence = (): CacheEvidence => ({
 export const emptyCacheEvidence = (): CacheEvidence => ({
   schemaVersion: 1,
   status: 'no-native-logs',
+  ...zeroAdmissionEvidence(),
   reason: 'No native Buck action logs observed.',
   metadata: {},
   counts: zeroCounts(),
@@ -768,6 +864,23 @@ const run = async (): Promise<void> => {
     }
   }
   if (previous !== undefined) evidence = mergeCacheEvidence({ previous, next: evidence })
+  // Admission IDs are independent of native build IDs: denied writers never start Buck.
+  const admissionRows = [...(evidence.admissionInvocations ?? [])]
+  const admissionFile = Bun.file(`${values.output}.admission.jsonl`)
+  if ((await admissionFile.exists()) === true) {
+    const stream = createReadStream(`${values.output}.admission.jsonl`, { encoding: 'utf8' })
+    const lines = createInterface({ input: stream, crlfDelay: Infinity })
+    try {
+      for await (const line of lines) {
+        if (line.trim().length === 0) continue
+        admissionRows.push(decodeCacheAdmissionInvocation(JSON.parse(line)))
+      }
+    } finally {
+      lines.close()
+      stream.destroy()
+    }
+  }
+  Object.assign(evidence, collectAdmissionInvocations(admissionRows))
   const envFields = {
     repository: 'GITHUB_REPOSITORY',
     runId: 'GITHUB_RUN_ID',
@@ -922,6 +1035,19 @@ const run = async (): Promise<void> => {
     droppedActionCount: header.droppedActionCount,
   }
   await Bun.write(values.output, `${JSON.stringify(evidence)}\n`)
+  if (values.finalize === true && process.env.GITHUB_STEP_SUMMARY !== undefined) {
+    const admission = decodeCacheAdmissionEvidence(evidence)
+    const summary = Bun.file(process.env.GITHUB_STEP_SUMMARY)
+    const previousText = (await summary.exists()) === true ? await summary.text() : ''
+    const rows = admission.admissionInvocations.map(
+      (invocation) =>
+        `| ${invocation.invocationId} | ${invocation.admissionFallbacks.reapi} | ${invocation.admissionFallbacks.archiveOrigin} | ${invocation.admissionRetrySuccesses.reapi} | ${invocation.admissionRetrySuccesses.archiveOrigin} |`,
+    )
+    await Bun.write(
+      summary,
+      `${previousText}\n### Buck cache admission\n\n| Invocation ID | REAPI fallbacks | Archive fallbacks | REAPI retry successes | Archive retry successes |\n| --- | ---: | ---: | ---: | ---: |\n| Total | ${admission.admissionFallbacks.reapi} | ${admission.admissionFallbacks.archiveOrigin} | ${admission.admissionRetrySuccesses.reapi} | ${admission.admissionRetrySuccesses.archiveOrigin} |\n${rows.join('\n')}\n`,
+    )
+  }
   if (values.finalize === true && header.complete === false) {
     console.error('Cache action evidence incomplete; observation is invalid.')
     process.exitCode = 1
