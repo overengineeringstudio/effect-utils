@@ -231,7 +231,14 @@ const completeArtifact = (artifact: ActionArtifact, writer: boolean): boolean =>
     artifact.actions.every(
       (a) =>
         !a.commandAction ||
-        (identity(a) !== undefined &&
+        ((identity(a) !== undefined ||
+          (a.executionKind === 10 &&
+            a.digest === null &&
+            a.category !== null &&
+            a.target !== null &&
+            a.configuration !== null &&
+            a.uploadOutcome !== 'uploaded' &&
+            h.invocations.some((inv) => inv.buildId === a.buildId && !inv.freshRoot))) &&
           a.startedAt !== null &&
           a.completedAt !== null &&
           a.endTime !== null &&

@@ -30,6 +30,10 @@
 
 - Tracked package archives consume the publisher's Vitest 5 cohort, including
   compatible browser-playwright peers for `@overeng/utils-storybook`.
+- Cache evidence preserves finalized job timestamps on failure, grants freshness
+  to the first action-bearing invocation rather than preceding audits, and
+  retains nondigest local-action-cache reuse as excluded nonfresh evidence.
+  Cargo and ref-policy jobs are explicitly outside native remote-cache lanes.
 - Main-push tested-tree reuse judges successful required queue checks from the
   current attempt, without waiting for optional jobs or rejecting their failures.
 - Native dependency policy CI runs its Bun tests by explicit source paths instead
