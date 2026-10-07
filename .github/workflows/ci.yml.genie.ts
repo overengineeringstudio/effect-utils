@@ -508,6 +508,11 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       laneIf: `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}`,
       timeoutMinutes: 90,
       extraSteps: [
+        {
+          name: 'Changelog fragments and PR coverage',
+          env: githubTokenEnv(),
+          run: runDevenvTasksBefore('changelog:check', 'changelog:test'),
+        },
         buck2TrustedCacheWriterStep(verifyOtelShellEntryStep),
         buck2TrustedCacheWriterStep({
           name: 'Type check (Buck)',

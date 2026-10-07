@@ -892,6 +892,20 @@ in
     NODE_OPTIONS = "--import=${./. + "/packages/@overeng/pty-effect/test/node-pty-native-hook.ts"}";
   };
 
+  # Repository-local Markdown/Git glue: no package installation or editor views.
+  tasks."changelog:check" = {
+    description = "Validate changelog fragments and require PR coverage in CI";
+    exec = trace.exec "changelog:check" "bun scripts/changelog.mjs check";
+  };
+  tasks."changelog:assemble" = {
+    description = "Fold pending fragments into CHANGELOG.md for the release PR";
+    exec = trace.exec "changelog:assemble" "bun scripts/changelog.mjs assemble";
+  };
+  tasks."changelog:test" = {
+    description = "Test changelog assembly and PR fragment coverage";
+    exec = trace.exec "changelog:test" "bun test ./scripts/changelog.unit.test.mjs ./scripts/changelog.integration.test.mjs";
+  };
+
   tasks."lint:check:format".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:format".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check:format";
@@ -1019,7 +1033,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # Directory, not a flat glob: genie/buck2/vitest.config.ts includes
       # `**/*.unit.test.ts`, and Bun discovers recursively the same way.
-      exec ${pkgs.bun}/bin/bun test genie/buck2/
+      exec ${pkgs.bun}/bin/bun test ./genie/buck2/
     '';
     execIfModified = [
       "BUCK"
@@ -1432,6 +1446,8 @@ in
     "check:buck2-producer-overlap"
     "nix:check:quick"
     "otel:pipeline-run:test"
+    "changelog:check"
+    "changelog:test"
   ];
   # One Buck invocation executes every admitted bounded lane. This is what `test:run` waits on;
   # the per-lane `test:<package>` tasks (imported above) exist for standalone use and are not
@@ -1449,6 +1465,8 @@ in
     "check:buck2-producer-overlap"
     "cargo:check"
     "dependency-materialization:evidence:check"
+    "changelog:check"
+    "changelog:test"
   ];
 
   # `test:run` is the aggregate: the single Buck invocation for every bounded lane, plus the

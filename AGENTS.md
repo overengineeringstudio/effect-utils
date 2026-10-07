@@ -37,9 +37,23 @@ Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/c
 - Shared constants (catalog versions, tsconfig options) live in `genie/repo.ts`
 - `devenv tasks run check:quick` verifies generated files are up to date via `devenv tasks run genie:check`
 
+# Changelog
+
+Every PR adds a new `changelog.d/<branch-slug>.<section>.md` fragment with
+Markdown bullets. Sections are `added`, `fixed`, `changed`, and `removed`.
+Do not edit the shared `CHANGELOG.md` Unreleased section in ordinary PRs.
+For no user-facing changes, put `Changelog-None: <reason>` in the latest commit's
+Git trailers. The required `pr/quality` check enforces coverage.
+
+See [changelog.d/README.md](changelog.d/README.md) for naming, exemptions and
+migration. Release maintainers run `devenv tasks run changelog:assemble` before
+cutting the release heading, committing the log and consumed-fragment deletions
+together. Run `devenv tasks run changelog:check` to validate fragments and
+`devenv tasks run changelog:test` to test the tooling.
+
 # Breaking Changes
 
-There is no changelog file; commits and PRs are the change record. For a breaking change:
+For a breaking change, include migration instructions in the changelog fragment and:
 
 - Mark the commit/PR title with `!` (e.g. `feat(buck2)!: require cargo_env in reindeer.toml`)
 - Add a `BREAKING CHANGE:` footer with the migration steps, and repeat them in the PR description
