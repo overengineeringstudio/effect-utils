@@ -232,6 +232,50 @@ export const probeArchiveOrigin = async ({
   }
 }
 
+/** Only fixed categories and timings may cross into public CI diagnostics. */
+export type RemoteCacheProbeFailure = {
+  readonly errorClass:
+    | 'configuration'
+    | 'dns'
+    | 'tcp'
+    | 'tls'
+    | 'transport'
+    | 'deadline'
+    | 'auth'
+    | 'http'
+    | 'grpc'
+    | 'protocol'
+  readonly phase: 'configuration' | 'connection' | 'response'
+  readonly elapsedMs: number
+  readonly deadlineMs: number
+}
+
+const probeErrorClass = (error: unknown): RemoteCacheProbeFailure['errorClass'] => {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns'
+  if (
+    code === 'ECONNREFUSED' ||
+    code === 'ECONNRESET' ||
+    code === 'ENETUNREACH' ||
+    code === 'EHOSTUNREACH'
+  )
+    return 'tcp'
+  if (code === 'ETIMEDOUT') return 'deadline'
+  if (
+    typeof code === 'string' &&
+    (code.startsWith('ERR_TLS_') === true ||
+      code.startsWith('ERR_SSL_') === true ||
+      code === 'CERT_HAS_EXPIRED' ||
+      code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
+      code === 'SELF_SIGNED_CERT_IN_CHAIN' ||
+      code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ||
+      code === 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY')
+  )
+    return 'tls'
+  return 'transport'
+}
+
 /** Require a successful bounded REAPI capabilities response using the selected client identity. */
 export const probeRemoteCacheCapabilities = async ({
   address,
@@ -240,6 +284,7 @@ export const probeRemoteCacheCapabilities = async ({
   header,
   env,
   deadlineMs,
+  onFailure,
 }: {
   readonly address: string | undefined
   readonly instanceName: string
@@ -247,11 +292,23 @@ export const probeRemoteCacheCapabilities = async ({
   readonly header: string | undefined
   readonly env: Readonly<Record<string, string | undefined>>
   readonly deadlineMs: number
+  readonly onFailure?: (failure: RemoteCacheProbeFailure) => void
 }): Promise<boolean> => {
+  const started = performance.now()
+  let phase: RemoteCacheProbeFailure['phase'] = 'configuration'
+  const failProbe = (errorClass: RemoteCacheProbeFailure['errorClass']): false => {
+    onFailure?.({
+      errorClass,
+      phase,
+      elapsedMs: Math.round(performance.now() - started),
+      deadlineMs,
+    })
+    return false
+  }
   try {
-    if (address === undefined) return false
+    if (address === undefined) return failProbe('configuration')
     const url = new URL(address)
-    if (url.protocol !== 'grpc:' && url.protocol !== 'grpcs:') return false
+    if (url.protocol !== 'grpc:' && url.protocol !== 'grpcs:') return failProbe('configuration')
     const authority = `${tls === true || url.protocol === 'grpcs:' ? 'https' : 'http'}://${url.host}`
     const name = Buffer.from(instanceName)
     const length: number[] = []
@@ -277,30 +334,41 @@ export const probeRemoteCacheCapabilities = async ({
     }
     if (header !== undefined) {
       const colon = header.indexOf(':')
-      if (colon === -1) return false
+      if (colon === -1) return failProbe('configuration')
       const value = header
         .slice(colon + 1)
         .trim()
         .replace(/\$([A-Z_][A-Z0-9_]*)/gu, (_, key: string) => env[key] ?? '')
       headers[header.slice(0, colon).trim().toLowerCase()] = value
     }
+    phase = 'connection'
     return await new Promise<boolean>((resolveProbe) => {
       const client = connect(authority)
       let settled = false
-      const finish = (result: boolean) => {
+      const finish = ({
+        result,
+        errorClass = 'protocol',
+      }: {
+        readonly result: boolean
+        readonly errorClass?: RemoteCacheProbeFailure['errorClass']
+      }) => {
         if (settled === true) return
         settled = true
         clearTimeout(timer)
         client.destroy()
+        if (result === false) failProbe(errorClass)
         resolveProbe(result)
       }
-      const timer = setTimeout(() => finish(false), deadlineMs)
-      client.on('error', () => finish(false))
+      const timer = setTimeout(() => finish({ result: false, errorClass: 'deadline' }), deadlineMs)
+      client.on('connect', () => {
+        phase = 'response'
+      })
+      client.on('error', (error) => finish({ result: false, errorClass: probeErrorClass(error) }))
       let stream: ClientHttp2Stream
       try {
         stream = client.request(headers)
-      } catch {
-        finish(false)
+      } catch (error) {
+        finish({ result: false, errorClass: probeErrorClass(error) })
         return
       }
       let httpStatus: number | undefined
@@ -318,26 +386,35 @@ export const probeRemoteCacheCapabilities = async ({
       })
       stream.on('data', (chunk: Buffer) => {
         size += chunk.length
-        if (size > 65536) return finish(false)
+        if (size > 65536) return finish({ result: false })
         chunks.push(chunk)
       })
-      stream.on('error', () => finish(false))
+      stream.on('error', (error) => finish({ result: false, errorClass: probeErrorClass(error) }))
       stream.on('end', () => {
         const body = Buffer.concat(chunks)
-        finish(
-          httpStatus === 200 &&
+        finish({
+          result:
+            httpStatus === 200 &&
             contentType?.startsWith('application/grpc') === true &&
             grpcStatus === '0' &&
             body.length >= 5 &&
             body[0] === 0 &&
             body.readUInt32BE(1) === body.length - 5,
-        )
+          errorClass:
+            httpStatus === 401 || httpStatus === 403 || grpcStatus === '7' || grpcStatus === '16'
+              ? 'auth'
+              : httpStatus !== 200
+                ? 'http'
+                : grpcStatus !== undefined && grpcStatus !== '0'
+                  ? 'grpc'
+                  : 'protocol',
+        })
       })
       stream.end(frame)
     })
-  } catch {
+  } catch (error) {
     // Never put endpoint, credential, or transport error strings into CI logs.
-    return false
+    return failProbe(phase === 'configuration' ? 'configuration' : probeErrorClass(error))
   }
 }
 

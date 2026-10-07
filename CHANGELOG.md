@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- Buck REAPI preflight failures report a sanitized error category, connection or
+  response phase, elapsed time, and deadline without exposing endpoints or credentials.
 - Main-push tested-tree reuse judges successful required queue checks from the
   current attempt, without waiting for optional jobs or rejecting their failures.
 - Native dependency policy CI runs its Bun tests by explicit source paths instead

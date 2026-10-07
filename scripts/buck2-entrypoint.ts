@@ -290,6 +290,10 @@ export const directBuckArguments = async ({
               header: values['buck2_re_client.http_headers'],
               env,
               deadlineMs,
+              onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) =>
+                process.stderr.write(
+                  `warning: Buck2 REAPI probe failed: class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}\n`,
+                ),
             }),
         }),
     prefix === ''

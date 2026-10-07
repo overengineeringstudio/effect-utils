@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer, type ServerHttp2Stream } from 'node:http2'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  probeRemoteCacheCapabilities,
+  type RemoteCacheProbeFailure,
   reconcileStandaloneCachePosture,
   standaloneCachePostureConfig,
 } from './buck2-cache-posture.ts'
@@ -226,5 +229,91 @@ describe('standalone Buck cache posture', () => {
       'url_prefix = https://trusted-cache.example/cas/',
     )
     expect(readFileSync(output, 'utf8')).not.toContain('remote_cache_enabled = false')
+  })
+})
+
+describe('REAPI probe diagnostics', () => {
+  it('reports bounded response failures once, without server messages or credentials', async () => {
+    let response: 'healthy' | 'auth' | 'http' | 'grpc' | 'protocol' | 'deadline' = 'healthy'
+    const grpc = createServer()
+    grpc.on('stream', (stream: ServerHttp2Stream) => {
+      stream.on('error', () => {})
+      stream.on('data', () => {})
+      stream.on('end', () => {
+        if (response === 'deadline') return
+        stream.respond({
+          ':status': response === 'http' ? 503 : 200,
+          'content-type': 'application/grpc',
+          'grpc-status': response === 'auth' ? '16' : response === 'grpc' ? '14' : '0',
+          'grpc-message': 'private-host.example credential-secret',
+        })
+        stream.end(Buffer.from(response === 'protocol' ? [1, 0, 0, 0, 0] : [0, 0, 0, 0, 0]))
+      })
+    })
+    grpc.listen(0, '127.0.0.1')
+    await new Promise<void>((resolve) => grpc.once('listening', resolve))
+    const bound = grpc.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+    try {
+      for (const scenario of ['healthy', 'auth', 'http', 'grpc', 'protocol', 'deadline'] as const) {
+        response = scenario
+        const failures: RemoteCacheProbeFailure[] = []
+        const available = await probeRemoteCacheCapabilities({
+          address: `grpc://127.0.0.1:${bound.port}`,
+          instanceName: 'fixture',
+          tls: false,
+          header: 'authorization: Basic $TEST_SECRET',
+          env: { TEST_SECRET: 'credential-secret' },
+          deadlineMs: scenario === 'deadline' ? 50 : 1000,
+          onFailure: (failure) => failures.push(failure),
+        })
+        expect(available).toBe(scenario === 'healthy')
+        if (scenario === 'healthy') {
+          expect(failures).toEqual([])
+        } else {
+          expect(failures).toHaveLength(1)
+          expect(failures[0]).toEqual({
+            errorClass: scenario,
+            phase: 'response',
+            elapsedMs: expect.any(Number),
+            deadlineMs: scenario === 'deadline' ? 50 : 1000,
+          })
+          expect(failures[0]?.elapsedMs).toBeGreaterThanOrEqual(0)
+          expect(JSON.stringify(failures)).not.toContain('private-host.example')
+          expect(JSON.stringify(failures)).not.toContain('credential-secret')
+        }
+      }
+    } finally {
+      grpc.close()
+    }
+  })
+
+  it('distinguishes invalid configuration and refused connections without logging inputs', async () => {
+    for (const scenario of [
+      {
+        address: 'https://private-host.example/credential-secret',
+        errorClass: 'configuration',
+        phase: 'configuration',
+      },
+      { address: 'grpc://127.0.0.1:1', errorClass: 'tcp', phase: 'connection' },
+    ] as const) {
+      const failures: RemoteCacheProbeFailure[] = []
+      expect(
+        await probeRemoteCacheCapabilities({
+          address: scenario.address,
+          instanceName: 'fixture',
+          tls: false,
+          header: undefined,
+          env: {},
+          deadlineMs: 1000,
+          onFailure: (failure) => failures.push(failure),
+        }),
+      ).toBe(false)
+      expect(failures).toHaveLength(1)
+      expect(failures[0]?.errorClass).toBe(scenario.errorClass)
+      expect(failures[0]?.phase).toBe(scenario.phase)
+      expect(JSON.stringify(failures)).not.toContain('private-host.example')
+      expect(JSON.stringify(failures)).not.toContain('credential-secret')
+    }
   })
 })

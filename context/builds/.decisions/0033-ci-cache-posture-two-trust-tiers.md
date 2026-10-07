@@ -106,6 +106,15 @@ The dedicated trusted remote-cache proof does not set this flag and remains
 fail-closed. This preflight fallback is not a guarantee against an outage that
 starts after a successful probe.
 
+Preflight failures emit only a fixed error class (configuration, DNS, TCP, TLS,
+transport, deadline, authentication, HTTP, gRPC, or protocol), the connection or
+response phase, elapsed milliseconds, and the configured deadline. Endpoint,
+credential, certificate, and server-provided error text never enter diagnostics.
+The single request has a 900 ms deadline including connection setup; a deadline
+does not by itself establish a cache-server outage or identify the stalled
+transport stage. A five-second endpoint-result cache can reuse a failure; its
+original probe emits the diagnostic rather than repeating it on cache hits.
+
 Main pushes compare their Git tree with recent protected-main merge-group heads.
 Heavy lanes skip only when every required context succeeded on that same head,
 using each workflow's latest run attempt. Missing, failed, mismatched or
