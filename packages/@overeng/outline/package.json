@@ -21,10 +21,10 @@
     }
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "react": "19.2.8",
     "react-aria-components": "1.21.1",
     "react-dom": "19.2.8",

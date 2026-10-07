@@ -23,10 +23,10 @@
     ".": "./src/mod.ts"
   },
   "dependencies": {
-    "@effect/atom-react": "4.0.0-rc.118",
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/platform-node": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/atom-react": "4.0.0",
+    "@effect/opentelemetry": "4.0.0",
+    "@effect/platform-node": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "@overeng/ci-tools": "workspace:../ci-tools",
@@ -39,7 +39,7 @@
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
     "@vitest/browser-playwright": "5.0.3",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
@@ -52,8 +52,8 @@
     }
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "@overeng/utils-storybook": "workspace:^",
@@ -64,7 +64,7 @@
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
     "@vitejs/plugin-react": "6.1.1",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
@@ -74,10 +74,10 @@
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/platform-node": "^4.0.0",
     "@opentui/core": "^0.5.11",
     "@opentui/react": "^0.5.11",
-    "effect": "4.0.0-rc.118",
+    "effect": "^4.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-reconciler": "^0.33.0"
