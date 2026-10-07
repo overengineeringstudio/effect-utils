@@ -168,6 +168,10 @@ availability and requires the returned canonical watched root to equal the
 resolved `.buckroot`; an ancestor-relative watch is rejected, even if its
 coverage appears sufficient. A service/version query alone is insufficient,
 and an ancestor watch whose ignore rules exclude the project is unsafe.
+Without `WATCHMAN_SOCK`, the client may spawn its default Watchman service on
+demand on Linux and Darwin; this also supplies a job-local service on macOS CI
+runners with no pre-existing daemon. With an explicit socket, `--no-spawn`
+preserves the caller's service ownership and an unreachable socket fails closed.
 Each attempt uses the caller's probe deadline (2500 ms by default), replacing
 the former 900 ms cap. Only a timeout gets one retry; total probing is bounded
 to two caller deadlines (5000 ms by default).

@@ -112,7 +112,7 @@ export const probeWatchman = async ({
   const root = realpathSync(repoRoot)
   const socket = env['WATCHMAN_SOCK']
   const args = [
-    ...(process.platform === 'darwin' ? ['--no-spawn'] : []),
+    ...(socket === undefined ? [] : ['--no-spawn']),
     '--no-local',
     ...(socket === undefined ? [] : [`--sockname=${socket}`]),
     '--output-encoding=json',

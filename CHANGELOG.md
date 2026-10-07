@@ -35,6 +35,8 @@
   Legacy/provider-mismatched daemons migrate once under a per-worktree/isolation
   lock; only the selected registered daemon is stopped before startup. Maintenance
   commands remain available during outages.
+  Default Watchman services can start on demand on Darwin as on Linux; explicitly
+  selected sockets never spawn a replacement service.
 - The pnpm task smoke test checks the stable Effect 4.0.0 cohort override rather
   than the superseded release-candidate pin.
 - Buck capability projections and shipped rules use narrowly declared Nix

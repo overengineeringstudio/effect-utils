@@ -236,8 +236,7 @@ makePnpmStoreProjection({
   metadata,
   sidecar,
   workspaceTreeTargets: {
-    '.devenv/pnpm-source-inputs/current/repos/sdk/client':
-      'pnpm_sources//:sdk_client_package_tree',
+    '.devenv/pnpm-source-inputs/current/repos/sdk/client': 'pnpm_sources//:sdk_client_package_tree',
   },
 })
 ```
@@ -267,9 +266,11 @@ Watchman service and canonical watched root with `watchman --no-local
 watch-project <root>` before native daemon startup. An attempt has a 2500 ms
 deadline and one retry for a timeout only. Successful root admission is cached
 for at most five seconds, scoped to the root, `.watchmanconfig`, PATH, HOME and
-socket environment identity. Darwin queries use `--no-spawn`, preserving the
-managed service lifecycle. Missing, unhealthy or incorrectly rooted Watchman
-fails with the probe command and remediation; it never selects notify as an
+socket environment identity. Default-service queries allow Watchman to spawn
+on demand on Linux and Darwin, including job-local CI runners. An explicit
+`WATCHMAN_SOCK` uses `--no-spawn` on every platform: admission must reach that
+owned service, not create a replacement. Missing, unhealthy or incorrectly
+rooted Watchman fails with the probe command and remediation; it never selects notify as an
 outage fallback. For an ancestor-root mismatch, run `watchman watch <root>` and
 rerun the displayed probe. Enter `devenv shell` if Watchman is missing from PATH.
 

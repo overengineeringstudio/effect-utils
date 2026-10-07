@@ -522,8 +522,21 @@ describe('direct pinned Buck watcher admission', () => {
     expect(result).toEqual(args)
     expect(watcherLocal(root)).toContain('file_watcher = watchman')
     expect(readFileSync(calls, 'utf8')).toBe(
-      `${process.platform === 'darwin' ? '--no-spawn ' : ''}--no-local --sockname=${env.WATCHMAN_SOCK} --output-encoding=json watch-project ${root}\n`,
+      `--no-spawn --no-local --sockname=${env.WATCHMAN_SOCK} --output-encoding=json watch-project ${root}\n`,
     )
+  })
+
+  it('allows the default service to spawn on every platform, including Darwin', async () => {
+    const { root, env, calls } = watcherFixture()
+    await directBuckArguments({
+      ...options(root),
+      env: { ...env, WATCHMAN_SOCK: undefined },
+      args: ['build', '//:app'],
+    })
+    expect(readFileSync(calls, 'utf8')).toBe(
+      `--no-local --output-encoding=json watch-project ${root}\n`,
+    )
+    expect(watcherLocal(root)).toContain('file_watcher = watchman')
   })
 
   it('fails closed when the executable exists but the service cannot be reached', async () => {
