@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createServer, type ServerHttp2Stream } from 'node:http2'
-import { tmpdir } from 'node:os'
+import { getPriority, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
 
@@ -63,6 +63,7 @@ esac
 case "$(cat "$socket")" in
   healthy) printf '{"version":"2026.10.05","watch":"${root}"}\\n' ;;
   unreachable) printf 'unable to connect to service\\n' >&2; exit 1 ;;
+  nice-refusal) printf 'Watchman is running at a lower than normal priority. (nice_value=19, min_acceptable_nice_value=0). Watchman is refusing to start.\\n' >&2; exit 1 ;;
   malformed) printf 'not json\\n' ;;
   error) printf '{"version":"2026.10.05","error":"service unavailable"}\\n' ;;
   wrong-type) printf '{"version":123,"watch":"${root}"}\\n' ;;
@@ -526,7 +527,7 @@ describe('direct pinned Buck watcher admission', () => {
     )
   })
 
-  it('allows the default service to spawn on every platform, including Darwin', async () => {
+  it('allows the un-niced default service to spawn on every platform, including Darwin', async () => {
     const { root, env, calls } = watcherFixture()
     await directBuckArguments({
       ...options(root),
@@ -534,7 +535,7 @@ describe('direct pinned Buck watcher admission', () => {
       args: ['build', '//:app'],
     })
     expect(readFileSync(calls, 'utf8')).toBe(
-      `--no-local --output-encoding=json watch-project ${root}\n`,
+      `${getPriority() > 0 ? '--no-spawn ' : ''}--no-local --output-encoding=json watch-project ${root}\n`,
     )
     expect(watcherLocal(root)).toContain('file_watcher = watchman')
   })
@@ -547,6 +548,53 @@ describe('direct pinned Buck watcher admission', () => {
     ).rejects.toThrow('Watchman watch-project probe failed (service)')
     expect(watcherLocal(root)).not.toContain('file_watcher = notify')
   })
+
+  it('maps a Watchman nice refusal to an actionable fail-closed priority error', async () => {
+    const { root, env, state } = watcherFixture()
+    writeFileSync(state, 'nice-refusal')
+    await expect(
+      directBuckArguments({ ...options(root), env, args: ['build', '//:app'] }),
+    ).rejects.toThrow(
+      'Watchman refuses to start at nice 19; this client may only connect to an already-running service.',
+    )
+    await expect(
+      directBuckArguments({ ...options(root), env, args: ['build', '//:app'] }),
+    ).rejects.toThrow('watchman get-sockname` outside the gate')
+    expect(watcherLocal(root)).not.toContain('file_watcher = notify')
+  })
+
+  it.each(['healthy', 'unreachable'])(
+    'a nice 19 default-service client connects only to a %s existing service',
+    async (mode) => {
+      const { root, env, state, calls } = watcherFixture()
+      writeFileSync(state, mode)
+      const child = Bun.spawn({
+        cmd: [
+          process.execPath,
+          '-e',
+          `import { setPriority } from 'node:os';
+           import { directBuckArguments } from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
+           setPriority(19);
+           try {
+             await directBuckArguments({ cwd: ${JSON.stringify(root)}, env: process.env, args: ['build', '//:app'] });
+           } catch (error) { console.error(error.message); process.exit(1); }`,
+        ],
+        env: { ...env, WATCHMAN_SOCK: undefined },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      expect(exit).toBe(mode === 'healthy' ? 0 : 1)
+      expect(readFileSync(calls, 'utf8')).toBe(
+        `--no-spawn --no-local --output-encoding=json watch-project ${root}\n`,
+      )
+      if (mode === 'unreachable') {
+        expect(stderr).toContain('Watchman refuses to start at nice 19')
+        expect(stderr).toContain('watchman get-sockname` outside the gate')
+        expect(watcherLocal(root)).not.toContain('file_watcher = notify')
+      } else expect(watcherLocal(root)).toContain('file_watcher = watchman')
+    },
+  )
 
   it.each(['wrong-root', 'relative-root'])(
     'fails closed on %s Watchman selection',

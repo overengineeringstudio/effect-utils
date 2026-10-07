@@ -35,7 +35,7 @@ cleanup() {
     (cd "${daemon_roots[$index]}" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "${daemon_isolations[$index]}" kill) >/dev/null 2>&1 || true
   done
   if [ "$private_watchman_started" = true ]; then
-    if ! "$WATCHMAN_COMMAND" --sockname="$WATCHMAN_SOCK" --no-spawn --no-local shutdown-server \
+    if ! HOME="$TEST_HOME" "$WATCHMAN_COMMAND" --sockname="$WATCHMAN_SOCK" --no-spawn --no-local shutdown-server \
       >"$TEMP_ROOT/watchman-shutdown.json" 2>"$TEMP_ROOT/watchman-shutdown.stderr"; then
       cat "$TEMP_ROOT/watchman-shutdown.stderr" >&2
       echo "FAIL: private Watchman shutdown failed" >&2
@@ -145,13 +145,17 @@ CONFIG
     chmod 0700 "$private_watchman_socket_dir"
     export WATCHMAN_SOCK="$private_watchman_socket_dir/w.sock"
     [ "${#WATCHMAN_SOCK}" -lt 100 ] || fail "private Watchman socket path must be shorter than 100 bytes for Darwin: $WATCHMAN_SOCK"
+    # Watchman's global config, not .watchmanconfig, controls startup priority.
+    # Keep this relaxation private and isolate HOME's overriding .watchman.json.
+    export WATCHMAN_CONFIG_FILE="$TEMP_ROOT/w.config"
+    printf '{"min_acceptable_nice_value":19}\n' >"$WATCHMAN_CONFIG_FILE"
     private_watchman_started=true
-    "$WATCHMAN_COMMAND" --no-site-spawner --sockname="$WATCHMAN_SOCK" \
+    HOME="$TEST_HOME" "$WATCHMAN_COMMAND" --no-site-spawner --sockname="$WATCHMAN_SOCK" \
       --statefile="$TEMP_ROOT/w.state" --logfile="$TEMP_ROOT/w.log" \
       --pidfile="$TEMP_ROOT/w.pid" --no-local version >"$TEMP_ROOT/watchman-version.json"
     jq -e '.version | type == "string" and length > 0' "$TEMP_ROOT/watchman-version.json" >/dev/null \
       || fail "private Watchman did not become ready"
-    "$WATCHMAN_COMMAND" --sockname="$WATCHMAN_SOCK" --no-spawn --no-local get-pid \
+    HOME="$TEST_HOME" "$WATCHMAN_COMMAND" --sockname="$WATCHMAN_SOCK" --no-spawn --no-local get-pid \
       >"$TEMP_ROOT/watchman-pid.json"
     jq -e '.pid | type == "number" and . > 0' "$TEMP_ROOT/watchman-pid.json" >/dev/null \
       || fail "private Watchman did not report its service PID"

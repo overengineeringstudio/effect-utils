@@ -13,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
+import { getPriority, homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 
@@ -76,7 +76,7 @@ export const reconcileFileWatcher = ({
 
 /** A failed service/root admission never selects an incremental fallback provider. */
 export class WatchmanAdmissionError extends Error {
-  readonly reason: 'timeout' | 'executable' | 'service' | 'response' | 'root'
+  readonly reason: 'timeout' | 'executable' | 'service' | 'priority' | 'response' | 'root'
 
   constructor({
     reason,
@@ -111,8 +111,11 @@ export const probeWatchman = async ({
 }): Promise<boolean> => {
   const root = realpathSync(repoRoot)
   const socket = env['WATCHMAN_SOCK']
+  const niceValue = getPriority()
+  // A gate may use a running service, but must not create a permanently niced shared one.
+  const nicedDefault = socket === undefined && niceValue > 0
   const args = [
-    ...(socket === undefined ? [] : ['--no-spawn']),
+    ...(socket === undefined && nicedDefault === false ? [] : ['--no-spawn']),
     '--no-local',
     ...(socket === undefined ? [] : [`--sockname=${socket}`]),
     '--output-encoding=json',
@@ -128,8 +131,17 @@ export const probeWatchman = async ({
       { env, timeout: deadlineMs, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 },
       (error, stdout, stderr) => {
         if (error !== null) {
+          const priorityRefusal = stderr.match(
+            /nice_value=(\d+), min_acceptable_nice_value=\d+[\s\S]*Watchman is refusing to start/,
+          )
           const reason =
-            error.killed === true ? 'timeout' : error.code === 'ENOENT' ? 'executable' : 'service'
+            error.killed === true
+              ? 'timeout'
+              : error.code === 'ENOENT'
+                ? 'executable'
+                : nicedDefault === true || priorityRefusal !== null
+                  ? 'priority'
+                  : 'service'
           reject(
             new WatchmanAdmissionError({
               reason,
@@ -137,13 +149,17 @@ export const probeWatchman = async ({
               detail:
                 reason === 'timeout'
                   ? `service did not answer within ${deadlineMs} ms`
-                  : stderr.trim() || error.message,
+                  : reason === 'priority'
+                    ? `Watchman refuses to start at nice ${priorityRefusal?.[1] ?? niceValue}; this client may only connect to an already-running service. ${stderr.trim() || error.message}`
+                    : stderr.trim() || error.message,
               fix:
                 reason === 'executable'
                   ? 'enter the repository development environment (`devenv shell`) so Watchman is on PATH, then rerun the probe'
-                  : socket === undefined
-                    ? `restore the Watchman service, then run ${command}`
-                    : `check WATCHMAN_SOCK=${shellQuote(socket)} selects the intended running service, then run ${command}`,
+                  : reason === 'priority'
+                    ? 'start the service un-niced (`watchman get-sockname` outside the gate) or provision the host service, then rerun the probe; do not relax the shared service priority limit'
+                    : socket === undefined
+                      ? `restore the Watchman service, then run ${command}`
+                      : `check WATCHMAN_SOCK=${shellQuote(socket)} selects the intended running service, then run ${command}`,
             }),
           )
           return
