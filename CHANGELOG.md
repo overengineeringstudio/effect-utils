@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- Buck capability projections and shipped rules use narrowly declared Nix
+  source filesets, preserving store identities across unrelated checkout changes.
 - Main-push tested-tree reuse judges successful required queue checks from the
   current attempt, without waiting for optional jobs or rejecting their failures.
 - Native dependency policy CI runs its Bun tests by explicit source paths instead
