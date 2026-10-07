@@ -35,10 +35,13 @@ export const capabilityGeneration = (defs: string): string => {
 type Publication = { readonly generation: string; readonly sequence: number }
 
 /** Re-publication updates recency; the currently selected generation is always retained. */
-export const retainedCapabilityGenerations = (
-  publications: readonly Publication[],
-  current: string,
-): ReadonlySet<string> =>
+export const retainedCapabilityGenerations = ({
+  publications,
+  current,
+}: {
+  readonly publications: readonly Publication[]
+  readonly current: string
+}): ReadonlySet<string> =>
   new Set([
     current,
     ...publications
@@ -74,7 +77,7 @@ const nativePublication = () => {
   const lock = dlopen(platform === 'linux' ? 'libc.so.6' : '/usr/lib/libSystem.B.dylib', {
     flock: { args: ['i32', 'i32'], returns: 'i32' },
   })
-  const exchange = (left: string, right: string): void => {
+  const exchange = ({ left, right }: { readonly left: string; readonly right: string }): void => {
     const leftBytes = Buffer.from(`${left}\0`)
     const rightBytes = Buffer.from(`${right}\0`)
     if (platform === 'linux') {
@@ -108,7 +111,7 @@ const nativePublication = () => {
   }
 }
 
-const atomicWrite = (path: string, bytes: string | Buffer): void => {
+const atomicWrite = ({ path, bytes }: { readonly path: string; readonly bytes: string | Buffer }): void => {
   const candidate = join(dirname(path), `.${randomUUID()}.candidate`)
   try {
     writeFileSync(candidate, bytes, { flag: 'wx', mode: 0o644 })
@@ -130,13 +133,13 @@ const generationNames = (cell: string): string[] => {
 }
 
 /** Copy metadata, not tool closures. Links stay exact absolute per-tool Nix paths. */
-const copyGeneration = (source: string, destination: string): void => {
+const copyGeneration = ({ source, destination }: { readonly source: string; readonly destination: string }): void => {
   mkdirSync(destination)
   for (const name of readdirSync(source).toSorted()) {
     const from = join(source, name)
     const to = join(destination, name)
     const stat = lstatSync(from)
-    if (stat.isDirectory() === true) copyGeneration(from, to)
+    if (stat.isDirectory() === true) copyGeneration({ source: from, destination: to })
     else if (stat.isFile() === true) copyFileSync(from, to)
     else if (stat.isSymbolicLink() === true) {
       const target = readlinkSync(from)
@@ -147,22 +150,30 @@ const copyGeneration = (source: string, destination: string): void => {
   }
 }
 
-const equalGeneration = (left: string, right: string): boolean => {
+const equalGeneration = ({ left, right }: { readonly left: string; readonly right: string }): boolean => {
   const leftNames = readdirSync(left).toSorted()
   const rightNames = readdirSync(right).toSorted()
-  if (leftNames.length !== rightNames.length || leftNames.some((name, index) => name !== rightNames[index])) return false
+  if (leftNames.length !== rightNames.length || leftNames.some((name, index) => name !== rightNames[index]) === true) return false
   return leftNames.every((name) => {
     const from = join(left, name)
     const to = join(right, name)
     const a = lstatSync(from)
     const b = lstatSync(to)
-    if (a.isDirectory() === true && b.isDirectory() === true) return equalGeneration(from, to)
+    if (a.isDirectory() === true && b.isDirectory() === true) return equalGeneration({ left: from, right: to })
     if (a.isFile() === true && b.isFile() === true) return readFileSync(from).equals(readFileSync(to))
     return a.isSymbolicLink() === true && b.isSymbolicLink() === true && readlinkSync(from) === readlinkSync(to)
   })
 }
 
-const rootGeneration = (nixStore: string, root: string, profile: string): void => {
+const rootGeneration = ({
+  nixStore,
+  root,
+  profile,
+}: {
+  readonly nixStore: string
+  readonly root: string
+  readonly profile: string
+}): void => {
   const result = spawnSync(nixStore, ['--realise', '--add-root', root, '--indirect', profile], { encoding: 'utf8' })
   if (result.error !== undefined) throw result.error
   if (result.status !== 0)
@@ -177,7 +188,13 @@ const rootGeneration = (nixStore: string, root: string, profile: string): void =
  * Check every isolation, never process-scrape. Missing state root means no daemon;
  * existing but unreadable/incomplete state or an unprobeable PID is unknown.
  */
-export const capabilityPruningDeferred = (root: string, home = homedir()): boolean => {
+export const capabilityPruningDeferred = ({
+  root,
+  home = homedir(),
+}: {
+  readonly root: string
+  readonly home?: string
+}): boolean => {
   try {
     const state = join(home, '.buck', 'buckd', root.replace(/^\//u, ''))
     if (statIfPresent(state) === undefined) return false
@@ -211,7 +228,13 @@ export const capabilityPruningDeferred = (root: string, home = homedir()): boole
  * Run after the complete new cell is visible: daemons starting after this
  * scan can only load the new root. A failed stop leaves the migration marker.
  */
-const stopMigrationDaemons = (roots: readonly string[], buck2: string): readonly string[] => {
+const stopMigrationDaemons = ({
+  roots,
+  buck2,
+}: {
+  readonly roots: readonly string[]
+  readonly buck2: string
+}): readonly string[] => {
   const stopped: string[] = []
   for (const root of new Set(roots)) {
     const state = join(homedir(), '.buck', 'buckd', root.replace(/^\//u, ''))
@@ -240,6 +263,7 @@ const publicationSequence = (receipt: string): number => {
   return value
 }
 
+/** Selected generation, retention decision, and migration-only native daemon stops. */
 export type CapabilityPublicationResult = {
   readonly generation: string
   readonly retainedCount: number
@@ -292,8 +316,8 @@ export const publishCapabilities = ({
         const previousProfile = realpathSync(cell)
         for (const previous of generationNames(previousProfile)) {
           // Root every old generation before the live symlink can be exchanged.
-          rootGeneration(nixStore, join(roots, previous), previousProfile)
-          copyGeneration(join(previousProfile, 'generations', previous), join(candidate, 'generations', previous))
+          rootGeneration({ nixStore, root: join(roots, previous), profile: previousProfile })
+          copyGeneration({ source: join(previousProfile, 'generations', previous), destination: join(candidate, 'generations', previous) })
         }
         copyFileSync(join(previousProfile, 'BUCK'), join(candidate, 'BUCK'))
         copyFileSync(join(previousProfile, 'defs.bzl'), join(candidate, 'defs.bzl'))
@@ -314,7 +338,7 @@ export const publishCapabilities = ({
       if (latest === 0 || publicationSequence(currentReceipt) !== latest) {
         if (Number.isSafeInteger(latest + 1) === false)
           throw new Error('Capability publication sequence exhausted')
-        atomicWrite(currentReceipt, `${latest + 1}\n`)
+        atomicWrite({ path: currentReceipt, bytes: `${latest + 1}\n` })
       }
     }
     // Restore/check indirect registration for all retained profiles before any pruning.
@@ -322,19 +346,19 @@ export const publishCapabilities = ({
       const rootPath = join(roots, previous)
       if (statIfPresent(rootPath)?.isSymbolicLink() !== true)
         throw new Error(`Retained capability generation has no Nix GC root: ${previous}`)
-      rootGeneration(nixStore, rootPath, realpathSync(rootPath))
+      rootGeneration({ nixStore, root: rootPath, profile: realpathSync(rootPath) })
     }
     for (const next of incomingGenerations) {
       const source = join(incoming, 'generations', next)
       const destination = join(workingCell, 'generations', next)
       if (statIfPresent(destination) !== undefined) {
-        if (equalGeneration(source, destination) === false)
+        if (equalGeneration({ left: source, right: destination }) === false)
           throw new Error(`Immutable capability generation has changed contents: ${next}`)
       } else {
-        rootGeneration(nixStore, join(roots, next), incoming)
+        rootGeneration({ nixStore, root: join(roots, next), profile: incoming })
         const generationCandidate = join(workingCell, `generation.candidate-${randomUUID()}`)
         try {
-          copyGeneration(source, generationCandidate)
+          copyGeneration({ source, destination: generationCandidate })
           renameSync(generationCandidate, destination)
         } finally {
           rmSync(generationCandidate, { recursive: true, force: true })
@@ -352,15 +376,15 @@ export const publishCapabilities = ({
     } else {
       if (migrating === true) {
         // Persist the lifecycle obligation before changing the watch topology.
-        atomicWrite(migrationMarker, 'symlink-to-directory\n')
-        native.exchange(candidate, cell)
+        atomicWrite({ path: migrationMarker, bytes: 'symlink-to-directory\n' })
+        native.exchange({ left: candidate, right: cell })
       }
       if (migrating === true || readFileSync(join(cell, 'defs.bzl')).equals(defs) === false)
-        atomicWrite(join(cell, 'defs.bzl'), defs)
+        atomicWrite({ path: join(cell, 'defs.bzl'), bytes: defs })
     }
     const migrationDaemonStops = statIfPresent(migrationMarker) === undefined
       ? []
-      : stopMigrationDaemons([projectRoot, absoluteRoot], buck2)
+      : stopMigrationDaemons({ roots: [projectRoot, absoluteRoot], buck2 })
     if (statIfPresent(migrationMarker) !== undefined) {
       rmSync(migrationMarker)
     }
@@ -371,11 +395,11 @@ export const publishCapabilities = ({
     const sequence = Math.max(0, ...publications.map((publication) => publication.sequence)) + 1
     if (Number.isSafeInteger(sequence) === false) throw new Error('Capability publication sequence exhausted')
     // Receipts live outside the watched cell; only successful defs publication advances recency.
-    atomicWrite(join(receipts, `${generation}.json`), `${sequence}\n`)
+    atomicWrite({ path: join(receipts, `${generation}.json`), bytes: `${sequence}\n` })
     const pruningDeferred =
-      capabilityPruningDeferred(projectRoot) ||
-      (absoluteRoot !== projectRoot && capabilityPruningDeferred(absoluteRoot))
-    const retained = retainedCapabilityGenerations(publications, generation)
+      capabilityPruningDeferred({ root: projectRoot }) ||
+      (absoluteRoot !== projectRoot && capabilityPruningDeferred({ root: absoluteRoot }))
+    const retained = retainedCapabilityGenerations({ publications, current: generation })
     if (pruningDeferred === false) {
       for (const previous of publications) {
         if (retained.has(previous.generation) === true) continue
