@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
-import { maxActionArtifactBytes } from './buck2-action-evidence.ts'
+import { localMaterializationCategories, maxActionArtifactBytes } from './buck2-action-evidence.ts'
 import {
+  actionFixture,
   artifactFixture,
   encodedFixture,
   loadedFixture,
@@ -143,6 +144,17 @@ describe('warm99 CLI manifest completeness', () => {
     try {
       const manifest = manifestFixture()
       for (const loaded of loadedFixture(manifest)) {
+        loaded.readers = [
+          artifactFixture(false, [
+            actionFixture(),
+            ...localMaterializationCategories.map((category, index) =>
+              actionFixture({
+                category,
+                executionKind: [1, 3, 8][index % 3]!,
+              }),
+            ),
+          ]),
+        ]
         for (const [refs, artifacts] of [
           [loaded.observation.writers, loaded.writers],
           [loaded.observation.readers, loaded.readers],
@@ -158,7 +170,16 @@ describe('warm99 CLI manifest completeness', () => {
       }
       const manifestPath = join(directory, 'manifest.json')
       await Bun.write(manifestPath, JSON.stringify(manifest))
-      expect((await loadAndEvaluate(manifestPath)).accepted).toBe(true)
+      const accepted = await loadAndEvaluate(manifestPath)
+      expect(accepted.accepted).toBe(true)
+      expect(accepted.lanes[0]?.observations[0]).toMatchObject({
+        eligible: 1,
+        remoteHits: 1,
+        excluded: 5,
+        excludedByDesign: { 'local-materialization-policy': 5 },
+        cold: 0,
+        changed: 0,
+      })
       const success = Bun.spawn([process.execPath, cli, '--manifest', manifestPath], {
         stdout: 'pipe',
         stderr: 'pipe',

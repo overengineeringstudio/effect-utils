@@ -6,8 +6,9 @@ import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
-import { actionsArtifactName } from './buck2-action-evidence.ts'
+import { actionsArtifactName, localMaterializationCategories } from './buck2-action-evidence.ts'
 import type { CacheEvidence } from './buck2-cache-evidence.ts'
+import { decodeEvidence } from './buck2-cache-warm99.ts'
 
 const collector = new URL('./buck2-cache-evidence.ts', import.meta.url).pathname
 const event = (
@@ -24,7 +25,13 @@ const event = (
     data: { [phase]: { data } },
   },
 })
-const nativeLog = (buildId: string, offset = 0, localCache = false): string => {
+const nativeLog = (
+  buildId: string,
+  offset = 0,
+  localCache = false,
+  category = 'typescript_check',
+  executionKind = 1,
+): string => {
   const records: unknown[] = [event(buildId, 'SpanStart', 1, 1700000000 + offset, { Command: {} })]
   for (let index = 0; index < 100; index++) {
     const action = {
@@ -37,7 +44,7 @@ const nativeLog = (buildId: string, offset = 0, localCache = false): string => {
         },
       },
       kind: 'Run',
-      name: { category: 'typescript_check' },
+      name: { category },
     }
     records.push(
       event(buildId, 'SpanStart', index + 2, 1700000001 + offset, { ActionExecution: action }),
@@ -45,8 +52,8 @@ const nativeLog = (buildId: string, offset = 0, localCache = false): string => {
     const end = event(buildId, 'SpanEnd', index + 2, 1700000002 + offset, {
       ActionExecution: {
         ...action,
-        execution_kind: localCache ? 10 : 1,
-        cache_upload_result: localCache ? 3 : 1,
+        execution_kind: localCache ? 10 : executionKind,
+        cache_upload_result: localCache ? 3 : executionKind === 3 ? 0 : 1,
         commands: localCache
           ? []
           : [
@@ -88,6 +95,49 @@ const fixtureEnv = {
 }
 
 describe('complete normalized action artifact CLI', () => {
+  it('preserves exclusions across bounded append, compressed full rows and evaluator decoding', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'buck-actions-policy-'))
+    try {
+      const events = join(directory, 'native.jsonl')
+      const output = join(directory, 'buck2-cache-evidence.json')
+      const actions = join(directory, actionsArtifactName)
+      for (const [index, category] of [...localMaterializationCategories, 'tsgo_emit'].entries()) {
+        await Bun.write(events, nativeLog(`policy-${index}`, 0, false, category, 3))
+        const child = Bun.spawn([
+          process.execPath, collector, '--events', events, '--output', output,
+          '--context', 'populate', '--fresh-root',
+        ], { env: fixtureEnv, stdout: 'ignore', stderr: 'pipe' })
+        expect(await new Response(child.stderr).text()).toBe('')
+        expect(await child.exited).toBe(0)
+      }
+      const finalize = Bun.spawn([process.execPath, collector, '--output', output, '--finalize'], {
+        env: fixtureEnv, stdout: 'ignore', stderr: 'pipe',
+      })
+      expect(await new Response(finalize.stderr).text()).toBe('')
+      expect(await finalize.exited).toBe(0)
+      const summary: CacheEvidence = await Bun.file(output).json()
+      const bytes = new Uint8Array(await Bun.file(actions).arrayBuffer())
+      const full = decodeEvidence(bytes, summary, 'main-writer')
+      expect(summary.actionCount).toBe(600)
+      expect(summary.actions).toHaveLength(6)
+      expect(summary.counts['remote-hit']).toBe(600)
+      expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 500 })
+      expect(full.header.excludedByDesign).toEqual(summary.excludedByDesign)
+      expect(full.header.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
+        ...localMaterializationCategories.map(() => ({ 'local-materialization-policy': 100 })),
+        { 'local-materialization-policy': 0 },
+      ])
+      expect(full.actions.filter((action) =>
+        action.exclusionReason === 'local-materialization-policy',
+      )).toHaveLength(500)
+      expect(full.actions.filter((action) => action.category === 'tsgo_emit').every((action) =>
+        action.exclusionReason === null,
+      )).toBe(true)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('keeps all first ends, checksum, raw enums, timestamp bounds and append dedup without altering compact counts', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-actions-'))
     try {

@@ -70,6 +70,14 @@ populate/replay proof captures each context before its native logs are removed,
 including failed Buck commands before returning their original exit status.
 Uploads, hits and failed invocations remain in one job artifact.
 
+Action rows carry `exclusionReason: "local-materialization-policy"` for the
+cheap filesystem categories specified by
+[the reuse policy](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10);
+other rows carry `null`. Summary, full-artifact header, and invocation
+`excludedByDesign` counters report that named reason independently of the
+native outcome counts. These actions remain visible but cannot become
+avoidable local-execution candidates or eligible warm99 hits/misses.
+
 `no-native-logs` means no native Buck invocation was observed, not a cache hit.
 In-Nix product jobs report `remote-cache-disabled-by-design` with no action rows:
 their reuse measure is Nix output substitution, not shared Buck AC. Failed evidence
