@@ -42,6 +42,236 @@ Source reports: `REPORT.md`, `InfraBoundaryMap.md`, `TrustTierReview.md`,
 measured results and limits, not their earlier adoption recommendations.
 Large JSON and evidence archives are not checked in.
 
+### Reproduction recipe and retained reducer inputs
+
+The following is a **future reproduction recipe**, not a rerun performed during
+the October review repair. It requires an approved, public-only Namespace
+workspace, an authenticated `nsc`, Linux x86-64, Nix, jq, and permission/budget
+for an ephemeral client and workers. No Namespace login or CLI is available on
+the review host. Never run the authorization probes against private workloads,
+give their credentials to fork code, or commit setup JSON, overlays or raw logs.
+Use private scratch directories, `umask 077`, and no shell tracing.
+
+#### Historical graph preparation
+
+The five-file patch targets the revision below, **not current main**. Set `KIT`
+to the absolute directory containing this experiment's checked-in files and
+`SCRATCH` to a new private directory outside every checkout:
+
+```sh
+umask 077
+export KIT=/absolute/path/to/context/builds/.experiments/2026-09-30-namespace-remote-execution
+export SCRATCH=/absolute/private/scratch
+mkdir -p "$SCRATCH"
+git clone https://github.com/overengineeringstudio/effect-utils.git "$SCRATCH/graph"
+cd "$SCRATCH/graph"
+git checkout --detach 3ab9d858ad171fd4cbaebcb58bff35f927e53bc2
+export NIX_REMOTE=local
+# Realize capabilities BEFORE applying the patch: dirty flake inputs change projection identity.
+nix build .#buck2-capabilities --out-link "$SCRATCH/caps" --print-out-paths
+nix build --impure --expr "
+  let f = builtins.getFlake (toString $PWD);
+      pkgs = import f.inputs.nixpkgs { system = \"x86_64-linux\"; };
+  in import $PWD/nix/buck2.nix { inherit pkgs; }
+" --out-link "$SCRATCH/buck" --print-out-paths
+export BUCK2="$SCRATCH/buck/bin/buck2"
+"$BUCK2" --version
+mkdir -p .buck2
+ln -sfn "$(readlink -f "$SCRATCH/caps")" .buck2/capabilities
+git apply "$KIT/remote-execution.patch"
+```
+
+Recorded binary: `2026-08-31-be6971d47dcc835b7356e1698b23039ffee4f4c2`.
+Recorded projection: `/nix/store/jy71x8qqsdx6kvmax1bcfip111zc2gkj-buck2-capabilities`,
+generation `83ecff46b76ac347deebc349a7e453220e9bd6cb635a1dfc24ca11bfcd4927f8`.
+Do not substitute an alias such as `.buck2/capabilities -> /root/caps`: exported
+manifest paths must resolve to the immutable store root on workers.
+
+Publication is a prerequisite, not an action-time fetch of arbitrary tools.
+The recorded projection and its 212 manifest tool-closure paths were already
+substitutable from the public Nix caches. If reproducing with a newly realized
+projection, a trusted publisher must publish its full closure, including the
+projection root, to the public capability cache before starting workers:
+
+```sh
+# Trusted publisher only; use its existing approved Cachix identity, never a token literal.
+cachix push overeng-effect-utils "$(readlink -f "$SCRATCH/caps")"
+nix path-info --closure-size "$(readlink -f "$SCRATCH/caps")"
+jq -rs '[.[].closureStorePaths[]]|unique|length' "$SCRATCH/caps"/generations/*/*/*/manifest.json
+```
+
+The patch's worker startup installs Nix and realizes the manifest paths **plus
+the projection root**, using the documented public Cachix key. It sets
+`namespace_action_isolation=none`; these are trusted-only workers, not a fork
+sandbox contract. A changed closure/startup definition requires a new pool.
+
+#### Placement, lifecycle and complete matrix
+
+Recorded placement was an **8x16 client in `ord4`**, scheduler/storage and
+**8x16 workers in `iad4`**. It was not colocated. Reproduce that pair using the
+approved workspace's region selection before creating the client/RE cluster;
+inspect the resulting inventory rather than assuming default placement:
+
+```sh
+nsc create --bare --ephemeral --duration 40m --machine_type linux/amd64:8x16 \
+  --purpose 'public historical fair-concurrency reproduction'
+nsc bazel setup --static --key="$NS_KEY" -o json > "$SCRATCH/setup.json"
+export NS_SETUP_FILE="$SCRATCH/setup.json"
+export NS_POOL="fair-concurrency-$(date +%Y%m%d%H%M%S)"
+export EVIDENCE_DIR="$SCRATCH/evidence"
+nsc list --all -o json > "$SCRATCH/inventory-before.json"
+# In the prepared isolated checkout on that client:
+bash "$KIT/real-graph-run.sh" local L-cold-1
+bash "$KIT/real-graph-run.sh" local L-cold-2
+bash "$KIT/real-graph-run.sh" remote R-cold
+bash "$KIT/real-graph-run.sh" remote R-clean
+bash "$KIT/real-graph-run.sh" remote-warm R-warm-workers
+```
+
+Set `NS_KEY` to an approved execution cluster key; the recorded run reused
+`buck2-probe` with a **new** pool, so shared CAS was not virgin. Cold means no
+existing workers with that exact pool label and no AC hits in the cold row.
+Keep the cold workers alive through both following rows: clean-client AC reuse
+then same-pool warm-worker execution. Do not destroy/recreate the pool between
+them. Every driver invocation cleans its isolated daemon before timing the
+build; clean/setup/evidence extraction are excluded from build wall time.
+
+The driver includes the complete local (`-j 8 --local-only`, reads/uploads off)
+and remote (`-j 64 --prefer-remote`, RE semaphore 32, TLS, reads/uploads on)
+invocations and native evidence capture. Warm uses **`--no-remote-cache`**:
+it disables client AC reads, server Execute cache lookup **and AC writes**.
+CAS deduplication remains active; zero warm input-blob uploads is not AC reuse.
+The 13 explicitly local-only actions remain local, not hidden fallback.
+
+Monitor exact pool-label inventory during cold/warm execution. The recorded
+eight-worker stop guard was operational, **not a per-pool server hard cap**:
+the shared scheduler advertised max_workers 15, workers advertised four slots
+each, and actual autoscaling reached four cold / five warm (four initially
+ready). A 32-request budget does not prove eight workers were provisioned.
+Stop the build if the approved eight-worker ceiling is crossed. Save owned IDs
+and readiness/startup times privately; never destroy a borrowed cluster:
+
+```sh
+"$BUCK2" --isolation-dir fairconcurrency kill
+rm -f .buckconfig.local "$NS_SETUP_FILE"
+# Repeat for each owned client/worker ID, selected by exact client identity/pool label:
+nsc destroy --force "$OWNED_INSTANCE_ID"
+nsc list --all -o json > "$SCRATCH/inventory-after.json"
+nsc instance history --all --since 1h --max_entries 1000 -o json > "$SCRATCH/history.json"
+```
+
+#### Evidence capture and reduction
+
+The driver saves each row's exit status and start/end in `times.tsv`, explicit
+protobuf event log, native `log summary`, `log what-ran --format json`, and
+`log show` JSON. Keep these private. The checked-in
+[sanitized aggregate inputs](./2026-09-30-namespace-remote-execution/fair-measurements.json)
+retain the five rows, action counts, category sums, overlap peaks, upload,
+download and materialization totals without absolute timestamps, tenant
+endpoints, instance identities or credentials:
+
+```sh
+python3 "$KIT/reduce-fair.py" "$KIT/fair-measurements.json"
+```
+
+This stdlib reducer reproduces the **recorded aggregate** comparison, not the
+raw-event extraction. For fresh measurements, reduce build wall as end minus
+start (require exit 0), counts from native summary/what-ran, uploads from
+`ReUpload.bytes_uploaded`, materialization from successful `Materialization`,
+and downloads from the final fresh-daemon snapshot. Reconstruct worker-command
+overlap from non-cache command `start_time + execution_time_us`; reconstruct
+client peaks separately from event spans. Exclude AC-hit historical execution
+metadata. Category sums, queue sums and spans overlap: never add them to
+reconstruct wall time or label the residual pure network RTT.
+
+The retained original archive is `FairConcurrencyBench.evidence.tar.gz`,
+15,670,642 bytes, SHA-256
+`95a81c06136c3c2a843a95b9d162d4200439d5598322826f781305ae7e578716`.
+It is a private retained artifact, **not a public/downloadable evidence link**.
+The sanitized inputs substantiate the core matrix and attribution without
+publishing raw evidence; independently verifying event extraction still
+requires that archive. Samples remain two local, one cold RE, one warm-worker
+RE and one clean-client cache row, not statistical or general speed evidence.
+
+#### Authorization escalation and cross-key reproduction
+
+Only in an approved public-only disposable trust probe, capture setup output
+in 0600 scratch files. `--storage=read-only` also requires `--remote=false`:
+
+```sh
+nsc bazel setup --static --key="$KEY_A" --storage=read-write -o json > "$SCRATCH/rw-a.json"
+nsc bazel setup --static --key="$KEY_B" --storage=read-write -o json > "$SCRATCH/rw-b.json"
+nsc bazel setup --static --remote=false --key="$KEY_A" --storage=read-only -o json > "$SCRATCH/ro-a.json"
+export NS_RW_FILE="$SCRATCH/rw-a.json" NS_RO_FILE="$SCRATCH/ro-a.json"
+# Digest of an already uploaded, harmless, uniquely salted probe action:
+export ACTION_HASH="$SEEDED_ACTION_SHA256" ACTION_SIZE="$SEEDED_ACTION_SIZE"
+# Reuse the historical graph's pinned nixpkgs, not a global Python install:
+nix build --impure --expr "
+  let f = builtins.getFlake (toString $SCRATCH/graph);
+      pkgs = import f.inputs.nixpkgs { system = \"x86_64-linux\"; };
+  in pkgs.python3.withPackages (ps: [ ps.grpcio ])
+" --out-link "$SCRATCH/rpc-python"
+"$SCRATCH/rpc-python/bin/python3" "$KIT/auth-rpc.py" > "$SCRATCH/rpc-status.jsonl"
+```
+
+The [parameterized RPC probe](./2026-09-30-namespace-remote-execution/auth-rpc.py)
+replays standard REAPI GetActionResult, identical-result UpdateActionResult
+against RO then RW endpoints using the **same RO bearer**, and Execute with
+`skip_cache_lookup=true` against RO storage then the RW scheduler. It never
+prints response bodies/error details. Stream acceptance is not final worker
+success; use a separate uncached Buck build to prove actual execution.
+
+For the Buck cross-key and uncached escalation checks, prepare an isolated
+probe project and use fresh public salts, unchanged across A/B. The tiny
+authorization probe historically used Buck2 2026-08-22, not the real-graph pin.
+Set `PROBE_BUCK2` to that binary to match its historical contract.
+
+```sh
+export NS_PROBE_DIR="$SCRATCH/trust-project" NS_KEY="$KEY_A" BUCK2="$PROBE_BUCK2"
+export XDG_RUNTIME_DIR="$SCRATCH"
+bash "$KIT/run.sh" --help >/dev/null
+cd "$NS_PROBE_DIR"
+SALT=$(date +%s%N)
+cat >> BUCK <<EOF
+probe(name = "trust_unique", argv = ["/bin/sh", "-c", "printf '$SALT-a' > \\"\$1\\"", "--"])
+probe(name = "trust_readonly_miss", argv = ["/bin/sh", "-c", "printf '$SALT-b' > \\"\$1\\"", "--"])
+EOF
+# Select storage, scheduler, and bearer independently; never print bearer values.
+select_auth() {
+  "$PROBE_BUCK2" kill
+  export NS_RE_TOKEN
+  NS_RE_TOKEN=$(jq -r .ingress_auth_token "$3")
+  {
+    printf '[buck2_re_client]\n'
+    jq -r '"  engine_address = " + (.scheduler_endpoint|sub("^grpcs://";""))' "$2"
+    jq -r '"  action_cache_address = " + (.storage_endpoint|sub("^grpcs://";"")), "  cas_address = " + (.storage_endpoint|sub("^grpcs://";""))' "$1"
+  } > .buckconfig.local
+  "$PROBE_BUCK2" clean
+}
+select_auth "$SCRATCH/rw-a.json" "$SCRATCH/rw-a.json" "$SCRATCH/rw-a.json"
+"$PROBE_BUCK2" build //:trust_unique --show-output
+select_auth "$SCRATCH/ro-a.json" "$SCRATCH/rw-a.json" "$SCRATCH/ro-a.json"
+"$PROBE_BUCK2" build //:trust_unique --show-output
+"$PROBE_BUCK2" clean
+if "$PROBE_BUCK2" build //:trust_readonly_miss --show-output; then
+  printf 'Unexpected RO miss success: inspect execution evidence\n'
+else
+  printf 'RO miss failed with exit %s: inspect upload denial evidence\n' "$?"
+fi
+select_auth "$SCRATCH/rw-a.json" "$SCRATCH/rw-a.json" "$SCRATCH/ro-a.json"
+"$PROBE_BUCK2" build //:trust_readonly_miss --show-output
+select_auth "$SCRATCH/rw-b.json" "$SCRATCH/rw-b.json" "$SCRATCH/rw-b.json"
+"$PROBE_BUCK2" build //:trust_unique --show-output
+"$PROBE_BUCK2" kill
+rm -f .buckconfig.local "$SCRATCH/ro-a.json" "$SCRATCH/rw-a.json" "$SCRATCH/rw-b.json" "$SCRATCH/ns-buck2-re-probe/setup.json"
+```
+
+Recorded results were A remote execution then B AC hit, RO miss upload denial,
+and successful uncached execution after endpoint switching. Endpoint/key
+selection was not credential attenuation or a trust boundary. No current
+workspace policy, cross-workspace isolation, arbitrary CAS access, or OIDC
+writer authorization is proved by those historical observations.
+
 ## Result
 
 ### Protocol and worker probes
@@ -264,24 +494,24 @@ speed improvement: cold RE was 6.65× slower, and warm-worker execution still
 total recurring integration surface, not only managed versus self-hosted cost.
 Defer rollout; keep Namespace as the first candidate with cache-first re-entry.
 
-Operational state retained by Johannes's q4 decision: dev3 `nsc login` and the
-`buck2-probe` cluster remain. Owned benchmark clients/workers were destroyed;
-created review tokens were revoked. This retained login/cluster is experiment
-state, not a deployment requirement or rollout approval.
+Historical state at the September experiment / q4 decision: dev3 had an
+`nsc login` and the borrowed `buck2-probe` cluster was retained. Owned benchmark
+clients/workers were destroyed and created review tokens revoked. This is not
+a claim that a login is available now, a deployment requirement or rollout approval.
 
 ## Intent Impact
 
 - [Decision 0039](../.decisions/0039-namespace-first-remote-candidate-adoption-deferred.md)
   records deferral and the three re-entry tracks; decisions 0013 and 0037 retain
   their NativeLink history.
-- [Decision 0033 Amendment 1](../.decisions/0033-ci-cache-posture-two-trust-tiers.md#amendment-1)
+- [Decision 0033 Namespace amendment](../.decisions/0033-ci-cache-posture-two-trust-tiers.md)
   records interoperability and failed reader attenuation; the public cache stays
   on self-hosted bazel-remote.
-- [Phase 7](../roadmap.md)
+- [Historical Phase 7](../.reference/migration-2026/roadmap.md)
   targets Namespace conditionally and deletes only public cache machinery after
   Track A completes.
-- [Execution spec](../02-execution/spec.md) records the realized closure/pool and
-  test mechanism; [execution findings](../02-execution/open-questions.md) answer
-  worker realization, retain the per-action overhead evidence, and correct the
-  8-slot contention reading with the local critical-path attribution. No vision
-  or requirement changes.
+- The [platform spec](../04-buck2/02-platforms-toolchains/spec.md#executable-providers)
+  records the realized closure/pool mechanism;
+  [execution findings](../04-buck2/05-execution/open-questions.md) resolve worker
+  realization and correct the 8-slot contention reading with local critical-path
+  attribution. No vision or requirement changes.
