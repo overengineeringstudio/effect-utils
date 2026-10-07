@@ -207,6 +207,7 @@ exec 8>&-
 # Corruption cannot silently change immutable contents or select new defs.
 corrupt_generation="$(generation "$(profile one)")"
 cp "$migration/.buck2/capabilities/defs.bzl" "$TEMP_ROOT/defs-before-corruption"
+chmod u+w "$migration/.buck2/capabilities/generations/$corrupt_generation/$PLATFORM/archive-tool/manifest.json"
 printf '{"corrupt":true}\n' >"$migration/.buck2/capabilities/generations/$corrupt_generation/$PLATFORM/archive-tool/manifest.json"
 corruption_exit=0
 publish "$migration" one >"$TEMP_ROOT/corrupt.stdout" 2>"$TEMP_ROOT/corrupt.stderr" || corruption_exit=$?
