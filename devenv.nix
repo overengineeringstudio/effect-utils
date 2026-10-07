@@ -1033,7 +1033,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # Directory, not a flat glob: genie/buck2/vitest.config.ts includes
       # `**/*.unit.test.ts`, and Bun discovers recursively the same way.
-      exec ${pkgs.bun}/bin/bun test genie/buck2/
+      exec ${pkgs.bun}/bin/bun test ./genie/buck2/
     '';
     execIfModified = [
       "BUCK"

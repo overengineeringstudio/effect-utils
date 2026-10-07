@@ -111,6 +111,18 @@
       "operation": "buck2:typescript:materialize-dist"
     },
     {
+      "disposition": "outside-by-policy:authoring-mutation",
+      "operation": "changelog:assemble"
+    },
+    {
+      "disposition": "outside-by-policy:change-relative-git-policy",
+      "operation": "changelog:check"
+    },
+    {
+      "disposition": "outside-by-policy:filesystem-integration",
+      "operation": "changelog:test"
+    },
+    {
       "disposition": "outside-by-policy:cross-boundary-aggregate",
       "operation": "check:all"
     },

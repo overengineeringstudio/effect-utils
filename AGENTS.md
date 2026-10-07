@@ -48,7 +48,8 @@ Git trailers. The required `pr/quality` check enforces coverage.
 See [changelog.d/README.md](changelog.d/README.md) for naming, exemptions and
 migration. Release maintainers run `devenv tasks run changelog:assemble` before
 cutting the release heading, committing the log and consumed-fragment deletions
-together. `changelog:check` validates fragments and `changelog:test` tests tooling.
+together. Run `devenv tasks run changelog:check` to validate fragments and
+`devenv tasks run changelog:test` to test the tooling.
 
 # Breaking Changes
 
