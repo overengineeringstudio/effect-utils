@@ -658,6 +658,14 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
+      - name: Enforce root changelog retirement
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          tracked="$(git ls-files -- ':(top,literal)CHANGELOG.md')"
+          if [ -n "$tracked" ]; then
+            echo '::error::Root CHANGELOG.md is retired. See AGENTS.md "Breaking Changes": record changes in commits and PRs; include ! and BREAKING CHANGE: migration notes for breaking changes.'
+            exit 1
+          fi
       - name: Verify mutation-free shell entry
         env:
           GITHUB_TOKEN: ${{ github.token }}
