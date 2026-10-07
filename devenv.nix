@@ -991,7 +991,7 @@ in
   );
 
   tasks."buck2:cache-posture:test" = {
-    description = "Exercise direct Buck cache admission, outages and trust precedence";
+    description = "Exercise direct Buck cache/watcher admission, outages, trust precedence and scoped daemon migration";
     exec = trace.exec "buck2:cache-posture:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
@@ -1003,6 +1003,7 @@ in
       "nix/buck2.nix"
       "scripts/buck2-entrypoint.*"
       "scripts/buck2-cache-posture.*"
+      "scripts/buck2-file-watcher.*"
     ];
   };
 

@@ -28,6 +28,13 @@
 
 ### Fixed
 
+- Buck watcher admission fails closed when Watchman is unavailable or selects an
+  ancestor root, rather than silently using notify's unsynchronized source-event
+  buffer. Root/service probes use a 2500 ms deadline with one timeout-only retry;
+  successful admission and warm launcher caches include watched-root configuration.
+  Legacy/provider-mismatched daemons migrate once under a per-worktree/isolation
+  lock; only the selected registered daemon is stopped before startup. Maintenance
+  commands remain available during outages.
 - The pnpm task smoke test checks the stable Effect 4.0.0 cohort override rather
   than the superseded release-candidate pin.
 - Buck capability projections and shipped rules use narrowly declared Nix
@@ -45,8 +52,7 @@
   per attempt with one immediate retry (5000 ms total per endpoint), covering
   measured Namespace TLS stalls and permitting lost-SYN recovery before selecting
   the existing warning and fallback policy. Required writers remain fail-closed
-  after both failures;
-  Watchman's 900 ms deadline is unchanged. Cache-evidence summaries retain
+  after both failures. Cache-evidence summaries retain
   per-invocation `admissionInvocations` and endpoint-wise `admissionFallbacks` /
   `admissionRetrySuccesses`, including writer refusals without native logs.
 - Buck REAPI preflight diagnostics distinguish DNS, TCP, TLS, and response phases
@@ -119,8 +125,8 @@
   This prevents daemon startup from recursively traversing ignored build outputs
   and dependency symlinks; warm commands no longer need a full-file hash crawl.
   The packaged entrypoint admits the actual service before native startup, with
-  a bounded probe and short-lived environment-scoped cache. Unavailable Watchman
-  warns and falls back to notify; explicit local providers remain authoritative.
+  a bounded probe and short-lived environment-scoped cache. Admission fails closed
+  on unavailable/misrooted Watchman; explicit local providers remain authoritative.
   Immutable Nix source products retain their service-free `fs_hash_crawler`
   override because Watchman's state initialization is forbidden in the sandbox.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
