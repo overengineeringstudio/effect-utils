@@ -180,7 +180,7 @@ reconciliation to reconciliation.
 ## Phase 7 — action-level remote execution (BUILD.BUCK-R17)
 
 **Entry conditions:** Adoption is deferred under
-[decision 0039](./.decisions/0039-namespace-first-remote-candidate-adoption-deferred.md).
+[decision 0039](../../.decisions/0039-namespace-first-remote-candidate-adoption-deferred.md).
 Second-context key instability is resolved; the 0037 distribution contract
 remains independent. Re-enter cache first:
 

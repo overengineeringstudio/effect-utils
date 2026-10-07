@@ -112,7 +112,7 @@ using each workflow's latest run attempt. Missing, failed, mismatched or
 unavailable evidence runs the heavy lanes. Publishers, empirical proofs and the
 strict trusted remote-cache proof do not depend on this skip decision.
 
-## Amendment 1
+## Amendment — Namespace Compatibility and Reader Authorization
 
 Accepted 2026-09-30 by Johannes (q2, q5, q6).
 

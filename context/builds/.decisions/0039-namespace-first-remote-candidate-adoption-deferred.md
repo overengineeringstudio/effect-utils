@@ -6,7 +6,7 @@ Accepted 2026-09-30 by Johannes (decisions q1–q7).
 
 ## Context
 
-BUCK-R17 separates remote command execution from client acquisition and Nix
+BUILD.BUCK-R17 separates remote command execution from client acquisition and Nix
 product distribution. The [Namespace experiment](../.experiments/2026-09-30-namespace-remote-execution.md)
 proves AC/CAS/TLS interoperability, real Linux typecheck/emit/test execution,
 byte-equal emit, and post-clean reuse. Named pools can hold the exact Nix
@@ -40,7 +40,7 @@ groups. A five-file proof patch is not the production adoption surface.
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | Namespace              | Proven protocol and Linux closure execution; avoids a new public scheduler/worker fleet. Adds vendor auth, provisioning, pool lifecycle, billing, and client materialization costs. Reader policy and cold latency block rollout. | First candidate on re-entry; no rollout now |
 | Self-hosted NativeLink | Owns execution policy and infrastructure. Adds scheduler/worker operations, TLS/auth, packaging, storage, and host capacity obligations. The earlier experiment could not safely acquire NativeLink and ran no actions.           | Not the first Phase 7 candidate             |
-| Defer or drop RE       | Keeps local execution and existing cache tiers; adds no remote execution machinery. Does not close BUCK-R17 or rule out a later capacity/workload case.                                                                           | Defer; do not drop the requirement          |
+| Defer or drop RE       | Keeps local execution and existing cache tiers; adds no remote execution machinery. Does not close BUILD.BUCK-R17 or rule out a later capacity/workload case.                                                                     | Defer; do not drop the requirement          |
 
 ## Decision
 
@@ -91,7 +91,7 @@ Track C does not inherit a Linux closure or a synthetic Darwin proof.
   trust set, not reuse of the experiment workspace or cluster keys as isolation.
   Exact RE pricing and traffic terms need invoice/support evidence before a
   savings claim; published macOS compute has a 10× multiplier.
-- BUCK-R17 remains a deferred implementation obligation. The experiment resolves
+- BUILD.BUCK-R17 remains a deferred implementation obligation. The experiment resolves
   feasibility for its Linux surface, not every admitted platform or action.
 
 ## Evidence
