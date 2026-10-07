@@ -129,6 +129,8 @@
       "packages/@overeng/effect-rpc-explorer-react",
       "packages/@overeng/effect-rpc-tanstack",
       "packages/@overeng/effect-rpc-tanstack/examples/basic",
+      "packages/@overeng/effect-rust",
+      "packages/@overeng/effect-rust-fixture-consumer",
       "packages/@overeng/effect-schema-form",
       "packages/@overeng/effect-schema-form-aria",
       "packages/@overeng/genie",
