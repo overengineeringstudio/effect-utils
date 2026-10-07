@@ -412,6 +412,7 @@ export const probeRemoteCacheCapabilities = async ({
         connectionEvent({ event: 'tcp-attempt', address, family })
       })
       socket.on('connect', () => {
+        if (settled === true) return
         phase = authority.startsWith('https:') === true ? 'tls' : 'response'
         connectionEvent({
           event: 'tcp-connected',
@@ -420,6 +421,7 @@ export const probeRemoteCacheCapabilities = async ({
         })
       })
       socket.on('secureConnect', () => {
+        if (settled === true) return
         phase = 'response'
         connectionEvent({
           event: 'tls-ready',
