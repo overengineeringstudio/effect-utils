@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
-import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
+import { classifyCacheAction, decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
   actionFixture,
   artifactFixture,
@@ -12,6 +12,24 @@ import { decodeManifest, evaluateWarm99 } from './buck2-cache-warm99.ts'
 const rawArtifact = (artifact = artifactFixture()): string =>
   `${[artifact.header, ...artifact.actions].map((item) => JSON.stringify(item)).join('\n')}\n`
 describe('strict action boundary', () => {
+  it('classifies kind-10 reuse as hits and only fresh kind-1/8 digest executions as candidates', () => {
+    const invocation = artifactFixture().header.invocations[0]!
+    for (const executionKind of [1, 8, 10]) {
+      for (const freshRoot of [false, true]) {
+        for (const digest of [null, 'a'.repeat(64) + ':123']) {
+          const action = actionFixture({ buildId: invocation.buildId, executionKind, digest })
+          expect(classifyCacheAction(action, { ...invocation, freshRoot })).toBe(
+            executionKind === 10
+              ? 'local-action-cache-hit'
+              : freshRoot && digest !== null
+                ? 'fresh-local-execution'
+                : 'other',
+          )
+        }
+      }
+    }
+    expect(classifyCacheAction(actionFixture({ executionKind: 1 }), undefined)).toBe('other')
+  })
   it('preserves unsupported raw enums only in explicitly incomplete artifacts', () => {
     const artifact = artifactFixture(false, [
       actionFixture({ executionKind: 99, cacheUploadResult: 99 }),
@@ -162,7 +180,7 @@ describe('warm99 identity acceptance', () => {
     for (const item of loaded) {
       const reader = artifactFixture(false, [
         actionFixture(),
-        actionFixture({ buildId: 'later', executionKind: 7 }),
+        actionFixture({ buildId: 'later', executionKind: 10, digest: null }),
       ])
       const first = reader.header.invocations[0]
       if (first === undefined) throw new Error('fixture')
@@ -189,13 +207,22 @@ describe('warm99 identity acceptance', () => {
     })
   })
   it('missing digest, metadata, nonfresh invocation, and missing reader invalidate', () => {
-    for (const mode of ['digest', 'metadata', 'fresh', 'missing', 'invocation']) {
+    for (const mode of [
+      'digest',
+      'fresh-local-digest',
+      'metadata',
+      'fresh',
+      'missing',
+      'invocation',
+    ]) {
       const manifest = manifestFixture()
       const loaded = loadedFixture(manifest)
       for (const item of loaded) {
         const artifact = item.readers[0]
         if (artifact === undefined) throw new Error('fixture')
         if (mode === 'digest') artifact.actions = [actionFixture({ digest: null })]
+        if (mode === 'fresh-local-digest')
+          artifact.actions = [actionFixture({ executionKind: 10, digest: null })]
         if (mode === 'metadata') artifact.header.metadata.runId = null
         if (mode === 'fresh') for (const inv of artifact.header.invocations) inv.freshRoot = false
         if (mode === 'invocation')
