@@ -118,8 +118,8 @@
   override because Watchman's state initialization is forbidden in the sandbox.
 - The distributed Buck rules cell includes the verdict runtime, and Vitest rules
   own hermetic execution admission through the shared rules-cell constraint.
-- Rules-product inventory tests verify shipped dependency closure and realized
-  distribution contents without duplicating the generated source file list.
+- Rules-product inventory tests verify the exact declared source list, shipped
+  dependency closure, and realized distribution contents.
 - Repository-context rejection tests no longer assume the runner's temporary
   directory is outside the repository, preserving hermetic test containment.
 - The JavaScript product-import contract task declares OpenSSL instead of relying
