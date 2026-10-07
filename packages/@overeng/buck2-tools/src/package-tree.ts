@@ -281,13 +281,10 @@ const workspacePackageRoot = (destination: string): string | undefined => {
   }
   if (first.startsWith('@') === true) {
     const name = components[2]
-    if (name === undefined || components.length < 4) {
+    if (name === undefined) {
       return invalidArguments(`workspace file must be inside a scoped package: ${destination}`)
     }
     return `${first}/${name}`
-  }
-  if (components.length < 3) {
-    return invalidArguments(`workspace file must be inside a package: ${destination}`)
   }
   return first
 }
