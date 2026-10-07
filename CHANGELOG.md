@@ -30,6 +30,8 @@
 
 - Browser and workerd delivery smokes run the shared scheduler-panic scenarios
   through the explicit `browserWorker` and `workerd` runtime constructors.
+- Cold recursive megarepo apply can materialize nested mounts in commit worktrees
+  created by that invocation, without authorizing canonical source or lock writes.
 - The pnpm task smoke test checks the stable Effect 4.0.0 cohort override rather
   than the superseded release-candidate pin.
 - Buck capability projections and shipped rules use narrowly declared Nix
