@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- The Buck rules distribution inventory regression covers the generated Effect/Rust
+  service helpers alongside the existing interop package helper.
 - Generated Effect/Rust services keep inline input and output codecs distinct and
   reject conflicting synthetic names or collisions with Rust contract definitions.
 - Effect/Rust Worker handlers own request-local scopes, releasing resources before
