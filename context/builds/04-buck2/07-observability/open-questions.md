@@ -99,8 +99,9 @@ experiments (as tested hypotheses).
   of at most 1,000, with 20-second idle gaps. OTLP/HTTP used
   `service.name=o11y-oq8-probe` (outside `st` tail sampling); all pushes
   succeeded without OTLP partial success. Trace-by-ID and TraceQL search
-  ran between bursts, with additional by-ID reads about every 200 ms
-  during the second gap. No restart or configuration change was made.
+  ran between bursts, with 27 additional by-ID reads per trace during the
+  second gap (200 ms pauses between requests). No restart or configuration
+  change was made.
 - All three repeats returned 2,013/2,013 spans before burst 2,
   4,036/4,036 before burst 3, and 6,255/6,255 at 30 seconds, 2 minutes,
   and 5 minutes after the final burst. TraceQL found none of the three
