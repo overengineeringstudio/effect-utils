@@ -18,7 +18,7 @@ case "$WATCHER" in notify|watchman|both) ;; *) echo "invalid watcher: $WATCHER" 
 BUN="${BUN_BIN:-$(command -v bun)}"
 BUCK2="${BUCK2_BIN:-$(command -v buck2)}"
 NIX="${NIX_BIN:-$(command -v nix)}"
-NIX_STORE="${NIX_STORE_BIN:-$(command -v nix-store)}"
+NIX_STORE_COMMAND="${NIX_STORE_BIN:-$(command -v nix-store)}"
 for tool in jq tar env; do command -v "$tool" >/dev/null; done
 if [ "$WATCHER" != notify ]; then command -v watchman >/dev/null; fi
 TEMP_ROOT="$(mktemp -d)"
@@ -85,7 +85,7 @@ assert_gc_root() {
   gc_root="$root/.buck2/capability-roots/$gen"
   [ -L "$gc_root" ] || fail "missing generation GC root $gen"
   [ "$(readlink "$gc_root")" = "$profile" ] || fail "generation GC root targets wrong profile"
-  "$NIX_STORE" --query --roots "$profile" >"$TEMP_ROOT/gc-roots"
+  "$NIX_STORE_COMMAND" --query --roots "$profile" >"$TEMP_ROOT/gc-roots"
   grep -Fq -- "$gc_root" "$TEMP_ROOT/gc-roots" || fail "Nix did not register indirect generation root $gen"
 }
 
@@ -211,11 +211,11 @@ CONFIG
     # A failed native lifecycle command must leave a retryable obligation,
     # even though the fully populated real root is already visible.
     migration_failure=0
-    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE" --buck2 "$fixture/missing-buck2" \
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$fixture/missing-buck2" \
       >"$fixture/failed-publication.json" 2>"$fixture/failed-publication.stderr" || migration_failure=$?
     [ "$migration_failure" -ne 0 ] && [ -f "$fixture/.buck2/capabilities.migration" ] || fail "failed migration did not preserve its lifecycle obligation"
     [ ! -L "$fixture/.buck2/capabilities" ] || fail "native stop failure occurred before the complete real root was installed"
-    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE" --buck2 "$BUCK2" >"$fixture/publication.json"
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/publication.json"
     jq -e --arg gen "$GEN_TWO" --arg primary "$fixture:$isolation" --arg alternate "$fixture:$alternate_isolation" '
       .generation == $gen and .retainedCount == 2 and
       (.migrationDaemonStops | sort) == ([$primary, $alternate] | sort)
@@ -259,7 +259,7 @@ CONFIG
     assert_materialized_input after "$GEN_TWO"
     # Subsequent real-root publications must invalidate definitions while
     # preserving this daemon; the structural lifecycle boundary is one-time.
-    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_ONE" --nix-store "$NIX_STORE" --buck2 "$BUCK2" >"$fixture/steady-publication.json"
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_ONE" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/steady-publication.json"
     jq -e --arg gen "$GEN_ONE" '.generation == $gen and .retainedCount == 2 and .pruningDeferred == true and .migrationDaemonStops == []' "$fixture/steady-publication.json" >/dev/null
     write_archive steady
     build_extract steady || { cat "$fixture/steady.stderr" >&2; fail "$watcher steady real-cell rotation failed"; }

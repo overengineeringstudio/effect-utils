@@ -5,7 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd -P)"
 BUN="${BUN_BIN:-$(command -v bun)}"
 NIX="${NIX_BIN:-$(command -v nix)}"
-NIX_STORE="${NIX_STORE_BIN:-$(command -v nix-store)}"
+NIX_STORE_COMMAND="${NIX_STORE_BIN:-$(command -v nix-store)}"
 TEMP_ROOT="$(mktemp -d)"
 TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 TEST_HOME="$TEMP_ROOT/home"
@@ -39,7 +39,7 @@ versions=(one two three four five)
 profile() { jq -er --arg version "$1" '.profiles[$version]' "$profiles_file"; }
 generation() { "$BUN" -e 'console.log(require("fs").readFileSync(process.argv[1], "utf8").match(/^GENERATION = "([0-9a-f]{64})"$/m)[1])' "$1/defs.bzl"; }
 publish() {
-  HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$1" --profile "$(profile "$2")" --nix-store "${3:-$NIX_STORE}"
+  HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$1" --profile "$(profile "$2")" --nix-store "${3:-$NIX_STORE_COMMAND}"
 }
 state_root() { printf '%s/.buck/buckd/%s\n' "$TEST_HOME" "${1#/}"; }
 assert_result() {
@@ -65,7 +65,7 @@ assert_retained() {
     gen="$(generation "$target")"
     directory="$root/.buck2/capabilities/generations/$gen"
     root_link="$root/.buck2/capability-roots/$gen"
-    "$NIX_STORE" --query --roots "$target" >"$TEMP_ROOT/gc-roots"
+    "$NIX_STORE_COMMAND" --query --roots "$target" >"$TEMP_ROOT/gc-roots"
     if [ -d "$directory" ]; then
       [ "$(readlink "$root_link")" = "$target" ] || fail "retained generation $gen lost its profile root"
       grep -Fq -- "$root_link" "$TEMP_ROOT/gc-roots" || fail "retained generation $gen is not registered with the real Nix GC"
@@ -149,7 +149,7 @@ closeSync(fd)
 native.close()
 if (result === 0) process.exit(1)
 LOCK
-export REAL_NIX_STORE="$NIX_STORE" ROOTING_READY="$TEMP_ROOT/rooting-ready" ROOTING_RELEASE="$TEMP_ROOT/rooting-release"
+export REAL_NIX_STORE="$NIX_STORE_COMMAND" ROOTING_READY="$TEMP_ROOT/rooting-ready" ROOTING_RELEASE="$TEMP_ROOT/rooting-release"
 mkfifo "$ROOTING_READY" "$ROOTING_RELEASE"
 exec 8<>"$ROOTING_READY"
 concurrent="$TEMP_ROOT/concurrent"
@@ -162,7 +162,7 @@ child_pids+=("$rooting_pid")
 "$BUN" "$TEMP_ROOT/assert-flock-held.ts" "$concurrent/.buck2/capabilities.lock" || fail "production publisher did not hold native flock across rooting"
 declare -a competing_pids=()
 for version in two three four five; do
-  HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$concurrent" --profile "$(profile "$version")" --nix-store "$NIX_STORE" >"$TEMP_ROOT/concurrent-$version.json" &
+  HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$concurrent" --profile "$(profile "$version")" --nix-store "$NIX_STORE_COMMAND" >"$TEMP_ROOT/concurrent-$version.json" &
   competing_pids+=("$!")
   child_pids+=("$!")
 done
