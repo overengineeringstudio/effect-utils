@@ -270,6 +270,9 @@ exchange, then explicitly runs `buck2 kill` for this worktree's registered
 isolation directories: the symlink-to-directory transition changes native watch
 topology and requires a fresh daemon. The publisher logs each stop; a persistent
 migration marker makes a failed or interrupted stop retryable.
+Preparation diagnostics go to stderr, preserving command stdout when callers
+capture Buck output paths. The daemon regression starts and shuts down its own
+private Watchman service; it does not depend on a host service on Linux or macOS.
 
 Retained generations have indirect Nix GC roots under `.buck2/capability-roots`.
 The publisher keeps the three most recently published generations only when

@@ -20,22 +20,33 @@ BUCK2="${BUCK2_BIN:-$(command -v buck2)}"
 NIX="${NIX_BIN:-$(command -v nix)}"
 NIX_STORE_COMMAND="${NIX_STORE_BIN:-$(command -v nix-store)}"
 for tool in jq tar env; do command -v "$tool" >/dev/null; done
-if [ "$WATCHER" != notify ]; then command -v watchman >/dev/null; fi
+WATCHMAN_COMMAND=""
+if [ "$WATCHER" != notify ]; then WATCHMAN_COMMAND="$(command -v watchman)"; fi
 TEMP_ROOT="$(mktemp -d)"
 TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 TEST_HOME="$TEMP_ROOT/home"
 mkdir -p "$TEST_HOME"
 declare -a daemon_roots=() daemon_isolations=()
+private_watchman_started=false
 cleanup() {
-  local index
+  local exit_code=$? index
   for ((index=0; index<${#daemon_roots[@]}; index++)); do
     (cd "${daemon_roots[$index]}" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "${daemon_isolations[$index]}" kill) >/dev/null 2>&1 || true
-    if command -v watchman >/dev/null; then
-      HOME="$TEST_HOME" watchman watch-del "${daemon_roots[$index]}" >/dev/null 2>&1 || true
-    fi
   done
+  if [ "$private_watchman_started" = true ]; then
+    if ! "$WATCHMAN_COMMAND" --sockname="$WATCHMAN_SOCK" --no-spawn --no-local shutdown-server \
+      >"$TEMP_ROOT/watchman-shutdown.json" 2>"$TEMP_ROOT/watchman-shutdown.stderr"; then
+      cat "$TEMP_ROOT/watchman-shutdown.stderr" >&2
+      echo "FAIL: private Watchman shutdown failed" >&2
+      exit_code=1
+    elif ! jq -e '.["shutdown-server"] == true' "$TEMP_ROOT/watchman-shutdown.json" >/dev/null; then
+      echo "FAIL: private Watchman did not acknowledge shutdown" >&2
+      exit_code=1
+    fi
+  fi
   chmod -R u+w "$TEMP_ROOT" 2>/dev/null || true
   rm -rf "$TEMP_ROOT"
+  exit "$exit_code"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -124,6 +135,23 @@ for watcher in "${watchers[@]}"; do
   ignore = buck-out
 CONFIG
   printf '{"ignore_dirs":["buck-out"]}\n' >"$fixture/.watchmanconfig"
+  if [ "$watcher" = watchman ]; then
+    # Native CLI spawning performs the readiness handshake for this private
+    # socket; it cannot use launchd/systemd or a host-owned Watchman service.
+    export WATCHMAN_SOCK="$TEMP_ROOT/w.sock"
+    private_watchman_started=true
+    "$WATCHMAN_COMMAND" --no-site-spawner --sockname="$WATCHMAN_SOCK" \
+      --statefile="$TEMP_ROOT/w.state" --logfile="$TEMP_ROOT/w.log" \
+      --pidfile="$TEMP_ROOT/w.pid" --no-local version >"$TEMP_ROOT/watchman-version.json"
+    jq -e '.version | type == "string" and length > 0' "$TEMP_ROOT/watchman-version.json" >/dev/null \
+      || fail "private Watchman did not become ready"
+    "$WATCHMAN_COMMAND" --sockname="$WATCHMAN_SOCK" --no-spawn --no-local get-pid \
+      >"$TEMP_ROOT/watchman-pid.json"
+    jq -e '.pid | type == "number" and . > 0' "$TEMP_ROOT/watchman-pid.json" >/dev/null \
+      || fail "private Watchman did not report its service PID"
+    jq -nc --arg socket "$WATCHMAN_SOCK" --slurpfile service "$TEMP_ROOT/watchman-pid.json" \
+      '{evidence:"private-watchman",socket:$socket,pid:$service[0].pid}'
+  fi
   # Start against the old deployment layout. The production scenario must
   # migrate this live cell, not merely rotate an already-real directory.
   ln -s "$PROFILE_ONE" "$fixture/.buck2/capabilities"

@@ -96,6 +96,14 @@ real directory, not a retargetable symlink. Buck's watchers receive a change to
 the actual `capabilities//defs.bzl` file, which invalidates the loaded generation
 map. Retargeting a cell-root symlink only invalidates the root path and does not
 invalidate cached descendant Starlark reads.
+Shell activation and task preparation route the publisher's structured result to
+stderr so captured command stdout contains only the requested command output.
+The standalone publisher CLI retains its JSON stdout contract.
+
+The native daemon regression provisions a private Watchman socket and state
+directory on Linux and Darwin, performs a service readiness handshake, exports
+the socket to launcher admission and native Buck, and shuts the service down on
+every exit path. Neither watcher variant depends on a host Watchman service.
 
 Publishers serialize through an operating-system file lock on
 `.buck2/capabilities.lock`. They install each complete generation before

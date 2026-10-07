@@ -383,7 +383,7 @@ let
   publishBuckCapabilities = ''
     ${pkgs.bun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
       --root "$root" --profile ${buck2Capabilities} \
-      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN"
+      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" >&2
   '';
 
   buck2BuildExec =

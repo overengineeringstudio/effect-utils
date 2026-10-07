@@ -575,6 +575,17 @@ ok({
   name: 'whole-workspace editor publisher never kills the shared Buck daemon',
 })
 
+const capabilityPublisherHelper = source.slice(
+  source.indexOf('  publishBuckCapabilities ='),
+  source.indexOf('  buck2BuildExec ='),
+)
+ok({
+  condition:
+    capabilityPublisherHelper.includes('buck2-capability-publish.ts') === true &&
+    capabilityPublisherHelper.includes('--buck2 "$BUCK2_BIN" >&2') === true,
+  name: 'capability preparation keeps shell command stdout free of publication diagnostics',
+})
+
 const buckProviderCheckSource = taskSource('buck2:providers:check')
 const buckQuickSource = taskSource('buck2:quick')
 const buckAllSource = taskSource('buck2:all')
