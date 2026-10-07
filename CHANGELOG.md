@@ -34,7 +34,6 @@
   their Nix GC roots until a daemon-free boundary permits bounded pruning.
   The one-time symlink-to-directory migration explicitly stops only this
   worktree's registered Buck isolations; steady-state changes never stop daemons.
-
 - The pnpm task smoke test checks the stable Effect 4.0.0 cohort override rather
   than the superseded release-candidate pin.
 - Buck capability projections and shipped rules use narrowly declared Nix
