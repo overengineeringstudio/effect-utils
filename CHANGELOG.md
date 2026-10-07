@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- `build-products` stays credential-free: its sandboxed Nix product builds do not
+  upload Buck actions, so they no longer receive an ineffective cache writer secret.
 - The Buck rules distribution inventory regression covers the generated Effect/Rust
   service helpers alongside the existing interop package helper.
 - Generated Effect/Rust services keep inline input and output codecs distinct and
