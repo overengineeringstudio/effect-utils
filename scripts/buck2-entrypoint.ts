@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -27,6 +28,7 @@ import {
 import {
   probeWatchman,
   reconcileFileWatcher,
+  reconcileWatcherDaemon,
   withoutManagedWatcherBlock,
 } from './buck2-file-watcher.ts'
 
@@ -70,6 +72,30 @@ const findRoot = (cwd: string): string | undefined => {
     if (parent === root) return undefined
     root = parent
   }
+}
+
+const skipsWatcherAdmission = (args: readonly string[]): boolean => {
+  if (args.some((arg) => ['--help', '-h', '--version'].includes(arg)) === true) return true
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index] ?? ''
+    if (
+      [
+        '--isolation-dir',
+        '--verbose',
+        '-v',
+        '--oncall',
+        '--client-metadata',
+        '--setting',
+        '--agent-context',
+      ].includes(arg) === true
+    ) {
+      index++
+      continue
+    }
+    if (arg.startsWith('-') === true) continue
+    return ['kill', 'status', 'log'].includes(arg)
+  }
+  return true
 }
 
 let admissionExpires = Date.now() + 5000
@@ -160,13 +186,7 @@ export const directBuckArguments = async ({
   const sentinel = args.indexOf('--')
   const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
   const command = configArgs.find((arg) => configCommands[arg] === true)
-  if (
-    configArgs.length === 0 ||
-    configArgs.includes('--help') === true ||
-    configArgs.includes('-h') === true ||
-    configArgs.includes('--version') === true
-  )
-    return [...args]
+  if (skipsWatcherAdmission(configArgs) === true) return [...args]
   const root = findRoot(cwd)
   if (root === undefined) return [...args]
   const tracked = readConfig({ path: join(root, '.buckconfig') })
@@ -174,11 +194,14 @@ export const directBuckArguments = async ({
   const currentLocal = readConfig({ path: join(root, '.buckconfig.local') })
   const localWithoutWatcher = withoutManagedWatcherBlock(currentLocal)
   const explicitWatcher = buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
-  if (trackedValues['buck2.file_watcher'] === 'watchman' && explicitWatcher === undefined) {
+  const selectedWatcher = explicitWatcher ?? trackedValues['buck2.file_watcher']
+  if (selectedWatcher === 'watchman') {
     const available = await cachedProbe({
       cacheDirectory,
       key: JSON.stringify([
-        'watchman-service',
+        'watchman-root-admission-v1',
+        realpathSync(root),
+        readOptional(join(root, '.watchmanconfig')),
         process.platform,
         env['PATH'],
         env['HOME'],
@@ -191,13 +214,14 @@ export const directBuckArguments = async ({
         env['LOGNAME'],
         env['WATCHMAN_CONFIG_FILE'],
       ]),
-      probe: () => probeWatchman({ env, deadlineMs: Math.min(deadlineMs, 900) }),
+      probe: () => probeWatchman({ env, repoRoot: root, deadlineMs }),
     })
-    reconcileFileWatcher({ repoRoot: root, provider: available === true ? 'watchman' : 'notify' })
-    if (available === false) {
-      failedOpen = true
-      process.stderr.write('warning: Buck2 Watchman service is unavailable; using notify\n')
-    }
+    // Never admit a negative cached outcome, including entries written by an older launcher.
+    if (available === false) await probeWatchman({ env, repoRoot: root, deadlineMs })
+    reconcileFileWatcher({
+      repoRoot: root,
+      provider: explicitWatcher === undefined ? 'watchman' : undefined,
+    })
   } else if (localWithoutWatcher !== currentLocal.trimEnd()) {
     reconcileFileWatcher({ repoRoot: root })
   }
@@ -413,6 +437,25 @@ if (import.meta.main === true) {
       cwd: process.cwd(),
       env: process.env,
     })
+    const sentinel = args.indexOf('--')
+    const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
+    const root = findRoot(process.cwd())
+    if (root !== undefined && skipsWatcherAdmission(configArgs) === false) {
+      const tracked = buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))
+      const local = buckConfigValues(readConfig({ path: join(root, '.buckconfig.local') }))
+      const provider = local['buck2.file_watcher'] ?? tracked['buck2.file_watcher']
+      if (
+        provider !== undefined &&
+        (provider === 'watchman' || tracked['buck2.file_watcher'] === 'watchman')
+      )
+        reconcileWatcherDaemon({
+          native,
+          repoRoot: root,
+          args: configArgs,
+          env: process.env,
+          provider,
+        })
+    }
     if (launchCache !== undefined && launchCache !== '' && failedOpen === false) {
       const candidate = `${launchCache}.${randomUUID()}`
       try {
