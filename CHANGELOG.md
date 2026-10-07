@@ -37,6 +37,14 @@
   commands remain available during outages.
   Default Watchman services can start on demand on Darwin as on Linux; explicitly
   selected sockets never spawn a replacement service.
+- Capability publication updates a stable real Buck cell, so running daemons
+  observe Nix generation changes instead of retaining stale tool paths.
+  Process-locked, generation-first publication preserves old generations and
+  their Nix GC roots until a daemon-free boundary permits bounded pruning.
+  The one-time symlink-to-directory migration explicitly stops only this
+  worktree's registered Buck isolations; steady-state changes never stop daemons.
+  Preparation diagnostics stay on stderr so captured Buck paths remain usable;
+  native watcher regressions provision their own private Watchman service.
 - Cold recursive megarepo apply can materialize nested mounts in commit worktrees
   created by that invocation, without authorizing canonical source or lock writes.
 - The pnpm task smoke test checks the stable Effect 4.0.0 cohort override rather
