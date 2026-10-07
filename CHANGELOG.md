@@ -30,6 +30,8 @@
 
 - Buck capability projections and shipped rules use narrowly declared Nix
   source filesets, preserving store identities across unrelated checkout changes.
+  Source-boundary test fixtures resolve physical temporary paths so macOS
+  symlinked temporary directories remain valid Nix source inputs.
 - The Buck rules distribution inventory regression covers the generated Effect/Rust
   service helpers alongside the existing interop package helper.
 - Generated Effect/Rust services keep inline input and output codecs distinct and

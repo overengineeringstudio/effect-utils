@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 nix_bin="${NIX_BIN:-nix}"
-fixture="$(mktemp -d)"
+fixture="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$fixture"' EXIT
 projection=packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts
 mkdir -p "$fixture/$(dirname "$projection")"
