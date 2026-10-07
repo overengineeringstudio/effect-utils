@@ -27,12 +27,19 @@ translate (genie, freshness-gated)
   -> platform constraints on optional/platform packages (select())
 
 fetch     download_file, remote-cacheable, network only here (BUILD.BUCK.MAT-R08)
-extract   tar -> package tree, remote-cacheable
+extract   tar -> package tree, local-materialization-policy (no AC reads/uploads)
 assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/<name>
           hardlinks from extract artifacts, relative symlinks for edges,
           workspace: edges as relative links, .bin entries as symlinks
-          local_only (BUILD.BUCK.MAT-T01); public node_modules output
+          local-materialization-policy (BUILD.BUCK.MAT-T01); public node_modules output
 ```
+
+Extract, store-entry, store-SCC, store-view, and package-tree rules use the
+default non-remote execution platform, not the cache-admitted platform.
+Their cheap filesystem projections are recomputed locally; declared outputs,
+incremental invalidation, and editor backing-root completeness are unchanged.
+The decision and measured transfer cost are specified by
+[the local materialization policy](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).
 
 No package manager executes inside Buck actions. pnpm is the developer-time
 resolver that writes `pnpm-lock.yaml`; the generated sha256 sidecar is derived

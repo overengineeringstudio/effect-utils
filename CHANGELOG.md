@@ -32,6 +32,11 @@
   source filesets, preserving store identities across unrelated checkout changes.
   Source-boundary test fixtures resolve physical temporary paths so macOS
   symlinked temporary directories remain valid Nix source inputs.
+- Cheap Buck dependency extraction/store assembly and package-tree projections
+  bypass remote-cache reads and uploads: rebuilding locally avoids downloading
+  hundreds of MiB for inexpensive filesystem work. Cache evidence and warm99
+  report these actions separately as `local-materialization-policy` exclusions;
+  compute and deterministic verdict actions retain remote-cache reuse.
 - `build-products` stays credential-free: its sandboxed Nix product builds do not
   upload Buck actions, so they no longer receive an ineffective cache writer secret.
 - Buck cache admission gives concurrent REAPI and archive-origin probes 2500 ms

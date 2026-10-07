@@ -6,12 +6,42 @@ export const actionsArtifactName = 'buck2-cache-actions.jsonl.gz'
 /** Hard action-payload ceiling, independent of compression ratio. Overflow is invalid evidence. */
 export const maxActionArtifactBytes = 64 * 1024 * 1024
 export type CacheLane = 'main-writer' | 'main-reader' | 'merge_group' | 'pr'
+/** Cheap local materialization deliberately bypasses remote-cache reads and writes. */
+export const localMaterializationCategories = [
+  'pnpm_extract',
+  'pnpm_store_entry',
+  'pnpm_store_view',
+  'package_tree',
+  'pnpm_store_scc',
+] as const
+export type ActionExclusionReason = 'local-materialization-policy'
+export type ActionExclusionCounts = Record<ActionExclusionReason, number>
+export const actionExclusionReason = (
+  category: string | null | undefined,
+): ActionExclusionReason | null =>
+  localMaterializationCategories.some((excluded) => excluded === category)
+    ? 'local-materialization-policy'
+    : null
+export const zeroActionExclusionCounts = (): ActionExclusionCounts => ({
+  'local-materialization-policy': 0,
+})
+export const countActionExclusions = (
+  actions: readonly { category: string | null }[],
+): ActionExclusionCounts => {
+  const counts = zeroActionExclusionCounts()
+  for (const action of actions) {
+    const reason = actionExclusionReason(action.category)
+    if (reason !== null) counts[reason]++
+  }
+  return counts
+}
 export type ActionRecord = {
   type: 'action'
   buildId: string | null
   context: string | null
   category: string | null
   target: string | null
+  exclusionReason: ActionExclusionReason | null
   configuration: string | null
   digest: string | null
   executionKind: number
@@ -33,6 +63,7 @@ export type ActionInvocation = {
   completedAt: number | null
   freshRoot: boolean
   actionCount: number
+  excludedByDesign: ActionExclusionCounts
   complete: boolean
 }
 export type ActionArtifactHeader = {
@@ -53,6 +84,7 @@ export type ActionArtifactHeader = {
   status: 'collected' | 'no-native-logs' | 'remote-cache-disabled-by-design'
   complete: boolean
   actionCount: number
+  excludedByDesign: ActionExclusionCounts
   rows: number
   missingDigestCount: number
   missingIdentityCount: number
