@@ -91,7 +91,7 @@ whether that data source is shared with the caller's integration.
 
 **Work:** for every desired related page id, perform a fresh live existence
 check and establish that it belongs to the expected relation target
- data source and that this data source is shared with the integration. Map
+data source and that this data source is shared with the integration. Map
 results into the proof's relation-availability status using the established
 shared core contract. Empty desired relations are vacuously available only if
 the core contract explicitly says so. Any missing page, mismatched parent,
