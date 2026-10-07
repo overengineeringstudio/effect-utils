@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- Tracked package archives consume the publisher's Vitest 5 cohort, including
+  compatible browser-playwright peers for `@overeng/utils-storybook`.
 - Main-push tested-tree reuse judges successful required queue checks from the
   current attempt, without waiting for optional jobs or rejecting their failures.
 - Native dependency policy CI runs its Bun tests by explicit source paths instead
