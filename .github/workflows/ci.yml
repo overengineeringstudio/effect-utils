@@ -2800,7 +2800,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')
-          tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\.nix|cache-targets\.json|cache-targets\.json\.genie\.ts|compiled\.nix|compiled-targets\.json|compiled-targets\.json\.genie\.ts|consumer-root\.nix|default\.nix|from-source-contract\.test\.sh|from-source\.nix|manifest\.json|native\.nix|native-targets\.json|native-targets\.json\.genie\.ts|pnpm-archives\.nix|private-product-tarballs\.nix|private-product-tarballs\.test\.sh|publish\.sh|source-recipes\.nix|targets\.json|targets\.json\.genie\.ts|vite-runtime-fixture\.nix)$' || true)
+          tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\.nix|cache-targets\.json|cache-targets\.json\.genie\.ts|compiled\.nix|compiled-targets\.json|compiled-targets\.json\.genie\.ts|consumer-root\.nix|default\.nix|from-source-contract\.test\.sh|from-source-cores\.test\.sh|from-source\.nix|manifest\.json|native\.nix|native-targets\.json|native-targets\.json\.genie\.ts|pnpm-archives\.nix|private-product-tarballs\.nix|private-product-tarballs\.test\.sh|publish\.sh|source-recipes\.nix|targets\.json|targets\.json\.genie\.ts|vite-runtime-fixture\.nix)$' || true)
           if [ -n "$tracked_editor$tracked_product" ]; then
             printf 'Tracked inert payload bytes are forbidden:\n%s\n%s\n' "$tracked_editor" "$tracked_product" >&2
             exit 1
@@ -2872,7 +2872,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
@@ -2881,7 +2881,6 @@ jobs:
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
-      BUCK2_CACHE_WRITE_OPTIONAL: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -2941,15 +2940,7 @@ jobs:
       - name: Build and smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
-        run: |
-          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
-            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
-            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
-            export BUCK2_CACHE_WRITE_BASIC_AUTH
-          fi
-          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
-          cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
       - name: Collect Buck2 cache evidence
         if: ${{ always() }}
         shell: bash
