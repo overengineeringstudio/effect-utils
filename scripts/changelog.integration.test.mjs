@@ -97,7 +97,7 @@ test(
     git(['remote', 'add', 'origin', root])
     git(['checkout', '-b', 'feature'])
     const eventPath = join(root, '.git/event.json')
-    const check = (baseSha = base, headSha = git(['rev-parse', 'HEAD'])) => {
+    const check = ({ baseSha = base, headSha = git(['rev-parse', 'HEAD']) } = {}) => {
       writeFileSync(
         eventPath,
         JSON.stringify({ pull_request: { base: { sha: baseSha }, head: { sha: headSha } } }),
@@ -124,7 +124,7 @@ test(
     git(['checkout', 'main'])
     writeFileSync(
       join(root, 'changelog.d/unrelated-main.fixed.md'),
-      '- Another PR already landed.\\n',
+      '- Another PR already landed.\n',
     )
     const advancedBase = commit('Another PR')
     git(['checkout', 'feature'])
@@ -139,6 +139,6 @@ test(
       'main',
     ])
     // A synthetic merge checkout contains main's fragment, which must not count.
-    throws(() => check(advancedBase, prHead), /PR must add/)
+    throws(() => check({ baseSha: advancedBase, headSha: prHead }), /PR must add/)
   },
 )

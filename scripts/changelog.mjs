@@ -4,10 +4,11 @@ import { lstatSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Keep the existing CHANGELOG.md section names and order.
+/** Existing CHANGELOG.md section names in their established order. */
 export const sections = ['Added', 'Fixed', 'Changed', 'Removed']
 const fragmentName = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.(added|fixed|changed|removed)\.md$/
 
+/** Validate a fragment filename and Markdown entry, and identify its section. */
 export const parseFragment = ({ name, content }) => {
   const match = fragmentName.exec(name)
   if (match === null) throw new Error(`Invalid fragment name: ${name}; use <slug>.<section>.md`)
@@ -19,10 +20,11 @@ export const parseFragment = ({ name, content }) => {
   return { name, section: sections.find((section) => section.toLowerCase() === match[2]), body }
 }
 
+/** Read the complete pending fragment set, rejecting non-file inputs. */
 export const readFragments = (root) =>
   readdirSync(join(root, 'changelog.d'))
     .filter((name) => name !== 'README.md')
-    .sort()
+    .toSorted()
     .map((name) => {
       const path = join(root, 'changelog.d', name)
       if (lstatSync(path).isFile() === false)
@@ -60,17 +62,19 @@ export const assembleChangelog = ({ changelog, fragments }) => {
       const blank = /^\r?\n(?:\r?\n)?/.exec(unreleased.slice(position))?.[0] ?? ''
       unreleased = `${unreleased.slice(0, position)}\n\n${entries}\n${unreleased.slice(position + blank.length)}`
     } else {
-      const following = sections.slice(sections.indexOf(section) + 1)
+      const sectionIndex = sections.indexOf(section)
       const position =
-        [...unreleased.matchAll(/^### (.+)\r?$/gm)].find((match) => following.includes(match[1]))
-          ?.index ?? unreleased.length
+        [...unreleased.matchAll(/^### (.+)\r?$/gm)].find(
+          (match) => sections.indexOf(match[1]) > sectionIndex,
+        )?.index ?? unreleased.length
       const before = unreleased.slice(0, position)
-      unreleased = `${before}${before.endsWith('\n\n') ? '' : '\n\n'}### ${section}\n\n${entries}\n\n${unreleased.slice(position)}`
+      unreleased = `${before}${before.endsWith('\n\n') === true ? '' : '\n\n'}### ${section}\n\n${entries}\n\n${unreleased.slice(position)}`
     }
   }
   return changelog.slice(0, start) + unreleased + changelog.slice(end)
 }
 
+/** Require an added fragment or an explicit no-user-facing-change commit trailer. */
 export const checkPrCoverage = ({ addedPaths, fragments, trailers }) => {
   const exemption = /^Changelog-None:[ \t]*(\S[^\r\n]*)$/im.exec(trailers)
   if (exemption !== null) return `Changelog exemption: ${exemption[1]}`
@@ -81,6 +85,7 @@ export const checkPrCoverage = ({ addedPaths, fragments, trailers }) => {
   return 'PR adds a changelog fragment'
 }
 
+/** Execute content validation, PR coverage, or release-time fragment assembly. */
 export const run = ({ command, root = process.cwd(), env = process.env }) => {
   const fragments = readFragments(root)
   const changelogPath = join(root, 'CHANGELOG.md')
@@ -93,8 +98,8 @@ export const run = ({ command, root = process.cwd(), env = process.env }) => {
     return `Assembled ${fragments.length} fragments into CHANGELOG.md; commit the changelog and fragment deletions together`
   }
   if (command !== 'check') throw new Error('Usage: bun scripts/changelog.mjs <check|assemble>')
-  const git = (args, options = {}) =>
-    execFileSync('git', args, { cwd: root, env, encoding: 'utf8', ...options })
+  const git = ({ args, input }) =>
+    execFileSync('git', args, { cwd: root, env, encoding: 'utf8', input })
   if (env.GITHUB_EVENT_NAME === 'pull_request') {
     const { pull_request: pr } = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'))
     const base = pr?.base?.sha
@@ -105,19 +110,21 @@ export const run = ({ command, root = process.cwd(), env = process.env }) => {
       throw new Error('PR event must provide base and head commit SHAs')
     // Checkout is shallow and may point at GitHub's synthetic merge, not the PR head.
     // Fetch only these histories so the diff is the PR's actual merge-base diff.
-    git(['fetch', '--no-tags', '--depth=2147483647', 'origin', base, head])
-    const addedPaths = git([
-      'diff',
-      '--name-only',
-      '-z',
-      '--no-renames',
-      '--diff-filter=A',
-      `${base}...${head}`,
-      '--',
-      'changelog.d',
-    ]).split('\0')
-    const commit = git(['show', '-s', '--format=%B', head])
-    const trailers = git(['interpret-trailers', '--parse'], { input: commit })
+    git({ args: ['fetch', '--no-tags', '--depth=2147483647', 'origin', base, head] })
+    const addedPaths = git({
+      args: [
+        'diff',
+        '--name-only',
+        '-z',
+        '--no-renames',
+        '--diff-filter=A',
+        `${base}...${head}`,
+        '--',
+        'changelog.d',
+      ],
+    }).split('\0')
+    const commit = git({ args: ['show', '-s', '--format=%B', head] })
+    const trailers = git({ args: ['interpret-trailers', '--parse'], input: commit })
     return checkPrCoverage({ addedPaths, fragments, trailers })
   }
   return `Validated ${fragments.length} changelog fragments (PR coverage runs on pull_request events)`

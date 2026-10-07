@@ -3,7 +3,7 @@ import { test } from 'node:test'
 
 import { assembleChangelog, checkPrCoverage, parseFragment } from './changelog.mjs'
 
-const fragment = (name, content = '- A change.\n') => parseFragment({ name, content })
+const fragment = (name) => parseFragment({ name, content: '- A change.\n' })
 
 const released = '## 1.0.0\n\n### Fixed\n\n- Historical entry.\n'
 const changelog = `# Changelog\n\n## Unreleased\n\n### Added\n\n- Existing addition.\n\n### Fixed\n\n- Existing fix.\n\n${released}`
@@ -13,9 +13,9 @@ test('assembles sorted fragments into existing sections and preserves history', 
     assembleChangelog({
       changelog,
       fragments: [
-        fragment('z-last.fixed.md', '- Last fix.\n  Continued detail.'),
-        fragment('new-feature.added.md', '- New addition.'),
-        fragment('a-first.fixed.md', '- First fix.'),
+        parseFragment({ name: 'z-last.fixed.md', content: '- Last fix.\n  Continued detail.' }),
+        parseFragment({ name: 'new-feature.added.md', content: '- New addition.' }),
+        parseFragment({ name: 'a-first.fixed.md', content: '- First fix.' }),
       ],
     }),
     `# Changelog\n\n## Unreleased\n\n### Added\n\n- New addition.\n- Existing addition.\n\n### Fixed\n\n- First fix.\n- Last fix.\n  Continued detail.\n- Existing fix.\n\n${released}`,
@@ -53,10 +53,10 @@ test('rejects ambiguous or unsupported changelog headings', () => {
 
 test('accepts slug names, Markdown links, multiline entries and multiple bullets', () => {
   deepStrictEqual(
-    fragment(
-      'cache-admission.fixed.md',
-      '- Fix [cache](https://example.com).\n  More detail.\n- Another fix.\n',
-    ),
+    parseFragment({
+      name: 'cache-admission.fixed.md',
+      content: '- Fix [cache](https://example.com).\n  More detail.\n- Another fix.\n',
+    }),
     {
       name: 'cache-admission.fixed.md',
       section: 'Fixed',
@@ -75,9 +75,9 @@ test('rejects invalid names, empty entries, comments-only entries and headings',
   ])
     throws(() => fragment(name), /Invalid fragment name/)
   for (const content of ['', '  \n', '<!-- - Write a change. -->', '- <!-- placeholder -->'])
-    throws(() => fragment('slug.fixed.md', content), /Empty fragment/)
+    throws(() => parseFragment({ name: 'slug.fixed.md', content }), /Empty fragment/)
   for (const content of ['Not a bullet.', '- Change.\n\n## Injected heading'])
-    throws(() => fragment('slug.fixed.md', content), /fragment/)
+    throws(() => parseFragment({ name: 'slug.fixed.md', content }), /fragment/)
 })
 
 test('requires a genuinely added valid fragment, not a README or modified fragment', () => {
