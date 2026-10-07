@@ -28,6 +28,9 @@
 
 ### Fixed
 
+- Browser and workerd delivery smokes run the shared scheduler-panic scenarios
+  through the explicit `browserWorker` and `workerd` runtime constructors.
+
 - Buck capability projections and shipped rules use narrowly declared Nix
   source filesets, preserving store identities across unrelated checkout changes.
   Source-boundary test fixtures resolve physical temporary paths so macOS

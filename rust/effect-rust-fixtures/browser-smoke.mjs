@@ -1,5 +1,7 @@
 // Serve this module and the generated wasm package with application/wasm MIME.
 // In a real browser: await runBrowserSmoke(new URL('/product/', location.href)).
+import { runWasmSchedulerSmoke } from './wasm-scheduler-smoke.js'
+
 const equal = (actual, expected, message) => {
   if (actual !== expected) throw new Error(`${message}: ${actual} !== ${expected}`)
 }
@@ -68,8 +70,9 @@ const checkDelivery = async (packageUrl, worker) => {
     equal(requests.length, 3, 'root and two fresh loaders each fetch the emitted asset')
     equal(streamed.length, 3, 'every external instance streams')
     equal(buffered, 0, 'external delivery never falls back to buffered instantiation')
+    await runWasmSchedulerSmoke({ runtime: worker ? 'browserWorker' : 'browser', load: loader.load })
     equal(new Set(requests).size, 1, 'all entries resolve one emitted wasm asset')
-    return { inlineFetches: 0, requests, streamed, buffered, sum: 42, isolatedTrap: true }
+    return { inlineFetches: 0, requests, streamed, buffered, sum: 42, isolatedTrap: true, schedulerScenarios: 5 }
   } finally {
     globalThis.fetch = nativeFetch
     WebAssembly.instantiateStreaming = nativeStreaming
