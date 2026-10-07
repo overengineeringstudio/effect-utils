@@ -106,14 +106,19 @@ The dedicated trusted remote-cache proof does not set this flag and remains
 fail-closed. This preflight fallback is not a guarantee against an outage that
 starts after a successful probe.
 
-Preflight failures emit only a fixed error class (configuration, DNS, TCP, TLS,
-transport, deadline, authentication, HTTP, gRPC, or protocol), the connection or
-response phase, elapsed milliseconds, and the configured deadline. Endpoint,
-credential, certificate, and server-provided error text never enter diagnostics.
-The single request has a 900 ms deadline including connection setup; a deadline
-does not by itself establish a cache-server outage or identify the stalled
-transport stage. A five-second endpoint-result cache can reuse a failure; its
-original probe emits the diagnostic rather than repeating it on cache hits.
+Preflight failures emit a fixed error class (configuration, DNS, TCP, TLS,
+transport, deadline, authentication, HTTP, gRPC, or protocol), the configuration,
+DNS, TCP, TLS, or response phase, elapsed milliseconds, and the configured deadline.
+Socket events record DNS-resolved candidates, TCP attempts/connections, and TLS
+readiness with monotonic elapsed time, public IP addresses, and address families.
+Private, tailnet, local, and IPv4-mapped IPv6 addresses are redacted. Endpoint
+names, credentials, certificates, and server-provided error text never enter
+diagnostics. These events observe the existing socket without replacing DNS
+resolution, address selection, or transport settings.
+The single request retains its 900 ms deadline including connection setup; a
+deadline does not by itself establish a cache-server outage. A five-second
+endpoint-result cache can reuse a failure; its original probe emits diagnostics
+rather than repeating them on cache hits.
 
 Main pushes compare their Git tree with recent protected-main merge-group heads.
 Heavy lanes skip only when every required context succeeded on that same head,

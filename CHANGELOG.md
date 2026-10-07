@@ -28,8 +28,9 @@
 
 ### Fixed
 
-- Buck REAPI preflight failures report a sanitized error category, connection or
-  response phase, elapsed time, and deadline without exposing endpoints or credentials.
+- Buck REAPI preflight diagnostics distinguish DNS, TCP, TLS, and response phases
+  with elapsed time, deadline, and socket address families. Public IPs are visible;
+  private addresses, endpoint names, and credentials remain redacted.
 - Main-push tested-tree reuse judges successful required queue checks from the
   current attempt, without waiting for optional jobs or rejecting their failures.
 - Native dependency policy CI runs its Bun tests by explicit source paths instead

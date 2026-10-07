@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { connect, type ClientHttp2Stream } from 'node:http2'
+import { BlockList, isIP } from 'node:net'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
@@ -232,7 +233,7 @@ export const probeArchiveOrigin = async ({
   }
 }
 
-/** Only fixed categories and timings may cross into public CI diagnostics. */
+/** Fixed categories, timings, and redacted socket facts are safe for public CI. */
 export type RemoteCacheProbeFailure = {
   readonly errorClass:
     | 'configuration'
@@ -245,9 +246,39 @@ export type RemoteCacheProbeFailure = {
     | 'http'
     | 'grpc'
     | 'protocol'
-  readonly phase: 'configuration' | 'connection' | 'response'
+  readonly phase: 'configuration' | 'dns' | 'tcp' | 'tls' | 'response'
   readonly elapsedMs: number
   readonly deadlineMs: number
+}
+
+/** Actual socket setup milestones with public-only addresses and monotonic timing. */
+export type RemoteCacheProbeConnectionEvent = {
+  readonly event: 'dns-resolved' | 'tcp-attempt' | 'tcp-connected' | 'tls-ready'
+  readonly elapsedMs: number
+  readonly address: string | undefined
+  readonly family: 'IPv4' | 'IPv6' | undefined
+}
+
+const privateProbeIPv4 = new BlockList()
+for (const [address, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.168.0.0', 16],
+] as const)
+  privateProbeIPv4.addSubnet(address, prefix, 'ipv4')
+const publicProbeIPv6 = new BlockList()
+publicProbeIPv6.addSubnet('2000::', 3, 'ipv6')
+
+/** Expose public IPs only; private, tailnet, local, mapped, and invalid addresses stay hidden. */
+export const publicProbeAddress = (address: string): string => {
+  const family = isIP(address)
+  if (family === 4 && privateProbeIPv4.check(address, 'ipv4') === false) return address
+  if (family === 6 && publicProbeIPv6.check(address, 'ipv6') === true) return address
+  return 'redacted'
 }
 
 const probeErrorClass = (error: unknown): RemoteCacheProbeFailure['errorClass'] => {
@@ -278,13 +309,14 @@ const probeErrorClass = (error: unknown): RemoteCacheProbeFailure['errorClass'] 
 
 /** Require a successful bounded REAPI capabilities response using the selected client identity. */
 export const probeRemoteCacheCapabilities = async ({
-  address,
+  address: cacheAddress,
   instanceName,
   tls,
   header,
   env,
   deadlineMs,
   onFailure,
+  onConnectionEvent,
 }: {
   readonly address: string | undefined
   readonly instanceName: string
@@ -293,6 +325,7 @@ export const probeRemoteCacheCapabilities = async ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly deadlineMs: number
   readonly onFailure?: (failure: RemoteCacheProbeFailure) => void
+  readonly onConnectionEvent?: (event: RemoteCacheProbeConnectionEvent) => void
 }): Promise<boolean> => {
   const started = performance.now()
   let phase: RemoteCacheProbeFailure['phase'] = 'configuration'
@@ -306,8 +339,8 @@ export const probeRemoteCacheCapabilities = async ({
     return false
   }
   try {
-    if (address === undefined) return failProbe('configuration')
-    const url = new URL(address)
+    if (cacheAddress === undefined) return failProbe('configuration')
+    const url = new URL(cacheAddress)
     if (url.protocol !== 'grpc:' && url.protocol !== 'grpcs:') return failProbe('configuration')
     const authority = `${tls === true || url.protocol === 'grpcs:' ? 'https' : 'http'}://${url.host}`
     const name = Buffer.from(instanceName)
@@ -341,10 +374,59 @@ export const probeRemoteCacheCapabilities = async ({
         .replace(/\$([A-Z_][A-Z0-9_]*)/gu, (_, key: string) => env[key] ?? '')
       headers[header.slice(0, colon).trim().toLowerCase()] = value
     }
-    phase = 'connection'
+    phase = isIP(url.hostname.replace(/^\[|\]$/gu, '')) === 0 ? 'dns' : 'tcp'
     return await new Promise<boolean>((resolveProbe) => {
       const client = connect(authority)
       let settled = false
+      const socket = client.socket
+      const connectionEvent = ({
+        event,
+        address,
+        family,
+      }: {
+        readonly event: RemoteCacheProbeConnectionEvent['event']
+        readonly address?: string
+        readonly family?: number | string
+      }) => {
+        if (settled === true) return
+        onConnectionEvent?.({
+          event,
+          elapsedMs: Math.round(performance.now() - started),
+          address: address === undefined ? undefined : publicProbeAddress(address),
+          family:
+            family === 4 || family === 'IPv4'
+              ? 'IPv4'
+              : family === 6 || family === 'IPv6'
+                ? 'IPv6'
+                : undefined,
+        })
+      }
+      // Observe the actual socket; do not pre-resolve or replace its lookup/selection policy.
+      socket.on('lookup', (error: Error | null | undefined, address: string, family: number) => {
+        if (error !== null && error !== undefined) return
+        phase = 'tcp'
+        connectionEvent({ event: 'dns-resolved', address, family })
+      })
+      socket.on('connectionAttempt', (address: string, _port: number, family: number) => {
+        phase = 'tcp'
+        connectionEvent({ event: 'tcp-attempt', address, family })
+      })
+      socket.on('connect', () => {
+        phase = authority.startsWith('https:') === true ? 'tls' : 'response'
+        connectionEvent({
+          event: 'tcp-connected',
+          address: socket.remoteAddress,
+          family: socket.remoteFamily,
+        })
+      })
+      socket.on('secureConnect', () => {
+        phase = 'response'
+        connectionEvent({
+          event: 'tls-ready',
+          address: socket.remoteAddress,
+          family: socket.remoteFamily,
+        })
+      })
       const finish = ({
         result,
         errorClass = 'protocol',

@@ -294,6 +294,10 @@ export const directBuckArguments = async ({
                 process.stderr.write(
                   `warning: Buck2 REAPI probe failed: class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}\n`,
                 ),
+              onConnectionEvent: ({ event, elapsedMs, address, family }) =>
+                process.stderr.write(
+                  `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
+                ),
             }),
         }),
     prefix === ''

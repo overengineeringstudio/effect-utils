@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type ServerHttp2Stream } from 'node:http2'
+import { createServer as createTcpServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
   probeRemoteCacheCapabilities,
+  publicProbeAddress,
+  type RemoteCacheProbeConnectionEvent,
   type RemoteCacheProbeFailure,
   reconcileStandaloneCachePosture,
   standaloneCachePostureConfig,
@@ -233,6 +236,26 @@ describe('standalone Buck cache posture', () => {
 })
 
 describe('REAPI probe diagnostics', () => {
+  it('exposes public addresses while redacting private and tailnet addresses', () => {
+    for (const address of ['8.8.8.8', '2606:4700:4700::1111'])
+      expect(publicProbeAddress(address)).toBe(address)
+    for (const address of [
+      '10.1.2.3',
+      '100.72.218.29',
+      '127.0.0.1',
+      '169.254.1.2',
+      '172.16.1.2',
+      '192.168.1.2',
+      '::1',
+      'fe80::1',
+      'fd7a:115c:a1e0::1',
+      '::ffff:100.72.218.29',
+      'private-host.example',
+      'credential-secret',
+    ])
+      expect(publicProbeAddress(address)).toBe('redacted')
+  })
+
   it('reports bounded response failures once, without server messages or credentials', async () => {
     let response: 'healthy' | 'auth' | 'http' | 'grpc' | 'protocol' | 'deadline' = 'healthy'
     const grpc = createServer()
@@ -250,7 +273,7 @@ describe('REAPI probe diagnostics', () => {
         stream.end(Buffer.from(response === 'protocol' ? [1, 0, 0, 0, 0] : [0, 0, 0, 0, 0]))
       })
     })
-    grpc.listen(0, '127.0.0.1')
+    grpc.listen(0)
     await new Promise<void>((resolve) => grpc.once('listening', resolve))
     const bound = grpc.address()
     if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
@@ -258,16 +281,23 @@ describe('REAPI probe diagnostics', () => {
       for (const scenario of ['healthy', 'auth', 'http', 'grpc', 'protocol', 'deadline'] as const) {
         response = scenario
         const failures: RemoteCacheProbeFailure[] = []
+        const connections: RemoteCacheProbeConnectionEvent[] = []
         const available = await probeRemoteCacheCapabilities({
-          address: `grpc://127.0.0.1:${bound.port}`,
+          address: `grpc://localhost:${bound.port}`,
           instanceName: 'fixture',
           tls: false,
           header: 'authorization: Basic $TEST_SECRET',
           env: { TEST_SECRET: 'credential-secret' },
           deadlineMs: scenario === 'deadline' ? 50 : 1000,
           onFailure: (failure) => failures.push(failure),
+          onConnectionEvent: (event) => connections.push(event),
         })
         expect(available).toBe(scenario === 'healthy')
+        expect(connections.some(({ event }) => event === 'dns-resolved')).toBeTrue()
+        expect(connections.some(({ event }) => event === 'tcp-connected')).toBeTrue()
+        expect(connections.every(({ address }) => address === 'redacted')).toBeTrue()
+        expect(connections.every(({ family }) => family === 'IPv4' || family === 'IPv6')).toBeTrue()
+        expect(connections.every(({ elapsedMs }) => elapsedMs >= 0)).toBeTrue()
         if (scenario === 'healthy') {
           expect(failures).toEqual([])
         } else {
@@ -288,6 +318,44 @@ describe('REAPI probe diagnostics', () => {
     }
   })
 
+  it('identifies a TLS handshake stall after TCP connected', async () => {
+    const sockets = new Set<Socket>()
+    const tcp = createTcpServer((socket) => {
+      sockets.add(socket)
+      socket.on('error', () => {})
+      socket.on('close', () => sockets.delete(socket))
+    })
+    tcp.listen(0, '127.0.0.1')
+    await new Promise<void>((resolve) => tcp.once('listening', resolve))
+    const bound = tcp.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+    try {
+      const failures: RemoteCacheProbeFailure[] = []
+      const connections: RemoteCacheProbeConnectionEvent[] = []
+      expect(
+        await probeRemoteCacheCapabilities({
+          address: `grpc://127.0.0.1:${bound.port}`,
+          instanceName: 'fixture',
+          tls: true,
+          header: undefined,
+          env: {},
+          deadlineMs: 100,
+          onFailure: (failure) => failures.push(failure),
+          onConnectionEvent: (event) => connections.push(event),
+        }),
+      ).toBeFalse()
+      expect(failures).toHaveLength(1)
+      expect(failures[0]?.errorClass).toBe('deadline')
+      expect(failures[0]?.phase).toBe('tls')
+      expect(connections.some(({ event }) => event === 'tcp-connected')).toBeTrue()
+      expect(connections.some(({ event }) => event === 'tls-ready')).toBeFalse()
+      expect(connections.every(({ address }) => address === 'redacted')).toBeTrue()
+    } finally {
+      for (const socket of sockets) socket.destroy()
+      tcp.close()
+    }
+  })
+
   it('distinguishes invalid configuration and refused connections without logging inputs', async () => {
     for (const scenario of [
       {
@@ -295,7 +363,7 @@ describe('REAPI probe diagnostics', () => {
         errorClass: 'configuration',
         phase: 'configuration',
       },
-      { address: 'grpc://127.0.0.1:1', errorClass: 'tcp', phase: 'connection' },
+      { address: 'grpc://127.0.0.1:1', errorClass: 'tcp', phase: 'tcp' },
     ] as const) {
       const failures: RemoteCacheProbeFailure[] = []
       expect(
