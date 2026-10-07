@@ -383,6 +383,7 @@ export const syncMember = <R = never>({
   createBranches = false,
   commitMode,
   onMissingRef,
+  onWorktreeCreated,
 }: {
   name: string
   sourceString: string
@@ -399,6 +400,8 @@ export const syncMember = <R = never>({
   commitMode?: boolean
   /** Callback when a ref doesn't exist. If not provided, defaults to 'error' behavior. */
   onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, never, R>
+  /** Reports only commit worktrees actually created under this invocation's worktree lock. */
+  onWorktreeCreated?: (physicalRoot: string) => void
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1078,6 +1081,9 @@ export const syncMember = <R = never>({
                 worktreePath,
                 commit: targetCommit ?? worktreeRef,
               })
+              if (isApplyMode === true && worktreeRefType === 'commit') {
+                onWorktreeCreated?.(yield* fs.realPath(worktreePath))
+              }
             } else {
               yield* Git.createWorktree({
                 repoPath: bareRepoPath,
@@ -1145,6 +1151,9 @@ export const syncMember = <R = never>({
               worktreePath: commitWorktreePath,
               commit: targetCommit!,
             })
+            if (isApplyMode === true) {
+              onWorktreeCreated?.(yield* fs.realPath(commitWorktreePath))
+            }
           }),
         )
       })
