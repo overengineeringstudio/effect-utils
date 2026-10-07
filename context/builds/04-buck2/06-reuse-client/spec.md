@@ -118,7 +118,7 @@ content shared across actions:
 | `pnpm_extract`     | 322     | 29,423       | 646,157,901  | 0.796 s                          |
 | `pnpm_store_entry` | 309     | 28,751       | 616,824,427  | 0.530 s                          |
 | `pnpm_store_scc`   | 4       | 672          | 29,333,474   | 0.070 s                          |
-| `pnpm_store_view`  | 9       | 0            | 0           | 0.022 s                          |
+| `pnpm_store_view`  | 9       | 0            | 0            | 0.022 s                          |
 | `package_tree`     | 9       | 2,910        | 12,488,324   | 0.020 s                          |
 
 The views also contain 179 symlinks. Including the seven `tsgo_emit` outputs,
@@ -280,8 +280,8 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | `posture`               | `read-only`, `writer`, or `disabled-by-design`                                                                                                 |
 | `status`                | `collected`, `no-native-logs`, or `remote-cache-disabled-by-design`                                                                            |
 | Completeness            | `complete`, `actionCount`, `rows`, `droppedActionCount`, `missingDigestCount`, `missingIdentityCount`, `missingTimestampCount`, `evidenceGaps` |
-| `invocations`           | Native `buildId`, `context`, command `startedAt`/`completedAt`, `freshRoot`, `actionCount`, `excludedByDesign`, and `complete`                  |
-| `excludedByDesign`      | Reason-keyed counts, including `local-materialization-policy`; independent of native outcome counts                                           |
+| `invocations`           | Native `buildId`, `context`, command `startedAt`/`completedAt`, `freshRoot`, `actionCount`, `excludedByDesign`, and `complete`                 |
+| `excludedByDesign`      | Reason-keyed counts, including `local-materialization-policy`; independent of native outcome counts                                            |
 
 | Action field          | Contract                                                                                                                                    |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
