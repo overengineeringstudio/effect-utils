@@ -4,7 +4,7 @@
 # Projection source: rust/content-address-service/BUCK.genie.ts
 # Projection generator: effect-utils/rust/content-address-service
 # Projection schema version: 1
-# Semantic fingerprint: sha256:5aa921211ef47ceb114ce0bb1ee780af01391ebd4a5ba117310f435f9c5d00b9
+# Semantic fingerprint: sha256:66d98487d8311003e4b70a5f6e97d3eb89e95aee201fe3bdd92990d74e4fb54a
 # Semantic inputs: rust/content-address-service/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -48,6 +48,7 @@ rust_interop_service_smoke(
     service = ":service",
     runtime = "node",
     script = ":smoke",
+    scheduler_script = "//rust/effect-rust-fixtures:wasm-scheduler-smoke",
     vectors = "//rust/content-address-contract:contract-schema",
     visibility = ["PUBLIC"],
 )
@@ -57,6 +58,7 @@ rust_interop_service_smoke(
     service = ":service",
     runtime = "bun",
     script = ":smoke",
+    scheduler_script = "//rust/effect-rust-fixtures:wasm-scheduler-smoke",
     vectors = "//rust/content-address-contract:contract-schema",
     visibility = ["PUBLIC"],
 )

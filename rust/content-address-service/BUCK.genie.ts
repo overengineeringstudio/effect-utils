@@ -68,6 +68,7 @@ export default createGenieOutput({
         '    service = ":service",',
         `    runtime = "${runtime}",`,
         '    script = ":smoke",',
+        '    scheduler_script = "//rust/effect-rust-fixtures:wasm-scheduler-smoke",',
         '    vectors = "//rust/content-address-contract:contract-schema",',
         '    visibility = ["PUBLIC"],',
         ')',
