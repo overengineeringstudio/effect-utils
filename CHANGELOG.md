@@ -28,6 +28,10 @@
 
 ### Fixed
 
+- Buck capability projections and shipped rules use narrowly declared Nix
+  source filesets, preserving store identities across unrelated checkout changes.
+  Source-boundary test fixtures resolve physical temporary paths so macOS
+  symlinked temporary directories remain valid Nix source inputs.
 - `build-products` stays credential-free: its sandboxed Nix product builds do not
   upload Buck actions, so they no longer receive an ineffective cache writer secret.
 - Buck cache admission gives concurrent REAPI and archive-origin probes 2500 ms
