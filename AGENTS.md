@@ -39,6 +39,8 @@ Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/c
 
 # Breaking Changes
 
+Agents must not create a root `CHANGELOG.md`.
+
 There is no changelog file; commits and PRs are the change record. For a breaking change:
 
 - Mark the commit/PR title with `!` (e.g. `feat(buck2)!: require cargo_env in reindeer.toml`)
