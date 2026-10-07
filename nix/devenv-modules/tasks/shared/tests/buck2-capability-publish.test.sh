@@ -127,7 +127,10 @@ for version in one two three; do
   detached_generation="$(generation "$(profile "$version")")"
   detached="$prune_crash/.buck2/capability-trash/$detached_generation.interrupted-$version"
   mv "$prune_crash/.buck2/capabilities/generations/$detached_generation" "$detached"
-  rm "$detached/$PLATFORM/archive-tool/manifest.json"
+  rm -f "$detached/$PLATFORM/archive-tool/manifest.json"
+  # Partial detached trees may contain read-only Nix metadata and directories.
+  # Do not follow the per-tool links into the immutable Nix store.
+  find "$detached" \( -type d -o -type f \) -exec chmod a-w {} +
   if [ "$version" != one ]; then
     rm "$prune_crash/.buck2/capability-roots/$detached_generation"
   fi
@@ -248,5 +251,5 @@ publish "$migration" one >"$TEMP_ROOT/corrupt.stdout" 2>"$TEMP_ROOT/corrupt.stde
 grep -Fq 'Immutable capability generation has changed contents' "$TEMP_ROOT/corrupt.stderr" || fail "generation corruption was not diagnosed"
 cmp -s "$TEMP_ROOT/defs-before-corruption" "$migration/.buck2/capabilities/defs.bzl" || fail "failed corrupt publication changed selected defs"
 
-jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,interruptedPruneRecovery:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true}'
+jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,interruptedPruneRecovery:true,readOnlyPruneRecovery:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true}'
 echo 'Buck capability publisher contracts passed.'

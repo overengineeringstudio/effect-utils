@@ -130,8 +130,9 @@ daemon-free publication; pruning never stops a daemon.
 Pruning atomically detaches a generation into `.buck2/capability-trash/` before
 recursively deleting it. The detached tree remains a retry marker until its old
 GC root and publication receipt are removed; the next publication completes
-interrupted cleanup before installing incoming generations. A partial deletion
-can never occupy a recognized `generations/<generation>` identity.
+interrupted cleanup before installing incoming generations. Cleanup restores
+owner-write permission on detached directories without following tool links.
+A partial deletion can never occupy a recognized `generations/<generation>` identity.
 
 ## Darwin Capability
 
