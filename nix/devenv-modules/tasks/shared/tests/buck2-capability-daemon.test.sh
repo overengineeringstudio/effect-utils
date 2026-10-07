@@ -28,6 +28,7 @@ TEST_HOME="$TEMP_ROOT/home"
 mkdir -p "$TEST_HOME"
 declare -a daemon_roots=() daemon_isolations=()
 private_watchman_started=false
+private_watchman_socket_dir=""
 cleanup() {
   local exit_code=$? index
   for ((index=0; index<${#daemon_roots[@]}; index++)); do
@@ -44,6 +45,7 @@ cleanup() {
       exit_code=1
     fi
   fi
+  if [ -n "$private_watchman_socket_dir" ]; then rm -rf "$private_watchman_socket_dir"; fi
   chmod -R u+w "$TEMP_ROOT" 2>/dev/null || true
   rm -rf "$TEMP_ROOT"
   exit "$exit_code"
@@ -138,7 +140,11 @@ CONFIG
   if [ "$watcher" = watchman ]; then
     # Native CLI spawning performs the readiness handshake for this private
     # socket; it cannot use launchd/systemd or a host-owned Watchman service.
-    export WATCHMAN_SOCK="$TEMP_ROOT/w.sock"
+    # Darwin Unix sockets have a 104-byte sun_path; inherited TMPDIR is unbounded.
+    private_watchman_socket_dir="$(mktemp -d /tmp/bw.XXXXXX)"
+    chmod 0700 "$private_watchman_socket_dir"
+    export WATCHMAN_SOCK="$private_watchman_socket_dir/w.sock"
+    [ "${#WATCHMAN_SOCK}" -lt 100 ] || fail "private Watchman socket path must be shorter than 100 bytes for Darwin: $WATCHMAN_SOCK"
     private_watchman_started=true
     "$WATCHMAN_COMMAND" --no-site-spawner --sockname="$WATCHMAN_SOCK" \
       --statefile="$TEMP_ROOT/w.state" --logfile="$TEMP_ROOT/w.log" \

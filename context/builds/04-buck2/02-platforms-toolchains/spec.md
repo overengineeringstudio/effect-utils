@@ -104,6 +104,9 @@ The native daemon regression provisions a private Watchman socket and state
 directory on Linux and Darwin, performs a service readiness handshake, exports
 the socket to launcher admission and native Buck, and shuts the service down on
 every exit path. Neither watcher variant depends on a host Watchman service.
+Its socket lives in a separate mode-0700 `/tmp/bw.XXXXXX` directory and is
+required to remain shorter than 100 bytes, independent of inherited `TMPDIR`,
+so Darwin's 104-byte Unix socket path limit is respected.
 
 Publishers serialize through an operating-system file lock on
 `.buck2/capabilities.lock`. They install each complete generation before
