@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- Tracked package archives consume the publisher's Vitest 5 cohort, including
+  compatible browser-playwright peers for `@overeng/utils-storybook`.
 - Cache evidence preserves finalized job timestamps on failure, grants freshness
   to the first action-bearing invocation rather than preceding audits, and
   retains nondigest local-action-cache reuse as excluded nonfresh evidence.
