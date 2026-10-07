@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
-import type { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { describe, expect, test } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -59,6 +59,108 @@ describe('abbreviateStorePath', () => {
 })
 
 describe('canonical mutation write boundaries', () => {
+  test('fresh commit materialization permits only its exact root and repos directory', async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const temp = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+        const canonical = `${temp}/store/example.com/org/repo/refs/commits/${'a'.repeat(40)}`
+        yield* fs.makeDirectory(canonical, { recursive: true })
+        const deny = (target: string, materializedRoot = canonical) =>
+          Effect.gen(function* () {
+            const error = yield* assertCanonicalMutationAllowed({
+              target,
+              materializedRoot,
+            }).pipe(Effect.flip)
+            expect(error.reason._tag).toBe('PermissionDenied')
+          })
+        yield* assertCanonicalMutationAllowed({ target: canonical, materializedRoot: canonical })
+        yield* assertCanonicalMutationAllowed({
+          target: `${canonical}/repos`,
+          materializedRoot: canonical,
+        })
+        for (const target of [
+          `${canonical}/megarepo.json`,
+          `${canonical}/megarepo.lock`,
+          `${canonical}/flake.lock`,
+          `${canonical}/schema/megarepo.schema.json`,
+          `${canonical}/repos/child`,
+        ]) {
+          yield* deny(target)
+          expect(yield* fs.exists(target)).toBe(false)
+        }
+        const sibling = `${canonical}-sibling`
+        yield* fs.makeDirectory(sibling)
+        yield* deny(sibling)
+        yield* deny(`${sibling}/repos`)
+        expect(yield* fs.readDirectory(sibling)).toEqual([])
+        for (const refType of ['heads', 'tags']) {
+          const otherRoot = `${temp}/store/example.com/org/repo/refs/${refType}/main`
+          yield* fs.makeDirectory(otherRoot, { recursive: true })
+          yield* deny(otherRoot, otherRoot)
+          yield* deny(`${otherRoot}/repos`, otherRoot)
+          expect(yield* fs.exists(`${otherRoot}/repos`)).toBe(false)
+        }
+        const preexistingError = yield* assertCanonicalMutationAllowed({
+          target: canonical,
+        }).pipe(Effect.flip)
+        expect(preexistingError.reason._tag).toBe('PermissionDenied')
+        expect(yield* fs.readDirectory(canonical)).toEqual([])
+        const lockError = yield* writeLockFile({
+          lockPath: EffectPath.unsafe.absoluteFile(`${canonical}/megarepo.lock`),
+          lockFile: createEmptyLockFile(),
+        }).pipe(Effect.flip)
+        expect(lockError.reason._tag).toBe('PermissionDenied')
+        const generatorError = yield* generateSchema({
+          megarepoRoot: EffectPath.unsafe.absoluteDir(`${canonical}/`),
+          config: new MegarepoConfig({ members: {} }),
+        }).pipe(Effect.flip)
+        expect(generatorError.reason._tag).toBe('PermissionDenied')
+        expect(yield* fs.readDirectory(canonical)).toEqual([])
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  })
+
+  test('fresh commit materialization denies retargeted root and repos aliases without mutation', async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const temp = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+        const canonical = `${temp}/store/example.com/org/repo/refs/commits/${'a'.repeat(40)}`
+        const owned = `${temp}/owned`
+        const otherCanonical = `${temp}/store/example.com/org/other/refs/commits/${'b'.repeat(40)}`
+        for (const directory of [canonical, owned, otherCanonical]) {
+          yield* fs.makeDirectory(directory, { recursive: true })
+        }
+        const deny = (target: string) =>
+          Effect.gen(function* () {
+            const error = yield* assertCanonicalMutationAllowed({
+              target,
+              materializedRoot: canonical,
+            }).pipe(Effect.flip)
+            expect(error.reason._tag).toBe('PermissionDenied')
+          })
+        for (const destination of [canonical, owned, otherCanonical, `${owned}/missing`]) {
+          yield* fs.symlink(destination, `${canonical}/repos`)
+          yield* deny(`${canonical}/repos`)
+          yield* fs.remove(`${canonical}/repos`)
+        }
+        expect(yield* fs.exists(`${owned}/missing`)).toBe(false)
+        yield* fs.rename(canonical, `${canonical}-original`)
+        yield* fs.symlink(owned, canonical)
+        yield* deny(canonical)
+        yield* deny(`${canonical}/repos`)
+        yield* fs.remove(canonical)
+        yield* fs.symlink(otherCanonical, canonical)
+        yield* deny(canonical)
+        yield* deny(`${canonical}/repos`)
+        expect(yield* fs.readDirectory(`${canonical}-original`)).toEqual([])
+        expect(yield* fs.readDirectory(owned)).toEqual([])
+        expect(yield* fs.readDirectory(otherCanonical)).toEqual([])
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  })
+
   test('materialization permission cannot escape through self or dangling repos aliases', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'mr-materialize-guard-'))
     try {
@@ -101,7 +203,7 @@ describe('canonical mutation write boundaries', () => {
       const owned = path.join(root, 'owned')
       await mkdir(owned)
       const lockFile = createEmptyLockFile()
-      const run = <TA, TE>(effect: Effect.Effect<TA, TE, FileSystem>) =>
+      const run = <TA, TE>(effect: Effect.Effect<TA, TE, FileSystem.FileSystem>) =>
         Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)))
       await expect(
         run(

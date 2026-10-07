@@ -8,9 +8,12 @@ import { systemError, type PlatformError } from 'effect/PlatformError'
 export const assertCanonicalMutationAllowed = ({
   target,
   materializationRoot,
+  materializedRoot,
 }: {
   target: string
   materializationRoot?: string
+  /** Physical identity of a commit worktree freshly created by this apply invocation. */
+  materializedRoot?: string
 }): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return
@@ -51,10 +54,27 @@ export const assertCanonicalMutationAllowed = ({
         existingPath = parent
       }
     }
-    if (/\/refs\/(?:commits|heads|tags)\/.+/.test(resolvedPath) === true) {
-      // The invoking branch workspace owns its repos mount directory. This permission is
-      // only passed by top-level apply, never by lock writers, generators, or nested apply.
-      if (materializationRoot !== undefined) {
+    if (
+      materializedRoot !== undefined ||
+      /\/refs\/(?:commits|heads|tags)\/.+/.test(resolvedPath) === true
+    ) {
+      if (materializedRoot !== undefined) {
+        const root = path.resolve(materializedRoot)
+        const workspacePath = path.resolve(materializationRoot ?? materializedRoot)
+        const targetPath = path.resolve(target)
+        const destination = path.join(resolvedPath, missingPath)
+        if (
+          /\/refs\/commits\/[^/]+$/.test(root) === true &&
+          ((targetPath === workspacePath && destination === root) ||
+            (targetPath === path.join(workspacePath, 'repos') &&
+              destination === path.join(root, 'repos')))
+        ) {
+          return
+        }
+      }
+      // Only top-level apply owns an invoking branch workspace's mount directory.
+      // Fresh recursive materialization never authorizes authoring outputs.
+      if (materializationRoot !== undefined && materializedRoot === undefined) {
         const root = yield* fs.realPath(materializationRoot)
         const destination = path.join(resolvedPath, missingPath)
         const targetPath = path.resolve(target)
