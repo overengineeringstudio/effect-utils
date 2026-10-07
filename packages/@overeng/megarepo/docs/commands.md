@@ -49,8 +49,12 @@ Lock sync refuses shared canonical worktrees under `refs/commits/*`, `refs/heads
 and `refs/tags/*`, including symlinked targets, before rewriting any member.
 Top-level apply may materialize `repos/` in its invoking canonical branch workspace
 under `refs/heads/*`; it does not switch that workspace's ref or rewrite its locks.
-The permission does not extend to another canonical workspace through a `repos/`
-alias, immutable tag/commit workspaces, or recursive member apply.
+With `--all --lock-sync=off`, recursive apply may also materialize `repos/` in
+commit worktrees freshly created by the same invocation under the worktree lock.
+That permission covers only the recorded physical root and its mount directory:
+pre-existing canonical roots, escaped symlink destinations, and authoring outputs
+remain protected. It is not retained across invocations or granted to tag/branch
+members. Config, lock, and generator writers never receive this permission.
 Use `--lock-sync=off` to materialize members without changing their lockfiles, or
 sync locks in an owned worktree outside the canonical store layout. Config, lock,
 generator, member lock sync, and branch advancement writes retain canonical protection.
