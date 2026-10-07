@@ -236,8 +236,7 @@ makePnpmStoreProjection({
   metadata,
   sidecar,
   workspaceTreeTargets: {
-    '.devenv/pnpm-source-inputs/current/repos/sdk/client':
-      'pnpm_sources//:sdk_client_package_tree',
+    '.devenv/pnpm-source-inputs/current/repos/sdk/client': 'pnpm_sources//:sdk_client_package_tree',
   },
 })
 ```
@@ -282,23 +281,40 @@ publication restores the bound. This protects even idle daemons with cached old
 generation references. See the [capability publication contract](context/builds/04-buck2/02-platforms-toolchains/spec.md#capability-publication).
 
 Tracked `[buck2] file_watcher = watchman` also opts into watcher admission, even
-without remote-cache configuration. The packaged entrypoint queries the actual
-Watchman service with a 900 ms deadline before native daemon startup; service
-results are cached for at most five seconds and scoped to PATH, HOME and socket
-environment identity. Darwin queries use `--no-spawn`, preserving the managed
-service lifecycle. A healthy service selects Watchman in a separately managed
-`.buckconfig.local` block. An unavailable service emits a warning on each launch
-and selects Buck's original `notify` provider without caching that launch.
-This fallback preserves availability, not Watchman's output-tree pruning:
-populated worktrees can still encounter the original notify startup stall.
+without remote-cache configuration. The packaged entrypoint admits the actual
+Watchman service and canonical watched root with `watchman --no-local
+watch-project <root>` before native daemon startup. An attempt has a 2500 ms
+deadline and one retry for a timeout only. Successful root admission is cached
+for at most five seconds, scoped to the root, `.watchmanconfig`, PATH, HOME and
+socket environment identity. Default-service queries allow Watchman to spawn
+on demand on Linux and Darwin, including job-local CI runners. An explicit
+`WATCHMAN_SOCK` uses `--no-spawn` on every platform: admission must reach that
+owned service, not create a replacement. Missing, unhealthy or incorrectly
+rooted Watchman fails with the probe command and remediation; it never selects notify as an
+outage fallback. For an ancestor-root mismatch, run `watchman watch <root>` and
+rerun the displayed probe. Enter `devenv shell` if Watchman is missing from PATH.
 
 Explicit unmanaged local watcher choices take precedence and remove stale
 managed watcher settings without disturbing the independent cache overlay.
 In particular, immutable Nix source products select `fs_hash_crawler`: they have
 no interactive edit loop, and Watchman's state-directory initialization is not
 permitted in the Nix sandbox. Mutable worktrees retain Watchman to avoid hashing
-the source tree on each command. After changing providers, stop only your own
-daemon with `buck2 --isolation-dir <your-isolation> kill` in that project.
+the source tree on each command. Watchman-configured worktrees automatically
+transition the selected daemon isolation after successful admission: a missing
+provider marker or a changed provider stops only that worktree's registered
+daemon with the native `--isolation-dir <selected> kill` command before startup.
+The per-root/isolation marker and crash-released lock live outside Buck's
+daemon directory in `~/.buck/file-watcher-admission-v1/`; native startup cleans
+the daemon directory, not these markers. Matching markers prevent repeated stops,
+and other worktrees and isolations are never stopped. Failed stops prevent
+startup and do not record successful migration. Maintenance `kill`, `status`,
+and `log` commands bypass Watchman admission so diagnosis and shutdown remain
+available during an outage.
+The existing explicit local `[buck2] file_watcher = notify` choice is retained
+for deliberate non-agent use, but is unsafe for agent builds: completed source
+writes can race notify's unsynchronized callback buffer and produce stale
+copied inputs. Agent workflows require a healthy, correctly rooted Watchman
+service instead. No new notify opt-in environment variable is introduced.
 Watchman output exclusions are defined by `.watchmanconfig`; Buck's separate
 `[project] ignore` settings alone do not prune notify's initial registrations.
 
