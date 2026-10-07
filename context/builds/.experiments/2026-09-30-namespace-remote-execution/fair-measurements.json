@@ -1,0 +1,732 @@
+{
+  "provenance": {
+    "recorded_date": "2026-09-30",
+    "revision": "3ab9d858ad171fd4cbaebcb58bff35f927e53bc2",
+    "metrics_source": "FairConcurrencyBench.metrics.json",
+    "wall_and_action_source": "FairConcurrencyBench.md matrix; retained driver times.tsv and native summaries",
+    "archive_sha256": "95a81c06136c3c2a843a95b9d162d4200439d5598322826f781305ae7e578716",
+    "archive_bytes": 15670642,
+    "scope": "Sanitized aggregate inputs, not raw logs; no rerun. Absolute times, instance identities, endpoints and credentials omitted."
+  },
+  "rows": {
+    "L-cold-1": {
+      "wall_s": 34.668,
+      "actions": {
+        "local": 1276,
+        "remote": 0,
+        "cached": 0
+      },
+      "peak_spans": {
+        "Prepare/": 4,
+        "Local/AcquireLocalResource": 3,
+        "Local/Queued": 559,
+        "Local/MaterializeInputs": 8,
+        "Local/PrepareOutputs": 8,
+        "Local/Execute": 8
+      },
+      "materialization": {
+        "files": 10281,
+        "bytes": 312195523
+      },
+      "uploaded_blob_bytes": 0,
+      "download_bytes": {
+        "re_download_bytes": 0,
+        "http_download_bytes": 226619124
+      },
+      "stage_sum_s": {
+        "Prepare/": 0.022347211837768555,
+        "Local/AcquireLocalResource": 0.0012578964233398438,
+        "Local/Queued": 1557.7822489738464,
+        "Local/MaterializeInputs": 19.094529628753662,
+        "Local/PrepareOutputs": 2.185530424118042,
+        "Local/Execute": 174.85107731819153
+      },
+      "categories": {
+        "format_check": {
+          "count": 1,
+          "execution_sum_s": 4.065505,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 4.065505
+        },
+        "lint_check": {
+          "count": 1,
+          "execution_sum_s": 4.147154,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 4.147154
+        },
+        "package_bin_artifact": {
+          "count": 1,
+          "execution_sum_s": 2.860535,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 2.860535
+        },
+        "package_tree": {
+          "count": 43,
+          "execution_sum_s": 2.075995,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 2.075995
+        },
+        "package_tree_product_executable": {
+          "count": 1,
+          "execution_sum_s": 0.020933,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.020933
+        },
+        "package_tree_product_support": {
+          "count": 1,
+          "execution_sum_s": 0.023298,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.023298
+        },
+        "pnpm_extract": {
+          "count": 561,
+          "execution_sum_s": 5.790207,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 5.790207
+        },
+        "pnpm_store_entry": {
+          "count": 547,
+          "execution_sum_s": 15.176531,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 15.176531
+        },
+        "pnpm_store_scc": {
+          "count": 5,
+          "execution_sum_s": 0.354801,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.354801
+        },
+        "pnpm_store_view": {
+          "count": 43,
+          "execution_sum_s": 2.00547,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 2.00547
+        },
+        "repository_policy_check": {
+          "count": 1,
+          "execution_sum_s": 0.065782,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.065782
+        },
+        "repository_validation": {
+          "count": 4,
+          "execution_sum_s": 1.746357,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 1.746357
+        },
+        "repository_validation_server": {
+          "count": 1,
+          "execution_sum_s": 0.06564,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.06564
+        },
+        "tsgo_emit": {
+          "count": 20,
+          "execution_sum_s": 43.932674999999996,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 43.932674999999996
+        },
+        "tsgo_typecheck": {
+          "count": 44,
+          "execution_sum_s": 92.362221,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 92.362221
+        },
+        "weaver_check": {
+          "count": 1,
+          "execution_sum_s": 0.130922,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.130922
+        },
+        "weaver_version_smoke": {
+          "count": 1,
+          "execution_sum_s": 0.020135,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.020135
+        }
+      }
+    },
+    "L-cold-2": {
+      "wall_s": 36.053,
+      "actions": {
+        "local": 1276,
+        "remote": 0,
+        "cached": 0
+      },
+      "peak_spans": {
+        "Prepare/": 3,
+        "Local/AcquireLocalResource": 2,
+        "Local/Queued": 559,
+        "Local/MaterializeInputs": 8,
+        "Local/PrepareOutputs": 8,
+        "Local/Execute": 8
+      },
+      "materialization": {
+        "files": 10281,
+        "bytes": 312195523
+      },
+      "uploaded_blob_bytes": 0,
+      "download_bytes": {
+        "re_download_bytes": 0,
+        "http_download_bytes": 226619124
+      },
+      "stage_sum_s": {
+        "Prepare/": 0.02734375,
+        "Local/AcquireLocalResource": 0.0013759136199951172,
+        "Local/Queued": 1726.2673094272614,
+        "Local/MaterializeInputs": 23.219591856002808,
+        "Local/PrepareOutputs": 2.2335004806518555,
+        "Local/Execute": 173.98094511032104
+      },
+      "categories": {
+        "format_check": {
+          "count": 1,
+          "execution_sum_s": 3.792461,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 3.792461
+        },
+        "lint_check": {
+          "count": 1,
+          "execution_sum_s": 3.74598,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 3.74598
+        },
+        "package_bin_artifact": {
+          "count": 1,
+          "execution_sum_s": 2.615604,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 2.615604
+        },
+        "package_tree": {
+          "count": 43,
+          "execution_sum_s": 1.766051,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 1.766051
+        },
+        "package_tree_product_executable": {
+          "count": 1,
+          "execution_sum_s": 0.020936,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.020936
+        },
+        "package_tree_product_support": {
+          "count": 1,
+          "execution_sum_s": 0.022209,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.022209
+        },
+        "pnpm_extract": {
+          "count": 561,
+          "execution_sum_s": 5.551442,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 5.551442
+        },
+        "pnpm_store_entry": {
+          "count": 547,
+          "execution_sum_s": 17.288185,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 17.288185
+        },
+        "pnpm_store_scc": {
+          "count": 5,
+          "execution_sum_s": 0.420296,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.420296
+        },
+        "pnpm_store_view": {
+          "count": 43,
+          "execution_sum_s": 1.71302,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 1.71302
+        },
+        "repository_policy_check": {
+          "count": 1,
+          "execution_sum_s": 0.046224,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.046224
+        },
+        "repository_validation": {
+          "count": 4,
+          "execution_sum_s": 1.757454,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 1.757454
+        },
+        "repository_validation_server": {
+          "count": 1,
+          "execution_sum_s": 0.068039,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.068039
+        },
+        "tsgo_emit": {
+          "count": 20,
+          "execution_sum_s": 43.178655,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 43.178655
+        },
+        "tsgo_typecheck": {
+          "count": 44,
+          "execution_sum_s": 91.883922,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 91.883922
+        },
+        "weaver_check": {
+          "count": 1,
+          "execution_sum_s": 0.087631,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.087631
+        },
+        "weaver_version_smoke": {
+          "count": 1,
+          "execution_sum_s": 0.014423,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.014423
+        }
+      }
+    },
+    "R-cold": {
+      "wall_s": 235.276,
+      "actions": {
+        "local": 13,
+        "remote": 1263,
+        "cached": 0
+      },
+      "peak_spans": {
+        "Prepare/": 6,
+        "CacheQuery/": 567,
+        "Local/AcquireLocalResource": 1,
+        "Local/Queued": 1,
+        "Local/MaterializeInputs": 3,
+        "Local/PrepareOutputs": 3,
+        "Local/Execute": 3,
+        "Re/Queue": 32,
+        "Re/Execute": 16,
+        "Re/Download": 7,
+        "remote_server_execution": 6
+      },
+      "materialization": {
+        "files": 69786,
+        "bytes": 1000603375
+      },
+      "uploaded_blob_bytes": 21059062,
+      "download_bytes": {
+        "re_download_bytes": 700238932,
+        "http_download_bytes": 0
+      },
+      "stage_sum_s": {
+        "Prepare/": 0.048583269119262695,
+        "CacheQuery/": 205.55313658714294,
+        "Local/AcquireLocalResource": 2.574920654296875e-5,
+        "Local/Queued": 5.364418029785156e-5,
+        "Local/MaterializeInputs": 33.60058927536011,
+        "Local/PrepareOutputs": 0.17660284042358398,
+        "Local/Execute": 8.930961847305298,
+        "Re/Queue": 1994.4308321475983,
+        "Re/Execute": 1132.0974378585815,
+        "Re/Download": 94.07328033447266
+      },
+      "remote": {
+        "count": 1263,
+        "execution_sum_s": 95.12282,
+        "queue_sum_s": 1994.419964,
+        "queue_median_s": 0.896032,
+        "queue_p95_s": 3.097896,
+        "wall_median_s": 23.522591,
+        "wall_sum_s": 29516.320448,
+        "exec_median_s": 0.01179
+      },
+      "categories": {
+        "format_check": {
+          "count": 1,
+          "execution_sum_s": 3.13214,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 3.13214
+        },
+        "lint_check": {
+          "count": 1,
+          "execution_sum_s": 3.289283,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 3.289283
+        },
+        "package_bin_artifact": {
+          "count": 1,
+          "execution_sum_s": 1.111467,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 1.111467
+        },
+        "package_tree": {
+          "count": 43,
+          "execution_sum_s": 1.6731,
+          "queue_sum_s": 1.9315620000000002,
+          "wall_sum_s": 141.338104
+        },
+        "package_tree_product_executable": {
+          "count": 1,
+          "execution_sum_s": 0.017096,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.017096
+        },
+        "package_tree_product_support": {
+          "count": 1,
+          "execution_sum_s": 0.01889,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.01889
+        },
+        "pnpm_extract": {
+          "count": 561,
+          "execution_sum_s": 5.818029,
+          "queue_sum_s": 1519.524732,
+          "wall_sum_s": 22804.79709
+        },
+        "pnpm_store_entry": {
+          "count": 547,
+          "execution_sum_s": 11.35307,
+          "queue_sum_s": 469.778868,
+          "wall_sum_s": 6136.899856
+        },
+        "pnpm_store_scc": {
+          "count": 5,
+          "execution_sum_s": 0.24168,
+          "queue_sum_s": 1.382505,
+          "wall_sum_s": 16.174726
+        },
+        "pnpm_store_view": {
+          "count": 43,
+          "execution_sum_s": 0.835975,
+          "queue_sum_s": 1.603222,
+          "wall_sum_s": 203.097053
+        },
+        "repository_policy_check": {
+          "count": 1,
+          "execution_sum_s": 0.056856,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.056856
+        },
+        "repository_validation": {
+          "count": 4,
+          "execution_sum_s": 1.142858,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 1.142858
+        },
+        "repository_validation_server": {
+          "count": 1,
+          "execution_sum_s": 0.036196,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.036196
+        },
+        "tsgo_emit": {
+          "count": 20,
+          "execution_sum_s": 27.709233,
+          "queue_sum_s": 0.03064,
+          "wall_sum_s": 73.007522
+        },
+        "tsgo_typecheck": {
+          "count": 44,
+          "execution_sum_s": 47.491732999999996,
+          "queue_sum_s": 0.168435,
+          "wall_sum_s": 141.006097
+        },
+        "weaver_check": {
+          "count": 1,
+          "execution_sum_s": 0.106231,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.106231
+        },
+        "weaver_version_smoke": {
+          "count": 1,
+          "execution_sum_s": 0.01985,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.01985
+        }
+      }
+    },
+    "R-clean": {
+      "wall_s": 5.105,
+      "actions": {
+        "local": 0,
+        "remote": 0,
+        "cached": 1276
+      },
+      "peak_spans": {
+        "Prepare/": 7,
+        "CacheQuery/": 567,
+        "CacheHit/": 245
+      },
+      "materialization": {
+        "files": 60,
+        "bytes": 4832
+      },
+      "uploaded_blob_bytes": 0,
+      "download_bytes": {
+        "re_download_bytes": 13363001,
+        "http_download_bytes": 0
+      },
+      "stage_sum_s": {
+        "Prepare/": 0.05230450630187988,
+        "CacheQuery/": 134.81908988952637,
+        "CacheHit/": 59.50135827064514
+      },
+      "remote": {
+        "count": 0,
+        "note": "Cache-hit metadata contains historical execution timestamps; excluded from fresh execution statistics."
+      },
+      "categories": {
+        "format_check": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 0.000206
+        },
+        "lint_check": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 7.2e-5
+        },
+        "package_bin_artifact": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 6.6e-5
+        },
+        "package_tree": {
+          "count": 43,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 3.039219
+        },
+        "package_tree_product_executable": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 5.8e-5
+        },
+        "package_tree_product_support": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 0.082152
+        },
+        "pnpm_extract": {
+          "count": 561,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 30.325569
+        },
+        "pnpm_store_entry": {
+          "count": 547,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 21.846869
+        },
+        "pnpm_store_scc": {
+          "count": 5,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 0.247717
+        },
+        "pnpm_store_view": {
+          "count": 43,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 2.686269
+        },
+        "repository_policy_check": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 3.6e-5
+        },
+        "repository_validation": {
+          "count": 4,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 0.00020800000000000001
+        },
+        "repository_validation_server": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 0.084225
+        },
+        "tsgo_emit": {
+          "count": 20,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 1.204758
+        },
+        "tsgo_typecheck": {
+          "count": 44,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 0.003989
+        },
+        "weaver_check": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 6.4e-5
+        },
+        "weaver_version_smoke": {
+          "count": 1,
+          "execution_sum_s": 0,
+          "queue_sum_s": 0,
+          "wall_sum_s": 7.5e-5
+        }
+      }
+    },
+    "R-warm-workers": {
+      "wall_s": 130.68,
+      "actions": {
+        "local": 13,
+        "remote": 1263,
+        "cached": 0
+      },
+      "peak_spans": {
+        "Prepare/": 5,
+        "Local/AcquireLocalResource": 1,
+        "Local/Queued": 1,
+        "Local/MaterializeInputs": 3,
+        "Local/PrepareOutputs": 3,
+        "Local/Execute": 4,
+        "Re/Queue": 16,
+        "Re/Execute": 20,
+        "Re/Download": 13,
+        "remote_server_execution": 9
+      },
+      "materialization": {
+        "files": 69786,
+        "bytes": 1000603375
+      },
+      "uploaded_blob_bytes": 0,
+      "download_bytes": {
+        "re_download_bytes": 699203001,
+        "http_download_bytes": 0
+      },
+      "stage_sum_s": {
+        "Prepare/": 0.05315828323364258,
+        "Local/AcquireLocalResource": 3.0517578125e-5,
+        "Local/Queued": 2.1696090698242188e-5,
+        "Local/MaterializeInputs": 29.11040472984314,
+        "Local/PrepareOutputs": 0.408536434173584,
+        "Local/Execute": 8.056250810623169,
+        "Re/Queue": 301.03216576576233,
+        "Re/Execute": 987.500871181488,
+        "Re/Download": 87.60040187835693
+      },
+      "remote": {
+        "count": 1263,
+        "execution_sum_s": 87.836058,
+        "queue_sum_s": 301.018299,
+        "queue_median_s": 0.228974,
+        "queue_p95_s": 0.585822,
+        "wall_median_s": 3.946266,
+        "wall_sum_s": 6583.883113,
+        "exec_median_s": 0.011221
+      },
+      "categories": {
+        "format_check": {
+          "count": 1,
+          "execution_sum_s": 2.906786,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 2.906786
+        },
+        "lint_check": {
+          "count": 1,
+          "execution_sum_s": 2.778863,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 2.778863
+        },
+        "package_bin_artifact": {
+          "count": 1,
+          "execution_sum_s": 1.081173,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 1.081173
+        },
+        "package_tree": {
+          "count": 43,
+          "execution_sum_s": 1.211647,
+          "queue_sum_s": 0.47764700000000004,
+          "wall_sum_s": 108.041359
+        },
+        "package_tree_product_executable": {
+          "count": 1,
+          "execution_sum_s": 0.013188,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.013188
+        },
+        "package_tree_product_support": {
+          "count": 1,
+          "execution_sum_s": 0.018547,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.018547
+        },
+        "pnpm_extract": {
+          "count": 561,
+          "execution_sum_s": 5.418738,
+          "queue_sum_s": 148.093462,
+          "wall_sum_s": 2992.542437
+        },
+        "pnpm_store_entry": {
+          "count": 547,
+          "execution_sum_s": 11.923779,
+          "queue_sum_s": 151.144557,
+          "wall_sum_s": 3198.445561
+        },
+        "pnpm_store_scc": {
+          "count": 5,
+          "execution_sum_s": 0.212039,
+          "queue_sum_s": 0.310884,
+          "wall_sum_s": 14.920456999999999
+        },
+        "pnpm_store_view": {
+          "count": 43,
+          "execution_sum_s": 0.689649,
+          "queue_sum_s": 0.154934,
+          "wall_sum_s": 100.528476
+        },
+        "repository_policy_check": {
+          "count": 1,
+          "execution_sum_s": 0.04386,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.04386
+        },
+        "repository_validation": {
+          "count": 4,
+          "execution_sum_s": 1.032737,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 1.032737
+        },
+        "repository_validation_server": {
+          "count": 1,
+          "execution_sum_s": 0.035226,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.035226
+        },
+        "tsgo_emit": {
+          "count": 20,
+          "execution_sum_s": 23.630581,
+          "queue_sum_s": 0.402534,
+          "wall_sum_s": 54.252973
+        },
+        "tsgo_typecheck": {
+          "count": 44,
+          "execution_sum_s": 44.749625,
+          "queue_sum_s": 0.43428100000000003,
+          "wall_sum_s": 115.15185
+        },
+        "weaver_check": {
+          "count": 1,
+          "execution_sum_s": 0.126064,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.126064
+        },
+        "weaver_version_smoke": {
+          "count": 1,
+          "execution_sum_s": 0.019692,
+          "queue_sum_s": 0.0,
+          "wall_sum_s": 0.019692
+        }
+      }
+    }
+  }
+}
