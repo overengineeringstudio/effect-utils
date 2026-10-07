@@ -25,42 +25,53 @@ describe('capability publication identity', () => {
 
 describe('daemon-free capability retention', () => {
   it('keeps the current generation plus the two most recent other publications', () => {
-    expect([...retainedCapabilityGenerations({
-      publications: [
-        { generation: a, sequence: 1 },
-        { generation: b, sequence: 2 },
-        { generation: c, sequence: 3 },
-        { generation: d, sequence: 4 },
-      ],
-      current: d,
-    })]).toEqual([d, c, b])
+    expect([
+      ...retainedCapabilityGenerations({
+        publications: [
+          { generation: a, sequence: 1 },
+          { generation: b, sequence: 2 },
+          { generation: c, sequence: 3 },
+          { generation: d, sequence: 4 },
+        ],
+        current: d,
+      }),
+    ]).toEqual([d, c, b])
   })
 
   it('retains a re-published old generation as current, not only numerically newest receipts', () => {
-    expect([...retainedCapabilityGenerations({
-      publications: [
-        { generation: a, sequence: 1 },
-        { generation: b, sequence: 2 },
-        { generation: c, sequence: 3 },
-        { generation: d, sequence: 4 },
-      ],
-      current: a,
-    })]).toEqual([a, d, c])
+    expect([
+      ...retainedCapabilityGenerations({
+        publications: [
+          { generation: a, sequence: 1 },
+          { generation: b, sequence: 2 },
+          { generation: c, sequence: 3 },
+          { generation: d, sequence: 4 },
+        ],
+        current: a,
+      }),
+    ]).toEqual([a, d, c])
   })
 
   it('never duplicates current or invents unused historical generations', () => {
-    expect([...retainedCapabilityGenerations({ publications: [{ generation: a, sequence: 5 }], current: a })]).toEqual([a])
+    expect([
+      ...retainedCapabilityGenerations({
+        publications: [{ generation: a, sequence: 5 }],
+        current: a,
+      }),
+    ]).toEqual([a])
     expect([...retainedCapabilityGenerations({ publications: [], current: a })]).toEqual([a])
   })
 
   it('orders receipt-free migrated generations deterministically', () => {
-    expect([...retainedCapabilityGenerations({
-      publications: [
-        { generation: c, sequence: 0 },
-        { generation: b, sequence: 0 },
-        { generation: a, sequence: 0 },
-      ],
-      current: d,
-    })]).toEqual([d, a, b])
+    expect([
+      ...retainedCapabilityGenerations({
+        publications: [
+          { generation: c, sequence: 0 },
+          { generation: b, sequence: 0 },
+          { generation: a, sequence: 0 },
+        ],
+        current: d,
+      }),
+    ]).toEqual([d, a, b])
   })
 })

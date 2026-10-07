@@ -46,7 +46,10 @@ export const retainedCapabilityGenerations = ({
     current,
     ...publications
       .filter(({ generation }) => generation !== current)
-      .toSorted((left, right) => right.sequence - left.sequence || left.generation.localeCompare(right.generation))
+      .toSorted(
+        (left, right) =>
+          right.sequence - left.sequence || left.generation.localeCompare(right.generation),
+      )
       .slice(0, 2)
       .map(({ generation }) => generation),
   ])
@@ -111,7 +114,13 @@ const nativePublication = () => {
   }
 }
 
-const atomicWrite = ({ path, bytes }: { readonly path: string; readonly bytes: string | Buffer }): void => {
+const atomicWrite = ({
+  path,
+  bytes,
+}: {
+  readonly path: string
+  readonly bytes: string | Buffer
+}): void => {
   const candidate = join(dirname(path), `.${randomUUID()}.candidate`)
   try {
     writeFileSync(candidate, bytes, { flag: 'wx', mode: 0o644 })
@@ -125,15 +134,26 @@ const generationNames = (cell: string): string[] => {
   const directory = join(cell, 'generations')
   if (lstatSync(directory).isDirectory() === false)
     throw new Error(`Capability generations must be a real directory: ${directory}`)
-  return readdirSync(directory).toSorted().map((generation) => {
-    if (generationPattern.test(generation) === false || lstatSync(join(directory, generation)).isDirectory() === false)
-      throw new Error(`Invalid immutable capability generation: ${generation}`)
-    return generation
-  })
+  return readdirSync(directory)
+    .toSorted()
+    .map((generation) => {
+      if (
+        generationPattern.test(generation) === false ||
+        lstatSync(join(directory, generation)).isDirectory() === false
+      )
+        throw new Error(`Invalid immutable capability generation: ${generation}`)
+      return generation
+    })
 }
 
 /** Copy metadata, not tool closures. Links stay exact absolute per-tool Nix paths. */
-const copyGeneration = ({ source, destination }: { readonly source: string; readonly destination: string }): void => {
+const copyGeneration = ({
+  source,
+  destination,
+}: {
+  readonly source: string
+  readonly destination: string
+}): void => {
   mkdirSync(destination)
   for (const name of readdirSync(source).toSorted()) {
     const from = join(source, name)
@@ -150,18 +170,34 @@ const copyGeneration = ({ source, destination }: { readonly source: string; read
   }
 }
 
-const equalGeneration = ({ left, right }: { readonly left: string; readonly right: string }): boolean => {
+const equalGeneration = ({
+  left,
+  right,
+}: {
+  readonly left: string
+  readonly right: string
+}): boolean => {
   const leftNames = readdirSync(left).toSorted()
   const rightNames = readdirSync(right).toSorted()
-  if (leftNames.length !== rightNames.length || leftNames.some((name, index) => name !== rightNames[index]) === true) return false
+  if (
+    leftNames.length !== rightNames.length ||
+    leftNames.some((name, index) => name !== rightNames[index]) === true
+  )
+    return false
   return leftNames.every((name) => {
     const from = join(left, name)
     const to = join(right, name)
     const a = lstatSync(from)
     const b = lstatSync(to)
-    if (a.isDirectory() === true && b.isDirectory() === true) return equalGeneration({ left: from, right: to })
-    if (a.isFile() === true && b.isFile() === true) return readFileSync(from).equals(readFileSync(to))
-    return a.isSymbolicLink() === true && b.isSymbolicLink() === true && readlinkSync(from) === readlinkSync(to)
+    if (a.isDirectory() === true && b.isDirectory() === true)
+      return equalGeneration({ left: from, right: to })
+    if (a.isFile() === true && b.isFile() === true)
+      return readFileSync(from).equals(readFileSync(to))
+    return (
+      a.isSymbolicLink() === true &&
+      b.isSymbolicLink() === true &&
+      readlinkSync(from) === readlinkSync(to)
+    )
   })
 }
 
@@ -174,7 +210,9 @@ const rootGeneration = ({
   readonly root: string
   readonly profile: string
 }): void => {
-  const result = spawnSync(nixStore, ['--realise', '--add-root', root, '--indirect', profile], { encoding: 'utf8' })
+  const result = spawnSync(nixStore, ['--realise', '--add-root', root, '--indirect', profile], {
+    encoding: 'utf8',
+  })
   if (result.error !== undefined) throw result.error
   if (result.status !== 0)
     throw new Error(`Nix rooting failed for ${profile}: ${result.stderr.trim()}`)
@@ -245,10 +283,15 @@ const stopMigrationDaemons = ({
       if (lstatSync(join(state, isolation)).isDirectory() === false)
         throw new Error(`Invalid capability migration isolation state: ${join(state, isolation)}`)
       console.error(`Capability cell migration: stopping Buck daemon ${root} (${isolation})`)
-      const result = spawnSync(buck2, ['--isolation-dir', isolation, 'kill'], { cwd: root, encoding: 'utf8' })
+      const result = spawnSync(buck2, ['--isolation-dir', isolation, 'kill'], {
+        cwd: root,
+        encoding: 'utf8',
+      })
       if (result.error !== undefined) throw result.error
       if (result.status !== 0)
-        throw new Error(`Buck daemon stop failed during capability cell migration (${isolation}): ${result.stderr.trim()}`)
+        throw new Error(
+          `Buck daemon stop failed during capability cell migration (${isolation}): ${result.stderr.trim()}`,
+        )
       stopped.push(`${root}:${isolation}`)
     }
   }
@@ -317,17 +360,24 @@ export const publishCapabilities = ({
         for (const previous of generationNames(previousProfile)) {
           // Root every old generation before the live symlink can be exchanged.
           rootGeneration({ nixStore, root: join(roots, previous), profile: previousProfile })
-          copyGeneration({ source: join(previousProfile, 'generations', previous), destination: join(candidate, 'generations', previous) })
+          copyGeneration({
+            source: join(previousProfile, 'generations', previous),
+            destination: join(candidate, 'generations', previous),
+          })
         }
         copyFileSync(join(previousProfile, 'BUCK'), join(candidate, 'BUCK'))
         copyFileSync(join(previousProfile, 'defs.bzl'), join(candidate, 'defs.bzl'))
       }
     }
     if (existing !== undefined) {
-      const previousCurrent = capabilityGeneration(readFileSync(join(workingCell, 'defs.bzl'), 'utf8'))
+      const previousCurrent = capabilityGeneration(
+        readFileSync(join(workingCell, 'defs.bzl'), 'utf8'),
+      )
       const previousGenerations = generationNames(workingCell)
       if (previousGenerations.includes(previousCurrent) === false)
-        throw new Error(`Previous capability definitions refer to missing generation ${previousCurrent}`)
+        throw new Error(
+          `Previous capability definitions refer to missing generation ${previousCurrent}`,
+        )
       const latest = Math.max(
         0,
         ...previousGenerations.map((name) => publicationSequence(join(receipts, `${name}.json`))),
@@ -382,9 +432,10 @@ export const publishCapabilities = ({
       if (migrating === true || readFileSync(join(cell, 'defs.bzl')).equals(defs) === false)
         atomicWrite({ path: join(cell, 'defs.bzl'), bytes: defs })
     }
-    const migrationDaemonStops = statIfPresent(migrationMarker) === undefined
-      ? []
-      : stopMigrationDaemons({ roots: [projectRoot, absoluteRoot], buck2 })
+    const migrationDaemonStops =
+      statIfPresent(migrationMarker) === undefined
+        ? []
+        : stopMigrationDaemons({ roots: [projectRoot, absoluteRoot], buck2 })
     if (statIfPresent(migrationMarker) !== undefined) {
       rmSync(migrationMarker)
     }
@@ -393,7 +444,8 @@ export const publishCapabilities = ({
       sequence: publicationSequence(join(receipts, `${name}.json`)),
     }))
     const sequence = Math.max(0, ...publications.map((publication) => publication.sequence)) + 1
-    if (Number.isSafeInteger(sequence) === false) throw new Error('Capability publication sequence exhausted')
+    if (Number.isSafeInteger(sequence) === false)
+      throw new Error('Capability publication sequence exhausted')
     // Receipts live outside the watched cell; only successful defs publication advances recency.
     atomicWrite({ path: join(receipts, `${generation}.json`), bytes: `${sequence}\n` })
     const pruningDeferred =
@@ -408,7 +460,12 @@ export const publishCapabilities = ({
         rmSync(join(receipts, `${previous.generation}.json`), { force: true })
       }
     }
-    return { generation, retainedCount: pruningDeferred === true ? publications.length : retained.size, pruningDeferred, migrationDaemonStops }
+    return {
+      generation,
+      retainedCount: pruningDeferred === true ? publications.length : retained.size,
+      pruningDeferred,
+      migrationDaemonStops,
+    }
   } finally {
     // Never sweep another publisher's candidates or unlink/recreate the live cell.
     try {
@@ -422,13 +479,29 @@ export const publishCapabilities = ({
 
 const main = (): void => {
   const { values } = parseArgs({
-    options: { root: { type: 'string' }, profile: { type: 'string' }, 'nix-store': { type: 'string' }, buck2: { type: 'string' } },
+    options: {
+      root: { type: 'string' },
+      profile: { type: 'string' },
+      'nix-store': { type: 'string' },
+      buck2: { type: 'string' },
+    },
     strict: true,
     allowPositionals: false,
   })
   if (values.root === undefined || values.profile === undefined)
-    throw new Error('Usage: bun scripts/buck2-capability-publish.ts --root ROOT --profile REALIZED_NIX_OUTPUT [--nix-store PATH] [--buck2 PATH]')
-  console.log(JSON.stringify(publishCapabilities({ root: values.root, profile: values.profile, nixStore: values['nix-store'], buck2: values.buck2 })))
+    throw new Error(
+      'Usage: bun scripts/buck2-capability-publish.ts --root ROOT --profile REALIZED_NIX_OUTPUT [--nix-store PATH] [--buck2 PATH]',
+    )
+  console.log(
+    JSON.stringify(
+      publishCapabilities({
+        root: values.root,
+        profile: values.profile,
+        nixStore: values['nix-store'],
+        buck2: values.buck2,
+      }),
+    ),
+  )
 }
 
 if (import.meta.main === true) main()
