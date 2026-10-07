@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
 
+import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import { directBuckArguments } from './buck2-entrypoint.ts'
 
 const roots: string[] = []
@@ -92,6 +93,99 @@ afterEach(() => {
 })
 
 describe('direct pinned Buck posture', () => {
+  for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
+    it(`records per-invocation cache admission for ${scenario}`, async () => {
+      let requests = 0
+      let archiveRequests = 0
+      const deadlines: string[] = []
+      const grpc = createServer()
+      grpc.on('stream', (stream: ServerHttp2Stream, headers) => {
+        requests++
+        deadlines.push(String(headers['grpc-timeout']))
+        stream.on('error', () => {})
+        stream.on('data', () => {})
+        stream.on('end', () => {
+          if (scenario === 'both-fail' || (scenario === 'retry-success' && requests === 1)) return
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        })
+      })
+      grpc.listen(0, '127.0.0.1')
+      await new Promise<void>((resolve) => grpc.once('listening', resolve))
+      const bound = grpc.address()
+      if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+      const archive = Bun.serve({
+        port: 0,
+        hostname: '127.0.0.1',
+        fetch: () => {
+          archiveRequests++
+          if (scenario === 'both-fail' || (scenario === 'retry-success' && archiveRequests === 1))
+            return new Promise<Response>(() => {})
+          return new Response(null, { status: 404 })
+        },
+      })
+      try {
+        const root = fixture(
+          `grpc://127.0.0.1:${bound.port}`,
+          `http://127.0.0.1:${archive.port}/cas/`,
+        )
+        const evidence = join(root, 'evidence.json')
+        const admissionOptions = {
+          ...options(root),
+          args: ['build', '//:app'],
+          env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, GITHUB_ACTIONS: 'true' },
+          ...(scenario === 'healthy' ? {} : { deadlineMs: 100 }),
+        }
+        const invocationId = '01234567-89ab-cdef-0123-456789abcdef'
+        const result = await directBuckArguments({
+          ...admissionOptions,
+          env: { ...admissionOptions.env, BUCK_WRAPPER_UUID: invocationId },
+        })
+        if (scenario === 'both-fail')
+          expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
+        else expect(effective(result)['buck2.remote_cache_enabled']).not.toBe('false')
+        expect(effective(result)['archive_origin.url_prefix']).toBe(
+          scenario === 'both-fail' ? '' : `http://127.0.0.1:${archive.port}/cas/`,
+        )
+        expect(requests).toBe(scenario === 'healthy' ? 1 : 2)
+        expect(archiveRequests).toBe(scenario === 'healthy' ? 1 : 2)
+        expect(deadlines).toEqual(scenario === 'healthy' ? ['2500m'] : ['100m', '100m'])
+        if (scenario === 'both-fail') {
+          await expect(
+            directBuckArguments({
+              ...admissionOptions,
+              env: { ...admissionOptions.env, BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-secret' },
+            }),
+          ).rejects.toThrow('refusing to publish without remote cache')
+        } else {
+          // A hot-loop cache hit is its own healthy invocation, not a second recovered retry.
+          await directBuckArguments(admissionOptions)
+        }
+        const rows = readFileSync(`${evidence}.admission.jsonl`, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line) as CacheAdmissionInvocation)
+        expect(rows).toHaveLength(2)
+        expect(new Set(rows.map((row) => row.invocationId)).size).toBe(2)
+        expect(rows[0]?.invocationId).toBe(invocationId)
+        for (const [index, row] of rows.entries()) {
+          expect(row.admissionFallbacks).toEqual({
+            reapi: scenario === 'both-fail' ? 1 : 0,
+            // The required writer selects its separate private archive posture (none in this fixture).
+            archiveOrigin: scenario === 'both-fail' && index === 0 ? 1 : 0,
+          })
+          expect(row.admissionRetrySuccesses).toEqual({
+            reapi: scenario === 'retry-success' && index === 0 ? 1 : 0,
+            archiveOrigin: scenario === 'retry-success' && index === 0 ? 1 : 0,
+          })
+        }
+      } finally {
+        archive.stop(true)
+        grpc.close()
+      }
+    })
+  }
+
   it('preserves reader and writer admission when TLS succeeds without h2 ALPN', async () => {
     // Public test-only fixture, vendored verbatim from Bun 1.4.2 (valid through February 2036).
     // Regenerate these literals from the pinned upstream cert.pem and cert.key, not by hand:
@@ -205,7 +299,7 @@ console.log(JSON.stringify(outcomes));`,
         child.exited,
       ])
       expect(exitCode).toBe(0)
-      expect(handshakes).toBe(3)
+      expect(handshakes).toBe(6)
       const outcomes = JSON.parse(stdout) as {
         readonly args?: string[]
         readonly error?: string
@@ -215,7 +309,7 @@ console.log(JSON.stringify(outcomes));`,
         expect(effective(outcome.args ?? [])['buck2.allow_cache_uploads']).toBe('false')
       }
       expect(outcomes[2]?.error).toContain('refusing to publish without remote cache')
-      expect(stderr.match(/warning: Buck2 REAPI probe failed:/gu)).toHaveLength(3)
+      expect(stderr.match(/warning: Buck2 REAPI probe failed:/gu)).toHaveLength(6)
       expect(stderr).not.toContain('ERR_HTTP2_SOCKET_UNBOUND')
       expect(stderr).not.toContain('fixture-secret')
     } finally {

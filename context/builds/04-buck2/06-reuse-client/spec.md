@@ -93,8 +93,11 @@ pinned buck2 -> identical healthy invocation cache -> native Buck
 The flake's pinned executable owns admission for direct agent commands, devenv
 tasks and consumer roots. It resolves the nearest `.buckroot`, reads the tracked
 and local Buck configuration, applies the shared environment posture, and probes
-REAPI `GetCapabilities` and the trusted archive origin concurrently with 900 ms
-deadlines. Endpoint outcomes expire after five seconds. Complete successful
+REAPI `GetCapabilities` and the trusted archive origin concurrently. Each endpoint
+gets 2500 ms per attempt including connection setup, with exactly one immediate
+retry after a failed first attempt and at most 5000 ms total probing per endpoint.
+Watchman's separate 900 ms deadline is unchanged. Endpoint outcomes expire after
+five seconds. Complete successful
 read-only invocations can bypass the JavaScript launcher within the remaining
 probe lifetime; the key includes config contents, arguments, working directory
 and exported environment. Writer credentials, includes and external mode files
@@ -104,10 +107,12 @@ RE client configuration alone opts into admission. A missing
 `remote_cache_enabled` inherits the execution policy's enabled default;
 RE-only roots do not need trusted archive metadata.
 
-Read-only REAPI admission failures disable cache reads/uploads while retaining
-local execution. Archive-origin admission failures clear the origin prefix and
-select the registry; a reachable REAPI client remains enabled. Every fail-open
-invocation emits a warning. Outage overrides are CLI root-config values, not
+Only failure of both attempts selects an endpoint's outage policy. Read-only
+REAPI admission failures disable cache reads/uploads while retaining local
+execution; required writers fail closed after both REAPI attempts fail.
+Archive-origin admission failures clear the origin prefix and select the
+registry; a reachable REAPI client remains enabled. Every fail-open invocation
+emits the existing warning. Outage overrides are CLI root-config values, not
 persistent endpoint changes; RE client identity/credentials still require a
 managed root overlay before daemon startup.
 
@@ -148,6 +153,39 @@ most 64 representative `actions`. Its existing `droppedActionCount` continues
 to describe omitted **representatives**, not missing full-artifact rows.
 Populate and replay invocations retain proof context labels; repeated native
 logs are deduplicated by build ID, preserving the first context.
+
+Admission evidence is independent of native execution evidence. Before writer
+fail-closed handling, every direct invocation that probes cache appends a UTF-8
+JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authoritative
+`CacheAdmissionInvocation` shape:
+
+```json
+{
+  "invocationId": "9552ef6c-294e-4a51-9100-9006d6f2c343",
+  "admissionFallbacks": { "reapi": 0, "archiveOrigin": 0 },
+  "admissionRetrySuccesses": { "reapi": 0, "archiveOrigin": 1 }
+}
+```
+
+`invocationId` uses `BUCK_WRAPPER_UUID`: the entrypoint preserves an existing
+caller/OTel UUID or generates a random UUID when absent, and passes it to native
+Buck as its trace ID. It therefore joins directly to native `buildId` when Buck
+runs; denied writers still retain admission evidence without a native event.
+Evidence-enabled invocations bypass the native-launch argument fast path so it
+cannot reuse a prior UUID or skip admission counters. The compact summary adds
+`admissionInvocations` (these rows, deduplicated by invocation UUID),
+`admissionFallbacks` and `admissionRetrySuccesses` (endpoint-wise sums across
+those rows). Each endpoint counter is 0 or 1 per invocation: healthy first
+attempts have zeroes, failure of both attempts records one fallback, and a
+successful second attempt records one retry success without a fallback. A reused
+cached failure still records one fallback for that invocation; reused cached
+health records no retry success. An endpoint not probed has zeroes. These are
+admission decisions, not action-cache misses or native upload failures, and do
+not enter the warm99 action denominator.
+The sidecar survives devenv task boundaries and is consumed into the compact
+summary, not uploaded as a separate raw artifact. Collector finalization writes
+fallback counts and invocation IDs to `GITHUB_STEP_SUMMARY`; the existing stderr
+warning remains available at invocation time.
 
 The summary adds `cacheOutcomeMapping: "effect-utils/compact-cache-outcome/v1"`
 and `actionsArtifact: { name, rows, sha256, bytes, uncompressedBytes, complete,

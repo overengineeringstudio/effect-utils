@@ -1,10 +1,19 @@
 #!/usr/bin/env -S bun
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 
+import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
   buckConfigValues,
   probeArchiveOrigin,
@@ -135,9 +144,9 @@ export const directBuckArguments = async ({
   cacheDirectory = join(
     env['XDG_CACHE_HOME'] ?? join(homedir(), '.cache'),
     'effect-utils',
-    'buck2-posture-v1',
+    'buck2-posture-v2',
   ),
-  deadlineMs = 900,
+  deadlineMs = 2500,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
@@ -181,7 +190,7 @@ export const directBuckArguments = async ({
         env['LOGNAME'],
         env['WATCHMAN_CONFIG_FILE'],
       ]),
-      probe: () => probeWatchman({ env, deadlineMs }),
+      probe: () => probeWatchman({ env, deadlineMs: Math.min(deadlineMs, 900) }),
     })
     reconcileFileWatcher({ repoRoot: root, provider: available === true ? 'watchman' : 'notify' })
     if (available === false) {
@@ -270,6 +279,25 @@ export const directBuckArguments = async ({
   )
   const remote = (values['buck2.remote_cache_enabled'] ?? 'true') === 'true'
   const prefix = values['archive_origin.url_prefix'] ?? ''
+  const admission: CacheAdmissionInvocation = {
+    invocationId: env['BUCK_WRAPPER_UUID'] ?? randomUUID(),
+    admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
+    admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+  }
+  // Two sequential, independently bounded attempts: at most 5000 ms per endpoint.
+  // The endpoints run concurrently; no backoff extends the admission budget.
+  const retryProbe = async ({
+    endpoint,
+    probe,
+  }: {
+    readonly endpoint: 'reapi' | 'archiveOrigin'
+    readonly probe: () => Promise<boolean>
+  }): Promise<boolean> => {
+    if ((await probe()) === true) return true
+    const available = await probe()
+    if (available === true) admission.admissionRetrySuccesses[endpoint] = 1
+    return available
+  }
   const [remoteAvailable, archiveAvailable] = await Promise.all([
     remote === false
       ? true
@@ -283,21 +311,25 @@ export const directBuckArguments = async ({
             header,
           ]),
           probe: () =>
-            probeRemoteCacheCapabilities({
-              address: values['buck2_re_client.action_cache_address'],
-              instanceName: values['buck2_re_client.instance_name'] ?? '',
-              tls: values['buck2_re_client.tls'] !== 'false',
-              header: values['buck2_re_client.http_headers'],
-              env,
-              deadlineMs,
-              onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) =>
-                process.stderr.write(
-                  `warning: Buck2 REAPI probe failed: class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}\n`,
-                ),
-              onConnectionEvent: ({ event, elapsedMs, address, family }) =>
-                process.stderr.write(
-                  `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
-                ),
+            retryProbe({
+              endpoint: 'reapi',
+              probe: () =>
+                probeRemoteCacheCapabilities({
+                  address: values['buck2_re_client.action_cache_address'],
+                  instanceName: values['buck2_re_client.instance_name'] ?? '',
+                  tls: values['buck2_re_client.tls'] !== 'false',
+                  header: values['buck2_re_client.http_headers'],
+                  env,
+                  deadlineMs,
+                  onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) =>
+                    process.stderr.write(
+                      `warning: Buck2 REAPI probe failed: class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}\n`,
+                    ),
+                  onConnectionEvent: ({ event, elapsedMs, address, family }) =>
+                    process.stderr.write(
+                      `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
+                    ),
+                }),
             }),
         }),
     prefix === ''
@@ -305,9 +337,26 @@ export const directBuckArguments = async ({
       : cachedProbe({
           cacheDirectory,
           key: JSON.stringify(['archive', prefix]),
-          probe: () => probeArchiveOrigin({ urlPrefix: prefix, deadlineMs }),
+          probe: () =>
+            retryProbe({
+              endpoint: 'archiveOrigin',
+              probe: () => probeArchiveOrigin({ urlPrefix: prefix, deadlineMs }),
+            }),
         }),
   ])
+  admission.admissionFallbacks.reapi = remoteAvailable === false ? 1 : 0
+  admission.admissionFallbacks.archiveOrigin = archiveAvailable === false ? 1 : 0
+  const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
+  if (evidencePath !== undefined && evidencePath !== '') {
+    try {
+      mkdirSync(dirname(evidencePath), { recursive: true })
+      appendFileSync(`${evidencePath}.admission.jsonl`, `${JSON.stringify(admission)}\n`, {
+        mode: 0o600,
+      })
+    } catch {
+      process.stderr.write('warning: Buck2 admission evidence could not be persisted\n')
+    }
+  }
   if (remoteAvailable === false) {
     if (values['buck2.allow_cache_uploads'] === 'true' && env['BUCK2_CACHE_WRITE_OPTIONAL'] !== '1')
       throw new Error(
@@ -355,6 +404,8 @@ if (import.meta.main === true) {
       process.env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH'] = Buffer.from(auth).toString('base64')
     }
     delete process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
+    // Native Buck reads this UUID as its trace/build ID. Preserve OTEL's command identity.
+    process.env['BUCK_WRAPPER_UUID'] ??= randomUUID()
     const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
     const args = await directBuckArguments({
       args: process.argv.slice(launchCache === undefined ? 3 : 5),

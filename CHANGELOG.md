@@ -28,6 +28,14 @@
 
 ### Fixed
 
+- Buck cache admission gives concurrent REAPI and archive-origin probes 2500 ms
+  per attempt with one immediate retry (5000 ms total per endpoint), covering
+  measured Namespace TLS stalls and permitting lost-SYN recovery before selecting
+  the existing warning and fallback policy. Required writers remain fail-closed
+  after both failures;
+  Watchman's 900 ms deadline is unchanged. Cache-evidence summaries retain
+  per-invocation `admissionInvocations` and endpoint-wise `admissionFallbacks` /
+  `admissionRetrySuccesses`, including writer refusals without native logs.
 - Buck REAPI preflight diagnostics distinguish DNS, TCP, TLS, and response phases
   with elapsed time, deadline, and socket address families. Public IPs are visible;
   private addresses, endpoint names, and credentials remain redacted.
