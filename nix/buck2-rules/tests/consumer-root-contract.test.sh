@@ -9,7 +9,7 @@ bash "$repo_root/nix/buck2-rules/tests/file-watcher-contract.test.sh" "$repo_roo
 root="$(nix build --impure --no-link --print-out-paths --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_RULES_REPO");
-    flake = builtins.getFlake (toString repo);
+    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
     system = builtins.currentSystem;
     pkgs = import flake.inputs.nixpkgs { inherit system; };
   in flake.lib.mkConsumerBuckRoot {
@@ -343,7 +343,7 @@ product="$(nix build --impure --no-link --print-out-paths --expr '
       path = builtins.toPath (builtins.getEnv "BUCK2_CONSUMER_FIXTURE");
       name = "consumer-root-native-fixture";
     };
-    flake = builtins.getFlake (toString repo);
+    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
     system = builtins.currentSystem;
     pkgs = import flake.inputs.nixpkgs { inherit system; };
   in (flake.lib.mkBuckProductFromSource { inherit pkgs; }) {

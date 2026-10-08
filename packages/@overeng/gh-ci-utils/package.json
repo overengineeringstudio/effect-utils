@@ -6,6 +6,7 @@
       "packages/@overeng/ci-tools",
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/gh-ci-utils",
       "packages/@overeng/otel-contract",
       "packages/@overeng/tui-core",
