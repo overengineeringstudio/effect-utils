@@ -169,17 +169,19 @@ Genie must resolve three classes of imports used by `.genie.ts` sources:
 Megarepo member resolution follows this precedence order:
 
 1. `GENIE_MEMBER_OVERRIDE_MAP`
-2. a local member root derived from the importing repository
+2. a member root derived from the invoking workspace
 3. `GENIE_MEMBER_SOURCE_MAP`
 
 Local member root resolution follows this order:
 
-1. discover the enclosing repository root by walking upward from the importer path
-2. if `megarepo.lock` exists and contains the member, derive the expected global store worktree path from the locked URL and ref
-3. if that derived path exists, use it
-4. otherwise fall back to `repos/<member>` if present
+1. discover the enclosing repository root of the invoking workspace
+2. if `megarepo.lock` contains the member, derive its global store worktree path from the locked URL and commit (or ref when no commit is declared)
+3. use that path even if it is not materialized; a declared commit never falls back to a mutable branch checkout
+4. only when the workspace lock does not declare the member, use `repos/<member>` if present
 
-This means Genie can resolve `#mr/...` imports against the lock-pinned global megarepo store without requiring the local `repos/` symlink tree, as long as the referenced member worktree already exists in the store.
+The invoking workspace remains authoritative across the entire import graph, including helpers reached through member store paths or relative `repos/` imports. A nested member's own lock or symlink tree does not replace the invoking workspace's member set. The source-mode runtime hook is registered for the invocation workspace; compiled-binary staging and the static bootstrap-closure walk carry that workspace identity explicitly.
+
+Genie can resolve `#mr/...` imports without a local `repos/` symlink tree. Missing locked worktrees fail at the locked path rather than silently using host checkout state. Explicit override and fallback source maps remain available for callers supplying source trees.
 
 Genie does not materialize missing megarepo members itself. Repository task wiring is responsible for ensuring required bootstrap members exist before Genie-backed tasks run.
 

@@ -174,7 +174,15 @@ export const extractImportMap = Effect.fn('extractImportMap')(function* (package
  */
 export const resolveImportMapSpecifierForImporter = Effect.fn(
   'genie.resolveImportMapSpecifierForImporter',
-)(function* ({ specifier, importerPath }: { specifier: string; importerPath: string }) {
+)(function* ({
+  specifier,
+  importerPath,
+  workspaceRoot,
+}: {
+  specifier: string
+  importerPath: string
+  workspaceRoot?: string | undefined
+}) {
   yield* Observability.annotatePath({ label: specifier, path: importerPath })
   if (isImportMapSpecifier(specifier) === false) {
     return Option.none()
@@ -183,6 +191,7 @@ export const resolveImportMapSpecifierForImporter = Effect.fn(
   const resolvedMegarepoMember = resolveMegarepoMemberSpecifierSync({
     specifier,
     importerPath,
+    workspaceRoot,
   })
   if (resolvedMegarepoMember !== undefined) {
     return Option.some(resolvedMegarepoMember)
@@ -229,10 +238,12 @@ const IMPORT_REGEX = /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?(['"])([^'"]+)\
 export const resolveImportMapsInSource = Effect.fn('resolveImportMapsInSource')(function* ({
   sourceCode,
   sourcePath,
+  workspaceRoot,
   resolveRelativeImports = false,
 }: {
   sourceCode: string
   sourcePath: string
+  workspaceRoot?: string | undefined
   resolveRelativeImports?: boolean
 }) {
   yield* Observability.annotatePath({ label: 'resolve-imports', path: sourcePath })
@@ -260,6 +271,7 @@ export const resolveImportMapsInSource = Effect.fn('resolveImportMapsInSource')(
       resolveMegarepoMemberSpecifierSync({
         specifier,
         importerPath: sourcePath,
+        workspaceRoot,
       }) ??
       (packageJsonDir === undefined || Object.keys(importMap).length === 0
         ? null

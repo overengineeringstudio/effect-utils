@@ -52,21 +52,21 @@ type BunPluginBuilder = {
 }
 
 /**
- * Register a Bun import resolver so `#...` specifiers use the import map closest
- * to the importing file. This avoids temp file generation and fixes transitive imports.
+ * Register a Bun import resolver for the invoking workspace. Ordinary `#...` specifiers still use
+ * the nearest import map, while nested `#mr/...` imports retain this workspace's lock.
  *
  * Note: In compiled Bun binaries, the Bun.plugin API causes class identity mismatches
  * with Bun internals (ResolveMessage instanceof checks fail). We skip plugin registration
  * entirely in compiled binaries - files using `#...` imports need to be run with `bun run`.
  */
-export const ensureImportMapResolver = Effect.gen(function* () {
-  yield* Observability.annotatePath({ label: 'import-map', path: process.cwd() })
+export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(function* (
+  workspaceRoot: string,
+) {
+  yield* Observability.annotatePath({ label: 'import-map', path: workspaceRoot })
   if (importMapResolverRegistered === true) return
   importMapResolverRegistered = true
-
-  // Skip Bun.plugin in compiled binaries to avoid ResolveMessage class identity issues
+  // Skip Bun.plugin in compiled binaries to avoid ResolveMessage class identity issues.
   if (isCompiledBinary() === true) return
-
   Bun.plugin({
     name: 'genie-import-map',
     // Bun type definitions are not guaranteed inside Nix builds, so we keep a local shape.
@@ -81,6 +81,7 @@ export const ensureImportMapResolver = Effect.gen(function* () {
         const resolved = resolveImportMapSpecifierForImporterSync({
           specifier: args.path,
           importerPath,
+          workspaceRoot,
         })
 
         if (resolved === undefined) return undefined
@@ -89,7 +90,7 @@ export const ensureImportMapResolver = Effect.gen(function* () {
       })
     },
   })
-}).pipe(Observability.withImportMapResolverSpan)
+}, Observability.withImportMapResolverSpan)
 
 /** Directories to skip when searching for .genie.ts files */
 const shouldSkipDirectory = (name: string): boolean => {

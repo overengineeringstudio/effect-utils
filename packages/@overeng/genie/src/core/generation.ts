@@ -334,8 +334,10 @@ const mirrorNodeModulesSearchPaths = async ({
 /** Stage and bundle a compiled-generation import graph in an isolated temporary directory. */
 export const stageCompiledBinaryImportGraph = ({
   entryPath,
+  workspaceRoot = path.dirname(entryPath),
 }: {
   entryPath: string
+  workspaceRoot?: string | undefined
 }): Effect.Effect<StagedCompiledBinaryImportGraph, GenieImportError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const tempRoot = yield* Effect.tryPromise({
@@ -351,7 +353,7 @@ export const stageCompiledBinaryImportGraph = ({
     // Ownership of the staging root passes to the caller only on success: any failure or
     // interruption between mkdtemp and the returned graph removes the root here, so a failed
     // or interrupted staging cannot leak temporary directories.
-    return yield* stageGraphWithinRoot({ entryPath, tempRoot }).pipe(
+    return yield* stageGraphWithinRoot({ entryPath, tempRoot, workspaceRoot }).pipe(
       Effect.onExit((exit) =>
         Exit.isFailure(exit) === true ? removeStagingRoot(tempRoot) : Effect.void,
       ),
@@ -361,9 +363,11 @@ export const stageCompiledBinaryImportGraph = ({
 const stageGraphWithinRoot = ({
   entryPath,
   tempRoot,
+  workspaceRoot,
 }: {
   entryPath: string
   tempRoot: string
+  workspaceRoot: string
 }): Effect.Effect<StagedCompiledBinaryImportGraph, GenieImportError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const stagedPaths = new Map<string, string>()
@@ -413,6 +417,7 @@ const stageGraphWithinRoot = ({
           const resolvedMemberPath = resolveMegarepoMemberSpecifierSync({
             specifier,
             importerPath: sourcePath,
+            workspaceRoot,
           })
           if (resolvedMemberPath === undefined) continue
 
@@ -456,6 +461,7 @@ const stageGraphWithinRoot = ({
         const transformedSource = yield* resolveImportMapsInSource({
           sourceCode: sourceWithStagedMegarepoMembers,
           sourcePath,
+          workspaceRoot,
         }).pipe(
           Effect.mapError(
             (error) =>
@@ -932,7 +938,7 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
     genieFilePath,
     targetFilePath: genieFilePath.replace('.genie.ts', ''),
   })
-  yield* ensureImportMapResolver
+  yield* ensureImportMapResolver(cwd)
 
   const importModule = (
     importPath: string,
@@ -952,7 +958,10 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
     compiledBinaryImportGraphLoader ??
     (() =>
       Effect.gen(function* () {
-        const staged = yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath })
+        const staged = yield* stageCompiledBinaryImportGraph({
+          entryPath: genieFilePath,
+          workspaceRoot: cwd,
+        })
         const importPath = `${pathToFileURL(staged.stagePath).href}?import=${Date.now()}`
         return yield* importModule(importPath).pipe(
           Effect.ensuring(removeStagingRoot(staged.tempRoot)),

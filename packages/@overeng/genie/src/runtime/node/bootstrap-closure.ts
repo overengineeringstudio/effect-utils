@@ -275,17 +275,20 @@ const resolveFollowableSpecifier = async ({
   importerFile,
   analysis,
   listings,
+  workspaceRoot,
 }: {
   specifier: StringLiteral
   importerFile: string
   analysis: TsFileAnalysis
   listings: DirectoryListings
+  workspaceRoot: string
 }): Promise<string | undefined> => {
   const resolved =
     isImportMapSpecifier(specifier.text) === true
       ? resolveImportMapSpecifierForImporterSync({
           specifier: specifier.text,
           importerPath: importerFile,
+          workspaceRoot,
         })
       : await analysis.resolveModuleSpecifier(specifier)
 
@@ -310,6 +313,7 @@ export const checkBootstrapClosure = async ({
   genieFiles,
   initialAnalysisFiles = [],
   reportAllViolations = false,
+  workspaceRoot = genieFiles[0] === undefined ? process.cwd() : path.dirname(genieFiles[0]),
 }: {
   /** Absolute paths of the `.genie.ts` sources to check. */
   genieFiles: readonly string[]
@@ -317,6 +321,8 @@ export const checkBootstrapClosure = async ({
   initialAnalysisFiles?: readonly string[]
   /** Report every bare runtime package boundary instead of only the first one per source. */
   reportAllViolations?: boolean
+  /** Invoking workspace shared by every root and transitive member edge. */
+  workspaceRoot?: string | undefined
 }): Promise<BootstrapClosureResult> => {
   /** Per-file analysis, memoized globally — the runtime import graph is identical across all roots. */
   type FileEdges = {
@@ -355,6 +361,7 @@ export const checkBootstrapClosure = async ({
                   importerFile: file,
                   analysis,
                   listings,
+                  workspaceRoot,
                 })
               : undefined,
         })),
