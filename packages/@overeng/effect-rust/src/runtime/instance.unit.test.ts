@@ -1,5 +1,16 @@
 import { describe, expect, it } from '@effect/vitest'
-import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Scope, Stream } from 'effect'
+import {
+  Cause,
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Scheduler,
+  Scope,
+  Stream,
+} from 'effect'
 
 import {
   chunkProfiles,
@@ -476,6 +487,76 @@ describe('Sink and Stream byte backpressure', () => {
 
 describe('scoped resources', () => {
   for (const panicBoundary of ['wasm', 'native'] as const) {
+    it.effect(`${panicBoundary} resource shutdown is atomic at every scheduler boundary`, () =>
+      Effect.gen(function* () {
+        let forcedYields = 0
+        // Walk every primitive around the finalizer, including Suspend -> Callback.
+        for (let yieldAt = 1; yieldAt <= 64; yieldAt++) {
+          const runtimeScope = yield* Scope.make()
+          const resourceScope = yield* Scope.make()
+          let closes = 0
+          const runtime = yield* makeRuntime('scheduler-resource-close', {
+            panicBoundary,
+            load: () => ({ api: undefined, release: () => undefined }),
+          }).pipe(Scope.provide(runtimeScope))
+          yield* runtime
+            .resource(() => ({
+              close: () => {
+                closes++
+              },
+            }))
+            .pipe(Scope.provide(resourceScope))
+          const paused = Promise.withResolvers<boolean>()
+          const defaultScheduler = new Scheduler.MixedScheduler()
+          let checks = 0
+          let pauseRequested = false
+          let resumeTask: (() => void) | undefined
+          const controlled: Scheduler.Scheduler = {
+            executionMode: 'async',
+            shouldYield: () => {
+              if (++checks !== yieldAt) return false
+              pauseRequested = true
+              return true
+            },
+            makeDispatcher: () => {
+              const dispatcher = defaultScheduler.makeDispatcher()
+              return {
+                scheduleTask: (task, priority) => {
+                  if (pauseRequested === true) {
+                    resumeTask = () => {
+                      pauseRequested = false
+                      dispatcher.scheduleTask(task, priority)
+                    }
+                    paused.resolve(true)
+                  } else dispatcher.scheduleTask(task, priority)
+                },
+                flush: () => dispatcher.flush(),
+              }
+            },
+          }
+          const finalizer = yield* Scope.close(resourceScope, Exit.void).pipe(
+            Effect.provideService(Scheduler.Scheduler, controlled),
+            Effect.forkChild({ startImmediately: true }),
+          )
+          const didPause = yield* Effect.raceFirst(
+            Effect.promise(() => paused.promise),
+            Fiber.await(finalizer).pipe(Effect.as(false)),
+          )
+          // The resource finalizer has started, but its next primitive cannot run
+          // until the runtime has completed shutdown on the ordinary scheduler.
+          yield* Scope.close(runtimeScope, Exit.void)
+          if (didPause === true) {
+            forcedYields++
+            resumeTask!()
+          }
+          const exit = yield* Fiber.await(finalizer)
+          expect(Exit.isSuccess(exit), `finalizer yield ${yieldAt}`).toBe(true)
+          expect(closes, `destructor yield ${yieldAt}`).toBe(1)
+        }
+        expect(forcedYields).toBeGreaterThan(0)
+      }),
+    )
+
     for (const finalizerStrategy of ['sequential', 'parallel'] as const) {
       it.effect(
         `${panicBoundary} shutdown owns resource destructors with ${finalizerStrategy} finalizers`,

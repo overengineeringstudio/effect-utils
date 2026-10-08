@@ -270,14 +270,16 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     generation,
     start,
     callOptions,
+    onRetired,
   }: {
     readonly generation: Generation<TApi>
     readonly start: Start<TApi, T>
     readonly callOptions?: CallOptions<TError> | undefined
+    readonly onRetired?: Effect.Effect<T, TError>
   }): Effect.Effect<T, TError> =>
     Effect.callback<T, TError>((resume) => {
       if (closed === true || generation.state !== 'healthy') {
-        resume(Effect.die(retiredDefect(generation.id)))
+        resume(onRetired ?? Effect.die(retiredDefect(generation.id)))
         return
       }
       const controller = new AbortController()
@@ -359,6 +361,24 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       })
     })
 
+  const closeHandle = ({
+    generation,
+    handle,
+  }: {
+    readonly generation: Generation<TApi>
+    readonly handle: Handle
+  }): Effect.Effect<void> =>
+    invokeOn({
+      generation,
+      // A closed runtime retains ownership; poisoned generations discard handles.
+      onRetired: Effect.void,
+      start: () => {
+        // Admission, ownership transfer and dispatch share one synchronous callback.
+        // No Effect primitive can yield after removing a handle but before closing it.
+        if (generation.handles.delete(handle) === true) return handle.close()
+      },
+    })
+
   const call = Effect.fn('effect-rust.call')(
     <T, TError = never>(start: Start<TApi, T>, callOptions?: CallOptions<TError>) =>
       Effect.flatMap(generationEffect, (generation) =>
@@ -379,11 +399,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
         const close = Effect.suspend(() => {
           if (released === true) return Effect.void
           released = true
-          // Once shutdown begins, the runtime owns every remaining destructor.
-          if (closed === true) return Effect.void
-          if (generation.handles.delete(handle) === false || generation.state !== 'healthy')
-            return Effect.void
-          return invokeOn({ generation, start: () => handle.close() })
+          return closeHandle({ generation, handle })
         }).pipe(Semaphore.withPermits(serial, 1))
         // eslint-disable-next-line overeng/named-args -- Resource.call follows Runtime.call's public positional (start, options) contract.
         const resourceCall: Resource<THandle>['call'] = (start, callOptions) =>
@@ -415,15 +431,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
               }),
             ),
           ),
-          (acquiredHandle) =>
-            Effect.suspend(() => {
-              if (
-                generation.handles.delete(acquiredHandle) === false ||
-                generation.state !== 'healthy'
-              )
-                return Effect.void
-              return invokeOn({ generation, start: () => acquiredHandle.close() })
-            }),
+          (acquiredHandle) => closeHandle({ generation, handle: acquiredHandle }),
         )
         return Sink.forEach<Uint8Array, void, TError, never>(
           Effect.fn('effect-rust.input.write')(function* (bytes) {
@@ -471,15 +479,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
               }),
             ),
           ),
-          (acquiredHandle) =>
-            Effect.suspend(() => {
-              if (
-                generation.handles.delete(acquiredHandle) === false ||
-                generation.state !== 'healthy'
-              )
-                return Effect.void
-              return invokeOn({ generation, start: () => acquiredHandle.close() })
-            }),
+          (acquiredHandle) => closeHandle({ generation, handle: acquiredHandle }),
         )
         let held = 0
         const releaseBytes = Effect.suspend(() => {

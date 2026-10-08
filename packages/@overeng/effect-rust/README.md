@@ -134,6 +134,9 @@ Scope exit closes it automatically and exactly once.
 If the runtime and resource scopes close concurrently, including parallel
 finalizers, runtime shutdown retains ownership of remaining handles until its
 pending jobs have stopped, then runs each healthy resource's destructor once.
+Resource finalizers transfer ownership and dispatch `close` in the same
+synchronous invocation callback that admits the generation. Scheduler yields
+cannot separate that ownership decision from the destructor call.
 
 All methods, including immutable receivers, and close share **one FIFO semaphore
 per resource**. This prevents overlapping mutable Rust borrows, orders queued
