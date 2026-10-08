@@ -23,13 +23,18 @@ export const scalarString = (value: string): boolean => {
 }
 /** Internal lexical token; schema preparation decides integer versus float admission. */
 export class JsonNumber {
+  readonly value: number
+  readonly token: string
+  readonly offset: number
+  readonly path: string
+  // Explicit fields instead of parameter properties: consumers run this source under Node's strip-only TypeScript mode.
   // eslint-disable-next-line overeng/named-args -- Lexical token construction avoids allocating a second object for every JSON number.
-  constructor(
-    readonly value: number,
-    readonly token: string,
-    readonly offset: number,
-    readonly path: string,
-  ) {}
+  constructor(value: number, token: string, offset: number, path: string) {
+    this.value = value
+    this.token = token
+    this.offset = offset
+    this.path = path
+  }
 }
 /** Parses before schema admission, preserving duplicate keys and number lexemes. */
 // eslint-disable-next-line overeng/named-args -- Preserve parseJson's public positional text input; the optional internal flag retains tokens for schema-aware admission.
