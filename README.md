@@ -273,6 +273,15 @@ Preparation diagnostics go to stderr, preserving command stdout when callers
 capture Buck output paths. The daemon regression starts and shuts down its own
 private Watchman service; it does not depend on a host service on Linux or macOS.
 
+The publisher fixture retains assertion failures before cleanup under
+`${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/<UTC-date>/` and
+prints the private evidence directory. It contains the failed generation
+observation, copied generation metadata and publisher JSONs, shell job/PID
+ownership, and native PID ancestry without command arguments or environment.
+`CAPABILITY_TEST_EVIDENCE_DIR` overrides the destination for fixture checks.
+Copies are best-effort observations while writers may still run, not an atomic
+snapshot or a Nix closure archive; collection errors are recorded explicitly.
+
 Retained generations have indirect Nix GC roots under `.buck2/capability-roots`.
 The publisher keeps the three most recently published generations only when
 Buck's state files show no live worktree daemon in any isolation directory.

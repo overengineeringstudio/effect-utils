@@ -11,17 +11,112 @@ TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 TEST_HOME="$TEMP_ROOT/home"
 mkdir -p "$TEST_HOME"
 declare -a child_pids=()
+selftest_evidence_root=""
 cleanup() {
   local pid
   for pid in "${child_pids[@]}"; do kill "$pid" 2>/dev/null || true; done
   for pid in "${child_pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  if [ -n "$selftest_evidence_root" ]; then
+    chmod -R u+w "$selftest_evidence_root" 2>/dev/null || true
+    rm -rf "$selftest_evidence_root"
+  fi
   chmod -R u+w "$TEMP_ROOT" 2>/dev/null || true
   rm -rf "$TEMP_ROOT"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-fail() { echo "FAIL: $*" >&2; exit 1; }
+retain_failure_evidence() {
+  local evidence_base evidence name
+  evidence_base="${CAPABILITY_TEST_EVIDENCE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/$(date -u +%F)}"
+  umask 077
+  mkdir -p "$evidence_base" || return 1
+  evidence="$(mktemp -d "$evidence_base/capability-publisher.XXXXXX")" || return 1
+  {
+    printf 'fixture shell: $$=%s BASHPID=%s\n' "$$" "$BASHPID"
+    for name in child_pids competing_pids first_publisher rooting_pid crashed_publisher evidence_publisher; do
+      if declare -p "$name" >/dev/null 2>&1; then declare -p "$name"; fi
+    done
+    jobs -l
+  } >"$evidence/shell-ownership.txt"
+  "$BUN" -e '
+    const fs = require("fs");
+    const path = require("path");
+    const { spawnSync } = require("child_process");
+    const [temp, destination, shellPid, assertion, assertionRoot, expectedCount, ...pidArgs] = process.argv.slice(1);
+    const fixturePid = Number(shellPid);
+    const trackedPids = [...new Set(pidArgs.filter((pid) => /^[1-9][0-9]*$/.test(pid)).map(Number))];
+    const errors = [];
+    const collect = (label, operation) => {
+      try { return operation(); } catch (error) { errors.push({ label, error: String(error) }); }
+    };
+    fs.mkdirSync(path.join(destination, "publisher-jsons"));
+    fs.mkdirSync(path.join(destination, "generation-trees"));
+    const cells = [];
+    for (const name of fs.readdirSync(temp)) {
+      const source = path.join(temp, name);
+      if (name.endsWith(".json")) {
+        collect(`publisher JSON ${name}`, () => fs.copyFileSync(source, path.join(destination, "publisher-jsons", name)));
+      }
+      if (!fs.lstatSync(source).isDirectory() || !fs.existsSync(path.join(source, ".buck2"))) continue;
+      collect(`generation metadata ${name}`, () => {
+        const cell = path.join(source, ".buck2", "capabilities");
+        cells.push({
+          fixture: name,
+          generations: fs.readdirSync(path.join(cell, "generations")),
+          definitions: fs.readFileSync(path.join(cell, "defs.bzl"), "utf8"),
+        });
+      });
+      collect(`generation tree ${name}`, () => fs.cpSync(path.join(source, ".buck2"), path.join(destination, "generation-trees", name), { recursive: true, dereference: false }));
+    }
+    const native = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,stat=,comm="], { encoding: "utf8" });
+    const processes = [];
+    if (native.error || native.status !== 0) {
+      errors.push({ label: "native PID ancestry", error: String(native.error || native.stderr) });
+    } else {
+      const rows = native.stdout.trim().split("\n").filter(Boolean).map((line) => {
+        const [pid, parentPid, group, status, ...command] = line.trim().split(/\s+/);
+        return { pid: Number(pid), parentPid: Number(parentPid), group: Number(group), status, command: command.join(" ") };
+      });
+      const byPid = new Map(rows.map((row) => [row.pid, row]));
+      const fixtureGroup = byPid.get(fixturePid)?.group;
+      const selected = new Set([fixturePid, ...trackedPids]);
+      // Same-group rows retain orphaned publishers without recording arguments
+      // or environment; group membership alone is not an ownership claim.
+      for (const row of rows) if (row.group === fixtureGroup) selected.add(row.pid);
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const row of rows) {
+          if (selected.has(row.parentPid) && !selected.has(row.pid)) {
+            selected.add(row.pid);
+            changed = true;
+          }
+        }
+      }
+      for (const pid of [...selected]) {
+        for (let row = byPid.get(pid); row && !selected.has(row.parentPid); row = byPid.get(row.parentPid)) selected.add(row.parentPid);
+      }
+      processes.push(...rows.filter((row) => selected.has(row.pid)));
+    }
+    fs.writeFileSync(path.join(destination, "evidence.json"), JSON.stringify({
+      observedAt: new Date().toISOString(), assertion, assertionRoot,
+      expectedCount: expectedCount === "" ? null : Number(expectedCount),
+      fixturePid, trackedPids, cells, processes, errors,
+    }, null, 2) + "\n");
+    if (errors.length) console.error("Failure evidence collection errors:", JSON.stringify(errors));
+  ' "$TEMP_ROOT" "$evidence" "$BASHPID" "$1" "${root:-}" "${count:-}" \
+    "${child_pids[@]}" "${competing_pids[@]-}" "${first_publisher:-}" \
+    "${rooting_pid:-}" "${crashed_publisher:-}" "${evidence_publisher:-}" || {
+      printf 'Partial capability publisher failure evidence retained at %s\n' "$evidence" >&2
+      return 1
+    }
+  printf 'Capability publisher failure evidence retained at %s\n' "$evidence" >&2
+}
+fail() {
+  echo "FAIL: $*" >&2
+  retain_failure_evidence "$*" || echo "FAIL: could not completely retain assertion evidence" >&2
+  exit 1
+}
 export NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
 export CAPABILITY_FIXTURE_ROOT="$ROOT" CAPABILITY_FIXTURE_NIX="$TESTS_DIR/buck2-capability-fixture/profiles.nix"
 profiles_file="$("$NIX" build --impure --no-link --print-out-paths --expr '
@@ -58,8 +153,13 @@ assert_retained() {
     const count = Number(process.argv[2]);
     const names = fs.readdirSync(path.join(root, "generations"));
     const current = fs.readFileSync(path.join(root, "defs.bzl"), "utf8").match(/^GENERATION = "([0-9a-f]{64})"$/m)[1];
-    if (names.length !== count || !names.includes(current) || names.some((name) => !/^[0-9a-f]{64}$/.test(name))) process.exit(1);
-  ' "$root/.buck2/capabilities" "$count" || fail "generation set does not match selected defs or expected retained count"
+    if (names.length !== count || !names.includes(current) || names.some((name) => !/^[0-9a-f]{64}$/.test(name))) {
+      fs.writeFileSync(path.join(process.argv[3], "failed-generation-assertion.json"), JSON.stringify({
+        observedAt: new Date().toISOString(), root, expectedCount: count, names, current,
+      }) + "\n");
+      process.exit(1);
+    }
+  ' "$root/.buck2/capabilities" "$count" "$TEMP_ROOT" || fail "generation set does not match selected defs or expected retained count"
   for version in "${versions[@]}"; do
     target="$(profile "$version")"
     gen="$(generation "$target")"
@@ -222,6 +322,58 @@ publish "$concurrent" one >"$TEMP_ROOT/concurrent-pruned.json"
 assert_result "$TEMP_ROOT/concurrent-pruned.json" one 3 false
 assert_retained "$concurrent" 3
 
+# A deliberately failed assertion captures a real blocked publisher before
+# cleanup. Its copied state and native ancestry must survive fixture removal.
+selftest_evidence_root="$(mktemp -d)"
+evidence_fixture="$TEMP_ROOT/evidence-fixture"
+mkdir -p "$evidence_fixture"
+publish "$evidence_fixture" one >"$TEMP_ROOT/evidence-fixture-one.json"
+HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$evidence_fixture" --profile "$(profile two)" --nix-store "$TEMP_ROOT/gated-nix-store" >"$TEMP_ROOT/evidence-fixture-two.json" &
+evidence_publisher=$!
+child_pids+=("$evidence_publisher")
+read -r -t 30 -u 8 rooting_pid || fail "evidence publisher did not reach rooting barrier"
+child_pids+=("$rooting_pid")
+evidence_exit=0
+(
+  trap - EXIT INT TERM
+  CAPABILITY_TEST_EVIDENCE_DIR="$selftest_evidence_root" assert_retained "$evidence_fixture" 2
+) >"$TEMP_ROOT/evidence-failure.stdout" 2>"$TEMP_ROOT/evidence-failure.stderr" || evidence_exit=$?
+[ "$evidence_exit" -eq 1 ] || fail "evidence fixture did not preserve the failed assertion exit"
+grep -Fq 'Capability publisher failure evidence retained at ' "$TEMP_ROOT/evidence-failure.stderr" || fail "assertion did not print retained evidence path"
+kill -KILL "$evidence_publisher" "$rooting_pid"
+wait "$evidence_publisher" 2>/dev/null || true
+child_pids=()
+chmod -R u+w "$evidence_fixture"
+rm -rf "$evidence_fixture"
+"$BUN" -e '
+  const fs = require("fs");
+  const path = require("path");
+  const [base, publisherPid, rootingPid] = process.argv.slice(1);
+  const entries = fs.readdirSync(base);
+  if (entries.length !== 1) process.exit(1);
+  const directory = path.join(base, entries[0]);
+  if ((fs.statSync(directory).mode & 0o777) !== 0o700) process.exit(1);
+  const evidence = JSON.parse(fs.readFileSync(path.join(directory, "evidence.json"), "utf8"));
+  const observed = JSON.parse(fs.readFileSync(path.join(directory, "publisher-jsons", "failed-generation-assertion.json"), "utf8"));
+  if (evidence.errors.length || observed.expectedCount !== 2 || observed.names.length !== 1 || !observed.names.includes(observed.current)) process.exit(1);
+  const defs = fs.readFileSync(path.join(directory, "generation-trees", "evidence-fixture", "capabilities", "defs.bzl"), "utf8");
+  if (!defs.includes(observed.current)) process.exit(1);
+  const result = JSON.parse(fs.readFileSync(path.join(directory, "publisher-jsons", "evidence-fixture-one.json"), "utf8"));
+  if (result.generation !== observed.current || fs.readFileSync(path.join(directory, "publisher-jsons", "evidence-fixture-two.json"), "utf8") !== "") process.exit(1);
+  const ownership = fs.readFileSync(path.join(directory, "shell-ownership.txt"), "utf8");
+  if (!ownership.includes(publisherPid) || !ownership.includes(rootingPid)) process.exit(1);
+  const byPid = new Map(evidence.processes.map((row) => [row.pid, row]));
+  const ancestry = new Set();
+  for (let row = byPid.get(Number(rootingPid)); row && !ancestry.has(row.pid); row = byPid.get(row.parentPid)) ancestry.add(row.pid);
+  if (!ancestry.has(Number(publisherPid))) process.exit(1);
+' "$selftest_evidence_root" "$evidence_publisher" "$rooting_pid" || fail "retained assertion evidence lost generation state, publisher JSONs, ownership, or native ancestry"
+chmod -R u+w "$selftest_evidence_root"
+rm -rf "$selftest_evidence_root"
+selftest_evidence_root=""
+unset evidence_publisher
+rm -f "$TEMP_ROOT/failed-generation-assertion.json" "$TEMP_ROOT/evidence-fixture-one.json" \
+  "$TEMP_ROOT/evidence-fixture-two.json" "$TEMP_ROOT/evidence-failure.stdout" "$TEMP_ROOT/evidence-failure.stderr"
+
 # Kill the actual publisher while it holds flock, then publish again. The
 # delegated rooting subprocess is also test-owned and explicitly reaped.
 crash="$TEMP_ROOT/crash"
@@ -251,5 +403,5 @@ publish "$migration" one >"$TEMP_ROOT/corrupt.stdout" 2>"$TEMP_ROOT/corrupt.stde
 grep -Fq 'Immutable capability generation has changed contents' "$TEMP_ROOT/corrupt.stderr" || fail "generation corruption was not diagnosed"
 cmp -s "$TEMP_ROOT/defs-before-corruption" "$migration/.buck2/capabilities/defs.bzl" || fail "failed corrupt publication changed selected defs"
 
-jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,interruptedPruneRecovery:true,readOnlyPruneRecovery:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true}'
+jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,interruptedPruneRecovery:true,readOnlyPruneRecovery:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true,assertionEvidenceSurvivesCleanup:true,nativePublisherAncestryCaptured:true}'
 echo 'Buck capability publisher contracts passed.'
