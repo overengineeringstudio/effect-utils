@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import fixtureBuckProjection from '../../rust/effect-rust-fixtures/BUCK.genie.ts'
 import fixtureTsconfig from '../../rust/effect-rust-fixtures/tsconfig.json.genie.ts'
+import { rootTsconfigProjects } from '../tsconfig-projects.ts'
 import {
   planRootBuckAggregates,
   rootBuckAggregateProjection,
@@ -46,6 +47,13 @@ describe('root Buck aggregate projection', () => {
     })
   })
 
+  it('requires erasable TypeScript in every admitted source project', () => {
+    for (const project of rootTsconfigProjects) {
+      expect(project.tsconfig.data.compilerOptions?.erasableSyntaxOnly, project.path).toBe(true)
+      expect(planRootBuckAggregates().quick).toContain(project.buck2Authority.typecheckTarget)
+    }
+  })
+
   it('renders the stack-head root targets and registry aggregates together', () => {
     const output = rootBuckAggregateProjection().stringify({ cwd: '/repo', location: '' })
 
@@ -78,6 +86,7 @@ describe('root Buck aggregate projection', () => {
       strict: true,
       noUncheckedIndexedAccess: true,
       exactOptionalPropertyTypes: true,
+      erasableSyntaxOnly: true,
       noEmit: true,
     })
   })

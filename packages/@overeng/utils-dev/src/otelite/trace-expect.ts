@@ -112,10 +112,13 @@ export class TraceExpect {
     return new TraceExpect(spans, [])
   }
 
-  private constructor(
-    readonly spans: readonly SpanRow[],
-    private readonly filters: readonly string[],
-  ) {}
+  readonly spans: readonly SpanRow[]
+  private readonly filters: readonly string[]
+
+  private constructor(spans: readonly SpanRow[], filters: readonly string[]) {
+    this.spans = spans
+    this.filters = filters
+  }
 
   findByName(name: string): readonly SpanRow[] {
     return this.filter({ name }).spans
