@@ -1725,6 +1725,34 @@ const releaseLock = ({ path, token }: { path: string; token: string }): void => 
   rmSync(path, { recursive: true })
 }
 
+/**
+ * Tear down the package's shared editor root before removing a retired worktree.
+ * This is explicit teardown, not GC: callers must first stop editor/build users.
+ */
+export const releaseEditorViewRoot = (options: EditorViewOptions): void => {
+  const paths = makePaths(options)
+  if (pathExists(paths.editorRoot) === false) return
+  requireDirectory({ path: paths.editorRoot, field: 'editor root' })
+  if (realpathSync(paths.editorRoot) !== paths.editorRoot)
+    fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
+  const lock = acquireLock({
+    editorRoot: paths.editorRoot,
+    recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
+  })
+  const retired = `${paths.editorRoot}.release-${tokenSafe(lock.token)}`
+  let lockPath = lock.path
+  try {
+    // Only directories need write permission for unlinking. The walk uses lstat,
+    // so relocated payload links and external links never change their targets.
+    makeDirectoriesWritable(paths.editorRoot)
+    renameSync(paths.editorRoot, retired)
+    lockPath = join(retired, '.publish.lock')
+    rmSync(retired, { recursive: true })
+  } finally {
+    if (pathExists(lockPath) === true) releaseLock({ path: lockPath, token: lock.token })
+  }
+}
+
 /** Remove the publication lock only when the caller presents its exact owner token. */
 export const recoverEditorViewLock = ({
   options,
@@ -2393,12 +2421,12 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
 }
 
 type ParsedCli = {
-  readonly command: 'publish' | 'check' | 'verify' | 'recover-lock'
+  readonly command: 'publish' | 'check' | 'verify' | 'recover-lock' | 'release'
   readonly options: EditorViewOptions
   readonly token: string | undefined
 }
 
-const commands = ['publish', 'check', 'verify', 'recover-lock'] as const
+const commands = ['publish', 'check', 'verify', 'recover-lock', 'release'] as const
 
 const isCommand = (value: string | undefined): value is ParsedCli['command'] =>
   commands.includes(value as ParsedCli['command'])
@@ -2406,7 +2434,7 @@ const isCommand = (value: string | undefined): value is ParsedCli['command'] =>
 const parseCli = (args: readonly string[]): ParsedCli => {
   const command = args[0]
   if (isCommand(command) === false)
-    return fail('expected command: publish, check, verify, or recover-lock')
+    return fail('expected command: publish, check, verify, recover-lock, or release')
   const values = new Map<string, string>()
   const backingRoots: string[] = []
   for (let index = 1; index < args.length; index += 2) {
@@ -2421,12 +2449,13 @@ const parseCli = (args: readonly string[]): ParsedCli => {
     }
   }
   const recover = command === 'recover-lock'
+  const maintenance = recover === true || command === 'release'
   const admitting = command === 'publish' || command === 'check'
   if (admitting === false && backingRoots.length > 0)
     fail(`unexpected option for ${command}: --backing-root`)
   const allowed = new Set(
-    recover === true
-      ? ['--repo-root', '--package', '--view-name', '--token']
+    maintenance === true
+      ? ['--repo-root', '--package', '--view-name', ...(recover === true ? ['--token'] : [])]
       : admitting === true
         ? [
             '--repo-root',
@@ -2458,7 +2487,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option for ${command}: ${flag}`)
   const get = (flag: string): string => values.get(flag) ?? fail(`missing required option ${flag}`)
-  const getUnlessRecovering = (flag: string): string => (recover === true ? '' : get(flag))
+  const getUnlessMaintaining = (flag: string): string => (maintenance === true ? '' : get(flag))
   const getWhenAdmitting = (flag: string): string => (admitting === true ? get(flag) : '')
   const packagePath = get('--package')
   // The view name defaults to the package directory name, so existing task
@@ -2474,16 +2503,17 @@ const parseCli = (args: readonly string[]): ParsedCli => {
     repoRoot: get('--repo-root'),
     package: packagePath,
     viewName,
-    cell: getUnlessRecovering('--cell'),
-    target: getUnlessRecovering('--target'),
+    cell: getUnlessMaintaining('--cell'),
+    target: getUnlessMaintaining('--target'),
     editorInputs: getWhenAdmitting('--editor-inputs'),
     backingRoots: admitting === true ? backingRoots : [],
     nodeModules: getWhenAdmitting('--node-modules'),
     cp: getWhenAdmitting('--cp'),
-    fingerprintTool: recover === true ? '' : get('--fingerprint-tool'),
+    fingerprintTool: maintenance === true ? '' : get('--fingerprint-tool'),
     mv: getWhenAdmitting('--mv'),
     workspaceAuthority: getWhenAdmitting('--workspace-authority'),
-    consumerCache: recover === true ? `.devenv/vite-cache/${viewName}` : get('--consumer-cache'),
+    consumerCache:
+      maintenance === true ? `.devenv/vite-cache/${viewName}` : get('--consumer-cache'),
     snapshotRetention,
   }
   return { command, options, token: recover === true ? get('--token') : undefined }
@@ -2506,6 +2536,9 @@ const main = async (): Promise<void> => {
     process.stdout.write(
       `verified ${record.package} editor snapshot ${record.byteSnapshotDigest}\n`,
     )
+  } else if (parsed.command === 'release') {
+    releaseEditorViewRoot(parsed.options)
+    process.stdout.write(`released editor dependency root for ${parsed.options.package}\n`)
   } else {
     recoverEditorViewLock({
       options: parsed.options,

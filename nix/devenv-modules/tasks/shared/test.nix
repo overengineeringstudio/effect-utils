@@ -26,6 +26,7 @@
 #   - vitest as a devDependency in package.json
 #   - vitest.config.ts in the package root
 #   - optional `after = [ ... ]` for package-specific prerequisites
+#   - optional `installTask` overriding the aggregate's installer for direct execution
 #
 # Provides:
 #   - test:run - Run all tests
@@ -38,7 +39,12 @@
   packageConcurrency ? null,
   retainVitestJson ? false,
 }:
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
@@ -52,7 +58,6 @@ let
       throw "packageConcurrency must be at least 1"
     else
       packageConcurrency;
-  packagesWithIndexes = lib.imap0 (index: pkg: pkg // { __testIndex = index; }) packages;
   taskFileStem =
     taskName:
     builtins.replaceStrings
@@ -119,51 +124,73 @@ let
 
   packageTestTaskNames = map (pkg: "test:${pkg.name}") packages;
   packageTestBatches =
-    if hasPackageConcurrency then chunkList validatedPackageConcurrency packageTestTaskNames else [ ];
+    if hasPackageConcurrency then chunkList validatedPackageConcurrency packages else [ ];
   packageTestBatchTaskName = index: "test:run:batch:${toString index}";
   lastPackageTestBatchTaskName = packageTestBatchTaskName (builtins.length packageTestBatches - 1);
 
-  mkTestTask =
-    pkg:
-    let
-      batchIndex =
-        if hasPackageConcurrency then builtins.div pkg.__testIndex validatedPackageConcurrency else 0;
-    in
-    {
-      "test:${pkg.name}" = {
-        description = "Run tests for ${pkg.name}";
-        exec = trace.exec "test:${pkg.name}" (vitestExec {
-          name = "test:${pkg.name}";
-          extraArgs = pkg.vitestArgs or "";
-        });
-        cwd = pkg.path;
-        execIfModified = [
-          "${pkg.path}/src/**/*.ts"
-          "${pkg.path}/src/**/*.tsx"
-          "${pkg.path}/src/**/*.test.ts"
-          "${pkg.path}/src/**/*.test.tsx"
-          "${pkg.path}/test/**/*.ts"
-          "${pkg.path}/test/**/*.tsx"
-          "${pkg.path}/test/**/*.test.ts"
-          "${pkg.path}/test/**/*.test.tsx"
-          "${pkg.path}/vitest.config.ts"
-        ];
-        after = [
-          installTask
-        ]
-        ++ (pkg.after or [ ])
-        ++ lib.optional (hasPackageConcurrency && batchIndex > 0) (
-          packageTestBatchTaskName (batchIndex - 1)
-        );
-      };
-    };
-
-  mkPackageTestBatchTask = index: taskNames: {
-    "${packageTestBatchTaskName index}" = {
-      description = "Complete test:run package batch ${toString (index + 1)}";
-      after = taskNames;
+  mkTestTask = pkg: {
+    "test:${pkg.name}" = {
+      description = "Run tests for ${pkg.name}";
+      exec = trace.exec "test:${pkg.name}" (vitestExec {
+        name = "test:${pkg.name}";
+        extraArgs = pkg.vitestArgs or "";
+      });
+      cwd = pkg.path;
+      execIfModified = [
+        "${pkg.path}/src/**/*.ts"
+        "${pkg.path}/src/**/*.tsx"
+        "${pkg.path}/src/**/*.test.ts"
+        "${pkg.path}/src/**/*.test.tsx"
+        "${pkg.path}/test/**/*.ts"
+        "${pkg.path}/test/**/*.tsx"
+        "${pkg.path}/test/**/*.test.ts"
+        "${pkg.path}/test/**/*.test.tsx"
+        "${pkg.path}/vitest.config.ts"
+      ];
+      after = [ (pkg.installTask or installTask) ] ++ (pkg.after or [ ]);
     };
   };
+
+  # Batch-only execution aliases carry ordering; direct package tasks never pull
+  # earlier batches into their dependency closure. Aliases use the aggregate's
+  # one installer rather than co-scheduling independent per-package publishers.
+  mkPackageTestBatchTask =
+    index: batchPackages:
+    let
+      batchName = packageTestBatchTaskName index;
+      executionName = pkg: "${batchName}:${pkg.name}";
+    in
+    lib.mkMerge (
+      [
+        {
+          "${batchName}" = {
+            description = "Complete test:run package batch ${toString (index + 1)}";
+            after = map executionName batchPackages;
+          };
+        }
+      ]
+      ++ map (
+        pkg:
+        let
+          execution = config.tasks."test:${pkg.name}";
+        in
+        {
+          "${executionName pkg}" = {
+            # Reuse final task overrides, including pinned runtimes and tool env.
+            inherit (execution) description exec cwd;
+            env = execution.env or { };
+            execIfModified = execution.execIfModified or [ ];
+            # trace-audit-allow: inherit the final task's already-instrumented status; do not wrap twice.
+            status = execution.status or null;
+            after = [
+              installTask
+            ]
+            ++ (pkg.after or [ ])
+            ++ lib.optional (index > 0) (packageTestBatchTaskName (index - 1));
+          };
+        }
+      ) batchPackages
+    );
 
   guardedTasks = {
     "test:run" = {
@@ -197,7 +224,7 @@ in
   packages = cliGuard.fromTasks guardedTasks;
 
   tasks = lib.mkMerge (
-    (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packagesWithIndexes else [ ])
+    (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages else [ ])
     ++ (
       if hasPackages && hasPackageConcurrency then
         lib.imap0 mkPackageTestBatchTask packageTestBatches

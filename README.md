@@ -87,8 +87,8 @@ callback or native section hrefs. Pass the active ID from actual scroll position
 The package supplies no theme, document discovery, domain extraction, or virtualization.
 
 Run `devenv tasks run test:outline` for the focused behavioral suite. Its scoped
-`buck2:editor:publish:outline` prerequisite publishes the package's Buck-owned dependency view
-without materializing unrelated package editor views.
+`buck2:editor:publish:test:outline` prerequisite publishes the package's Buck-owned dependency view
+plus the root and OpenTelemetry bootstrap views, without materializing unrelated package views.
 
 ### Browser Telemetry
 

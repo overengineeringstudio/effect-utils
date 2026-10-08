@@ -26,24 +26,23 @@ eval_test_module_attr() {
       flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       evaluated = pkgs.lib.evalModules {
+        specialArgs = { inherit pkgs; };
         modules = [
           ({ ... }: {
             options.tasks = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
             options.processes = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
             options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
+            config.tasks.\"test:ok-c\".exec = pkgs.lib.mkForce \"overridden-package-runtime\";
+            config.tasks.\"test:ok-c\".env.RUNTIME_TOOL = \"pinned-tool\";
           })
-          ((import $ROOT/nix/devenv-modules/tasks/shared/test.nix {
+          (import $ROOT/nix/devenv-modules/tasks/shared/test.nix {
             packages = [
               { path = \"packages/ok-a\"; name = \"ok-a\"; }
               { path = \"packages/native-b\"; name = \"native-b\"; after = [ \"native:link\" ]; }
-              { path = \"packages/ok-c\"; name = \"ok-c\"; }
+              { path = \"packages/ok-c\"; name = \"ok-c\"; installTask = \"install:ok-c\"; }
             ];
             extraTests = [ \"test:extra\" ];
             packageConcurrency = $concurrency;
-          }) {
-            inherit pkgs;
-            lib = pkgs.lib;
-            config = { };
           })
         ];
       };
@@ -69,19 +68,39 @@ assert_eq \
   "first-batch package keeps package-specific prerequisites"
 
 assert_eq \
-  '["pnpm:install","test:run:batch:0"]' \
+  '["install:ok-c"]' \
   "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:ok-c".after')" \
-  "later-batch package waits for previous batch barrier"
+  "direct later-package execution keeps its scoped installer and no earlier batch"
 
 assert_eq \
-  '["test:ok-a","test:native-b"]' \
+  '["test:run:batch:0:ok-a","test:run:batch:0:native-b"]' \
   "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:run:batch:0".after')" \
   "first batch barrier waits for first package group"
 
 assert_eq \
-  '["test:ok-c"]' \
+  '["test:run:batch:1:ok-c"]' \
   "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:run:batch:1".after')" \
   "second batch barrier waits for second package group"
+
+assert_eq \
+  '["pnpm:install","test:run:batch:0"]' \
+  "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:run:batch:1:ok-c".after')" \
+  "aggregate execution uses the shared installer and waits for its previous batch"
+
+assert_eq \
+  '["pnpm:install","native:link"]' \
+  "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:run:batch:0:native-b".after')" \
+  "aggregate execution preserves package-specific prerequisites"
+
+assert_eq \
+  'overridden-package-runtime' \
+  "$(eval_test_module_attr 2 'tasks."test:run:batch:1:ok-c".exec')" \
+  "aggregate aliases reuse the final package runtime override"
+
+assert_eq \
+  'pinned-tool' \
+  "$(eval_test_module_attr 2 'tasks."test:run:batch:1:ok-c".env.RUNTIME_TOOL')" \
+  "aggregate aliases reuse the final package tool environment"
 
 assert_eq \
   '["test:run:batch:1","test:extra"]' \

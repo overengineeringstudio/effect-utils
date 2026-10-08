@@ -351,6 +351,13 @@ let
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  testPackagePublisherName = name: "buck2:editor:publish:test:${name}";
+  standaloneTestPublicationPackages =
+    sourceTestPackages
+    ++ map (lane: {
+      path = lane.packagePath;
+      name = lib.removePrefix "test:" lane.taskName;
+    }) (builtins.filter (lane: !(lane ? unboundedTaskName)) buck2TestLanes);
   # Editor views the source-side test partition executes through: every source test package,
   # the repository root (`genie:buck2:test` runs `bun test genie/buck2/` from it), and the
   # packages `devenv-modules:test` runs from source (Genie's compiled-staging proof and the
@@ -431,7 +438,15 @@ let
       lane:
       lib.nameValuePair lane.taskName {
         description = "Execute the bounded ${lane.packageName} unit-test lane under Buck";
-        after = [ "genie:check" ] ++ lib.optional (lane ? unboundedTaskName) lane.unboundedTaskName;
+        after = [
+          "genie:check"
+          (
+            if lane ? unboundedTaskName then
+              lane.unboundedTaskName
+            else
+              testPackagePublisherName (lib.removePrefix "test:" lane.taskName)
+          )
+        ];
         # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
         exec = buck2UnitTestExec {
           name = lane.taskName;
@@ -781,7 +796,9 @@ in
     })
     (taskModules.test {
       installTask = "buck2:editor:publish:test";
-      packages = sourceTestPackages;
+      packages = map (
+        pkg: pkg // { installTask = testPackagePublisherName pkg.name; }
+      ) sourceTestPackages;
       extraTests = [
         "devenv-modules:test"
         "genie:buck2:test"
@@ -792,6 +809,18 @@ in
     })
     # Per-lane Buck `test:<package>` tasks, each pulling in its unbounded complement.
     { tasks = buck2TestLaneTasks; }
+    {
+      tasks = lib.listToAttrs (
+        map (
+          pkg:
+          lib.nameValuePair (testPackagePublisherName pkg.name) (scopedEditorViewPublisher {
+            description = "Publish only bootstrap and ${pkg.name} test dependency views";
+            packagePaths = lib.unique (editorBootstrapPackagePaths ++ [ pkg.path ]);
+            traceScope = "test:${pkg.name}";
+          })
+        ) standaloneTestPublicationPackages
+      );
+    }
     (taskModules.storybook {
       installTask = "buck2:editor:publish";
       packages = packagesWithStorybook;
@@ -881,7 +910,6 @@ in
   tasks."lint:check:lockfile".description =
     lib.mkForce "Verify lockfile and package specifiers through source-side Genie freshness";
   tasks."lint:check:lockfile".after = lib.mkForce [ "genie:check" ];
-  tasks."test:outline".after = lib.mkForce [ "buck2:editor:publish:outline" ];
   tasks."lint:check:lockfile".exec = lib.mkForce (
     trace.exec "lint:check:lockfile" "exec genie --check"
   );
@@ -1327,12 +1355,6 @@ in
     traceScope = "otel-contract";
   };
 
-  tasks."buck2:editor:publish:outline" = scopedEditorViewPublisher {
-    description = "Atomically publish the headless outline editor dependency view";
-    packagePaths = [ "packages/@overeng/outline" ];
-    traceScope = "outline";
-  };
-
   tasks."buck2:editor:publish:playwright" = scopedEditorViewPublisher {
     description = "Atomically publish the shared Playwright editor dependency views";
     packagePaths = [
@@ -1366,6 +1388,18 @@ in
         --repo-root "$root" \
         --package "$package" \
         --token "$token"
+    '';
+  };
+
+  tasks."buck2:editor:release" = {
+    description = "Release read-only editor roots before removing a retired worktree";
+    exec = trace.exec "buck2:editor:release" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      for package in ${lib.concatStringsSep " " (map lib.escapeShellArg ([ "." ] ++ allPackages))}; do
+        ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" release \
+          --repo-root "$root" --package "$package"
+      done
     '';
   };
 

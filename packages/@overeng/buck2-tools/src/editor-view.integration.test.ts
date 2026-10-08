@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
   lstatSync,
@@ -14,6 +15,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -23,6 +25,7 @@ import {
   checkEditorView,
   publishEditorView,
   recoverEditorViewLock,
+  releaseEditorViewRoot,
   verifyEditorViewSnapshot,
   type EditorViewOptions,
 } from './editor-view.ts'
@@ -519,6 +522,64 @@ describe('editor view publisher', () => {
       ) as { snapshots: readonly string[] }
       expect(retention.snapshots).toHaveLength(2)
       expect(retention.snapshots[0]).toBe(currentTarget(fixture).replace('.store/', ''))
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('releases read-only editor roots through the teardown CLI without following links', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      expect(statSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
+      const external = join(fixture.root, 'external')
+      mkdirSync(external, { mode: 0o555 })
+      symlinkSync(external, join(fixture.editorRoot, 'external-link'))
+      const externalMode = statSync(external).mode
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(new URL('./editor-view.ts', import.meta.url)),
+          'release',
+          '--repo-root',
+          fixture.root,
+          '--package',
+          fixture.options.package,
+        ],
+        { encoding: 'utf8' },
+      )
+      expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' })
+      expect(readdirSync(dirname(fixture.editorRoot))).not.toContain('.editor-view')
+      expect(
+        readdirSync(dirname(fixture.editorRoot)).filter((name) =>
+          name.startsWith('.editor-view.release-'),
+        ),
+      ).toEqual([])
+      expect(statSync(external).mode).toBe(externalMode)
+      expect(lstatSync(join(fixture.packageDir, 'node_modules')).isSymbolicLink()).toBe(true)
+      releaseEditorViewRoot(fixture.options)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('refuses teardown while a publisher lock exists without unlocking payload directories', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      const lock = join(fixture.editorRoot, '.publish.lock')
+      mkdirSync(lock)
+      writeFileSync(
+        join(lock, 'owner.json'),
+        JSON.stringify({
+          schema: 'effect-utils/editor-view-lock/v1',
+          token: 'held',
+          pid: process.pid,
+        }),
+      )
+      expect(() => releaseEditorViewRoot(fixture.options)).toThrow('publication lock exists')
+      expect(statSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
+      expect(readlinkSync(join(fixture.editorRoot, fixture.options.viewName))).toBe(record.snapshot)
     } finally {
       cleanup(fixture)
     }

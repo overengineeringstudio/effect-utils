@@ -138,6 +138,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - `skipNonInteractive = true` keeps automatic shell entry cheap for
     non-interactive callers; `DEVENV_FORCE_SETUP=1` explicitly overrides it.
 - `test.nix` - Test tasks
+  - A package's `installTask` overrides the shared installer for direct
+    `test:<name>` execution. `test:run` batches use execution aliases with the
+    shared installer and ordered barriers; direct tasks never run earlier
+    batches. Package-specific `after` prerequisites apply to both paths.
 - `test-playwright.nix` - Playwright e2e tasks
 - `vercel.nix` - Vercel deploy tasks
   - Static and build-mode deploys delegate provider behavior to `ci-tools deploy vercel`.
