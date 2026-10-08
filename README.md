@@ -271,7 +271,8 @@ topology and requires a fresh daemon. The publisher logs each stop; a persistent
 migration marker makes a failed or interrupted stop retryable.
 Preparation diagnostics go to stderr, preserving command stdout when callers
 capture Buck output paths. The daemon regression starts and shuts down its own
-private Watchman service; it does not depend on a host service on Linux or macOS.
+private Watchman service, using a fixture-only global config that permits nice 19;
+it does not depend on a host service on Linux or macOS.
 
 Retained generations have indirect Nix GC roots under `.buck2/capability-roots`.
 The publisher keeps the three most recently published generations only when
@@ -286,10 +287,18 @@ Watchman service and canonical watched root with `watchman --no-local
 watch-project <root>` before native daemon startup. An attempt has a 2500 ms
 deadline and one retry for a timeout only. Successful root admission is cached
 for at most five seconds, scoped to the root, `.watchmanconfig`, PATH, HOME and
-socket environment identity. Default-service queries allow Watchman to spawn
-on demand on Linux and Darwin, including job-local CI runners. An explicit
-`WATCHMAN_SOCK` uses `--no-spawn` on every platform: admission must reach that
-owned service, not create a replacement. Missing, unhealthy or incorrectly
+socket environment identity. Un-niced default-service queries allow Watchman
+to spawn on demand on Linux and Darwin, including job-local CI runners. Niced
+clients use `--no-spawn`: they may connect to an existing service, but never
+create a permanently niced shared daemon. Only a proven-missing default
+service (the silent no-spawn client plus an absent computed socket) or
+Watchman's own startup refusal is diagnosed as a priority problem: start the
+service un-niced with `watchman get-sockname` outside the gate or provision
+the host service, and never relax the shared startup priority limit. Other
+niced failures keep their genuine executable or service diagnosis; admission
+never falls back to notify.
+An explicit `WATCHMAN_SOCK` also uses `--no-spawn` on every platform: admission
+must reach that owned service, not create a replacement. Missing, unhealthy or incorrectly
 rooted Watchman fails with the probe command and remediation; it never selects notify as an
 outage fallback. For an ancestor-root mismatch, run `watchman watch <root>` and
 rerun the displayed probe. Enter `devenv shell` if Watchman is missing from PATH.
