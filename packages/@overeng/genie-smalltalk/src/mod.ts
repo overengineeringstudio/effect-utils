@@ -336,7 +336,9 @@ export const StepSchema = Schema.Struct({
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(SubjectId),
-  dependsOn: Schema.optionalKey(Schema.Union([DependsOnSchema, Schema.NonEmptyArray(DependsOnSchema)])),
+  dependsOn: Schema.optionalKey(
+    Schema.Union([DependsOnSchema, Schema.NonEmptyArray(DependsOnSchema)]),
+  ),
   goal: Schema.optionalKey(GoalsSchema),
   exec: Schema.optionalKey(ExecSchema),
   gate: Schema.optionalKey(GateSchema),
