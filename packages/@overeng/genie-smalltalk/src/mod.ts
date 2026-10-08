@@ -153,7 +153,7 @@ export const IanaTimezoneSchema = Schema.String.pipe(
     (s): s is string => {
       if (/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9._+-]+)*$/u.test(s) === false) return false
       try {
-        new Intl.DateTimeFormat('en', { timeZone: s })
+        Intl.DateTimeFormat('en', { timeZone: s })
         return true
       } catch {
         return false
