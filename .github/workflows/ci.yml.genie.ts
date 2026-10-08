@@ -1559,10 +1559,10 @@ const allCiJobs: Record<string, any> = {
     ...notifyAlignmentJob({
       targetRepo: 'schickling/megarepo-all',
       needs: ['tested-tree', 'quality', ...Object.keys(deployJobs)],
-      runner: [
-        'namespace-profile-linux-x86-64',
-        'namespace-features:github.run-id=${{ github.run_id }}',
-      ],
+      runner: namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+      }),
     }),
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
     if: `\${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(
