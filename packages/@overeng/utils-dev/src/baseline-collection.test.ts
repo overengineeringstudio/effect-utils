@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeCollectionArtifact,
   decodeTestAuthority,
+  decodeSourceTaskScope,
+  ownershipInSourceScope,
   minimumTestAuthorityLanes,
   isTestDiscoveryDirectory,
   ownershipForFile,
@@ -11,6 +13,46 @@ import {
   taskFileStem,
   type TestAuthorityLane,
 } from './baseline-collection.ts'
+
+describe('platform source collection scope', () => {
+  it('requires safe, unique, nonempty task names', () => {
+    expect([...decodeSourceTaskScope(['test:utils:unbounded'])]).toEqual(['test:utils:unbounded'])
+    for (const decoded of [undefined, {}, [], ['test:a', 'test:a'], ['test:a;exit 0'], [1]]) {
+      expect(() => decodeSourceTaskScope(decoded)).toThrow()
+    }
+  })
+
+  it('selects only scoped source reports without dropping bounded or unowned evidence', () => {
+    const scope = decodeSourceTaskScope(['test:utils:unbounded'])
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'source', taskName: 'test:utils:unbounded' },
+        scope,
+      }),
+    ).toBe(true)
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'source', taskName: 'test:restate-effect:unbounded' },
+        scope,
+      }),
+    ).toBe(false)
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'source', taskName: 'test:restate-effect:unbounded' },
+        scope: undefined,
+      }),
+    ).toBe(true)
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'buck', collectionTarget: 'target', packageRelative: 'file' },
+        scope,
+      }),
+    ).toBe(true)
+    expect(ownershipInSourceScope({ ownership: { kind: 'unowned', reason: 'drift' }, scope })).toBe(
+      true,
+    )
+  })
+})
 
 const lane = (overrides: Partial<TestAuthorityLane> = {}): TestAuthorityLane => ({
   collectionTarget: 'effect_utils//packages/@overeng/alpha:test_collect',

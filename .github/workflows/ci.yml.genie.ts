@@ -388,7 +388,6 @@ const playwrightTestRun = (packageName: 'utils' | 'tui-react') =>
     runDevenvTasksBefore(`test:pw:${packageName}`),
   ].join('\n')
 
-
 /** Build and `--help`-smoke compiled-executable and native products. */
 const compiledProductsSmokeStep = {
   name: 'Build and smoke native and compiled products',
@@ -471,6 +470,11 @@ const unitTestJob = (runner: RunnerProfile) => ({
   }),
   'timeout-minutes': 90,
   defaults: bashShellDefaults,
+  // Keep one shell configuration across telemetry, tests and product smoke.
+  env: {
+    EFFECT_UTILS_CI_TEST: '1',
+    EFFECT_UTILS_TEST_PLATFORM: runner === 'namespace-profile-macos-arm64' ? 'darwin' : 'linux',
+  },
   steps: [
     ...(runner === 'namespace-profile-macos-arm64'
       ? withMacosNixSubstituter(baseSteps)

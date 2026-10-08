@@ -20,6 +20,7 @@ assert_eq() {
 eval_test_module_attr() {
   local concurrency="$1"
   local attr_expr="$2"
+  local aggregate_packages="${3:-}"
 
   nix eval --impure --raw --expr "
     let
@@ -43,6 +44,7 @@ eval_test_module_attr() {
             ];
             extraTests = [ \"test:extra\" ];
             packageConcurrency = $concurrency;
+            $aggregate_packages
           })
         ];
       };
@@ -111,6 +113,23 @@ assert_eq \
   'null' \
   "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:run".exec')" \
   "bounded test:run stays a graph-only task"
+
+assert_eq \
+  '["test:run:batch:0:native-b"]' \
+  "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:run:batch:0".after' \
+    'aggregatePackages = [ { path = "packages/native-b"; name = "native-b"; after = [ "native:link" ]; } ];')" \
+  "platform aggregate schedules only its selected source packages"
+
+assert_eq \
+  '["install:ok-c"]' \
+  "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:ok-c".after' \
+    'aggregatePackages = [ { path = "packages/native-b"; name = "native-b"; } ];')" \
+  "platform aggregate preserves unselected standalone tasks and their installers"
+
+assert_eq \
+  '["test:extra"]' \
+  "$(eval_test_module_attr 2 'builtins.toJSON tasks."test:run".after' 'aggregatePackages = [ ];')" \
+  "empty source scope retains extra suites without a nonexistent batch"
 
 set +e
 eval_test_module_attr 0 'tasks."test:run".exec' >/dev/null 2>"$tmpdir/invalid.stderr"

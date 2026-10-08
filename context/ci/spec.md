@@ -97,6 +97,43 @@ The deploy target set is the artifact's top-level directory names, not the defau
 
 Merge-group code may include fork contributions. Pipeline evidence identity and attempt-close jobs mark merge groups untrusted, so queue validation does not gain Tailscale evidence-network admission. Buck cache posture stays explicitly reader-only; protected-main writers and publishers keep their existing event/ref guards.
 
+## Required platform test coverage
+
+| Required check                          | Suite scope                                                         | Collection evidence                                                    |
+| --------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `test (namespace-profile-linux-x86-64)` | Every bounded, source-only and unbounded-complement suite           | Complete bounded census and every source-owned baseline report         |
+| `test (namespace-profile-macos-arm64)`  | Every bounded lane plus the declared Darwin-sensitive source suites | Complete bounded census and the selected source-owned baseline reports |
+
+`genie/ci-workflow/test-platforms.json` is the single suite classification authority.
+Each aggregate task has exactly one class and a rationale. `devenv.nix` compares
+that classification with the discovered aggregate tasks; adding, deleting or
+renaming a suite without classifying it fails configuration on both platforms.
+Linux never filters the aggregate. The required macOS check retains its name
+and executes the Darwin class, rather than dropping macOS from merge policy.
+
+Darwin-sensitive suites exercise real host behavior: filesystem/watchers and
+Watchman, processes and signals, Nix Darwin store paths, native binaries and
+codesigning, PTY/TUI behavior, the Buck daemon, or BSD/GNU shell differences.
+Pure parsing, service protocol, rendering and SDK contracts are platform-neutral.
+The bounded Buck aggregate remains Darwin-sensitive as a whole because it
+contains native and host-platform runners; platform-neutral bounded tests are
+not individually excised. The source publication barrier derives its package
+set from the selected suites plus the root, Genie and ci-tools module fixtures.
+
+The collection gate still checks filesystem/authority drift and every bounded
+collection target on both platforms. Only source-owned baseline reports outside
+the declared Darwin scope are omitted on macOS; bounded or unowned files cannot
+be excluded by that scope. Linux supplies the complete source evidence.
+
+Both required jobs select one CI test shell configuration before the first
+shell evaluation and retain it through telemetry, tests and product smoke.
+This configuration excludes the interactive OTEL Collector/Tempo/Grafana stack
+and the local `otelite` trace-capture verifier, which the test graph does not
+execute. It retains `otel-span`, `otel-scrape`, native devenv tracing and pipeline
+evidence. Developer shells keep the local observability surface. Execution
+latency is measured from job `startedAt` to `completedAt`; runner queue wait is
+reported separately and is not part of the execution budget.
+
 ## Gates and no-op actions
 
 A gate decides whether evidence permits progress. It may be expressed by a failing step/job or by a required check in the ruleset.

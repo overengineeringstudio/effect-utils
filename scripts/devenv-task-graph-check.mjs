@@ -366,6 +366,15 @@ const sourceTestTasks = [...dependencies.keys()].filter((name) => batchExecution
 const directSourceTestTasks = sourceTestTasks.map((name) =>
   name.replace(batchExecutionPattern, 'test:'),
 )
+const platformSuites = JSON.parse(
+  readFileSync(`${root}/genie/ci-workflow/test-platforms.json`, 'utf8'),
+)
+const darwinTasks = new Set(platformSuites.darwin.map(({ task }) => task))
+const sourceTaskSelected = (name) =>
+  process.env.EFFECT_UTILS_TEST_PLATFORM !== 'darwin' || darwinTasks.has(name)
+const allDirectSourceTestTasks = [
+  ...new Set([...directSourceTestTasks, ...buck2UnboundedTaskNames]),
+]
 const bootstrapPackagePaths = ['.', 'packages/@overeng/otel-contract']
 ok({
   condition: sourceTestTasks.length > 0,
@@ -373,8 +382,8 @@ ok({
 })
 for (const name of buck2UnboundedTaskNames) {
   ok({
-    condition: directSourceTestTasks.includes(name),
-    name: `${sourceTestAggregate} retains the ${name} source complement`,
+    condition: directSourceTestTasks.includes(name) === sourceTaskSelected(name),
+    name: `${sourceTestAggregate} matches the declared platform scope for ${name}`,
   })
 }
 ok({
@@ -383,7 +392,7 @@ ok({
     ?.has('buck2:editor:publish:test:notion-cli:unbounded'),
   name: 'test:notion-cli:unbounded waits for its request-scoped publisher',
 })
-for (const name of directSourceTestTasks) {
+for (const name of allDirectSourceTestTasks) {
   ok({
     condition: tasks.has(name),
     name: `${name} remains independently addressable`,
@@ -405,7 +414,7 @@ for (const name of sourceTestTasks) {
 }
 const packagePublisherContracts = Object.fromEntries(
   [
-    ...directSourceTestTasks.map((name) => ({
+    ...allDirectSourceTestTasks.map((name) => ({
       consumer: name,
       packagePath: tasks.get(name)?.cwd,
     })),
@@ -436,8 +445,9 @@ const scopedPublisherContracts = {
     consumers: [
       ...sourceTestTasks,
       ...sourceTestExtraSuites,
-      'otel:profile:genie-check',
-      'otel:verify:genie-check',
+      ...(process.env.EFFECT_UTILS_CI_TEST === '1'
+        ? []
+        : ['otel:profile:genie-check', 'otel:verify:genie-check']),
     ],
     packagePaths: [
       '.',

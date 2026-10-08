@@ -10,6 +10,8 @@ import {
   countCollectedTests,
   decodeCollectionArtifact,
   decodeTestAuthority,
+  decodeSourceTaskScope,
+  ownershipInSourceScope,
   ownershipForFile,
   isTestDiscoveryDirectory,
   parseShowOutput,
@@ -107,6 +109,11 @@ const lanes = decodeTestAuthority({
   decoded: await readJson(authorityPath),
   sourceLabel: authorityPath,
 })
+const sourceTasksPath = argumentValue('--source-tasks-file')
+const sourceScope =
+  sourceTasksPath === undefined
+    ? undefined
+    : decodeSourceTaskScope(await readJson(resolve(root, sourceTasksPath)))
 
 const testFiles = [
   ...(await discoverTestFiles({
@@ -147,6 +154,7 @@ const baselineFiles: readonly BaselineFile[] = testFileSources
     ),
   )
   .map(([file]): BaselineFile => ({ file, ownership: ownershipForFile({ file, lanes }) }))
+  .filter(({ ownership }) => ownershipInSourceScope({ ownership, scope: sourceScope }))
   .toSorted((left, right) => compareAuthorityStrings(left.file, right.file))
 
 // --- Buck-owned evidence -----------------------------------------------------------------
