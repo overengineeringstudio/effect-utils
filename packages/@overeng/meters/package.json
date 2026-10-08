@@ -1,0 +1,193 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rust",
+      "packages/@overeng/meters",
+      "packages/@overeng/otel-browser",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
+  "name": "@overeng/meters",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Canvas performance meters and headless measurement windows for React applications",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./canvas": {
+      "types": "./dist/canvas/index.d.ts",
+      "default": "./src/canvas/index.ts"
+    },
+    "./canvas/layout": {
+      "types": "./dist/canvas/layout.d.ts",
+      "default": "./src/canvas/layout.ts"
+    },
+    "./headless": {
+      "types": "./dist/headless/index.d.ts",
+      "default": "./src/headless/index.ts"
+    },
+    "./platform/browser": {
+      "types": "./dist/platform/browser.d.ts",
+      "default": "./src/platform/browser.ts"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./src/react/index.tsx"
+    },
+    "./series": {
+      "types": "./dist/series/index.d.ts",
+      "default": "./src/series/index.ts"
+    },
+    "./sources/counters": {
+      "types": "./dist/sources/counters/index.d.ts",
+      "default": "./src/sources/counters/index.ts"
+    },
+    "./sources/fibers": {
+      "types": "./dist/sources/fibers/index.d.ts",
+      "default": "./src/sources/fibers/index.ts"
+    },
+    "./sources/frame": {
+      "types": "./dist/sources/frame/index.d.ts",
+      "default": "./src/sources/frame/index.ts"
+    },
+    "./sources/long-frames": {
+      "types": "./dist/sources/long-frames/index.d.ts",
+      "default": "./src/sources/long-frames/index.ts"
+    },
+    "./sources/memory": {
+      "types": "./dist/sources/memory/index.d.ts",
+      "default": "./src/sources/memory/index.ts"
+    },
+    "./sources/otel-browser": {
+      "types": "./dist/sources/otel-browser/index.d.ts",
+      "default": "./src/sources/otel-browser/index.ts"
+    },
+    "./sources/spans": {
+      "types": "./dist/sources/spans/index.d.ts",
+      "default": "./src/sources/spans/index.ts"
+    },
+    "./sources/status": {
+      "types": "./dist/sources/status/index.d.ts",
+      "default": "./src/sources/status/index.ts"
+    }
+  },
+  "files": [
+    "package.json",
+    "dist",
+    "src",
+    "!dist/**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc --build tsconfig.json && vite build",
+    "storybook": "storybook dev -p 6019",
+    "storybook:build": "storybook build",
+    "gate": "bun node_modules/@overeng/utils-storybook/src/gate/cli.ts",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0",
+    "@overeng/otel-browser": "workspace:^",
+    "@overeng/utils": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
+    "@playwright/test": "1.63.0",
+    "@storybook/addon-a11y": "10.6.0",
+    "@storybook/react": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "@vitest/browser": "5.0.3",
+    "@vitest/browser-playwright": "5.0.3",
+    "effect": "4.0.0",
+    "happy-dom": "20.14.0",
+    "playwright": "1.63.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "storybook": "10.6.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "effect": "^4.0.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./series": {
+        "types": "./dist/series/index.d.ts",
+        "default": "./dist/series/index.js"
+      },
+      "./headless": {
+        "types": "./dist/headless/index.d.ts",
+        "default": "./dist/headless/index.js"
+      },
+      "./platform/browser": {
+        "types": "./dist/platform/browser.d.ts",
+        "default": "./dist/platform/browser.js"
+      },
+      "./sources/frame": {
+        "types": "./dist/sources/frame/index.d.ts",
+        "default": "./dist/sources/frame/index.js"
+      },
+      "./sources/long-frames": {
+        "types": "./dist/sources/long-frames/index.d.ts",
+        "default": "./dist/sources/long-frames/index.js"
+      },
+      "./sources/memory": {
+        "types": "./dist/sources/memory/index.d.ts",
+        "default": "./dist/sources/memory/index.js"
+      },
+      "./sources/fibers": {
+        "types": "./dist/sources/fibers/index.d.ts",
+        "default": "./dist/sources/fibers/index.js"
+      },
+      "./sources/spans": {
+        "types": "./dist/sources/spans/index.d.ts",
+        "default": "./dist/sources/spans/index.js"
+      },
+      "./sources/otel-browser": {
+        "types": "./dist/sources/otel-browser/index.d.ts",
+        "default": "./dist/sources/otel-browser/index.js"
+      },
+      "./sources/counters": {
+        "types": "./dist/sources/counters/index.d.ts",
+        "default": "./dist/sources/counters/index.js"
+      },
+      "./sources/status": {
+        "types": "./dist/sources/status/index.d.ts",
+        "default": "./dist/sources/status/index.js"
+      },
+      "./canvas": {
+        "types": "./dist/canvas/index.d.ts",
+        "default": "./dist/canvas/index.js"
+      },
+      "./canvas/layout": {
+        "types": "./dist/canvas/layout.d.ts",
+        "default": "./dist/canvas/layout.js"
+      },
+      "./react": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      }
+    }
+  }
+}

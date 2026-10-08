@@ -31,8 +31,7 @@ components or an application transport binding.
 @overeng/effect-rpc-explorer
 ├── descriptor      RpcGroup -> RpcDescriptor[]
 ├── policy          policies, annotations, normalizer
-├── middleware      decoded server observation
-├── protocol        public Client/Server Protocol decorators
+├── protocol        makeCaptureSink policy adapter for shared observer callbacks
 ├── model/store     Event/Record/Frame Schemas and bounded store
 ├── inspector       excluded RpcGroup: snapshot, watch, and clear history
 └── telemetry       explorer meter/tracer integration
@@ -46,8 +45,6 @@ type ExplorerConfig = {
   readonly bounds: ExplorerBounds
   readonly capture?:
     CapturePolicies | ((descriptor: ExplorerCaptureDescriptor) => CapturePolicies | undefined)
-  readonly clock?: ExplorerClock
-  readonly connectionId?: (identity: ExplorerConnectionIdentity) => string
   readonly telemetry: Omit<ExplorerTelemetryOptions, 'readRetainedCounts'>
 }
 
@@ -57,17 +54,50 @@ const makeExplorer: <Rpcs extends Rpc.AnyWithProps>(options: {
 }) => Effect.Effect<ExplorerServices, ExplorerTelemetryRegistrationError, Scope.Scope>
 ```
 
-Each client or server decorator takes named options containing its concrete
-Protocol. The host may supply `encodedDecodersByTag`, a map from exact RPC tag
-to per-channel `EncodedValueDecoder` functions. It binds this map to that
-Protocol's active `codecFor`; the same RPC group can use different codecs on
-different transports. Decoders are optional, and their absence cannot weaken
-the fail-closed capture policy. Server options additionally select whether
-decoded middleware or Protocol owns request observation.
+`ExplorerServices.makeCaptureSink({ side, encodedDecodersByTag? })` builds a
+capture-enabled sink for `@overeng/effect-rpc-observer`. The optional map binds
+each exact RPC tag's channel decoders to the concrete transport's `codecFor`.
+Different transports may use different maps. Absent decoders cannot weaken the
+fail-closed capture policy. The shared observer owns scoped construction,
+connection naming, clocks, decoration, and decoded server middleware.
+
+Standalone client composition remains a scoped Effect; hosts close its scope
+with the transport, rather than rebuilding observation in place:
+
+```ts
+import { Effect } from 'effect'
+import { RpcClient } from 'effect/rpc'
+import { makeExplorer } from '@overeng/effect-rpc-explorer'
+import { decorateClientProtocol, makeProtocolObserver } from '@overeng/effect-rpc-observer'
+
+const makeObservedClient = ({ group, explorerConfig, protocol, connectionId }) =>
+  Effect.gen(function* () {
+    const explorer = yield* makeExplorer({ group, config: explorerConfig })
+    const observer = yield* makeProtocolObserver({
+      side: 'client',
+      capacity: explorerConfig.bounds.active.maxCount,
+      connectionId,
+      sinks: [
+        {
+          capture: true,
+          sink: explorer.makeCaptureSink({ side: 'client' }),
+        },
+      ],
+    })
+    const client = yield* RpcClient.make(group).pipe(
+      Effect.provideService(RpcClient.Protocol, decorateClientProtocol({ protocol, observer })),
+    )
+    return { client, explorer }
+  })
+```
+
+Without codec-bound decoders this example remains metadata-only under the
+default omission policy. Revealed encoded channels require the host decoder
+map; decoded middleware channels do not.
 
 `ExplorerServices` contains the application descriptor set, runtime descriptor
-registration, the bounded store, server middleware, client/server Protocol
-decorators, the excluded inspector group and handler Layer, and telemetry. The constructor returns a scoped Effect instead
+registration, bounded store, capture-sink factory, excluded inspector group and
+handler Layer, and telemetry. The constructor returns a scoped Effect instead
 of a Layer because it produces a plain service value rather than a Context
 service identifier. Host telemetry registration failures fail construction;
 observation-time telemetry faults cannot affect application RPCs. Inspector
@@ -168,53 +198,55 @@ resolves once per descriptor, at construction or at its registration.
 ## Observation at Public Effect Seams
 
 ```text
-server RpcMiddleware: decoded payload + headers + terminal handler Cause
-client Protocol:       outgoing Request/Ack/Interrupt, incoming response run
-server Protocol:       incoming Request/Ack/Interrupt, outgoing response send
-                         \______________ correlation model ______________/
+public Protocol + server middleware
+             |
+    effect-rpc-observer coordinator
+             |
+    transient CaptureSink callbacks
+             |
+    explorer policy -> normalized events -> store
 ```
 
-The server middleware surrounds the actual handler effect. It emits a decoded
-request/headers event before running and one terminal event by observing the
-handler `Exit`. For a stream, this terminal covers the stream's handler
-lifetime, not each chunk. Client middleware may emit decoded dispatch context
-but does not define terminal response behavior and cannot observe Ack or
-Interrupt.
+The [shared observer](../../devtools/03-rpc-observer/spec.md) owns lifecycle
+correlation, deduplication, send sequencing, disconnect observation, and
+terminal classification. Explorer does not wrap a Protocol or install its own
+middleware/coordinator. A host registers its explorer sink with `capture: true`
+on the same scoped observer used by the decorators and server middleware.
 
-Protocol decorators are object wrappers. `run` wraps the callback to observe a
-message immediately before forwarding it. `send` emits an attempted-send event,
-runs the delegated effect unchanged, then emits sent or send-failed based on
-its Exit before reproducing that Exit. All other fields are copied as identical
-references or forwarded methods. The wrapper never changes codec selection,
-transferables, protocol capability, cancellation, error, scheduling, or
-backpressure semantics.
+Lifecycle callbacks alone produce `RequestObserved`, `ChunkObserved`, and
+`TerminalObserved`. Raw `payload` maps to explorer `requestPayload`; encoded
+attachments use host codec-bound decoders, decoded attachments do not. A
+stream descriptor maps typed failures to `streamError` and omits a stream's
+terminal success value. The adapter normalizes only remaining retained stream
+elements and at most `normalized.maxEntries` terminal attachments.
 
-`Protocol.disconnects` is an exclusive work queue consumed by `RpcServer.make`.
-The decorator forwards the exact original queue and does not take from it.
-An unsolicited server-side disconnect therefore cannot be observed through
-the current public seam. Explicit client-side EOF and connection faults still
-produce connection events; server-side EOF does not (see the classification
-below). Passive disconnect observation requires an upstream non-destructive
-hook; polling `clientIds` or relaying the queue is not equivalent.
+`onMessage` supplies send/control evidence, not a second lifecycle. Its
+coordinator-resolved connection ID and timestamp preserve custom host identity
+without another identity callback. A Request envelope arrives before the
+canonical request; the sink retains only extracted trace fields and an
+attempted-send flag until that callback, never an envelope or payload. Capture
+metadata is bounded by `captureCapacity`; `makeExplorer` uses its active bound.
 
-The decorator classifies envelopes from the public encoded vocabulary:
+| Observer fact                | Explorer model action                                      |
+| ---------------------------- | ---------------------------------------------------------- |
+| Request                      | descriptor inclusion, policy, normalized request event     |
+| Chunk                        | full envelope/value counts, bounded normalized values      |
+| Success/failure/interruption | matching terminal event                                    |
+| Transport failure            | terminal uncertainty, not an application error             |
+| Request send attempt/result  | send evidence; failed send remains `sendFailed`            |
+| Notification send success    | `notificationSent`, no redundant terminal or late event    |
+| Ack / Interrupt envelope     | acknowledgement / cancellation-requested evidence          |
+| Fault                        | content-free side/connection-scoped connection event       |
+| Capacity / sendFailure fault | evidence only; canonical terminal identifies affected call |
 
-| Envelope/fact                    | Model action                                                              |
-| -------------------------------- | ------------------------------------------------------------------------- |
-| `Request`                        | allocate/correlate `RequestKey`; capture payload and headers              |
-| `Chunk(values)`                  | add one envelope and `values.length` stream values                        |
-| `Ack`                            | transition or annotate acknowledgement                                    |
-| `Interrupt`                      | transition to cancellation-requested unless terminal                      |
-| `Exit.Success`                   | terminal success; stream data remains prior chunks                        |
-| `Exit.Failure`                   | terminal typed failure, defect, or interruption from each flat cause item |
-| send success/failure             | set attempt fact; failure does not imply handler state                    |
-| client EOF / disconnect          | standalone connection event plus active request uncertainty               |
-| server EOF                       | transport fact: no event, in-flight requests untouched                    |
-| `Defect` / client protocol error | standalone uncorrelated connection fault plus active request uncertainty  |
+Connection faults include optional `observerSide` for side-specific settlement.
+Canonical fault terminals arrive first; capacity and send-failure evidence
+never settles other active calls sharing a connection. Inspector exclusion
+suppresses lifecycle, control/send, and inspector-only connection faults before
+normalization. Unknown tags use `UnknownDescriptorId`, never retain wire tags.
 
-An observer receives a host-derived opaque `connectionId`. On the client it is
-one client-protocol instance plus client ID; on the server it is one
-server-protocol instance plus client ID. IDs never cross an explorer lifetime.
+The shared observer receives a host-derived opaque `connectionId`, distinct for
+each transport lifetime, and passes it unchanged to the capture sink.
 The original `RequestId` is stored as the tagged union below, so number `1` and
 string `"1"` cannot collide.
 
@@ -248,8 +280,8 @@ stateDiagram-v2
   awaiting --> defect: Exit.Failure(Die)
   streaming --> defect: Exit.Failure(Die)
   cancellationRequested --> interrupted: Exit.Failure(Interrupt)
-  awaiting --> uncertain: connection fault / disconnect
-  streaming --> uncertain: connection fault / disconnect
+  awaiting --> uncertain: canonical transportFailure
+  streaming --> uncertain: canonical transportFailure
 ```
 
 `notificationSent` is terminal immediately after a notification's successful
@@ -339,8 +371,8 @@ The host's `capture` may be one static map or a function receiving only
 `ExplorerCaptureDescriptor` identity (`descriptorId`, `key`, `tag`, `kind`).
 The function returns a sparse map or `undefined` and runs exactly once for
 each RPC descriptor when constructing the explorer, never per request and
-never with captured values. Both protocol decorators and decoded middleware
-use the resolved per-descriptor host map.
+never with captured values. Encoded and decoded capture callbacks use the same
+resolved per-descriptor host map.
 
 For every channel, host config has first priority, then an RPC policy, then a
 policy on that channel's root schema, then `{ _tag: "omit" }`. Headers lack a
@@ -349,16 +381,16 @@ field name, JSON Schema's `readOnly`/`writeOnly`, or a `description` annotation.
 `redact` is a root-level projection transform, not a promise of generic nested
 annotation walking.
 
-Encoded protocol holes are not decoded middleware values. The observer may
+Encoded protocol holes are not decoded middleware values. The capture sink may
 normalize an encoded hole only through a per-protocol, per-channel decoder
 bound by the host to the active codec and the channel's concrete Schema and
 decoding services. The decoder must be synchronous and inert. An absent or
 failed decoder produces a content-free policy fault; it never falls back to
 normalizing raw encoded data. In particular, a JSON codec's decoded
 `Schema.Redacted` wrapper is replaced by a placeholder before retention.
-The decorator does not synchronously run arbitrary Schema decoders: their
+The capture sink does not synchronously run arbitrary Schema decoders: their
 service requirements are erased by `Schema.Top`, and asynchronous decoders
-could continue running after a synchronous observer returns.
+could continue running after a synchronous capture callback returns.
 
 The normalizer accepts the transform result and recursively constructs a new
 `NormalizedValue`; it never stores the input. It has configurable maximum depth,

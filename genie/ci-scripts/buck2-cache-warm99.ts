@@ -30,7 +30,6 @@ import {
   list,
   text,
 } from './buck2-action-evidence-codec.ts'
-import { decodeCacheAdmissionEvidence } from './buck2-cache-evidence.ts'
 import {
   actionExclusionReason,
   countActionExclusions,
@@ -44,6 +43,7 @@ import {
   type ActionRecord,
   type CacheLane,
 } from './buck2-action-evidence.ts'
+import { decodeCacheAdmissionEvidence } from './buck2-cache-evidence.ts'
 
 export type ArtifactReference = { lane: CacheLane; summary: string; actions: string }
 export type Observation = {

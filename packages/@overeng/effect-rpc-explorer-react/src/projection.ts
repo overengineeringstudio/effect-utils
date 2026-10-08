@@ -10,23 +10,7 @@ import {
   type RpcDescriptorWire,
   type RpcRecord,
 } from '@overeng/effect-rpc-explorer'
-
-/** Revisions the projection already holds when it opens a Watch. */
-export interface ExplorerWatchCursor {
-  readonly afterRevision?: number | undefined
-  readonly descriptorRevision?: number | undefined
-}
-
-/** The transport-neutral client consumed by the explorer. Every result is decoded before use. */
-export interface ExplorerClient {
-  readonly getSnapshot: () => Promise<unknown>
-  /**
-   * Resumes after the projection's store revision; `descriptorRevision` lets the server resend
-   * a Snapshot when the descriptor set changed meanwhile.
-   */
-  readonly watch: (cursor: ExplorerWatchCursor) => AsyncIterable<unknown>
-  readonly clearHistory: () => Promise<unknown>
-}
+import type { ExplorerClient } from '@overeng/effect-rpc-explorer'
 
 /** Observable transport and recovery state for the explorer surface. */
 export type ExplorerConnection =

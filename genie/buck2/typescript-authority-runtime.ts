@@ -1,11 +1,5 @@
 import { spawn } from 'node:child_process'
-import {
-  chmod,
-  lstat,
-  mkdtemp,
-  rm,
-  stat,
-} from 'node:fs/promises'
+import { chmod, lstat, mkdtemp, rm, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -202,9 +196,7 @@ export const materializeTypeScriptDist = async ({
         declarationEntrypoint,
       })
     } catch (error) {
-      console.error(
-        `Published ${packagePath} dist failed validation; restoring the previous dist`,
-      )
+      console.error(`Published ${packagePath} dist failed validation; restoring the previous dist`)
       if (hadDist === true) {
         const restoreOutcome = await executeCommandPlan({
           commands: [[mvBin, '--exchange', '--no-copy', '-T', staging, dist]],

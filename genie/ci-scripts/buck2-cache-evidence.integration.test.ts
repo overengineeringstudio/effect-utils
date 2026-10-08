@@ -134,14 +134,11 @@ describe('entrypoint admission sidecar collection', () => {
       expect(appended.admissionRetrySuccesses).toEqual({ reapi: 1, archiveOrigin: 1 })
       const summaryPath = join(directory, 'step-summary')
       await Bun.write(summaryPath, 'Existing job summary\n')
-      const finalized = Bun.spawn(
-        [process.execPath, collector, '--output', output, '--finalize'],
-        {
-          env: { ...process.env, GITHUB_STEP_SUMMARY: summaryPath },
-          stdout: 'ignore',
-          stderr: 'pipe',
-        },
-      )
+      const finalized = Bun.spawn([process.execPath, collector, '--output', output, '--finalize'], {
+        env: { ...process.env, GITHUB_STEP_SUMMARY: summaryPath },
+        stdout: 'ignore',
+        stderr: 'pipe',
+      })
       await new Response(finalized.stderr).text()
       expect(await finalized.exited).toBe(1)
       const summaryText = await Bun.file(summaryPath).text()

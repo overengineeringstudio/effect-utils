@@ -8,6 +8,13 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/effect-rpc-explorer',
   projectionSource: 'packages/@overeng/effect-rpc-explorer/BUCK.genie.ts',
   sourceRoots: ['src'],
+  workspaceSiblings: [
+    {
+      packageName: '@overeng/effect-rpc-observer',
+      packagePath: 'packages/@overeng/effect-rpc-observer',
+      distTarget: '//packages/@overeng/effect-rpc-observer:dist',
+    },
+  ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
   tests: [
     {

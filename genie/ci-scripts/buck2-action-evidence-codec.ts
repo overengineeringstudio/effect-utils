@@ -94,7 +94,9 @@ const decodeAction = (value: unknown): ActionRecord => {
     buildId: nullableText(field(value, 'buildId'), /^[a-zA-Z0-9_.-]+$/),
     context: nullableText(field(value, 'context')),
     category: nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/),
-    exclusionReason: actionExclusionReason(nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/)),
+    exclusionReason: actionExclusionReason(
+      nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/),
+    ),
     target: nullableText(
       field(value, 'target'),
       /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/,

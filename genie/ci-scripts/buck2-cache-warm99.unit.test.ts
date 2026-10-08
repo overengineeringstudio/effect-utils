@@ -49,11 +49,16 @@ describe('strict action boundary', () => {
       }
     }
     for (const executionKind of [1, 8]) {
-      expect(classifyCacheAction(actionFixture({
-        category: 'tsgo_emit',
-        executionKind,
-        buildId: invocation.buildId,
-      }), invocation)).toBe('fresh-local-execution')
+      expect(
+        classifyCacheAction(
+          actionFixture({
+            category: 'tsgo_emit',
+            executionKind,
+            buildId: invocation.buildId,
+          }),
+          invocation,
+        ),
+      ).toBe('fresh-local-execution')
     }
   })
 
@@ -67,7 +72,9 @@ describe('strict action boundary', () => {
     const { excludedByDesign: _root, ...header } = artifact.header
     const historical = {
       ...header,
-      invocations: header.invocations.map(({ excludedByDesign: _counts, ...invocation }) => invocation),
+      invocations: header.invocations.map(
+        ({ excludedByDesign: _counts, ...invocation }) => invocation,
+      ),
     }
     const rows = artifact.actions.map(({ exclusionReason: _reason, ...action }) => action)
     const decoded = decodeActionArtifact(
@@ -76,21 +83,37 @@ describe('strict action boundary', () => {
     expect(decoded).toEqual(artifact)
     expect(decoded.header.excludedByDesign).toEqual({ 'local-materialization-policy': 5 })
     expect(decoded.actions.map((action) => action.outcome)).toEqual(Array(6).fill('remote-hit'))
-    expect(() => decodeEvidence(encoded.compressed, {
-      ...encoded.summary,
-      excludedByDesign: { 'local-materialization-policy': 0 },
-    }, 'main-reader')).toThrow()
-    expect(() => decodeEvidence(encoded.compressed, {
-      ...encoded.summary,
-      invocations: encoded.summary.invocations.map((invocation) => ({
-        ...invocation,
-        excludedByDesign: { 'local-materialization-policy': 0 },
-      })),
-    }, 'main-reader')).toThrow()
-    expect(() => decodeActionArtifact(encoded.raw.replace(
-      '"exclusionReason":"local-materialization-policy"',
-      '"exclusionReason":null',
-    ))).toThrow()
+    expect(() =>
+      decodeEvidence(
+        encoded.compressed,
+        {
+          ...encoded.summary,
+          excludedByDesign: { 'local-materialization-policy': 0 },
+        },
+        'main-reader',
+      ),
+    ).toThrow()
+    expect(() =>
+      decodeEvidence(
+        encoded.compressed,
+        {
+          ...encoded.summary,
+          invocations: encoded.summary.invocations.map((invocation) => ({
+            ...invocation,
+            excludedByDesign: { 'local-materialization-policy': 0 },
+          })),
+        },
+        'main-reader',
+      ),
+    ).toThrow()
+    expect(() =>
+      decodeActionArtifact(
+        encoded.raw.replace(
+          '"exclusionReason":"local-materialization-policy"',
+          '"exclusionReason":null',
+        ),
+      ),
+    ).toThrow()
   })
 
   it('preserves unsupported raw enums only in explicitly incomplete artifacts', () => {
@@ -146,20 +169,10 @@ describe('warm99 identity acceptance', () => {
       const manifest = manifestFixture()
       const loaded = loadedFixture(manifest)
       for (const item of loaded) {
-        item.writers = [artifactFixture(true, [
-          actionFixture({
-            category: 'tsgo_emit',
-            executionKind: 1,
-            cacheUploadResult: 1,
-            uploadOutcome: 'uploaded',
-            startedAt: 10,
-            completedAt: 100,
-            endTime: 100,
-            uploadCompletedAt: 100,
-          }),
-          ...localMaterializationCategories.flatMap((category) => [
+        item.writers = [
+          artifactFixture(true, [
             actionFixture({
-              category,
+              category: 'tsgo_emit',
               executionKind: 1,
               cacheUploadResult: 1,
               uploadOutcome: 'uploaded',
@@ -168,27 +181,41 @@ describe('warm99 identity acceptance', () => {
               endTime: 100,
               uploadCompletedAt: 100,
             }),
-            actionFixture({
-              category,
-              executionKind: 1,
-              cacheUploadResult: 9,
-              uploadOutcome: 'failed',
-            }),
+            ...localMaterializationCategories.flatMap((category) => [
+              actionFixture({
+                category,
+                executionKind: 1,
+                cacheUploadResult: 1,
+                uploadOutcome: 'uploaded',
+                startedAt: 10,
+                completedAt: 100,
+                endTime: 100,
+                uploadCompletedAt: 100,
+              }),
+              actionFixture({
+                category,
+                executionKind: 1,
+                cacheUploadResult: 9,
+                uploadOutcome: 'failed',
+              }),
+            ]),
           ]),
-        ])]
-        item.readers = [artifactFixture(false, [
-          actionFixture({ category: 'tsgo_emit' }),
-          ...localMaterializationCategories.flatMap((category) => [
-            actionFixture({ category, executionKind }),
-            actionFixture({ category, executionKind, digest: 'ffff:12' }),
-            actionFixture({
-              category,
-              executionKind: 1,
-              cacheUploadResult: 9,
-              uploadOutcome: 'failed',
-            }),
+        ]
+        item.readers = [
+          artifactFixture(false, [
+            actionFixture({ category: 'tsgo_emit' }),
+            ...localMaterializationCategories.flatMap((category) => [
+              actionFixture({ category, executionKind }),
+              actionFixture({ category, executionKind, digest: 'ffff:12' }),
+              actionFixture({
+                category,
+                executionKind: 1,
+                cacheUploadResult: 9,
+                uploadOutcome: 'failed',
+              }),
+            ]),
           ]),
-        ])]
+        ]
       }
       const report = evaluateWarm99(manifest, loaded)
       expect(report.accepted).toBe(true)

@@ -103,15 +103,27 @@ describe('complete normalized action artifact CLI', () => {
       const actions = join(directory, actionsArtifactName)
       for (const [index, category] of [...localMaterializationCategories, 'tsgo_emit'].entries()) {
         await Bun.write(events, nativeLog(`policy-${index}`, 0, false, category, 3))
-        const child = Bun.spawn([
-          process.execPath, collector, '--events', events, '--output', output,
-          '--context', 'populate', '--fresh-root',
-        ], { env: fixtureEnv, stdout: 'ignore', stderr: 'pipe' })
+        const child = Bun.spawn(
+          [
+            process.execPath,
+            collector,
+            '--events',
+            events,
+            '--output',
+            output,
+            '--context',
+            'populate',
+            '--fresh-root',
+          ],
+          { env: fixtureEnv, stdout: 'ignore', stderr: 'pipe' },
+        )
         expect(await new Response(child.stderr).text()).toBe('')
         expect(await child.exited).toBe(0)
       }
       const finalize = Bun.spawn([process.execPath, collector, '--output', output, '--finalize'], {
-        env: fixtureEnv, stdout: 'ignore', stderr: 'pipe',
+        env: fixtureEnv,
+        stdout: 'ignore',
+        stderr: 'pipe',
       })
       expect(await new Response(finalize.stderr).text()).toBe('')
       expect(await finalize.exited).toBe(0)
@@ -127,12 +139,14 @@ describe('complete normalized action artifact CLI', () => {
         ...localMaterializationCategories.map(() => ({ 'local-materialization-policy': 100 })),
         { 'local-materialization-policy': 0 },
       ])
-      expect(full.actions.filter((action) =>
-        action.exclusionReason === 'local-materialization-policy',
-      )).toHaveLength(500)
-      expect(full.actions.filter((action) => action.category === 'tsgo_emit').every((action) =>
-        action.exclusionReason === null,
-      )).toBe(true)
+      expect(
+        full.actions.filter((action) => action.exclusionReason === 'local-materialization-policy'),
+      ).toHaveLength(500)
+      expect(
+        full.actions
+          .filter((action) => action.category === 'tsgo_emit')
+          .every((action) => action.exclusionReason === null),
+      ).toBe(true)
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

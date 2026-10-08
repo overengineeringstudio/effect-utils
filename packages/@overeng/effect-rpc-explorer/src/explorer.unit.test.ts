@@ -3,8 +3,16 @@ import { Headers } from 'effect/http'
 import { Rpc, RpcClient, RpcGroup, RpcMessage, RpcSerialization, RpcServer } from 'effect/rpc'
 import { describe, expect, it } from 'vitest'
 
+import {
+  decorateClientProtocol,
+  decorateServerProtocol,
+  makeProtocolObserver,
+  makeServerObserverMiddleware,
+} from '@overeng/effect-rpc-observer'
+
 import { RpcExplorerCapture } from './descriptor.ts'
 import { makeExplorer } from './explorer.ts'
+import type { ExplorerServices } from './explorer.ts'
 import { ClearHistory, GetSnapshot, Watch } from './inspector.ts'
 import { UnknownDescriptorId } from './model.ts'
 import type { ExplorerBounds, Timestamp } from './model.ts'
@@ -31,6 +39,58 @@ const makeClock = (): (() => Timestamp) => {
     return { monotonicNanos: String(value), wallClockMillis: value }
   }
 }
+
+const observeDecoded = Effect.fn('explorer.test.observeDecoded')(function* ({
+  explorer,
+  rpc,
+  requestId,
+  payload,
+  handler,
+}: {
+  readonly explorer: ExplorerServices
+  readonly rpc: Rpc.AnyWithProps
+  readonly requestId: string
+  readonly payload: unknown
+  readonly handler: Effect.Effect<never>
+}) {
+  const observer = yield* makeProtocolObserver({
+    side: 'server',
+    capacity: bounds.active.maxCount,
+    sinks: [{ capture: true, sink: explorer.makeCaptureSink({ side: 'server' }) }],
+  })
+  const middleware = makeServerObserverMiddleware({ observer })
+  const protocol = decorateServerProtocol({
+    observer,
+    requestObservation: 'middleware',
+    protocol: {
+      run: (callback) =>
+        callback(7, { _tag: 'Request', id: requestId, tag: rpc._tag, payload, headers: [] }).pipe(
+          Effect.andThen(Effect.die('fixture transport finished')),
+        ),
+      send: () => Effect.void,
+      end: () => Effect.void,
+      disconnects: yield* Queue.make<number>(),
+      clientIds: Effect.succeed(new Set([7])),
+      initialMessage: Effect.succeedNone,
+      supportsAck: true,
+      supportsTransferables: false,
+      supportsSpanPropagation: true,
+      supportsNotifications: true,
+      codecFor: RpcSerialization.json.codecFor,
+    },
+  })
+  yield* protocol
+    .run(() =>
+      middleware(handler, {
+        client: new Rpc.ServerClient(7),
+        requestId: RpcMessage.RequestId(requestId),
+        rpc,
+        payload,
+        headers: Headers.empty,
+      }).pipe(Effect.scoped, Effect.exit, Effect.asVoid),
+    )
+    .pipe(Effect.exit)
+})
 
 const SecretEcho = Rpc.make('SecretEcho', {
   payload: Schema.String,
@@ -73,8 +133,6 @@ describe('explorer composition', () => {
             requestPayload: { _tag: 'redact', transform: () => '[request-redacted]' },
             success: { _tag: 'redact', transform: () => '[success-redacted]' },
           },
-          clock: { now: timestamp },
-          connectionId: ({ observerSide, clientId }) => `${observerSide}-${clientId}`,
           telemetry: {
             registerRetainedGauge: (registration) => {
               retainedGauge = registration
@@ -127,29 +185,59 @@ describe('explorer composition', () => {
       })
       const serverStringDecoder = Schema.decodeUnknownOption(serverProtocol.codecFor(Schema.String))
       const clientStringDecoder = Schema.decodeUnknownOption(clientProtocol.codecFor(Schema.String))
-      const observedServer = explorer.decorateServerProtocol({
-        protocol: serverProtocol,
-        encodedDecodersByTag: new Map([
-          [
-            'SecretEcho',
-            {
-              requestPayload: serverStringDecoder,
-              success: serverStringDecoder,
-            },
-          ],
-        ]),
+      const serverObserver = yield* makeProtocolObserver({
+        side: 'server',
+        capacity: bounds.active.maxCount,
+        clock: { now: timestamp },
+        connectionId: (clientId) => `server-${clientId}`,
+        sinks: [
+          {
+            capture: true,
+            sink: explorer.makeCaptureSink({
+              side: 'server',
+              encodedDecodersByTag: new Map([
+                [
+                  'SecretEcho',
+                  {
+                    requestPayload: serverStringDecoder,
+                    success: serverStringDecoder,
+                  },
+                ],
+              ]),
+            }),
+          },
+        ],
       })
-      const observedClient = explorer.decorateClientProtocol({
+      const observedServer = decorateServerProtocol({
+        protocol: serverProtocol,
+        observer: serverObserver,
+      })
+      const clientObserver = yield* makeProtocolObserver({
+        side: 'client',
+        capacity: bounds.active.maxCount,
+        clock: { now: timestamp },
+        connectionId: (clientId) => `client-${clientId}`,
+        sinks: [
+          {
+            capture: true,
+            sink: explorer.makeCaptureSink({
+              side: 'client',
+              encodedDecodersByTag: new Map([
+                [
+                  'SecretEcho',
+                  {
+                    requestPayload: clientStringDecoder,
+                    success: clientStringDecoder,
+                  },
+                ],
+              ]),
+            }),
+          },
+        ],
+      })
+      const observedClient = decorateClientProtocol({
         protocol: clientProtocol,
-        encodedDecodersByTag: new Map([
-          [
-            'SecretEcho',
-            {
-              requestPayload: clientStringDecoder,
-              success: clientStringDecoder,
-            },
-          ],
-        ]),
+        observer: clientObserver,
       })
       const handlers = Layer.merge(applicationHandlers, explorer.inspector.layer)
 
@@ -166,15 +254,13 @@ describe('explorer composition', () => {
       const remoteSnapshot = yield* client['RpcExplorer.GetSnapshot']({})
       const afterRemoteInspector = explorer.store.snapshot()
 
-      yield* explorer
-        .middleware(Effect.die('excluded-inspector-handler'), {
-          client: new Rpc.ServerClient(77),
-          requestId: RpcMessage.RequestId('separately-bound-inspector'),
-          rpc: GetSnapshot,
-          payload: {},
-          headers: Headers.empty,
-        })
-        .pipe(Effect.exit)
+      yield* observeDecoded({
+        explorer,
+        rpc: GetSnapshot,
+        requestId: 'separately-bound-inspector',
+        payload: {},
+        handler: Effect.die('excluded-inspector-handler'),
+      })
       const afterSeparateMiddleware = explorer.store.snapshot()
 
       return {
@@ -290,7 +376,24 @@ describe('explorer composition', () => {
           },
         },
       })
-      const protocol = explorer.decorateClientProtocol({
+      const observer = yield* makeProtocolObserver({
+        side: 'client',
+        capacity: bounds.active.maxCount,
+        sinks: [
+          {
+            capture: true,
+            sink: explorer.makeCaptureSink({
+              side: 'client',
+              encodedDecodersByTag: new Map([
+                ['HostOverride', { requestPayload: Schema.decodeUnknownOption(Schema.String) }],
+                ['Unannotated', { requestPayload: Schema.decodeUnknownOption(Schema.String) }],
+              ]),
+            }),
+          },
+        ],
+      })
+      const protocol = decorateClientProtocol({
+        observer,
         protocol: {
           run: () => Effect.never,
           send: () => Effect.void,
@@ -298,10 +401,6 @@ describe('explorer composition', () => {
           supportsTransferables: false,
           codecFor: RpcSerialization.json.codecFor,
         },
-        encodedDecodersByTag: new Map([
-          ['HostOverride', { requestPayload: Schema.decodeUnknownOption(Schema.String) }],
-          ['Unannotated', { requestPayload: Schema.decodeUnknownOption(Schema.String) }],
-        ]),
       })
       yield* protocol.send(1, {
         _tag: 'Request',
@@ -318,15 +417,13 @@ describe('explorer composition', () => {
         headers: [],
       })
       for (const [index, rpc] of [hostOverride, rpcFallback, unannotated].entries()) {
-        yield* explorer
-          .middleware(Effect.die(`reply-${rpc._tag}`), {
-            client: new Rpc.ServerClient(7),
-            requestId: RpcMessage.RequestId(`middleware-${index}`),
-            rpc,
-            payload: `payload-${rpc._tag}`,
-            headers: Headers.empty,
-          })
-          .pipe(Effect.exit)
+        yield* observeDecoded({
+          explorer,
+          rpc,
+          requestId: `middleware-${index}`,
+          payload: `payload-${rpc._tag}`,
+          handler: Effect.die(`reply-${rpc._tag}`),
+        })
       }
       return explorer.store.snapshot()
     }).pipe(
@@ -421,15 +518,13 @@ describe('explorer composition', () => {
       let requestIndex = 0
       const observeMounted = Effect.gen(function* () {
         requestIndex += 1
-        yield* explorer
-          .middleware(Effect.die('handler-outcome-irrelevant'), {
-            client: new Rpc.ServerClient(3),
-            requestId: RpcMessage.RequestId(`mounted-${requestIndex}`),
-            rpc: mounted,
-            payload: 'cursor',
-            headers: Headers.empty,
-          })
-          .pipe(Effect.exit)
+        yield* observeDecoded({
+          explorer,
+          rpc: mounted,
+          requestId: `mounted-${requestIndex}`,
+          payload: 'cursor',
+          handler: Effect.die('handler-outcome-irrelevant'),
+        })
         const events = explorer.store.snapshot().events
         const observed = events.findLast((event) => event._tag === 'RequestObserved')
         return observed?._tag === 'RequestObserved' ? observed.descriptorId : undefined

@@ -83,11 +83,29 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/effect-rpc-observer",
+      "outputName": "overeng-effect-rpc-observer.tgz",
+      "packagePath": "packages/@overeng/effect-rpc-observer",
+      "packageTreePath": "packages/@overeng/effect-rpc-observer",
+      "target": "effect_utils//packages/@overeng/effect-rpc-observer:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/genie",
       "outputName": "overeng-genie.tgz",
       "packagePath": "packages/@overeng/genie",
       "packageTreePath": "packages/@overeng/genie",
       "target": "effect_utils//packages/@overeng/genie:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/meters",
+      "outputName": "overeng-meters.tgz",
+      "packagePath": "packages/@overeng/meters",
+      "packageTreePath": "packages/@overeng/meters",
+      "target": "effect_utils//packages/@overeng/meters:dist-package",
       "version": "0.1.0"
     },
     {
@@ -169,6 +187,15 @@
       "packagePath": "packages/@overeng/restate-effect",
       "packageTreePath": "packages/@overeng/restate-effect",
       "target": "effect_utils//packages/@overeng/restate-effect:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/rpc-devtools",
+      "outputName": "overeng-rpc-devtools.tgz",
+      "packagePath": "packages/@overeng/rpc-devtools",
+      "packageTreePath": "packages/@overeng/rpc-devtools",
+      "target": "effect_utils//packages/@overeng/rpc-devtools:dist-package",
       "version": "0.1.0"
     },
     {

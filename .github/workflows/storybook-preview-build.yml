@@ -38,6 +38,7 @@ on:
       - packages/@overeng/effect-react/**
       - packages/@overeng/effect-rpc-explorer-react/**
       - packages/@overeng/effect-rpc-explorer/**
+      - packages/@overeng/effect-rpc-observer/**
       - packages/@overeng/effect-rust/**
       - packages/@overeng/effect-schema-form-aria/**
       - packages/@overeng/effect-schema-form/**
@@ -46,6 +47,7 @@ on:
       - packages/@overeng/kdl-effect/**
       - packages/@overeng/kdl/**
       - packages/@overeng/megarepo/**
+      - packages/@overeng/meters/**
       - packages/@overeng/notion-cli/**
       - packages/@overeng/notion-core/**
       - packages/@overeng/notion-datasource-sync/**
@@ -54,8 +56,10 @@ on:
       - packages/@overeng/notion-md/**
       - packages/@overeng/notion-property-write/**
       - packages/@overeng/notion-react/**
+      - packages/@overeng/otel-browser/**
       - packages/@overeng/otel-contract/**
       - packages/@overeng/react-inspector/**
+      - packages/@overeng/rpc-devtools/**
       - packages/@overeng/stylex-tokens/**
       - packages/@overeng/tui-core/**
       - packages/@overeng/tui-react/**

@@ -11,10 +11,11 @@ RPC controller, log sink, or substitute tracer.
 ```text
 Application RPC traffic
       |
-      +-- middleware: decoded request context and terminal handler result
-      +-- Protocol: actual messages, chunks, Ack, interrupt, send outcome
+      +-- shared observer middleware: decoded context and handler result
+      +-- shared observer Protocol: actual messages and send/control evidence
       |
       v
+  one scoped coordinator -> explorer capture sink
   include? ---- no ---> no explorer work
       |
      yes
@@ -28,12 +29,11 @@ Application RPC traffic
   bounded live records  ---> typed snapshot/watch ---> React inspector
 ```
 
-The two observation seams matter because they see different truths. Middleware
-knows a decoded payload and the handler's terminal Cause, but it cannot see
-individual stream chunks or the client Ack/Interrupt envelopes. Protocol sees
-actual traffic, but payload-shaped holes may be serialization-dependent and a
-fatal connection Defect may have no request ID. Combining them gives useful
-coverage without pretending either is complete.
+The shared observer joins two complementary seams on one scoped coordinator.
+Middleware knows decoded payloads and the handler's terminal Cause; Protocol
+knows chunks, Ack/Interrupt, actual sends, and transport faults. Explorer's
+capture sink receives that canonical lifecycle plus borrowed raw values and
+envelopes. It does not implement another transport wrapper or coordinator.
 
 The explorer is safe only if it makes its privacy decision before storage. It
 does not keep raw values and hide them later. Every one of seven channels has

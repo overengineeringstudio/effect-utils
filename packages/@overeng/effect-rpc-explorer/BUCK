@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/effect-rpc-explorer/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:c84c51c6e0831fa149dedfdc5fdc4e10db7f1a71248873db550f1a9a24092365
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/test-verdict.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/devbar/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-gateway/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/src/**/*.css, packages/@overeng/effect-rpc-explorer/src/**/*.cts, packages/@overeng/effect-rpc-explorer/src/**/*.js, packages/@overeng/effect-rpc-explorer/src/**/*.mts, packages/@overeng/effect-rpc-explorer/src/**/*.spec.cjs, packages/@overeng/effect-rpc-explorer/src/**/*.spec.jsx, packages/@overeng/effect-rpc-explorer/src/**/*.spec.mjs, packages/@overeng/effect-rpc-explorer/src/**/*.test.cjs, packages/@overeng/effect-rpc-explorer/src/**/*.test.jsx, packages/@overeng/effect-rpc-explorer/src/**/*.test.mjs, packages/@overeng/effect-rpc-explorer/src/**/*.ts, packages/@overeng/effect-rpc-explorer/src/**/*.tsx, packages/@overeng/effect-rpc-explorer/src/**/__snapshots__/*.snap, packages/@overeng/effect-rpc-explorer/tsconfig.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-rust-fixture-consumer/package.json.genie.ts, packages/@overeng/effect-rust/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie-smalltalk/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-browser/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/outline/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-storybook/package.json.genie.ts, packages/@overeng/utils/package.json.genie.ts
+# Semantic fingerprint: sha256:46fa5366f0935cc7fc0b9415519664e795d67f6c6ebf2d130386013b5a211a07
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/test-verdict.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/devbar/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-gateway/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/src/**/*.css, packages/@overeng/effect-rpc-explorer/src/**/*.cts, packages/@overeng/effect-rpc-explorer/src/**/*.js, packages/@overeng/effect-rpc-explorer/src/**/*.mts, packages/@overeng/effect-rpc-explorer/src/**/*.spec.cjs, packages/@overeng/effect-rpc-explorer/src/**/*.spec.jsx, packages/@overeng/effect-rpc-explorer/src/**/*.spec.mjs, packages/@overeng/effect-rpc-explorer/src/**/*.test.cjs, packages/@overeng/effect-rpc-explorer/src/**/*.test.jsx, packages/@overeng/effect-rpc-explorer/src/**/*.test.mjs, packages/@overeng/effect-rpc-explorer/src/**/*.ts, packages/@overeng/effect-rpc-explorer/src/**/*.tsx, packages/@overeng/effect-rpc-explorer/src/**/__snapshots__/*.snap, packages/@overeng/effect-rpc-explorer/tsconfig.json.genie.ts, packages/@overeng/effect-rpc-observer/BUCK.genie.ts, packages/@overeng/effect-rpc-observer/package.json.genie.ts, packages/@overeng/effect-rpc-observer/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-rust-fixture-consumer/package.json.genie.ts, packages/@overeng/effect-rust/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie-smalltalk/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/meters/package.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-browser/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/outline/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/rpc-devtools/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-storybook/package.json.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -22,6 +22,8 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/client.ts",
+    "src/client.unit.test.ts",
     "src/descriptor-set.ts",
     "src/descriptor-set.unit.test.ts",
     "src/descriptor.ts",
@@ -30,7 +32,6 @@ export_materialization_inputs([
     "src/explorer.unit.test.ts",
     "src/inspector.ts",
     "src/inspector.unit.test.ts",
-    "src/middleware.ts",
     "src/middleware.unit.test.ts",
     "src/mod.ts",
     "src/model.ts",
@@ -83,6 +84,8 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rpc_explorer_0ce9c9212c35",
     files = {
         "package.json": "package.json",
+        "src/client.ts": "src/client.ts",
+        "src/client.unit.test.ts": "src/client.unit.test.ts",
         "src/descriptor-set.ts": "src/descriptor-set.ts",
         "src/descriptor-set.unit.test.ts": "src/descriptor-set.unit.test.ts",
         "src/descriptor.ts": "src/descriptor.ts",
@@ -91,7 +94,6 @@ package_view(
         "src/explorer.unit.test.ts": "src/explorer.unit.test.ts",
         "src/inspector.ts": "src/inspector.ts",
         "src/inspector.unit.test.ts": "src/inspector.unit.test.ts",
-        "src/middleware.ts": "src/middleware.ts",
         "src/middleware.unit.test.ts": "src/middleware.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/model.ts": "src/model.ts",
@@ -106,10 +108,13 @@ package_view(
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/effect-rpc-observer/dist": "//packages/@overeng/effect-rpc-observer:dist",
+        "node_modules/@overeng/effect-rpc-observer/package.json": "//packages/@overeng/effect-rpc-observer:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/effect-rpc-observer/node_modules": "//packages/@overeng/effect-rpc-observer:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -122,6 +127,8 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rpc_explorer_0ce9c9212c35",
     files = {
         "package.json": "package.json",
+        "src/client.ts": "src/client.ts",
+        "src/client.unit.test.ts": "src/client.unit.test.ts",
         "src/descriptor-set.ts": "src/descriptor-set.ts",
         "src/descriptor-set.unit.test.ts": "src/descriptor-set.unit.test.ts",
         "src/descriptor.ts": "src/descriptor.ts",
@@ -130,7 +137,6 @@ package_view(
         "src/explorer.unit.test.ts": "src/explorer.unit.test.ts",
         "src/inspector.ts": "src/inspector.ts",
         "src/inspector.unit.test.ts": "src/inspector.unit.test.ts",
-        "src/middleware.ts": "src/middleware.ts",
         "src/middleware.unit.test.ts": "src/middleware.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/model.ts": "src/model.ts",
@@ -146,10 +152,13 @@ package_view(
         "vitest.config.ts": "vitest.config.ts",
     },
     workspace_dist = {
+        "node_modules/@overeng/effect-rpc-observer/dist": "//packages/@overeng/effect-rpc-observer:dist",
+        "node_modules/@overeng/effect-rpc-observer/package.json": "//packages/@overeng/effect-rpc-observer:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/effect-rpc-observer/node_modules": "//packages/@overeng/effect-rpc-observer:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -185,6 +194,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/effect-rpc-observer:package.json",
         "//packages/@overeng/otel-contract:package.json",
     ],
     output = "overeng-effect-rpc-explorer.tgz",

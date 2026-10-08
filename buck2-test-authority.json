@@ -162,11 +162,19 @@
       "packageName": "devbar",
       "packagePath": "packages/@overeng/devbar",
       "runner": "vitest",
-      "selectedTestFiles": ["src/Devbar.unit.test.tsx", "src/fps-meter.unit.test.ts"],
+      "selectedTestFiles": [
+        "src/Devbar.unit.test.tsx",
+        "src/boundary.unit.test.ts",
+        "src/stories/host/production-host.unit.test.ts"
+      ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/devbar:test",
       "taskName": "test:devbar",
-      "testFiles": ["src/Devbar.unit.test.tsx", "src/fps-meter.unit.test.ts"],
+      "testFiles": [
+        "src/Devbar.unit.test.tsx",
+        "src/boundary.unit.test.ts",
+        "src/stories/host/production-host.unit.test.ts"
+      ],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -269,6 +277,7 @@
       "packagePath": "packages/@overeng/effect-rpc-explorer",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/client.unit.test.ts",
         "src/descriptor-set.unit.test.ts",
         "src/descriptor.unit.test.ts",
         "src/explorer.unit.test.ts",
@@ -283,6 +292,7 @@
       "target": "effect_utils//packages/@overeng/effect-rpc-explorer:test",
       "taskName": "test:effect-rpc-explorer",
       "testFiles": [
+        "src/client.unit.test.ts",
         "src/descriptor-set.unit.test.ts",
         "src/descriptor.unit.test.ts",
         "src/explorer.unit.test.ts",
@@ -293,6 +303,20 @@
         "src/store.unit.test.ts",
         "src/telemetry.unit.test.ts"
       ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-rpc-observer:test_collect",
+      "excludes": [],
+      "packageName": "effect-rpc-observer",
+      "packagePath": "packages/@overeng/effect-rpc-observer",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/index.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-rpc-observer:test",
+      "taskName": "test:effect-rpc-observer",
+      "testFiles": ["src/index.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -738,6 +762,56 @@
         "src/test-utils/store-setup.integration.test.ts"
       ],
       "unboundedTaskName": "test:megarepo:unbounded"
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/meters:test_collect",
+      "excludes": [],
+      "packageName": "meters",
+      "packagePath": "packages/@overeng/meters",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/canvas/canvas.unit.test.ts",
+        "src/headless/headless.unit.test.ts",
+        "src/instrumentation/instrumentation.unit.test.ts",
+        "src/platform/browser.unit.test.ts",
+        "src/react/commits.unit.test.ts",
+        "src/react/react.unit.test.tsx",
+        "src/series/series.unit.test.ts",
+        "src/session/frame.unit.test.ts",
+        "src/session/session.unit.test.ts",
+        "src/sources/counters/counters.unit.test.ts",
+        "src/sources/fibers/fibers.unit.test.ts",
+        "src/sources/frame/frame.unit.test.ts",
+        "src/sources/long-frames/long-frames.unit.test.ts",
+        "src/sources/memory/memory.unit.test.ts",
+        "src/sources/otel-browser/otel-browser.unit.test.ts",
+        "src/sources/spans/spans.unit.test.ts",
+        "src/sources/status/status.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/meters:test",
+      "taskName": "test:meters",
+      "testFiles": [
+        "src/canvas/canvas.unit.test.ts",
+        "src/headless/headless.unit.test.ts",
+        "src/instrumentation/instrumentation.unit.test.ts",
+        "src/platform/browser.unit.test.ts",
+        "src/react/commits.unit.test.ts",
+        "src/react/react.unit.test.tsx",
+        "src/series/series.unit.test.ts",
+        "src/session/frame.unit.test.ts",
+        "src/session/session.unit.test.ts",
+        "src/sources/counters/counters.unit.test.ts",
+        "src/sources/fibers/fibers.unit.test.ts",
+        "src/sources/frame/frame.unit.test.ts",
+        "src/sources/long-frames/long-frames.unit.test.ts",
+        "src/sources/memory/memory.unit.test.ts",
+        "src/sources/otel-browser/otel-browser.unit.test.ts",
+        "src/sources/spans/spans.unit.test.ts",
+        "src/sources/status/status.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/notion-cli:test_collect",
@@ -1640,6 +1714,20 @@
         "src/testing/test-env.integration.test.ts"
       ],
       "unboundedTaskName": "test:restate-effect:unbounded"
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/rpc-devtools:test_collect",
+      "excludes": [],
+      "packageName": "rpc-devtools",
+      "packagePath": "packages/@overeng/rpc-devtools",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/core.unit.test.ts", "src/source.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/rpc-devtools:test",
+      "taskName": "test:rpc-devtools",
+      "testFiles": ["src/core.unit.test.ts", "src/source.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/tui-core:test_collect",

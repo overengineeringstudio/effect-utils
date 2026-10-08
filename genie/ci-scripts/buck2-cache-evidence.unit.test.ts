@@ -104,7 +104,9 @@ describe('native Buck cache evidence projection', () => {
         expect(decodeCacheEvidence(summary)).toEqual(summary)
       }
     }
-    const eligible = project([nativeEvent('SpanEnd', actionEnd({ name: { category: 'tsgo_emit' } }))])
+    const eligible = project([
+      nativeEvent('SpanEnd', actionEnd({ name: { category: 'tsgo_emit' } })),
+    ])
     expect(eligible.excludedByDesign).toEqual({ 'local-materialization-policy': 0 })
     expect(eligible.actions[0]?.exclusionReason).toBeNull()
   })

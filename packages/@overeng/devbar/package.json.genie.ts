@@ -7,6 +7,12 @@ import {
   privatePackageDefaults,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
+import explorerReactPkg from '../effect-rpc-explorer-react/package.json.genie.ts'
+import explorerPkg from '../effect-rpc-explorer/package.json.genie.ts'
+import observerPkg from '../effect-rpc-observer/package.json.genie.ts'
+import metersPkg from '../meters/package.json.genie.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
+import rpcDevtoolsPkg from '../rpc-devtools/package.json.genie.ts'
 import stylexTokensPkg from '../stylex-tokens/package.json.genie.ts'
 import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -16,9 +22,21 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/devbar' }),
   dependencies: { workspace: [stylexTokensPkg] },
   devDependencies: {
-    workspace: [utilsPkg, utilsStorybookPkg],
+    workspace: [
+      utilsPkg,
+      utilsStorybookPkg,
+      metersPkg,
+      rpcDevtoolsPkg,
+      explorerPkg,
+      observerPkg,
+      explorerReactPkg,
+      otelContractPkg,
+    ],
     external: catalog.pick(
       ...peerDepNames,
+      'effect',
+      '@effect/platform-node',
+      '@effect/vitest',
       '@storybook/react',
       '@storybook/addon-a11y',
       '@vitest/browser',
@@ -44,7 +62,8 @@ export default packageJson(
   {
     name: '@overeng/devbar',
     ...privatePackageDefaults,
-    description: 'Host-themed developer panel dock and FPS meter for React applications',
+    description:
+      'Host-composed developer shell with panel, strip, and status slots for React applications',
     exports: {
       '.': exportEntry(
         { types: './dist/mod.d.ts', default: './src/mod.ts' },

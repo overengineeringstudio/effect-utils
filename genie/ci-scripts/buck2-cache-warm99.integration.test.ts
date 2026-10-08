@@ -81,12 +81,8 @@ describe('gzip and compact summary boundaries', () => {
   })
   it('reads retained v1 summaries but strictly validates present admission fields', () => {
     const fixture = encodedFixture(artifactFixture())
-    const {
-      admissionFallbacks,
-      admissionRetrySuccesses,
-      admissionInvocations,
-      ...legacy
-    } = fixture.summary
+    const { admissionFallbacks, admissionRetrySuccesses, admissionInvocations, ...legacy } =
+      fixture.summary
     expect(decodeEvidence(fixture.compressed, legacy, 'main-reader').actions.length).toBe(1)
     const row = {
       invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
@@ -110,7 +106,11 @@ describe('gzip and compact summary boundaries', () => {
         { reapi: 0, archiveOrigin: Number.MAX_SAFE_INTEGER + 1 },
       ]) {
         expect(() =>
-          decodeEvidence(fixture.compressed, { ...fixture.summary, [key]: counters }, 'main-reader'),
+          decodeEvidence(
+            fixture.compressed,
+            { ...fixture.summary, [key]: counters },
+            'main-reader',
+          ),
         ).toThrow()
       }
     }
@@ -123,7 +123,11 @@ describe('gzip and compact summary boundaries', () => {
       [{ ...row, admissionRetrySuccesses: { reapi: 1, archiveOrigin: 1 } }],
     ]) {
       expect(() =>
-        decodeEvidence(fixture.compressed, { ...admitted, admissionInvocations: rows }, 'main-reader'),
+        decodeEvidence(
+          fixture.compressed,
+          { ...admitted, admissionInvocations: rows },
+          'main-reader',
+        ),
       ).toThrow()
     }
     expect(() =>

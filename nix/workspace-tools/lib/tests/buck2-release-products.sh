@@ -27,7 +27,7 @@ jq -e --argjson expected "$expected_names" '
   .cache == "overeng-effect-utils" and
   [.products[].name] == $expected
 ' <<<"$plan" >/dev/null
-for public_package in '@overeng/devbar' '@overeng/effect-rpc-explorer' '@overeng/effect-rpc-explorer-react' '@overeng/stylex-tokens'; do
+for public_package in '@overeng/devbar' '@overeng/meters' '@overeng/effect-rpc-explorer' '@overeng/effect-rpc-explorer-react' '@overeng/effect-rpc-observer' '@overeng/rpc-devtools' '@overeng/stylex-tokens'; do
   bash "$publisher" --dry-run --product "$public_package" |
     jq -e --arg name "$public_package" '.products | length == 1 and .[0].name == $name' >/dev/null
 done
