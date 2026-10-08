@@ -131,6 +131,9 @@ constructor contract inputs and construction panics are defects. Methods retain
 their expected-error channel and distinguish it from panic/trap defects.
 Each resource exposes `close: Effect.Effect<void>` as an optional early release;
 Scope exit closes it automatically and exactly once.
+If the runtime and resource scopes close concurrently, including parallel
+finalizers, runtime shutdown retains ownership of remaining handles until its
+pending jobs have stopped, then runs each healthy resource's destructor once.
 
 All methods, including immutable receivers, and close share **one FIFO semaphore
 per resource**. This prevents overlapping mutable Rust borrows, orders queued

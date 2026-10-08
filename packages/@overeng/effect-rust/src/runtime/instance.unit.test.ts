@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest'
-import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Stream } from 'effect'
+import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Scope, Stream } from 'effect'
 
 import {
   chunkProfiles,
@@ -475,6 +475,67 @@ describe('Sink and Stream byte backpressure', () => {
 })
 
 describe('scoped resources', () => {
+  for (const panicBoundary of ['wasm', 'native'] as const) {
+    for (const finalizerStrategy of ['sequential', 'parallel'] as const) {
+      it.effect(
+        `${panicBoundary} shutdown owns resource destructors with ${finalizerStrategy} finalizers`,
+        () =>
+          Effect.gen(function* () {
+            const runtimeScope = yield* Scope.make()
+            const resourceScope = yield* Scope.make(finalizerStrategy)
+            const shutdownStarted = Promise.withResolvers<void>()
+            const resumeShutdown = Promise.withResolvers<void>()
+            const jobStarted = yield* Deferred.make<void>()
+            const closes = [0, 0]
+            let releases = 0
+            const runtime = yield* makeRuntime('concurrent-resource-close', {
+              panicBoundary,
+              load: () => ({
+                api: undefined,
+                release: () => {
+                  expect(closes).toEqual([1, 1])
+                  releases++
+                },
+              }),
+            }).pipe(Scope.provide(runtimeScope))
+            const resources = yield* Effect.forEach([0, 1], (index) =>
+              runtime.resource(() => ({
+                close: () => {
+                  closes[index]!++
+                },
+              })),
+            ).pipe(Scope.provide(resourceScope))
+            const job = yield* runtime
+              .call(() => {
+                Deferred.doneUnsafe(jobStarted, Effect.void)
+                return {
+                  _tag: 'RustJob',
+                  mode: 'abortable',
+                  result: new Promise<never>(() => undefined),
+                  cancel: () => {
+                    shutdownStarted.resolve()
+                    return resumeShutdown.promise
+                  },
+                } as const
+              })
+              .pipe(Effect.exit, Effect.forkChild)
+            yield* Deferred.await(jobStarted)
+            const closingRuntime = yield* Scope.close(runtimeScope, Exit.void).pipe(
+              Effect.forkChild,
+            )
+            yield* Effect.promise(() => shutdownStarted.promise)
+            yield* Scope.close(resourceScope, Exit.void).pipe(
+              Effect.ensuring(Effect.sync(() => resumeShutdown.resolve())),
+            )
+            yield* Fiber.join(closingRuntime)
+            yield* Effect.forEach(resources, (resource) => resource.close)
+            expect({ closes, releases }).toEqual({ closes: [1, 1], releases: 1 })
+            assertDefect(yield* Fiber.join(job))
+          }),
+      )
+    }
+  }
+
   it.effect('releases 1k scoped resources without retaining live handles or jobs', () =>
     Effect.gen(function* () {
       const runtime = yield* makeRuntime('resource-stress', {

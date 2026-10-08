@@ -379,6 +379,8 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
         const close = Effect.suspend(() => {
           if (released === true) return Effect.void
           released = true
+          // Once shutdown begins, the runtime owns every remaining destructor.
+          if (closed === true) return Effect.void
           if (generation.handles.delete(handle) === false || generation.state !== 'healthy')
             return Effect.void
           return invokeOn({ generation, start: () => handle.close() })
