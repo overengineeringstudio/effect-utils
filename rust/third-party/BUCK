@@ -662,6 +662,7 @@ cargo.rust_library(
     },
     features = [
         "borsh-derive",
+        "de_strict_order",
         "default",
         "derive",
         "std",
@@ -696,6 +697,7 @@ cargo.rust_binary(
     },
     features = [
         "borsh-derive",
+        "de_strict_order",
         "default",
         "derive",
         "std",
@@ -722,6 +724,7 @@ buildscript_run(
     },
     features = [
         "borsh-derive",
+        "de_strict_order",
         "default",
         "derive",
         "std",
@@ -5722,6 +5725,7 @@ cargo.rust_library(
         "default",
         "raw_value",
         "std",
+        "unbounded_depth",
     ],
     rustc_flags = ["@$(location :serde_json-1-build-script-run[rustc_flags])"],
     visibility = [],
@@ -5761,6 +5765,7 @@ cargo.rust_binary(
         "default",
         "raw_value",
         "std",
+        "unbounded_depth",
     ],
     visibility = [],
 )
@@ -5786,6 +5791,7 @@ buildscript_run(
         "default",
         "raw_value",
         "std",
+        "unbounded_depth",
     ],
     version = "1.0.151",
 )

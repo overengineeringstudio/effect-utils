@@ -6,6 +6,7 @@
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-path",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/notion-cli",
       "packages/@overeng/notion-core",
       "packages/@overeng/notion-datasource-sync",

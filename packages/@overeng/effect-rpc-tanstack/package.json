@@ -7,6 +7,7 @@
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-rpc-tanstack",
       "packages/@overeng/effect-rpc-tanstack/examples/basic",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
