@@ -139,6 +139,33 @@ const ownedSnapshots = (fixture: Fixture): readonly string[] =>
     name.startsWith(`${fixture.options.viewName}-`),
   )
 
+/** Payload identities and write timestamps, without following relocated snapshot links. */
+const storeFiles = (
+  store: string,
+): readonly {
+  readonly path: string
+  readonly ino: bigint
+  readonly size: bigint
+  readonly mtimeNs: bigint
+  readonly ctimeNs: bigint
+}[] =>
+  readdirSync(store)
+    .toSorted()
+    .flatMap((name) => {
+      const path = join(store, name)
+      const status = lstatSync(path, { bigint: true })
+      if (status.isDirectory() === true) return storeFiles(path)
+      return [
+        {
+          path,
+          ino: status.ino,
+          size: status.size,
+          mtimeNs: status.mtimeNs,
+          ctimeNs: status.ctimeNs,
+        },
+      ]
+    })
+
 /** A second package view publishing into the fixture's shared `packages/.editor-view` store. */
 const makeSiblingView = ({
   fixture,
@@ -334,6 +361,50 @@ describe('editor view publisher', () => {
     }
   })
 
+  it.each([false, true])(
+    'writes zero store bytes when republishing unchanged inputs (finite closure: %s)',
+    async (finite) => {
+      const fixture = makeFixture()
+      try {
+        const options = {
+          ...fixture.options,
+          ...(finite === true ? { backingRoots: [fixture.editorInputs] } : {}),
+        }
+        const record = await publishEditorView(options)
+        const store = join(fixture.editorRoot, '.store')
+        const before = storeFiles(store)
+        expect(before.reduce((bytes, file) => bytes + file.size, 0n)).toBeGreaterThan(0n)
+
+        // A warm publication must not invoke cp or enter materialization, even
+        // for finite closures. Compare every store file, not just the record.
+        await expect(
+          publishEditorView({
+            ...options,
+            cp: falseTool,
+            beforeMaterialize: () => {
+              throw new Error('unchanged publication attempted materialization')
+            },
+          }),
+        ).resolves.toEqual(record)
+        const after = storeFiles(store)
+        const previous = new Map(before.map((file) => [file.path, file]))
+        const writtenBytes = after.reduce((bytes, file) => {
+          const old = previous.get(file.path)
+          return old?.ino === file.ino &&
+            old.mtimeNs === file.mtimeNs &&
+            old.ctimeNs === file.ctimeNs
+            ? bytes
+            : bytes + file.size
+        }, 0n)
+        expect(writtenBytes).toBe(0n)
+        expect(after).toEqual(before)
+        expect(ownedSnapshots(fixture)).toEqual([storeName(record.snapshot)])
+      } finally {
+        cleanup(fixture)
+      }
+    },
+  )
+
   it('publishes the source-generator dependency closure at the repository root', async () => {
     const fixture = makeFixture()
     try {
@@ -509,6 +580,32 @@ describe('editor view publisher', () => {
       expect(() => releaseEditorViewRoot(fixture.options)).toThrow('publication lock exists')
       expect(statSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
       expect(readlinkSync(join(fixture.editorRoot, fixture.options.viewName))).toBe(record.snapshot)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('bounds a shared store to current plus previous for each publishing view', async () => {
+    const fixture = makeFixture()
+    try {
+      const sibling = makeSiblingView({ fixture, packageName: 'genie' })
+      const histories: string[][] = [[], []]
+      for (const revision of [1, 2, 3, 4, 5, 6]) {
+        for (const [index, options] of [fixture.options, sibling.options].entries()) {
+          writeFileSync(
+            join(options.editorInputs, 'install-descriptor.json'),
+            `${JSON.stringify({ revision })}\n`,
+          )
+          const record = await publishEditorView(options)
+          const history = histories[index]!
+          history.unshift(storeName(record.snapshot))
+          const retained = readdirSync(join(fixture.editorRoot, '.store'))
+            .filter((name) => name.startsWith(`${options.viewName}-`))
+            .toSorted()
+          expect(retained).toEqual(history.slice(0, 2).toSorted())
+        }
+        expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(revision === 1 ? 2 : 4)
+      }
     } finally {
       cleanup(fixture)
     }

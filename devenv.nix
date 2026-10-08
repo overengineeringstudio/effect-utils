@@ -669,7 +669,7 @@ let
         --fingerprint-tool ${
           repoFlake.packages.${currentSystem}.buck2-fingerprint
         }/bin/buck2-fingerprint \
-        --snapshot-retention 3${packageArgument}
+        --snapshot-retention 2${packageArgument}
     '';
   scopedEditorViewPublisher =
     {
