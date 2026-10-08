@@ -102,7 +102,7 @@ export type PlainFlakeJobOptions = PlainFlakeSetupOptions &
 /** Wrap one command; callers retain job gates, matrix, environment and timeout control. */
 export const plainFlakeJob = ({
   step,
-  runsOn = namespaceRunner({ profile: RUNNER_PROFILES[0], runId: '${{ github.run_id }}' }),
+  runsOn = [...namespaceRunner({ profile: RUNNER_PROFILES[0], runId: '${{ github.run_id }}' })],
   nix,
   cachix,
   preSteps = [],
