@@ -180,6 +180,7 @@ let
             inherit (execution) description exec cwd;
             env = execution.env or { };
             execIfModified = execution.execIfModified or [ ];
+            # trace-audit-allow: inherit the final task's already-instrumented status; do not wrap twice.
             status = execution.status or null;
             after = [
               installTask
