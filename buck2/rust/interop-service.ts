@@ -588,6 +588,7 @@ for (const entry of exportEntries) {
     )
   }
   implementations.set(entry.name, methodSource)
+
 }
 source.push(
   `export const make${service} = (runtime: Interop.Runtime<${service}Api>): ${service}Service => {`,

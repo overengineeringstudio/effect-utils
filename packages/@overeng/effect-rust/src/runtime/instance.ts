@@ -530,7 +530,6 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       current === undefined ? Effect.flatMap(generationEffect, invoke) : invoke(current),
     )
   }
-
   const resource = Effect.fn('effect-rust.resource')(
     <THandle extends ResourceHandle>(open: Start<TApi, THandle>) =>
       Effect.gen(function* () {

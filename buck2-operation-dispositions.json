@@ -135,6 +135,10 @@
       "operation": "lint:check"
     },
     {
+      "disposition": "buck-pending:static",
+      "operation": "lint:check:getflake"
+    },
+    {
       "disposition": "outside-by-policy:authoring-mutation",
       "operation": "lint:fix"
     },
