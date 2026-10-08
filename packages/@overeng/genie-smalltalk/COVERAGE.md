@@ -187,3 +187,44 @@ The public authoring export is isomorphic ES2024. UTF-8 name limits use an alloc
 `produces: childMission` is a tagged-template descriptor of the child mission ID a worker will publish. It is a native attempt-bound contract, not an embedded mission or a mission launch configuration. A consumer uses `agentless: true`, `dependsOn: [producer]` and `waitFor: producer`; the producer must exist in the same phase and declare a child mission product. Waiting alone does not implicitly add a dependency. Exact fixed-revision use accepts only a mission ID plus a 64-hex revision, never a mutable mission name.
 
 The wire representation remains native `producesMission` and `usesMission: { kind: 'revision', revision } | { kind: 'output', outputOf }`. `missionWire` resolves handle output identity before JSON serialization. Graph validation rejects missing/non-producing output targets, cross-phase references, and dependencies that do not explicitly require producer completion. The existing opt-in isolated native round-trip asserts `changed: false` after publishing and republishing an output-of parent; it does not fabricate a child revision or execute a child fixture.
+## Calendar schedules
+
+Schedules accept a tagged calendar variant alongside the existing interval shape:
+
+```ts
+schedule({
+  id: 'daily',
+  host: 'local',
+  _tag: 'calendar',
+  at: '08:00',
+  timezone: 'Europe/Berlin',
+  catchUp: 'latest',
+  work: { mission: `demo@${'a'.repeat(64)}`, workspace: '/work/demo' },
+})
+```
+
+This lowers to the runtime's `calendar { at "08:00"; timezone "Europe/Berlin" }`
+block, with `host`, `catch-up` and `work` remaining schedule children. `at` is
+validated as a 24-hour `HH:MM` local time. The timezone is required, branded by
+`IanaTimezoneSchema`, and checked against the JavaScript runtime's IANA timezone
+data; st remains authoritative with its bundled `chrono-tz` database, which may
+differ in version or accepted aliases.
+
+Omit `days` for a daily schedule. `days: ['Mon']` emits `at "Mon 08:00"` for a
+weekly schedule. The typed tuple accepts exactly one of `Mon`, `Tue`, `Wed`,
+`Thu`, `Fri`, `Sat`, `Sun`: st does not accept multi-day rules or a KDL `days`
+child. Calendar schedules cannot also contain `every` or `anchor`.
+Interval declarations can use `_tag: 'every'`; existing untagged
+`{ every, anchor, ... }` declarations remain source-compatible.
+
+Both variants require `catchUp: 'latest'`, preserving the library's latest-only
+policy: an already reached occurrence is not replayed, missed occurrences
+collapse to the latest one, and a prior active mission run prevents starting
+another occurrence. Calendar keys are local dates. st resolves a spring DST
+gap to the first valid instant after the gap and an autumn fold to its earlier
+instant, firing only once. No `misfire` field is accepted by st or this library;
+st's broader `all`/`skip` catch-up controls are not modeled here.
+
+Runtime contract: [`mission-graph-runtime.md`, Continuous missions](https://github.com/compoundingtech/smalltalk/blob/main/docs/st3/mission-graph-runtime.md#continuous-missions),
+with grammar validation in `crates/st3/src/graph.rs` (`validate_schedule` and
+`parse_calendar_time`).
