@@ -17,6 +17,7 @@ export type RootBuckAggregatePlan = {
 }
 const weaverTargets = [':weaver_check', ':weaver_version_smoke'] as const
 const repositoryStaticTarget = '//buck2/static:check' as const
+const fixtureTypecheckTarget = '//rust/effect-rust-fixtures:typecheck' as const
 const fullAuthorityTargets = [
   '//buck2/toolchains:archive_tool',
   '//buck2/toolchains:product_tool',
@@ -36,7 +37,7 @@ export const planRootBuckAggregates = ({
   readonly distTargets?: readonly string[]
   readonly testTargets?: readonly string[]
 } = {}): RootBuckAggregatePlan => ({
-  quick: [...typecheckTargets, ...weaverTargets, repositoryStaticTarget],
+  quick: [...typecheckTargets, fixtureTypecheckTarget, ...weaverTargets, repositoryStaticTarget],
   all: [':quick', ...distTargets, ...testTargets, ...fullAuthorityTargets],
 })
 
@@ -103,6 +104,7 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
     'genie/buck2/mod.ts',
     'genie/buck2/root-aggregate-projection.ts',
     'genie/buck2/typescript-admissions.ts',
+    'rust/effect-rust-fixtures/BUCK.genie.ts',
     'buck2/check_aggregate.bzl',
     'buck2/weaver.bzl',
     'packages/@overeng/buck2-tools/src/weaver-check-runner.ts',
@@ -131,7 +133,7 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         '',
         weaverRootBuckTargets,
         '',
-        '# Scoped repository checks derived from the TypeScript admission registry.',
+        '# Scoped repository checks: admitted packages and non-package TypeScript fixtures.',
         renderAggregate({ name: 'quick', targets: data.quick }),
         '',
         '# Complete repository authority, including emitted declarations, tests, and archive/product toolchains.',

@@ -9,6 +9,8 @@ import { resolve } from 'node:path'
 import { scheduler } from 'node:timers/promises'
 
 import { Cause, Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Scope, Stream } from 'effect'
+import type * as FixtureService from 'effect-rust-fixture'
+import type * as FixtureContracts from 'effect-rust-fixture/contracts'
 
 import { ContractJson, Interop } from '@overeng/effect-rust'
 
@@ -19,11 +21,10 @@ assert.ok(
   directory !== undefined && vectorsPath !== undefined,
   'Pass the generated service package directory and the shared vectors file',
 )
-// The package under test is a build output, so its path is runtime-selected; its
-// own types are checked by compiling the package, not through this script.
+// Keep runtime-selected loads, but check their use against the actual Buck-generated types.
 // eslint-disable-next-line import/no-dynamic-require -- Contract codecs are loaded from the runtime-selected generated Buck service package under test.
-const Contracts = await import(resolve(directory, 'contracts.ts'))
-const { EffectRustFixture, ArithmeticError, SourceError, load } = await import(
+const Contracts: typeof FixtureContracts = await import(resolve(directory, 'contracts.ts'))
+const { EffectRustFixture, ArithmeticError, SourceError, load }: typeof FixtureService = await import(
   // eslint-disable-next-line import/no-dynamic-require -- Service statics are loaded from the runtime-selected generated Buck service package under test.
   resolve(directory, 'service.ts')
 )
@@ -54,7 +55,7 @@ for (const vector of vectors) {
   const codec = codecs[vector.contract]
   const decode = () => ContractJson.decode(codec)(JSON.stringify(vector.input))
   if (vector.accept === false) {
-    assert.throws(decode, undefined, `${label} must be rejected`)
+    assert.throws(decode, `${label} must be rejected`)
     continue
   }
   assert.equal(
@@ -80,6 +81,9 @@ const scalarCases = [
   ['echoI32', -2147483648, 2147483647],
   ['echoU32', 0, 4294967295],
 ] as const
+// These assertions deliberately prove synchronous completion, even inside a running fiber.
+const assertSynchronous = <T, TError>(request: Effect.Effect<T, TError>, expected: T) =>
+  assert.equal(Effect.runSync(request), expected)
 const program = (transport: 'wasm' | 'native') => Effect.scoped(
   Effect.gen(function* () {
     const fixture = yield* EffectRustFixture
@@ -99,14 +103,12 @@ const program = (transport: 'wasm' | 'native') => Effect.scoped(
     assert.equal(yield* fixture.checkedDivide(10, 2), 5)
     assert.equal(yield* fixture.add(1, 2), 3)
     assert.equal(yield* fixture.echoF32(1.1), Math.fround(1.1))
-    assert.equal(
-      Effect.runSync(
-        fixture.sumJsonIntegers({
-          unsigned: 4294967295,
-          signed: -2147483648,
-          bounded: Number.MAX_SAFE_INTEGER,
-        }),
-      ),
+    assertSynchronous(
+      fixture.sumJsonIntegers({
+        unsigned: 4294967295,
+        signed: -2147483648,
+        bounded: Number.MAX_SAFE_INTEGER,
+      }),
       4294967295n - 2147483648n + 9007199254740991n,
     )
     const dropsBeforeScope = yield* fixture.counterDrops()
@@ -163,8 +165,8 @@ const program = (transport: 'wasm' | 'native') => Effect.scoped(
       .pipe(Effect.flip)
     assert.ok(overflow instanceof ArithmeticError)
     assert.deepEqual(overflow.reason, { _tag: 'PriceOverflow', quantity: 4294967295 })
-    assert.equal(
-      Effect.runSync(fixture.sha256Hex(new TextEncoder().encode('abc'))),
+    assertSynchronous(
+      fixture.sha256Hex(new TextEncoder().encode('abc')),
       'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     )
     const bytes = new TextEncoder().encode('abc')
@@ -363,7 +365,7 @@ console.log(`wasm ${runtime}: first-poll/host-await traps, sibling defects, reti
 interface ShutdownApi {
   readonly counter: (initial: number) => Interop.ResourceHandle
   readonly counterDrops: () => number
-  readonly pendingJob: () => Extract<Interop.RustJob<number>, { readonly mode: 'abortable' }>
+  readonly pendingJob: () => Interop.RustJob<number>
 }
 class Shutdown extends Context.Service<Shutdown, Interop.Runtime<ShutdownApi>>()(
   'fixture/Shutdown',
@@ -408,6 +410,7 @@ for (const backend of ['wasm', 'native'] as const) {
         const pending = yield* core
           .call(({ api }) => {
             const job = api.pendingJob()
+            assert.ok(job.mode === 'abortable', 'pendingJob exposes cancellation')
             Deferred.doneUnsafe(jobStarted, Effect.void)
             return {
               ...job,
