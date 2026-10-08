@@ -16,7 +16,99 @@ const canonical = () =>
       steps: [{ id: 'first', goal: 'Inspect input.', agentless: true }],
     }),
   ])
+
+const scheduleWork = { mission: `demo@${'a'.repeat(64)}`, workspace: '/work/demo' }
+const calendarSchedule = {
+  id: 'daily',
+  host: 'local',
+  _tag: 'calendar',
+  at: '08:00',
+  timezone: 'Europe/Berlin',
+  catchUp: 'latest',
+  work: scheduleWork,
+} as const
 describe('Smalltalk declarations', () => {
+  it('renders the documented Berlin daily calendar schedule without interval fields', () => {
+    expect(emit([schedule(calendarSchedule)])).toBe(
+      `version 2
+schedule "daily" {
+  host "local"
+  calendar {
+    at "08:00"
+    timezone "Europe/Berlin"
+  }
+  catch-up "latest"
+  work {
+    mission "${scheduleWork.mission}"
+    workspace "/work/demo"
+  }
+}
+`,
+    )
+  })
+  it.each(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const)(
+    'renders a weekly %s calendar using st DAY HH:MM syntax',
+    (day) => {
+      expect(emit([schedule({ ...calendarSchedule, at: '09:00', days: [day] })])).toContain(
+        `calendar {\n    at "${day} 09:00"\n    timezone "Europe/Berlin"\n  }`,
+      )
+    },
+  )
+  it('supports both tagged and existing untagged interval declarations', () => {
+    const interval = {
+      id: 'cycle',
+      host: 'local',
+      every: '6h',
+      anchor: '2026-01-01T00:00:00Z',
+      catchUp: 'latest',
+      work: scheduleWork,
+    } as const
+    const rendered = emit([schedule(interval)])
+    expect(emit([schedule({ ...interval, _tag: 'every' })])).toBe(rendered)
+    expect(rendered).toContain('  every "6h"\n  anchor "2026-01-01T00:00:00Z"\n')
+    expect(rendered).not.toContain('calendar')
+  })
+  it('renders a calendar schedule nested in a mission', () => {
+    expect(
+      emit([
+        mission({
+          id: 'demo',
+          state: 'ready',
+          goal: 'Daily work.',
+          schedule: calendarSchedule,
+          steps: [{ id: 'first', goal: 'Inspect input.', agentless: true }],
+        }),
+      ]),
+    ).toContain('  schedule "daily" {\n    host "local"\n    calendar {\n      at "08:00"')
+  })
+  it.each(['24:00', '12:60', '8:00', '08:0', '08:00:00', 'Mon 08:00', '', ' 08:00'])(
+    'rejects invalid calendar time %j',
+    (at) => {
+      expect(() => schedule({ ...calendarSchedule, at })).toThrow()
+    },
+  )
+  it.each(['Mars/Olympus', '', '+02:00'])('rejects invalid timezone %j', (timezone) => {
+    expect(() => schedule({ ...calendarSchedule, timezone })).toThrow()
+  })
+  it.each([
+    { timezone: undefined },
+    { days: [] },
+    { days: ['Mon', 'Tue'] },
+    { days: ['Monday'] },
+    { days: 'Mon' },
+    { every: '6h' },
+    { anchor: '2026-01-01T00:00:00Z' },
+    { _tag: undefined },
+    { catchUp: 'all', maxCatchUp: 2 },
+    { misfire: 'skip' },
+  ])('rejects unsupported or conflicting calendar fields %j', (fields) => {
+    expect(() => schedule({ ...calendarSchedule, ...fields } as never)).toThrow()
+  })
+  it.each(['00:00', '23:59'])('accepts boundary calendar time %s', (at) => {
+    expect(emit([schedule({ ...calendarSchedule, at, timezone: 'UTC' })])).toContain(
+      `at "${at}"`,
+    )
+  })
   it('resumes an exact Codex session without overriding provider defaults', () => {
     const seat = agent({
       id: 'example/codex',
