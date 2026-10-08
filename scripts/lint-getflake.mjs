@@ -5,10 +5,12 @@ import { fileURLToPath } from 'node:url'
 
 // Local getFlake inputs must use the Git fetcher: path inputs copy ignored files too.
 const normalize = (content) => content.replace(/^\s*#[^\n]*/gm, '').replace(/\\"/g, '"')
-const assignments = (source) =>
-  [...source.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*_FLAKE_REF)\s*=\s*["']?([^\s"';]+)/g)]
+const assignments = (source) => [
+  ...source.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*_FLAKE_REF)\s*=\s*["']?([^\s"';]+)/g),
+]
 const isGitRef = (value) =>
-  value.startsWith('git+file://') || /^\$\{[A-Za-z_][A-Za-z0-9_]*_FLAKE_REF:-git\+file:\/\//.test(value)
+  value.startsWith('git+file://') ||
+  /^\$\{[A-Za-z_][A-Za-z0-9_]*_FLAKE_REF:-git\+file:\/\//.test(value)
 
 export const inspectGetFlake = (content, validFlakeRefs = new Set()) => {
   const source = normalize(content)
@@ -18,13 +20,16 @@ export const inspectGetFlake = (content, validFlakeRefs = new Set()) => {
     if (isGitRef(value)) refs.add(name)
     else violations.push(`${name} must be a git+file:// reference`)
   }
-  const calls = /\bbuiltins\.getFlake\s*\(*\s*(toString\b|builtins\.(?:toString|toPath)\b|builtins\.getEnv\s+"([^"]+)"|"([^"]*)"|(?:\.\/|\.\.\/|\/)[^\s;)]+|(?!(?:builtins)\b)[a-zA-Z_][a-zA-Z0-9_]*)/g
+  const calls =
+    /\bbuiltins\.getFlake\s*\(*\s*(toString\b|builtins\.(?:toString|toPath)\b|builtins\.getEnv\s+"([^"]+)"|"([^"]*)"|(?:\.\/|\.\.\/|\/)[^\s;)]+|(?!(?:builtins)\b)[a-zA-Z_][a-zA-Z0-9_]*)/g
   for (const match of source.matchAll(calls)) {
     const string = match[3]
     // Schemes must be explicit: interpolation and relative/bare strings are
     // paths too. file: and path: are not safe source-filtering fetchers.
     if (string !== undefined && /^(?!path:|file:)[a-z][a-z0-9+.-]*:/i.test(string)) continue
-    const variable = string?.match(/^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)(?::-git\+file:\/\/[^{}]*)?\})$/)
+    const variable = string?.match(
+      /^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)(?::-git\+file:\/\/[^{}]*)?\})$/,
+    )
     const envRef = match[2] ?? variable?.[1] ?? variable?.[2]
     if (envRef !== undefined && refs.has(envRef)) continue
     violations.push('bare-path getFlake; use "git+file://" + toString repo')
