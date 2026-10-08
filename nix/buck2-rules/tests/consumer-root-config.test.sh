@@ -36,11 +36,23 @@ forbid_line() {
 }
 
 default_config="$(render_config '{}')"
+require_line "$default_config" '  file_watcher = watchman'
 require_line "$default_config" '  remote_cache_enabled = false'
 require_line "$default_config" '  allow_cache_uploads = false'
 forbid_line "$default_config" '  default_allow_cache_upload = true'
 forbid_line "$default_config" '[buck2_re_client]'
 forbid_line "$default_config" '[archive_origin]'
+
+immutable_config="$(render_config '{ watcherPolicy = "immutable-input"; }')"
+require_line "$immutable_config" '  file_watcher = fs_hash_crawler'
+forbid_line "$immutable_config" '  file_watcher = watchman'
+
+if invalid_config="$(render_config '{ watcherPolicy = "invalid"; }' 2>&1)"; then
+  echo 'invalid watcher policy unexpectedly accepted' >&2
+  exit 1
+fi
+printf '%s\n' "$invalid_config" | grep -F \
+  'mkConsumerBuckRoot: watcherPolicy must be one of: immutable-input, mutable-checkout' >/dev/null
 
 private_config="$(render_config '{
   remoteCacheEnabled = true;

@@ -101,6 +101,20 @@ capabilities, fixed-output lock archives, and Cargo archives remain declared
 Nix inputs; neither a checkout copy nor Buck evaluation at Nix evaluation time
 determines the fileset.
 
+`mkConsumerBuckRoot` selects the watcher through the named `watcherPolicy`
+argument, not a free-form provider string:
+
+| Policy                       | Generated `[buck2] file_watcher` | Input contract                                                                                          |
+| ---------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `mutable-checkout` (default) | `watchman`                       | Interactive edits require fail-closed Watchman admission.                                               |
+| `immutable-input`            | `fs_hash_crawler`                | Declared inputs do not change during a build or filtered source check; no Watchman service is required. |
+
+Consumers copying a root into a Nix build or immutable source-check sandbox
+pass `watcherPolicy = "immutable-input";`. Unknown values fail evaluation with
+an error listing the allowed policies. `consumer-root.nix` and `from-source.nix`
+share `watcher-policies.nix`; the latter always selects `immutable-input` for
+its sandboxed build.
+
 The source-backed product's `effect-utils/buck-product-source-provenance/v1`
 contains `sourceDigest` (SHA-256 of the scoped source store path), `target`,
 and `productDigest`; it contains no Git revision. Source changes inside the

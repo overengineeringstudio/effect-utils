@@ -31,6 +31,7 @@
 
 let
   lib = pkgs.lib;
+  watcherPolicies = import ./watcher-policies.nix;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
   # Cargo manifests in consumer roots live in repositorySource, which can be a
   # derivation. Read the staged workspace at build time, not repositoryRoot at
@@ -199,7 +200,7 @@ let
       # shipped Watchman policy. Startup reads the file, not CLI -c overrides.
       cat >> .buckconfig.local <<'BUCKLOCAL'
       [buck2]
-        file_watcher = fs_hash_crawler
+        file_watcher = ${watcherPolicies.immutable-input}
       BUCKLOCAL
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
         # Consumer roots carry the already-patched local prelude from
