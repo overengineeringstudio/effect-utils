@@ -134,9 +134,20 @@ Scope exit closes it automatically and exactly once.
 If the runtime and resource scopes close concurrently, including parallel
 finalizers, runtime shutdown retains ownership of remaining handles until its
 pending jobs have stopped, then runs each healthy resource's destructor once.
-Resource finalizers transfer ownership and dispatch `close` in the same
-synchronous invocation callback that admits the generation. Scheduler yields
-cannot separate that ownership decision from the destructor call.
+The ownership invariant is: **every acquired handle has exactly one owner at
+every scheduler boundary**. A pending invocation owns acquisition; its success
+callback registers the handle before removing the pending job. A registered
+handle is `owned`, then `closing` while its destructor acknowledgment is pending,
+then `closed`; poisoning or instance retirement moves remaining handles to
+`retired`. The generation itself moves from `healthy` through shutdown's
+`closing` state to `retired`.
+
+Early close and scope finalizers use the same uninterruptible dispatch inside
+the resource semaphore. Ownership transfer and the destructor call are one
+synchronous step. Input/output acquisition follows the same protocol, and
+consuming input completion records `closed` in its invocation callback before
+the pending job is removed. Shutdown waits for pending invocations and already
+dispatched destructors before releasing the instance.
 
 All methods, including immutable receivers, and close share **one FIFO semaphore
 per resource**. This prevents overlapping mutable Rust borrows, orders queued

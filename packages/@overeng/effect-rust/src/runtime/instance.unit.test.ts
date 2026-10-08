@@ -101,6 +101,54 @@ const assertDefect = <T, TError>(exit: Exit.Exit<T, TError>) => {
   if (Exit.isFailure(exit) === true) expect(Cause.hasDies(exit.cause)).toBe(true)
 }
 
+// Match the shutdown sweep below: force only the chosen shouldYield check, and
+// withhold its dispatcher task until the competing Effect has been scheduled.
+const makeBoundaryScheduler = (yieldAt: number) => {
+  const paused = Promise.withResolvers<boolean>()
+  const defaultScheduler = new Scheduler.MixedScheduler()
+  let checks = 0
+  let forcedYields = 0
+  let sampling = true
+  let pauseRequested = false
+  let resumeTask: (() => void) | undefined
+  const scheduler: Scheduler.Scheduler = {
+    executionMode: 'async',
+    shouldYield: () => {
+      if (sampling === false) return false
+      if (++checks !== yieldAt) return false
+      forcedYields++
+      pauseRequested = true
+      return true
+    },
+    makeDispatcher: () => {
+      const dispatcher = defaultScheduler.makeDispatcher()
+      return {
+        scheduleTask: (task, priority) => {
+          if (pauseRequested === true) {
+            resumeTask = () => {
+              pauseRequested = false
+              dispatcher.scheduleTask(task, priority)
+            }
+            paused.resolve(true)
+          } else dispatcher.scheduleTask(task, priority)
+        },
+        flush: () => dispatcher.flush(),
+      }
+    },
+  }
+  return {
+    scheduler,
+    paused: paused.promise,
+    resume: () => resumeTask!(),
+    stop: () => {
+      // Finalizers retain their acquisition Scheduler service. Teardown is not
+      // part of this operation's sample and must never withhold another task.
+      sampling = false
+    },
+    counts: () => ({ checks, forcedYields }),
+  }
+}
+
 describe('instance generations', () => {
   it('executes synchronous exports with runSync after asynchronous runtime acquisition', async () => {
     const fixture = fake()
@@ -555,6 +603,211 @@ describe('scoped resources', () => {
         }
         expect(forcedYields).toBeGreaterThan(0)
       }),
+    )
+
+    it.effect(
+      `${panicBoundary} synchronous acquisition owns the created handle before shutdown at every scheduler boundary`,
+      () =>
+        Effect.gen(function* () {
+          let shutdownBoundaries = 0
+          let completedWithoutYield = 0
+          let maxChecks = 0
+          // Include the entire acquisition, not just a hand-picked primitive.
+          // The final assertion fails if a longer implementation outgrows this sweep.
+          for (let yieldAt = 1; yieldAt <= 128; yieldAt++) {
+            const runtimeScope = yield* Scope.make()
+            const resourceScope = yield* Scope.make()
+            let created = 0
+            let live = 0
+            let closes = 0
+            let releases = 0
+            let closesAfterRelease = 0
+            const releaseObservations: { live: number; closes: number }[] = []
+            const runtime = yield* makeRuntime('scheduler-resource-acquire', {
+              panicBoundary,
+              load: () => ({
+                api: undefined,
+                release: () => {
+                  releaseObservations.push({ live, closes })
+                  releases++
+                },
+              }),
+            }).pipe(Scope.provide(runtimeScope))
+            const controlled = makeBoundaryScheduler(yieldAt)
+            const acquisition = yield* runtime
+              .resource(() => {
+                // This models the physical Rust allocation, before open returns.
+                created++
+                live++
+                return {
+                  close: () => {
+                    if (releases !== 0) closesAfterRelease++
+                    closes++
+                    live--
+                  },
+                }
+              })
+              .pipe(
+                Scope.provide(resourceScope),
+                Effect.provideService(Scheduler.Scheduler, controlled.scheduler),
+                Effect.forkChild({ startImmediately: true }),
+              )
+            const didPause = yield* Effect.raceFirst(
+              Effect.promise(() => controlled.paused),
+              Fiber.await(acquisition).pipe(Effect.as(false)),
+            )
+            let registeredBeforeShutdown: number | undefined
+            const shutdownWhilePaused = didPause === true && created === 1
+            if (shutdownWhilePaused === true) {
+              shutdownBoundaries++
+              registeredBeforeShutdown = (yield* runtime.snapshot).handles
+              // Never close the runtime at a pre-constructor boundary: that would
+              // merely test admission rejection, not ownership of a real handle.
+              yield* Scope.close(runtimeScope, Exit.void)
+            }
+            if (didPause === true) controlled.resume()
+            else completedWithoutYield++
+            const acquisitionExit = yield* Fiber.await(acquisition)
+            controlled.stop()
+            if (shutdownWhilePaused === false) {
+              yield* Scope.close(runtimeScope, Exit.void)
+            }
+            const finalizerExit = yield* Effect.exit(Scope.close(resourceScope, Exit.void))
+            const counts = controlled.counts()
+            maxChecks = Math.max(maxChecks, counts.checks)
+            expect(counts.forcedYields, `acquisition yield ${yieldAt}`).toBe(
+              didPause === true ? 1 : 0,
+            )
+            expect(created, `physical acquisition yield ${yieldAt}`).toBe(1)
+            // A racing acquisition may fail once shutdown retires its generation.
+            // Its physical handle must still be owned and destroyed before release.
+            if (shutdownWhilePaused === false) {
+              expect(Exit.isSuccess(acquisitionExit), `acquisition yield ${yieldAt}`).toBe(true)
+            }
+            expect(Exit.isSuccess(finalizerExit), `acquisition finalizer yield ${yieldAt}`).toBe(
+              true,
+            )
+            expect(
+              { closes, live, releases, closesAfterRelease },
+              `acquisition yield ${yieldAt}`,
+            ).toEqual({ closes: 1, live: 0, releases: 1, closesAfterRelease: 0 })
+            expect(releaseObservations, `ownership at release yield ${yieldAt}`).toEqual([
+              { live: 0, closes: 1 },
+            ])
+            if (registeredBeforeShutdown !== undefined) {
+              expect(registeredBeforeShutdown, `registration yield ${yieldAt}`).toBe(1)
+            }
+            expect(yield* runtime.snapshot).toMatchObject({
+              state: 'closed',
+              jobs: 0,
+              handles: 0,
+            })
+          }
+          expect(shutdownBoundaries).toBeGreaterThan(0)
+          expect(completedWithoutYield).toBeGreaterThan(0)
+          expect(maxChecks).toBeLessThan(128)
+        }),
+    )
+
+    it.effect(
+      `${panicBoundary} interrupted explicit close preserves destructor ownership at every scheduler boundary`,
+      () =>
+        Effect.gen(function* () {
+          let interruptedBoundaries = 0
+          let completedWithoutYield = 0
+          let maxChecks = 0
+          for (let yieldAt = 1; yieldAt <= 128; yieldAt++) {
+            const runtimeScope = yield* Scope.make()
+            const resourceScope = yield* Scope.make()
+            let live = 0
+            let closes = 0
+            let releases = 0
+            let closesAfterRelease = 0
+            const releaseObservations: { live: number; closes: number }[] = []
+            const runtime = yield* makeRuntime('scheduler-resource-interrupt-close', {
+              panicBoundary,
+              load: () => ({
+                api: undefined,
+                release: () => {
+                  releaseObservations.push({ live, closes })
+                  releases++
+                },
+              }),
+            }).pipe(Scope.provide(runtimeScope))
+            const resource = yield* runtime
+              .resource(() => {
+                live++
+                return {
+                  close: () => {
+                    if (releases !== 0) closesAfterRelease++
+                    closes++
+                    live--
+                  },
+                }
+              })
+              .pipe(Scope.provide(resourceScope))
+            const controlled = makeBoundaryScheduler(yieldAt)
+            const earlyClose = yield* resource.close.pipe(
+              Effect.provideService(Scheduler.Scheduler, controlled.scheduler),
+              Effect.forkChild({ startImmediately: true }),
+            )
+            const didPause = yield* Effect.raceFirst(
+              Effect.promise(() => controlled.paused),
+              Fiber.await(earlyClose).pipe(Effect.as(false)),
+            )
+            if (didPause === true) {
+              interruptedBoundaries++
+              // startImmediately dispatches the interrupt on the ordinary scheduler
+              // before the withheld close task resumes, even if close is masked.
+              const interrupting = yield* Fiber.interrupt(earlyClose).pipe(
+                Effect.forkChild({ startImmediately: true }),
+              )
+              controlled.resume()
+              yield* Fiber.join(interrupting)
+            } else completedWithoutYield++
+            yield* Fiber.await(earlyClose)
+            controlled.stop()
+            const retryExit = yield* Effect.exit(resource.close)
+            const finalizerExit = yield* Effect.exit(Scope.close(resourceScope, Exit.void))
+            // Capture ownership while the generation is still healthy. Runtime
+            // shutdown must not conceal a missed early destructor by doing it later.
+            const beforeShutdown = {
+              closes,
+              live,
+              releases,
+              snapshot: yield* runtime.snapshot,
+            }
+            const counts = controlled.counts()
+            maxChecks = Math.max(maxChecks, counts.checks)
+            yield* Scope.close(runtimeScope, Exit.void)
+            const staleCloseExit = yield* Effect.exit(resource.close)
+            expect(counts.forcedYields, `close yield ${yieldAt}`).toBe(didPause === true ? 1 : 0)
+            expect(Exit.isSuccess(retryExit), `subsequent close yield ${yieldAt}`).toBe(true)
+            expect(Exit.isSuccess(finalizerExit), `scope finalizer yield ${yieldAt}`).toBe(true)
+            expect(Exit.isSuccess(staleCloseExit), `post-release close yield ${yieldAt}`).toBe(true)
+            expect(beforeShutdown, `live-runtime ownership yield ${yieldAt}`).toEqual({
+              closes: 1,
+              live: 0,
+              releases: 0,
+              snapshot: { generation: 1, state: 'healthy', jobs: 0, handles: 0 },
+            })
+            expect(
+              { closes, live, releases, closesAfterRelease },
+              `close yield ${yieldAt}`,
+            ).toEqual({ closes: 1, live: 0, releases: 1, closesAfterRelease: 0 })
+            expect(releaseObservations, `ownership at release yield ${yieldAt}`).toEqual([
+              { live: 0, closes: 1 },
+            ])
+            expect(yield* runtime.snapshot).toMatchObject({
+              state: 'closed',
+              jobs: 0,
+              handles: 0,
+            })
+          }
+          expect(interruptedBoundaries).toBeGreaterThan(0)
+          expect(completedWithoutYield).toBeGreaterThan(0)
+          expect(maxChecks).toBeLessThan(128)
+        }),
     )
 
     for (const finalizerStrategy of ['sequential', 'parallel'] as const) {
