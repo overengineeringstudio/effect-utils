@@ -6,6 +6,7 @@ test('rejects bare-path getFlake negative fixtures', () => {
   for (const fixture of [
     'builtins.getFlake (toString repo)',
     'builtins.getFlake (builtins.toString ./.)',
+    'builtins.getFlake (builtins.toPath "/checkout")',
     'builtins.getFlake (builtins.getEnv "PRIVATE_PRODUCTS_REPO")',
     'builtins.getFlake "/checkout"',
     'builtins.getFlake "path:/checkout"',
@@ -14,6 +15,11 @@ test('rejects bare-path getFlake negative fixtures', () => {
     'builtins.getFlake "$ROOT"',
     'NIX_FLAKE_REF="$PWD"',
     'NIX_FLAKE_REF="${NIX_FLAKE_REF:-$ROOT}"',
+    'NIX_FLAKE_REF="path:/checkout"',
+    'TEST_FLAKE_REF="$ROOT"',
+    'TEST_FLAKE_REF="path:/checkout"',
+    'builtins.getFlake (builtins.getEnv "NIX_FLAKE_REF")',
+    'builtins.getFlake "$NIX_FLAKE_REF"',
   ]) assert.notEqual(inspectGetFlake(fixture).length, 0, fixture)
 })
 
@@ -22,10 +28,16 @@ test('accepts Git fetcher references and the Git-valued shared test contract', (
     'builtins.getFlake ("git+file://" + toString repo)',
     'builtins.getFlake (\\"git+file://\\" + toString repo)',
     'builtins.getFlake "git+file://${toString ./.}"',
-    'builtins.getFlake (builtins.getEnv "NIX_FLAKE_REF")',
-    'builtins.getFlake "$NIX_FLAKE_REF"',
+    'NIX_FLAKE_REF="git+file://$ROOT"; builtins.getFlake (builtins.getEnv "NIX_FLAKE_REF")',
+    'NIX_FLAKE_REF="git+file://$ROOT"; builtins.getFlake "$NIX_FLAKE_REF"',
     'NIX_FLAKE_REF="git+file://$PWD?shallow=1"',
     'NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"',
     '# documented bad example: builtins.getFlake (toString ./.)',
   ]) assert.deepEqual(inspectGetFlake(fixture), [], fixture)
+})
+
+test('an unsafe assignment still fails when another file establishes a safe contract', () => {
+  const contract = new Set(['NIX_FLAKE_REF'])
+  assert.notEqual(inspectGetFlake('NIX_FLAKE_REF="path:/checkout"', contract).length, 0)
+  assert.deepEqual(inspectGetFlake('builtins.getFlake (builtins.getEnv "NIX_FLAKE_REF")', contract), [])
 })

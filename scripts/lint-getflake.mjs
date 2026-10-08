@@ -4,25 +4,41 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 // Local getFlake inputs must use the Git fetcher: path inputs copy ignored files too.
-export const inspectGetFlake = (content) => {
-  const source = content.replace(/^\s*#[^\n]*/gm, '').replace(/\\"/g, '"')
+const normalize = (content) => content.replace(/^\s*#[^\n]*/gm, '').replace(/\\"/g, '"')
+const assignments = (source) =>
+  [...source.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*_FLAKE_REF)\s*=\s*["']?([^\s"';]+)/g)]
+const isGitRef = (value) =>
+  value.startsWith('git+file://') || /^\$\{[A-Za-z_][A-Za-z0-9_]*_FLAKE_REF:-git\+file:\/\//.test(value)
+
+export const inspectGetFlake = (content, validFlakeRefs = new Set()) => {
+  const source = normalize(content)
   const violations = []
-  const calls = /\bbuiltins\.getFlake\s*\(*\s*(toString\b|builtins\.toString\b|builtins\.getEnv\s+"([^"]+)"|"(?:path:|\/|\.\/|\.\.\/|\$(?!NIX_FLAKE_REF\b|\{NIX_FLAKE_REF\b))[^"]*"|(?:\.\/|\.\.\/|\/)[^\s;)]+|(?!(?:builtins)\b)[a-zA-Z_][a-zA-Z0-9_]*)/g
-  for (const match of source.matchAll(calls)) {
-    if (match[2] === 'NIX_FLAKE_REF') continue
-    violations.push('bare-path getFlake; use "git+file://" + toString repo')
+  const refs = new Set(validFlakeRefs)
+  for (const [, name, value] of assignments(source)) {
+    if (isGitRef(value)) refs.add(name)
+    else violations.push(`${name} must be a git+file:// reference`)
   }
-  // The shared test runner owns this environment contract. Reject path-valued
-  // assignments as well as unsafe fallbacks in tests that accept an override.
-  if (/\bNIX_FLAKE_REF\s*=\s*["']?(?:\/(?!\/)|\.\.?\/|\$(?:PWD|ROOT|repo_root)\b|\$\{NIX_FLAKE_REF:-\$(?:PWD|ROOT|repo_root)\b)/.test(source)) {
-    violations.push('NIX_FLAKE_REF must be a git+file:// reference')
+  const calls = /\bbuiltins\.getFlake\s*\(*\s*(toString\b|builtins\.(?:toString|toPath)\b|builtins\.getEnv\s+"([^"]+)"|"(\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*(?::-[^"]*)?\}))"|"(?:path:|\/|\.\/|\.\.\/)[^"]*"|(?:\.\/|\.\.\/|\/)[^\s;)]+|(?!(?:builtins)\b)[a-zA-Z_][a-zA-Z0-9_]*)/g
+  for (const match of source.matchAll(calls)) {
+    const envRef = match[2] ?? match[3]?.match(/^\$\{?([A-Za-z_][A-Za-z0-9_]*)/)?.[1]
+    if (envRef !== undefined && refs.has(envRef)) continue
+    violations.push('bare-path getFlake; use "git+file://" + toString repo')
   }
   return violations
 }
 
 export const lintGetFlake = (paths) => {
-  const violations = paths.flatMap((path) =>
-    inspectGetFlake(readFileSync(path, 'utf8')).map((message) => `${path}: ${message}`),
+  const files = paths.map((path) => ({ path, content: readFileSync(path, 'utf8') }))
+  // Environment reads are allowed only when the scanned runner/test sources
+  // establish a Git-valued assignment contract; unknown names are not exempt.
+  const validFlakeRefs = new Set()
+  for (const { content } of files) {
+    for (const [, name, value] of assignments(normalize(content))) {
+      if (isGitRef(value)) validFlakeRefs.add(name)
+    }
+  }
+  const violations = files.flatMap(({ path, content }) =>
+    inspectGetFlake(content, validFlakeRefs).map((message) => `${path}: ${message}`),
   )
   for (const violation of violations) console.error(violation)
   return violations.length === 0
