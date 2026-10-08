@@ -922,6 +922,7 @@ in
   tasks."lint:check".after = lib.mkForce [
     "genie:check"
     "lint:check:no-tailwind"
+    "lint:check:getflake"
   ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check";
@@ -1190,9 +1191,20 @@ in
     '';
   };
 
+  tasks."lint:check:getflake" = {
+    description = "Reject bare-path getFlake inputs that copy ignored worktree state into the Nix store";
+    exec = trace.exec "lint:check:getflake" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      ${pkgs.nodejs_24}/bin/node --test scripts/lint-getflake.unit.test.mjs
+      exec ${pkgs.nodejs_24}/bin/node scripts/lint-getflake.mjs
+    '';
+  };
+
   tasks."nix:check:quick" = {
     description = "Check Nix artifact-import contracts without realizing repository products";
     after = [
+      "lint:check:getflake"
       "nix:buck2-artifact-import:check"
       "nix:buck2-cargo-archives:check"
       "nix:javascript-product-import:check"
