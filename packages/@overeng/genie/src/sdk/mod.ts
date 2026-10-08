@@ -91,7 +91,7 @@ const withSilentEventBus = <A, E, R>(
 
 /**
  * Generate files from all discovered .genie.ts sources.
- * Source-mode callers must use a separate Bun process for each workspace; a second workspace fails.
+ * Bun source-mode callers must use separate processes per workspace; Node uses its native loader.
  */
 export const generate = ({
   cwd: inputCwd,
@@ -124,7 +124,7 @@ export const generate = ({
 
 /**
  * Check that all generated files are up to date.
- * Source-mode callers must use a separate Bun process for each workspace; a second workspace fails.
+ * Bun source-mode callers must use separate processes per workspace; Node uses its native loader.
  */
 export const check = ({
   cwd: inputCwd,

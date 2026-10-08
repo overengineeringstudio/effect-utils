@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 import { makeTempGitEnvironment } from '@overeng/utils-dev/node-vitest'
 
-import { findGenieFiles } from './discovery.ts'
+import { ensureImportMapResolver, findGenieFiles } from './discovery.ts'
 
 const writeFile = async ({ content, filePath }: { content: string; filePath: string }) => {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
@@ -30,6 +30,22 @@ const toCanonicalRelative = async ({
     )
     .toSorted()
 }
+
+describe('ensureImportMapResolver', () => {
+  it.skipIf(typeof Bun !== 'undefined')(
+    'does not register a Bun hook or workspace guard under Node',
+    async () => {
+      await expect(
+        Effect.runPromise(
+          Effect.gen(function* () {
+            yield* ensureImportMapResolver(path.resolve('first-node-workspace'))
+            yield* ensureImportMapResolver(path.resolve('second-node-workspace'))
+          }),
+        ),
+      ).resolves.toBeUndefined()
+    },
+  )
+})
 
 describe('findGenieFiles', () => {
   it('uses git ignore rules for repository discovery', async () => {

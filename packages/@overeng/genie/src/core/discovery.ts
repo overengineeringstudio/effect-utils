@@ -55,8 +55,9 @@ type BunPluginBuilder = {
 /**
  * Register a Bun import resolver for the invoking workspace. Ordinary `#...` specifiers still use
  * the nearest import map, while nested `#mr/...` imports retain this workspace's lock.
- * Source-mode callers must use one workspace per process because Bun caches imported modules.
+ * Bun source-mode callers must use one workspace per process because Bun caches imported modules.
  * Registering another workspace fails before import rather than reusing the first workspace's lock.
+ * Under Node, leave resolution to the native loader without registering a hook or workspace guard.
  *
  * Note: In compiled Bun binaries, the Bun.plugin API causes class identity mismatches
  * with Bun internals (ResolveMessage instanceof checks fail). We skip plugin registration
@@ -66,6 +67,8 @@ export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(func
   workspaceRoot: string,
 ) {
   yield* Observability.annotatePath({ label: 'import-map', path: workspaceRoot })
+  // The process-global resolver and its workspace restriction exist only in Bun.
+  if (typeof Bun === 'undefined') return
   // Compiled graphs carry their own workspace context and do not use the process-global hook.
   if (isCompiledBinary() === true) return
   const normalizedWorkspaceRoot = path.resolve(workspaceRoot)
