@@ -20,6 +20,67 @@ import {
 const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
 const buck2ToolsBuck = readFileSync('packages/@overeng/buck2-tools/BUCK', 'utf8')
 
+describe('nested Buck package ownership', () => {
+  const packagePath = 'genie/buck2/fixtures/nested-package/parent'
+  const output = (): string =>
+    buck2TypeScriptPackageProjection({
+      packageName: 'nested-fixture',
+      packagePath,
+      projectionSource: `${packagePath}/BUCK.genie.ts`,
+      dependencyImporter: '//buck2/dependencies:importer_fixture',
+      sourceRoots: ['src', 'bin'],
+      workspacePackages: [
+        { meta: { workspace: { memberPath: packagePath } }, data: { name: 'nested-fixture' } },
+      ],
+      authorities: [
+        {
+          projectFile: 'tsconfig.json',
+          projectInputs: ['src/deeper/input.json', 'src/deeper/tsconfig.json'],
+        },
+      ],
+      tests: [
+        {
+          name: 'test',
+          runner: 'vitest',
+          config: 'vitest.config.ts',
+          configInputs: ['config.json'],
+        },
+      ],
+      testDataRoots: [{ root: 'data', extensions: ['.json'] }],
+    }).stringify(genieContext)
+
+  it('keeps parent and child destinations while depending on the nearest owner', () => {
+    const rendered = output()
+    expect(rendered).toContain('"bin/main.ts": "bin/main.ts",')
+    expect(rendered).toContain(`"src/main.ts": "//${packagePath}/src:main.ts",`)
+    expect(rendered).toContain(`"src/deeper/main.ts": "//${packagePath}/src/deeper:main.ts",`)
+    expect(rendered).toContain(
+      `"src/deeper/value$input.ts": "//${packagePath}/src/deeper:value__dollar__input.ts",`,
+    )
+    const exports = rendered.split('export_materialization_inputs([\n')[1]?.split('])')[0]
+    expect(exports).toContain('"bin/main.ts",')
+    expect(exports).not.toContain('"src/')
+  })
+
+  it('resolves test, snapshot, config, project, declaration and data inputs too', () => {
+    const rendered = output()
+    for (const file of [
+      'main.test.jsx',
+      '__snapshots__/main.test.jsx.snap',
+      'vitest.config.ts',
+      'tsconfig.json',
+      'input.json',
+      'types.d.ts',
+    ]) {
+      expect(rendered).toContain(`"src/deeper/${file}": "//${packagePath}/src/deeper:${file}",`)
+    }
+    expect(rendered).toContain(`"data/fixture.json": "//${packagePath}/data:fixture.json",`)
+    for (const file of ['vitest.config.ts', 'config.json', 'package.json', 'tsconfig.json']) {
+      expect(rendered).toContain(`"${file}": "${file}",`)
+    }
+  })
+})
+
 const outputsByAdmission = Object.fromEntries(
   Object.entries(buck2TypeScriptAdmissions).map(([name, admission]) => [
     name,

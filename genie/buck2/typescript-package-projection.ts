@@ -906,18 +906,34 @@ export const buck2TypeScriptPackageProjection = ({
   const rulesPrefix = rulesCell ?? ''
   const visibility = ['PUBLIC'] as const
   const runtimeEntry = stagedModuleName(packageTreeRuntime.entry)
-  const sourceLabel = (repoRelativePath: string): string => {
-    const sourcePackage = [...buckPackagePaths]
-      .filter((candidate) => repoRelativePath.startsWith(`${candidate}/`) === true)
-      .toSorted((left, right) => right.length - left.length || compareStrings({ left, right }))[0]
-    if (sourcePackage === packagePath) {
-      return repoRelativePath.slice(packagePath.length + 1)
-    }
-    if (sourcePackage !== undefined) {
-      return `//${sourcePackage}:${repoRelativePath.slice(sourcePackage.length + 1)}`
-    }
-    return `//:${repoRelativePath}`
+  // Resolve actual package boundaries, including handwritten BUCK files and generators
+  // whose outputs have not been written yet. Cache directories, not files: one census
+  // commonly contains many inputs from the same owning package.
+  const sourceOwners = new Map<string, string>()
+  const sourceOwner = (directory: string): string => {
+    const cached = sourceOwners.get(directory)
+    if (cached !== undefined) return cached
+    const owner =
+      directory === packagePath ||
+      directory === '.' ||
+      existsSync(path.join(process.cwd(), directory, 'BUCK')) ||
+      existsSync(path.join(process.cwd(), directory, 'BUCK.genie.ts'))
+        ? directory
+        : sourceOwner(path.posix.dirname(directory))
+    sourceOwners.set(directory, owner)
+    return owner
   }
+  const sourceLabel = (repoRelativePath: string): string => {
+    const owner = sourceOwner(path.posix.dirname(repoRelativePath))
+    const ownerRelativePath = path.posix.relative(owner, repoRelativePath)
+    if (owner === packagePath) return ownerRelativePath
+    // export_materialization_inputs uses this spelling for target names.
+    return `//${owner === '.' ? '' : owner}:${ownerRelativePath.replaceAll('$', '__dollar__')}`
+  }
+  const sourceEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
+    files.map((file) => [file, sourceLabel(`${packagePath}/${file}`)] as const)
+  const isLocallyOwned = (file: string): boolean =>
+    sourceOwner(path.posix.dirname(`${packagePath}/${file}`)) === packagePath
   const testTargets = (tests ?? []).map((target) =>
     projectTestTarget({ packagePath, sourceRoots, sourceLabel, target, visibility }),
   )
@@ -969,7 +985,7 @@ export const buck2TypeScriptPackageProjection = ({
     ),
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
-    .map((file): readonly [string, string] => [file, file])
+    .map((file): readonly [string, string] => [file, sourceLabel(`${packagePath}/${file}`)])
   const testDataFiles = testDataRoots.flatMap((dataRoot) => {
     for (const extension of dataRoot.extensions) {
       if (extension.startsWith('.') === false || safeSourceSegment(extension) === false) {
@@ -997,15 +1013,14 @@ export const buck2TypeScriptPackageProjection = ({
     ),
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
-    .map((authorityProjectFile) => [authorityProjectFile, authorityProjectFile] as const)
+    .map((file) => [file, sourceLabel(`${packagePath}/${file}`)] as const)
   // The compile tree: typecheck, emit and the editor read it, so it carries the TypeScript
   // census and nothing a runner alone collects. A `.jsx` spec, a snapshot baseline, a Vitest
   // config or a committed fixture in here would widen every compile action's identity for
   // inputs no compiler ever opens.
   const packageFileEntries = [
-    ...identityEntries(packageSources),
-    ['package.json', 'package.json'] as const,
-    ['tsconfig.json', 'tsconfig.json'] as const,
+    ...sourceEntries(packageSources),
+    ...sourceEntries(['package.json', 'tsconfig.json']),
     ...projectFileEntries,
   ].toSorted(([left], [right]) => compareStrings({ left, right }))
   // The test tree: the compile tree plus everything only a runner reads — the collectable
@@ -1018,10 +1033,10 @@ export const buck2TypeScriptPackageProjection = ({
       : [
           ...new Map<string, string>([
             ...packageFileEntries,
-            ...identityEntries(collectableTestModules),
-            ...identityEntries(snapshotBaselines),
+            ...sourceEntries(collectableTestModules),
+            ...sourceEntries(snapshotBaselines),
             ...testConfigEntries,
-            ...identityEntries(testDataFiles),
+            ...sourceEntries(testDataFiles),
           ]),
         ].toSorted(([left], [right]) => compareStrings({ left, right }))
   const workspaceSiblingProjections = workspaceSiblings.map((sibling) => {
@@ -1118,6 +1133,9 @@ export const buck2TypeScriptPackageProjection = ({
     ...[...buckPackagePaths].map((buckPackagePath) => `${buckPackagePath}/BUCK.genie.ts`),
   ].toSorted((left, right) => compareStrings({ left, right }))
 
+  const nestedFileEntries = [...new Map([...packageFileEntries, ...testPackageFileEntries])]
+    .filter(([, source]) => source.startsWith('//'))
+    .toSorted(([left], [right]) => compareStrings({ left, right }))
   const data = {
     buckPackagePaths: [...buckPackagePaths].toSorted((left, right) =>
       compareStrings({ left, right }),
@@ -1128,6 +1146,7 @@ export const buck2TypeScriptPackageProjection = ({
     packageName,
     packagePath,
     packageSources,
+    ...(nestedFileEntries.length === 0 ? {} : { nestedFileEntries }),
     collectableTestModules,
     snapshotBaselines,
     declarationSources,
@@ -1181,7 +1200,7 @@ export const buck2TypeScriptPackageProjection = ({
     '    package_tree = ":package_tree",',
     ...renderMap({
       name: 'declaration_sources',
-      entries: declarationSources.map((source) => [source, source]),
+      entries: sourceEntries(declarationSources),
     }),
     ...(targetProjectFile === 'tsconfig.json'
       ? []
@@ -1238,7 +1257,7 @@ export const buck2TypeScriptPackageProjection = ({
       ')',
       '',
       ...testDataFiles
-        .filter((file) => file.endsWith('.patch'))
+        .filter((file) => file.endsWith('.patch') && isLocallyOwned(file))
         .flatMap((file) => [
           'export_file(',
           `    name = ${starlarkString(file)},`,
@@ -1248,7 +1267,7 @@ export const buck2TypeScriptPackageProjection = ({
           '',
         ]),
       'export_materialization_inputs([',
-      ...packageSources.map((source) => `    ${starlarkString(source)},`),
+      ...packageSources.filter(isLocallyOwned).map((source) => `    ${starlarkString(source)},`),
       '])',
       '',
       'static_source_set(',
@@ -1352,6 +1371,3 @@ export const buck2TypeScriptPackageProjection = ({
 
   return createGenieOutput({ data, stringify })
 }
-
-const identityEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
-  files.map((file) => [file, file] as const)
