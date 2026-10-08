@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, setSystemTime } from 'bun:test'
+import { createHash } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -6,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -690,6 +692,23 @@ describe('direct pinned Buck watcher admission', () => {
     writeFileSync(join(root, '.watchmanconfig'), '{"ignore_dirs":["ignored"]}\n')
     await expect(directBuckArguments(invocation)).rejects.toThrow('probe failed (service)')
     expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
+  })
+
+  it('names every watcher admission variant with the physical worktree root hash', async () => {
+    const { root, env } = watcherFixture()
+    const cacheDirectory = join(root, 'root-keyed-probe-cache')
+    for (const runtime of ['first-runtime', 'second-runtime']) {
+      await directBuckArguments({
+        ...options(root),
+        env: { ...env, XDG_RUNTIME_DIR: runtime },
+        cacheDirectory,
+        args: ['targets', '//:app'],
+      })
+    }
+    const prefix = `${createHash('sha256').update(realpathSync(root)).digest('hex')}-`
+    const entries = readdirSync(cacheDirectory)
+    expect(entries).toHaveLength(2)
+    expect(entries.every((entry) => entry.startsWith(prefix) && entry.endsWith('.json'))).toBe(true)
   })
 
   it('does not share root admission between worktrees using the same service identity', async () => {

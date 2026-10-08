@@ -42,18 +42,42 @@ Snapshots deliberately own their Buck artifact bytes and remain usable after
 
 ### Retired worktree removal
 
-After closing editors, watchers, and builds using a retired worktree, run
-`devenv tasks run buck2:editor:release --mode single` from that worktree. Then
-leave its working directory and use ordinary `git worktree remove` from another
-worktree. This explicit teardown is not garbage collection: it removes the
-worktree's editor roots, including every sibling view sharing those roots.
+After closing editors and builds using a retired worktree, run
+`devenv tasks run worktree:teardown --mode single` from that worktree. It stops
+every Buck daemon isolation for the absolute checkout root, removes only its
+isolation state, deletes its Watchman watch when the service is reachable, removes only
+its root-keyed admission cache entries, invokes `buck2:editor:release`, and makes
+remaining directories owner-writable without following symlinks or chmodding
+files. Then leave its working directory and use ordinary `git worktree remove`
+from another worktree. Teardown is offline and idempotent, does not delete
+tracked files, and does not decide whether a checkout is eligible for removal.
+
+Buck's absolute-path state hierarchy can contain descendant checkouts, even
+inside a directory with direct daemon files identifying this checkout's isolation.
+Before stopping that daemon, teardown refuses ambiguous contents with a nonzero
+exit: subdirectories matching descendant paths, unknown subdirectories, symlinks,
+or non-regular history entries. Only regular daemon files and Buck's shallow
+`prev` history directory are cleared; isolation directories are never recursively
+deleted. Sibling state is preserved, and the parent state directory is removed
+only when empty. State paths must remain under the canonical Buck state base and
+contain no symlinked components. The permission walk prunes nested Git checkouts,
+worktrees, and megarepo member/composition boundaries before changing their modes.
+
+Capability-profile Nix indirect gcroots are left alone: worktree removal makes
+them dangling and Nix GC prunes them. Shared endpoint admission caches and other
+checkouts are untouched. Consumers inherit the task through the shared setup,
+check, clean, or worktree-guard module, or can explicitly import
+`inputs.effect-utils.devenvModules.tasks.worktree-teardown`.
+
+`devenv tasks run buck2:editor:release --mode single` remains available for
+editor-only release, including every sibling view sharing those roots.
 
 The publisher CLI also supports `release --repo-root <root> --package <package>`
 for one shared editor root. Teardown holds the publication lock, refuses an
 existing lock (including a stale one until exact-token recovery), and makes only
 owned directories writable before removal. It never follows snapshot symlinks
-or changes external dependency targets. Release is never a dependency of setup,
-tests, or checks; republishing recreates a released root.
+or changes external dependency targets. Neither release nor teardown is ever a
+dependency of setup, tests, or checks; republishing recreates a released root.
 
 ## Test collection
 

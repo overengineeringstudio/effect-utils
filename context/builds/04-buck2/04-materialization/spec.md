@@ -219,12 +219,55 @@ recovery surface; it requires both `EDITOR_VIEW_PACKAGE` and the exact printed
 
 ## Retired Worktree Teardown
 
-Read-only snapshot directories must be released before ordinary Git worktree
-removal. Once all editors, watchers, and builds using the worktree have stopped,
-`devenv tasks run buck2:editor:release --mode single` removes the registered
-worktree editor roots. The operator then leaves that working directory and runs
-`git worktree remove` from another worktree. Release is an explicit lifecycle
-operation, never an automatic dependency of publication, setup, tests, or checks.
+```text
+worktree:teardown
+  -> stop root-owned Buck isolations and remove only their state
+  -> delete the root's watch from reachable Watchman
+  -> remove root-keyed watcher admission entries
+  -> buck2:editor:release
+  -> chmod owner-write on remaining real directories
+  -> operator leaves checkout and runs git worktree remove
+```
+
+After closing editors and builds, run
+`devenv tasks run worktree:teardown --mode single` from the retired worktree.
+The shared task resolves the physical absolute Git checkout root and operates
+only on state keyed to that root. It is offline and idempotent; missing daemons,
+unreachable Watchman, and absent cache/editor roots are no-ops. Watcher admission
+filenames under `${XDG_CACHE_HOME:-~/.cache}/effect-utils/buck2-posture-v2` begin
+with `sha256(absolute-root)-`, followed by the invocation-key hash; endpoint-only
+REAPI/archive admission remains shared and is not removed.
+
+Buck state is a hierarchy under canonical `~/.buck/buckd`: the absolute checkout
+path without its leading slash, followed by an isolation name. A directory with
+direct `buckd.info`, `buckd.pid`, `buckd.stdout`, `buckd.stderr`, or
+`buckd.lifecycle` files identifies an isolation. Other child directories hold
+descendant checkout state and are untouched. An identified isolation can itself
+contain descendant state when its name overlaps a descendant checkout path.
+Before stopping its daemon, teardown refuses ambiguous contents with a nonzero
+exit: subdirectories matching actual descendant paths, unknown subdirectories,
+symlinks, or non-regular history entries. It clears only regular daemon files and
+the shallow regular-file contents of Buck's owned `prev` history directory, then
+uses `rmdir`; isolation directories are never recursively deleted. The checkout's
+state container is removed only if empty. State paths outside the canonical base
+and any symlinked state component are refused.
+
+`devenv tasks run buck2:editor:release --mode single` is the editor-only release
+surface. Teardown calls that existing task when the consuming repository defines
+it. Both are explicit lifecycle operations, never dependencies of publication,
+setup, tests, or checks. The evaluated task graph asserts that isolation.
+Consumers inherit teardown through the shared setup, check, clean, or
+worktree-guard module, or import the exported worktree-teardown module directly.
+
+Teardown makes remaining directories owner-writable without following symlinks
+or changing file modes. Before chmod, it prunes any nested directory containing
+a `.git` file/directory, a megarepo configuration, or a `.bare` store boundary,
+and the `repos` member container of a megarepo-configured directory. These nested
+checkout/composition roots and their contents retain their modes.
+It never deletes tracked files or determines removal eligibility; the caller
+owns dirty-tree and canonical-checkout policy.
+Capability-profile Nix indirect gcroots are left alone: after worktree removal
+they become dangling, and Nix GC prunes them.
 
 The publisher's `release --repo-root <root> --package <package>` command operates
 on the package's entire shared editor root, not just its individual view. It

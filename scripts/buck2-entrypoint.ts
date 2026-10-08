@@ -107,13 +107,21 @@ const cachedProbe = async ({
   cacheDirectory,
   probe,
   now = Date.now(),
+  root,
 }: {
   readonly key: string
   readonly cacheDirectory: string
   readonly probe: () => Promise<boolean>
   readonly now?: number
+  readonly root?: string
 }): Promise<boolean> => {
-  const path = join(cacheDirectory, `${createHash('sha256').update(key).digest('hex')}.json`)
+  // Root-keyed watcher admission can be reclaimed without knowing the original
+  // environment/config variants. Endpoint admission remains shared across roots.
+  const prefix = root === undefined ? '' : `${createHash('sha256').update(root).digest('hex')}-`
+  const path = join(
+    cacheDirectory,
+    `${prefix}${createHash('sha256').update(key).digest('hex')}.json`,
+  )
   try {
     const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
     if (
@@ -198,6 +206,7 @@ export const directBuckArguments = async ({
   if (selectedWatcher === 'watchman') {
     const available = await cachedProbe({
       cacheDirectory,
+      root: realpathSync(root),
       key: JSON.stringify([
         'watchman-root-admission-v1',
         realpathSync(root),

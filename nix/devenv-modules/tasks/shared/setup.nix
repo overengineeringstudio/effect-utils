@@ -317,6 +317,7 @@ let
   '';
 in
 {
+  imports = [ ./worktree-teardown.nix ];
   tasks = cliGuard.stripGuards (
     lib.optionalAttrs completionsEnabled {
       "${completionsTaskName}" = {
