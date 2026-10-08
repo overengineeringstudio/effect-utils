@@ -8,7 +8,7 @@ render_config() {
   nix eval --raw --impure --expr "
     let
       repo = builtins.toPath (builtins.getEnv \"BUCK2_RULES_REPO\");
-      flake = builtins.getFlake (\"git+file://\" + toString repo);
+      flake = builtins.getFlake (\"git+file://\" + toString repo + \"?shallow=1\");
       system = builtins.currentSystem;
       pkgs = import flake.inputs.nixpkgs { inherit system; };
     in (flake.lib.mkConsumerBuckRoot ({

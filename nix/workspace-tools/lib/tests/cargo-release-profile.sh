@@ -7,7 +7,7 @@ repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 export CARGO_RELEASE_PROFILE_REPO="$repo_root"
 python="$(nix build --impure --no-link --print-out-paths --expr '
   let
-    flake = builtins.getFlake ("git+file://" + builtins.getEnv "CARGO_RELEASE_PROFILE_REPO");
+    flake = builtins.getFlake ("git+file://" + builtins.getEnv "CARGO_RELEASE_PROFILE_REPO" + "?shallow=1");
   in (import flake.inputs.nixpkgs { system = builtins.currentSystem; }).python3
 ')/bin/python3"
 script="$repo_root/nix/workspace-tools/lib/cargo-release-profile.py"

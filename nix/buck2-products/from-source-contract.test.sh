@@ -7,7 +7,7 @@ bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
-    flake = builtins.getFlake ("git+file://" + toString repo);
+    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
     system = builtins.currentSystem;
     packages = flake.packages.${system};
     product = packages.buck-product-megarepo-from-source;

@@ -47,7 +47,7 @@ write_manifest "$sha256" "$store_path" >"$work/manifest.json"
 export PRIVATE_PRODUCTS_REPO="$repo_root" PRIVATE_PRODUCTS_WORK="$work"
 loader_expr='
   let
-    flake = builtins.getFlake ("git+file://" + builtins.getEnv "PRIVATE_PRODUCTS_REPO");
+    flake = builtins.getFlake ("git+file://" + builtins.getEnv "PRIVATE_PRODUCTS_REPO" + "?shallow=1");
     work = builtins.getEnv "PRIVATE_PRODUCTS_WORK";
     pkgs = flake.inputs.nixpkgs.legacyPackages.${builtins.currentSystem};
     tarballs = flake.lib.mkPrivateProductTarballs {
