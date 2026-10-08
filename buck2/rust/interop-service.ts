@@ -556,6 +556,7 @@ for (const entry of exportEntries) {
   if (sync === true) {
     methodSource.push(
       `  ${entry.name}: (${args}) => runtime.callSync((api) => {`,
+      ...scalarChecks.map((check) => `    ${check}`),
       ...encoded.map(
         (arg) =>
           `    const ${arg.name}Wire = encodeInputSync(${operation}, () => encode${codec({ entry, position: arg.name })}(${arg.name}))`,

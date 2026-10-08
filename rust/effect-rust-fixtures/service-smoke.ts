@@ -106,6 +106,11 @@ const program = (transport: 'wasm' | 'native') =>
           assert.ok(error instanceof Interop.Input, `${operation} rejects ${value} as Input`)
           assert.equal(error.operation, operation)
         }
+        for (const value of [null, true, '1']) {
+          const error = Effect.runSync(fixture[operation](value).pipe(Effect.flip))
+          assert.ok(error instanceof Interop.Input, `${operation} rejects ${value} before ABI coercion`)
+          assert.equal(error.operation, operation)
+        }
       }
       for (const request of [fixture.checkedDivide(10, 4294967297), fixture.add(1.5, 0)]) {
         assert.ok((yield* request.pipe(Effect.flip)) instanceof Interop.Input)
@@ -123,6 +128,12 @@ const program = (transport: 'wasm' | 'native') =>
         ),
         4294967295n - 2147483648n + 9007199254740991n,
       )
+      for (const field of ['unsigned', 'signed', 'bounded']) {
+        const error = Effect.runSync(
+          fixture.sumJsonIntegers({ unsigned: 0, signed: 0, bounded: 0, [field]: -0 }).pipe(Effect.flip),
+        )
+        assert.ok(error instanceof Interop.Input, `${field} rejects negative zero`)
+      }
       for (const value of [0.1, 1e-45, 3.4028235e38, -0, 1]) {
         assert.ok(Object.is((yield* fixture.roundTripFloat({ value })).value, Math.fround(value)))
       }

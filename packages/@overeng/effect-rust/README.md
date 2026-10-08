@@ -319,9 +319,12 @@ carry Rust values, never JS handles. The narrow Node-API raw-handle casts are
 locally documented unsafe boundaries; the remaining runtime denies unsafe code.
 Expected errors are Error objects with a structured `rustError` payload, not
 JSON embedded in their message. Unexpected throws and panic defects stay defects.
-Integer fields require finite, integral safe numbers; wide fields require bigint
-with exact width checks. This does not relax JSON integer spellings: `1.0` and
-`1e0` remain invalid in integer fields.
+Integer fields require finite, integral safe numbers and reject negative zero,
+including structured fields decoded directly by Rust. Wide fields require bigint
+with exact width checks. Generated synchronous scalar calls validate the original
+JS values before ABI conversion, rejecting `null`, booleans and numeric strings
+with `Input` rather than allowing coercion. This does not relax JSON integer
+spellings: `1.0` and `1e0` remain invalid in integer fields.
 
 Use `EffectRust.F32` in Effect or `#[wire(f32)]` in Rust for finite IEEE binary32.
 Numeric fractions and exponents round to nearest binary32 on decode; NaN,

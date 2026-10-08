@@ -132,6 +132,7 @@ macro_rules! integer_decode {
         fn $method<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Error> {
             let value = self.backend.integer(&self.value)?;
             if value.fract() != 0.0
+                || (value == 0.0 && value.is_sign_negative())
                 || value.abs() > 9_007_199_254_740_991.0
                 || value < <$ty>::MIN as f64
                 || value > <$ty>::MAX as f64

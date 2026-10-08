@@ -72,6 +72,9 @@ const checkArithmetic = (api) => {
     { ...operands, bounded: 1.5 },
     { ...operands, unsigned: 1.5 },
     { ...operands, signed: 1.5 },
+    { ...operands, unsigned: -0 },
+    { ...operands, signed: -0 },
+    { ...operands, bounded: -0 },
   ])
     assert.throws(() => api.sumJsonIntegers(input), /RUST_INPUT:/)
   return result
