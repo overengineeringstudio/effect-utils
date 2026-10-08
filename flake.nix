@@ -358,6 +358,8 @@ rec {
           secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow
           worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
+          # Explicit root-scoped teardown before an operator removes a worktree
+          worktree-teardown = ./nix/devenv-modules/tasks/shared/worktree-teardown.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
         };
       };
