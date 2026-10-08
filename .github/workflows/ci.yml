@@ -71,8 +71,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-tested-tree"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   default-ref-policy:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     permissions:
       contents: read
       id-token: write
@@ -537,8 +536,7 @@ jobs:
   quality:
     name: pr/quality
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 90
     defaults:
       run:
@@ -916,8 +914,7 @@ jobs:
     name: test (namespace-profile-linux-x86-64)
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
     needs: [tested-tree]
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 90
     defaults:
       run:
@@ -1199,8 +1196,7 @@ jobs:
     name: test (namespace-profile-macos-arm64)
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
     needs: [tested-tree]
-    runs-on:
-      [namespace-profile-macos-arm64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-macos-arm64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 90
     defaults:
       run:
@@ -1517,8 +1513,7 @@ jobs:
   test-playwright-utils:
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
     needs: [tested-tree]
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
     defaults:
       run:
@@ -1826,8 +1821,7 @@ jobs:
   test-playwright-tui-react:
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
     needs: [tested-tree]
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
     defaults:
       run:
@@ -2135,8 +2129,7 @@ jobs:
   cargo:
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
     needs: [tested-tree]
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
     defaults:
       run:
@@ -2417,8 +2410,7 @@ jobs:
   weaver:
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
     needs: [tested-tree]
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
     defaults:
       run:
@@ -2921,8 +2913,7 @@ jobs:
   build-products:
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
     needs: [tested-tree]
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 120
     permissions:
       contents: read
@@ -3042,8 +3033,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   publish-products:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 120
     permissions:
       contents: read
@@ -3240,8 +3230,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   trusted-buck2-remote-cache-proof:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
     defaults:
       run:
@@ -3453,8 +3442,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pr-reviews-resolved"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   source-shape:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
     defaults:
       run:
@@ -3784,8 +3772,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-integration-notion:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 90
     defaults:
       run:
@@ -4017,8 +4004,7 @@ jobs:
     concurrency:
       group: 'test-integration-restate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
       cancel-in-progress: true
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 60
     defaults:
       run:
@@ -4249,8 +4235,7 @@ jobs:
     concurrency:
       group: 'test-live-deploy-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
       cancel-in-progress: true
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
     defaults:
       run:
@@ -4523,8 +4508,7 @@ jobs:
       id-token: write
   deploy-storybooks:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
     permissions:
       contents: read
@@ -4823,8 +4807,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-deploy-storybooks"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   notify-alignment:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
     needs: [tested-tree, quality, deploy-storybooks]
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && needs['deploy-storybooks'].result == 'success' }}

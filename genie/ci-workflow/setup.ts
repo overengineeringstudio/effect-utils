@@ -52,9 +52,13 @@ export const evictCachedPnpmDepsStep = ({
 })
 
 /**
- * Namespace runner with run ID-based affinity to prevent queue jumping.
- * Adds a run ID label so runners spawned for one workflow run
- * don't steal jobs from other runs.
+ * Namespace runner with run ID-based affinity to prevent queue jumping, so
+ * runners spawned for one workflow run don't steal jobs from other runs.
+ *
+ * Namespace accepts the `namespace-features:` label only next to a
+ * `-with-features` machine label; runner profiles take features appended as
+ * `;key=value` to the profile label itself.
+ * @see https://namespace.so/docs/solutions/github-actions/runner-controls
  */
 export const namespaceRunner = ({
   profile,
@@ -62,7 +66,10 @@ export const namespaceRunner = ({
 }: {
   profile: RunnerProfile | (string & {})
   runId: string
-}) => [profile, `namespace-features:github.run-id=${runId}`] as const
+}): readonly [string] | readonly [string, string] =>
+  profile.endsWith('-with-features') === true
+    ? [profile, `namespace-features:github.run-id=${runId}`]
+    : [`${profile};github.run-id=${runId}`]
 
 // =============================================================================
 // Step Atoms

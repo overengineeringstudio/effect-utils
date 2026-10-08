@@ -244,7 +244,6 @@ mode, without sensitive-header or raw-socket-byte capture). Test-specific
 artifacts live under `tests/` in CI so Playwright's output cleanup cannot delete
 the suite-wide network evidence. These network captures are disabled locally
 and uploaded only when the job fails, with 14-day retention.
-
 ## License
 
 MIT
