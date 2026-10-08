@@ -1,5 +1,9 @@
 # Experiment 0006 — Trust-gate granularity (multi-sink non-leak)
 
+## Question
+
+What structured telemetry or fidelity evidence does the Experiment 0006 — Trust-gate granularity (multi-sink non-leak) probe provide?
+
 Evidence for [decision 0015](../.decisions/0015-trust-assertion-is-per-named-sink.md)
 (closing spec open-question DQ2). Question: is the trust assertion of
 [0014](../.decisions/0014-command-identity-and-span-naming.md) / R27 a process-wide
@@ -15,7 +19,7 @@ trust gate **scoped in code to the OTLP sink only** (reverted with the worktree)
 Sentinel argv: a secret token flag plus a private-looking path (generic
 `--token=SECRET… /a/private/path`).
 
-## Findings
+## Result
 
 1. **Sink topology.** Two concurrent trust-gateable sinks: OTLP export (single
    endpoint — the resolver picks one value, no multi-OTLP) and the local summary
@@ -35,3 +39,8 @@ A process-wide boolean would leak the sentinel into the summary (a public-repo
 footgun). The assertion must be **per-named-sink**, the summary **hard-public-safe
 by default**, and the **byte-level non-leak invariant** (sentinel absent from every
 unasserted sink) a required regression test. See decision 0015.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

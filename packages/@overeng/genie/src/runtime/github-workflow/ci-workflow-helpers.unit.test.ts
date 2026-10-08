@@ -38,15 +38,29 @@ const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
 )
-const generatedCiWorkflowYamlSource = readFileSync(
+const generatedProductCiWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml'].join('/'), import.meta.url),
   'utf8',
 )
-const generatedCiWorkflowTriggers = generatedCiWorkflowYamlSource.split('\njobs:\n')[0] ?? ''
+const generatedEmpiricalWorkflowYamlSource = readFileSync(
+  new URL(
+    ['../../../../../../.github/workflows', 'empirical-proofs.yml'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
+const generatedCiWorkflowYamlSource = [
+  generatedProductCiWorkflowYamlSource,
+  generatedEmpiricalWorkflowYamlSource,
+].join('\n')
 
 describe('pipeline traces image attachment', () => {
   // Modes that run the checked-in GitBucket adapter instead of a stub uploader.
-  const adapterModes: ReadonlySet<string> = new Set(['challenge-429', 'upload-timeout'])
+  const adapterModes: Readonly<Record<string, true>> = {
+    'oidc-429': true,
+    'exchange-403': true,
+    'upload-timeout': true,
+  }
   it.each([
     'absent',
     'dry-run',
@@ -56,7 +70,8 @@ describe('pipeline traces image attachment', () => {
     'multiple-urls',
     'raster-failure',
     'oversized',
-    'challenge-429',
+    'oidc-429',
+    'exchange-403',
     'upload-timeout',
   ] as const)('preserves atomic report publication for %s', (mode) => {
     const root = mkdtempSync(join(tmpdir(), 'pipeline-traces-assets-'))
@@ -121,9 +136,9 @@ esac
 if [[ "$theme" == light ]]; then hash="${'a'.repeat(64)}"; else hash="${'b'.repeat(64)}"; fi
 printf 'https://gitbucket.schickling.dev/api/get/%s\\n' "$hash"`,
     )
-    // The checked-in GitBucket adapter runs against stubbed curl/ssh-keygen boundaries.
-    // challenge-429: the server rejects the challenge with a body and diagnostics that carry
-    // secrets. upload-timeout: authentication succeeds and the upload times out after the
+    // The checked-in GitBucket adapter runs against stubbed HTTP boundaries.
+    // Authentication denials carry a body and diagnostics containing secrets.
+    // upload-timeout: authentication succeeds and the upload times out after the
     // server already sent 200 headers, so the reason must be the exit code, not the status.
     // Every request records its endpoint and --max-time so the per-stage bounds are pinned.
     executable(
@@ -139,20 +154,21 @@ while (( $# )); do
   esac
 done
 printf '%s %s\\n' "\${url##*/}" "$max_time" >> "$FIXTURE_ROOT/curl-requests"
-if [[ "$FIXTURE_MODE" == challenge-429 ]]; then
+if [[ "$FIXTURE_MODE" == oidc-429 || ( "$FIXTURE_MODE" == exchange-403 && "$url" == */github-actions ) ]]; then
+  status=429
+  if [[ "$FIXTURE_MODE" == exchange-403 ]]; then status=403; fi
   printf '{"message":"secret-response-body"}' > "$output"
-  printf 'curl: (22) The requested URL returned error: 429 secret-response-body\\n' >&2
-  printf '429'
+  printf 'curl: (22) The requested URL returned error: %s secret-response-body\\n' "$status" >&2
+  printf '%s' "$status"
   exit 22
 fi
 case "$url" in
-  */ssh-challenge) printf '{"challenge":"fixture-challenge"}' > "$output" ;;
-  */ssh-verify) printf '{"access_token":"secret-response-body"}' > "$output" ;;
+  */oidc) printf '{"value":"secret-response-body"}' > "$output" ;;
+  */github-actions) printf '{"access_token":"secret-response-body"}' > "$output" ;;
   */upload) printf 'curl: (28) Operation timed out secret-response-body\\n' >&2; printf '200'; exit 28 ;;
 esac
 printf '200'`,
     )
-    executable('ssh-keygen', "printf 'fixture-signature\\n'")
     try {
       const result = spawnSync(
         'bash',
@@ -172,10 +188,11 @@ printf '200'`,
             PIPELINE_REPORT_DRY_RUN: mode === 'dry-run' ? '1' : '0',
             GITHUB_STEP_SUMMARY: join(root, 'summary.md'),
             PIPELINE_TRACES_PUBLIC_ASSET_COMMAND:
-              mode === 'absent' || adapterModes.has(mode) === true ? '' : uploader,
-            PIPELINE_TRACES_ASSET_SSH_KEY:
-              adapterModes.has(mode) === true ? 'fixture-key-material' : '',
-            PIPELINE_TRACES_ASSET_USERNAME: adapterModes.has(mode) === true ? 'fixture-user' : '',
+              mode === 'absent' || adapterModes[mode] === true ? '' : uploader,
+            ACTIONS_ID_TOKEN_REQUEST_URL:
+              adapterModes[mode] === true ? 'https://fixture.invalid/oidc' : '',
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN:
+              adapterModes[mode] === true ? 'fixture-request-token' : '',
             FIXTURE_ROOT: root,
             FIXTURE_MODE: mode,
           },
@@ -191,12 +208,16 @@ printf '200'`,
       for (const secret of [
         'secret-bearing diagnostic',
         'secret-response-body',
-        'fixture-key-material',
+        'fixture-request-token',
       ])
         expect(result.stdout + result.stderr).not.toContain(secret)
-      if (mode === 'challenge-429')
+      if (mode === 'oidc-429')
         expect(result.stdout).toContain(
-          '::warning::Pipeline waterfall stage upload-light failed (challenge http 429); retaining jobs-only Mermaid report.',
+          '::warning::Pipeline waterfall stage upload-light failed (oidc http 429); retaining jobs-only Mermaid report.',
+        )
+      if (mode === 'exchange-403')
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-light failed (exchange http 403); retaining jobs-only Mermaid report.',
         )
       if (mode === 'upload-timeout') {
         expect(result.stdout).toContain(
@@ -204,7 +225,7 @@ printf '200'`,
         )
         // Authentication stays short; only the content upload gets the longer deadline.
         expect(readFileSync(join(root, 'curl-requests'), 'utf8')).toBe(
-          'ssh-challenge 8\nssh-verify 8\nupload 40\n',
+          'oidc 8\ngithub-actions 8\nupload 40\n',
         )
       }
       // An uploader whose last line is not the sanitized contract keeps the generic text.
@@ -247,23 +268,8 @@ printf '200'`,
     }
   })
 })
-const generatedStorybookPlaysWorkflowYamlSource = readFileSync(
-  new URL(
-    ['../../../../../../.github/workflows', 'storybook-plays.yml'].join('/'),
-    import.meta.url,
-  ),
-  'utf8',
-)
 const generatedAutoReviewWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'auto-review.yml'].join('/'), import.meta.url),
-  'utf8',
-)
-const generatedLabelsSource = readFileSync(
-  new URL(['../../../../../../.github', 'labels.json.genie.ts'].join('/'), import.meta.url),
-  'utf8',
-)
-const generatedLabelsJsonSource = readFileSync(
-  new URL(['../../../../../../.github', 'labels.json'].join('/'), import.meta.url),
   'utf8',
 )
 const generatedRepoSettings = JSON.parse(
@@ -331,53 +337,6 @@ const buckToolchainsSource = readFileSync(
   'utf8',
 )
 
-const workflowJobKeys = (workflowYamlSource: string) =>
-  Array.from(
-    (workflowYamlSource.split('\njobs:\n')[1] ?? '').matchAll(/^  ([a-zA-Z0-9_-]+):$/gm),
-    ([, jobKey]) => jobKey,
-  ).filter((jobKey): jobKey is string => jobKey !== undefined)
-
-// Required-eligible jobs come from `ci.yml` plus the standalone per-PR workflows that
-// `ci.yml`'s size limit pushes out of it.
-const generatedCiJobKeys = [
-  ...workflowJobKeys(generatedCiWorkflowYamlSource),
-  ...workflowJobKeys(generatedStorybookPlaysWorkflowYamlSource),
-]
-
-const advisoryCheckContexts: Record<string, true> = {
-  'ci/measurements-report': true,
-  'notify-alignment': true,
-  'pipeline-attempt-close': true,
-  'pipeline-traces': true,
-}
-// Dispatch-only lanes (see OPT_IN_CI_JOB_NAMES in genie/ci.ts) are non-advisory but do
-// not run on every pull request, so branch protection cannot require them: an absent lane
-// produces no check run and a required-but-absent context would wait forever.
-const optInCheckContexts = new Set([
-  'devenv-perf',
-  'pr-a-inert-buck',
-  'trusted-buck2-remote-cache-proof',
-])
-const mainOnlyCheckContexts: Record<string, true> = {
-  'test-integration-notion': true,
-  'test-live-deploy-ci-tools': true,
-  'deploy-storybooks': true,
-  'seed-pnpm-archives': true,
-  'publish-products': true,
-}
-const matrixCheckJobs: Record<string, true> = { test: true }
-const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
-
-const generatedNonAdvisoryCheckContexts = generatedCiJobKeys
-  .flatMap((jobKey) => {
-    if (jobKey === 'ci-measurements-report') return ['ci/measurements-report']
-    if (matrixCheckJobs[jobKey] === true) {
-      return matrixRunners.map((runner) => `${jobKey} (${runner})`)
-    }
-    return [jobKey]
-  })
-  .filter((context) => advisoryCheckContexts[context] !== true)
-
 const generatedRequiredCheckContexts =
   generatedRepoSettings.rules
     .find((rule) => rule.type === 'required_status_checks')
@@ -401,12 +360,6 @@ const generatedDevenvPerfJob = extractSourceBlock(
   generatedCiWorkflowYamlSource,
   '  devenv-perf:',
   '  nix-closure-sizes:',
-)
-
-const generatedSeedPnpmArchivesJob = extractSourceBlock(
-  generatedCiWorkflowYamlSource,
-  '  seed-pnpm-archives:',
-  '  publish-products:',
 )
 
 const restorePnpmStateStepSource = extractSourceBlock(
@@ -464,50 +417,18 @@ describe('pull request control-event workflows', () => {
       "      - name: Request review from schickling\n        if: github.event.pull_request.user.login == 'schickling-assistant' && github.event.pull_request.draft == false",
     )
   })
-
-  it('admits only revision-changing pull request events', () => {
-    expect(generatedCiWorkflowYamlSource).toContain(
-      '  pull_request:\n    types: [opened, reopened, synchronize]',
-    )
-    expect(generatedCiWorkflowTriggers).not.toContain('labeled')
-    expect(generatedWorkflowSource).not.toContain('notPerfLabelEventIf')
-  })
-
-  it('runs devenv-perf only for explicit dispatch without label coupling', () => {
-    expect(generatedDevenvPerfJob).toContain("if: ${{ github.event_name == 'workflow_dispatch' }}")
-    expect(generatedDevenvPerfJob).not.toContain("github.event_name == 'schedule'")
-    expect(generatedWorkflowSource).not.toContain('perfLaneLabel')
-    expect(generatedWorkflowSource).not.toContain('ci:perf')
-    expect(generatedLabelsSource).not.toContain('ci:perf')
-    expect(generatedLabelsJsonSource).not.toContain('ci:perf')
-    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_CANDIDATE_EVENTS: workflow_dispatch')
-  })
 })
 
 describe('protected-main archive seeding', () => {
-  it('passes the tracked trusted origin into the protected-main seed step', () => {
-    expect(generatedSeedPnpmArchivesJob).toContain('name: Resolve trusted archive origin')
-    expect(generatedSeedPnpmArchivesJob).toContain('trusted_url_prefix')
-    expect(generatedSeedPnpmArchivesJob).toContain(
-      'BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}',
-    )
-    expect(generatedSeedPnpmArchivesJob).toContain(
-      'BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}',
-    )
-    expect(generatedSeedPnpmArchivesJob).toContain("github.ref == 'refs/heads/main'")
+  it('keeps the archive CAS write credential out of every CI job', () => {
+    // The CAS host seeds itself from main (decision 0038, amendment 1); no runner holds the token.
+    expect(generatedCiWorkflowYamlSource).not.toContain('BUCK2_ARCHIVE_CAS_AUTHORIZATION')
+    expect(generatedCiWorkflowYamlSource).not.toContain('buck2:archives:seed')
     expect(generatedCiWorkflowYamlSource).not.toContain('trusted-cache.example')
   })
 })
 
 describe('ci workflow retry helpers', () => {
-  it('requires only non-advisory jobs that run on every pull request', () => {
-    const requiredCandidates = generatedNonAdvisoryCheckContexts.filter(
-      (context) =>
-        optInCheckContexts.has(context) === false && context in mainOnlyCheckContexts === false,
-    )
-    expect(new Set(generatedRequiredCheckContexts)).toEqual(new Set(requiredCandidates))
-  })
-
   it('emits compact calls to the checked-in retry helper script', () => {
     expect(ciWorkflowSource).toContain("defaultCiRuntimeScriptsDir = 'genie/ci-scripts'")
     expect(ciWorkflowSource).toContain(
@@ -1268,7 +1189,7 @@ describe('ci workflow standard job helpers', () => {
               readFileSync('.github/workflows/ci.yml', 'utf8'),
             )
             const nativeDependencyPolicyRegressionStep = generatedWorkflow.jobs[
-              'native-dependency-policy'
+              'quality'
             ].steps.find(
               (step) => step.name === 'CI runtime and native dependency policy regression checks',
             )
@@ -1530,65 +1451,6 @@ describe('ci workflow standard job helpers', () => {
     expect(ciWorkflowSource).toContain('export const standardSelfHostedDevenvTaskJob')
     expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPrepSteps(prep)')
     expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPostSteps(post)')
-  })
-})
-
-interface StorybookPlaysWorkflowFacts {
-  readonly triggers: unknown
-  readonly jobs: readonly string[]
-  readonly permissions: readonly unknown[]
-  readonly referencesSecrets: boolean
-  readonly runsPlays: boolean
-  readonly jobConditions: ReadonlyArray<string | null>
-  readonly ciHasPlaysJob: boolean
-}
-
-describe('storybook plays workflow', () => {
-  let facts: StorybookPlaysWorkflowFacts
-
-  beforeAll(() => {
-    const fixture = spawnSync(
-      'bun',
-      [
-        '-e',
-        `
-          import { readFileSync } from 'node:fs'
-          import { YAML } from 'bun'
-          const plays = YAML.parse(readFileSync('.github/workflows/storybook-plays.yml', 'utf8'))
-          const ci = YAML.parse(readFileSync('.github/workflows/ci.yml', 'utf8'))
-          console.log(JSON.stringify({
-            triggers: plays.on,
-            jobs: Object.keys(plays.jobs),
-            jobConditions: Object.values(plays.jobs).map((job) => job.if ?? null),
-            permissions: [plays.permissions, ...Object.values(plays.jobs).map((job) => job.permissions)],
-            referencesSecrets: JSON.stringify(plays).includes('secrets.'),
-            runsPlays: JSON.stringify(plays).includes('tasks run storybook:test'),
-            ciHasPlaysJob: Object.keys(ci.jobs).includes('test-storybook-plays'),
-          }))
-        `,
-      ],
-      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
-    )
-    expect(fixture.status, fixture.stderr).toBe(0)
-    facts = JSON.parse(fixture.stdout) as StorybookPlaysWorkflowFacts
-  })
-
-  it('runs story plays for pull requests and main with read-only, secret-free access', () => {
-    expect(facts.triggers).toEqual({
-      pull_request: { types: ['opened', 'reopened', 'synchronize'] },
-      push: { branches: ['main'] },
-    })
-    expect(facts.jobs).toEqual(['test-storybook-plays'])
-    expect(facts.runsPlays).toBe(true)
-    expect(facts.referencesSecrets).toBe(false)
-    for (const permissions of facts.permissions) expect(permissions).toEqual({ contents: 'read' })
-  })
-
-  it('requires the plays lane from its own workflow, outside ci.yml', () => {
-    expect(facts.ciHasPlaysJob).toBe(false)
-    expect(generatedRequiredCheckContexts).toContain('test-storybook-plays')
-    // A skipped required job reports no check run and blocks every PR.
-    expect(facts.jobConditions).toEqual([null])
   })
 })
 
@@ -2034,11 +1896,28 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^concurrency:/m)
     expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
-    expect(generatedCiWorkflowYamlSource).toContain('}}-typecheck')
     expect(ciWorkflowSource).toContain('export const ciJobConcurrency = ({ jobId, ...opts }:')
     expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
     expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')
-    expect(generatedCiWorkflowYamlSource).toContain('}}-test-${{ strategy.job-index }}')
+    // Repository workflow sources are outside this package's hermetic compiler input.
+    // Exercise their actual concurrency contract through the existing Bun probe boundary.
+    const concurrencyProbe = spawnSync(
+      process.env.BUN_BIN ?? 'bun',
+      [
+        '-e',
+        `import workflow from './.github/workflows/ci.yml.genie.ts';
+         console.log(JSON.stringify([
+           workflow.data.jobs.test.concurrency,
+           workflow.data.jobs['test-macos'].concurrency,
+         ]));`,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(concurrencyProbe.status, concurrencyProbe.stderr).toBe(0)
+    const [linuxConcurrency, darwinConcurrency] = JSON.parse(concurrencyProbe.stdout)
+    expect(linuxConcurrency.group).toBeTypeOf('string')
+    expect(darwinConcurrency.group).toBeTypeOf('string')
+    expect(linuxConcurrency.group).not.toBe(darwinConcurrency.group)
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
     expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
     expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')

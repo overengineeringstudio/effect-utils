@@ -5,6 +5,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
@@ -72,27 +73,31 @@
     "./node/stylex/next": {
       "types": "./src/node/stylex/next-types.d.ts",
       "default": "./src/node/stylex/next.js"
+    },
+    "./node/vite-build-identity": {
+      "types": "./src/node/vite-build-identity-types.d.ts",
+      "default": "./src/node/vite-build-identity.js"
     }
   },
   "dependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/platform-node": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/opentelemetry": "4.0.0",
+    "@effect/platform-node": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@noble/hashes": "2.4.0",
     "@opentelemetry/api": "1.9.1",
     "@overeng/effect-distributed-lock": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "@stylexjs/unplugin": "0.19.0",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "postcss": "8.5.26",
     "unplugin": "3.3.0",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/platform-node": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/opentelemetry": "4.0.0",
+    "@effect/platform-node": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@opentelemetry/resources": "2.11.0",
     "@opentelemetry/sdk-logs": "0.222.0",
     "@opentelemetry/sdk-metrics": "2.11.0",
@@ -108,20 +113,20 @@
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
     "babel-loader": "10.1.1",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "next": "16.2.6",
     "playwright": "1.63.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "typescript": "7.0.2",
     "vite": "8.2.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/opentelemetry": "^4.0.0",
+    "@effect/platform-node": "^4.0.0",
     "@playwright/test": "^1.63.0",
-    "effect": "4.0.0-rc.118"
+    "effect": "^4.0.0"
   },
   "publishConfig": {
     "access": "public",
@@ -141,6 +146,10 @@
       "./node/cli-version": {
         "types": "./dist/src/node/cli-version.d.ts",
         "default": "./dist/src/node/cli-version.js"
+      },
+      "./node/vite-build-identity": {
+        "types": "./src/node/vite-build-identity-types.d.ts",
+        "default": "./src/node/vite-build-identity.js"
       },
       "./node/otel": {
         "types": "./dist/src/node/otel.d.ts",

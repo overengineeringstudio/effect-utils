@@ -23,5 +23,12 @@ Vitest.describe('createPlaywrightConfig', () => {
         DEVENV_TASK_PASSTHROUGH: '1',
       },
     })
+
+    expect(config.use).toMatchObject({
+      trace: 'retain-on-failure',
+      screenshot: 'only-on-failure',
+      video: 'off',
+    })
+    expect(config.retries ?? 0).toBe(0)
   })
 })

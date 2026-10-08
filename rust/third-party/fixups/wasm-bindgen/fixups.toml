@@ -1,0 +1,2 @@
+# Derives diagnostics and reference-types cfg from the declared target and Rust version.
+buildscript.run = true

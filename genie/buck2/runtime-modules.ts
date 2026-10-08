@@ -54,7 +54,11 @@ export const buck2StagedRuntimes = [
   {
     label: buck2ToolsLabel('javascript_action_runtime'),
     entry: runnerSource('javascript-runner.ts'),
-    modules: [runnerSource('javascript-runner.ts'), runnerSource('typescript-runner.ts')],
+    modules: [
+      runnerSource('javascript-runner.ts'),
+      runnerSource('test-verdict.ts'),
+      runnerSource('typescript-runner.ts'),
+    ],
     staging: 'filegroup',
   },
   {

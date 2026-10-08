@@ -1,0 +1,247 @@
+# Buck2 Adoption Roadmap
+
+This roadmap derives rollout order from the Buck2 VRS: sequencing, entry conditions, and dissolution targets,
+not migration state. Current authority, residual producers, transfers, measurements, and repository closes
+come only from `buck2-ledger.json` in the private `schickling/megarepo-all` composition root, under the
+[Authority Ledger contract](../../03-authority/spec.md#authority-ledger).
+
+## Sequencing principle
+
+Whole-repository exclusivity is the endgame (BUILD.BUCK-R01); admission order is by value: expensive,
+high-leverage operations first, cheap operations only when migrating them provably pays. Every authority
+transfer carries its ledger row and deletes the superseded producer in the same
+change. A consumer closes only when every row is Buck-owned or excluded and its
+legacy builders, FOD hashes, and prepared-install glue are deleted; the net is
+reported with amortization, not sign-gated.
+
+## Phase 0 — shared cache foundation
+
+**Entry conditions:** A cache-only REAPI service is reachable inside its trust boundary; clients use the
+canonical digest mode and cache namespace; outage and cross-worktree canaries satisfy BUILD.BUCK-R06.
+
+**Sequence:** Establish cache service and client configuration before admitting operations that depend on
+cross-context reuse. Preserve Buck-native evidence for local versus cached execution.
+
+**Dissolution target:** Remove per-command cache bypasses and temporary single-worktree evidence paths once
+the shared-cache contract is the admitted path.
+
+## Phase 1 — first TypeScript vertical slice
+
+**Entry conditions:** The selected operation has a hermetic TypeScript rule, declared dependency surface,
+deterministic projection, independent product bridge where applicable, and measurements within BUILD.BUCK-R07.
+
+**Sequence:** Transfer one high-leverage package operation end to end before widening the graph. Prove relevant
+and irrelevant invalidation, hostile environment behavior, strict task ordering, and second-context reuse.
+
+**Dissolution target:** Delete that package's root TypeScript producer entries,
+dependent project-reference edges, package task edges, and any synthetic
+evidence producer superseded by Buck-native evidence.
+
+## Phase 2 — standalone repository roots
+
+**Entry conditions:** Each repository's tracked checkout is a standalone Buck
+root with its canonical cell at `.` and a Nix-produced capability cell;
+cross-repository consumption goes through published artifacts and Nix outputs
+(decisions 0034, 0037).
+
+**Sequence:** Move every Buck task and CI lane onto the standalone root, then
+retire the composed shape.
+
+**Dissolution target:** The composed Buck root, its publisher, dist overlays,
+per-workspace capability resolver, `cp -a` member mounts, and `--compose`
+workspaces are deleted (principal q5, 2026-09-25); mr keeps only member source
+mounts, which are never Buck cells. Consumers retire source-mount execution and
+cross-member writes as they pass these proofs:
+
+| Consumer class                                  | Retirement change                                                                          | Admission proof                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| CLI executed from another member's source mount | Execute the already-packaged Nix CLI; move each consumer's mount execution to that package | Command succeeds without reading the source mount                 |
+| Dependency task that writes another member      | Move the producer into that member's own repository; consume only its published artifacts  | Mutation sentinel on the member stays clean across task execution |
+| Live cross-workspace branch sharing             | Commit upstream in its own repository, publish, then advance the consumer's pin            | The pin advance alone changes the consumer input                  |
+
+## Phase 2b — declared dependency closure
+
+**Entry conditions:** Lockfile translation can derive hash-pinned fetch,
+offline extraction, and per-importer assembly targets with deterministic
+freshness and platform selection.
+
+**Sequence:** Put the declared closure behind admitted packages before making
+it the common dependency surface. Re-measure cold bootstrap against BUILD.BUCK-R07.
+
+**Dissolution target:** Delete the ambient store input, install and deploy
+normalizers, install descriptors, transitional materializer, and CI store-cache
+lane. A missing or mismatched package must fail rather than fall back.
+
+## Phase 3 — TypeScript surface widening
+
+**Entry conditions:** The package's dependencies are already available through
+admitted source or dist edges, its package-local projection is deterministic,
+and its authority-transfer evidence is complete.
+
+**Sequence:** Admit package operations in dependency order, grouped into
+reviewable dependency layers. Each package keeps an independent authority flip,
+ledger row, evidence record, and measured budget.
+
+**Dissolution target:** Per package, remove both root TypeScript producer
+entries, obsolete project-reference edges, package-specific devenv or pnpm
+build paths, and source aliases replaced by admitted dist edges.
+
+## Phase 4 — dependency-surface authority transfer
+
+**Entry conditions:** Every required editor, test, Storybook, Genie, lint, and
+package-bin consumer has a Buck-owned view with freshness checks, correct
+source/dist sibling behavior, and an atomic read-only publication path.
+
+**Sequence:** Widen materialized editor views until no required consumer depends
+on the root install, while keeping manifests and the lockfile as the sole
+authored dependency authority.
+
+**Dissolution target:** Delete the root install, its task graph edges,
+package-manager mutation paths, and the remaining legacy package-bin
+resolution paths.
+
+## Phase 5 — Rust operations and products
+
+- The complete five-member Rust workspace now compiles through Buck: otelite,
+  otel-scrape, archive-tool, core, and product. Cargo manifests and the root
+  lock remain request and resolution authority; generated first-party rules and
+  the strict Reindeer graph project that authority without a second lock.
+- Third-party Rust sources follow
+  [decision 0023](../../.decisions/0023-buck-fetched-rust-crates.md): Reindeer uses
+  `vendor = false` and emits `crate_archive` targets pinned by the authoritative
+  Cargo lock. Ordinary Buck builds fetch the pinned archives; sandboxed
+  from-source Nix builds provide the same bytes through `mkBuck2CargoArchives`
+  without network access. Build and buildscript actions remain offline. The
+  former Nix vendor realization, vendor symlink task, and vendored Cargo config
+  are gone.
+- `otelite` and `otel-scrape` emit strict `buck-build-product/v1` products for
+  x86_64 Linux glibc, aarch64 Linux glibc, and aarch64 Darwin. Every tuple was
+  executed natively, published under an immutable payload-addressed release,
+  and independently imported through Nix with descriptor, digest, archive,
+  runtime, entrypoint, and ad-hoc-signature validation.
+- Flake packages/apps, devenv, and the reusable observability module now consume
+  only the reviewed native-product manifest. The two
+  `rustPlatform.buildRustPackage` product derivations, their shared narrow-source
+  helper, and the direct Cargo release build are deleted. The independently
+  realized Nix providers for stage-zero archive/product tools remain the
+  intentional cycle-breaking boundary admitted by
+  [decision 0010](../../.decisions/0010-admit-rust-stage-zero-support-tools.md).
+- The CI `cargo` operation remains outside Buck by policy: it aggregates the
+  workspace contract, Cargo tests, Clippy, and rustfmt. Buck owns Rust
+  compilation and shipped products; the operation ledger does not claim that
+  the broader source-quality lane moved with them.
+- Zero repository JavaScript workspace-install FOD producers remain. The last one,
+  `oxc-config`, now emits its first-party plugin and StyleX upstream namespace
+  shim as two explicit Buck module products; Nix imports their reviewed,
+  content-addressed artifacts without rebuilding package sources. The
+  repository CLI products remain on the same manifest-pinned import boundary.
+
+## Phase 5b — distribution layer (decision 0037)
+
+**Entry conditions:** Reconstruction is proven for one product (the
+`from-source` derivation) and the public and private binary caches are
+provisioned on every builder.
+
+**Status:** Public effect-utils products use Cachix manifest v2; the
+GitHub-release product importer and mixed-schema manifest are retired. Native
+Rust products still use their separately reviewed immutable releases.
+
+**Sequence:** Generate a sandboxed Buck-invoking derivation per product and
+package (genie owns it; no hand-written recipes); publish through Cachix
+(push, digest-named pin, provenance, anonymous post-publish verification for
+public products); move private-shared products onto the private cache and
+prove the Nix-realized tarball path for one pnpm consumer; repin existing
+consumer edges from release URLs to cache URLs through the manifest.
+
+**Dissolution target:** Delete the GitHub product publisher, the JavaScript
+release-asset import path, and every consumer FOD that existed only to stage
+producer sources. Keep the Cachix publisher and native-product import path.
+Remote execution is not on this path (02-execution).
+
+## Phase 6 — consumer adoption
+
+**Entry conditions:** The producer repository is closed or exposes the required
+admitted targets from merged authority; the consumer has a standalone root that
+takes producer artifacts through Nix substitution, and trust-appropriate cache
+access.
+
+**Sequence:** Adopt consumers in dependency order, beginning only from merged
+producer authority. A consumer enters when its contributor and lifecycle
+contracts are settled; dormant consumers enter only after resuming. Concrete
+repository identities, order, and status live only in the private ledger.
+
+**Dissolution target:** Delete each consumer's source-mount CLI execution,
+cross-member dependency writers, live branch sharing, and duplicate build
+producers. A consumer closes when all its ledger rows are Buck-owned or excluded
+and its legacy builders, FOD hashes, and prepared-install glue are deleted. Its net
+is reported with amortization, while the cumulative sum keeps falling from
+reconciliation to reconciliation.
+
+## Phase 7 — action-level remote execution (BUILD.BUCK-R17)
+
+**Entry conditions:** Adoption is deferred under
+[decision 0039](../../.decisions/0039-namespace-first-remote-candidate-adoption-deferred.md).
+Second-context key instability is resolved; the 0037 distribution contract
+remains independent. Re-enter cache first:
+
+- **Track A, public cache:** Namespace ships a non-escalatable reader /
+  branch-scoped writer identity that passes the TrustTierReview escalation rerun.
+- **Track B, Linux RE:** Tiny pnpm store/extract actions are local-only or
+  coarsened and fair cold RE is no slower than local cold; alternatively,
+  measured public CI runner queueing establishes local build capacity as the
+  bottleneck.
+- **Track C, macOS RE:** A named Darwin workload needs RE and its capability
+  closure is substitutable from Cachix.
+
+**Sequence:** Evaluate Namespace first on the triggered track. Use exact
+closure-addressed pools (02-execution); prove real admitted commands/tests,
+output identity, clean AC reuse, server-side authority, bounded cost, and
+explicit outage posture before cutover. No rollout is authorized by the probe.
+Private trust and product distribution do not move.
+
+**Dissolution target:** Public bazel-remote service/storage/auth/ingress,
+activation, and public-specific monitoring only when Track A completes.
+The private tier and generic service module remain; duplicate public caches
+are not the steady-state target. Avoid the proposed public NativeLink fleet.
+
+## Observability lane (07-observability)
+
+The telemetry lane is specified in
+[07-observability](../../04-buck2/07-observability/spec.md) and is sequenced
+independently of the admission phases: its VRS lands first, then the
+implementation stack (the event-log adapter crate, the `otel-span` buck2
+mode, run-record seal/upload, the ingest CLI, and a dotfiles brief for the
+ingester, auth front, store, archive, and Tempo volume measurement). It
+carries no admission of its own; measured bottlenecks it surfaced are
+recorded as findings in the owning subsystems' open questions.
+
+### Restricted public-waterfall publisher
+
+The PR waterfall reuses GitBucket's immutable public content-addressed store
+([trace-access spec](../../04-buck2/07-observability/06-trace-access/spec.md#public-immutable-images-and-failure-path)).
+The deployed GitHub Actions OIDC exchange restricts publication to configured
+repository names and immutable repository/owner IDs, event/ref/workflow
+constraints, and short-lived public PNG upload tokens.
+
+**Completed cutover:** [PR 1584's live run](https://github.com/overengineeringstudio/effect-utils/actions/runs/37158430402/job/111311680936)
+proved light/dark OIDC publication and public `200 image/png` responses. The
+report no longer has an account-scoped credential input or SSH upload path.
+Authorization and publication failures retain Mermaid. Retired stored
+credentials are an operator cleanup action after review, not workflow inputs.
+
+**Dissolution achieved:** The account-scoped publication compromise is removed
+from the report. [OQ4](resolved-open-questions.md#oq4-how-is-the-gitbucket-waterfall-publisher-restricted-to-public-png-publication)
+and trace-access DQ1 are resolved; the CAS host and V2 D2 T2 presentation are
+unchanged.
+
+## Cross-phase gates
+
+- One authority transfer, ledger row, and deletion entry form the review unit.
+- Transfer evidence proves hermeticity, causality, native evidence, and
+  independent import where a product crosses into Nix.
+- Shared rules and schemas remain free of consumer-private facts (BUILD.AUTH-R14).
+- Unit-test operations enter package by package after their hermetic runner and
+  resource contracts are proved; integration and live-effect lanes remain
+  outside Buck until separately bounded.
+- Local check orchestration and public-runner cache topology remain governed by
+  [open questions](resolved-open-questions.md); sequencing does not pre-empt them.

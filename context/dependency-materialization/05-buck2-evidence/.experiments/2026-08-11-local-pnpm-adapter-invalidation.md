@@ -64,7 +64,7 @@ orchestration overhead relative to the underlying no-op compiler and a warm
 Buck daemon. Future benchmarks must report the end-user path and compute-only
 path separately.
 
-## VRS Impact
+## Intent Impact
 
 - Supports DMP.BUCK-R01 and DMP.BUCK-R04: ambient live pnpm state is not a safe
   declared Buck input and Buck must not silently own live materialization.

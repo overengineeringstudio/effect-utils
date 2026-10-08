@@ -16,16 +16,13 @@ export type RunnerProfile = (typeof RUNNER_PROFILES)[number]
 
 /** Core CI job keys used for the typed product-job block in the workflow generator. */
 export const CORE_CI_JOB_NAMES = [
-  // Buck owns every TypeScript project and declaration producer. Keep it in the existing
-  // typecheck lane rather than paying for the same complete authority surface twice.
-  'typecheck',
-  'lint',
+  // One Linux bootstrap; named steps retain each quality invariant's failure attribution.
+  'quality',
   'test',
+  'test-macos',
   'test-playwright-utils',
   'test-playwright-tui-react',
   'test-megarepo-cold-gc',
-  'native-dependency-policy',
-  'bundle-smoke',
   // Rust lane: delegates build/test/clippy/fmt semantics to devenv task cargo:check.
   'cargo',
   // Additive Weaver semantic-conventions gate (separate lane; degrades if weaver unavailable).
@@ -41,13 +38,13 @@ export const DEFAULT_REF_POLICY_CI_JOB_NAME = 'default-ref-policy' as const
 /** Additional CI job keys generated outside the core product-job block. */
 export const EXTRA_CI_JOB_NAMES = [
   // Empirical bootstrap-safety authority (R32, issue #884): builds the self-contained nix genie and
-  // proves `genie --phase bootstrap` + `pnpm install` run cold (no node_modules). Merge-blocking.
+  // proves `genie --phase bootstrap` + `pnpm install` run cold (no node_modules).
   'bootstrap-cold-proof',
   'nix-closure-sizes',
   'source-shape',
   'test-integration-restate',
-  // Credential-free build of every published `.#buck-product-*-from-source` attr, so a PR
-  // cannot break the trusted `publish-products` lane after merge. Merge-blocking.
+  // Queue and fallback-main build of every published `.#buck-product-*-from-source` attr,
+  // so queued changes cannot break the trusted `publish-products` lane. Merge-blocking.
   'build-products',
   // Review-thread resolution gate: fails while any PR review thread is unresolved.
   // The native ruleset flag (`required_review_thread_resolution`) is the live merge
@@ -61,6 +58,7 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
   'test-live-deploy-ci-tools',
   'deploy-storybooks',
   'publish-products',
+  'main-source-shape',
 ] as const
 
 /**
@@ -73,6 +71,13 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
  * operator `workflow_dispatch`.
  */
 export const OPT_IN_CI_JOB_NAMES = ['devenv-perf'] as const
+
+/** Empirical proofs run on trusted main or a credential-free PR opt-in, not every PR. */
+export const EMPIRICAL_PROOF_CI_JOB_NAMES = [
+  'bootstrap-cold-proof',
+  'test-megarepo-cold-gc',
+  'nix-closure-sizes',
+] as const
 
 /** Workflow jobs that intentionally do not block merging. */
 export const advisoryCIJobNames = ['ci-measurements-report', 'notify-alignment'] as const
@@ -91,42 +96,43 @@ export const CI_JOB_NAMES = [
 export type CIJobName = (typeof CI_JOB_NAMES)[number]
 
 /**
- * Merge-blocking CI job keys for branch protection.
+ * Merge-blocking CI job keys for branch protection and native merge-queue validation.
  *
- * Every lane that runs on every pull request and is not advisory is required. Measurement
- * jobs can still run warn-mode comparisons internally, but the lane must produce its
- * artifact and complete successfully so branch protection covers CI evidence production.
- * Opt-in and main-only lanes are excluded because they do not run on every pull request.
+ * Cheap quality/source-policy lanes execute on PR and merge-group heads; heavy product
+ * lanes execute on merge groups and unproven main trees; PRs publish skipped heavy checks.
+ * The mandatory queue obtains fresh real evidence for every required context before merge.
+ * Opt-in, empirical, main-only, and advisory lanes are excluded.
  */
 export const REQUIRED_CI_JOB_NAMES = [
   DEFAULT_REF_POLICY_CI_JOB_NAME,
-  ...CORE_CI_JOB_NAMES,
-  ...EXTRA_CI_JOB_NAMES,
+  ...[...CORE_CI_JOB_NAMES, ...EXTRA_CI_JOB_NAMES].filter(
+    (jobName) => !EMPIRICAL_PROOF_CI_JOB_NAMES.some((proofJobName) => proofJobName === jobName),
+  ),
 ] as const satisfies readonly CIJobName[]
 
 /**
  * Merge-blocking job keys emitted by workflows other than `ci.yml`.
  *
- * Each runs on every pull request with no path filter or job-level `if`, so its check run
- * always materializes. `test-storybook-plays` lives in `storybook-plays.yml` because `ci.yml`
- * sits at the GitHub Actions workflow size limit.
+ * Each workflow admits PR and merge-group events with no path filter. Heavy jobs are skipped
+ * on PRs and execute on the queue head. `test-storybook-plays` lives in `storybook-plays.yml`
+ * because `ci.yml` sits at the GitHub Actions workflow size limit.
  */
 export const STANDALONE_REQUIRED_CI_JOB_NAMES = ['test-storybook-plays'] as const
 
-const matrixCIJobNames = ['test'] as const
-
 /** GitHub status-check context names emitted by a workflow job key. */
 export const ciJobCheckContexts = (jobName: CIJobName) => {
+  if (jobName === 'quality') return ['pr/quality']
+  if (jobName === 'test') return ['test (namespace-profile-linux-x86-64)']
+  if (jobName === 'test-macos') return ['test (namespace-profile-macos-arm64)']
+  if (jobName === 'main-source-shape') return ['main/source-shape']
   if (jobName === 'ci-measurements-report') return ['ci/measurements-report']
 
-  return matrixCIJobNames.includes(jobName as (typeof matrixCIJobNames)[number]) === true
-    ? RUNNER_PROFILES.map((runner) => `${jobName} (${runner})`)
-    : [jobName]
+  return [jobName]
 }
 
 /**
  * Required status checks for branch protection.
- * Matrix jobs are reported as "job-name (matrix-value)" by GitHub Actions.
+ * Static multi-platform jobs retain their runner-qualified names even when skipped.
  */
 export const requiredCIJobs = [
   ...REQUIRED_CI_JOB_NAMES.flatMap(ciJobCheckContexts),

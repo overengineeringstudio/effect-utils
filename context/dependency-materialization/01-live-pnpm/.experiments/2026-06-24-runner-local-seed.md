@@ -22,7 +22,7 @@ The explored seed was rejected. A new immutable-seed design must prove complete
 identity, pnpm-version compatibility, real-workload latency, parallel safety,
 and actual immutability rather than assuming a hardlink is read-only.
 
-## VRS Impact
+## Intent Impact
 
 Constrains DMP-R24 and DELTA-001 resolution without rejecting a differently
 constructed, atomically published immutable seed.

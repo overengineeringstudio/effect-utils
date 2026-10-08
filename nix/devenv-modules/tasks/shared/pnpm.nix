@@ -19,6 +19,8 @@
   taskNamePrefix ? "pnpm",
   taskSuffix ? null,
   globalCache ? true,
+  # Opt in only for local development; CI always uses its local projection.
+  globalVirtualStore ? false,
   frozenInCi ? true,
   materialize ? true,
   installFlags ? [ ],
@@ -134,14 +136,11 @@ let
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
-  liveRealizationPolicyFlags = installFlags ++ pnpmInstallPolicy.liveInstallPolicyFlags;
-  liveRealizationPolicyFlagsString = lib.escapeShellArgs liveRealizationPolicyFlags;
-  pureInstallFlags =
-    installFlags
-    ++ [
-      (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
-    ]
-    ++ pnpmInstallPolicy.liveInstallPolicyFlags;
+  localPolicyFlagsString = lib.escapeShellArgs pnpmInstallPolicy.liveInstallPolicyFlags;
+  gvsPolicyFlagsString = lib.escapeShellArgs pnpmInstallPolicy.commonInstallPolicyFlags;
+  pureInstallFlags = installFlags ++ [
+    (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
+  ];
   pureInstallFlagsString = lib.escapeShellArgs pureInstallFlags;
   lockfileOnlyFlag = lib.optionalString (!materialize) " --lockfile-only";
 
@@ -236,7 +235,13 @@ let
       ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"} \
       ${lib.escapeShellArg workspaceRootAbs} \
       ${lib.escapeShellArg jobLocalPnpmStoreDir} \
-      ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux}
+      ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux} \
+      ${lib.boolToString globalVirtualStore}
+    if [ "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" = true ]; then
+      pnpm_policy_flags=( ${gvsPolicyFlagsString} )
+    else
+      pnpm_policy_flags=( ${localPolicyFlagsString} )
+    fi
   '';
   managedPnpmMutationPrologue = ''
     ${loadPnpmTaskHelpersFn}
@@ -338,6 +343,7 @@ let
         printf '%s\n' "$workspace_state_hash"
         printf '%s\n' "$npm_config_store_dir"
         printf '%s\n' "$PNPM_PACKAGE_IMPORT_METHOD"
+        printf '%s\n' "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE"
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
         printf '%s\n' ${lib.escapeShellArg preInstall}
         printf '%s\n' ${lib.escapeShellArg postInstallProjection}
@@ -397,6 +403,7 @@ let
         install
         "$@"
         ${pureInstallFlagsString}
+        "''${pnpm_policy_flags[@]}"
         "--config.package-import-method=$PNPM_PACKAGE_IMPORT_METHOD"
         "--config.store-dir=$npm_config_store_dir"
       )
@@ -516,6 +523,7 @@ let
       local state_dir
       local had_lockfile=0
       local status
+      local -x LC_ALL=C
 
       state_dir="$(mktemp -d)"
       if [ -f pnpm-lock.yaml ]; then
@@ -528,7 +536,7 @@ let
 
       set +e
       ${lib.escapeShellArg "${effectivePnpmLockMutatorPkg}/bin/pnpm"} install --fix-lockfile${lockfileOnlyFlag} \
-        ${liveRealizationPolicyFlagsString} \
+        ${installFlagsString} "''${pnpm_policy_flags[@]}" \
         --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
         --config.store-dir="$npm_config_store_dir"
       status=$?
@@ -576,7 +584,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${managedPnpmMutationPrologue}
         # This cache tracks the effective install state, not just workspace
-        # manifests. The virtual dependency graph itself is root-local.
+        # manifests, including the effective local or global projection policy.
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
@@ -650,7 +658,7 @@ let
         cache_value="$(compute_projection_state_hash)"
         ${cache.writeCacheFile ''"$projection_hash_file"''}
 
-        cache_value="$(printf '%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD")"
+        cache_value="$(printf '%s\n%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE")"
         ${cache.writeCacheFile ''"$storage_state_file"''}
       '';
       status = trace.status installTaskName "hash" ''
@@ -697,7 +705,7 @@ let
           fi
         ''}
 
-        current_storage_state="$(printf '%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD")"
+        current_storage_state="$(printf '%s\n%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE")"
         if [ "$current_storage_state" != "$(cat "$storage_state_file")" ]; then
           emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "storage_policy"
           exit 1
@@ -786,7 +794,7 @@ let
         ${managedPnpmMutationPrologue}
         ${stageSourceInputs}
         ${stageProductTarballs}
-        pnpm dedupe${lockfileOnlyFlag} ${liveRealizationPolicyFlagsString} \
+        pnpm dedupe${lockfileOnlyFlag} ${installFlagsString} "''${pnpm_policy_flags[@]}" \
           --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
           --config.store-dir="$npm_config_store_dir"
         ${gcSourceInputs}
@@ -816,13 +824,15 @@ let
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
+        ${ensureLocalPnpmHomeFn}
+        ${configurePnpmStorageFn}
 
-        if [ -d node_modules/.pnpm ] && check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
+        if [ -f node_modules/.modules.yaml ] && check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
           doctor_decision="healthy"
-          doctor_reason="root-local-graph-healthy"
+          doctor_reason="dependency-graph-healthy"
         else
           doctor_decision="repair-root"
-          doctor_reason="root-local-graph-unhealthy"
+          doctor_reason="dependency-graph-unhealthy"
         fi
         ${pkgs.nodejs}/bin/node - "$PWD" "$doctor_decision" "$doctor_reason" <<'EOF'
         const [root, decision, reason] = process.argv.slice(2)
@@ -887,6 +897,7 @@ let
       ];
 
 in
+assert lib.assertMsg (builtins.isBool globalVirtualStore) "globalVirtualStore must be a Boolean";
 assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
   pnpm lock mutator version ${pnpmLockMutatorOverrideVersion} is not supported.
   Set a derivation versioned as the verified-safe pnpm 12.7.0 pin;

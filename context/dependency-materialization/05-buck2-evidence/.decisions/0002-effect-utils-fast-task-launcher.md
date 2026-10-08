@@ -91,7 +91,7 @@ effect-utils core proves to be a trivial pass-through with no reusable contract.
 ## Amendment 3: Direct Buck Supersedes the Launcher
 
 Buck decision
-[0011](../../../buck2/.decisions/0011-direct-native-evidence-observation.md)
+[0011](../../../builds/.decisions/0011-direct-native-evidence-observation.md)
 accepted direct Buck invocation with caller-owned tracing and native build
 reports/event logs, then removed the interposed launcher and its custom receipt.
 That decision closes the transitional period described above: the launcher is

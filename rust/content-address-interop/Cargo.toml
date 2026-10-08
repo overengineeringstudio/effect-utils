@@ -1,0 +1,33 @@
+[package]
+name = "content-address-interop"
+workspace = ".."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "content_address_interop"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["wasm", "napi"]
+wasm = []
+napi = []
+
+[dependencies]
+content-address-core = { path = "../content-address-core", features = ["contract"] }
+content-address-contract = { path = "../content-address-contract" }
+effect-rust = { path = "../effect-rust", features = ["contract"] }
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+serde-wasm-bindgen.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+napi = { workspace = true, features = ["napi5", "serde-json", "tokio_rt"] }
+napi-derive.workspace = true

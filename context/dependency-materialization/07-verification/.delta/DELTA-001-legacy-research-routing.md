@@ -8,7 +8,7 @@ The verification subtree still contains imported snapshots under `.research/`,
 which is not a current VRS companion kind. The snapshots preserve useful source
 evidence but deterministic strict validation does not route or inspect them.
 
-## VRS
+## Intent
 
 - The repository VRS contract permits source-backed external facts under
   `.reference/` and project-generated experiments under `.experiments/`.

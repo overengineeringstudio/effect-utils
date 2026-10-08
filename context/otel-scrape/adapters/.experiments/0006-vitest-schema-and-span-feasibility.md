@@ -1,11 +1,19 @@
 # Experiment 0006 — vitest JSON reporter schema + span feasibility
 
-**Method:** vitest 4.1.9, `--reporter=json --outputFile.json=<tmp>` on a throwaway
+## Question
+
+What structured telemetry or fidelity evidence does the Experiment 0006 — vitest JSON reporter schema + span feasibility probe provide?
+
+## Method
+
+vitest 4.1.9, `--reporter=json --outputFile.json=<tmp>` on a throwaway
 2-file / 2-suite / 7-test run (4 passed, 1 failed, 1 skipped, 1 todo). Also
 inspected `dist/reporters.d.ts`.
 
-**Result — the report is a post-hoc summary written once after the run, not a
-stream.** Sanitized shape:
+## Result
+
+The report is a post-hoc summary written once after the run, not a stream.
+Sanitized shape:
 
 ```jsonc
 {
@@ -40,7 +48,14 @@ retryCount, flaky }`) — a custom reporter emitting OTLP, i.e. the native
 self-instrumentation lane (ADP-A01), not an otel-scrape adapter. No native OTEL
 reporter ships in vitest 4.1.9 (grep clean).
 
-**Conclusion:** metrics-only-honest. Broaden counts
+## Conclusion
+
+metrics-only-honest. Broaden counts
 (`passed`/`skipped`/`todo`/`suites`) and expose all counts as ADP-R06 command-span
 attributes; do not reconstruct per-test spans from the file. `failureMessages`
 (assertion text + stack + local paths) is render-only, never a sink.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

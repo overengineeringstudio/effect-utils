@@ -1,10 +1,16 @@
 # Experiment 0004 — nix --log-format internal-json source
 
-**Method:** Determinate Nix 3.17.3 (nix 2.33.3). Trivial `nix eval` and one
+## Question
+
+What structured telemetry or fidelity evidence does the Experiment 0004 — nix --log-format internal-json source probe provide?
+
+## Method
+
+Determinate Nix 3.17.3 (nix 2.33.3). Trivial `nix eval` and one
 trivial derivation under an out-of-repo tmp dir, `--log-format internal-json`.
 Also inspected the `nix:check:quick` task wiring.
 
-**Result:**
+## Result
 
 - The `@nix {json}` NDJSON stream is on **stderr**; the command result stays on
   **stdout** → side-channel, no re-render needed.
@@ -25,6 +31,13 @@ Also inspected the `nix:check:quick` task wiring.
   script, not `nix` — no adapter surface, and duration is already task-span
   timed.
 
-**Conclusion:** build-lane adapter-worthwhile (spans from start/stop, drop all
+## Conclusion
+
+build-lane adapter-worthwhile (spans from start/stop, drop all
 progress). Not a `check:quick` deliverable. internal-json is de-facto (consumed
 by nix-output-monitor), not a versioned public schema → R08-stability DQ.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

@@ -62,6 +62,11 @@ const effectUtilsSystemLabels: readonly LabelDef[] = deriveSystemLabels({
 /** Repo-local utility labels used by automation in this repo. */
 const effectUtilsAutomationLabels: readonly LabelDef[] = [
   {
+    name: 'ci:heavy-proofs',
+    color: 'ededed',
+    description: 'Opt in to credential-free empirical CI proofs on this PR · Set: manual',
+  },
+  {
     name: 'close-after-review',
     color: 'ededed',
     description: 'Close after the review/validation artifact has been inspected · Set: manual',

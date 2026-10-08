@@ -50,6 +50,7 @@ const packageProducts = [
   '@overeng/notion-md',
   '@overeng/notion-property-write',
   '@overeng/notion-react',
+  '@overeng/outline',
   '@overeng/otel-contract',
   '@overeng/restate-effect',
   '@overeng/stylex-tokens',

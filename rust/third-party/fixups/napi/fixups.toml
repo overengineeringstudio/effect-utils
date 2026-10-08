@@ -1,0 +1,2 @@
+# Declares WASI threading cfg and Windows GNU linking from the declared target.
+buildscript.run = true

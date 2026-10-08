@@ -1,10 +1,14 @@
 # Experiment 0005 — Command identity, span-name noise, and the trust boundary
 
-**Hypothesis:** The `otel_scrape.command` span-name noise can be replaced with a
+## Question
+
+The `otel_scrape.command` span-name noise can be replaced with a
 readable, privacy-safe command identity, and the current all-hashing privacy
 default is stronger than the actual trust boundary requires.
 
-**Method:** (1) Analysed a real first-party devenv trace (`632fcad3…`, a 138-span
+## Method
+
+(1) Analysed a real first-party devenv trace (`632fcad3…`, a 138-span
 `devenv check:all` run) captured in the dev-fleet Tempo backend, tabulating span
 names and attributes. (2) Built the base-tip `otel-scrape` from an isolated
 worktree (`nix build .#otel-scrape`) and wrapped real commands
@@ -16,7 +20,7 @@ levers. (4) Applied a throwaway 1-line patch (reverted) that names the command
 span by the program basename. (5) Rendered a proposed-ideal design as a trace
 and A/B'd it against the real trace in a local viewer.
 
-**Results:**
+## Result
 
 - **Noise:** 76 of the 138 spans (55%) were generic `otel_scrape.command` /
   `otel_scrape.process` pairs — fixed span-name constants, `adapter.name = none`,
@@ -47,10 +51,17 @@ and A/B'd it against the real trace in a local viewer.
   public-safe rule is well-justified for summaries but stronger than needed for
   an operator-asserted private OTLP sink.
 
-**Conclusion:** The design is coherent and validated:
+## Conclusion
+
+The design is coherent and validated:
 [../.decisions/0014-command-identity-and-span-naming.md](../.decisions/0014-command-identity-and-span-naming.md)
 — name spans by the operation (program basename), demote `otel-scrape` to
 scope/attributes, merge the degraded process observation into the command span,
 and relax R27 to public-safe-by-default with a per-sink trust assertion for raw
 argv/cwd. The proposed-ideal render collapsed a `check:all`-shaped trace to
 readable, fully-named spans while preserving the concrete-command level.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

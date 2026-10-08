@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { publishTestVerdict } from './test-verdict.ts'
 import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
 
 type JavaScriptCommand = 'exec' | 'vitest' | 'vitest-collect' | 'bun-test' | 'shell-tests'
@@ -36,6 +37,8 @@ export type JavaScriptRunOptions = {
   readonly vitestRuntime: VitestRuntime
   readonly collectOutput: string | undefined
   readonly staticParse: boolean
+  readonly verdictOutput?: string | undefined
+  readonly operation?: string | undefined
 }
 
 const COLLECTION_REPORT_NAME = 'vitest-collection.json'
@@ -173,6 +176,8 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
   let collectOutput: string | undefined
   let fingerprintTool: string | undefined
   let staticParse: boolean | undefined
+  let verdictOutput: string | undefined
+  let operation: string | undefined
   while (index < args.length) {
     const flag = requireArgument({ args, index, name: 'flag' })
     if (flag === '--') {
@@ -223,6 +228,8 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
     } else if (flag === '--inherit-env') inheritedEnv.push(requireEnvironmentName(value))
     else if (flag === '--vitest-runtime') vitestRuntime = requireVitestRuntime(value)
     else if (flag === '--collect-output') collectOutput = resolve(value)
+    else if (flag === '--verdict-output') verdictOutput = resolve(value)
+    else if (flag === '--operation') operation = value
     else if (flag === '--static-parse') staticParse = requireBoolean(value)
     else fail(`unexpected argument: ${flag}`)
     index += 2
@@ -233,6 +240,8 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
     fail(`--collect-output is only admissible for vitest-collect, not ${command}`)
   if (command !== 'vitest-collect' && staticParse !== undefined)
     fail(`--static-parse is only admissible for vitest-collect, not ${command}`)
+  if (verdictOutput !== undefined && (command !== 'vitest' || operation === undefined))
+    fail('--verdict-output requires a Vitest suite and --operation')
   return {
     command,
     bun,
@@ -247,6 +256,8 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
     args: forwardedArgs,
     vitestRuntime,
     collectOutput,
+    verdictOutput,
+    operation,
     staticParse: staticParse ?? false,
     readRoots: [...new Set(readRoots)].toSorted(),
     environment,
@@ -309,7 +320,7 @@ export const vitestCollectArgv = (options: {
   join(options.packageTree, options.config),
   '--configLoader=runner',
   '--no-cache',
-  ...(options.staticParse === true ? ['--staticParse'] : []),
+  options.staticParse === true ? '--staticParse' : '--no-staticParse',
   `--json=${options.report}`,
   ...options.tests,
   ...options.excludes.flatMap((path) => ['--exclude', path]),
@@ -624,7 +635,13 @@ const runCommand = async ({
               join(options.packageTree, options.entrypoint ?? fail('missing entrypoint')),
               ...options.args,
             ]
-  const child = Bun.spawn([...command], {
+  const containedCommand = [...command]
+  if (containedCommand[0] === options.bun) {
+    const bunConfig = join(scratch, 'bunfig.toml')
+    await Bun.write(bunConfig, '')
+    containedCommand.splice(1, 0, '--no-env-file', '--no-install', `--config=${bunConfig}`)
+  }
+  const child = Bun.spawn(containedCommand, {
     cwd: options.packageTree,
     env: environment,
     stdin: 'ignore',
@@ -691,6 +708,14 @@ const runOuter = async (options: JavaScriptRunOptions): Promise<number> => {
         output: options.collectOutput,
         packageTree: options.packageTree,
         results: lease.results,
+      })
+    if (options.verdictOutput !== undefined)
+      await publishTestVerdict({
+        output: options.verdictOutput,
+        operation: options.operation ?? fail('missing operation'),
+        packageTree: options.packageTree,
+        report: join(lease.results, 'vitest.json'),
+        status,
       })
   } catch (error) {
     primaryError = error

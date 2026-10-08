@@ -1,9 +1,9 @@
 """Bounded Weaver registry checks over declared sources and Nix capabilities."""
 
-load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
-
 
 def _run_weaver(ctx, mode, inputs):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
@@ -11,7 +11,7 @@ def _run_weaver(ctx, mode, inputs):
     semconv_model = ctx.attrs._semconv_model[BuckSupportToolInfo]
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
     args = cmd_args([
-        toolchain.bun,
+        hermetic_bun_command(ctx, toolchain.bun),
         ctx.attrs._runner,
         "--mode",
         mode,
@@ -25,20 +25,18 @@ def _run_weaver(ctx, mode, inputs):
     for flag, source in inputs:
         args.add(flag, source)
     args.add(cmd_args(hidden = [weaver.manifest, semconv_model.manifest]))
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "weaver_{}".format(mode.replace("-", "_")),
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [DefaultInfo(default_output = result)]
-
 
 def _weaver_check_impl(ctx):
     registry = ctx.actions.copied_dir("registry", ctx.attrs.registry)
     return _run_weaver(ctx, "check", [("--registry", registry)])
-
 
 def _weaver_version_smoke_impl(ctx):
     return _run_weaver(ctx, "version-smoke", [
@@ -46,8 +44,7 @@ def _weaver_version_smoke_impl(ctx):
         ("--registry-source", ctx.attrs.registry_source),
     ])
 
-
-_common_attrs = {
+_common_attrs = dict(hermetic_attrs(), **{
     "_javascript": attrs.default_only(attrs.exec_dep(
         default = "//buck2/toolchains:effect_tsgo",
         providers = [EffectTsgoToolchainInfo],
@@ -63,14 +60,16 @@ _common_attrs = {
         default = "//buck2/toolchains:tool_semconv_model",
         providers = [BuckSupportToolInfo],
     )),
-}
+})
 
-_weaver_check = rule(
+_weaver_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _weaver_check_impl,
     attrs = dict(_common_attrs, registry = attrs.dict(key = attrs.string(), value = attrs.source())),
 )
 
-_weaver_version_smoke = rule(
+_weaver_version_smoke = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _weaver_version_smoke_impl,
     attrs = dict(
         _common_attrs,
@@ -79,9 +78,9 @@ _weaver_version_smoke = rule(
     ),
 )
 
-
 def weaver_checks(name, registry, flake_nix, registry_source, **kwargs):
     """Declares registry conformance and version-pin checks."""
+    kwargs["exec_compatible_with"] = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", []))
     _weaver_check(name = name + "_check", registry = registry, **kwargs)
     _weaver_version_smoke(
         name = name + "_version_smoke",

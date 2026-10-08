@@ -102,8 +102,26 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `pnpm.nix` - pnpm install tasks
   - Local development shares one complete pnpm Store Cache between trusted
     roots of the same OS user; CI uses a job-local Store Cache.
-  - Dependency graphs, `node_modules/.pnpm`, projections, and repair remain
-    Materialization-Root-owned.
+  - By default dependency graphs and `node_modules/.pnpm` remain
+    Materialization-Root-owned. Pass `globalVirtualStore = true;` to opt local
+    development into pnpm's graph-hashed shared projections with the isolated
+    linker. Genie authors `enableGlobalVirtualStore: true` in workspace YAML.
+    Hoisted linking does not use GVS.
+  - GVS uses `PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true`, not the ineffective
+    pnpm 12 kebab-case `--config` spelling, and leaves `virtual-store-dir` unset.
+    The default complete store is `$HOME/.local/share/pnpm/store` in GVS mode
+    versus `$HOME/.local/share/pnpm/store-shared-v1` otherwise;
+    `PNPM_SHARED_STORE_DIR` overrides either local store.
+  - CI explicitly disables GVS (including inherited environment/YAML opt-ins)
+    and uses the job-local store and projection. Fixed-output preparation stays
+    root-local and GVS-disabled.
+  - Install, update, dedupe, status, doctor, and shell setup share the selected
+    policy. Readiness receipts include effective GVS/store policy. Health and
+    projection fingerprints visit only this root's reachable shared instances,
+    not unrelated graphs. Repair removes only root-owned links, never shared
+    graph instances. Stores are writable state for trusted same-user consumers;
+    verify tools that depend on package realpaths or implicit dependencies
+    before opting in.
   - Managed installs use pnpm's `auto` import policy and reject cross-device
     Linux storage before materialization.
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized

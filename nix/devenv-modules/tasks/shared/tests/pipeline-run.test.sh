@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Hooks export repository-local variables; every fixture and child owns its repo.
+mapfile -t git_local_env < <(git rev-parse --local-env-vars)
+unset "${git_local_env[@]}"
 span=${1:-${OTEL_SPAN_BIN:?otel-span binary required}}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# Fixture repositories must not inherit host signing, templates, or other config.
+export GIT_CONFIG_GLOBAL="$tmp/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
+: > "$GIT_CONFIG_GLOBAL"
 # CI wraps the test task in a pipeline-run; this probe owns a separate local spool.
 unset PIPELINE_ENTRYPOINT_ACTIVE PIPELINE_SPOOL_DIR
 
@@ -14,6 +20,15 @@ expected='trace=dc8939be377d7ae198ab958b5457787c root=53fa95f498248e99'
 [[ $("$span" pipeline-derive "$run" typecheck) != "$expected" ]]
 [[ $("$span" pipeline-derive "$run" test runner=a axis=b) == \
   $("$span" pipeline-derive "$run" test axis=b runner=a) ]]
+
+# Native Darwin locale restoration used to crash the digest writer after fork.
+# Check exact identities repeatedly with the devenv environment and UTF-8 locale.
+for ((probe = 0; probe < 200; probe++)); do
+  derived=$(env name=devenv-shell-env LC_ALL=en_US.UTF-8 "$span" pipeline-derive "$run" typecheck)
+  [[ $derived == 'trace=c829481d1ffcf4bb2968d5fc5b7cb5b4 root=918303269d68c6c9' ]] ||
+    { echo "unstable canonical identity at iteration $probe: $derived" >&2; exit 1; }
+done
+printf '200 exact pipeline identities passed with the devenv environment and UTF-8 locale\n'
 if "$span" pipeline-derive "$run" test runner=a runner=b 2>/dev/null; then
   echo 'duplicate matrix dimension accepted' >&2
   exit 1
@@ -25,8 +40,8 @@ fi
 
 # No endpoint: a job root and task span must remain as pending OTLP chunks.
 PIPELINE_RUN_ID="$run" PIPELINE_JOB_KEY=test PIPELINE_MATRIX_RUNNER="$runner" \
-  PIPELINE_EXPORT_OWNER= OTELITE_HTTP_ENDPOINT= DEVENV_ROOT="$tmp" OTEL_EXPORTER_OTLP_ENDPOINT= \
-  "$span" pipeline-run -- bash -c '[[ $TRACEPARENT == 00-dc8939be377d7ae198ab958b5457787c-*-01 && $TRACEPARENT == "$OTEL_TASK_TRACEPARENT" ]]'
+  PIPELINE_EXPORT_OWNER= OTELITE_HTTP_ENDPOINT= DEVENV_ROOT="$tmp" OTEL_EXPORTER_OTLP_ENDPOINT= LC_ALL=en_US.UTF-8 \
+  "$span" pipeline-run -- bash -c '[[ $TRACEPARENT == 00-dc8939be377d7ae198ab958b5457787c-*-01 && $TRACEPARENT == "$OTEL_TASK_TRACEPARENT" && $LC_ALL == en_US.UTF-8 ]]'
 spool="$tmp/.devenv/otel/run-records/dc8939be377d7ae198ab958b5457787c-53fa95f498248e99"
 [[ -d "$spool/pending" ]]
 mapfile -t chunks < <(find "$spool/pending" -maxdepth 1 -name '*.traces.chunk' -type f)
@@ -67,7 +82,7 @@ exit 1
 SH
 chmod +x "$tmp/bin/devenv" "$tmp/bin/buck2-events"
 git -C "$tmp" init -q
-git -C "$tmp" -c core.hooksPath=/dev/null -c user.name=CI -c user.email=ci@example.invalid commit -q --allow-empty -m initial
+git -C "$tmp" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=CI -c user.email=ci@example.invalid commit -q --allow-empty -m initial
 env GITHUB_WORKSPACE="$tmp" GITHUB_ENV="$tmp/job.env" \
   GITHUB_REPOSITORY=overengineeringstudio/effect-utils GITHUB_RUN_ID=421 \
   GITHUB_RUN_ATTEMPT=2 GITHUB_EVENT_NAME=pull_request JOB_KEY=typecheck \
@@ -233,4 +248,49 @@ if [[ $(id -u) != 0 ]]; then
     "$span" pipeline-run -- bash -c 'exit 17' || code=$?
   chmod 700 "$(dirname "$spool")"
   [[ $code == 17 ]] || { echo "cleanup replaced task exit status: $code" >&2; exit 1; }
+fi
+
+# Exercise the real fixture with a staged caller index, as in a pre-commit hook.
+if [[ ${PIPELINE_GIT_HOOK_FIXTURE_CHILD:-0} != 1 ]]; then
+  caller="$tmp/hook-caller"
+  mkdir -p "$caller"
+  git -C "$caller" init -q
+  printf 'committed\n' > "$caller/caller.txt"
+  git -C "$caller" add caller.txt
+  git -C "$caller" -c core.hooksPath=/dev/null -c user.name=CI \
+    -c commit.gpgsign=false -c user.email=ci@example.invalid commit -q -m caller
+  printf 'staged by caller\n' > "$caller/caller.txt"
+  git -C "$caller" add caller.txt
+  caller_head="$(git -C "$caller" rev-parse HEAD)"
+  cp "$caller/.git/index" "$tmp/caller-index.before"
+  # The same real fixture must also survive signing-enabled ambient config.
+  cat > "$tmp/unavailable-signer" <<'SH'
+#!/usr/bin/env bash
+: > "$PIPELINE_SIGNER_CALLED"
+exit 127
+SH
+  chmod +x "$tmp/unavailable-signer"
+  git config --file "$tmp/ambient.gitconfig" commit.gpgsign true
+  git config --file "$tmp/ambient.gitconfig" gpg.program "$tmp/unavailable-signer"
+  PIPELINE_GIT_HOOK_FIXTURE_CHILD=1 \
+    GIT_CONFIG_GLOBAL="$tmp/ambient.gitconfig" \
+    PIPELINE_SIGNER_CALLED="$tmp/signer-called" \
+    GIT_DIR="$caller/.git" GIT_WORK_TREE="$caller" \
+    GIT_INDEX_FILE="$caller/.git/index" GIT_OBJECT_DIRECTORY="$caller/.git/objects" \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES="$caller/.git/objects" \
+    GIT_COMMON_DIR="$caller/.git" GIT_PREFIX=hook-prefix/ \
+    bash "$0" "$span" "$repo"
+  [[ ! -e "$tmp/signer-called" ]] || {
+    echo 'pipeline fixture invoked the ambient signer' >&2
+    exit 1
+  }
+  [[ "$(git -C "$caller" rev-parse HEAD)" == "$caller_head" ]] || {
+    echo "pipeline fixture changed the hook caller's HEAD" >&2
+    exit 1
+  }
+  cmp "$tmp/caller-index.before" "$caller/.git/index" || {
+    echo "pipeline fixture changed the hook caller's index" >&2
+    exit 1
+  }
+  printf 'hook caller HEAD and staged index unchanged; ambient signer not invoked\n'
 fi

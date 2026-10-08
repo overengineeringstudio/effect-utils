@@ -6,6 +6,7 @@
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-path",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/kdl",
       "packages/@overeng/kdl-effect",
       "packages/@overeng/megarepo",
@@ -33,10 +34,10 @@
     "storybook:build": "storybook build"
   },
   "dependencies": {
-    "@effect/atom-react": "4.0.0-rc.118",
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/platform-node": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/atom-react": "4.0.0",
+    "@effect/opentelemetry": "4.0.0",
+    "@effect/platform-node": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "@overeng/tui-react": "workspace:^",
@@ -46,13 +47,13 @@
     "@storybook/react-vite": "10.6.0",
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
-    "@vitest/browser-playwright": "4.1.9",
-    "effect": "4.0.0-rc.118",
+    "@vitest/browser-playwright": "5.0.3",
+    "effect": "4.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
     "storybook": "10.6.0",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "dependenciesMeta": {
     "@overeng/tui-react": {
@@ -60,8 +61,8 @@
     }
   },
   "devDependencies": {
-    "@effect/atom-react": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/atom-react": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@overeng/megarepo": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
     "@overeng/utils-storybook": "workspace:^",
@@ -69,16 +70,16 @@
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "storybook": "10.6.0",
     "typescript": "7.0.2",
     "vite": "8.2.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "@effect/atom-react": "4.0.0-rc.118",
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/atom-react": "^4.0.0",
+    "@effect/opentelemetry": "^4.0.0",
+    "@effect/platform-node": "^4.0.0",
     "@opentui/core": "^0.5.11",
     "@opentui/react": "^0.5.11",
     "@playwright/test": "^1.63.0",
@@ -86,8 +87,8 @@
     "@storybook/react-vite": "^10.6.0",
     "@types/react": "^19.2.18",
     "@types/react-reconciler": "^0.33.0",
-    "@vitest/browser-playwright": "^4.1.9",
-    "effect": "4.0.0-rc.118",
+    "@vitest/browser-playwright": "^5.0.3",
+    "effect": "^4.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-reconciler": "^0.33.0",

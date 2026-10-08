@@ -5,6 +5,7 @@ import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 import {
   jobCacheDescriptors,
+  trustedCacheWriterGuardedSecret,
   publisherWriteSecret,
   CachePublisherJobError,
 } from './cache-policy.ts'
@@ -266,6 +267,36 @@ export const cachixPushStep = <TStep extends { if?: string; env?: Record<string,
     env: { ...opts.step.env, CACHIX_AUTH_TOKEN: opts.authToken },
   }
 }
+
+/** Public Buck2 writer credential, supplied only to protected publisher steps. */
+export const buck2PublicCacheWriteSecret = 'BUCK2_PUBLIC_CACHE_WRITE_AUTH'
+
+/**
+ * Publish gating results on protected main pushes and merge groups, never PRs.
+ * The trusted-writer posture makes opportunistic uploads fail open (q10/q11/q14),
+ * unlike the dedicated trusted proof. Only the masked Base64 header reaches Buck.
+ */
+export const buck2TrustedCacheWriterStep = <
+  TStep extends { env?: Record<string, string>; run: string },
+>(
+  step: TStep,
+) => ({
+  ...step,
+  [publisherWriteSecret]: buck2PublicCacheWriteSecret,
+  env: {
+    ...step.env,
+    BUCK2_PUBLIC_CACHE_WRITE_AUTH: trustedCacheWriterGuardedSecret(buck2PublicCacheWriteSecret),
+  },
+  run: [
+    'if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then',
+    '  BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf \'%s\' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d \'\\n\')"',
+    '  echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"',
+    '  export BUCK2_CACHE_WRITE_BASIC_AUTH',
+    'fi',
+    'unset BUCK2_PUBLIC_CACHE_WRITE_AUTH',
+    step.run,
+  ].join('\n'),
+})
 
 export const cachixPublisherStep = (
   opts: CachePublisherScope & {

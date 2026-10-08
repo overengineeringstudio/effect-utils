@@ -12,4 +12,4 @@ covered-system install-tree measurement API, or source hash registry. Historical
 measurements and decisions remain evidence of the retired realization.
 
 Current immutable archive acquisition and product digest verification are owned
-by the [Buck-to-Nix bridge](../../../buck2/06-nix-bridge/spec.md), not this node.
+by the [Buck-to-Nix bridge](../../../builds/05-product-distribution/02-nix-bridge/spec.md), not this node.

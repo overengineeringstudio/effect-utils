@@ -114,7 +114,7 @@ These results preserve the choice of A with the following constraints:
 ## Amendment 2: Declared-Closure Realization
 
 Buck decision
-[0022](../../../buck2/.decisions/0022-lockfile-derived-declared-closure.md)
+[0022](../../../builds/.decisions/0022-lockfile-derived-declared-closure.md)
 selects the concrete realization of this identity model: Genie derives one
 hash-pinned fetch and extract target per package version from `pnpm-lock.yaml`,
 and one assembly target per importer lays out the selected pnpm-shaped closure
@@ -123,7 +123,7 @@ sha256 sidecar is freshness-gated against the lockfile, and no package manager
 or custom package CAS runs inside Buck actions.
 
 Decision 0022's prototype evidence and the authority-transfer policy in
-[decision 0016](../../../buck2/.decisions/0016-evidence-rigor-at-transfer.md)
+[decision 0016](../../../builds/.decisions/0016-evidence-rigor-at-transfer.md)
 supersede the six-item pre-admission blocking gate in the original
 Consequences. Exact contextual topology, patches, optional/native selection,
 platform filtering, deterministic assembly, relevant and irrelevant
@@ -132,6 +132,6 @@ are proved at the authority transfer rather than maintained as a separate live
 blocker in this historical record.
 
 The original launcher-observability consequence is also superseded by
-[decision 0011](../../../buck2/.decisions/0011-direct-native-evidence-observation.md):
+[decision 0011](../../../builds/.decisions/0011-direct-native-evidence-observation.md):
 native Buck reports and event logs are execution authority, with observation
 owned by the caller rather than an interposed launcher.

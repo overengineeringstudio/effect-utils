@@ -16,6 +16,8 @@ import effectRpcExplorerReactPkg from './packages/@overeng/effect-rpc-explorer-r
 import effectRpcExplorerPkg from './packages/@overeng/effect-rpc-explorer/package.json.genie.ts'
 import effectRpcTanstackBasicPkg from './packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts'
 import effectRpcTanstackPkg from './packages/@overeng/effect-rpc-tanstack/package.json.genie.ts'
+import effectRustPkg from './packages/@overeng/effect-rust/package.json.genie.ts'
+import effectRustFixtureConsumerPkg from './packages/@overeng/effect-rust-fixture-consumer/package.json.genie.ts'
 import effectSchemaFormAriaPkg from './packages/@overeng/effect-schema-form-aria/package.json.genie.ts'
 import effectSchemaFormPkg from './packages/@overeng/effect-schema-form/package.json.genie.ts'
 import genieSmalltalkPkg from './packages/@overeng/genie-smalltalk/package.json.genie.ts'
@@ -33,6 +35,7 @@ import notionMdPkg from './packages/@overeng/notion-md/package.json.genie.ts'
 import notionPropertyWritePkg from './packages/@overeng/notion-property-write/package.json.genie.ts'
 import notionReactPkg from './packages/@overeng/notion-react/package.json.genie.ts'
 import npmReleasePkg from './packages/@overeng/npm-release/package.json.genie.ts'
+import outlinePkg from './packages/@overeng/outline/package.json.genie.ts'
 import otelBrowserPkg from './packages/@overeng/otel-browser/package.json.genie.ts'
 import otelContractPkg from './packages/@overeng/otel-contract/package.json.genie.ts'
 import oxcConfigPkg from './packages/@overeng/oxc-config/package.json.genie.ts'
@@ -63,6 +66,8 @@ export const rootWorkspacePackages = [
   effectRpcExplorerReactPkg,
   effectRpcTanstackBasicPkg,
   effectRpcTanstackPkg,
+  effectRustPkg,
+  effectRustFixtureConsumerPkg,
   effectSchemaFormAriaPkg,
   effectSchemaFormPkg,
   geniePkg,
@@ -80,6 +85,7 @@ export const rootWorkspacePackages = [
   notionMdPkg,
   notionPropertyWritePkg,
   notionReactPkg,
+  outlinePkg,
   otelBrowserPkg,
   otelContractPkg,
   oxcConfigPkg,

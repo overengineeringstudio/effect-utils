@@ -124,6 +124,7 @@ const renderCargoFixture = ({
   rootManifest,
   projectOptions = {},
   render,
+  prepareFixture,
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
   readonly edition?: string
@@ -142,6 +143,7 @@ const renderCargoFixture = ({
   readonly rootManifest?: string
   readonly render: string
   readonly projectOptions?: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>
+  readonly prepareFixture?: (root: string) => void
 }): string => {
   const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
   const write = (relativePath: string, content: string) => {
@@ -219,6 +221,7 @@ const renderCargoFixture = ({
       for (const file of member.files) write(`rust/${memberPath}/${file}`, '// fixture\n')
       write(`rust/${memberPath}/BUCK.genie.ts`, '// Runtime-only projection fixture.\n')
     }
+    prepareFixture?.(root)
     const project = defineCargoBuck2PackageProjection({
       repoName: 'discovery-fixture',
       repoImportMetaUrl: pathToFileURL(path.join(root, 'projection.ts')).href,
@@ -236,6 +239,116 @@ const renderCargoFixture = ({
     rmSync(root, { recursive: true, force: true })
   }
 }
+
+describe('Cargo compile-time resources', () => {
+  const renderResource = (
+    resources: NonNullable<CargoBuck2PackageProjectionOptions['compileTimeResources']>,
+    prepareFixture?: (root: string) => void,
+  ) =>
+    renderCargoFixture({
+      members: {
+        pkg: { manifest: '[package]\nname = "pkg"', files: ['src/lib.rs', 'schema.json'] },
+      },
+      extraFiles: ['shared/schema.json'],
+      render: 'pkg',
+      projectOptions: { compileTimeResources: resources },
+      prepareFixture,
+    })
+
+  it('changes freshness for local bytes, destinations and generated targets', () => {
+    const local = [{ path: 'rust/pkg/schema.json' }]
+    const fingerprint = (output: string) => output.match(/^# Semantic fingerprint: (.+)$/m)?.[1]
+    const initial = fingerprint(renderResource(local))
+    expect(
+      fingerprint(
+        renderResource(local, (root) =>
+          writeFileSync(path.join(root, 'rust/pkg/schema.json'), '{"changed":true}\n'),
+        ),
+      ),
+    ).not.toBe(initial)
+    expect(
+      fingerprint(
+        renderResource([{ path: 'rust/pkg/schema.json', destination: 'data/schema.json' }]),
+      ),
+    ).not.toBe(initial)
+    expect(
+      fingerprint(renderResource([{ label: '//generated:schema', destination: 'schema.json' }])),
+    ).not.toBe(
+      fingerprint(renderResource([{ label: '//generated:other', destination: 'schema.json' }])),
+    )
+  })
+
+  it('rejects traversal, unsafe destinations and Rust/resource collisions', () => {
+    expect(() => renderResource([{ path: 'rust/pkg/../pkg/schema.json' }])).toThrow(
+      'normalized repository-relative path',
+    )
+    for (const destination of [
+      '../schema.json',
+      '/schema.json',
+      'data\\schema.json',
+      'C:/schema.json',
+    ]) {
+      expect(() => renderResource([{ path: 'rust/pkg/schema.json', destination }])).toThrow(
+        'normalized crate-relative path',
+      )
+    }
+    for (const destination of ['src/lib.rs', 'src/lib.rs/child', 'src']) {
+      expect(() => renderResource([{ path: 'rust/pkg/schema.json', destination }])).toThrow(
+        'collides',
+      )
+    }
+    expect(() =>
+      renderResource([
+        { path: 'rust/pkg/schema.json' },
+        { label: '//generated:schema', destination: 'schema.json' },
+      ]),
+    ).toThrow('collides')
+    for (const destinations of [
+      ['data', 'data/schema.json'],
+      ['data/schema.json', 'data'],
+    ]) {
+      expect(() =>
+        renderResource(
+          destinations.map((destination) => ({
+            label: '//generated:schema',
+            destination,
+          })),
+        ),
+      ).toThrow('collides')
+    }
+  })
+
+  it('requires explicit destinations for external and generated labels', () => {
+    expect(() => renderResource([{ path: 'shared/schema.json' }])).toThrow('explicit destination')
+    expect(() =>
+      renderResource([{ path: 'shared/schema.json', destination: 'schema.json' }]),
+    ).toThrow('needs a label')
+    for (const label of [
+      '//generated:bad\nlabel',
+      '//../generated:schema',
+      '//generated:schema/../other',
+      '//generated//child:schema',
+    ]) {
+      expect(() => renderResource([{ label, destination: 'schema.json' }])).toThrow(
+        'Buck target label',
+      )
+    }
+  })
+
+  it('rejects local symlink escape', () => {
+    const outside = mkdtempSync(path.join(tmpdir(), 'cargo-resource-outside-'))
+    try {
+      writeFileSync(path.join(outside, 'schema.json'), '{}')
+      expect(() =>
+        renderResource([{ path: 'rust/pkg/escape.json' }], (root) =>
+          symlinkSync(path.join(outside, 'schema.json'), path.join(root, 'rust/pkg/escape.json')),
+        ),
+      ).toThrow('resolves outside the repository')
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+})
 
 /** The rendered `native.*` rule blocks keyed by target name. */
 const renderedRules = (rendered: string): Readonly<Record<string, string>> =>
@@ -258,6 +371,54 @@ const compileEnvironment = (rule: string): Readonly<Record<string, string>> => {
     ]),
   )
 }
+
+describe('Cargo dual Node-API and wasm products', () => {
+  it('keeps macOS dynamic symbol lookup native-only on the shared cdylib', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        adapter: {
+          manifest: '[package]\nname = "adapter"\n\n[lib]\ncrate-type = ["cdylib", "rlib"]',
+          files: ['src/lib.rs'],
+        },
+      },
+      render: 'adapter',
+      projectOptions: {
+        napi: { name: 'native-addon' },
+        wasmBindgen: { name: 'wasm-addon' },
+      },
+    })
+    // Both product wrappers consume the same library under different target configurations.
+    for (const [kind, name] of [
+      ['rust_napi_library', 'native-addon'],
+      ['rust_wasm_bindgen_library', 'wasm-addon'],
+    ]) {
+      const product = rendered.match(new RegExp(`^${kind}\\(\\n([\\s\\S]*?)^\\)`, 'm'))?.[1]
+      expect(product).toContain(`name = "${name}"`)
+      expect(product).toContain('crate = ":lib"')
+    }
+    const library = renderedRules(rendered)['lib']
+    const flagsExpression = library?.match(/^    rustc_flags = (.*),$/m)?.[1]
+    if (flagsExpression === undefined) throw new Error('Shared cdylib has no rustc flags')
+    // The generated select expression is also valid JavaScript. Evaluate its branches rather
+    // than pinning the source spelling; wasm retains macOS through the product transition.
+    const evaluateFlags = (conditions: readonly string[]): unknown =>
+      new Function('select', `return ${flagsExpression}`)(
+        (branches: Readonly<Record<string, readonly string[]>>) => {
+          const matching = Object.keys(branches).filter((key) => conditions.includes(key))
+          if (matching.length > 1) throw new Error('Ambiguous target configuration')
+          return branches[matching[0] ?? 'DEFAULT']
+        },
+      )
+    expect(evaluateFlags(['prelude//os/constraints:macos'])).toEqual([
+      '-Clink-arg=-Wl,-undefined,dynamic_lookup',
+    ])
+    expect(evaluateFlags(['prelude//os/constraints:macos', '//buck2/rust:wasm32_config'])).toEqual(
+      [],
+    )
+    expect(evaluateFlags(['//buck2/rust:wasm32_config'])).toEqual([])
+    expect(evaluateFlags([])).toEqual([])
+  })
+})
 
 describe('Cargo compile-time package identity', () => {
   it('inherits package fields and separates library, binary, and build-script target names', () => {

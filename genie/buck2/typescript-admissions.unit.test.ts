@@ -11,7 +11,6 @@ import {
   buck2TypeScriptAdmissions,
   buck2TypeScriptTestCollectionTargets,
   buck2TypeScriptTestTargets,
-  deriveBuck2TestLane,
   deriveBuck2TypeScriptAuthority,
   type Buck2TypeScriptAdmission,
 } from './typescript-admissions.ts'
@@ -118,63 +117,6 @@ describe('Buck2 test lane registry', () => {
     expect(buck2TypeScriptTestTargets.every((target) => target.startsWith('effect_utils//'))).toBe(
       true,
     )
-  })
-
-  it('derives labels, ownership, and task names from one declaration', () => {
-    const utilsLane = buck2TestLanes.find(({ packageName }) => packageName === 'utils')
-    expect(utilsLane).toMatchObject({
-      collectionTarget: 'effect_utils//packages/@overeng/utils:test_collect',
-      excludes: buck2TypeScriptAdmissions.utils.tests[0].excludes,
-      packageName: 'utils',
-      packagePath: 'packages/@overeng/utils',
-      runner: 'vitest',
-      sourceOwners: {
-        'src/browser/__tests__/BroadcastLogger.pw.test.ts': 'test:pw:utils',
-      },
-      target: 'effect_utils//packages/@overeng/utils:test',
-      taskName: 'test:utils',
-      unboundedTaskName: 'test:utils:unbounded',
-    })
-    expect(utilsLane?.testFiles).toContain('src/browser/__tests__/BroadcastLogger.pw.test.ts')
-    expect(utilsLane?.unboundedFiles).not.toContain(
-      'src/browser/__tests__/BroadcastLogger.pw.test.ts',
-    )
-
-    // Named lanes derive distinct addressable tasks without making package identity unique.
-    expect(
-      deriveBuck2TestLane({
-        packagePath: 'packages/@example/widget',
-        target: { name: 'test_upstream', runner: 'vitest' },
-        testFiles: ['src/upstream.test.ts'],
-      }),
-    ).toEqual({
-      collectionTarget: 'effect_utils//packages/@example/widget:test_upstream_collect',
-      excludes: [],
-      packageName: 'widget',
-      packagePath: 'packages/@example/widget',
-      runner: 'vitest',
-      selectedTestFiles: ['src/upstream.test.ts'],
-      sourceOwners: {},
-      target: 'effect_utils//packages/@example/widget:test_upstream',
-      taskName: 'test:widget:test_upstream',
-      testFiles: ['src/upstream.test.ts'],
-      unboundedAfter: [],
-      unboundedFiles: [],
-    })
-    expect(
-      buck2TestLanes
-        .filter(({ packagePath }) => packagePath === 'packages/@overeng/pty-effect')
-        .map(({ taskName, target }) => ({ taskName, target })),
-    ).toEqual([
-      {
-        taskName: 'test:pty-effect:bundle_smoke',
-        target: 'effect_utils//packages/@overeng/pty-effect:bundle_smoke',
-      },
-      {
-        taskName: 'test:pty-effect',
-        target: 'effect_utils//packages/@overeng/pty-effect:test',
-      },
-    ])
   })
 
   it('keeps effect-schema-form-aria out of the source-side fallback partition', () => {

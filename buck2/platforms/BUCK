@@ -1,7 +1,51 @@
 load("//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "portable_product_platform", "product_platform")
 
+constraint_setting(name = "cache_admission", visibility = ["PUBLIC"])
+
+constraint_value(
+    name = "cache_hermetic",
+    constraint_setting = ":cache_admission",
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_linux_x86_64_hermetic",
+    cache_hermetic = True,
+    constraint_values = [
+        ":cache_hermetic",
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_linux_aarch64_hermetic",
+    cache_hermetic = True,
+    constraint_values = [
+        ":cache_hermetic",
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_macos_aarch64_hermetic",
+    cache_hermetic = True,
+    constraint_values = [
+        ":cache_hermetic",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:macos",
+    ],
+    visibility = ["PUBLIC"],
+)
+
 native_execution_platform(
     name = "exec_linux_x86_64",
+    hermetic_platform = ":exec_linux_x86_64_hermetic",
     constraint_values = [
         "prelude//abi/constraints:gnu",
         "prelude//cpu/constraints:x86_64",
@@ -12,6 +56,7 @@ native_execution_platform(
 
 native_execution_platform(
     name = "exec_linux_aarch64",
+    hermetic_platform = ":exec_linux_aarch64_hermetic",
     constraint_values = [
         "prelude//abi/constraints:gnu",
         "prelude//cpu/constraints:arm64",
@@ -22,6 +67,7 @@ native_execution_platform(
 
 native_execution_platform(
     name = "exec_macos_aarch64",
+    hermetic_platform = ":exec_macos_aarch64_hermetic",
     constraint_values = [
         "prelude//cpu/constraints:arm64",
         "prelude//os/constraints:macos",

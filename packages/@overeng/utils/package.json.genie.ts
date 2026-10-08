@@ -97,6 +97,13 @@ export default packageJson(
         },
         { environment: 'node' },
       ),
+      './node/vite-build-identity': exportEntry(
+        {
+          types: './src/node/vite-build-identity-types.d.ts',
+          default: './src/node/vite-build-identity.js',
+        },
+        { environment: 'node' },
+      ),
       './node/otel': exportEntry(
         { types: './dist/src/node/otel.d.ts', default: './src/node/otel.ts' },
         { environment: 'node' },
@@ -180,6 +187,10 @@ export default packageJson(
         './node/cli-version': {
           types: './dist/src/node/cli-version.d.ts',
           default: './dist/src/node/cli-version.js',
+        },
+        './node/vite-build-identity': {
+          types: './src/node/vite-build-identity-types.d.ts',
+          default: './src/node/vite-build-identity.js',
         },
         './node/otel': { types: './dist/src/node/otel.d.ts', default: './dist/src/node/otel.js' },
         './node/otel-attrs': {

@@ -16,6 +16,8 @@ import effectRpcExplorerReactTsconfig from '../packages/@overeng/effect-rpc-expl
 import effectRpcExplorerTsconfig from '../packages/@overeng/effect-rpc-explorer/tsconfig.json.genie.ts'
 import effectRpcTanstackBasicTsconfig from '../packages/@overeng/effect-rpc-tanstack/examples/basic/tsconfig.json.genie.ts'
 import effectRpcTanstackTsconfig from '../packages/@overeng/effect-rpc-tanstack/tsconfig.json.genie.ts'
+import effectRustFixtureConsumerTsconfig from '../packages/@overeng/effect-rust-fixture-consumer/tsconfig.json.genie.ts'
+import effectRustTsconfig from '../packages/@overeng/effect-rust/tsconfig.json.genie.ts'
 import effectSchemaFormAriaTsconfig from '../packages/@overeng/effect-schema-form-aria/tsconfig.json.genie.ts'
 import effectSchemaFormTsconfig from '../packages/@overeng/effect-schema-form/tsconfig.json.genie.ts'
 import genieSmalltalkTsconfig from '../packages/@overeng/genie-smalltalk/tsconfig.json.genie.ts'
@@ -34,6 +36,7 @@ import notionMdTsconfig from '../packages/@overeng/notion-md/tsconfig.json.genie
 import notionPropertyWriteTsconfig from '../packages/@overeng/notion-property-write/tsconfig.json.genie.ts'
 import notionReactTsconfig from '../packages/@overeng/notion-react/tsconfig.json.genie.ts'
 import npmReleaseTsconfig from '../packages/@overeng/npm-release/tsconfig.json.genie.ts'
+import outlineTsconfig from '../packages/@overeng/outline/tsconfig.json.genie.ts'
 import otelBrowserTsconfig from '../packages/@overeng/otel-browser/tsconfig.json.genie.ts'
 import otelContractTsconfig from '../packages/@overeng/otel-contract/tsconfig.json.genie.ts'
 import oxcConfigTsconfig from '../packages/@overeng/oxc-config/tsconfig.json.genie.ts'
@@ -124,6 +127,8 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/effect-rpc-tanstack/examples/basic': {
       tsconfig: effectRpcTanstackBasicTsconfig,
     },
+    'packages/@overeng/effect-rust': { tsconfig: effectRustTsconfig },
+    'packages/@overeng/effect-rust-fixture-consumer': { tsconfig: effectRustFixtureConsumerTsconfig },
     'packages/@overeng/effect-schema-form': { tsconfig: effectSchemaFormTsconfig },
     'packages/@overeng/effect-schema-form-aria': { tsconfig: effectSchemaFormAriaTsconfig },
     'packages/@overeng/genie': { tsconfig: genieTsconfig },
@@ -141,6 +146,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/notion-md': { tsconfig: notionMdTsconfig },
     'packages/@overeng/notion-property-write': { tsconfig: notionPropertyWriteTsconfig },
     'packages/@overeng/notion-react': { tsconfig: notionReactTsconfig },
+    'packages/@overeng/outline': { tsconfig: outlineTsconfig },
     'packages/@overeng/otel-browser': { tsconfig: otelBrowserTsconfig },
     'packages/@overeng/otel-contract': { tsconfig: otelContractTsconfig },
     'packages/@overeng/oxc-config': { tsconfig: oxcConfigTsconfig },

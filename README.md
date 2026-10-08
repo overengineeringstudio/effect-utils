@@ -74,6 +74,22 @@ React hooks and utilities for building Effect-powered applications.
 - **DevTools inspectors** - Browser-style object/table inspectors with Effect Schema awareness
 - **Type-safe runtime access** - Direct access to Effect runtime for advanced use cases
 
+### Document Outlines
+
+[`@overeng/outline`](./packages/@overeng/outline) provides theme-free outline models and accessible
+React Aria navigation. Import `@overeng/outline/model` for DOM-independent hierarchy normalization,
+active-section selection, and fixed-pitch preview geometry.
+
+Callers own stable section IDs, ordered measurements, the reading edge, and scrolling. An
+`OutlineScrollAdapter` connects those measurements to `getActiveSection`; `useOutlineRail` owns hover,
+focus retention, the keyboard opener, and Escape focus return. Render `OutlineLink` with a navigation
+callback or native section hrefs. Pass the active ID from actual scroll position, not the last click.
+The package supplies no theme, document discovery, domain extraction, or virtualization.
+
+Run `devenv tasks run test:outline` for the focused behavioral suite. Its scoped
+`buck2:editor:publish:outline` prerequisite publishes the package's Buck-owned dependency view
+without materializing unrelated package editor views.
+
 ### Browser Telemetry
 
 `@overeng/otel-browser` provides scoped Effect tracing and OTLP/HTTP traces and metrics for browser
@@ -195,6 +211,213 @@ Audit cross-cell Buck provider identity separately:
 devenv tasks run buck2:providers:check
 ```
 
+### Consumer Buck Roots
+
+`mkConsumerBuckRoot` accepts the named `watcherPolicy` argument. Its default,
+`"mutable-checkout"`, emits `file_watcher = watchman` and retains fail-closed
+Watchman admission for interactive source edits. Roots copied into immutable
+Nix builds or filtered, immutable source checks must instead pass:
+
+```nix
+watcherPolicy = "immutable-input";
+```
+
+This emits `file_watcher = fs_hash_crawler`: declared inputs do not change
+during the build, so no Watchman executable or service is required. The
+from-source builder uses the same policy mapping. Unknown policies fail Nix
+evaluation with a message listing both allowed values; raw watcher-provider
+strings are not accepted.
+
+TypeScript package projections retain census destinations below nested Buck packages,
+but resolve each input through its nearest owning `BUCK` (or `BUCK.genie.ts` during
+generation). For example, `src/main.ts` below `parent/src/BUCK` is staged from
+`//parent/src:main.ts`; only locally owned sources are exported by the parent.
+Each nested package must publish the explicit inputs the parent consumes with
+`export_materialization_inputs`, including test modules, snapshots and fixture data.
+Its target names escape `$` as `__dollar__`, while staged destinations stay unchanged.
+This file-level contract preserves source-granular dependencies instead of introducing
+a second, nested-tree materialization interface. Project and runner configuration
+remain package-root files; declared `projectInputs` may reference nested files.
+
+Consumer dependency generators declare the cell that exports patches from each
+nested checkout instead of loading that checkout's standalone `BUCK` files:
+
+```ts
+renderPnpmPackageTargets({
+  metadata,
+  sidecar,
+  patchSourceCells: { 'repos/effect-utils': 'rules' },
+})
+```
+
+The `buck2-rules` package exports the shared pnpm patch registry in its `rules`
+cell. Unmapped patch paths retain same-cell labels; mappings match complete path
+components, and the most specific checkout root wins.
+
+Frozen source dependencies use an exact workspace-path-to-target mapping rather
+than resolving a label beneath an ignored runtime directory:
+
+```ts
+makePnpmStoreProjection({
+  metadata,
+  sidecar,
+  workspaceTreeTargets: {
+    '.devenv/pnpm-source-inputs/current/repos/sdk/client': 'pnpm_sources//:sdk_client_package_tree',
+  },
+})
+```
+
+The consumer owns that declared package tree and its cell. It must expose the
+frozen package bytes named by the lockfile, not a mutable checkout with the same
+path suffix. A source cell rooted at `.devenv/pnpm-source-inputs` can keep its
+generated `BUCK` outside the immutable `current` generation and assemble sources
+with `empty_package_view` (or `package_view` for packages with dependencies).
+The consumer's Nix source closure must supply the same cell, package bytes, and
+target declarations. The root continues to ignore `.devenv` wholesale. Unmapped
+workspace packages retain their conventional same-cell `:package_tree` labels;
+mapped labels participate in the projection fingerprint.
+
+Put the effect-utils flake's pinned `packages.<system>.buck2` on `PATH` (or use
+its `bin/buck2` as `BUCK2_BIN`). Direct commands, agents and devenv tasks then
+share the same cache posture preflight; no separate task or probe command is
+required:
+
+```bash
+buck2 build //your/package:target
+```
+
+Shell activation and Buck task preparation publish the realized Nix capabilities
+into a stable real `.buck2/capabilities` cell. Publication is process-locked,
+installs immutable generation metadata first, and atomically replaces the
+watched `defs.bzl` last. Ordinary capability changes reach already-running
+daemons without a restart. The one-time cell-root symlink migration uses atomic
+exchange, then explicitly runs `buck2 kill` for this worktree's registered
+isolation directories: the symlink-to-directory transition changes native watch
+topology and requires a fresh daemon. The publisher logs each stop; a persistent
+migration marker makes a failed or interrupted stop retryable.
+Preparation diagnostics go to stderr, preserving command stdout when callers
+capture Buck output paths. The daemon regression starts and shuts down its own
+private Watchman service, using a fixture-only global config that permits nice 19;
+it does not depend on a host service on Linux or macOS.
+
+The publisher fixture retains assertion failures before cleanup under
+`${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/capability-publisher/`
+and prints the private evidence directory. Each capture keeps at most five
+snapshots: the new capture and the four newest prior evidence directories.
+It contains the failed generation observation, copied generation metadata and
+publisher JSONs, shell job IDs/PIDs/states without command text, and native PID
+ancestry without command arguments or environment.
+`CAPABILITY_TEST_EVIDENCE_DIR` overrides the destination for focused proofs.
+Copies are best-effort observations while writers may still run, not an atomic
+snapshot or a Nix closure archive; collection errors are recorded explicitly.
+
+Retained generations have indirect Nix GC roots under `.buck2/capability-roots`.
+The publisher keeps the three most recently published generations only when
+Buck's state files show no live worktree daemon in any isolation directory.
+Live or uncertain daemon state retains all generations; the next daemon-free
+publication restores the bound. This protects even idle daemons with cached old
+generation references. See the [capability publication contract](context/builds/04-buck2/02-platforms-toolchains/spec.md#capability-publication).
+
+Tracked `[buck2] file_watcher = watchman` also opts into watcher admission, even
+without remote-cache configuration. The packaged entrypoint admits the actual
+Watchman service and canonical watched root with `watchman --no-local
+watch-project <root>` before native daemon startup. An attempt has a 2500 ms
+deadline and one retry for a timeout only. Successful root admission is cached
+for at most five seconds, scoped to the root, `.watchmanconfig`, PATH, HOME and
+socket environment identity. Un-niced default-service queries allow Watchman
+to spawn on demand on Linux and Darwin, including job-local CI runners. Niced
+clients use `--no-spawn`: they may connect to an existing service, but never
+create a permanently niced shared daemon. Only a proven-missing default
+service (the silent no-spawn client plus an absent computed socket) or
+Watchman's own startup refusal is diagnosed as a priority problem: start the
+service un-niced with `watchman get-sockname` outside the gate or provision
+the host service, and never relax the shared startup priority limit. Other
+niced failures keep their genuine executable or service diagnosis; admission
+never falls back to notify.
+An explicit `WATCHMAN_SOCK` also uses `--no-spawn` on every platform: admission
+must reach that owned service, not create a replacement. Missing, unhealthy or incorrectly
+rooted Watchman fails with the probe command and remediation; it never selects notify as an
+outage fallback. For an ancestor-root mismatch, run `watchman watch <root>` and
+rerun the displayed probe. Enter `devenv shell` if Watchman is missing from PATH.
+
+Explicit unmanaged local watcher choices take precedence and remove stale
+managed watcher settings without disturbing the independent cache overlay.
+In particular, immutable Nix source products select `fs_hash_crawler`: they have
+no interactive edit loop, and Watchman's state-directory initialization is not
+permitted in the Nix sandbox. Mutable worktrees retain Watchman to avoid hashing
+the source tree on each command. Watchman-configured worktrees automatically
+transition the selected daemon isolation after successful admission: a missing
+provider marker or a changed provider stops only that worktree's registered
+daemon with the native `--isolation-dir <selected> kill` command before startup.
+The per-root/isolation marker and crash-released lock live outside Buck's
+daemon directory in `~/.buck/file-watcher-admission-v1/`; native startup cleans
+the daemon directory, not these markers. Matching markers prevent repeated stops,
+and other worktrees and isolations are never stopped. Failed stops prevent
+startup and do not record successful migration. Maintenance `kill`, `status`,
+and `log` commands bypass Watchman admission so diagnosis and shutdown remain
+available during an outage.
+The existing explicit local `[buck2] file_watcher = notify` choice is retained
+for deliberate non-agent use, but is unsafe for agent builds: completed source
+writes can race notify's unsynchronized callback buffer and produce stale
+copied inputs. Agent workflows require a healthy, correctly rooted Watchman
+service instead. No new notify opt-in environment variable is introduced.
+Watchman output exclusions are defined by `.watchmanconfig`; Buck's separate
+`[project] ignore` settings alone do not prune notify's initial registrations.
+
+RE client settings belong in `.buckconfig`, not invocation overrides. Pinned
+Buck ignores `[buck2_re_client]` values supplied by `--config` or `--config-file`.
+The entrypoint applies writer credentials/endpoints to the managed
+`.buckconfig.local` block before daemon startup. After changing client endpoints
+or credentials, stop the existing daemon with `buck2 kill` in the same project
+and isolation directory; changing config does not rebuild an existing RE client.
+
+The checkout and `mkConsumerBuckRoot` set
+`buck2_re_client.max_total_batch_size = 3145728` (3 MiB of blob payload).
+Pinned Buck2 counts payload bytes, not protobuf framing or per-blob digests,
+when batching uploads. The lower threshold leaves transport headroom under
+bazel-remote's 4 MiB gRPC receive limit; larger individual blobs use ByteStream
+with the same bounded chunk size. A server capability value of
+`max_batch_total_size_bytes = 0` does not remove its gRPC message limit.
+
+The entrypoint reads the tracked private archive origin from
+`archive_origin.trusted_url_prefix` and `archive_origin.trusted_tier`, including
+roots generated by `mkConsumerBuckRoot`. Public read-only jobs set
+`BUCK2_PUBLIC_CACHE_READ_ONLY=1`; protected public publishers provide
+`BUCK2_CACHE_WRITE_BASIC_AUTH`. A private host resolves its own
+`BUCK2_PRIVATE_CACHE_WRITE_AUTH=username:password` credential and declares
+`BUCK2_PRIVATE_CACHE_ADDRESS=grpc://<private-host>:<port>`. The pinned entrypoint
+converts raw host credentials into `BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH`;
+credentials never enter config files. Do not use a publisher credential as a
+host credential.
+
+Configured REAPI roots without archive-origin metadata use the same admission;
+an omitted `remote_cache_enabled` follows the execution policy's enabled default.
+
+`BUCK2_NO_REMOTE_CACHE=1` disables reads and uploads, and public read-only posture
+wins over either writer credential. The entrypoint probes REAPI capabilities and
+the archive origin concurrently with a 900 ms deadline, caches endpoint outcomes
+for five seconds in the user's cache directory, and emits a warning on every
+fail-open invocation. An unavailable read-only REAPI endpoint selects local
+execution; an unavailable archive origin selects the registry while retaining a
+reachable REAPI session. Writers still fail closed on REAPI outages. Outage
+overrides are invocation-local and do not change tracked configuration.
+
+Identical healthy read-only invocations reuse a shell fast path within the
+remaining probe lifetime, avoiding JavaScript startup in warm loops. Its cache
+key includes config contents, command arguments, working directory and exported
+environment; writers, config includes and external mode files bypass it.
+
+The probe is an admission snapshot: an endpoint that disappears after a
+successful probe (including during its five-second cache lifetime) can still
+fail inside native Buck. Native Buck has no configurable RE connection retry
+limit or startup local-fallback switch at this pinned revision.
+
+Only audited rules requesting the
+`cache_hermetic` execution constraint may reuse/upload; the default platform
+denies both even when root policy allows writes. The complete lane inventory and
+current sandbox limits are in the [execution spec](context/builds/04-buck2/05-execution/spec.md#audited-action-inventory).
+Do not put credentials in tracked configuration.
+
 ### Nix Artifact Import Checks
 
 Validate the generic and JavaScript Buck product import boundaries without
@@ -209,6 +432,20 @@ CLI packaging uses Buck products and the validated Nix import boundary described
 in [workspace tools](./nix/workspace-tools/README.md). Live pnpm workspaces share
 install policy and source-input algebra; Buck products use immutable dependency
 archives.
+
+Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
+Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking
+threads (`BUCK2_MAX_BLOCKING_THREADS`). An unset or zero Nix budget becomes one,
+not the host CPU count. Configuration overrides follow the `build` subcommand;
+only the isolation-directory flag is global.
+
+Local `builtins.getFlake` calls use `git+file://` references so Nix copies only
+Git-tracked sources, not ignored build outputs or development state. The shared
+test runner sets `NIX_FLAKE_REF` to that same Git reference.
+`devenv tasks run lint:check:getflake` checks this contract with negative fixtures;
+it also runs through `nix:check:quick` and `check:quick`. For a standalone check
+without shell evaluation, run `node --test scripts/lint-getflake.unit.test.mjs`
+and `node scripts/lint-getflake.mjs`.
 
 `check:all` also evaluates every flake output for the host system without
 building anything:
