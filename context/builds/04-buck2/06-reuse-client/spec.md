@@ -148,8 +148,10 @@ eligible-hit/miss denominator, even when historical rows show remote hits.
 ### Direct Invocation Admission (BUILD.BUCK.REUSE-R04)
 
 ```text
-pinned buck2 -> identical healthy invocation cache -> native Buck
-            -> concurrent bounded probes -> native Buck + outage overrides
+pinned buck2 -> healthy Watchman + correct watched root -> invocation admission
+            -> unavailable/misrooted Watchman -> actionable failure, no native build
+invocation admission -> identical healthy invocation cache -> native Buck
+                     -> concurrent bounded probes -> native Buck + endpoint outage overrides
 ```
 
 The flake's pinned executable owns admission for direct agent commands, devenv
@@ -158,8 +160,63 @@ and local Buck configuration, applies the shared environment posture, and probes
 REAPI `GetCapabilities` and the trusted archive origin concurrently. Each endpoint
 gets 2500 ms per attempt including connection setup, with exactly one immediate
 retry after a failed first attempt and at most 5000 ms total probing per endpoint.
-Watchman's separate 900 ms deadline is unchanged. Endpoint outcomes expire after
-five seconds. Complete successful
+Watchman admission is separate from these remote-endpoint outage policies.
+An uncached Watchman-configured invocation, including an explicit local Watchman
+override, runs `watchman --no-local [--sockname=...] --output-encoding=json
+watch-project <canonical Buck root>`. This single request verifies service
+availability and requires the returned canonical watched root to equal the
+resolved `.buckroot`; an ancestor-relative watch is rejected, even if its
+coverage appears sufficient. A service/version query alone is insufficient,
+and an ancestor watch whose ignore rules exclude the project is unsafe.
+Without `WATCHMAN_SOCK`, the client may spawn its default Watchman service on
+demand on Linux and Darwin; this also supplies a job-local service on macOS CI
+runners with no pre-existing daemon. With an explicit socket, `--no-spawn`
+preserves the caller's service ownership and an unreachable socket fails closed.
+Each attempt uses the caller's probe deadline (2500 ms by default), replacing
+the former 900 ms cap. Only a timeout gets one retry; total probing is bounded
+to two caller deadlines (5000 ms by default).
+
+Missing executable, unavailable service, exhausted timeout, malformed/error
+response or incorrect watched root fails closed with the root, attempted command,
+failure reason and actionable remediation; none selects notify automatically.
+Root mismatch directs the caller to `watchman watch <root>`; other failures
+explain service/socket/version diagnostics. Only successful admission is cached
+for five seconds, keyed by canonical root, `.watchmanconfig` contents and
+process/socket identity. Healthy invocation-cache shortcuts reuse only completed
+successful admission and include `.watchmanconfig` contents and the selected
+isolation's provider marker in their identity; old fallback launch-cache entries
+are outside the current cache namespace. Missing markers bypass the shell
+shortcut.
+Existing healthy local overrides remain intact;
+stale managed notify fallback configuration is never used for admission.
+
+After successful admission, Watchman-configured worktrees reconcile only the
+invocation's isolation (`--isolation-dir`, then `BUCK_ISOLATION_DIR`, then `v2`).
+A missing provider marker is legacy state; a mismatched marker is a provider
+transition. Under a crash-released per-root/isolation flock, either state stops
+only the registered daemon at `~/.buck/buckd/<root>/<isolation>/buckd.pid`,
+through native `--isolation-dir <isolation> kill` with the same worktree as its
+working directory. A failed stop prevents startup and marker publication.
+Success atomically records the selected provider at
+`~/.buck/file-watcher-admission-v1/<root>/<isolation>.json`, outside the daemon
+directory that native startup cleans. Matching markers prevent repeated stops;
+other roots and isolations are untouched. Maintenance `kill`, `status`, and
+`log` commands bypass both admission and migration so outages remain diagnosable.
+
+The existing explicit `.buckconfig.local` overrides for `notify` and
+`fs_hash_crawler` remain local opt-ins, not outage policies. In particular,
+`[buck2] file_watcher = notify` is preserved without automatic selection.
+It is unsafe for agent builds: a completed source write can precede a successful
+build while its notification is still absent from the batch used to evaluate
+the source digest. The pinned
+[notify implementation](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_file_watcher/src/notify.rs)
+swaps the callback buffer without a filesystem-event delivery barrier. This
+mechanism was reproduced with same-daemon recovery and does not require a
+long-lived daemon; attribution of the original historical persistent stale
+copy to this exact race is not proven. Agent workflows must provide a healthy,
+correctly rooted Watchman service instead of using this explicit unsafe opt-in.
+
+Remote endpoint outcomes expire after five seconds. Complete successful
 read-only invocations can bypass the JavaScript launcher within the remaining
 probe lifetime; the key includes config contents, arguments, working directory
 and exported environment. Writer credentials, includes and external mode files

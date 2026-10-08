@@ -508,6 +508,19 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       laneIf: `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}`,
       timeoutMinutes: 90,
       extraSteps: [
+        {
+          name: 'Enforce root changelog retirement',
+          run: withCiSourceRoot(
+            [
+              'set -euo pipefail',
+              'tracked="$(git ls-files -- \':(top,literal)CHANGELOG.md\')"',
+              'if [ -n "$tracked" ]; then',
+              '  echo \'::error::Root CHANGELOG.md is retired. See AGENTS.md "Breaking Changes": record changes in commits and PRs; include ! and BREAKING CHANGE: migration notes for breaking changes.\'',
+              '  exit 1',
+              'fi',
+            ].join('\n'),
+          ),
+        },
         buck2TrustedCacheWriterStep(verifyOtelShellEntryStep),
         buck2TrustedCacheWriterStep({
           name: 'Type check (Buck)',

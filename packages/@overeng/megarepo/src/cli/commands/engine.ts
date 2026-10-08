@@ -94,6 +94,7 @@ export const syncMegarepo = <R = never>({
   options,
   depth = 0,
   visited = new Set<string>(),
+  createdWorktrees = new Set<string>(),
   progressHandle,
   onMissingRef,
 }: {
@@ -116,6 +117,8 @@ export const syncMegarepo = <R = never>({
   }
   depth?: number
   visited?: Set<string>
+  /** Invocation-local physical identities; never persisted or granted to authoring writers. */
+  createdWorktrees?: Set<string>
   /** Handle for dispatching progress updates */
   progressHandle?: SyncUIHandle
   /** Callback for interactive prompts when a ref doesn't exist */
@@ -164,7 +167,13 @@ export const syncMegarepo = <R = never>({
 
     if (dryRun === false) {
       const authorization =
-        isApplyMode === true && depth === 0 ? { materializationRoot: megarepoRoot } : {}
+        isApplyMode === true && depth === 0
+          ? { materializationRoot: megarepoRoot }
+          : isApplyMode === true &&
+              (options.lockSyncMode ?? 'off') === 'off' &&
+              createdWorktrees.has(resolvedRoot) === true
+            ? { materializationRoot: megarepoRoot, materializedRoot: resolvedRoot }
+            : {}
       yield* assertCanonicalMutationAllowed({ target: megarepoRoot, ...authorization })
       const membersRoot = getMembersRoot(megarepoRoot)
       yield* assertCanonicalMutationAllowed({ target: membersRoot, ...authorization })
@@ -289,6 +298,9 @@ export const syncMegarepo = <R = never>({
             gitProtocol,
             createBranches,
             ...(options.commitMode === true ? { commitMode: true } : {}),
+            ...(isApplyMode === true && all === true && (options.lockSyncMode ?? 'off') === 'off'
+              ? { onWorktreeCreated: (physicalRoot: string) => createdWorktrees.add(physicalRoot) }
+              : {}),
             ...(onMissingRef !== undefined ? { onMissingRef } : {}),
           })
 
@@ -523,6 +535,7 @@ export const syncMegarepo = <R = never>({
                   options,
                   depth: depth + 1,
                   visited,
+                  createdWorktrees,
                   ...(onMissingRef !== undefined ? { onMissingRef } : {}),
                 })
               }).pipe(
