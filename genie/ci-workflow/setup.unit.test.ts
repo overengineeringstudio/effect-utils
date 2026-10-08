@@ -33,7 +33,23 @@ describe('required platform test classification', () => {
     expect(suites.every(({ rationale }) => rationale.trim().length > 0)).toBe(true)
     expect(authority.darwin.map(({ task }) => task)).toContain('test:buck2:unit')
     expect(authority.darwin.map(({ task }) => task)).toContain('test:run')
-    expect(authority.darwin).toHaveLength(8)
-    expect(authority.neutral.map(({ task }) => task)).toContain('test:restate-effect:unbounded')
+    expect(authority.darwin).toHaveLength(18)
+    expect(authority.neutral.map(({ task }) => task)).toContain(
+      'test:agent-session-ingest:unbounded',
+    )
+    for (const task of [
+      'test:genie:unbounded',
+      'test:restate-effect:unbounded',
+      'test:ci-tools:unbounded',
+      'test:ci-tools:test_pipeline_report_local_api:unbounded',
+      'test:utils-dev:unbounded',
+      'test:otel-contract:unbounded',
+      'test:notion-datasource-sync:unbounded',
+      'test:notion-md:unbounded',
+      'test:notion-cli:unbounded',
+      'test:tui-stories:unbounded',
+    ]) {
+      expect(authority.darwin.map(({ task }) => task)).toContain(task)
+    }
   })
 })

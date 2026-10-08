@@ -1019,7 +1019,8 @@ in
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoPackages.notion-cli
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
-    # otelite captures local verifier sessions, not required CI test evidence.
+    # Retained source suites execute this native capture binary on both platforms.
+    repoPackages.otelite
     repoPackages.otel-scrape
     repoPackages.buck2-events
     # Nix-distributed Buck binary used by direct repository tasks.
@@ -1039,7 +1040,6 @@ in
     pkgs.rustfmt
     pkgs.rust-analyzer
   ]
-  ++ lib.optional (!ciUnitTest) repoPackages.otelite
   ++ lib.optional ciUnitTest otelSpan;
 
   # Preserve the pinned task bridge without realizing the local capture stack.

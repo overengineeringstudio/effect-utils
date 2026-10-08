@@ -484,6 +484,17 @@ const unitTestJob = (runner: RunnerProfile) => ({
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:run'),
     }),
+    {
+      name: 'Upload retained Vitest collection reports',
+      if: '${{ !cancelled() }}',
+      uses: 'actions/upload-artifact@v4',
+      with: {
+        name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}',
+        path: 'tmp/otel-scrape/summaries/*.vitest.json',
+        'if-no-files-found': 'ignore',
+        'retention-days': 14,
+      },
+    },
     ...(runner === 'namespace-profile-macos-arm64'
       ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep), macosNixSubstituterSaveStep]
       : []),
