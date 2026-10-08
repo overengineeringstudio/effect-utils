@@ -415,7 +415,6 @@ dependencies = [
  "napi-derive",
  "schemars",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -1190,6 +1189,8 @@ dependencies = [
  "napi-sys",
  "nohash-hasher",
  "rustc-hash",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

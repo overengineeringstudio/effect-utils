@@ -4,7 +4,7 @@
 # Projection source: rust/effect-rust/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:8ed9d92f43be9f7311aa7e0accfbb55e056415aaab14f74953cd4b4c8466dba6
+# Semantic fingerprint: sha256:1d5df054069db6d51941fb491bdaac36d617a38dc6851cd33cb356af1bde0253
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/BUCK.genie.ts, rust/effect-rust/Cargo.toml, rust/effect-rust/src/**/*.rs, rust/effect-rust/tests/**/*.rs, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -19,12 +19,16 @@ static_source_set(
         "Cargo.toml",
         "src/cancellation.rs",
         "src/contract.rs",
+        "src/direct.rs",
+        "src/direct/native.rs",
+        "src/direct/wasm.rs",
         "src/frame.rs",
         "src/host.rs",
         "src/lib.rs",
         "src/native.rs",
         "src/tagged.rs",
         "src/wire.rs",
+        "src/wire/json.rs",
     ] + glob(["rust-toolchain.toml"]),
     visibility = ["PUBLIC"],
 )
@@ -44,6 +48,24 @@ native.export_file(
 native.export_file(
     name = "cargo-source/src/contract.rs",
     src = "src/contract.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/direct.rs",
+    src = "src/direct.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/direct/native.rs",
+    src = "src/direct/native.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/direct/wasm.rs",
+    src = "src/direct/wasm.rs",
     visibility = ["PUBLIC"],
 )
 
@@ -83,6 +105,12 @@ native.export_file(
     visibility = ["PUBLIC"],
 )
 
+native.export_file(
+    name = "cargo-source/src/wire/json.rs",
+    src = "src/wire/json.rs",
+    visibility = ["PUBLIC"],
+)
+
 native.rust_library(
     name = "lib",
     crate = "effect_rust",
@@ -90,27 +118,40 @@ native.rust_library(
     srcs = [
         "src/cancellation.rs",
         "src/contract.rs",
+        "src/direct.rs",
+        "src/direct/native.rs",
+        "src/direct/wasm.rs",
         "src/frame.rs",
         "src/host.rs",
         "src/lib.rs",
         "src/native.rs",
         "src/tagged.rs",
         "src/wire.rs",
+        "src/wire/json.rs",
     ],
     deps = [
         "//rust/effect-rust-macros:lib",
         "//rust/third-party:borsh",
         "//rust/third-party:chrono",
         "//rust/third-party:regex",
+        "//rust/third-party:ryu-js",
         "//rust/third-party:schemars",
         "//rust/third-party:serde",
         "//rust/third-party:serde_json",
         "//rust/third-party:serde_path_to_error",
-    ],
+    ] + select({"//buck2/rust:wasm32_config": [], "DEFAULT": ["//rust/third-party:napi"]}) + select({
+        "//buck2/rust:wasm32_config": [
+            "//rust/third-party:js-sys",
+            "//rust/third-party:wasm-bindgen",
+        ],
+        "DEFAULT": [],
+    }),
     edition = "2021",
     features = [
         "contract",
         "default",
+        "napi",
+        "wasm",
     ],
     env = {
         "CARGO_PKG_NAME": "effect-rust",
