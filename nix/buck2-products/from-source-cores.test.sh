@@ -5,7 +5,7 @@ export BUCK2_PRODUCTS_REPO="$repo_root"
 phase="$(nix eval --impure --raw --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
-    flake = builtins.getFlake (toString repo);
+    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     mkProduct = import (repo + "/nix/buck2-products/from-source.nix") {
       inherit pkgs;

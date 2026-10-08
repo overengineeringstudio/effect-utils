@@ -393,6 +393,14 @@ threads (`BUCK2_MAX_BLOCKING_THREADS`). An unset or zero Nix budget becomes one,
 not the host CPU count. Configuration overrides follow the `build` subcommand;
 only the isolation-directory flag is global.
 
+Local `builtins.getFlake` calls use `git+file://` references so Nix copies only
+Git-tracked sources, not ignored build outputs or development state. The shared
+test runner sets `NIX_FLAKE_REF` to that same Git reference.
+`devenv tasks run lint:check:getflake` checks this contract with negative fixtures;
+it also runs through `nix:check:quick` and `check:quick`. For a standalone check
+without shell evaluation, run `node --test scripts/lint-getflake.unit.test.mjs`
+and `node scripts/lint-getflake.mjs`.
+
 `check:all` also evaluates every flake output for the host system without
 building anything:
 

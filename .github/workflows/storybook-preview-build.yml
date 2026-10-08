@@ -38,6 +38,7 @@ on:
       - packages/@overeng/effect-react/**
       - packages/@overeng/effect-rpc-explorer-react/**
       - packages/@overeng/effect-rpc-explorer/**
+      - packages/@overeng/effect-rust/**
       - packages/@overeng/effect-schema-form-aria/**
       - packages/@overeng/effect-schema-form/**
       - packages/@overeng/genie/**
