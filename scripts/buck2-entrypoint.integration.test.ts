@@ -609,39 +609,42 @@ describe('direct pinned Buck watcher admission', () => {
   it.each([
     ['refused', 'probe failed (service)'],
     ['eacces', 'probe failed (executable)'],
-  ] as const)('a nice 19 client facing %s keeps the genuine failure class', async (mode, expected) => {
-    const { root, env, state } = watcherFixture()
-    if (mode === 'refused') writeFileSync(state, 'refused')
-    else {
-      rmSync(state)
-      chmodSync(join(root, 'watchman'), 0o644)
-    }
-    const child = Bun.spawn({
-      cmd: [
-        process.execPath,
-        '-e',
-        `import { setPriority } from 'node:os';
+  ] as const)(
+    'a nice 19 client facing %s keeps the genuine failure class',
+    async (mode, expected) => {
+      const { root, env, state } = watcherFixture()
+      if (mode === 'refused') writeFileSync(state, 'refused')
+      else {
+        rmSync(state)
+        chmodSync(join(root, 'watchman'), 0o644)
+      }
+      const child = Bun.spawn({
+        cmd: [
+          process.execPath,
+          '-e',
+          `import { setPriority } from 'node:os';
          import { directBuckArguments } from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
          setPriority(19);
          try {
            await directBuckArguments({ cwd: ${JSON.stringify(root)}, env: process.env, args: ['build', '//:app'] });
          } catch (error) { console.error(error.message); process.exit(1); }`,
-      ],
-      env: {
-        ...env,
-        WATCHMAN_SOCK: undefined,
-        PATH: mode === 'eacces' ? root : env['PATH'],
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-    expect(exit).toBe(1)
-    expect(stderr).toContain(expected)
-    expect(stderr).not.toContain('(priority)')
-    expect(stderr).not.toContain('watchman get-sockname` outside the gate')
-    expect(watcherLocal(root)).not.toContain('file_watcher = notify')
-  })
+        ],
+        env: {
+          ...env,
+          WATCHMAN_SOCK: undefined,
+          PATH: mode === 'eacces' ? root : env['PATH'],
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      expect(exit).toBe(1)
+      expect(stderr).toContain(expected)
+      expect(stderr).not.toContain('(priority)')
+      expect(stderr).not.toContain('watchman get-sockname` outside the gate')
+      expect(watcherLocal(root)).not.toContain('file_watcher = notify')
+    },
+  )
 
   it.each(['wrong-root', 'relative-root'])(
     'fails closed on %s Watchman selection',

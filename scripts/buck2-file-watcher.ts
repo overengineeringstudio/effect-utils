@@ -131,9 +131,7 @@ const defaultServiceMissing = async ({
     accessSync(sockname)
     return false
   } catch (error) {
-    return (
-      typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
-    )
+    return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
   }
 }
 /** Probe the actual service and root; a local version response proves neither. */
