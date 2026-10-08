@@ -14,17 +14,11 @@ const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/content-address' }),
   dependencies: {
     workspace: [effectRustPkg],
-    external: catalog.pick('@noble/hashes', 'effect'),
+    external: catalog.pick('@effect/platform-node', '@noble/hashes', 'effect'),
   },
   devDependencies: {
     workspace: [utilsDevPkg],
-    external: catalog.pick(
-      '@effect/platform-node',
-      '@effect/vitest',
-      '@types/node',
-      'typescript',
-      'vitest',
-    ),
+    external: catalog.pick('@effect/vitest', '@types/node', 'typescript', 'vitest'),
   },
 })
 

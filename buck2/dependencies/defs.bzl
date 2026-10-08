@@ -281,6 +281,10 @@ _fetch = cache_guarded_rule(
     }),
 )
 
+# local-materialization-policy: extraction and store assembly are cheaper than
+# downloading their trees. Leave these rules on the default execution platform,
+# which disables remote reads and uploads, and disable each action's upload bit.
+# cache_guarded_rule rejects caller attempts to opt them back into shared cache.
 def _extract_impl(ctx):
     out = ctx.actions.declare_output("package", dir = True)
     strip_prefix = "package"
@@ -303,6 +307,8 @@ def _extract_impl(ctx):
         args,
         category = "pnpm_extract",
         identifier = ctx.attrs.name,
+        cacheable = False,
+        local_only = True,
     )
     for name, entrypoint in ctx.attrs.bins.items():
         _require_portable_path(name, "package bin name")
@@ -313,7 +319,6 @@ def _extract_impl(ctx):
     ]
 
 _extract = cache_guarded_rule(
-    cache_eligible = lambda ctx: True,
     impl = _extract_impl,
     attrs = dict(hermetic_attrs(), **{
         "archive": attrs.source(),
@@ -348,7 +353,7 @@ def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches
         bins = bins,
         package_name = package_name,
         patches = patches,
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
@@ -536,6 +541,7 @@ def _store_entry_impl(ctx):
         category = "pnpm_store_entry",
         identifier = ctx.attrs.name,
         local_only = True,
+        cacheable = False,
     )
     return [
         DefaultInfo(
@@ -553,7 +559,6 @@ def _store_entry_impl(ctx):
     ]
 
 _store_entry = cache_guarded_rule(
-    cache_eligible = lambda ctx: True,
     impl = _store_entry_impl,
     attrs = dict(hermetic_attrs(), **{
         "dependencies": attrs.dict(
@@ -596,7 +601,7 @@ def pnpm_store_entry(
         runtime = runtime,
         scc = scc,
         store_key = store_key,
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
@@ -649,6 +654,7 @@ def _store_scc_impl(ctx):
         category = "pnpm_store_scc",
         identifier = ctx.attrs.name,
         local_only = True,
+        cacheable = False,
     )
     return [
         DefaultInfo(default_output = out, other_outputs = read_roots[1:]),
@@ -660,7 +666,6 @@ def _store_scc_impl(ctx):
     ]
 
 _store_scc = cache_guarded_rule(
-    cache_eligible = lambda ctx: True,
     impl = _store_scc_impl,
     attrs = dict(hermetic_attrs(), **{
         "external_edges": attrs.dict(
@@ -702,7 +707,7 @@ def pnpm_store_scc(
         ),
         members = members,
         runtime = runtime,
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
@@ -772,6 +777,7 @@ def _store_view_impl(ctx):
         category = "pnpm_store_view",
         identifier = ctx.attrs.name,
         local_only = True,
+        cacheable = False,
     )
     return [
         DefaultInfo(
@@ -787,7 +793,6 @@ def _store_view_impl(ctx):
     ]
 
 _store_view = cache_guarded_rule(
-    cache_eligible = lambda ctx: True,
     impl = _store_view_impl,
     attrs = dict(hermetic_attrs(), **{
         "bins": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
@@ -828,7 +833,7 @@ def pnpm_store_view(
         runtime = runtime,
         workspace_dependencies = workspace_dependencies,
         workspace_trees = workspace_trees,
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 

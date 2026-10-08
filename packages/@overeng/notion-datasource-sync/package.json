@@ -149,10 +149,10 @@
     }
   },
   "devDependencies": {
-    "@effect/atom-react": "4.0.0-rc.118",
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/platform-node": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/atom-react": "4.0.0",
+    "@effect/opentelemetry": "4.0.0",
+    "@effect/platform-node": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "@playwright/test": "1.63.0",
@@ -162,7 +162,7 @@
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
     "@vitest/browser-playwright": "5.0.3",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
     "storybook": "10.6.0",
@@ -170,10 +170,10 @@
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "4.0.0-rc.118",
-    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/opentelemetry": "^4.0.0",
+    "@effect/platform-node": "^4.0.0",
     "@playwright/test": "^1.63.0",
-    "effect": "4.0.0-rc.118"
+    "effect": "^4.0.0"
   },
   "engines": {
     "node": ">=24.0.0"

@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:2eede31838d5be45e0fe6b1e3329f4177983fcb39ad1f90addef7cba0a1467cd",
+  "lockfileFingerprint": "sha256:8ad9464434430fb1085f2d3d785c7915bd5a380048dd735beec51902759c2d63",
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
@@ -259,68 +259,68 @@
       "sha256": "49b42379de2656cbe21fa32c6c054686a7d48813be33b981b125731fa6dd9226",
       "sizeBytes": 31402
     },
-    "@effect/ai-openai-compat@4.0.0-rc.118": {
+    "@effect/ai-openai-compat@4.0.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-VqjUIq1HDcluCx6Xoqg+nDY4UC2FQUnfihNitg0y3rj/gHOps70k1PCgyPzBXNNi6GWzfakjNp69d2PfTryyOA==",
-      "packageIdentity": "@effect/ai-openai-compat@4.0.0-rc.118",
-      "registryUrl": "https://registry.npmjs.org/@effect/ai-openai-compat/-/ai-openai-compat-4.0.0-rc.118.tgz",
-      "sha256": "16c854304ed632ac146c81d5bdc9a9f9a2b9b3a25db54d1e6859998a7abee7a2",
-      "sizeBytes": 120952
+      "integrity": "sha512-zoFwI5M7pUEj4UMHMbPsQGaVRxirIAIqzfVZAtpjJPXWwd/acwxN4kI1nS9gfn/lCHvFIc9xPEMstforcODesw==",
+      "packageIdentity": "@effect/ai-openai-compat@4.0.0",
+      "registryUrl": "https://registry.npmjs.org/@effect/ai-openai-compat/-/ai-openai-compat-4.0.0.tgz",
+      "sha256": "d515c57d9bbbf328825d29db6df2a44e2fede63b1ac516577d0879dbe63570a3",
+      "sizeBytes": 121661
     },
-    "@effect/ai-typesafe@4.0.0-rc.118": {
+    "@effect/ai-typesafe@4.0.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-I8woyusKXG8u8p2VHXGL9Xbcw0ZPWAmqxa/rAgdZcaOErqWl9q1I+ubqiqSQS4AbMCJP2aIF2j4b+YIJBfj7Zw==",
-      "packageIdentity": "@effect/ai-typesafe@4.0.0-rc.118",
-      "registryUrl": "https://registry.npmjs.org/@effect/ai-typesafe/-/ai-typesafe-4.0.0-rc.118.tgz",
-      "sha256": "c419f773ca0aff8631691307b08afc576d53565342b2274804a1e6bacd11ad57",
-      "sizeBytes": 65759
+      "integrity": "sha512-TbInR017yf4KFAYD1jTSr9pkQrob1+9UNyW6KKRHHGfmD8j121f41fOf+60RJ7IIBl/XOUAURC8/Mj7aWkGZtg==",
+      "packageIdentity": "@effect/ai-typesafe@4.0.0",
+      "registryUrl": "https://registry.npmjs.org/@effect/ai-typesafe/-/ai-typesafe-4.0.0.tgz",
+      "sha256": "4a6e4324989b46f62e394ed3b4e045f317f01345174029e91bbf70e178aaac63",
+      "sizeBytes": 66492
     },
-    "@effect/atom-react@4.0.0-rc.118": {
+    "@effect/atom-react@4.0.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-H6XBWGOlKIe53yFHdzd9zJE+H1RDoMvqF5OyWBZetbaHJUYlSbZECvDzBw1545fSoHrgH2JmlWePFPsXOgGSqA==",
-      "packageIdentity": "@effect/atom-react@4.0.0-rc.118",
-      "registryUrl": "https://registry.npmjs.org/@effect/atom-react/-/atom-react-4.0.0-rc.118.tgz",
-      "sha256": "66523dcb72827f264fde6be760c27593ef3b5e989161a6013ae39daf27948958",
-      "sizeBytes": 69714
+      "integrity": "sha512-VPP2oOjj56iwOpL5aIGbu7Qhb4+1sFNdU16aI5of3JqToqWWX9eJPBfeiPyQ1eTYof1hnNX1auyRiTORSfLT6g==",
+      "packageIdentity": "@effect/atom-react@4.0.0",
+      "registryUrl": "https://registry.npmjs.org/@effect/atom-react/-/atom-react-4.0.0.tgz",
+      "sha256": "c9516bf0bb46faa74e313849b04b17b701f29f76d1680972833258075549a979",
+      "sizeBytes": 70289
     },
-    "@effect/opentelemetry@4.0.0-rc.118": {
+    "@effect/opentelemetry@4.0.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-N5dvEeCj1W/9zgBvyyp/GucOKOEJdV7QNirWp+4g/axFKTB/cfV2gx/ZhMDUb69HzlyRmOelNvKEmB3RA0PdVw==",
-      "packageIdentity": "@effect/opentelemetry@4.0.0-rc.118",
-      "registryUrl": "https://registry.npmjs.org/@effect/opentelemetry/-/opentelemetry-4.0.0-rc.118.tgz",
-      "sha256": "f9553eeff6e964eff72bffb44df6ddfe896b09b421db3cb4248ff9e2c0e5449a",
-      "sizeBytes": 91622
+      "integrity": "sha512-vXVhqlcADHtmKlw2gIqRRlXFve4ms4JJ5ykAqzNe37QQ/5N5A5gJ9VOXkMBORHZC5O4gdHZwxhAzGZb0zvFf/Q==",
+      "packageIdentity": "@effect/opentelemetry@4.0.0",
+      "registryUrl": "https://registry.npmjs.org/@effect/opentelemetry/-/opentelemetry-4.0.0.tgz",
+      "sha256": "75b59e6668992c72a69868ca8a0316683456b2d04b098f90f5cf67e43b08ee5f",
+      "sizeBytes": 92302
     },
-    "@effect/platform-node-shared@4.0.0-rc.118": {
+    "@effect/platform-node-shared@4.0.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-pNbmIlxbAUxAthUNsp2xm1NLG9kxoYecsPkoYl9mNF2oxPcKDxAvkOar7tYnLSUpXJeATm4pxYVipdZjQfqO4Q==",
-      "packageIdentity": "@effect/platform-node-shared@4.0.0-rc.118",
-      "registryUrl": "https://registry.npmjs.org/@effect/platform-node-shared/-/platform-node-shared-4.0.0-rc.118.tgz",
-      "sha256": "c64de8570b51b31d086d03451c8ca270cbe2c2a1196b94566ca1e82cab62780e",
-      "sizeBytes": 124893
+      "integrity": "sha512-VBXHJU9UXVZPdQGGDRjGXpo+TpOzRwZuMrdKAtIxi1qwcRftmacZ1zTgIrzBa0Z2RA2KVkoOecQUsTlt/nJZhw==",
+      "packageIdentity": "@effect/platform-node-shared@4.0.0",
+      "registryUrl": "https://registry.npmjs.org/@effect/platform-node-shared/-/platform-node-shared-4.0.0.tgz",
+      "sha256": "42dc8a7cb45f6ee9a014ee7f8f9d635f87898a0e7f04e4dd6fb64837387da23f",
+      "sizeBytes": 125520
     },
-    "@effect/platform-node@4.0.0-rc.118": {
+    "@effect/platform-node@4.0.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-qdAxPZ+5bKxVnzkwziqcHZTHRHz2hyfFX6NhwEmm75CBpmaIzXIZR2LRqGd1/8eI3J3cOrXcAYzByhln7T1/EA==",
-      "packageIdentity": "@effect/platform-node@4.0.0-rc.118",
-      "registryUrl": "https://registry.npmjs.org/@effect/platform-node/-/platform-node-4.0.0-rc.118.tgz",
-      "sha256": "896222726fb900d9d6a041a2b06239897497d8a4057b6d41a2570d7b161480bb",
-      "sizeBytes": 115100
+      "integrity": "sha512-/L+4MUbl8FejPKLHLROYSOebvHnfixkP8KiblSD/DE5uH5xENZBHaux4nH6XMnRP+lr8ajpEJFS8sUrmmxFJeQ==",
+      "packageIdentity": "@effect/platform-node@4.0.0",
+      "registryUrl": "https://registry.npmjs.org/@effect/platform-node/-/platform-node-4.0.0.tgz",
+      "sha256": "9810d982e0d90c947b0ba60f65731845259dafc100fb517ed1955f5bdafc568d",
+      "sizeBytes": 116017
     },
-    "@effect/vitest@4.0.0-rc.118": {
+    "@effect/vitest@4.0.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-O0CPgtFVhkB+pyFtjP4up2XF4uVWsPgUmlv4hMjq8ARLOPKYix+uu3AUFIUKRHjzzQpx+JPce6KPhD6Flkrfag==",
-      "packageIdentity": "@effect/vitest@4.0.0-rc.118",
-      "registryUrl": "https://registry.npmjs.org/@effect/vitest/-/vitest-4.0.0-rc.118.tgz",
-      "sha256": "9616e3647b2083f06ca82a754fd2974881dccb1e05c2fb7ee7d3febb18d73328",
-      "sizeBytes": 75358
+      "integrity": "sha512-kGElCPFGtP+CgMCwV/HjJWqtE3zYo6I1+8MSA54l+EI24lPU9p2Efa+TBp1jfkg9j711KKzEqgSAy3VzTsb76Q==",
+      "packageIdentity": "@effect/vitest@4.0.0",
+      "registryUrl": "https://registry.npmjs.org/@effect/vitest/-/vitest-4.0.0.tgz",
+      "sha256": "715be8406d582dc846853d2de01f0ffa1bb690f3989336e328f7c119184fe0c2",
+      "sizeBytes": 75899
     },
     "@emnapi/core@1.11.0": {
       "bins": {},
@@ -3950,14 +3950,14 @@
       "sha256": "90bce27325f3cfedad2acd0dc83b39b69989d437d2342d7b5419b49768a99031",
       "sizeBytes": 62368
     },
-    "effect@4.0.0-rc.118": {
+    "effect@4.0.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-hxhpCd+swzrtu9lnyPpEFre2ODQzJ9qxgyL1oHIEY8NKnW4PxTbM1XzplMZXiAsLD62HO+KJc41Nqxr9T791ZQ==",
-      "packageIdentity": "effect@4.0.0-rc.118",
-      "registryUrl": "https://registry.npmjs.org/effect/-/effect-4.0.0-rc.118.tgz",
-      "sha256": "e1ccff11ed06bf4a6a1a74307fbb233090144990704b9322deb7cffd81f3aadd",
-      "sizeBytes": 8907110
+      "integrity": "sha512-ooc1TG5t+FfzgYnFz2ff6BBKyZ7EwBRVXC7c4RhQUAD6/TZ2gTXXMeb4WX7a19ozQo4J73/QW+S00YAIresoMQ==",
+      "packageIdentity": "effect@4.0.0",
+      "registryUrl": "https://registry.npmjs.org/effect/-/effect-4.0.0.tgz",
+      "sha256": "eff6ca16140c491380cfdb4bcbc51be6a51f1ac2d402ebc8420e76ccf3e0e19a",
+      "sizeBytes": 8913724
     },
     "electron-to-chromium@1.5.418": {
       "bins": {},
@@ -6658,5 +6658,5 @@
       "sizeBytes": 4529
     }
   },
-  "fingerprint": "sha256:9582d5a51eec9118d5b1fe5b84b05eaf2204b4d83d594a4ccadc19b2f9201a21"
+  "fingerprint": "sha256:e72f423d84e9fddbd04cb1aa72460559ebeb96f3418a260c1ca26c5249fc1168"
 }

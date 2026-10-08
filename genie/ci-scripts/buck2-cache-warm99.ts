@@ -32,10 +32,14 @@ import {
 } from './buck2-action-evidence-codec.ts'
 import { decodeCacheAdmissionEvidence } from './buck2-cache-evidence.ts'
 import {
+  actionExclusionReason,
+  countActionExclusions,
   actionsArtifactName,
   cacheOutcomeMapping,
   invocationWithinJobWindow,
   maxActionArtifactBytes,
+  zeroActionExclusionCounts,
+  type ActionExclusionCounts,
   type ActionArtifact,
   type ActionRecord,
   type CacheLane,
@@ -64,6 +68,7 @@ export type LaneObservation = {
   cold: number
   changed: number
   excluded: number
+  excludedByDesign: ActionExclusionCounts
   noncacheable: number
   uploadFailure: number
   evidenceGap: number
@@ -180,6 +185,13 @@ export const decodeEvidence = (
     total += n
   }
   if (total !== artifact.actions.length) return invalid()
+  const excludedByDesign = field(summary, 'excludedByDesign')
+  if (
+    excludedByDesign !== undefined &&
+    integer(field(excludedByDesign, 'local-materialization-policy')) !==
+      artifact.header.excludedByDesign['local-materialization-policy']
+  )
+    return invalid()
   const invocations = list(field(summary, 'invocations'))
   if (invocations.length !== artifact.header.invocations.length) return invalid()
   for (const invocation of artifact.header.invocations) {
@@ -187,6 +199,13 @@ export const decodeEvidence = (
     if (
       matches.length !== 1 ||
       integer(field(matches[0], 'actionCount')) !== invocation.actionCount
+    )
+      return invalid()
+    const exclusions = field(matches[0], 'excludedByDesign')
+    if (
+      exclusions !== undefined &&
+      integer(field(exclusions, 'local-materialization-policy')) !==
+        invocation.excludedByDesign['local-materialization-policy']
     )
       return invalid()
   }
@@ -278,6 +297,7 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
         cold: 0,
         changed: 0,
         excluded: 0,
+        excludedByDesign: zeroActionExclusionCounts(),
         noncacheable: 0,
         uploadFailure: 0,
         evidenceGap: 0,
@@ -293,7 +313,10 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
       const uploadedBases = new Map<string, number>()
       for (const [index, artifact] of writers.entries()) {
         result.uploadFailure +=
-          artifact?.actions.filter((action) => action.uploadOutcome === 'failed').length ?? 0
+          artifact?.actions.filter(
+            (action) =>
+              actionExclusionReason(action.category) === null && action.uploadOutcome === 'failed',
+          ).length ?? 0
         if (
           artifact === undefined ||
           artifact.header.metadata.lane !== observation.writers[index]?.lane ||
@@ -306,6 +329,7 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
         for (const action of artifact.actions) {
           const key = identity(action)
           if (
+            actionExclusionReason(action.category) !== null ||
             !action.commandAction ||
             key === undefined ||
             action.uploadOutcome !== 'uploaded' ||
@@ -344,9 +368,19 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
       }
       for (const { artifact } of expected) {
         result.uploadFailure +=
-          artifact?.actions.filter((action) => action.uploadOutcome === 'failed').length ?? 0
-        if (artifact?.header.metadata.posture === 'disabled-by-design')
-          result.excluded += artifact.actions.length
+          artifact?.actions.filter(
+            (action) =>
+              actionExclusionReason(action.category) === null && action.uploadOutcome === 'failed',
+          ).length ?? 0
+        const policyExcluded =
+          artifact === undefined
+            ? 0
+            : countActionExclusions(artifact.actions)['local-materialization-policy']
+        result.excludedByDesign['local-materialization-policy'] += policyExcluded
+        result.excluded +=
+          artifact?.header.metadata.posture === 'disabled-by-design'
+            ? artifact.actions.length
+            : policyExcluded
         if (
           artifact === undefined ||
           artifact.header.metadata.lane !== enabledLane ||
@@ -378,6 +412,7 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
           continue
         }
         for (const action of artifact.actions) {
+          if (actionExclusionReason(action.category) !== null) continue
           const invocation = artifact.header.invocations.find(
             (inv) => inv.buildId === action.buildId,
           )

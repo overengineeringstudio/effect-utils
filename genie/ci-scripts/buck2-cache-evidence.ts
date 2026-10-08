@@ -24,13 +24,18 @@ import { parseArgs } from 'node:util'
 import { gzipSync, gunzipSync } from 'node:zlib'
 
 import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
-import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
+import { decodeActionArtifact, decodeActionExclusionCounts } from './buck2-action-evidence-codec.ts'
 import {
+  actionExclusionReason,
+  countActionExclusions,
   actionsArtifactName,
   cacheOutcomeMapping,
   invocationWithinJobWindow,
   maxActionArtifactBytes,
   outcomeFor,
+  zeroActionExclusionCounts,
+  type ActionExclusionCounts,
+  type ActionExclusionReason,
   type ActionArtifact,
   type ActionInvocation,
   type ActionRecord,
@@ -62,6 +67,7 @@ export type CacheAction = {
   buildId: string
   context?: string
   category: string
+  exclusionReason: ActionExclusionReason | null
   target: string
   configuration?: string
   digest: string
@@ -73,6 +79,8 @@ export type CacheInvocation = {
   buildId: string
   context?: string
   counts: OutcomeCounts
+  /** Absent on retained bounded summaries that cannot reconstruct omitted categories. */
+  excludedByDesign?: ActionExclusionCounts
   actionCount: number
   missingDigestCount: number
   missingCommandDigestCount: number
@@ -91,6 +99,7 @@ export type CacheEvidence = {
   reason?: string
   metadata: Record<string, string>
   counts: OutcomeCounts
+  excludedByDesign?: ActionExclusionCounts
   actionCount: number
   droppedActionCount: number
   invocations: CacheInvocation[]
@@ -337,6 +346,7 @@ export const createCacheEvidenceProjector = ({
   let invalidActionCount = 0
   const actions: CacheAction[] = []
   const counts = zeroCounts()
+  const excludedByDesign = zeroActionExclusionCounts()
   let actionCount = 0
   let missingDigestCount = 0
   let missingCommandDigestCount = 0
@@ -390,6 +400,8 @@ export const createCacheEvidenceProjector = ({
     const executionKind = nativeEnum(field({ value: end, key: 'execution_kind' }))
     const cacheUploadResult = nativeEnum(field({ value: end, key: 'cache_upload_result' }))
     const outcome = outcomeFor({ executionKind: executionKind, uploadResult: cacheUploadResult })
+    const exclusionReason = actionExclusionReason(category)
+    if (exclusionReason !== null) excludedByDesign[exclusionReason]++
     counts[outcome]++
     actionCount++
     const digest = digestFor(end)
@@ -411,6 +423,7 @@ export const createCacheEvidenceProjector = ({
       buildId: safeIdentity(buildId, /^[a-zA-Z0-9_.-]+$/),
       context: safeIdentity(context, /^[a-zA-Z0-9_.:-]+$/),
       category: safeIdentity(category, /^[a-zA-Z0-9_.-]+$/),
+      exclusionReason,
       target: safeIdentity(target, labelGrammar),
       configuration: safeIdentity(configuration, configurationGrammar),
       digest: safeIdentity(digest, /^[a-fA-F0-9]+:[0-9]+$/),
@@ -463,6 +476,7 @@ export const createCacheEvidenceProjector = ({
         buildId,
         ...(context === undefined ? {} : { context }),
         category,
+        exclusionReason,
         target,
         ...(configuration === undefined ? {} : { configuration }),
         digest,
@@ -481,6 +495,7 @@ export const createCacheEvidenceProjector = ({
       completedAt: invocationCompletedAt,
       freshRoot,
       actionCount,
+      excludedByDesign: { ...excludedByDesign },
       complete:
         invalidActionCount === 0 &&
         starts.size === 0 &&
@@ -494,6 +509,7 @@ export const createCacheEvidenceProjector = ({
       ...zeroAdmissionEvidence(),
       metadata: {},
       counts: { ...counts },
+      excludedByDesign: { ...excludedByDesign },
       actionCount,
       // Includes nondigest/nonidentity actions; omission counters explain why.
       droppedActionCount: actionCount - actions.length,
@@ -502,6 +518,7 @@ export const createCacheEvidenceProjector = ({
           buildId,
           ...(context === undefined ? {} : { context }),
           counts: { ...counts },
+          excludedByDesign: { ...excludedByDesign },
           actionCount,
           missingDigestCount,
           missingCommandDigestCount,
@@ -563,9 +580,13 @@ export const mergeCacheEvidence = ({
   }
   const counts = zeroCounts()
   let actionCount = 0
+  const excludedByDesign = zeroActionExclusionCounts()
   for (const invocation of invocations) {
     for (const outcome of cacheEvidenceOutcomes) counts[outcome] += invocation.counts[outcome]
     actionCount += invocation.actionCount
+    if (invocation.excludedByDesign !== undefined)
+      excludedByDesign['local-materialization-policy'] +=
+        invocation.excludedByDesign['local-materialization-policy']
   }
   return {
     schemaVersion: 1,
@@ -573,6 +594,9 @@ export const mergeCacheEvidence = ({
     ...admission,
     metadata: { ...previous.metadata, ...next.metadata },
     counts,
+    ...(invocations.every((invocation) => invocation.excludedByDesign !== undefined)
+      ? { excludedByDesign }
+      : {}),
     actionCount,
     droppedActionCount: actionCount - actions.length,
     invocations,
@@ -631,6 +655,9 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
       missingIdentityCount: count(field({ value: item, key: 'missingIdentityCount' })),
       unpairedStartCount: count(field({ value: item, key: 'unpairedStartCount' })),
     }
+    const excludedByDesign = field({ value: item, key: 'excludedByDesign' })
+    if (excludedByDesign !== undefined)
+      invocation.excludedByDesign = decodeActionExclusionCounts(excludedByDesign)
     const noDigestReasons = field({ value: item, key: 'noDigestReasons' })
     if (noDigestReasons !== undefined) invocation.noDigestReasons = decodeCounts(noDigestReasons)
     const context = field({ value: item, key: 'context' })
@@ -646,12 +673,16 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
     const action: CacheAction = {
       buildId: requiredText(field({ value: item, key: 'buildId' })),
       category: requiredText(field({ value: item, key: 'category' })),
+      exclusionReason: actionExclusionReason(requiredText(field({ value: item, key: 'category' }))),
       target: requiredText(field({ value: item, key: 'target' })),
       digest: requiredText(field({ value: item, key: 'digest' })),
       outcome,
       executionKind: count(field({ value: item, key: 'executionKind' })),
       cacheUploadResult: count(field({ value: item, key: 'cacheUploadResult' })),
     }
+    const exclusionReason = field({ value: item, key: 'exclusionReason' })
+    if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason)
+      throw new Error('Invalid cache evidence exclusion reason')
     const context = field({ value: item, key: 'context' })
     if (context !== undefined) action.context = requiredText(context)
     if (configuration !== undefined) action.configuration = configuration
@@ -669,6 +700,9 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
     ...(status === 'no-native-logs' ? { reason: 'No native Buck action logs observed.' } : {}),
     metadata,
     counts: decodeCounts(field({ value: value, key: 'counts' })),
+    ...(field({ value, key: 'excludedByDesign' }) === undefined
+      ? {}
+      : { excludedByDesign: decodeActionExclusionCounts(field({ value, key: 'excludedByDesign' })) }),
     actionCount: count(field({ value: value, key: 'actionCount' })),
     droppedActionCount: count(field({ value: value, key: 'droppedActionCount' })),
     invocations,
@@ -683,6 +717,7 @@ export const disabledCacheEvidence = (): CacheEvidence => ({
   reason: 'In-Nix product reuse uses Nix substitution, not the shared Buck ActionCache.',
   metadata: {},
   counts: zeroCounts(),
+  excludedByDesign: zeroActionExclusionCounts(),
   actionCount: 0,
   droppedActionCount: 0,
   invocations: [],
@@ -696,6 +731,7 @@ export const emptyCacheEvidence = (): CacheEvidence => ({
   reason: 'No native Buck action logs observed.',
   metadata: {},
   counts: zeroCounts(),
+  excludedByDesign: zeroActionExclusionCounts(),
   actionCount: 0,
   droppedActionCount: 0,
   invocations: [],
@@ -721,6 +757,7 @@ const emptyActionArtifact = (status: CacheEvidence['status']): ActionArtifact =>
     status,
     complete: false,
     actionCount: 0,
+    excludedByDesign: zeroActionExclusionCounts(),
     rows: 0,
     missingDigestCount: 0,
     missingIdentityCount: 0,
@@ -964,6 +1001,7 @@ const run = async (): Promise<void> => {
   }
   header.rows = full.actions.length
   header.actionCount = evidence.actionCount
+  header.excludedByDesign = countActionExclusions(full.actions)
   header.missingDigestCount = full.actions.filter((row) => row.digest === null).length
   header.missingIdentityCount = full.actions.filter(
     (row) =>
