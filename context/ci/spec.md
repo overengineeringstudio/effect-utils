@@ -56,6 +56,8 @@ The inert-admission lane rejects tracked editor backing stores and product paylo
 
 Nix candidates must be Git-classified text of at most 256 KiB. Admission rejects any path component matching `buck-out`, `.editor-view`, `result*`, `dist`, `node_modules`, `storybook-static`, `tmp`, `target`, or `.devenv`, regardless of filename suffix. Size and text checks read indexed blobs rather than mutable working-tree content.
 
+Filenames containing Git pathspec metacharacters (for example `[a].nix`) must not be reinterpreted as glob patterns: size and text probes use literal pathspecs.
+
 ## Checks and ruleset
 
 GitHub creates a check run for each materialized job and groups runs from one workflow execution in a check suite. Branch protection names required check-run contexts, not source-level job keys.

@@ -837,7 +837,7 @@ const extraJobs: Record<string, any> = {
             '  case "/$path/" in',
             '    */buck-out/*|*/.editor-view/*|*/result*/*|*/dist/*|*/node_modules/*|*/storybook-static/*|*/tmp/*|*/target/*|*/.devenv/*) ;;',
             '    *)',
-            '      if [ "$(git cat-file -s ":$path")" -le 262144 ] && git grep --cached -I --name-only -e \'\' -- "$path" >/dev/null; then',
+            '      if [ "$(git --literal-pathspecs cat-file -s ":$path")" -le 262144 ] && git --literal-pathspecs grep --cached -I --name-only -e \'\' -- "$path" >/dev/null; then',
             '        continue',
             '      fi',
             '      ;;',
