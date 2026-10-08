@@ -26,6 +26,8 @@ export {
   type OutputHandle,
   type PanicPolicy,
   type PanicObserver,
+  type Resource,
+  type ResourceHandle,
   type Runtime,
   type RustJob,
   type Start,
@@ -103,13 +105,23 @@ export const wasmLayer = {
       Service,
       options: { ...options, panicBoundary: 'wasm' },
     }),
-  // eslint-disable-next-line overeng/named-args -- Public wasmLayer.worker preserves the SDK's (Service, options) signature.
-  worker: <TId, TService, TApi>(
+  // eslint-disable-next-line overeng/named-args -- Public wasmLayer.browserWorker preserves the SDK's (Service, options) signature.
+  browserWorker: <TId, TService, TApi>(
     Service: Context.Key<TId, TService>,
     options: LayerOptions<TApi, TService>,
   ): Layer.Layer<TId, Init> =>
     instanceLayer({
-      runtimeName: 'wasm.worker',
+      runtimeName: 'wasm.browserWorker',
+      Service,
+      options: { ...options, panicBoundary: 'wasm' },
+    }),
+  // eslint-disable-next-line overeng/named-args -- Public wasmLayer.workerd preserves the SDK's (Service, options) signature.
+  workerd: <TId, TService, TApi>(
+    Service: Context.Key<TId, TService>,
+    options: LayerOptions<TApi, TService>,
+  ): Layer.Layer<TId, Init> =>
+    instanceLayer({
+      runtimeName: 'wasm.workerd',
       Service,
       options: { ...options, panicBoundary: 'wasm' },
     }),
@@ -146,7 +158,8 @@ export interface WasmLoaders<TApi> {
   readonly node: InstanceFactory<TApi>
   readonly bun: InstanceFactory<TApi>
   readonly browser: InstanceFactory<TApi>
-  readonly worker: InstanceFactory<TApi>
+  readonly browserWorker: InstanceFactory<TApi>
+  readonly workerd: InstanceFactory<TApi>
 }
 /** Fresh native instance loaders for Node and Bun. */
 export interface NativeLoaders<TApi> {
@@ -166,7 +179,8 @@ export interface WasmLayers<TId> {
   readonly node: (options?: StaticOptions) => Layer.Layer<TId, Init>
   readonly bun: (options?: StaticOptions) => Layer.Layer<TId, Init>
   readonly browser: (options?: StaticOptions) => Layer.Layer<TId, Init>
-  readonly worker: (options?: StaticOptions) => Layer.Layer<TId, Init>
+  readonly browserWorker: (options?: StaticOptions) => Layer.Layer<TId, Init>
+  readonly workerd: (options?: StaticOptions) => Layer.Layer<TId, Init>
 }
 /** Runtime-specific native layer constructors exposed by generated services. */
 export interface NativeLayers<TId> {
@@ -201,8 +215,10 @@ export const defineStatics = <
           bun: (options = {}) => wasmLayer.bun(Service, { ...options, load: wasm.bun, make }),
           browser: (options = {}) =>
             wasmLayer.browser(Service, { ...options, load: wasm.browser, make }),
-          worker: (options = {}) =>
-            wasmLayer.worker(Service, { ...options, load: wasm.worker, make }),
+          browserWorker: (options = {}) =>
+            wasmLayer.browserWorker(Service, { ...options, load: wasm.browserWorker, make }),
+          workerd: (options = {}) =>
+            wasmLayer.workerd(Service, { ...options, load: wasm.workerd, make }),
         }
   const layerNative: NativeLayers<TId> | undefined =
     native === undefined

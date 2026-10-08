@@ -37,9 +37,57 @@ const digest = ContentCore.pipe(
 )
 ```
 
-`wasmLayer.node`, `.bun`, `.browser`, and `.worker` are explicit constructors. `nativeLayer.node` and `.bun` load the selected native adapter. Nothing detects an environment or falls back to another transport. `load` returns `{ api, release, observePanic? }`; it may reuse an immutable compiled `WebAssembly.Module`, but not an initialized bindgen module or its mutable glue state. Async wasm factories provide a generation-local `observePanic(observer)` subscription, returning an unsubscribe function; generated factories install it at the bindgen scheduler callback boundary. `release` must sever instance/glue references and stop generation-owned external callbacks; it must not invoke poisoned Rust destructors.
+`wasmLayer.node`, `.bun`, `.browser`, `.browserWorker`, and `.workerd` are explicit constructors. Browser Workers fetch the emitted wasm asset; workerd receives a precompiled `WebAssembly.Module`. There is no ambiguous `.worker` constructor. `nativeLayer.node` and `.bun` load the selected native adapter. Nothing detects an environment or falls back to another transport. `load` returns `{ api, release, observePanic? }`; it may reuse an immutable compiled `WebAssembly.Module`, but not an initialized bindgen module or its mutable glue state. Async wasm factories provide a generation-local `observePanic(observer)` subscription, returning an unsubscribe function; generated factories install it at the bindgen scheduler callback boundary. `release` must sever instance/glue references and stop generation-owned external callbacks; it must not invoke poisoned Rust destructors.
 
-Service classes use `defineStatics(Service, { make, wasm?, native? })` with generated adapters to expose `ContentCore.layerWasm.node(options)`, `.bun`, `.browser`, `.worker`, and `layerNative.node` / `.bun` for the supplied loaders. The optional `wasm` and `native` records contain explicit loaders for each advertised runtime. Layer construction initializes the service; imports and static declarations do not initialize instances.
+Service classes use `defineStatics(Service, { make, wasm?, native? })` with generated adapters to expose `ContentCore.layerWasm.node(options)`, `.bun`, `.browser`, `.browserWorker`, `.workerd`, and `layerNative.node` / `.bun` for the supplied loaders. The optional `wasm` and `native` records contain explicit loaders for each advertised runtime. Layer construction initializes the service; imports and static declarations do not initialize instances.
+
+### Wasm package delivery
+
+The wasm product's root export selects Node CJS glue on Node, inline bytes on
+Bun, and an external emitted `.wasm` asset for `browser` and `default`.
+Browser initialization preserves pinned wasm-bindgen's
+`new URL(..., import.meta.url)` → `fetch` → `WebAssembly.instantiateStreaming`
+path. Serve the asset with `Content-Type: application/wasm`; bundlers must emit
+that URL-referenced asset rather than inline it. Bindgen owns its MIME fallback.
+The `./load` fresh-instance entry selects inline bytes for Node/Bun, external
+asset loading for browser/default, and a precompiled Module for workerd.
+
+Explicit product entries are independent of runtime conditions:
+
+| Entry                                       | Delivery                                                                                           |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `./inline`, `./inline/load`                 | Embedded bytes; initialization does not fetch                                                      |
+| `./browser-worker`, `./browser-worker/load` | External URL/fetch/streaming, inside a browser Worker                                              |
+| `./workerd`, `./workerd/load`               | Static wasm import supplied as a precompiled `WebAssembly.Module`; no fetch or runtime compilation |
+| `./url`                                     | Consumer-supplied URL, Response, bytes or Module through bindgen                                   |
+
+Generated service `.browser` and `.browserWorker` statics use fresh lexical
+external-asset loaders; `.node` and `.bun` statics stay inline; `.workerd` uses
+fresh lexical state around the supplied precompiled Module. To opt into inline
+delivery in a browser, supply the product's `./inline/load` loader to
+`Interop.wasmLayer.browser` with the generated `make<Service>` adapter.
+Inline/workerd glue contains no unused default asset URL, so importing an inline
+entry does not make a bundler emit a second wasm asset.
+
+Delivery smoke scenarios live in `rust/effect-rust-fixtures`. After building the
+wasm product, run
+`node rust/effect-rust-fixtures/browser-smoke-server.mjs <wasm-package-directory>`,
+then open its printed URL in real Chromium. The page exposes
+`window.smokeResult` / `window.smokeError` and exercises default browser delivery,
+two isolated fresh instances, explicit inline no-fetch delivery, and a real
+module Worker, recording actual asset requests and native streaming calls.
+The server and workerd configuration generator require Bun to bundle the shared
+scheduler smoke. Both delivery harnesses run its five scheduler-panic scenarios,
+including first-poll/host-await traps, sibling retirement, rebuild, isolation,
+and interruption of a host-awaiting panic.
+For a real workerd run, generate a configuration with
+`node rust/effect-rust-fixtures/workerd-smoke-config.mjs <wasm-package-directory> <output.capnp> 8787`,
+run `workerd serve <output.capnp>`, and request `http://127.0.0.1:8787/`.
+The configuration supplies the actual product wasm as a workerd wasm module,
+whose import is a precompiled `WebAssembly.Module`. Require the Worker's
+`{ passed: true, precompiled: true, fetches: 0 }` verdict. The ordinary
+`smoke.mjs` runs on both Node and Bun and rejects any initialization-time fetch
+through their own root and `./load` conditions.
 
 ### Failure and lifetime
 
@@ -51,6 +99,75 @@ Service classes use `defineStatics(Service, { make, wasm?, native? })` with gene
 - Native adapters expose caught panics with the `RUST_PANIC:` envelope, which is also a defect. The native build must enable unwinding and guard every export. Retirement cancels sibling abortable Rust jobs and awaits their acknowledgments, and waits for settle-only jobs to finish before releasing the generation or loading its replacement. This native cancellation never applies to poisoned wasm, whose job functions and handle destructors must not be called.
 - The Layer's Scope owns the runtime. `Effect.provide(layer)` releases it when that Effect finishes. Use `Layer.build(layer)` in a caller-owned Scope if the service must live across multiple operations.
 - Runtime acquisition is asynchronous. Once acquired, a synchronous export remains synchronous and can be evaluated with `Effect.runSync`; only PromiseLike results and explicit `RustJob` results suspend.
+
+### Scoped resources
+
+Apply `#[effect_rust::resource]` to a safe, non-generic inherent impl containing
+`pub fn new(...) -> Self` and public synchronous `&self` / `&mut self` methods.
+`name = "factoryName"` optionally names the service acquisition method; by
+default `Counter` becomes `counter`. Public method names remain unchanged.
+The compiled binary embeds constructor, method, and close records; the existing
+Buck product and service generators consume those records, including domain
+schemas and `ExportError` metadata.
+
+```rust
+pub struct Counter { value: i32 }
+
+#[effect_rust::resource]
+impl Counter {
+    pub fn new(value: i32) -> Self { Self { value } }
+    pub fn add(&mut self, amount: i32) -> i32 {
+        self.value += amount;
+        self.value
+    }
+    pub fn value(&self) -> i32 { self.value }
+}
+```
+
+From a constructed service, `service.counter(value)` returns
+`Effect.Effect<Counter, never, Scope.Scope>`. Acquisition has no recoverable
+error channel: constructors must return `Self`, not `Result`; invalid
+constructor contract inputs and construction panics are defects. Methods retain
+their expected-error channel and distinguish it from panic/trap defects.
+Each resource exposes `close: Effect.Effect<void>` as an optional early release;
+Scope exit closes it automatically and exactly once.
+If the runtime and resource scopes close concurrently, including parallel
+finalizers, runtime shutdown retains ownership of remaining handles until its
+pending jobs have stopped, then runs each healthy resource's destructor once.
+The ownership invariant is: **every acquired handle has exactly one owner at
+every scheduler boundary**. A pending invocation owns acquisition; its success
+callback registers the handle before removing the pending job. A registered
+handle is `owned`, then `closing` while its destructor acknowledgment is pending,
+then `closed`; poisoning or instance retirement moves remaining handles to
+`retired`. The generation itself moves from `healthy` through shutdown's
+`closing` state to `retired`.
+
+Early close and scope finalizers use the same uninterruptible dispatch inside
+the resource semaphore. Ownership transfer and the destructor call are one
+synchronous step. Input/output acquisition follows the same protocol, and
+consuming input completion records `closed` in its invocation callback before
+the pending job is removed. Shutdown waits for pending invocations and already
+dispatched destructors before releasing the instance.
+
+All methods, including immutable receivers, and close share **one FIFO semaphore
+per resource**. This prevents overlapping mutable Rust borrows, orders queued
+calls, and makes close wait for earlier calls. Other resources can run
+independently. Calls submitted after close die without entering Rust. Async,
+consuming/typed receivers, trait/generic impls, public static helpers other than
+`new`, resource arguments/results, associated items, and conditional method/impl
+attributes are rejected precisely. Private helpers are not exported;
+documentation attributes are supported. Put conditional definitions in an
+enclosing module and associated/static helpers in another impl.
+
+Resources belong to their acquisition generation, not an independent poison
+registry. A panic in any resource poisons every sibling and pending job; rebuilding
+permits new acquisitions but never revives old resources. Old resources cannot
+invoke or release a retired wasm instance. Healthy close runs Rust `Drop`.
+Wasm retirement disables glue finalizers and discards the instance without
+claiming to unwind or run Rust destructors. Native panics unwind through guarded
+entrypoints; retirement deterministically closes all owned native resources after
+the borrow has unwound. Explicit close/drop failures are defects; native GC
+destructors are guarded so an unwind never crosses the addon finalizer boundary.
 
 ### Interruption and host capabilities
 

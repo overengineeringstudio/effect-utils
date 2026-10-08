@@ -47,6 +47,13 @@ type Export = {
   readonly returns: string
   readonly error: ExportError | null
   readonly schema?: string
+  readonly resource?: {
+    readonly name: string
+    readonly type: string
+    readonly role: 'constructor' | 'method' | 'close'
+    readonly method: string
+    readonly concurrency: 'serial'
+  }
 }
 type ErrorDefinition = ExportError & {
   readonly variants: readonly { readonly name: string; readonly fields: readonly WireArgument[] }[]
@@ -81,6 +88,10 @@ if (manifests.some((other) => isDeepStrictEqual(other, manifest) === false) === 
     'wasm and napi products expose different export manifests; build both from the same adapter crate',
   )
 const { exports: exportEntries, errors } = manifest
+const constructors = exportEntries.filter((entry) => entry.resource?.role === 'constructor')
+const topLevelEntries = exportEntries.filter((entry) => entry.resource === undefined || entry.resource.role === 'constructor')
+const resourceMethods = (entry: Export): readonly Export[] =>
+  exportEntries.filter((method) => method.resource?.role === 'method' && method.resource.name === entry.resource?.name)
 
 // Schema records are produced by schemars inside the built product. Prefer the
 // sandboxed wasm instance; the native addon is used when no wasm product exists.
@@ -267,6 +278,7 @@ const usesErrors = exportEntries.some((entry) => entry.error !== null)
 const effectImports = [
   'Context',
   'Effect',
+  ...(constructors.length === 0 ? [] : ['type Scope']),
   ...(usesErrors === true ? ['Schema'] : []),
   ...(exportEntries.some((entry) => entry.mode === 'input_stream') === true
     ? [sinkDecodes === true ? 'Sink' : 'type Sink']
@@ -343,15 +355,30 @@ for (const entry of exportEntries) {
   )
 }
 
+for (const constructor of constructors) {
+  const type = constructor.resource!.type
+  source.push(`export interface ${type}Api extends Interop.ResourceHandle {`)
+  for (const entry of resourceMethods(constructor)) {
+    const args = entry.args.map((arg) => `${arg.name}: ${apiType({ entry, position: arg.name, wire: arg.type })}`).join(', ')
+    source.push(`  readonly ${entry.resource!.method}: (${args}) => ${apiType({ entry, position: '$returns', wire: entry.returns })}`)
+  }
+  source.push('}', `export interface ${type} {`, '  readonly close: Effect.Effect<void>')
+  for (const entry of resourceMethods(constructor)) {
+    const args = entry.args.map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`).join(', ')
+    const error = [entry.error?.name, 'Interop.Input', 'Interop.Transport'].filter((value) => value !== undefined).join(' | ')
+    source.push(`  readonly ${entry.resource!.method}: (${args}) => Effect.Effect<${serviceType({ entry, position: '$returns', wire: entry.returns })}, ${error}>`)
+  }
+  source.push('}', '')
+}
 source.push(
   `/** Raw product API: contract positions carry their encoded wire form. */`,
   `export interface ${service}Api {`,
 )
-for (const entry of exportEntries) {
+for (const entry of topLevelEntries) {
   const args = entry.args
     .map((arg) => `${arg.name}: ${apiType({ entry, position: arg.name, wire: arg.type })}`)
     .join(', ')
-  const result = apiType({ entry, position: '$returns', wire: entry.returns })
+  const result = entry.resource?.role === 'constructor' ? `${entry.resource.type}Api` : apiType({ entry, position: '$returns', wire: entry.returns })
   const returns =
     entry.mode === 'input_stream'
       ? `Interop.InputHandle<${result}>`
@@ -363,28 +390,29 @@ for (const entry of exportEntries) {
   source.push(`  readonly ${entry.name}: (${args}) => ${returns}`)
 }
 source.push('}', '', `export interface ${service}Service {`)
-for (const entry of exportEntries) {
+for (const entry of topLevelEntries) {
   const args = entry.args
     .map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`)
     .join(', ')
-  const result = serviceType({ entry, position: '$returns', wire: entry.returns })
+  const result = entry.resource?.role === 'constructor' ? entry.resource.type : serviceType({ entry, position: '$returns', wire: entry.returns })
   const error = [entry.error?.name, 'Interop.Input', 'Interop.Transport']
     .filter((type) => type !== undefined)
     .join(' | ')
   const returns =
-    entry.mode === 'input_stream'
+    entry.resource?.role === 'constructor'
+      ? `Effect.Effect<${result}, never, Scope.Scope>`
+      : entry.mode === 'input_stream'
       ? `Sink.Sink<${result}, Uint8Array, never, ${error}>`
       : entry.mode === 'output_stream'
         ? `Stream.Stream<Uint8Array, ${error}>`
         : `Effect.Effect<${result}, ${error}>`
   source.push(`  readonly ${entry.name}: (${args}) => ${returns}`)
 }
-source.push(
-  '}',
-  '',
-  `export const make${service} = (runtime: Interop.Runtime<${service}Api>): ${service}Service => ({`,
-)
+source.push('}', '')
+const implementations = new Map<string, string[]>()
 for (const entry of exportEntries) {
+  if (entry.resource?.role === 'constructor' || entry.resource?.role === 'close') continue
+  const methodSource: string[] = []
   const operation = JSON.stringify(entry.name)
   const args = entry.args
     .map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`)
@@ -428,8 +456,8 @@ for (const entry of exportEntries) {
     sources.length === 0
       ? [
           scalarChecks.length === 0
-            ? `runtime.${method}(({ api }) => api.${entry.name}(${values}), ${callOptions})`
-            : `runtime.${method}(({ api }) => { ${scalarChecks.join('; ')}; return api.${entry.name}(${values}) }, ${callOptions})`,
+            ? `${entry.resource?.role === 'method' ? 'resource' : 'runtime'}.${method}(({ api }) => api.${entry.resource?.method ?? entry.name}(${values}), ${callOptions})`
+            : `${entry.resource?.role === 'method' ? 'resource' : 'runtime'}.${method}(({ api }) => { ${scalarChecks.join('; ')}; return api.${entry.resource?.method ?? entry.name}(${values}) }, ${callOptions})`,
         ]
       : [
           `runtime.call(({ api, signal }): Interop.RustJob<${apiType({ entry, position: '$returns', wire: entry.returns })}> => {`,
@@ -464,10 +492,10 @@ for (const entry of exportEntries) {
         ? '.pipe(Effect.map(BigInt))'
         : ''
   if (encoded.length === 0) {
-    source.push(`  ${entry.name}: (${args}) => ${start.join('\n')}${decode},`)
+    methodSource.push(`  ${entry.resource?.method ?? entry.name}: (${args}) => ${start.join('\n')}${decode},`)
   } else if (method === 'call') {
-    source.push(
-      `  ${entry.name}: (${args}) => Effect.gen(function* () {`,
+    methodSource.push(
+      `  ${entry.resource?.method ?? entry.name}: (${args}) => Effect.gen(function* () {`,
       ...encoded.map(
         (arg) =>
           `    const ${arg.name}Wire = yield* encodeInput(${operation}, () => encode${codec({ entry, position: arg.name })}(${arg.name}))`,
@@ -480,6 +508,27 @@ for (const entry of exportEntries) {
       `${entry.name}: contract arguments are supported for call exports; streams take bytes`,
     )
   }
+  implementations.set(entry.name, methodSource)
+}
+source.push(`export const make${service} = (runtime: Interop.Runtime<${service}Api>): ${service}Service => ({`)
+for (const entry of topLevelEntries) {
+  if (entry.resource?.role !== 'constructor') {
+    source.push(...implementations.get(entry.name)!)
+    continue
+  }
+  const args = entry.args.map((arg) => `${arg.name}: ${serviceType({ entry, position: arg.name, wire: arg.type })}`).join(', ')
+  const encoded = entry.args.filter((arg) => codec({ entry, position: arg.name }) !== undefined)
+  const values = entry.args.map((arg) => encoded.includes(arg) ? `${arg.name}Wire` : isWide(arg.type) ? `${arg.name}.toString()` : arg.name).join(', ')
+  source.push(
+    `  ${entry.name}: (${args}) => Effect.gen(function* () {`,
+    ...encoded.map((arg) => `    const ${arg.name}Wire = yield* encodeInput(${JSON.stringify(entry.name)}, () => encode${codec({ entry, position: arg.name })}(${arg.name})).pipe(Effect.orDie)`),
+    `    const resource = yield* runtime.resource(({ api }) => api.${entry.name}(${values}))`,
+    '    return {',
+    '      close: resource.close,',
+    ...resourceMethods(entry).flatMap((method) => implementations.get(method.name)!),
+    '    }',
+    '  }),',
+  )
 }
 source.push('})', '')
 
@@ -490,10 +539,11 @@ const loaders: string[] = []
 if (wasm !== undefined) {
   source.push(
     `const wasmLoaders: Interop.WasmLoaders<${service}Api> = {`,
-    "  node: () => import('./wasm/web/load.js').then((module) => module.load()),",
-    "  bun: () => import('./wasm/web/load.js').then((module) => module.load()),",
+    "  node: () => import('./wasm/web/inline-load.js').then((module) => module.load()),",
+    "  bun: () => import('./wasm/web/inline-load.js').then((module) => module.load()),",
     "  browser: () => import('./wasm/web/load.js').then((module) => module.load()),",
-    "  worker: () => import('./wasm/worker-load.js').then((module) => module.load()),",
+    "  browserWorker: () => import('./wasm/web/load.js').then((module) => module.load()),",
+    "  workerd: () => import('./wasm/workerd-load.js').then((module) => module.load()),",
     '}',
   )
   loaders.push('wasm: wasmLoaders')
@@ -555,10 +605,14 @@ if (wasm !== undefined) {
   const instance = `{ api: ${service}Api; release(): void; observePanic(observer: (cause: unknown) => void): () => void }`
   await writeFile(
     join(output, 'wasm', 'web', 'load.d.ts'),
+    `import type { ${service}Api } from '../../service.ts';\ntype Source = WebAssembly.Module | BufferSource | RequestInfo | URL | Response;\nexport declare const load: (source?: Source | Promise<Source>) => Promise<${instance}>;\n`,
+  )
+  await writeFile(
+    join(output, 'wasm', 'web', 'inline-load.d.ts'),
     `import type { ${service}Api } from '../../service.ts';\nexport declare const load: (source?: WebAssembly.Module | BufferSource) => Promise<${instance}>;\n`,
   )
   await writeFile(
-    join(output, 'wasm', 'worker-load.d.ts'),
+    join(output, 'wasm', 'workerd-load.d.ts'),
     `import type { ${service}Api } from '../service.ts';\nexport declare const load: () => ${instance};\n`,
   )
 }

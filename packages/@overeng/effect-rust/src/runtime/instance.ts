@@ -1,4 +1,4 @@
-import { Effect, Semaphore, Sink, Stream } from 'effect'
+import { Effect, type Scope, Semaphore, Sink, Stream } from 'effect'
 
 import { Init, Transport } from './errors.ts'
 
@@ -56,12 +56,27 @@ export interface OutputHandle {
   readonly next: (maxBytes: number) => Uint8Array | undefined | PromiseLike<Uint8Array | undefined>
   readonly close: () => void | PromiseLike<void>
 }
+/** Owned adapter resource. The runtime, not the handle, owns generation validity. */
+export interface ResourceHandle {
+  readonly close: () => void | PromiseLike<void>
+}
+/** Serialized access to one resource in its acquisition generation. */
+export interface Resource<THandle extends ResourceHandle> {
+  readonly call: <T, TError = never>(
+    start: Start<THandle, T>,
+    options?: CallOptions<TError>,
+  ) => Effect.Effect<T, TError>
+  readonly close: Effect.Effect<void>
+}
 /** Scoped Rust calls and byte streams sharing one generation registry. */
 export interface Runtime<TApi> {
   readonly call: <T, TError = never>(
     start: Start<TApi, T>,
     options?: CallOptions<TError>,
   ) => Effect.Effect<T, TError>
+  readonly resource: <THandle extends ResourceHandle>(
+    open: Start<TApi, THandle>,
+  ) => Effect.Effect<Resource<THandle>, never, Scope.Scope>
   readonly inputSink: <T, TError = never>(
     open: Start<TApi, InputHandle<T>>,
     options?: CallOptions<TError>,
@@ -96,16 +111,21 @@ interface Pending {
   readonly fail: (defect: unknown) => void
   readonly stop: () => Promise<void>
 }
-interface Handle {
-  readonly close: () => void | PromiseLike<void>
+type HandleState<THandle extends ResourceHandle> =
+  | { readonly state: 'pending-acquire' }
+  | { readonly state: 'owned'; readonly handle: THandle }
+  | { readonly state: 'closing'; readonly completed: Promise<void> }
+  | { readonly state: 'closed' | 'retired' }
+interface HandleOwnership<THandle extends ResourceHandle = ResourceHandle> {
+  state: HandleState<THandle>
 }
 interface Generation<TApi> {
   readonly id: number
   readonly instance: Instance<TApi>
   readonly release: () => Promise<void>
   readonly jobs: Set<Pending>
-  readonly handles: Set<Handle>
-  state: 'healthy' | 'retired'
+  readonly handles: Set<HandleOwnership>
+  state: 'healthy' | 'closing' | 'retired'
 }
 
 const isRustJob = <T>(value: T | PromiseLike<T> | RustJob<T>): value is RustJob<T> =>
@@ -118,6 +138,11 @@ const isPromiseLike = <T>(value: T | PromiseLike<T>): value is PromiseLike<T> =>
   typeof value.then === 'function'
 
 const retiredDefect = (generation: number) => new Error(`Rust generation ${generation} is retired`)
+
+const retireHandles = <TApi>({ generation }: { readonly generation: Generation<TApi> }): void => {
+  for (const owner of generation.handles) owner.state = { state: 'retired' }
+  generation.handles.clear()
+}
 
 /** B3's registry, with interruption acknowledgments and scope-owned handles. */
 export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>(
@@ -167,6 +192,35 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     })
     return generation
   }
+
+  const dispatchClose = ({
+    generation,
+    owner,
+  }: {
+    readonly generation: Generation<TApi>
+    readonly owner: HandleOwnership
+  }): void | Promise<void> => {
+    const state = owner.state
+    if (state.state === 'closing') return state.completed
+    if (state.state !== 'owned') return
+    const completion = Promise.withResolvers<void>()
+    // The registry indexes the owner until acknowledgment; it never retries Drop.
+    // State transfer and dispatch are one synchronous step, including shutdown.
+    owner.state = { state: 'closing', completed: completion.promise }
+    const completed = () => {
+      if (owner.state.state === 'closing') owner.state = { state: 'closed' }
+      generation.handles.delete(owner)
+      completion.resolve()
+    }
+    try {
+      const result = state.handle.close()
+      if (isPromiseLike(result) === true) return Promise.resolve(result).finally(completed)
+      completed()
+    } catch (cause) {
+      completed()
+      throw cause
+    }
+  }
   // Layer.effect retains this acquisition's Scope; no eager global initialization.
   const release = Effect.promise(async () => {
     closed = true
@@ -176,6 +230,7 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     }
     const generation = current
     if (generation === undefined) return
+    generation.state = 'closing'
     // Quiesce before freeing handles or releasing glue, including error paths.
     try {
       const stopped = await Promise.allSettled(Array.from(generation.jobs, (job) => job.stop()))
@@ -184,9 +239,9 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       const failure = stopped.find((result) => result.status === 'rejected')
       if (failure?.status === 'rejected') throw failure.reason
       // eslint-disable-next-line no-await-in-loop -- Rust handles must close serially in insertion order and stop at the first failure.
-      for (const handle of generation.handles) await handle.close()
+      for (const owner of generation.handles) await dispatchClose({ generation, owner })
     } finally {
-      generation.handles.clear()
+      retireHandles({ generation })
       generation.state = 'retired'
       current = undefined
       await generation.release()
@@ -200,16 +255,29 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     readonly generation: Generation<TApi>
     readonly defect: unknown
   }): void => {
-    if (generation.state !== 'healthy') return
+    if (generation.state === 'retired') return
     generation.state = 'retired'
     terminal = defect
     if (current === generation) current = undefined
-    // Never call Rust handle destructors through poisoned borrows.
-    generation.handles.clear()
-    const jobs = options.panicBoundary === 'native' ? Array.from(generation.jobs) : undefined
+    const nativeQuiescence:
+      | { readonly jobs: Pending[]; readonly acknowledgments: Promise<void>[] }
+      | undefined =
+      options.panicBoundary === 'native'
+        ? { jobs: Array.from(generation.jobs), acknowledgments: [] }
+        : undefined
+    if (nativeQuiescence !== undefined) {
+      for (const owner of generation.handles) {
+        if (owner.state.state === 'closing')
+          nativeQuiescence.acknowledgments.push(owner.state.completed)
+      }
+    }
+    // Never start Rust destructors through poisoned borrows. Native retirement
+    // still acknowledges destructors that were already dispatched.
+    retireHandles({ generation })
     const rebuild = async () => {
-      if (jobs !== undefined) {
-        const stopped = await Promise.allSettled(jobs.map((job) => job.stop()))
+      if (nativeQuiescence !== undefined) {
+        for (const job of nativeQuiescence.jobs) nativeQuiescence.acknowledgments.push(job.stop())
+        const stopped = await Promise.allSettled(nativeQuiescence.acknowledgments)
         const failure = stopped.find((result) => result.status === 'rejected')
         if (failure?.status === 'rejected') throw failure.reason
       }
@@ -255,20 +323,26 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     generation,
     start,
     callOptions,
+    onRetired,
+    onSuccess,
   }: {
     readonly generation: Generation<TApi>
     readonly start: Start<TApi, T>
     readonly callOptions?: CallOptions<TError> | undefined
+    readonly onRetired?: Effect.Effect<T, TError>
+    readonly onSuccess?: ((value: T) => void) | undefined
   }): Effect.Effect<T, TError> =>
     Effect.callback<T, TError>((resume) => {
-      if (generation.state !== 'healthy') {
-        resume(Effect.die(retiredDefect(generation.id)))
+      if (closed === true || generation.state !== 'healthy') {
+        resume(onRetired ?? Effect.die(retiredDefect(generation.id)))
         return
       }
       const controller = new AbortController()
       let active = true
       let operation: RustJob<T> | undefined
-      let settlement: Promise<void> = Promise.resolve()
+      // Completion includes the synchronous ownership transition, even if the
+      // caller was interrupted while a consuming operation settled.
+      const settlement = Promise.withResolvers<void>()
       let stopping: Promise<void> | undefined
       let wakeStopping: (() => void) | undefined
       const finish = (effect: Effect.Effect<T, TError>) => {
@@ -286,13 +360,14 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
         stop: () =>
           (stopping ??= (async () => {
             controller.abort()
-            if (generation.state !== 'healthy' && options.panicBoundary !== 'native') {
+            if (generation.state === 'retired' && options.panicBoundary !== 'native') {
               await generation.release()
               return
             }
             const retirement = Promise.withResolvers<void>()
             wakeStopping = retirement.resolve
-            const acknowledgment = operation?.mode === 'abortable' ? operation.cancel() : settlement
+            const acknowledgment =
+              operation?.mode === 'abortable' ? operation.cancel() : settlement.promise
             if (options.panicBoundary === 'native') await acknowledgment
             else {
               // Cancellation can already be waiting when the scheduler traps,
@@ -306,27 +381,39 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       }
       generation.jobs.add(job)
       const rejected = (cause: unknown) => {
-        if (isPanic(cause) === true) poison({ generation, defect: cause })
-        else
-          finish(
-            callOptions?.decodeError === undefined
-              ? Effect.die(cause)
-              : callOptions.decodeError(cause),
-          )
+        try {
+          if (isPanic(cause) === true) poison({ generation, defect: cause })
+          else
+            finish(
+              callOptions?.decodeError === undefined
+                ? Effect.die(cause)
+                : callOptions.decodeError(cause),
+            )
+        } finally {
+          settlement.resolve()
+        }
+      }
+      const succeeded = (value: T) => {
+        try {
+          // Rust completion, ownership registration/consumption, job removal and
+          // resumption share a callback. No scheduler boundary can orphan a handle.
+          onSuccess?.(value)
+          finish(Effect.succeed(value))
+        } catch (cause) {
+          rejected(cause)
+        } finally {
+          settlement.resolve()
+        }
       }
       try {
         const started = start({ api: generation.instance.api, signal: controller.signal })
         if (isRustJob(started) === true) {
           operation = started
-          settlement = Promise.resolve(started.result).then((value) => {
-            finish(Effect.succeed(value))
-          }, rejected)
+          void Promise.resolve(started.result).then(succeeded, rejected)
         } else if (isPromiseLike(started) === true) {
-          settlement = Promise.resolve(started).then((value) => {
-            finish(Effect.succeed(value))
-          }, rejected)
+          void Promise.resolve(started).then(succeeded, rejected)
         } else {
-          finish(Effect.succeed(started))
+          succeeded(started)
         }
       } catch (cause) {
         rejected(cause)
@@ -344,6 +431,66 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       })
     })
 
+  const acquireHandle = <THandle extends ResourceHandle, TError = never>({
+    generation,
+    start,
+    callOptions,
+  }: {
+    readonly generation: Generation<TApi>
+    readonly start: Start<TApi, THandle>
+    readonly callOptions?: CallOptions<TError> | undefined
+  }): Effect.Effect<HandleOwnership<THandle>, TError> => {
+    const owner: HandleOwnership<THandle> = { state: { state: 'pending-acquire' } }
+    return invokeOn({
+      generation,
+      start,
+      callOptions,
+      onSuccess: (handle) => {
+        if (generation.state === 'retired') owner.state = { state: 'retired' }
+        else {
+          owner.state = { state: 'owned', handle }
+          generation.handles.add(owner)
+        }
+      },
+    }).pipe(Effect.as(owner))
+  }
+  const invokeHandle = <THandle extends ResourceHandle, T, TError = never>({
+    generation,
+    owner,
+    start,
+    callOptions,
+    onSuccess,
+  }: {
+    readonly generation: Generation<TApi>
+    readonly owner: HandleOwnership<THandle>
+    readonly start: Start<THandle, T>
+    readonly callOptions?: CallOptions<TError> | undefined
+    readonly onSuccess?: ((value: T) => void) | undefined
+  }): Effect.Effect<T, TError> =>
+    invokeOn({
+      generation,
+      start: ({ signal }) => {
+        const state = owner.state
+        if (state.state !== 'owned') throw new Error('Rust resource is closed')
+        return start({ api: state.handle, signal })
+      },
+      callOptions,
+      onSuccess,
+    })
+  const closeHandle = ({
+    generation,
+    owner,
+  }: {
+    readonly generation: Generation<TApi>
+    readonly owner: HandleOwnership
+  }): Effect.Effect<void> =>
+    invokeOn({
+      generation,
+      // A closing runtime owns the registry; poisoned generations discard handles.
+      onRetired: Effect.void,
+      start: () => dispatchClose({ generation, owner }),
+    }).pipe(Effect.uninterruptible)
+
   const call = Effect.fn('effect-rust.call')(
     <T, TError = never>(start: Start<TApi, T>, callOptions?: CallOptions<TError>) =>
       Effect.flatMap(generationEffect, (generation) =>
@@ -351,6 +498,24 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       ),
   )
 
+  const resource = Effect.fn('effect-rust.resource')(
+    <THandle extends ResourceHandle>(open: Start<TApi, THandle>) =>
+      Effect.gen(function* () {
+        const generation = yield* generationEffect
+        const serial = yield* Semaphore.make(1)
+        const owner = yield* acquireHandle({ generation, start: open })
+        // Waiting for a queued borrow remains interruptible. Once admitted, close
+        // masks interruption until its atomic dispatch and acknowledgment finish.
+        const close = closeHandle({ generation, owner }).pipe(Semaphore.withPermits(serial, 1))
+        // eslint-disable-next-line overeng/named-args -- Resource.call follows Runtime.call's public positional (start, options) contract.
+        const resourceCall: Resource<THandle>['call'] = (start, callOptions) =>
+          invokeHandle({ generation, owner, start, callOptions }).pipe(
+            Semaphore.withPermits(serial, 1),
+          )
+        yield* Effect.addFinalizer(() => close)
+        return { call: resourceCall, close } satisfies Resource<THandle>
+      }).pipe(Effect.uninterruptible),
+  )
   // eslint-disable-next-line overeng/named-args -- Runtime.inputSink preserves the public positional (open, options) signature.
   const inputSink = <T, TError = never>(
     open: Start<TApi, InputHandle<T>>,
@@ -359,42 +524,35 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     Sink.unwrap(
       Effect.gen(function* () {
         const generation = yield* generationEffect
-        const handle = yield* Effect.acquireRelease(
-          invokeOn({ generation, start: open, callOptions }).pipe(
-            Effect.tap((openedHandle) =>
-              Effect.sync(() => {
-                generation.handles.add(openedHandle)
-              }),
-            ),
-          ),
-          (acquiredHandle) =>
-            Effect.suspend(() => {
-              if (
-                generation.handles.delete(acquiredHandle) === false ||
-                generation.state !== 'healthy'
-              )
-                return Effect.void
-              return invokeOn({ generation, start: () => acquiredHandle.close() })
-            }),
+        const owner = yield* Effect.acquireRelease(
+          acquireHandle({ generation, start: open, callOptions }),
+          (acquiredOwner) => closeHandle({ generation, owner: acquiredOwner }),
         )
         return Sink.forEach<Uint8Array, void, TError, never>(
           Effect.fn('effect-rust.input.write')(function* (bytes) {
             for (let offset = 0; offset < bytes.byteLength; offset += chunkBytes) {
               const chunk = bytes.subarray(offset, Math.min(offset + chunkBytes, bytes.byteLength))
-              yield* invokeOn({ generation, start: () => handle.write(chunk), callOptions }).pipe(
-                Semaphore.withPermits(permits, chunk.byteLength),
-              )
+              yield* invokeHandle({
+                generation,
+                owner,
+                start: ({ api }) => api.write(chunk),
+                callOptions,
+              }).pipe(Semaphore.withPermits(permits, chunk.byteLength))
             }
           }),
         ).pipe(
           Sink.mapEffect(() =>
-            invokeOn({ generation, start: () => handle.finish(), callOptions }).pipe(
-              Effect.tap(() =>
-                Effect.sync(() => {
-                  generation.handles.delete(handle)
-                }),
-              ),
-            ),
+            invokeHandle({
+              generation,
+              owner,
+              start: ({ api }) => api.finish(),
+              callOptions,
+              onSuccess: () => {
+                if (owner.state.state !== 'owned') return
+                owner.state = { state: 'closed' }
+                generation.handles.delete(owner)
+              },
+            }),
           ),
         )
       }),
@@ -411,27 +569,13 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
     Stream.unwrap(
       Effect.gen(function* () {
         const generation = yield* generationEffect
-        const handle = yield* Effect.acquireRelease(
-          invokeOn<OutputHandle, TError>({
+        const owner = yield* Effect.acquireRelease(
+          acquireHandle({
             generation,
             start: (invocation) => open(invocation, chunkBytes),
             callOptions,
-          }).pipe(
-            Effect.tap((openedHandle) =>
-              Effect.sync(() => {
-                generation.handles.add(openedHandle)
-              }),
-            ),
-          ),
-          (acquiredHandle) =>
-            Effect.suspend(() => {
-              if (
-                generation.handles.delete(acquiredHandle) === false ||
-                generation.state !== 'healthy'
-              )
-                return Effect.void
-              return invokeOn({ generation, start: () => acquiredHandle.close() })
-            }),
+          }),
+          (acquiredOwner) => closeHandle({ generation, owner: acquiredOwner }),
         )
         let held = 0
         const releaseBytes = Effect.suspend(() => {
@@ -447,7 +591,12 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
               yield* restore(Semaphore.take(permits, chunkBytes))
               held = chunkBytes
               const bytes = yield* restore(
-                invokeOn({ generation, start: () => handle.next(chunkBytes), callOptions }),
+                invokeHandle({
+                  generation,
+                  owner,
+                  start: ({ api }) => api.next(chunkBytes),
+                  callOptions,
+                }),
               )
               if (bytes === undefined) {
                 yield* releaseBytes
@@ -482,6 +631,6 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
             ? ('rebuilding' as const)
             : ('retired' as const),
   }))
-  const runtime: Runtime<TApi> = { call, inputSink, outputStream, snapshot }
+  const runtime: Runtime<TApi> = { call, resource, inputSink, outputStream, snapshot }
   return runtime
 })

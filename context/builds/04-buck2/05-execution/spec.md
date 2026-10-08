@@ -29,6 +29,16 @@ Workspace sibling sources enter as declared inputs of the dependent's check
 (live-link model, 03). Output contract: a slim verdict/dist artifact, not the
 staged tree, for cache-upload economics.
 
+Emit scratch copies retain owner-write permission on files and directories,
+including copied workspace siblings. Buck can therefore remove an abandoned
+`TMPDIR` before rerunning the action even when the runner was killed without
+cleanup. Input integrity (BUILD.BUCK.EXEC-R08) is checked rather than enforced
+with read-only scratch directories: the runner fingerprints declared roots and
+the complete staged workspace before and after the compiler. The staged walk
+hashes symlink destinations without following them, so the declared output
+symlink permits emission without exempting staged source or sibling mutations.
+Any input fingerprint change fails the action, including a compiler exit of zero.
+
 ## Rust Actions
 
 Authored `Cargo.toml` is the request authority; workspace binding follows the
@@ -87,9 +97,13 @@ the root Cargo workspace and the strict Reindeer graph; a Cargo library declares
   (matching the crate pin) for `nodejs` and `web`, then `wasm-opt` with
   `WASM_OPT_FLAGS` (explicit features, never `--all-features`). The package
   uses conditional exports: `workerd` → precompiled `Module`, `node` → CJS
-  glue, `bun`/`browser`/`default` → inline bytes, and `./url` → explicit URL.
-  The unused default-URL path is removed from the web glue, and the action
-  fails if the pinned generator's glue shape changes.
+  glue, `bun` → inline bytes, and `browser`/`default` → emitted external wasm
+  fetched and streamed through pinned bindgen glue. Explicit `./inline`,
+  `./browser-worker`, `./workerd`, and corresponding `/load` entries separate
+  embedded bytes, browser Worker asset delivery, and workerd precompiled Modules;
+  `./url` accepts a consumer source. Fresh `./load` uses inline bytes on Node/Bun
+  and external assets on browser/default. Only inline/workerd glue removes the
+  unused default asset URL; the action fails on pinned glue-shape drift.
 - `rust_napi_library` packages the native cdylib as `<name>.node` and rejects
   wasm or `panic=abort` toolchains. It builds only on the matching native
   executor; there are no cross builds.

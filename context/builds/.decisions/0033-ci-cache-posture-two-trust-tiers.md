@@ -119,8 +119,9 @@ Each cache endpoint gets 2500 ms per attempt, including connection setup, and
 exactly one immediate retry after a failed first attempt: at most 5000 ms total
 probing per endpoint. REAPI and archive-origin probes run concurrently. Only
 failure of both attempts triggers the existing warning and fallback; required
-writers remain fail-closed after both REAPI attempts fail. Watchman's separate
-900 ms deadline is unchanged. A deadline does not by itself establish a
+writers remain fail-closed after both REAPI attempts fail. Watchman's independent
+fail-closed root admission is defined in the [reuse-client specification](../04-buck2/06-reuse-client/spec.md#direct-invocation-admission-buildbuckreuse-r04).
+A deadline does not by itself establish a
 cache-server outage. A five-second endpoint-result cache can reuse a failure;
 its original probe emits diagnostics rather than repeating them on cache hits.
 

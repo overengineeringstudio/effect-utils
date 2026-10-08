@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { scheduler } from 'node:timers/promises'
 
-import { Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from 'effect'
+import { Cause, Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Scope, Stream } from 'effect'
 
 import { ContractJson, Interop } from '@overeng/effect-rust'
 
@@ -80,7 +80,7 @@ const scalarCases = [
   ['echoI32', -2147483648, 2147483647],
   ['echoU32', 0, 4294967295],
 ] as const
-const program = Effect.scoped(
+const program = (transport: 'wasm' | 'native') => Effect.scoped(
   Effect.gen(function* () {
     const fixture = yield* EffectRustFixture
     for (const [operation, minimum, maximum] of scalarCases) {
@@ -109,6 +109,33 @@ const program = Effect.scoped(
       ),
       4294967295n - 2147483648n + 9007199254740991n,
     )
+    const dropsBeforeScope = yield* fixture.counterDrops()
+    const escapedCounter = yield* Effect.scoped(Effect.gen(function* () {
+      const counter = yield* fixture.counter(0)
+      assert.deepEqual(
+        yield* Effect.all([counter.append(1), counter.append(2), counter.append(3)], { concurrency: 'unbounded' }),
+        [1, 12, 123],
+        'concurrent methods on one mutable resource are serialized in submission order',
+      )
+      const expected = yield* counter.divide(0).pipe(Effect.flip)
+      assert.ok(expected instanceof ArithmeticError)
+      assert.deepEqual(expected.reason, { _tag: 'DivideByZero', dividend: 123 })
+      assert.equal(yield* counter.value(), 123, 'expected errors leave the resource usable')
+      return counter
+    }))
+    assert.equal(yield* fixture.counterDrops(), dropsBeforeScope + 1, 'scope close runs Rust Drop exactly once')
+    yield* escapedCounter.close
+    assert.equal(yield* fixture.counterDrops(), dropsBeforeScope + 1, 'explicit close after scope is idempotent')
+    const closedCounter = yield* Effect.exit(escapedCounter.value())
+    assert.ok(Exit.isFailure(closedCounter) && String(closedCounter.cause).includes('closed'))
+    const dropsBeforeStress = yield* fixture.counterDrops()
+    for (let index = 0; index < 1000; index++) {
+      yield* Effect.scoped(Effect.gen(function* () {
+        const counter = yield* fixture.counter(index)
+        assert.equal(yield* counter.value(), index)
+      }))
+    }
+    assert.equal(yield* fixture.counterDrops(), dropsBeforeStress + 1000, '1k scoped resources each run Rust Drop')
     const quote = yield* fixture.quoteOrder(order, { kind: 'percent', percent: 10 })
     assert.equal(quote.kind, 'priced')
     assert.equal(quote.note, 'gift')
@@ -258,6 +285,24 @@ const program = Effect.scoped(
       0,
       'yield and read callbacks are quiescent before release',
     )
+    const beforePanic = yield* fixture.counterDrops()
+    const panicking = yield* fixture.counter(7)
+    const sibling = yield* fixture.counter(8)
+    const panicExit = yield* Effect.exit(panicking.panic())
+    assert.ok(Exit.isFailure(panicExit) && Cause.hasDies(panicExit.cause), 'resource panic is a defect')
+    const staleExit = yield* Effect.exit(sibling.value())
+    assert.ok(Exit.isFailure(staleExit) && String(staleExit.cause).includes('retired'), 'one panic rejects sibling resources')
+    yield* panicking.close
+    yield* sibling.close
+    assert.equal(yield* fixture.add(2, 3), 5, 'ordinary exports use the rebuilt generation')
+    // Native unwinding permits Drop of both resources at retirement. Wasm
+    // retirement discards the whole poisoned instance, not Rust destructors.
+    const afterPanic = yield* fixture.counterDrops()
+    assert.equal(afterPanic, transport === 'wasm' ? 0 : beforePanic + 2, 'retirement has truthful wasm/native Drop semantics')
+    const fresh = yield* fixture.counter(9)
+    assert.equal(yield* fresh.value(), 9)
+    yield* fresh.close
+    assert.equal(yield* fixture.counterDrops(), afterPanic + 1)
     return quote.receipt.totalCents
   }),
 )
@@ -268,12 +313,12 @@ const collectors = globalThis as typeof globalThis & {
 }
 const collect = runtime === 'bun' ? () => collectors.Bun!.gc(true) : collectors.gc
 assert.equal(typeof collect, 'function', 'Run Node with --expose-gc for the retirement regression')
-for (const [name, layer] of [
-  [`layerWasm.${runtime}`, EffectRustFixture.layerWasm[runtime]({ panicPolicy: 'rebuild' })],
-  [`layerNative.${runtime}`, EffectRustFixture.layerNative[runtime]()],
+for (const [transport, name, layer] of [
+  ['wasm', `layerWasm.${runtime}`, EffectRustFixture.layerWasm[runtime]({ panicPolicy: 'rebuild' })],
+  ['native', `layerNative.${runtime}`, EffectRustFixture.layerNative[runtime]()],
 ] as const) {
   // eslint-disable-next-line no-await-in-loop -- Verify and release the wasm runtime before starting native verification, preserving ordered fail-fast execution.
-  const total = await Effect.runPromise(program.pipe(Effect.provide(layer)))
+  const total = await Effect.runPromise(program(transport).pipe(Effect.provide(layer)))
   // Released bindgen stream/host wrappers must remain safe when finalization runs.
   collect!()
   // eslint-disable-next-line no-await-in-loop -- Drain each released runtime's finalizers before initializing the next transport.
@@ -314,6 +359,87 @@ await Effect.runPromise(
   wasmSchedulerSmoke({ runtime, load: load.wasm[runtime] }).pipe(Effect.timeout('10 seconds')),
 )
 console.log(`wasm ${runtime}: first-poll/host-await traps, sibling defects, retirement and rebuild verified`)
+
+interface ShutdownApi {
+  readonly counter: (initial: number) => Interop.ResourceHandle
+  readonly counterDrops: () => number
+  readonly pendingJob: () => Extract<Interop.RustJob<number>, { readonly mode: 'abortable' }>
+}
+class Shutdown extends Context.Service<Shutdown, Interop.Runtime<ShutdownApi>>()(
+  'fixture/Shutdown',
+) {}
+for (const backend of ['wasm', 'native'] as const) {
+  for (const finalizerStrategy of ['sequential', 'parallel'] as const) {
+    const shutdownStarted = Promise.withResolvers<void>()
+    const resumeShutdown = Promise.withResolvers<void>()
+    let dropsBefore = 0
+    let releases = 0
+    const factory: Interop.InstanceFactory<ShutdownApi> = load[backend][runtime]
+    const layer = Interop[backend === 'wasm' ? 'wasmLayer' : 'nativeLayer'][runtime](Shutdown, {
+      make: (core) => core,
+      load: async () => {
+        const instance = await factory()
+        dropsBefore = instance.api.counterDrops()
+        return {
+          ...instance,
+          release: async () => {
+            assert.equal(
+              instance.api.counterDrops(),
+              dropsBefore + 2,
+              `${backend}: each resource's Rust Drop ran exactly once`,
+            )
+            releases++
+            await instance.release()
+          },
+        }
+      },
+    })
+    // eslint-disable-next-line no-await-in-loop -- Complete each independently scoped shutdown before opening the next runtime.
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const runtimeScope = yield* Scope.make()
+        const resourceScope = yield* Scope.make(finalizerStrategy)
+        const context = yield* Layer.build(layer).pipe(Scope.provide(runtimeScope))
+        const core = Context.get(context, Shutdown)
+        const resources = yield* Effect.forEach([0, 1], (index) =>
+          core.resource(({ api }) => api.counter(index)),
+        ).pipe(Scope.provide(resourceScope))
+        const jobStarted = yield* Deferred.make<void>()
+        const pending = yield* core
+          .call(({ api }) => {
+            const job = api.pendingJob()
+            Deferred.doneUnsafe(jobStarted, Effect.void)
+            return {
+              ...job,
+              cancel: () => {
+                const acknowledged = job.cancel()
+                shutdownStarted.resolve()
+                return Promise.resolve(acknowledged).then(() => resumeShutdown.promise)
+              },
+            }
+          })
+          .pipe(Effect.exit, Effect.forkChild)
+        yield* Deferred.await(jobStarted)
+        const closingRuntime = yield* Scope.close(runtimeScope, Exit.void).pipe(Effect.forkChild)
+        yield* Effect.promise(() => shutdownStarted.promise)
+        yield* Scope.close(resourceScope, Exit.void).pipe(
+          Effect.ensuring(Effect.sync(() => resumeShutdown.resolve())),
+        )
+        yield* Fiber.join(closingRuntime)
+        yield* Effect.forEach(resources, (resource) => resource.close)
+        assert.equal(releases, 1, `${backend}: runtime released once without a finalizer defect`)
+        assert.equal(
+          Exit.isFailure(yield* Fiber.join(pending)),
+          true,
+          'shutdown retires the pending Effect',
+        )
+      }).pipe(Effect.timeout('10 seconds')),
+    )
+  }
+}
+console.log(
+  'wasm/native: concurrent runtime/resource shutdown and parallel finalizers run Rust Drop exactly once',
+)
 
 interface RetirementApi {
   readonly pendingJob: () => Interop.RustJob<number>

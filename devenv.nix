@@ -380,6 +380,11 @@ let
       printf "%s\n" "$member_root"
     }
   '';
+  publishBuckCapabilities = ''
+    ${pkgs.bun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
+      --root "$root" --profile ${buck2Capabilities} \
+      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" >&2
+  '';
 
   buck2BuildExec =
     { name, targets }:
@@ -392,6 +397,7 @@ let
           pkgs.watchman
         ]
       }
+      ${publishBuckCapabilities}
       cd "$root"
       exec "$BUCK2_BIN" build \
         --target-platforms effect_utils//buck2/platforms:host_platform \
@@ -411,6 +417,7 @@ let
           pkgs.watchman
         ]
       }
+      ${publishBuckCapabilities}
       cd "$root"
       exec "$BUCK2_BIN" test \
         --target-platforms effect_utils//buck2/platforms:host_platform \
@@ -562,6 +569,7 @@ let
       root="''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}
       cd "$root"
+      ${publishBuckCapabilities}
 
       # Pipeline logs join their job trace after the task graph. Standalone
       # Buck commands convert locally, retaining unacknowledged OTLP chunks.
@@ -632,6 +640,7 @@ let
     trace.exec traceName ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      ${publishBuckCapabilities}
       exec ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \
@@ -913,6 +922,7 @@ in
   tasks."lint:check".after = lib.mkForce [
     "genie:check"
     "lint:check:no-tailwind"
+    "lint:check:getflake"
   ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check";
@@ -991,7 +1001,7 @@ in
   );
 
   tasks."buck2:cache-posture:test" = {
-    description = "Exercise direct Buck cache admission, outages and trust precedence";
+    description = "Exercise direct Buck cache/watcher admission, outages, trust precedence and scoped daemon migration";
     exec = trace.exec "buck2:cache-posture:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
@@ -1003,7 +1013,26 @@ in
       "nix/buck2.nix"
       "scripts/buck2-entrypoint.*"
       "scripts/buck2-cache-posture.*"
+      "scripts/buck2-file-watcher.*"
     ];
+  };
+
+  tasks."buck2:capabilities:test" = {
+    description = "Check capability migration and same-daemon generation publication with notify and Watchman";
+    exec = trace.exec "buck2:capabilities:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      export BUN_BIN=${pkgs.bun}/bin/bun
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      export NIX_FLAKE_REF="git+file://$PWD?shallow=1"
+      export PATH=${lib.makeBinPath [ pkgs.watchman ]}:$PATH
+      ${pkgs.bun}/bin/bun test ./scripts/buck2-capability-publish.unit.test.ts
+      ${pkgs.bash}/bin/bash \
+        nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
+      exec ${pkgs.bash}/bin/bash \
+        nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh
+    '';
   };
 
   # The Buck2 genie projection suite lives outside packages/@overeng, so the
@@ -1162,9 +1191,20 @@ in
     '';
   };
 
+  tasks."lint:check:getflake" = {
+    description = "Reject bare-path getFlake inputs that copy ignored worktree state into the Nix store";
+    exec = trace.exec "lint:check:getflake" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      ${pkgs.nodejs_24}/bin/node --test scripts/lint-getflake.unit.test.mjs
+      exec ${pkgs.nodejs_24}/bin/node scripts/lint-getflake.mjs
+    '';
+  };
+
   tasks."nix:check:quick" = {
     description = "Check Nix artifact-import contracts without realizing repository products";
     after = [
+      "lint:check:getflake"
       "nix:buck2-artifact-import:check"
       "nix:buck2-cargo-archives:check"
       "nix:javascript-product-import:check"
@@ -1428,6 +1468,7 @@ in
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
     "buck2:cache-posture:test"
+    "buck2:capabilities:test"
     "cargo:proto-bindings:check"
     "check:buck2-producer-overlap"
     "nix:check:quick"
@@ -1487,13 +1528,8 @@ in
     # Buck2 expands the cache header in the daemon; keep the optional credential
     # defined so unauthenticated cache reads work when SecretSpec is not active.
     export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
-    capability_parent="$WORKSPACE_ROOT/.buck2"
-    capability_link="$capability_parent/capabilities"
-    ${pkgs.coreutils}/bin/mkdir -p "$capability_parent"
-    if [ -e "$capability_link" ] && [ ! -L "$capability_link" ]; then
-      ${pkgs.coreutils}/bin/rm -rf -- "$capability_link"
-    fi
-    ${pkgs.coreutils}/bin/ln -sfnT ${buck2Capabilities} "$capability_link"
+    root="$WORKSPACE_ROOT"
+    ${publishBuckCapabilities}
     ${cliBuildStamp.shellHook}
   '';
 

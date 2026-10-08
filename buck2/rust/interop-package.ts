@@ -49,6 +49,13 @@ type Export = {
   readonly error: ExportError | null
   /** JS name of the product's schemars record function for serde domain positions. */
   readonly schema?: string
+  readonly resource?: {
+    readonly name: string
+    readonly type: string
+    readonly role: 'constructor' | 'method' | 'close'
+    readonly method: string
+    readonly concurrency: 'serial'
+  }
 }
 type ErrorDefinition = ExportError & {
   readonly variants: readonly { readonly name: string; readonly fields: readonly WireArgument[] }[]
@@ -121,8 +128,17 @@ if (kind === 'napi') {
       `const addon = require('./${name}.node');`,
       'exports.load = () => {',
       '  let released = false;',
-      '  const api = Object.fromEntries(Object.entries(addon).map(([name, value]) => [name, typeof value === "function" ? (...args) => { if (released) throw new Error("Native instance released"); return value(...args); } : value]));',
-      '  return { api, release() { released = true; } };',
+      `  const factories = new Set(${JSON.stringify(manifestExports.filter((entry) => entry.resource?.role === 'constructor').map((entry) => entry.name))});`,
+      '  const resources = new Map();',
+      '  const api = Object.fromEntries(Object.entries(addon).map(([name, value]) => [name, typeof value === "function" ? (...args) => {',
+      '    if (released) throw new Error("Native instance released");',
+      '    const result = value(...args);',
+      '    if (!factories.has(name)) return result;',
+      '    const close = () => { if (resources.delete(result)) result.close(); };',
+      '    resources.set(result, close);',
+      '    return new Proxy(result, { get(target, key) { if (key === "close") return close; const member = Reflect.get(target, key, target); return typeof member === "function" ? (...methodArgs) => { if (released || !resources.has(target)) throw new Error("Native resource retired"); return member.apply(target, methodArgs); } : member; } });',
+      '  } : value]));',
+      '  return { api, release() { if (released) return; released = true; let failure; for (const close of resources.values()) { try { close(); } catch (cause) { failure ??= cause; } } resources.clear(); if (failure !== undefined) throw failure; } };',
       '};',
       '',
     ].join('\n'),
@@ -185,21 +201,20 @@ if (kind === 'napi') {
   await writeFile(join(output, 'nodejs', 'package.json'), '{"type":"commonjs"}\n')
   const gluePath = join(output, 'web', `${name}.js`)
   const glue = await readFile(gluePath, 'utf8')
-  // wasm-bindgen 0.2.127's unused default URL would make bundlers emit a second wasm.
-  // Fail on generator drift instead of silently publishing source-coupled glue.
+  // Preserve bindgen's URL/fetch/instantiateStreaming path for browser asset delivery.
+  // Inline and workerd variants use separate glue with no unused asset URL.
   const defaultUrl =
     /    if \(module_or_path === undefined\) \{\s*module_or_path = new URL\('[^']+_bg\.wasm', import\.meta\.url\);\s*\}\s*/g
   if (defaultUrl.test(glue) === false)
     throw new Error('Pinned bindgen web glue default URL contract changed')
   defaultUrl.lastIndex = 0
-  await writeFile(gluePath, glue.replace(defaultUrl, ''))
+  await writeFile(join(output, 'web', 'inline-glue.js'), glue.replace(defaultUrl, ''))
+  await copyFile(join(output, 'web', `${name}.d.ts`), join(output, 'web', 'inline-glue.d.ts'))
   const bytes = (await readFile(join(output, 'web', `${name}_bg.wasm`))).toString('base64')
   // Put *all* bindgen state (wasm, externrefs, caches and closure registries) inside
   // a lexical factory. Creating only a fresh Instance with module-global glue is unsafe.
   const factoryExports: string[] = []
-  let factoryBody = glue
-    .replace(defaultUrl, '')
-    .replace(
+  let factoryBody = glue.replace(
       /^export ((?:async )?(?:function|class|const|let)) ([A-Za-z_$][\w$]*)/gm,
       (_match, declaration: string, identifier: string) => {
         factoryExports.push(identifier)
@@ -250,39 +265,54 @@ if (kind === 'napi') {
       `${call}\n        } catch (cause) {\n            if (!observeSchedulerPanic(cause)) throw cause;\n        } finally {`,
     )
   }
-  await writeFile(
-    join(output, 'web', 'factory.js'),
-    [
+  for (const [file, body] of [
+    ['factory.js', factoryBody],
+    ['inline-factory.js', factoryBody.replace(defaultUrl, '')],
+  ] as const) {
+    // eslint-disable-next-line no-await-in-loop -- Emit both isolated glue variants in this package action.
+    await writeFile(join(output, 'web', file), [
       'export const create = () => {',
       'let retired = false;',
       'let panicObserver;',
       'const observeSchedulerPanic = cause => { if (!(cause instanceof WebAssembly.RuntimeError) || panicObserver === undefined) return false; retired = true; panicObserver(cause); return true; };',
       'const InstanceFinalizationRegistry = typeof FinalizationRegistry === "undefined" ? undefined : class extends FinalizationRegistry { constructor(callback) { super(value => { if (retired === false) callback(value); }); } };',
-      factoryBody,
+      body,
       `return { api: { ${factoryExports.join(', ')} }, init: __wbg_init, initSync, observePanic(observer) { panicObserver = observer; return () => { if (panicObserver === observer) panicObserver = undefined; }; }, release() { retired = true; panicObserver = undefined; wasm = undefined; wasmInstance = undefined; wasmModule = undefined; } };`,
       '};',
       '',
-    ].join('\n'),
-  )
+    ].join('\n'))
+  }
   await writeFile(
     join(output, 'web', 'load.js'),
     [
       "import { create } from './factory.js';",
-      `const bytes = Uint8Array.from(atob('${bytes}'), c => c.charCodeAt(0));`,
-      'export const load = async (source = bytes) => { const instance = create(); await instance.init({ module_or_path: source }); return { api: instance.api, release: instance.release, observePanic: instance.observePanic }; };',
+      'export const load = async (source) => { const instance = create(); await instance.init({ module_or_path: source }); return { api: instance.api, release: instance.release, observePanic: instance.observePanic }; };',
       '',
     ].join('\n'),
   )
   // Untyped on purpose: the generated service package (interop-service.ts) owns the typed API.
   await writeFile(
     join(output, 'web', 'load.d.ts'),
+    `import type { InitInput } from './${name}.js';\nexport declare const load: (source?: InitInput | Promise<InitInput>) => Promise<{ api: Readonly<Record<string, unknown>>; release(): void; observePanic(observer: (cause: unknown) => void): () => void }>;\n`,
+  )
+  await writeFile(
+    join(output, 'web', 'inline-load.js'),
+    [
+      "import { create } from './inline-factory.js';",
+      `const bytes = Uint8Array.from(atob('${bytes}'), c => c.charCodeAt(0));`,
+      'export const load = async (source = bytes) => { const instance = create(); await instance.init({ module_or_path: source }); return { api: instance.api, release: instance.release, observePanic: instance.observePanic }; };',
+      '',
+    ].join('\n'),
+  )
+  await writeFile(
+    join(output, 'web', 'inline-load.d.ts'),
     'export declare const load: (source?: WebAssembly.Module | BufferSource) => Promise<{ api: Readonly<Record<string, unknown>>; release(): void; observePanic(observer: (cause: unknown) => void): () => void }>;\n',
   )
   await writeFile(
     join(output, 'web', 'inline.js'),
     [
-      `import init, { initSync } from './${name}.js';`,
-      `export * from './${name}.js';`,
+      "import init, { initSync } from './inline-glue.js';",
+      "export * from './inline-glue.js';",
       `const encoded = '${bytes}';`,
       `const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));`,
       'export default () => init({ module_or_path: bytes });',
@@ -293,8 +323,8 @@ if (kind === 'napi') {
   await writeFile(
     join(output, 'web', 'inline.d.ts'),
     [
-      `import type { InitOutput } from './${name}.js';`,
-      `export * from './${name}.js';`,
+      "import type { InitOutput } from './inline-glue.js';",
+      "export * from './inline-glue.js';",
       'export default function initialize(): Promise<InitOutput>;',
       'export declare function initializeSync(): InitOutput;',
       '',
@@ -303,8 +333,8 @@ if (kind === 'napi') {
   await writeFile(
     join(output, 'web', 'url.js'),
     [
-      `import init from './${name}.js';`,
-      `export * from './${name}.js';`,
+      "import init from './inline-glue.js';",
+      "export * from './inline-glue.js';",
       'export default source => init({ module_or_path: source });',
       '',
     ].join('\n'),
@@ -312,33 +342,42 @@ if (kind === 'napi') {
   await writeFile(
     join(output, 'web', 'url.d.ts'),
     [
-      `import type { InitInput, InitOutput } from './${name}.js';`,
-      `export * from './${name}.js';`,
+      "import type { InitInput, InitOutput } from './inline-glue.js';",
+      "export * from './inline-glue.js';",
       'export default function initialize(source: InitInput | Promise<InitInput>): Promise<InitOutput>;',
       '',
     ].join('\n'),
   )
   await writeFile(
-    join(output, 'worker.js'),
+    join(output, 'workerd.js'),
     [
       `import module from './web/${name}_bg.wasm';`,
-      `import { initSync } from './web/${name}.js';`,
-      `export * from './web/${name}.js';`,
+      "import { initSync } from './web/inline-glue.js';",
+      "export * from './web/inline-glue.js';",
       'export default () => initSync({ module });',
       '',
     ].join('\n'),
   )
   await writeFile(
-    join(output, 'worker-load.js'),
+    join(output, 'workerd.d.ts'),
+    [
+      "import type { InitOutput } from './web/inline-glue.js';",
+      "export * from './web/inline-glue.js';",
+      'export default function initialize(): InitOutput;',
+      '',
+    ].join('\n'),
+  )
+  await writeFile(
+    join(output, 'workerd-load.js'),
     [
       `import module from './web/${name}_bg.wasm';`,
-      "import { create } from './web/factory.js';",
+      "import { create } from './web/inline-factory.js';",
       'export const load = () => { const instance = create(); instance.initSync({ module }); return { api: instance.api, release: instance.release, observePanic: instance.observePanic }; };',
       '',
     ].join('\n'),
   )
   await writeFile(
-    join(output, 'worker-load.d.ts'),
+    join(output, 'workerd-load.d.ts'),
     'export declare const load: () => { api: Readonly<Record<string, unknown>>; release(): void; observePanic(observer: (cause: unknown) => void): () => void };\n',
   )
   await writeFile(
@@ -352,14 +391,26 @@ if (kind === 'napi') {
         // Condition order is precedence: Bun also matches `node`, so `bun` must come first.
         exports: {
           '.': {
-            workerd: './worker.js',
+            workerd: './workerd.js',
             bun: './web/inline.js',
             node: `./nodejs/${name}.js`,
-            browser: './web/inline.js',
-            default: './web/inline.js',
+            browser: `./web/${name}.js`,
+            default: `./web/${name}.js`,
           },
+          './inline': './web/inline.js',
+          './inline/load': './web/inline-load.js',
+          './browser-worker': `./web/${name}.js`,
+          './browser-worker/load': './web/load.js',
+          './workerd': './workerd.js',
+          './workerd/load': './workerd-load.js',
           './url': './web/url.js',
-          './load': { workerd: './worker-load.js', default: './web/load.js' },
+          './load': {
+            workerd: './workerd-load.js',
+            bun: './web/inline-load.js',
+            node: './web/inline-load.js',
+            browser: './web/load.js',
+            default: './web/load.js',
+          },
           './exports.json': './exports.json',
         },
       },
