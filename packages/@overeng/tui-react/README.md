@@ -228,6 +228,15 @@ See the `examples/` directory:
 - `examples/effect-logging.tsx` - TUI logger integration
 - `examples/universal-components-demo.tsx` - Universal components
 
+## Browser Tests
+
+Run the Storybook-backed browser suite with `devenv tasks run test:pw:tui-react`.
+Failed tests retain a Playwright trace, screenshot, and error context in
+`packages/@overeng/tui-react/test-results/`. CI uploads that directory as the
+`playwright-test-results-tui-react-run-<run>-attempt-<attempt>` artifact on failure.
+Open a downloaded trace with `playwright show-trace <path>/trace.zip` to inspect
+the preview DOM, browser console, and network requests.
+
 ## License
 
 MIT
