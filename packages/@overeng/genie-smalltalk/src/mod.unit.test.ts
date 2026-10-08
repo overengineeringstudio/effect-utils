@@ -49,7 +49,7 @@ schedule "daily" {
   it.each(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const)(
     'renders a weekly %s calendar using st DAY HH:MM syntax',
     (day) => {
-      expect(emit([schedule({ ...calendarSchedule, at: '09:00', days: [day] })])).toContain(
+      expect(emit([schedule({ ...calendarSchedule, at: '09:00', days: [day] as const })])).toContain(
         `calendar {\n    at "${day} 09:00"\n    timezone "Europe/Berlin"\n  }`,
       )
     },
