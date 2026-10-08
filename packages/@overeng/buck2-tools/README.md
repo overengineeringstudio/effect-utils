@@ -44,13 +44,20 @@ Snapshots deliberately own their Buck artifact bytes and remain usable after
 
 After closing editors and builds using a retired worktree, run
 `devenv tasks run worktree:teardown --mode single` from that worktree. It stops
-every Buck daemon isolation for the absolute checkout root, removes its buckd
-state, deletes its Watchman watch when the service is reachable, removes only
+every Buck daemon isolation for the absolute checkout root, removes only its
+isolation state, deletes its Watchman watch when the service is reachable, removes only
 its root-keyed admission cache entries, invokes `buck2:editor:release`, and makes
 remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
 tracked files, and does not decide whether a checkout is eligible for removal.
+
+Buck's absolute-path state hierarchy can contain descendant checkouts. Only
+directories with direct daemon files identify this checkout's isolations; their
+siblings are preserved, and the parent state directory is removed only when
+empty. State paths must remain under the canonical Buck state base and contain
+no symlinked components. The permission walk prunes nested Git checkouts,
+worktrees, and megarepo member/composition boundaries before changing their modes.
 
 Capability-profile Nix indirect gcroots are left alone: worktree removal makes
 them dangling and Nix GC prunes them. Shared endpoint admission caches and other

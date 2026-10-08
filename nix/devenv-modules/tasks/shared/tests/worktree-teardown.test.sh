@@ -14,8 +14,25 @@ main="$TEMP_ROOT/main"
 worktree="$TEMP_ROOT/retired"
 socket_dir=""
 watchman_started=false
+nested_outer=""
+nested_child=""
+descendant_state=""
 cleanup() {
   local result=$?
+  if [ -n "$descendant_state" ]; then rm -rf -- "$descendant_state"; fi
+  if [ -n "$nested_outer" ] && [ -d "$nested_outer" ]; then
+    for checkout in "$nested_child" "$nested_outer"; do
+      if [ -d "$checkout" ]; then
+        DEVENV_ROOT="$checkout" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+          bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" >/dev/null 2>&1 || true
+      fi
+    done
+    # These are test-owned fixtures; restore their protected nested directories
+    # only after the survival assertions, so failed tests also clean up safely.
+    find -P "$nested_outer" -type d -exec chmod u+w -- {} +
+    git -C "$main" worktree remove --force "$nested_child" >/dev/null 2>&1 || true
+    git -C "$main" worktree remove --force "$nested_outer" >/dev/null 2>&1 || true
+  fi
   if [ -d "$worktree" ]; then
     for isolation in first .second; do
       (cd "$worktree" && "$BUCK2" --isolation-dir "$isolation" kill) >/dev/null 2>&1 || true
@@ -34,7 +51,7 @@ trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 mkdir -p "$main"
 git -C "$main" init -q
-printf '.devenv/\n.editor-view/\nnode_modules\n.buckconfig.local\nbuck-out/\ninputs/\nreadonly/\nexternal-link\ndevenv.lock\n' >"$main/.gitignore"
+printf '.devenv/\n.editor-view/\nnode_modules\n.buckconfig.local\nbuck-out/\ninputs/\nreadonly/\nexternal-link\ndevenv.lock\nnested/\ncheckout/\nrepos/\ncomposition/\nmegarepo.json\n' >"$main/.gitignore"
 printf '{}\n' >"$main/package.json"
 touch "$main/.buckroot"
 # Parsing an empty package starts a genuine daemon without build inputs/network.
@@ -132,6 +149,28 @@ chmod 444 "$worktree/readonly/nested/file"
 chmod 555 "$worktree/readonly" "$worktree/readonly/nested" "$TEMP_ROOT/external"
 ln -s "$TEMP_ROOT/external" "$worktree/external-link"
 
+# Both an escaping and an in-base ancestor symlink must be refused before any
+# daemon, watch, cache or directory mutation. Use isolated fake state homes.
+attack_home="$TEMP_ROOT/attack-home"
+attack_base="$attack_home/.buck/buckd"
+mkdir -p "$attack_base/alias" "$TEMP_ROOT/attack-outside"
+relative_root="${worktree#/}"
+first_component="${relative_root%%/*}"
+for target in "$TEMP_ROOT/attack-outside" "$attack_base/alias"; do
+  printf 'untouched\n' >"$target/sentinel"
+  ln -s "$target" "$attack_base/$first_component"
+  if HOME="$attack_home" DEVENV_ROOT="$worktree" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" \
+    >"$TEMP_ROOT/symlink-refusal.log" 2>&1; then
+    fail 'teardown accepted a symlinked intermediate state component'
+  fi
+  cat "$TEMP_ROOT/symlink-refusal.log"
+  [ "$(cat "$target/sentinel")" = untouched ] || fail 'symlink target changed'
+  rm "$attack_base/$first_component"
+done
+for pid in "${pids[@]}"; do kill -0 "$pid" || fail 'refused teardown stopped a daemon'; done
+compgen -G "$cache/$root_hash-*" >/dev/null || fail 'refused teardown deleted admission state'
+
 # Execute the inherited task through devenv, including its real nested release.
 (cd "$worktree" && "$DEVENV" tasks run worktree:teardown --mode single)
 for pid in "${pids[@]}"; do
@@ -154,3 +193,49 @@ fi
 git -C "$main" worktree remove "$worktree"
 [ ! -e "$worktree" ] || fail 'ordinary git worktree remove failed'
 echo 'PASS: two live Buck isolations stopped; buckd/watch/root caches/editor roots released; second and unreachable-Watchman runs exit 0; unrelated state and file modes preserved; git worktree remove succeeds without chmod'
+
+# A descendant absolute checkout path shares its parent's buckd namespace, but
+# is not one of the parent's isolations. Exercise Git file/dir boundaries and
+# materialized megarepo members in a separate linked scratch worktree.
+nested_outer="$TEMP_ROOT/outer"
+nested_child="$nested_outer/nested"
+git -C "$main" worktree add -q --detach "$nested_outer" HEAD
+git -C "$main" worktree add -q --detach "$nested_child" HEAD
+cp "$ROOT/devenv.lock" "$nested_outer/devenv.lock"
+git -C "$nested_outer" -c core.hooksPath=/dev/null init -q "$nested_outer/checkout"
+mkdir -p "$nested_child/readonly" "$nested_outer/checkout/readonly" \
+  "$nested_outer/repos/member/readonly" "$nested_outer/composition/repos/member/readonly"
+printf '{}\n' >"$nested_outer/megarepo.json"
+touch "$nested_outer/composition/megarepo.kdl"
+outer_state="$HOME/.buck/buckd/${nested_outer#/}"
+child_state="$outer_state/nested"
+(cd "$nested_outer" && "$BUCK2" --isolation-dir outer targets //: >/dev/null)
+(cd "$nested_child" && "$BUCK2" --isolation-dir child targets //: >/dev/null)
+outer_pid="$(cat "$outer_state/outer/buckd.pid")"
+child_pid="$(cat "$child_state/child/buckd.pid")"
+kill -0 "$outer_pid" && kill -0 "$child_pid" || fail 'nested fixture daemons are not live'
+# A descendant checkout may itself be named like a daemon file. A directory
+# with that name must not turn its parent's state container into an isolation.
+descendant_state="$child_state/buckd.pid"
+mkdir -p "$descendant_state/deeper"
+printf 'untouched\n' >"$descendant_state/deeper/sentinel"
+protected=(
+  "$nested_child" "$nested_child/readonly"
+  "$nested_outer/checkout" "$nested_outer/checkout/readonly"
+  "$nested_outer/repos" "$nested_outer/repos/member" "$nested_outer/repos/member/readonly"
+  "$nested_outer/composition" "$nested_outer/composition/repos/member/readonly"
+)
+chmod 555 "${protected[@]}"
+for iteration in first second; do
+  (cd "$nested_outer" && "$DEVENV" tasks run worktree:teardown --mode single)
+  if kill -0 "$outer_pid" 2>/dev/null; then fail 'outer daemon remains live'; fi
+  [ ! -e "$outer_state/outer" ] || fail 'outer isolation state remains'
+  [ -d "$child_state/child" ] || fail 'nested checkout daemon state was removed'
+  [ "$(cat "$child_state/child/buckd.pid")" = "$child_pid" ] || fail 'nested daemon state changed'
+  kill -0 "$child_pid" || fail 'nested checkout daemon was stopped'
+  [ "$(cat "$descendant_state/deeper/sentinel")" = untouched ] || fail 'daemon-file-named descendant state changed'
+  "$BUN" -e 'const fs=require("node:fs"); for (const path of process.argv.slice(1)) if ((fs.statSync(path).mode & 0o777) !== 0o555) { console.error(path); process.exit(1) }' \
+    "${protected[@]}" || fail 'teardown chmodded a nested checkout or megarepo member'
+done
+(cd "$nested_child" && "$BUCK2" --isolation-dir child status >/dev/null)
+echo 'PASS: nested checkout state and live daemon survive both parent teardowns; Git checkout/worktree and megarepo directory modes remain unchanged; escaping and in-base intermediate symlinks are refused'

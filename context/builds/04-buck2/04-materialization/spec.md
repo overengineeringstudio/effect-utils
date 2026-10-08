@@ -219,7 +219,7 @@ recovery surface; it requires both `EDITOR_VIEW_PACKAGE` and the exact printed
 
 ```text
 worktree:teardown
-  -> stop all root-keyed Buck isolations and remove buckd state
+  -> stop root-owned Buck isolations and remove only their state
   -> delete the root's watch from reachable Watchman
   -> remove root-keyed watcher admission entries
   -> buck2:editor:release
@@ -236,6 +236,14 @@ filenames under `${XDG_CACHE_HOME:-~/.cache}/effect-utils/buck2-posture-v2` begi
 with `sha256(absolute-root)-`, followed by the invocation-key hash; endpoint-only
 REAPI/archive admission remains shared and is not removed.
 
+Buck state is a hierarchy under canonical `~/.buck/buckd`: the absolute checkout
+path without its leading slash, followed by an isolation name. A directory with
+direct `buckd.info`, `buckd.pid`, `buckd.stdout`, `buckd.stderr`, or
+`buckd.lifecycle` files identifies an isolation. Other child directories hold
+descendant checkout state and are untouched. Teardown deletes only isolation
+directories; it removes the checkout's state container only if empty. It refuses
+state paths outside the canonical base and any symlinked state component.
+
 `devenv tasks run buck2:editor:release --mode single` is the editor-only release
 surface. Teardown calls that existing task when the consuming repository defines
 it. Both are explicit lifecycle operations, never dependencies of publication,
@@ -244,8 +252,12 @@ Consumers inherit teardown through the shared setup, check, clean, or
 worktree-guard module, or import the exported worktree-teardown module directly.
 
 Teardown makes remaining directories owner-writable without following symlinks
-or changing file modes. It never deletes tracked files or determines removal
-eligibility; the caller owns dirty-tree and canonical-checkout policy.
+or changing file modes. Before chmod, it prunes any nested directory containing
+a `.git` file/directory, a megarepo configuration, or a `.bare` store boundary,
+and the `repos` member container of a megarepo-configured directory. These nested
+checkout/composition roots and their contents retain their modes.
+It never deletes tracked files or determines removal eligibility; the caller
+owns dirty-tree and canonical-checkout policy.
 Capability-profile Nix indirect gcroots are left alone: after worktree removal
 they become dangling, and Nix GC prunes them.
 

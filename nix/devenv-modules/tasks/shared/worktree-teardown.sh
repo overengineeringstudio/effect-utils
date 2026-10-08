@@ -7,11 +7,33 @@ root="$(git -C "${DEVENV_ROOT:-$PWD}" rev-parse --show-toplevel)"
 root="$(realpath "$root")"
 cd "$root"
 
-state="$HOME/.buck/buckd/${root#/}"
-if [ -L "$state" ]; then
-  echo "worktree:teardown: refusing symlinked Buck state: $state" >&2
-  exit 1
-fi
+home="$(realpath -m -- "$HOME")"
+for component_path in "$home/.buck" "$home/.buck/buckd"; do
+  if [ -L "$component_path" ]; then
+    echo "worktree:teardown: refusing symlinked Buck state component: $component_path" >&2
+    exit 1
+  fi
+done
+base="$(realpath -m -- "$home/.buck/buckd")"
+state="$(realpath -m -- "$base/${root#/}")"
+case "$state" in
+  "$base"|"$base"/*) ;;
+  *) echo "worktree:teardown: Buck state escapes canonical base: $state" >&2; exit 1 ;;
+esac
+# Checking only the last component would allow an ancestor symlink to redirect
+# the entire root-keyed state tree, even to another location inside the base.
+component_path="$base"
+remaining="${root#/}"
+while [ -n "$remaining" ]; do
+  component="${remaining%%/*}"
+  component_path="$component_path/$component"
+  if [ -L "$component_path" ]; then
+    echo "worktree:teardown: refusing symlinked Buck state component: $component_path" >&2
+    exit 1
+  fi
+  if [ "$remaining" = "$component" ]; then break; fi
+  remaining="${remaining#*/}"
+done
 if [ -d "$state" ]; then
   for directory in "$state"/*; do
     [ -e "$directory" ] || [ -L "$directory" ] || continue
@@ -19,11 +41,24 @@ if [ -d "$state" ]; then
       echo "worktree:teardown: invalid Buck isolation state: $directory" >&2
       exit 1
     fi
+    # Absolute roots share prefix directories: a child checkout's state is NOT
+    # an isolation of this checkout. Only direct daemon files identify one.
+    isolation=false
+    for marker in buckd.info buckd.pid buckd.stdout buckd.stderr buckd.lifecycle; do
+      if [ -L "$directory/$marker" ]; then
+        echo "worktree:teardown: refusing symlinked Buck daemon file: $directory/$marker" >&2
+        exit 1
+      fi
+      if [ -f "$directory/$marker" ]; then isolation=true; fi
+    done
+    [ "$isolation" = true ] || continue
     # Native kill is offline and never starts a daemon. Use its protocol rather
     # than signaling a potentially recycled PID from buckd.pid.
     buck2 --isolation-dir "${directory##*/}" kill
+    rm -rf -- "$directory"
   done
-  rm -rf -- "$state"
+  remaining_directories=( "$state"/* )
+  if [ "${#remaining_directories[@]}" = 0 ]; then rmdir -- "$state"; fi
 fi
 
 # Never spawn a Watchman service just to release a watch. A missing/unreachable
@@ -51,6 +86,15 @@ if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" = 1 ]; then
   DEVENV_TUI=false devenv tasks run buck2:editor:release --mode single
 fi
 
-# Read-only Buck materializations may remain. Do not chmod files or traverse
-# symlinks into the Nix store, sibling checkouts, or external editor inputs.
-find -P "$root" -type d -exec chmod u+w -- {} +
+# Read-only Buck materializations may remain. Nested Git and megarepo ownership
+# boundaries are pruned before chmod, including their root directories.
+find -P "$root" -type d \
+  \( -exec bash -c '
+    directory=$1
+    [ "$directory" != "$2" ] &&
+    { [ -e "$directory/.git" ] || [ -L "$directory/.git" ] ||
+      [ -f "$directory/megarepo.kdl" ] || [ -f "$directory/megarepo.json" ] ||
+      [ -d "$directory/.bare" ] ||
+      { [ "${directory##*/}" = repos ] &&
+        { [ -f "${directory%/*}/megarepo.kdl" ] || [ -f "${directory%/*}/megarepo.json" ]; }; }; }
+  ' bash {} "$root" \; \) -prune -o -type d -exec chmod u+w -- {} +
